@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Trades Receptionist - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #2563eb;
+            --primary-dark: #1e40af;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+            padding: 2rem 0;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        /* Tabs */
+        .tabs {
+            background: white;
+            border-bottom: 2px solid var(--border-color);
+            margin-top: 0;
+        }
+
+        .tab-list {
+            display: flex;
+            list-style: none;
+            gap: 0.5rem;
+            padding: 0.5rem;
+        }
+
+        .tab-button {
+            padding: 0.875rem 1.5rem;
+            background: none;
+            border: none;
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .tab-button:hover {
+            color: var(--primary-color);
+            background: rgba(37, 99, 235, 0.05);
+        }
+
+        .tab-button.active {
+            color: white;
+            background: var(--primary-color);
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+            padding: 2rem 0;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 2px solid var(--bg-color);
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+
+        .btn-secondary {
+            background: #f1f5f9;
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background: #e2e8f0;
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+        }
+
+        /* Table */
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table thead {
+            background: var(--bg-color);
+        }
+
+        .table th {
+            text-align: left;
+            padding: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        .table td {
+            padding: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .table tbody tr:hover {
+            background: rgba(37, 99, 235, 0.02);
+        }
+
+        /* Form */
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+        }
+
+        .form-input, .form-textarea, .form-select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+        }
+
+        .form-input:focus, .form-textarea:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 0.35rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        .badge-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-danger {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-primary {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .badge-secondary {
+            background: #f1f5f9;
+            color: #475569;
+        }
+
+        /* Job Card */
+        .job-card {
+            background: white;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .job-card:hover {
+            border-color: var(--primary-color);
+            box-shadow: var(--shadow-md);
+        }
+
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1rem;
+        }
+
+        .job-client-name {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .job-date {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        .job-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .job-detail-item {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .job-detail-label {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* Filter Bar */
+        .filter-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 0.5rem 1rem;
+            border: 2px solid var(--border-color);
+            background: white;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .filter-btn:hover {
+            border-color: var(--primary-color);
+        }
+
+        .filter-btn.active {
+            background: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .close-btn {
+            background: var(--danger-color);
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        /* Finance simplified */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        /* Worker Card */
+        .worker-card {
+            background: white;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .worker-info h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .worker-details {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .worker-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container header-content">
+            <h1 class="logo">
+                <span>🔧</span>
+                AI Trades Receptionist
+            </h1>
+            <div class="header-actions">
+                <button class="btn btn-secondary" onclick="window.location.href='/settings'">
+                    ⚙️ Settings
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <div class="container">
+            <ul class="tab-list">
+                <li><button class="tab-button active" data-tab="jobs">📋 Jobs</button></li>
+                <li><button class="tab-button" data-tab="customers">👥 Customers</button></li>
+                <li><button class="tab-button" data-tab="workers">👷 Workers</button></li>
+                <li><button class="tab-button" data-tab="calendar">📅 Calendar</button></li>
+                <li><button class="tab-button" data-tab="finances">💰 Finances</button></li>
+                <li><button class="tab-button" data-tab="chat">💬 Test AI Chat</button></li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="container">
+        <!-- Jobs Tab -->
+        <div class="tab-content active" id="jobs-tab">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Jobs</h2>
+                </div>
+                
+                <div class="filter-bar">
+                    <button class="filter-btn active" data-filter="all">All Jobs</button>
+                    <button class="filter-btn" data-filter="scheduled">Scheduled</button>
+                    <button class="filter-btn" data-filter="in-progress">In Progress</button>
+                    <button class="filter-btn" data-filter="completed">Completed</button>
+                    <button class="filter-btn" data-filter="cancelled">Cancelled</button>
+                </div>
+                
+                <div style="margin-bottom: 1rem;">
+                    <strong>Filter by Urgency:</strong>
+                    <div class="filter-bar">
+                        <button class="filter-btn active" data-urgency="all">All</button>
+                        <button class="filter-btn" data-urgency="emergency">🚨 Emergency</button>
+                        <button class="filter-btn" data-urgency="same-day">⚡ Same-Day</button>
+                        <button class="filter-btn" data-urgency="scheduled">📅 Scheduled</button>
+                        <button class="filter-btn" data-urgency="quote">💬 Quote</button>
+                    </div>
+                </div>
+
+                <div id="jobsContent">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <p>Loading jobs...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Customers Tab -->
+        <div class="tab-content" id="customers-tab">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Customers</h2>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button class="btn btn-secondary btn-sm" id="sendTestEmail">
+                            📧 Send Test Email
+                        </button>
+                        <button class="btn btn-primary btn-sm" onclick="showAddClientModal()">
+                            + Add Customer
+                        </button>
+                    </div>
+                </div>
+                <div id="customersTable">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👥</div>
+                        <p>Loading customers...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workers Tab -->
+        <div class="tab-content" id="workers-tab">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Workers</h2>
+                    <button class="btn btn-primary btn-sm" onclick="showAddWorkerModal()">
+                        + Add Worker
+                    </button>
+                </div>
+                <div id="workersContent">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👷</div>
+                        <p>Loading workers...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calendar Tab -->
+        <div class="tab-content" id="calendar-tab">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Calendar</h2>
+                </div>
+                <div id="calendarContent">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📅</div>
+                        <p>Loading calendar...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Finances Tab -->
+        <div class="tab-content" id="finances-tab">
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalRevenue">€0</div>
+                    <div class="stat-label">Total Revenue</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="paidAmount">€0</div>
+                    <div class="stat-label">Collected</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="unpaidAmount">€0</div>
+                    <div class="stat-label">Outstanding</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Transactions</h2>
+                    <input type="text" id="financeSearch" class="form-input" placeholder="Search..." style="width: 300px;">
+                </div>
+                <div id="financesTable">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💰</div>
+                        <p>Loading financial data...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Tab -->
+        <div class="tab-content" id="chat-tab">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">💬 Test AI Receptionist</h2>
+                    <button class="btn btn-secondary btn-sm" onclick="resetChat()">
+                        🔄 Reset Chat
+                    </button>
+                </div>
+                <div style="display: flex; flex-direction: column; height: 600px;">
+                    <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 1.5rem; background: #f8fafc; border-radius: 8px; margin-bottom: 1rem;">
+                        <div style="background: white; border: 2px solid #e2e8f0; border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+                            <strong>AI Receptionist:</strong> Hi, thank you for calling. How can I help you today?
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" class="form-input" id="chatInput" 
+                               placeholder="Type your message..." 
+                               onkeypress="if(event.key==='Enter') sendChatMessage()"
+                               style="flex: 1;">
+                        <button class="btn btn-primary" onclick="sendChatMessage()">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Customer Modal -->
+    <div class="modal" id="addClientModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Add New Customer</h2>
+                <button class="close-btn" onclick="closeModal('addClientModal')">&times;</button>
+            </div>
+            <form onsubmit="addClient(event)">
+                <div class="form-group">
+                    <label class="form-label">Name *</label>
+                    <input type="text" class="form-input" id="clientName" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Phone</label>
+                    <input type="tel" class="form-input" id="clientPhone">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-input" id="clientEmail">
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Add Customer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Worker Modal -->
+    <div class="modal" id="addWorkerModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Add New Worker</h2>
+                <button class="close-btn" onclick="closeModal('addWorkerModal')">&times;</button>
+            </div>
+            <form onsubmit="addWorker(event)">
+                <div class="form-group">
+                    <label class="form-label">Name *</label>
+                    <input type="text" class="form-input" id="workerName" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Phone</label>
+                    <input type="tel" class="form-input" id="workerPhone">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-input" id="workerEmail">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Trade Specialty</label>
+                    <input type="text" class="form-input" id="workerTrade" placeholder="e.g., Plumber, Electrician, Carpenter">
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Add Worker</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Customer Detail Modal -->
+    <div class="modal" id="clientDetailModal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2 class="modal-title" id="clientDetailName">Customer Details</h2>
+                <button class="close-btn" onclick="closeModal('clientDetailModal')">&times;</button>
+            </div>
+            <div id="clientDetailContent"></div>
+        </div>
+    </div>
+
+    <script src="/static/dashboard.js"></script>
+</body>
+</html>

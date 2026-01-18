@@ -1,0 +1,64 @@
+{
+  "business_name": "Munster Physio",
+  "business_type": "Physiotherapy Clinic",
+  
+  "contact": {
+    "phone": "+353 XX XXX XXXX",
+    "email": "info@munsterphysio.ie",
+    "website": "www.munsterphysio.ie"
+  },
+  
+  "location": {
+    "address": "University of Limerick Campus",
+    "city": "Limerick",
+    "country": "Ireland",
+    "parking": "Available out front or around back in the UL car park",
+    "directions": "Located on the University of Limerick campus. Free parking available."
+  },
+  
+  "hours": {
+    "days_open": "Monday to Friday",
+    "hours_of_operation": "9:00 AM - 5:00 PM",
+    "timezone": "Europe/Dublin",
+    "closed_on": "Weekends and public holidays"
+  },
+  
+  "staff": {
+    "primary_practitioner": "James",
+    "team_size": "1 physiotherapist"
+  },
+  
+  "services": {
+    "primary": "Physiotherapy",
+    "offerings": [
+      "Injury recovery and rehabilitation",
+      "Sports physiotherapy",
+      "Back and neck pain treatment",
+      "Post-surgery recovery",
+      "General musculoskeletal treatment",
+      "Sports massage"
+    ],
+    "appointment_duration": "60 minutes",
+    "note": "All appointments are one-on-one sessions"
+  },
+  
+  "pricing": {
+    "standard_appointment": "€50",
+    "currency": "EUR",
+    "payment_methods": ["cash", "card", "Apple Pay"],
+    "note": "All appointments are €50 regardless of service type"
+  },
+  
+  "policies": {
+    "cancellation": "Please provide notice if you need to cancel",
+    "late_arrival": "Please arrive on time for your appointment",
+    "booking": "Same-day bookings available subject to availability"
+  },
+  
+  "faq": {
+    "what_to_bring": "Comfortable clothing suitable for physical examination",
+    "first_visit": "We'll assess your condition and create a treatment plan",
+    "insurance": "Private pay only - no insurance billing available",
+    "covid_policy": "Follow current health guidelines"
+  }
+}

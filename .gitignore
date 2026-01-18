@@ -1,0 +1,115 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Google Calendar - Keep credentials template, ignore tokens
+config/token.json
+
+# Logs
+*.log
+logs/
+
+# Ngrok
+ngrok
+ngrok.exe
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+temp/
+ToDo.txt
+
+# Database files
+data/receptionist.db
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Audio files (if storing recordings)
+*.wav
+*.mp3
+*.mulaw
+audio_recordings/
+
+# Config files with sensitive data
+config/sent_reminders.json
+config/token.json
+config/credentials.json
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# OS specific
+Thumbs.db
+desktop.ini
+
+# Coverage reports
+.coverage.*
+coverage.xml
+*.cover
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# pytype static type analyzer
+.pytype/
+
+# Pyre type checker
+.pyre/
+# secrets
+config/token.json
+
+
+# secrets
+config/token.json
+

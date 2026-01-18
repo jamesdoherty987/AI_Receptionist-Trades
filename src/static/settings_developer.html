@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Developer Settings - AI Receptionist</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-color: #6366f1;
+            --primary-dark: #4f46e5;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #334155;
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+
+        body {
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            color: white;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-md);
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            color: #22d3ee;
+        }
+
+        .header p {
+            opacity: 0.8;
+            color: var(--text-secondary);
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .nav-buttons button {
+            padding: 0.75rem 1.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--card-bg);
+            color: var(--text-primary);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .nav-buttons button:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+            border-color: var(--primary-color);
+        }
+
+        .warning-banner {
+            background: rgba(251, 191, 36, 0.1);
+            border: 2px solid var(--warning-color);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .warning-banner .icon {
+            font-size: 2rem;
+        }
+
+        .settings-grid {
+            display: grid;
+            gap: 2rem;
+        }
+
+        .settings-section {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow-md);
+        }
+
+        .settings-section h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            color: #22d3ee;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: var(--bg-color);
+            color: var(--text-primary);
+            transition: border-color 0.3s;
+            font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .save-button {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 8px;
+            background: var(--success-color);
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        .save-button:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            box-shadow: var(--shadow-md);
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .notification.success {
+            background: var(--success-color);
+        }
+
+        .notification.error {
+            background: var(--danger-color);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .help-text {
+            font-size: 0.825rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+            font-style: italic;
+        }
+
+        .danger-zone {
+            border: 2px solid var(--danger-color);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .danger-zone h2 {
+            color: var(--danger-color);
+        }
+
+        .range-input {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .range-display {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem;
+            background: var(--bg-color);
+            border-radius: 6px;
+        }
+
+        .range-value {
+            color: #22d3ee;
+            font-weight: bold;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: var(--border-color);
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            cursor: pointer;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            cursor: pointer;
+        }
+
+        .api-key-field {
+            position: relative;
+        }
+
+        .api-key-field input {
+            padding-right: 100px;
+        }
+
+        .toggle-visibility {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.5rem;
+        }
+
+        .toggle-visibility:hover {
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚙️ Developer Settings</h1>
+            <p>Advanced configuration for developers and system administrators</p>
+        </div>
+
+        <div class="nav-buttons">
+            <button onclick="window.location.href='/dashboard'">← Back to Dashboard</button>
+            <button onclick="window.location.href='/settings'">Business Settings →</button>
+        </div>
+
+        <div class="warning-banner">
+            <div class="icon">⚠️</div>
+            <div>
+                <strong>Warning:</strong> These settings affect core system functionality. 
+                Only modify if you understand the implications. Incorrect values may cause service disruptions.
+            </div>
+        </div>
+
+        <form id="settingsForm">
+            <div class="settings-grid">
+                <!-- AI Model Configuration -->
+                <div class="settings-section">
+                    <h2>🤖 AI Model Configuration</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="openai_model">OpenAI Model</label>
+                            <select id="openai_model" name="openai_model">
+                                <option value="gpt-4o-mini">GPT-4o Mini (Recommended)</option>
+                                <option value="gpt-4o">GPT-4o</option>
+                                <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                                <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                            </select>
+                            <p class="help-text">Model used for conversation generation</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="openai_max_tokens">Max Tokens</label>
+                            <input type="number" id="openai_max_tokens" name="openai_max_tokens" min="50" max="4000" value="150">
+                            <p class="help-text">Maximum response length</p>
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="openai_temperature">Temperature: <span class="range-value" id="temp_value">0.7</span></label>
+                            <input type="range" id="openai_temperature" name="openai_temperature" min="0" max="2" step="0.1" value="0.7" oninput="updateRangeValue('openai_temperature', 'temp_value')">
+                            <p class="help-text">Higher = more creative, Lower = more deterministic</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Speech Services -->
+                <div class="settings-section">
+                    <h2>🎤 Speech Services</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="deepgram_model">Deepgram ASR Model</label>
+                            <select id="deepgram_model" name="deepgram_model">
+                                <option value="nova-2">Nova 2 (Recommended)</option>
+                                <option value="nova">Nova</option>
+                                <option value="enhanced">Enhanced</option>
+                                <option value="base">Base</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="tts_provider">TTS Provider</label>
+                            <select id="tts_provider" name="tts_provider">
+                                <option value="deepgram">Deepgram</option>
+                                <option value="elevenlabs">ElevenLabs</option>
+                            </select>
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="elevenlabs_voice_id">ElevenLabs Voice ID (optional)</label>
+                            <input type="text" id="elevenlabs_voice_id" name="elevenlabs_voice_id" placeholder="Voice ID for ElevenLabs TTS">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Webhooks & Integrations -->
+                <div class="settings-section">
+                    <h2>🔗 Webhooks & Integrations</h2>
+                    <div class="form-grid">
+                        <div class="form-group full-width">
+                            <label for="webhook_url">Webhook URL</label>
+                            <input type="url" id="webhook_url" name="webhook_url" placeholder="https://your-server.com/webhook">
+                            <p class="help-text">Receive notifications about bookings and events</p>
+                        </div>
+                        <div class="form-group full-width api-key-field">
+                            <label for="webhook_secret">Webhook Secret</label>
+                            <input type="password" id="webhook_secret" name="webhook_secret" placeholder="Secret key for webhook verification">
+                            <button type="button" class="toggle-visibility" onclick="togglePasswordVisibility('webhook_secret')">👁️</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Configuration -->
+                <div class="settings-section">
+                    <h2>⚙️ System Configuration</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="log_level">Log Level</label>
+                            <select id="log_level" name="log_level">
+                                <option value="DEBUG">DEBUG</option>
+                                <option value="INFO">INFO</option>
+                                <option value="WARNING">WARNING</option>
+                                <option value="ERROR">ERROR</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="max_concurrent_calls">Max Concurrent Calls</label>
+                            <input type="number" id="max_concurrent_calls" name="max_concurrent_calls" min="1" max="100" value="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="session_timeout_minutes">Session Timeout (minutes)</label>
+                            <input type="number" id="session_timeout_minutes" name="session_timeout_minutes" min="5" max="120" value="30">
+                        </div>
+                        <div class="form-group">
+                            <label for="rate_limit_per_minute">Rate Limit (per minute)</label>
+                            <input type="number" id="rate_limit_per_minute" name="rate_limit_per_minute" min="10" max="1000" value="60">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Features & Toggles -->
+                <div class="settings-section">
+                    <h2>🎛️ Features & Toggles</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="enable_call_recording" name="enable_call_recording">
+                                <label for="enable_call_recording">Enable Call Recording</label>
+                            </div>
+                            <p class="help-text">Record conversations for quality assurance</p>
+                        </div>
+                        <div class="form-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="enable_analytics" name="enable_analytics">
+                                <label for="enable_analytics">Enable Analytics</label>
+                            </div>
+                            <p class="help-text">Track usage metrics and performance</p>
+                        </div>
+                        <div class="form-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="enable_debug_mode" name="enable_debug_mode">
+                                <label for="enable_debug_mode">Enable Debug Mode</label>
+                            </div>
+                            <p class="help-text">Show detailed logs and debugging information</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Danger Zone -->
+                <div class="settings-section danger-zone">
+                    <h2>🚨 Danger Zone</h2>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="enable_maintenance_mode" name="enable_maintenance_mode">
+                                <label for="enable_maintenance_mode">Enable Maintenance Mode</label>
+                            </div>
+                            <p class="help-text">Temporarily disable all incoming calls</p>
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="maintenance_message">Maintenance Message</label>
+                            <textarea id="maintenance_message" name="maintenance_message" placeholder="We're currently performing maintenance. Please call back later."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="save-button">
+                💾 Save Developer Settings
+            </button>
+        </form>
+    </div>
+
+    <script>
+        // Load settings on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+        });
+
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/settings/developer');
+                if (response.ok) {
+                    const settings = await response.json();
+                    populateForm(settings);
+                }
+            } catch (error) {
+                console.error('Error loading settings:', error);
+                showNotification('Error loading settings', 'error');
+            }
+        }
+
+        function populateForm(settings) {
+            for (const [key, value] of Object.entries(settings)) {
+                const input = document.getElementById(key);
+                if (input) {
+                    if (input.type === 'checkbox') {
+                        input.checked = value === 1 || value === true;
+                    } else if (input.type === 'range') {
+                        input.value = value || 0;
+                        updateRangeValue(key, key.replace('openai_', '') + '_value');
+                    } else {
+                        input.value = value || '';
+                    }
+                }
+            }
+        }
+
+        function updateRangeValue(rangeId, displayId) {
+            const range = document.getElementById(rangeId);
+            const display = document.getElementById(displayId);
+            if (display) {
+                display.textContent = range.value;
+            }
+        }
+
+        function togglePasswordVisibility(fieldId) {
+            const field = document.getElementById(fieldId);
+            field.type = field.type === 'password' ? 'text' : 'password';
+        }
+
+        document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const settings = {};
+            
+            // Get all form fields
+            for (const [key, value] of formData.entries()) {
+                settings[key] = value;
+            }
+
+            // Convert checkboxes to integers
+            const checkboxes = [
+                'enable_call_recording',
+                'enable_analytics',
+                'enable_debug_mode',
+                'enable_maintenance_mode'
+            ];
+            
+            checkboxes.forEach(checkbox => {
+                const element = document.getElementById(checkbox);
+                settings[checkbox] = element.checked ? 1 : 0;
+            });
+
+            // Convert numbers
+            settings.openai_max_tokens = parseInt(settings.openai_max_tokens);
+            settings.openai_temperature = parseFloat(settings.openai_temperature);
+            settings.max_concurrent_calls = parseInt(settings.max_concurrent_calls);
+            settings.session_timeout_minutes = parseInt(settings.session_timeout_minutes);
+            settings.rate_limit_per_minute = parseInt(settings.rate_limit_per_minute);
+
+            try {
+                const response = await fetch('/api/settings/developer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+
+                if (response.ok) {
+                    showNotification('Developer settings saved successfully!', 'success');
+                } else {
+                    showNotification('Error saving settings', 'error');
+                }
+            } catch (error) {
+                console.error('Error saving settings:', error);
+                showNotification('Error saving settings', 'error');
+            }
+        });
+
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
