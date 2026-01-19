@@ -530,6 +530,117 @@ def send_test_email():
         }), 500
 
 
+@app.route("/api/email/send", methods=["POST"])
+def send_email_to_client():
+    """Send email to a client"""
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        
+        data = request.json
+        client_id = data.get('client_id')
+        to_email = data.get('to_email')
+        client_name = data.get('client_name')
+        
+        if not to_email:
+            return jsonify({
+                "success": False,
+                "error": "No email address provided"
+            }), 400
+        
+        # Get email configuration from environment
+        from_email = os.getenv('FROM_EMAIL', 'j.p.enterprisehq@gmail.com')
+        smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        smtp_user = os.getenv('SMTP_USER', from_email)
+        smtp_password = os.getenv('SMTP_PASSWORD')
+        
+        if not smtp_password:
+            return jsonify({
+                "success": False,
+                "error": "Email not configured. Please set SMTP_PASSWORD in .env file"
+            }), 500
+        
+        # Create message
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = 'Message from JP Enterprise Trades'
+        msg['From'] = f'JP Enterprise Trades <{from_email}>'
+        msg['To'] = to_email
+        
+        # Email body
+        text_body = f"""
+Hello {client_name},
+
+Thank you for choosing JP Enterprise Trades for your service needs.
+
+We wanted to reach out and see if there's anything we can help you with. Whether you need a quote, want to book a service, or have any questions, we're here to help!
+
+Best regards,
+JP Enterprise Trades Team
+
+---
+This is an automated message. Please reply to this email if you need assistance.
+        """
+        
+        html_body = f"""
+<html>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #2563eb;">Hello {client_name},</h2>
+        
+        <p>Thank you for choosing <strong>JP Enterprise Trades</strong> for your service needs.</p>
+        
+        <p>We wanted to reach out and see if there's anything we can help you with. Whether you need a quote, want to book a service, or have any questions, we're here to help!</p>
+        
+        <div style="margin: 30px 0; padding: 20px; background-color: #f8fafc; border-left: 4px solid #2563eb;">
+            <p style="margin: 0;"><strong>Contact us:</strong></p>
+            <p style="margin: 5px 0;">📧 Email: {from_email}</p>
+            <p style="margin: 5px 0;">📞 Phone: Available in your records</p>
+        </div>
+        
+        <p style="color: #64748b; font-size: 0.9em; margin-top: 30px;">
+            Best regards,<br>
+            <strong>JP Enterprise Trades Team</strong>
+        </p>
+        
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+        
+        <p style="color: #94a3b8; font-size: 0.8em;">
+            This is an automated message. Please reply to this email if you need assistance.
+        </p>
+    </div>
+</body>
+</html>
+        """
+        
+        # Attach both plain text and HTML versions
+        part1 = MIMEText(text_body, 'plain')
+        part2 = MIMEText(html_body, 'html')
+        msg.attach(part1)
+        msg.attach(part2)
+        
+        # Send email via SMTP
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        
+        print(f"✅ Email sent successfully to {to_email}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Email sent successfully to {client_name}"
+        })
+        
+    except Exception as e:
+        print(f"❌ Error sending email: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
 @app.route("/config/business_info.json", methods=["GET"])
 def business_info_api():
     """Serve business info configuration"""
