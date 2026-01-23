@@ -42,7 +42,7 @@ class EmailReminderService:
             print("✅ Email reminder service initialized")
     
     def send_reminder(self, to_email: str, appointment_time: datetime, 
-                     patient_name: str, service_type: str = "appointment",
+                     customer_name: str, service_type: str = "appointment",
                      phone_number: str = "") -> bool:
         """
         Send an appointment reminder email
@@ -50,9 +50,9 @@ class EmailReminderService:
         Args:
             to_email: Recipient email address
             appointment_time: Appointment datetime
-            patient_name: Patient's name
+            customer_name: Customer's name
             service_type: Type of appointment/service
-            phone_number: Patient's phone number (for contact info)
+            phone_number: Customer's phone number (for contact info)
             
         Returns:
             True if sent successfully, False otherwise
@@ -73,7 +73,7 @@ class EmailReminderService:
             
             # Plain text version
             text_body = f"""
-Hi {patient_name},
+Hi {customer_name},
 
 This is a friendly reminder about your {service_type} appointment tomorrow:
 
@@ -93,7 +93,7 @@ Munster Physio Team
     <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #2c3e50;">Appointment Reminder</h2>
         
-        <p>Hi {patient_name},</p>
+        <p>Hi {customer_name},</p>
         
         <p>This is a friendly reminder about your <strong>{service_type}</strong> appointment:</p>
         

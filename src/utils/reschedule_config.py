@@ -31,7 +31,7 @@ RESCHEDULE_MESSAGES = {
     
     "not_found": lambda time: f"[SYSTEM: No appointment was found at {time}. Politely tell the user and ask them to verify the date and time.]",
     
-    "name_mismatch": "[SYSTEM: The user's response suggests they may be referring to a recent appointment or providing context. Use your conversation history to understand their intent. If they're clearly confirming this is their appointment (e.g., 'the one I just booked', 'that appointment'), treat it as confirmation. Otherwise, politely ask for the patient name to locate the correct appointment.]",
+    "name_mismatch": "[SYSTEM: The user's response suggests they may be referring to a recent appointment or providing context. Use your conversation history to understand their intent. If they're clearly confirming this is their appointment (e.g., 'the one I just booked', 'that appointment'), treat it as confirmation. Otherwise, politely ask for the customer name to locate the correct appointment.]",
     
     "success": lambda new_time: f"[SYSTEM: Tell the user: 'Perfect! I've moved you to {new_time}. Looking forward to seeing you then!']",
     
@@ -39,7 +39,7 @@ RESCHEDULE_MESSAGES = {
     
     "slot_unavailable": lambda requested_time: f"[SYSTEM: Unfortunately, {requested_time} is already booked. Suggest alternative nearby times that are available. Keep the conversation going - don't ask for the original time again since you already know it.]",
     
-    "need_specific_time": "[SYSTEM: Patient wants to reschedule but didn't provide a specific time. Ask them what specific date and time they would like to reschedule to (e.g., 'What time would you like to change it to?').]",
+    "need_specific_time": "[SYSTEM: Customer wants to reschedule but didn't provide a specific time. Ask them what specific date and time they would like to reschedule to (e.g., 'What time would you like to change it to?').]",
 }
 
 # Date pattern for checking if time reference includes a date

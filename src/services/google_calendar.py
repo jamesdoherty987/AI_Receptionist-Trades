@@ -3,6 +3,8 @@ Google Calendar API integration for appointment management
 """
 import os
 import json
+import time
+import socket
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -48,6 +50,26 @@ class GoogleCalendarService:
         
         if not GOOGLE_AVAILABLE:
             raise ImportError("Google Calendar libraries not installed")
+    
+    def _execute_with_retry(self, request, max_retries=3):
+        """Execute a Google API request with retry logic for connection errors"""
+        for attempt in range(max_retries):
+            try:
+                return request.execute()
+            except (ConnectionResetError, socket.error, OSError) as e:
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                    print(f"⚠️ Connection error (attempt {attempt + 1}/{max_retries}): {e}")
+                    print(f"🔄 Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    # Re-authenticate to get fresh connection
+                    self.authenticate()
+                else:
+                    print(f"❌ Connection failed after {max_retries} attempts")
+                    raise
+            except HttpError as e:
+                # Don't retry on HTTP errors (404, 403, etc.)
+                raise
     
     def authenticate(self):
         """Authenticate with Google Calendar API"""
@@ -95,7 +117,7 @@ class GoogleCalendarService:
             duration_minutes: Duration in minutes
             description: Appointment description
             location: Appointment location
-            phone_number: Patient's phone number
+            phone_number: Customer's phone number
             
         Returns:
             Event details or None if failed
@@ -135,10 +157,11 @@ class GoogleCalendarService:
                 },
             }
             
-            event = self.service.events().insert(
+            request = self.service.events().insert(
                 calendarId=self.calendar_id, 
                 body=event
-            ).execute()
+            )
+            event = self._execute_with_retry(request)
             
             print(f"✅ Appointment booked: {event.get('htmlLink')}")
             return event
@@ -164,14 +187,15 @@ class GoogleCalendarService:
             now = datetime.utcnow().isoformat() + 'Z'
             end_date = (datetime.utcnow() + timedelta(days=days_ahead)).isoformat() + 'Z'
             
-            events_result = self.service.events().list(
+            request = self.service.events().list(
                 calendarId=self.calendar_id,
                 timeMin=now,
                 timeMax=end_date,
                 maxResults=10,
                 singleEvents=True,
                 orderBy='startTime'
-            ).execute()
+            )
+            events_result = self._execute_with_retry(request)
             
             events = events_result.get('items', [])
             return events
@@ -194,10 +218,11 @@ class GoogleCalendarService:
             self.authenticate()
         
         try:
-            self.service.events().delete(
+            request = self.service.events().delete(
                 calendarId=self.calendar_id,
                 eventId=event_id
-            ).execute()
+            )
+            self._execute_with_retry(request)
             
             print(f"✅ Appointment cancelled: {event_id}")
             return True
@@ -238,11 +263,12 @@ class GoogleCalendarService:
             event['end']['dateTime'] = new_end_time.isoformat()
             
             # Update the event
-            updated_event = self.service.events().update(
+            request = self.service.events().update(
                 calendarId=self.calendar_id,
                 eventId=event_id,
                 body=event
-            ).execute()
+            )
+            updated_event = self._execute_with_retry(request)
             
             print(f"✅ Appointment rescheduled: {updated_event.get('htmlLink')}")
             return updated_event
@@ -286,13 +312,14 @@ class GoogleCalendarService:
             time_max = day_end.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
             
             # Query for events on that day
-            events_result = self.service.events().list(
+            request = self.service.events().list(
                 calendarId=self.calendar_id,
                 timeMin=time_min,
                 timeMax=time_max,
                 singleEvents=True,
                 orderBy='startTime'
-            ).execute()
+            )
+            events_result = self._execute_with_retry(request)
             
             events = events_result.get('items', [])
             
@@ -333,13 +360,13 @@ class GoogleCalendarService:
             print(f"❌ Error checking availability: {error}")
             return False  # Assume busy if we can't check
     
-    def find_next_appointment_by_name(self, patient_name: str) -> Optional[Dict[str, Any]]:
+    def find_next_appointment_by_name(self, customer_name: str) -> Optional[Dict[str, Any]]:
         """
-        Find the next future appointment for a patient by name only
-        Used when patient can't remember their appointment time
+        Find the next future appointment for a customer by name only
+        Used when customer can't remember their appointment time
         
         Args:
-            patient_name: Patient name to search for (case-insensitive)
+            customer_name: Customer name to search for (case-insensitive)
             
         Returns:
             Next future appointment event dict if found, None otherwise
@@ -347,7 +374,7 @@ class GoogleCalendarService:
         if not self.service:
             self.authenticate()
         
-        if not patient_name:
+        if not customer_name:
             return None
         
         try:
@@ -356,28 +383,29 @@ class GoogleCalendarService:
             time_max = (datetime.utcnow() + timedelta(days=30)).isoformat() + 'Z'
             
             print(f"\n🔍 Searching for next future appointment:")
-            print(f"   Patient: {patient_name}")
+            print(f"   Customer: {customer_name}")
             print(f"   Search range: {time_min} to {time_max}")
             
-            events_result = self.service.events().list(
+            request = self.service.events().list(
                 calendarId=self.calendar_id,
                 timeMin=time_min,
                 timeMax=time_max,
                 singleEvents=True,
                 orderBy='startTime'
-            ).execute()
+            )
+            events_result = self._execute_with_retry(request)
             
             events = events_result.get('items', [])
             print(f"   Found {len(events)} future events")
             
             # Search through events for first match
-            patient_lower = patient_name.lower().strip()
+            customer_lower = customer_name.lower().strip()
             for event in events:
                 event_summary = event.get('summary', '').lower()
                 event_start_str = event.get('start', {}).get('dateTime', 'N/A')
                 
-                # Check if patient name appears in summary
-                if patient_lower in event_summary:
+                # Check if customer name appears in summary
+                if customer_lower in event_summary:
                     print(f"✅ Found next appointment: {event.get('summary')} at {event_start_str}")
                     return event
                     
@@ -385,23 +413,23 @@ class GoogleCalendarService:
                 summary_parts = event_summary.split(' - ')
                 if len(summary_parts) > 1:
                     name_part = summary_parts[-1].strip()
-                    if patient_lower in name_part or name_part in patient_lower:
+                    if customer_lower in name_part or name_part in customer_lower:
                         print(f"✅ Found next appointment: {event.get('summary')} at {event_start_str}")
                         return event
             
-            print(f"❌ No future appointments found for {patient_name}")
+            print(f"❌ No future appointments found for {customer_name}")
             return None
             
         except HttpError as error:
             print(f"❌ Error searching for appointment: {error}")
             return None
     
-    def find_appointment_by_details(self, patient_name: str = None, appointment_time: datetime = None, days_to_search: int = 30) -> Optional[Dict[str, Any]]:
+    def find_appointment_by_details(self, customer_name: str = None, appointment_time: datetime = None, days_to_search: int = 30) -> Optional[Dict[str, Any]]:
         """
-        Find an appointment by patient name and/or appointment time
+        Find an appointment by customer name and/or appointment time
         
         Args:
-            patient_name: Patient name to search for (case-insensitive)
+            customer_name: Customer name to search for (case-insensitive)
             appointment_time: Appointment datetime to search for
             days_to_search: Number of days to search (backward and forward)
             
@@ -417,17 +445,18 @@ class GoogleCalendarService:
             time_max = (datetime.utcnow() + timedelta(days=days_to_search)).isoformat() + 'Z'
             
             print(f"\n🔍 Searching for appointment:")
-            print(f"   Patient: {patient_name}")
+            print(f"   Customer: {customer_name}")
             print(f"   Time: {appointment_time.strftime('%Y-%m-%d %H:%M') if appointment_time else 'any'}")
             print(f"   Search range: {time_min} to {time_max}")
             
-            events_result = self.service.events().list(
+            request = self.service.events().list(
                 calendarId=self.calendar_id,
                 timeMin=time_min,
                 timeMax=time_max,
                 singleEvents=True,
                 orderBy='startTime'
-            ).execute()
+            )
+            events_result = self._execute_with_retry(request)
             
             events = events_result.get('items', [])
             print(f"   Found {len(events)} events in range")
@@ -438,27 +467,27 @@ class GoogleCalendarService:
                 event_start_str = event.get('start', {}).get('dateTime', 'N/A')
                 print(f"   Checking: '{event_summary}' at {event_start_str}")
                 
-                # Check if patient name matches (case-insensitive, partial match)
+                # Check if customer name matches (case-insensitive, partial match)
                 name_match = False
-                if patient_name:
+                if customer_name:
                     summary = event.get('summary', '').lower() if event.get('summary') else ''
-                    patient_lower = patient_name.lower().strip() if patient_name else ''
+                    customer_lower = customer_name.lower().strip() if customer_name else ''
                     # Check if name appears anywhere in summary (handles "Service - Name" format)
-                    if patient_lower in summary:
+                    if customer_lower in summary:
                         name_match = True
-                        print(f"      ✓ Name match: '{patient_lower}' in '{summary}'")
+                        print(f"      ✓ Name match: '{customer_lower}' in '{summary}'")
                     else:
                         # Also try splitting on " - " and checking the name part
                         summary_parts = summary.split(' - ')
                         if len(summary_parts) > 1:
                             name_part = summary_parts[-1].strip()  # Get the last part (should be name)
-                            if patient_lower in name_part or name_part in patient_lower:
+                            if customer_lower in name_part or name_part in customer_lower:
                                 name_match = True
-                                print(f"      ✓ Name match (split): '{patient_lower}' matches '{name_part}'")
+                                print(f"      ✓ Name match (split): '{customer_lower}' matches '{name_part}'")
                             else:
-                                print(f"      ✗ Name mismatch: '{patient_lower}' not in '{summary}' or '{name_part}'")
+                                print(f"      ✗ Name mismatch: '{customer_lower}' not in '{summary}' or '{name_part}'")
                         else:
-                            print(f"      ✗ Name mismatch: '{patient_lower}' not in '{summary}'")
+                            print(f"      ✗ Name mismatch: '{customer_lower}' not in '{summary}'")
                 else:
                     name_match = True  # If no name provided, consider it a match
                 
@@ -486,7 +515,7 @@ class GoogleCalendarService:
                     print(f"✅ Found appointment: {event.get('summary')} at {event.get('start', {}).get('dateTime')}")
                     return event
             
-            print(f"❌ No appointment found for {patient_name or 'unknown'} at {appointment_time.strftime('%B %d at %I:%M %p') if appointment_time else 'any time'}")
+            print(f"❌ No appointment found for {customer_name or 'unknown'} at {appointment_time.strftime('%B %d at %I:%M %p') if appointment_time else 'any time'}")
             return None
             
         except HttpError as error:

@@ -99,31 +99,31 @@ class ReminderScheduler:
         
         return ""
     
-    def _extract_patient_name_from_summary(self, summary: str) -> str:
+    def _extract_customer_name_from_summary(self, summary: str) -> str:
         """
-        Extract patient name from event summary
-        Format: "Service - Patient Name"
+        Extract customer name from event summary
+        Format: "Service - Customer Name"
         
         Args:
             summary: Event summary/title
             
         Returns:
-            Patient name or "Patient" if not found
+            Customer name or "Customer" if not found
         """
         if not summary:
-            return "Patient"
+            return "Customer"
         
         # Try to extract name after dash
         parts = summary.split(' - ')
         if len(parts) >= 2:
             return parts[1].strip()
         
-        return "Patient"
+        return "Customer"
     
     def _extract_service_from_summary(self, summary: str) -> str:
         """
         Extract service type from event summary
-        Format: "Service - Patient Name"
+        Format: "Service - Customer Name"
         
         Args:
             summary: Event summary/title
@@ -210,12 +210,12 @@ class ReminderScheduler:
                     contact_info = email
                 
                 # Extract details
-                patient_name = self._extract_patient_name_from_summary(summary)
+                customer_name = self._extract_customer_name_from_summary(summary)
                 service_type = self._extract_service_from_summary(summary)
                 
                 # Send reminder
                 print(f"\n📬 Sending reminder for:")
-                print(f"   Patient: {patient_name}")
+                print(f"   Customer: {customer_name}")
                 print(f"   Service: {service_type}")
                 print(f"   Time: {event_time_naive.strftime('%B %d at %I:%M %p')}")
                 print(f"   Contact: {contact_info}")
@@ -225,7 +225,7 @@ class ReminderScheduler:
                     success = self.sms_service.send_reminder(
                         to_number=contact_info,
                         appointment_time=event_time_naive,
-                        patient_name=patient_name,
+                        customer_name=customer_name,
                         service_type=service_type
                     )
                 else:  # email
@@ -233,7 +233,7 @@ class ReminderScheduler:
                     success = self.email_service.send_reminder(
                         to_email=contact_info,
                         appointment_time=event_time_naive,
-                        patient_name=patient_name,
+                        customer_name=customer_name,
                         service_type=service_type,
                         phone_number=phone
                     )

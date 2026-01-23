@@ -35,14 +35,14 @@ class SMSReminderService:
             print("✅ Twilio SMS service initialized")
     
     def send_reminder(self, to_number: str, appointment_time: datetime, 
-                     patient_name: str, service_type: str = "appointment") -> bool:
+                     customer_name: str, service_type: str = "appointment") -> bool:
         """
         Send an appointment reminder SMS
         
         Args:
             to_number: Recipient phone number
             appointment_time: Appointment datetime
-            patient_name: Patient's name
+            customer_name: Customer's name
             service_type: Type of appointment/service
             
         Returns:
@@ -58,7 +58,7 @@ class SMSReminderService:
             
             # Create reminder message
             message_body = (
-                f"Hi {patient_name}! This is a reminder about your {service_type} "
+                f"Hi {customer_name}! This is a reminder about your {service_type} "
                 f"appointment tomorrow ({time_str}). "
                 f"Reply YES to confirm or CANCEL to cancel your appointment."
             )

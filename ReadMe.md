@@ -1,19 +1,22 @@
-# AI Receptionist
+# AI Receptionist for Trades Companies
 
-Professional AI-powered phone receptionist with appointment management and Google Calendar integration for Munster Physio.
+Professional AI-powered phone receptionist with job booking and Google Calendar integration for Swift Trade Services - optimized for plumbing, electrical, heating, and general trade businesses.
 
 ## Features
 - ☎️ **Real-time phone conversations** via Twilio Media Streams
 - 🎤 **Speech recognition** powered by Deepgram ASR
 - 🤖 **Natural language AI** using OpenAI GPT-4o-mini
 - 🗣️ **Text-to-speech** with Deepgram/ElevenLabs
-- 📅 **Intelligent appointment management** (book/reschedule/cancel)
+- 🔧 **Intelligent job booking** (emergency/same-day/scheduled/quotes)
 - 📆 **Google Calendar integration** with availability checking
-- � **Automatic phone capture** and confirmation during booking
-- 🔔 **Email/SMS reminders** sent 24 hours before appointments  
+- 📱 **Automatic phone & email capture** with validation
+- 📍 **Address collection** for on-site work
+- ⚡ **Urgency assessment** (Emergency/Same-Day/Scheduled/Quote)
+- 🏠 **Property type tracking** (Residential/Commercial)
+- 🔔 **Email/SMS reminders** sent 24 hours before jobs
 - 💬 **Reminder confirmations** via email or SMS replies
-- �🚫 **Interrupt handling** for natural conversations
-- ⏰ **Business hours enforcement** (9 AM - 5 PM configurable)
+- 🚫 **Interrupt handling** for natural conversations
+- ⏰ **Business hours enforcement** (8 AM - 6 PM, 24/7 emergency available)
 - 🌍 **Timezone support** (Europe/Dublin)
 
 ## Project Structure

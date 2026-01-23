@@ -460,11 +460,140 @@ function deleteWorker(workerId) {
     }
 }
 
-// Chat functionality - simplified for now
-function sendChatMessage() {
-    alert('Chat feature coming soon!');
+// Chat functionality
+let messageCounter = 0; // Counter to ensure unique message IDs
+
+async function sendChatMessage() {
+    // Initialize chatConversation if not already defined
+    if (typeof chatConversation === 'undefined') {
+        chatConversation = [];
+    }
+    
+    const input = document.getElementById('chatInput');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    // Clear input immediately
+    input.value = '';
+    
+    // Add user message to UI
+    addChatMessage('user', message);
+    
+    // Add a small delay to ensure unique IDs
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    // Show typing indicator
+    const typingId = addChatMessage('assistant', 'Typing...');
+    
+    try {
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: message,
+                conversation: chatConversation
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Update conversation
+        chatConversation = data.conversation;
+        
+        // Replace typing indicator with actual response
+        replaceChatMessage(typingId, 'assistant', data.response);
+        
+    } catch (error) {
+        console.error('Chat error:', error);
+        replaceChatMessage(typingId, 'assistant', '❌ Error: ' + error.message);
+    }
 }
 
-function resetChat() {
-    alert('Chat feature coming soon!');
+function addChatMessage(role, text) {
+    const messagesDiv = document.getElementById('chatMessages');
+    // Use both timestamp and counter for truly unique IDs
+    const messageId = 'msg-' + Date.now() + '-' + (messageCounter++);
+    const wrapperId = 'wrapper-' + messageId;
+    
+    // Create wrapper div for proper alignment
+    const wrapperDiv = document.createElement('div');
+    wrapperDiv.id = wrapperId;
+    wrapperDiv.style.cssText = `
+        display: flex;
+        margin-bottom: 0.5rem;
+        ${role === 'user' ? 'justify-content: flex-end;' : 'justify-content: flex-start;'}
+    `;
+    
+    // Create message div
+    const messageDiv = document.createElement('div');
+    messageDiv.id = messageId;
+    messageDiv.className = role + '-message';
+    messageDiv.style.cssText = `
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        max-width: 80%;
+        word-wrap: break-word;
+        ${role === 'user' ? 'background: #2563eb; color: white;' : 'background: #f1f5f9; border: 1px solid #e2e8f0; color: #1e293b;'}
+    `;
+    messageDiv.textContent = text;
+    
+    wrapperDiv.appendChild(messageDiv);
+    messagesDiv.appendChild(wrapperDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    
+    return messageId;
+}
+
+function replaceChatMessage(messageId, role, text) {
+    const messageDiv = document.getElementById(messageId);
+    if (messageDiv) {
+        // Safety check - only replace assistant messages to prevent overwriting user messages
+        if (messageDiv.className === 'assistant-message' || messageDiv.className === '') {
+            messageDiv.textContent = text;
+            messageDiv.className = role + '-message';
+            // Ensure styling is correct
+            messageDiv.style.cssText = `
+                padding: 0.75rem 1rem;
+                border-radius: 8px;
+                max-width: 80%;
+                word-wrap: break-word;
+                ${role === 'user' ? 'background: #2563eb; color: white;' : 'background: #f1f5f9; border: 1px solid #e2e8f0; color: #1e293b;'}
+            `;
+        } else {
+            console.warn('Attempted to replace', messageDiv.className, 'with', role, '- skipping for safety');
+        }
+    }
+}
+
+async function resetChat() {
+    if (!confirm('Are you sure you want to reset the chat?')) return;
+    
+    try {
+        await fetch('/api/chat/reset', {
+            method: 'POST'
+        });
+        
+        // Clear conversation
+        chatConversation = [];
+        
+        // Clear UI
+        const messagesDiv = document.getElementById('chatMessages');
+        messagesDiv.innerHTML = `
+            <div style="text-align: center; color: #64748b; padding: 2rem;">
+                <p>💬 Start a conversation with the AI receptionist</p>
+                <p style="font-size: 0.875rem; margin-top: 0.5rem;">This uses the same AI as phone calls - perfect for testing!</p>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Reset error:', error);
+        alert('Error resetting chat: ' + error.message);
+    }
 }

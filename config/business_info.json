@@ -1,64 +1,72 @@
 {
-  "business_name": "Munster Physio",
-  "business_type": "Physiotherapy Clinic",
+  "business_name": "Swift Trade Services",
+  "business_type": "Multi-Trade Services Company",
   
   "contact": {
     "phone": "+353 XX XXX XXXX",
-    "email": "info@munsterphysio.ie",
-    "website": "www.munsterphysio.ie"
+    "email": "info@swifttradeservices.ie",
+    "website": "www.swifttradeservices.ie"
   },
   
   "location": {
-    "address": "University of Limerick Campus",
+    "service_area": "Limerick and surrounding counties",
     "city": "Limerick",
     "country": "Ireland",
-    "parking": "Available out front or around back in the UL car park",
-    "directions": "Located on the University of Limerick campus. Free parking available."
+    "coverage": "We service residential and commercial properties across Munster",
+    "directions": "Mobile service - we come to you"
   },
   
   "hours": {
-    "days_open": "Monday to Friday",
-    "hours_of_operation": "9:00 AM - 5:00 PM",
+    "days_open": "Monday to Saturday",
+    "hours_of_operation": "8:00 AM - 6:00 PM",
+    "emergency_available": "24/7 emergency callouts available",
     "timezone": "Europe/Dublin",
-    "closed_on": "Weekends and public holidays"
+    "closed_on": "Sundays (except emergencies)"
   },
   
   "staff": {
-    "primary_practitioner": "James",
-    "team_size": "1 physiotherapist"
+    "business_owner": "James",
+    "team_size": "Qualified tradespeople on staff"
   },
   
   "services": {
-    "primary": "Physiotherapy",
+    "primary": "Multi-trade services",
     "offerings": [
-      "Injury recovery and rehabilitation",
-      "Sports physiotherapy",
-      "Back and neck pain treatment",
-      "Post-surgery recovery",
-      "General musculoskeletal treatment",
-      "Sports massage"
+      "Plumbing (leaks, installations, repairs)",
+      "Electrical work (wiring, lighting, fault-finding)",
+      "Heating systems (boiler repairs, radiator installation)",
+      "General maintenance and handyman services",
+      "Emergency repairs (burst pipes, electrical faults)",
+      "Carpentry and joinery",
+      "Painting and decorating",
+      "Property maintenance"
     ],
-    "appointment_duration": "60 minutes",
-    "note": "All appointments are one-on-one sessions"
+    "job_types": ["Emergency callout", "Same-day service", "Scheduled appointment", "Quote/estimate"],
+    "property_types": ["Residential (domestic)", "Commercial"],
+    "note": "Free quotes provided - no obligation"
   },
   
   "pricing": {
-    "standard_appointment": "€50",
+    "callout_fee": "€60",
+    "hourly_rate": "€50 per hour after first hour",
+    "emergency_callout": "€120 (outside normal hours)",
     "currency": "EUR",
-    "payment_methods": ["cash", "card", "Apple Pay"],
-    "note": "All appointments are €50 regardless of service type"
+    "payment_methods": ["cash", "card", "bank transfer"],
+    "note": "Final price depends on job complexity and materials. Free quotes available."
   },
   
   "policies": {
-    "cancellation": "Please provide notice if you need to cancel",
-    "late_arrival": "Please arrive on time for your appointment",
-    "booking": "Same-day bookings available subject to availability"
+    "cancellation": "Please provide at least 2 hours notice if you need to cancel",
+    "quote_validity": "Quotes valid for 30 days",
+    "emergency_response": "We aim to respond to emergencies within 2 hours",
+    "guarantee": "All work guaranteed for 12 months"
   },
   
   "faq": {
-    "what_to_bring": "Comfortable clothing suitable for physical examination",
-    "first_visit": "We'll assess your condition and create a treatment plan",
-    "insurance": "Private pay only - no insurance billing available",
-    "covid_policy": "Follow current health guidelines"
+    "service_area": "We cover Limerick city and county, plus surrounding areas within 30km",
+    "emergency_service": "Yes, 24/7 emergency callouts available for urgent issues",
+    "free_quotes": "All quotes are free with no obligation",
+    "insurance": "Fully insured and qualified tradespeople",
+    "materials": "We can supply materials or work with your supplied materials"
   }
 }

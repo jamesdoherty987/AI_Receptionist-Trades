@@ -47,9 +47,9 @@ INTENT_FUNCTION = {
                 "enum": ["high", "medium", "low"],
                 "description": "Confidence level in the classification"
             },
-            "patient_name": {
+            "customer_name": {
                 "type": "string",
-                "description": "The patient's full name if mentioned"
+                "description": "The customer's full name if mentioned"
             },
             "service_type": {
                 "type": "string",
@@ -226,7 +226,7 @@ class AppointmentDetector:
                     "datetime": args.get("time_reference"),
                     "new_datetime": args.get("new_time_reference"),  # For rescheduling
                     "service_type": args.get("service_type"),
-                    "patient_name": args.get("patient_name"),
+                    "customer_name": args.get("customer_name"),
                     "confidence": args.get("confidence", "unknown")
                 }
                 
@@ -274,8 +274,8 @@ def print_appointment_action(intent: AppointmentIntent, details: Dict[str, Any])
     
     print(f"📝 User said: {details['raw_text']}")
     
-    if details.get("patient_name"):
-        print(f"👤 Patient: {details['patient_name']}")
+    if details.get("customer_name"):
+        print(f"👤 Customer: {details['customer_name']}")
     
     if details.get("service_type"):
         print(f"🏥 Service: {details['service_type']}")

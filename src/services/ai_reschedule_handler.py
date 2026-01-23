@@ -19,7 +19,7 @@ class AIRescheduleHandler:
         and guide the conversation naturally
         """
         found_appointment = state.get("reschedule_found_appointment")
-        patient_name = state.get("reschedule_patient_name")
+        customer_name = state.get("reschedule_customer_name")
         name_confirmed = state.get("reschedule_name_confirmed", False)
         last_attempted_time = state.get("reschedule_last_attempted_time")
         
@@ -37,13 +37,13 @@ class AIRescheduleHandler:
                 if dt:
                     context_parts.append(f"- Found appointment: {dt.strftime('%B %d at %I:%M %p')}")
         
-        if patient_name:
-            context_parts.append(f"- Patient name from appointment: {patient_name}")
+        if customer_name:
+            context_parts.append(f"- Customer name from appointment: {customer_name}")
         
         if name_confirmed:
-            context_parts.append("- Patient confirmed this is their appointment")
+            context_parts.append("- Customer confirmed this is their appointment")
         else:
-            context_parts.append("- Patient has NOT confirmed this is their appointment yet")
+            context_parts.append("- Customer has NOT confirmed this is their appointment yet")
         
         if last_attempted_time:
             context_parts.append(f"- Last attempted new time: {last_attempted_time} (was unavailable)")
@@ -52,9 +52,9 @@ class AIRescheduleHandler:
         context_parts.append("\n[YOUR TASK]")
         
         if not found_appointment:
-            context_parts.append("Ask the patient what date/time their current appointment is so you can find it.")
+            context_parts.append("Ask the customer what date/time their current appointment is so you can find it.")
         elif not name_confirmed:
-            context_parts.append(f"Confirm this is {patient_name}'s appointment by asking if the name is correct.")
+            context_parts.append(f"Confirm this is {customer_name}'s appointment by asking if the name is correct.")
         elif not new_time or new_time == old_time:
             if last_attempted_time:
                 context_parts.append("The previous time was unavailable. Ask what other time would work.")
@@ -62,7 +62,7 @@ class AIRescheduleHandler:
                 context_parts.append("Ask what new date/time they'd like to reschedule to.")
         else:
             if last_attempted_time and last_attempted_time != new_time:
-                context_parts.append(f"Patient selected a new time: {new_time}. Proceed with this reschedule.")
+                context_parts.append(f"Customer selected a new time: {new_time}. Proceed with this reschedule.")
             else:
                 context_parts.append(f"Confirm moving the appointment to {new_time} and proceed if confirmed.")
         
@@ -112,25 +112,25 @@ class AIRescheduleHandler:
             if not parsed_time:
                 return None, "Could not parse time"
             
-            event = calendar.find_appointment_by_details(patient_name=None, appointment_time=parsed_time)
+            event = calendar.find_appointment_by_details(customer_name=None, appointment_time=parsed_time)
             
             if not event:
                 return None, f"No appointment found at {parsed_time.strftime('%B %d at %I:%M %p')}"
             
-            # Extract patient name
+            # Extract customer name
             event_summary = event.get('summary', '')
             if ' - ' in event_summary:
-                patient_name = event_summary.split(' - ')[-1].strip()
+                customer_name = event_summary.split(' - ')[-1].strip()
             else:
                 between_match = re.search(r'between\s+([^and]+)\s+and', event_summary, re.IGNORECASE)
                 if between_match:
-                    patient_name = between_match.group(1).strip()
+                    customer_name = between_match.group(1).strip()
                 else:
-                    patient_name = event_summary.strip()
+                    customer_name = event_summary.strip()
             
             return {
                 'event': event,
-                'patient_name': patient_name,
+                'customer_name': customer_name,
                 'time': parsed_time
             }, None
         

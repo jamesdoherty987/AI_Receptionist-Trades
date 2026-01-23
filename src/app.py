@@ -695,7 +695,7 @@ def run_tests():
 def chat():
     """Chat with the AI receptionist"""
     import asyncio
-    from src.services.llm_stream import stream_llm, process_appointment_with_calendar
+    from src.services.llm_stream import stream_llm, process_appointment_with_calendar, SYSTEM_PROMPT
     
     data = request.json
     user_message = data.get('message', '')
@@ -707,19 +707,21 @@ def chat():
     # Add user message to conversation
     conversation.append({"role": "user", "content": user_message})
     
-    # Add web chat context to first message (minimal differences from phone mode)
+    # Add system prompt to first message (same as phone calls, with web-specific notes)
     if len(conversation) == 1:
-        # Use the same system prompt as phone calls, just add web-specific notes
-        web_instructions = {
+        # Use the EXACT same system prompt as phone calls
+        main_prompt = {
             "role": "system",
-            "content": """[WEB CHAT MODE NOTES:
+            "content": SYSTEM_PROMPT + """
+
+[WEB CHAT MODE NOTES:
 - You are handling a web chat, NOT a phone call
 - DO NOT say things like "calling number" or "I have your number from the call"
 - Use slightly longer responses (2-3 sentences OK for web chat)
 - Phone number is OPTIONAL for web chat - can book without it if they provide name, date/time, and reason
 - All other rules from the main system prompt apply exactly the same]"""
         }
-        conversation.insert(0, web_instructions)
+        conversation.insert(0, main_prompt)
     
     # Get response from LLM
     async def get_response():

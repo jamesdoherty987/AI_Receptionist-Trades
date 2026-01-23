@@ -131,13 +131,35 @@ function displayJobs(jobs) {
                     <span class="job-detail-label">Charge:</span> €${(job.charge || 0).toFixed(2)}
                 </div>
             </div>
-            <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
-                <button class="btn btn-sm btn-secondary" onclick="changeJobStatus(${job.id}, 'in-progress')">Start Job</button>
-                <button class="btn btn-sm btn-success" onclick="changeJobStatus(${job.id}, 'completed')">Mark Complete</button>
-                <button class="btn btn-sm btn-danger" onclick="changeJobStatus(${job.id}, 'cancelled')">Cancel</button>
+            <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button class="btn btn-sm btn-secondary job-action-btn" data-booking-id="${job.id}" data-status="in-progress">▶ Start Job</button>
+                <button class="btn btn-sm btn-success job-action-btn" data-booking-id="${job.id}" data-status="completed">✓ Complete</button>
+                <button class="btn btn-sm btn-danger job-action-btn" data-booking-id="${job.id}" data-status="cancelled">✕ Cancel</button>
             </div>
         </div>
     `).join('');
+    
+    // Add event delegation for job action buttons
+    setupJobActionButtons();
+}
+
+// Setup event delegation for job action buttons
+function setupJobActionButtons() {
+    const jobsContent = document.getElementById('jobsContent');
+    if (!jobsContent) return;
+    
+    // Remove old listeners by cloning and replacing
+    const newJobsContent = jobsContent.cloneNode(true);
+    jobsContent.parentNode.replaceChild(newJobsContent, jobsContent);
+    
+    // Add new listener
+    document.getElementById('jobsContent').addEventListener('click', function(e) {
+        if (e.target.classList.contains('job-action-btn')) {
+            const bookingId = parseInt(e.target.dataset.bookingId);
+            const status = e.target.dataset.status;
+            changeJobStatus(bookingId, status, e.target);
+        }
+    });
 }
 
 // Load Customers
@@ -365,7 +387,13 @@ async function showClientDetail(clientId) {
 }
 
 // Change job status
-async function changeJobStatus(bookingId, newStatus) {
+async function changeJobStatus(bookingId, newStatus, buttonElement) {
+    if (!buttonElement) return;
+    
+    // Add loading state
+    buttonElement.classList.add('loading');
+    buttonElement.disabled = true;
+    
     try {
         const response = await fetch(`/api/bookings/${bookingId}`, {
             method: 'PUT',
@@ -374,12 +402,22 @@ async function changeJobStatus(bookingId, newStatus) {
         });
         
         if (response.ok) {
-            loadJobs(); // Reload jobs
+            // Show success feedback
+            buttonElement.style.background = '#10b981';
+            buttonElement.textContent = '✓ Done';
+            
+            setTimeout(() => {
+                loadJobs(); // Reload jobs
+            }, 400);
         } else {
+            buttonElement.classList.remove('loading');
+            buttonElement.disabled = false;
             alert('Error updating job status');
         }
     } catch (error) {
         console.error('Error updating job status:', error);
+        buttonElement.classList.remove('loading');
+        buttonElement.disabled = false;
         alert('Error updating job status');
     }
 }
@@ -460,11 +498,102 @@ function deleteWorker(workerId) {
     }
 }
 
-// Chat functionality - simplified for now
-function sendChatMessage() {
-    alert('Chat feature coming soon!');
+// Chat functionality
+async function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    // Clear input
+    input.value = '';
+    
+    // Add user message to UI
+    addChatMessage('user', message);
+    
+    // Show typing indicator
+    const typingId = addChatMessage('assistant', 'Typing...');
+    
+    try {
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: message,
+                conversation: chatConversation
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Update conversation
+        chatConversation = data.conversation;
+        
+        // Replace typing indicator with actual response
+        replaceChatMessage(typingId, 'assistant', data.response);
+        
+    } catch (error) {
+        console.error('Chat error:', error);
+        replaceChatMessage(typingId, 'assistant', '❌ Error: ' + error.message);
+    }
 }
 
-function resetChat() {
-    alert('Chat feature coming soon!');
+function addChatMessage(role, text) {
+    const messagesDiv = document.getElementById('chatMessages');
+    const messageId = 'msg-' + Date.now();
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.id = messageId;
+    messageDiv.style.cssText = `
+        margin-bottom: 1rem;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+        max-width: 80%;
+        ${role === 'user' ? 'background: #2563eb; color: white; margin-left: auto;' : 'background: white; border: 1px solid #e2e8f0;'}
+    `;
+    messageDiv.textContent = text;
+    
+    messagesDiv.appendChild(messageDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    
+    return messageId;
+}
+
+function replaceChatMessage(messageId, role, text) {
+    const messageDiv = document.getElementById(messageId);
+    if (messageDiv) {
+        messageDiv.textContent = text;
+    }
+}
+
+async function resetChat() {
+    if (!confirm('Are you sure you want to reset the chat?')) return;
+    
+    try {
+        await fetch('/api/chat/reset', {
+            method: 'POST'
+        });
+        
+        // Clear conversation
+        chatConversation = [];
+        
+        // Clear UI
+        const messagesDiv = document.getElementById('chatMessages');
+        messagesDiv.innerHTML = `
+            <div style="text-align: center; color: #64748b; padding: 2rem;">
+                <p>💬 Start a conversation with the AI receptionist</p>
+                <p style="font-size: 0.875rem; margin-top: 0.5rem;">This uses the same AI as phone calls - perfect for testing!</p>
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Reset error:', error);
+        alert('Error resetting chat: ' + error.message);
+    }
 }
