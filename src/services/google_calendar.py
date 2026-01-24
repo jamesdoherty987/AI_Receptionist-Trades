@@ -535,10 +535,11 @@ class GoogleCalendarService:
         if not self.service:
             self.authenticate()
         
-        # Check if it's a weekend (Monday=0, Sunday=6)
-        if target_date.weekday() >= 5:  # Saturday=5, Sunday=6
-            print(f"⏭️ Skipping weekend day: {target_date.strftime('%A, %B %d')}")
-            return []  # No slots on weekends
+        # Check if it's a closed day (not in BUSINESS_DAYS)
+        if target_date.weekday() not in config.BUSINESS_DAYS:
+            day_name = target_date.strftime('%A')
+            print(f"⏭️ Skipping closed day: {target_date.strftime('%A, %B %d')}")
+            return []  # No slots on closed days
         
         available_slots = []
         now = datetime.now()

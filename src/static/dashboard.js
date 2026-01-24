@@ -195,6 +195,7 @@ function displayCustomers() {
     }
     
     container.innerHTML = `
+        <div class="table-wrapper">
         <table class="table">
             <thead>
                 <tr>
@@ -221,6 +222,7 @@ function displayCustomers() {
                 `).join('')}
             </tbody>
         </table>
+        </div>
     `;
 }
 
@@ -309,6 +311,7 @@ function displayFinances(bookings) {
     }
     
     container.innerHTML = `
+        <div class="table-wrapper">
         <table class="table">
             <thead>
                 <tr>
@@ -331,6 +334,7 @@ function displayFinances(bookings) {
                 `).join('')}
             </tbody>
         </table>
+        </div>
     `;
 }
 
@@ -357,6 +361,7 @@ async function showClientDetail(clientId) {
                 
                 <h3 style="margin-top: 1.5rem; margin-bottom: 1rem;">Job History</h3>
                 ${client.bookings && client.bookings.length > 0 ? `
+                    <div class="table-wrapper">
                     <table class="table">
                         <thead>
                             <tr>
@@ -375,6 +380,7 @@ async function showClientDetail(clientId) {
                             `).join('')}
                         </tbody>
                     </table>
+                    </div>
                 ` : '<p>No job history</p>'}
             </div>
         `;

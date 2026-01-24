@@ -67,7 +67,7 @@ class Config:
     BUSINESS_HOURS_START = int(os.getenv("BUSINESS_HOURS_START", 9))
     BUSINESS_HOURS_END = int(os.getenv("BUSINESS_HOURS_END", 17))
     # Business days (0=Monday, 6=Sunday)
-    BUSINESS_DAYS = [0, 1, 2, 3, 4]  # Monday to Friday only
+    BUSINESS_DAYS = [0, 1, 2, 3, 4]  # Monday to Friday (closed weekends)
     
     # Financial settings
     DEFAULT_APPOINTMENT_CHARGE = float(os.getenv("DEFAULT_APPOINTMENT_CHARGE", 50.0))

@@ -295,6 +295,102 @@
         .time-range input {
             flex: 1;
         }
+
+        /* ========================================
+           MOBILE OPTIMIZATIONS
+           ======================================== */
+        
+        /* Tablet and below (768px) */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+
+            .header {
+                padding: 1.5rem;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .nav-buttons {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+
+            .nav-buttons button {
+                width: 100%;
+                min-height: 44px;
+            }
+
+            .settings-section {
+                padding: 1.5rem;
+            }
+
+            .settings-section h2 {
+                font-size: 1.25rem;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .time-range {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .save-button {
+                width: 100%;
+                min-height: 50px;
+            }
+
+            .notification {
+                right: 10px;
+                left: 10px;
+                top: 10px;
+            }
+        }
+
+        /* Mobile phones (480px and below) */
+        @media (max-width: 480px) {
+            .header {
+                padding: 1rem;
+            }
+
+            .header h1 {
+                font-size: 1.25rem;
+            }
+
+            .settings-section {
+                padding: 1rem;
+                border-radius: 8px;
+            }
+
+            .settings-section h2 {
+                font-size: 1.1rem;
+            }
+
+            .form-group input,
+            .form-group select,
+            .form-group textarea {
+                font-size: 16px; /* Prevents zoom on iOS */
+            }
+
+            .service-item {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .service-item button {
+                width: 100%;
+            }
+
+            .add-service-btn {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>

@@ -139,6 +139,35 @@ Be friendly and natural."""
 SYSTEM_PROMPT = load_system_prompt()
 
 
+def get_closed_day_message(dt: datetime) -> str:
+    """
+    Generate a message for when a requested day is closed.
+    Dynamically determines which day(s) are closed based on config.BUSINESS_DAYS.
+    """
+    day_name = dt.strftime('%A')
+    
+    # Find which days are closed (not in BUSINESS_DAYS)
+    all_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    open_days = [all_days[i] for i in config.BUSINESS_DAYS]
+    closed_days = [day for i, day in enumerate(all_days) if i not in config.BUSINESS_DAYS]
+    
+    # Format the open days string
+    if len(open_days) >= 2:
+        open_days_str = ', '.join(open_days[:-1]) + ' and ' + open_days[-1]
+    else:
+        open_days_str = open_days[0] if open_days else ''
+    
+    # Format the closed days string
+    if len(closed_days) == 1:
+        closed_days_str = closed_days[0] + 's'
+    elif len(closed_days) == 2:
+        closed_days_str = closed_days[0] + 's and ' + closed_days[1] + 's'
+    else:
+        closed_days_str = ', '.join([d + 's' for d in closed_days[:-1]]) + ' and ' + closed_days[-1] + 's'
+    
+    return f"[SYSTEM: {day_name} is not a working day. We're only open {open_days_str}, {config.BUSINESS_HOURS_START} AM to {config.BUSINESS_HOURS_END} PM (closed on {closed_days_str}). Politely let them know and suggest checking availability on a working day instead. Ask when would work for them.]"
+
+
 def remove_repetition(text: str) -> str:
     """Remove repeated phrases from the end of text"""
     words = text.split()
@@ -1230,11 +1259,10 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                             print(f"⚠️ Could not parse new_time '{new_time}' - asking user for clarification")
                                             messages.append({"role": "system", "content": RESCHEDULE_MESSAGES["ask_new_time"]})
                                             should_process = False
-                                        elif new_dt.weekday() >= 5:
-                                            # Check for weekend
-                                            day_name = new_dt.strftime('%A')
-                                            messages.append({"role": "system", "content": f"[SYSTEM: {day_name} is a weekend. We're only open Monday-Friday, 9 AM to 5 PM. Ask them to choose a weekday instead.]"})
-                                            print(f"❌ Attempted weekend booking: {day_name}")
+                                        elif new_dt.weekday() not in config.BUSINESS_DAYS:
+                                            # Check for closed day
+                                            messages.append({"role": "system", "content": get_closed_day_message(new_dt)})
+                                            print(f"❌ Attempted booking on closed day: {new_dt.strftime('%A')}")
                                             should_process = False
                                         else:
                                             if not has_date:
@@ -1314,11 +1342,10 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                     old_dt = parse_datetime(old_time)
                                     new_dt = parse_datetime(new_time)
                                     
-                                    # Check for weekend
-                                    if new_dt.weekday() >= 5:
-                                        day_name = new_dt.strftime('%A')
-                                        messages.append({"role": "system", "content": f"[SYSTEM: {day_name} is a weekend. We're only open Monday-Friday, 9 AM to 5 PM. Ask them to choose a weekday instead.]"})
-                                        print(f"❌ Attempted weekend booking: {day_name}")
+                                    # Check for closed day
+                                    if new_dt.weekday() not in config.BUSINESS_DAYS:
+                                        messages.append({"role": "system", "content": get_closed_day_message(new_dt)})
+                                        print(f"❌ Attempted booking on closed day: {new_dt.strftime('%A')}")
                                         should_process = False
                                     else:
                                         has_date = has_date_indicator(new_time)
@@ -1351,11 +1378,10 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                     try:
                                         new_dt = parse_datetime(new_time)
                                         
-                                        # Check for weekend
-                                        if new_dt.weekday() >= 5:
-                                            day_name = new_dt.strftime('%A')
-                                            messages.append({"role": "system", "content": f"[SYSTEM: {day_name} is a weekend. We're only open Monday-Friday, 9 AM to 5 PM. Ask them to choose a weekday instead.]"})
-                                            print(f"❌ Attempted weekend booking: {day_name}")
+                                        # Check for closed day
+                                        if new_dt.weekday() not in config.BUSINESS_DAYS:
+                                            messages.append({"role": "system", "content": get_closed_day_message(new_dt)})
+                                            print(f"❌ Attempted booking on closed day: {new_dt.strftime('%A')}")
                                             should_process = False
                                         else:
                                             # Calculate display time if not already stored
@@ -1851,20 +1877,20 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             
                             # Check if this was a "next week" query
                             if 'next week' in date_ref.lower():
-                                system_message = "[SYSTEM: Unfortunately, there are no available appointments next week. All slots are fully booked. Suggest they check a different week or ask if they'd like to be on a waitlist.]"
+                                system_message = "[SYSTEM: Unfortunately, there are no available appointments next week. All slots are fully booked. Suggest they try the following week or a different timeframe, and ask when would work for them.]"
                             else:
                                 try:
                                     parsed = parse_datetime(date_ref)
                                     if parsed:
                                         day_name = parsed.strftime('%A, %B %d')
-                                        if parsed.weekday() >= 5:
-                                            system_message = f"[SYSTEM: {day_name} is a weekend. We're only open Monday through Friday, 9 AM to 5 PM. Politely let them know and ask if they'd like to check availability on a weekday instead.]"
+                                        if parsed.weekday() not in config.BUSINESS_DAYS:
+                                            system_message = get_closed_day_message(parsed)
                                         else:
-                                            system_message = f"[SYSTEM: Unfortunately, there are no available appointments on {day_name}. That day is fully booked. Suggest alternative weekdays.]"
+                                            system_message = f"[SYSTEM: Unfortunately, there are no available appointments on {day_name}. That day is fully booked. Suggest nearby alternative days when we're open, and ask when would work for them.]"
                                     else:
-                                        system_message = f"[SYSTEM: Unfortunately, there are no available appointments on {date_ref}. Suggest alternative weekdays.]"
+                                        system_message = f"[SYSTEM: Unfortunately, there are no available appointments on {date_ref}. Suggest alternative days when we're open, and ask when would work for them.]"
                                 except:
-                                    system_message = f"[SYSTEM: Unfortunately, there are no available appointments on {date_ref}. Suggest alternative weekdays.]"
+                                    system_message = f"[SYSTEM: Unfortunately, there are no available appointments on {date_ref}. Suggest alternative days when we're open, and ask when would work for them.]"
                             messages.append({"role": "system", "content": system_message})
     
     # Check if we should skip LLM response (callback added result, now generate single response)
@@ -1922,12 +1948,13 @@ When customer wants to reschedule:
             model=config.CHAT_MODEL,
             stream=True,
             temperature=0,  # Zero for maximum speed and consistency
-            max_tokens=200,  # Reasonable conversation length
+            max_tokens=150,  # Reduced for faster generation in phone calls
             presence_penalty=0.3,
             frequency_penalty=0.3,
             messages=[{"role": "system", "content": system_prompt_with_time}, *messages],
             tools=CALENDAR_TOOLS,
-            tool_choice="auto"
+            tool_choice="auto",
+            parallel_tool_calls=True  # Enable parallel tool execution for speed
         )
     except Exception as e:
         print(f"❌ Error creating LLM stream: {e}")
@@ -2560,13 +2587,13 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
                 query_date = now.replace(hour=9, minute=0, second=0, microsecond=0)
             
             # Check the REQUESTED day first (don't search other days)
-            if query_date.weekday() >= 5:  # Weekend (Saturday=5, Sunday=6)
+            if query_date.weekday() not in config.BUSINESS_DAYS:
                 day_name = query_date.strftime('%A')
-                print(f"⚠️ Requested day is a weekend: {day_name}, {query_date.strftime('%B %d')} - not available")
+                print(f"⚠️ Requested day is closed: {day_name}, {query_date.strftime('%B %d')} - not available")
                 print(f"\n{'='*60}")
-                print(f"📅 AVAILABILITY QUERY: Weekend requested (not available - office closed)")
+                print(f"📅 AVAILABILITY QUERY: Closed day requested (office closed on {day_name}s)")
                 print(f"{'='*60}\n")
-                # Return empty list with message that office is closed on weekends
+                # Return empty list with message that office is closed on this day
                 return []
             
             # Check the specific requested day only

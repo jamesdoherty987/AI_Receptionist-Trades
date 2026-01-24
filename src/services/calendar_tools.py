@@ -308,8 +308,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             # Check all days in range (no early exit - we want full picture)
             while current_date <= end_search:
-                # Only check weekdays (Monday=0 to Friday=4)
-                if current_date.weekday() < 5:
+                # Only check business days (configured in config.BUSINESS_DAYS)
+                if current_date.weekday() in config.BUSINESS_DAYS:
                     print(f"   📅 Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
                     try:
                         day_slots = google_calendar.get_available_slots_for_day(current_date)
