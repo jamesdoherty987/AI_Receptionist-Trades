@@ -406,6 +406,71 @@ def complete_booking_api(booking_id):
         }), 500
 
 
+@app.route("/api/bookings/<int:booking_id>/send-invoice", methods=["POST"])
+def send_invoice_api(booking_id):
+    """Send invoice email for a booking"""
+    db = get_database()
+    
+    try:
+        # Get the booking details using the existing method
+        bookings = db.get_all_bookings()
+        booking = None
+        for b in bookings:
+            if b['id'] == booking_id:
+                booking = b
+                break
+        
+        if not booking:
+            return jsonify({"error": "Booking not found"}), 404
+    
+        # Use test email for now (as requested)
+        # In production, this would be: to_email = booking['email']
+        to_email = 'jkdoherty123@gmail.com'  # Test email
+        
+        if not booking['client_name']:
+            return jsonify({"error": "Customer name not found"}), 400
+        
+        if not booking.get('charge') or booking['charge'] <= 0:
+            return jsonify({"error": "Invalid charge amount"}), 400
+        
+        # Send the invoice email
+        from src.services.email_reminder import get_email_service
+        from datetime import datetime
+        
+        email_service = get_email_service()
+        
+        # Parse appointment time
+        appointment_time = None
+        if booking.get('appointment_time'):
+            try:
+                appointment_time = datetime.fromisoformat(booking['appointment_time'].replace('Z', '+00:00'))
+            except:
+                pass
+        
+        success = email_service.send_invoice(
+            to_email=to_email,
+            customer_name=booking['client_name'],
+            service_type=booking.get('service_type') or 'Service',
+            charge=float(booking['charge']),
+            appointment_time=appointment_time
+        )
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": f"Invoice sent to {to_email}",
+                "sent_to": to_email
+            })
+        else:
+            return jsonify({"error": "Failed to send invoice email"}), 500
+            
+    except Exception as e:
+        print(f"❌ Error sending invoice: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/appointments/auto-complete", methods=["POST"])
 def auto_complete_appointments():
     """Manually trigger auto-completion of overdue appointments"""

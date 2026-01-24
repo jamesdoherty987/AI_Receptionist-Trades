@@ -95,7 +95,7 @@ function displayJobs(jobs) {
     }
     
     content.innerHTML = jobs.map(job => `
-        <div class="job-card">
+        <div class="job-card" onclick="showJobDetail(${job.id})" style="cursor: pointer;">
             <div class="job-header">
                 <div>
                     <div class="job-client-name">${escapeHtml(job.client_name || 'Unknown')}</div>
@@ -132,9 +132,9 @@ function displayJobs(jobs) {
                 </div>
             </div>
             <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                <button class="btn btn-sm btn-secondary job-action-btn" data-booking-id="${job.id}" data-status="in-progress">▶ Start Job</button>
-                <button class="btn btn-sm btn-success job-action-btn" data-booking-id="${job.id}" data-status="completed">✓ Complete</button>
-                <button class="btn btn-sm btn-danger job-action-btn" data-booking-id="${job.id}" data-status="cancelled">✕ Cancel</button>
+                <button class="btn btn-sm btn-secondary job-action-btn" data-booking-id="${job.id}" data-status="in-progress" onclick="event.stopPropagation()">▶ Start Job</button>
+                <button class="btn btn-sm btn-success job-action-btn" data-booking-id="${job.id}" data-status="completed" onclick="event.stopPropagation()">✓ Complete</button>
+                <button class="btn btn-sm btn-danger job-action-btn" data-booking-id="${job.id}" data-status="cancelled" onclick="event.stopPropagation()">✕ Cancel</button>
             </div>
         </div>
     `).join('');
@@ -391,6 +391,208 @@ async function showClientDetail(clientId) {
         alert('Error loading customer details');
     }
 }
+
+// Show job detail with notes and invoice option
+async function showJobDetail(bookingId) {
+    try {
+        // Fetch booking details
+        const bookingResponse = await fetch(`/api/bookings`);
+        const allBookings = await bookingResponse.json();
+        const job = allBookings.find(b => b.id === bookingId);
+        
+        if (!job) {
+            alert('Job not found');
+            return;
+        }
+        
+        // Fetch notes for this job
+        const notesResponse = await fetch(`/api/bookings/${bookingId}/notes`);
+        const notes = await notesResponse.json();
+        
+        // Build comprehensive job details section
+        let detailsHtml = `
+            <div style="background: #f8fafc; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 2px solid #e2e8f0;">
+                <h3 style="margin: 0 0 1.5rem 0; color: #1e293b; font-size: 1.25rem;">📋 Job Details</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+                    <div>
+                        <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Customer</div>
+                        <div style="font-weight: 600; font-size: 1.1rem;">${escapeHtml(job.client_name || 'N/A')}</div>
+                    </div>
+                    <div>
+                        <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Date & Time</div>
+                        <div style="font-weight: 600;">${formatDateTime(job.appointment_time)}</div>
+                    </div>
+                    <div>
+                        <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Service Requested</div>
+                        <div style="font-weight: 600;">${escapeHtml(job.service_type || 'Not specified')}</div>
+                    </div>
+                    <div>
+                        <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Status</div>
+                        <div><span class="badge badge-${getStatusColor(job.status)}">${job.status}</span></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background: #f8fafc; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 2px solid #e2e8f0;">
+                <h3 style="margin: 0 0 1.5rem 0; color: #1e293b; font-size: 1.25rem;">📞 Contact Information</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+                    <div>
+                        <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Phone Number</div>
+                        <div style="font-weight: 600;">${escapeHtml(job.phone_number || 'Not provided')}</div>
+                    </div>
+                    <div>
+                        <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Email Address</div>
+                        <div style="font-weight: 600;">${escapeHtml(job.email || 'Not provided')}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Add property information if available
+        if (job.address || job.eircode || job.property_type) {
+            detailsHtml += `
+                <div style="background: #f8fafc; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 2px solid #e2e8f0;">
+                    <h3 style="margin: 0 0 1.5rem 0; color: #1e293b; font-size: 1.25rem;">🏠 Property Details</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+                        ${job.address ? `
+                        <div>
+                            <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Address</div>
+                            <div style="font-weight: 600;">${escapeHtml(job.address)}</div>
+                        </div>
+                        ` : ''}
+                        ${job.eircode ? `
+                        <div>
+                            <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Eircode</div>
+                            <div style="font-weight: 600;">${escapeHtml(job.eircode)}</div>
+                        </div>
+                        ` : ''}
+                        ${job.property_type ? `
+                        <div>
+                            <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Property Type</div>
+                            <div style="font-weight: 600;">${escapeHtml(job.property_type)}</div>
+                        </div>
+                        ` : ''}
+                        ${job.urgency && job.urgency !== 'scheduled' ? `
+                        <div>
+                            <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Urgency</div>
+                            <div style="font-weight: 600; color: #ef4444;">${escapeHtml(job.urgency)}</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Add payment information
+        detailsHtml += `
+            <div style="background: #f8fafc; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 2px solid #e2e8f0;">
+                <h3 style="margin: 0 0 1.5rem 0; color: #1e293b; font-size: 1.25rem;">💰 Payment Information</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+                    <div>
+                        <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Charge Amount</div>
+                        <div style="font-size: 1.75rem; font-weight: 700; color: #10b981;">€${(job.charge || 0).toFixed(2)}</div>
+                    </div>
+                    <div>
+                        <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Payment Status</div>
+                        <div style="margin-top: 0.5rem;">
+                            ${job.payment_status === 'paid' 
+                                ? '<span class="badge badge-success" style="font-size: 1rem; padding: 0.5rem 1rem;">Paid</span>' 
+                                : '<span class="badge badge-warning" style="font-size: 1rem; padding: 0.5rem 1rem;">Unpaid</span>'}
+                        </div>
+                    </div>
+                    ${job.payment_method ? `
+                    <div>
+                        <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Payment Method</div>
+                        <div style="font-weight: 600;">${escapeHtml(job.payment_method)}</div>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+        
+        // Add additional notes if available
+        if (notes && notes.length > 0) {
+            const notesHtml = notes.map(note => `
+                <div style="background: white; padding: 1rem; border-radius: 8px; margin-bottom: 0.75rem; border-left: 3px solid #3b82f6;">
+                    <p style="margin: 0; white-space: pre-wrap; color: #334155;">${escapeHtml(note.note)}</p>
+                    <small style="color: #94a3b8; margin-top: 0.5rem; display: block;">
+                        Added by ${note.created_by} • ${formatDateTime(note.created_at)}
+                    </small>
+                </div>
+            `).join('');
+            
+            detailsHtml += `
+                <div style="background: #f8fafc; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 2px solid #e2e8f0;">
+                    <h3 style="margin: 0 0 1rem 0; color: #1e293b; font-size: 1.25rem;">📝 Additional Notes</h3>
+                    ${notesHtml}
+                </div>
+            `;
+        }
+        
+        document.getElementById('jobDetailTitle').textContent = `Job Details: ${job.client_name || 'Unknown'}`;
+        document.getElementById('jobDetailContent').innerHTML = `
+            <div>
+                ${detailsHtml}
+                
+                <div style="display: flex; gap: 1rem; padding-top: 1.5rem; border-top: 2px solid #e2e8f0;">
+                    <button class="btn btn-primary" onclick="sendInvoice(${bookingId})" id="invoiceBtn-${bookingId}">
+                        📧 Send Invoice
+                    </button>
+                    <button class="btn btn-secondary" onclick="closeModal('jobDetailModal')">
+                        Close
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('jobDetailModal').classList.add('active');
+    } catch (error) {
+        console.error('Error loading job details:', error);
+        alert('Error loading job details');
+    }
+}
+
+// Send invoice via email
+async function sendInvoice(bookingId) {
+    const btn = document.getElementById(`invoiceBtn-${bookingId}`);
+    if (!btn) return;
+    
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '📤 Sending...';
+    
+    try {
+        const response = await fetch(`/api/bookings/${bookingId}/send-invoice`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            btn.textContent = '✅ Invoice Sent!';
+            btn.style.background = '#10b981';
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = '';
+                btn.disabled = false;
+            }, 3000);
+        } else {
+            throw new Error(data.error || 'Failed to send invoice');
+        }
+    } catch (error) {
+        console.error('Error sending invoice:', error);
+        btn.textContent = '❌ Failed';
+        btn.style.background = '#ef4444';
+        alert('Error sending invoice: ' + error.message);
+        setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.background = '';
+            btn.disabled = false;
+        }, 3000);
+    }
+}
+
 
 // Change job status
 async function changeJobStatus(bookingId, newStatus, buttonElement) {

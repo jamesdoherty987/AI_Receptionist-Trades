@@ -167,6 +167,110 @@ Munster Physio Team
         except Exception as e:
             print(f"❌ Failed to send email: {e}")
             return False
+    
+    def send_invoice(self, to_email: str, customer_name: str, service_type: str, 
+                    charge: float, appointment_time: datetime = None) -> bool:
+        """
+        Send an invoice email
+        
+        Args:
+            to_email: Recipient email address
+            customer_name: Customer's name
+            service_type: Type of service performed
+            charge: Amount to charge
+            appointment_time: Appointment datetime (optional)
+            
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        if not self.configured:
+            print("❌ Email service not configured")
+            return False
+        
+        try:
+            # Format the date if provided
+            date_str = appointment_time.strftime('%A, %B %d, %Y') if appointment_time else 'Recent service'
+            
+            # Create message
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = f'Invoice for {service_type.title()} Service'
+            msg['From'] = self.from_email
+            msg['To'] = to_email
+            
+            # Plain text version
+            text_body = f"""
+Hi {customer_name},
+
+Thank you for choosing our services!
+
+INVOICE DETAILS:
+Service: {service_type}
+Date: {date_str}
+Amount Due: €{charge:.2f}
+
+Please remit payment at your earliest convenience.
+
+If you have any questions about this invoice, please don't hesitate to contact us.
+
+Best regards,
+The Team
+            """.strip()
+            
+            # HTML version (prettier)
+            html_body = f"""
+<html>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px;">INVOICE</h2>
+        
+        <p>Hi {customer_name},</p>
+        
+        <p>Thank you for choosing our services!</p>
+        
+        <div style="background-color: #f8f9fa; border-left: 4px solid #10b981; padding: 20px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #2c3e50;">Invoice Details</h3>
+            <p style="margin: 5px 0;"><strong>Service:</strong> {service_type}</p>
+            <p style="margin: 5px 0;"><strong>Date:</strong> {date_str}</p>
+            <p style="margin: 15px 0 5px 0; font-size: 1.3em;">
+                <strong>Amount Due:</strong> 
+                <span style="color: #10b981; font-weight: bold;">€{charge:.2f}</span>
+            </p>
+        </div>
+        
+        <p>Please remit payment at your earliest convenience.</p>
+        
+        <p>If you have any questions about this invoice, please don't hesitate to contact us.</p>
+        
+        <p style="margin-top: 30px;">Best regards,<br>
+        <strong>The Team</strong></p>
+        
+        <hr style="margin-top: 30px; border: none; border-top: 1px solid #ddd;">
+        <p style="font-size: 12px; color: #666;">
+            This is an automated invoice. Thank you for your business!
+        </p>
+    </div>
+</body>
+</html>
+            """.strip()
+            
+            # Attach both versions
+            part1 = MIMEText(text_body, 'plain')
+            part2 = MIMEText(html_body, 'html')
+            msg.attach(part1)
+            msg.attach(part2)
+            
+            # Send email
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                server.starttls()
+                server.login(self.smtp_user, self.smtp_password)
+                server.send_message(msg)
+            
+            print(f"✅ Invoice email sent to {to_email}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Failed to send invoice email: {e}")
+            return False
 
 
 # Global instance
