@@ -426,7 +426,8 @@ class Database:
                    appointment_time: datetime, service_type: str,
                    phone_number: str = None, email: str = None,
                    urgency: str = 'scheduled', address: str = None,
-                   eircode: str = None, property_type: str = None) -> int:
+                   eircode: str = None, property_type: str = None,
+                   charge: float = None) -> int:
         """Add a new booking"""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -438,13 +439,23 @@ class Database:
                 phone_number = client.get('phone')
                 email = client.get('email')
         
-        cursor.execute("""
-            INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
-                                service_type, phone_number, email, urgency, address,
-                                eircode, property_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (client_id, calendar_event_id, appointment_time, service_type, 
-              phone_number, email, urgency, address, eircode, property_type))
+        # If charge not provided, use default (database will use 50.0)
+        if charge is not None:
+            cursor.execute("""
+                INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
+                                    service_type, phone_number, email, urgency, address,
+                                    eircode, property_type, charge)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (client_id, calendar_event_id, appointment_time, service_type, 
+                  phone_number, email, urgency, address, eircode, property_type, charge))
+        else:
+            cursor.execute("""
+                INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
+                                    service_type, phone_number, email, urgency, address,
+                                    eircode, property_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (client_id, calendar_event_id, appointment_time, service_type, 
+                  phone_number, email, urgency, address, eircode, property_type))
         
         booking_id = cursor.lastrowid
         

@@ -233,6 +233,86 @@ CALENDAR_TOOLS = [
 ]
 
 
+def get_service_price(job_description: str, urgency: str = 'scheduled') -> float:
+    """
+    Get the price for a service from the services menu based on job description and urgency.
+    
+    Args:
+        job_description: Description of the job (e.g., 'exterior painting', 'leak repairs')
+        urgency: Urgency level ('emergency', 'same-day', 'scheduled', 'quote')
+    
+    Returns:
+        Price in EUR, or 50.0 as default if not found
+    """
+    try:
+        import json
+        from pathlib import Path
+        
+        # Load services menu
+        services_menu_path = Path(__file__).parent.parent.parent / 'config' / 'services_menu.json'
+        with open(services_menu_path, 'r') as f:
+            menu = json.load(f)
+        
+        # Normalize job description for matching
+        job_lower = job_description.lower().strip()
+        
+        # Try exact/best matches first
+        best_match = None
+        best_score = 0
+        
+        for service in menu.get('services', []):
+            if not service.get('active', True):
+                continue
+            
+            service_name = service.get('name', '').lower()
+            service_desc = service.get('description', '').lower()
+            service_category = service.get('category', '').lower()
+            service_id = service.get('id', '').lower()
+            
+            # Calculate match score
+            score = 0
+            
+            # Exact match is best
+            if job_lower == service_name:
+                score = 100
+            # Check if service name is in job description (e.g., "exterior painting" in job)
+            elif service_name in job_lower:
+                score = 90
+            # Check if job description is in service name
+            elif job_lower in service_name:
+                score = 80
+            # Check service ID (e.g., "painting-exterior")
+            elif job_lower.replace(' ', '-') in service_id or service_id in job_lower.replace(' ', '-'):
+                score = 85
+            # Check description match
+            elif any(word in service_desc for word in job_lower.split() if len(word) > 4):
+                score = 60
+            # Check category match (must have at least one meaningful word match)
+            elif service_category in job_lower and len(service_category) > 4:
+                score = 40
+            
+            # Update best match if this score is higher
+            if score > best_score:
+                best_score = score
+                best_match = service
+        
+        # Only use match if score is good enough (> 70 for reliability)
+        if best_match and best_score > 70:
+            # Use emergency price if urgency is emergency and available
+            if urgency == 'emergency' and best_match.get('emergency_price'):
+                return float(best_match['emergency_price'])
+            else:
+                return float(best_match['price'])
+        
+        # Default fallback
+        print(f"⚠️ No service price found for '{job_description}', using default €50")
+        return 50.0
+        
+    except Exception as e:
+        print(f"⚠️ Error loading service price: {e}, using default €50")
+        return 50.0
+
+
 def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     """
     Execute a tool call and return the result.
@@ -1024,7 +1104,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         date_of_birth=None
                     )
                     
-                    # Add booking with address information
+                    # Get the correct price from services menu
+                    job_charge = get_service_price(job_description, urgency_level)
+                    print(f"💰 Calculated charge for '{job_description}' ({urgency_level}): €{job_charge}")
+                    
+                    # Add booking with address information and correct charge
                     booking_id = db.add_booking(
                         client_id=client_id,
                         calendar_event_id=event.get('id'),
@@ -1035,7 +1119,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         urgency=urgency_level,
                         address=job_address,
                         eircode=None,  # Could be extracted from address if provided
-                        property_type=property_type
+                        property_type=property_type,
+                        charge=job_charge
                     )
                     
                     # Add note with job details
