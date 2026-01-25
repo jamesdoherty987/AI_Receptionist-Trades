@@ -852,9 +852,23 @@ def chat():
         try:
             # Don't pass caller_phone since this is web chat
             async for token in stream_llm(conversation, process_appointment_with_calendar, caller_phone=None):
-                response_text += token
+                # Filter out special markers that are meant for TTS only
+                if token != "<<<FLUSH>>>":
+                    response_text += token
+            
+            # Add debug logging
+            print(f"📝 Chat response generated ({len(response_text)} chars): {response_text[:100]}...")
+            
+            # If response is empty or suspiciously short, add fallback
+            if not response_text or len(response_text.strip()) < 5:
+                print("⚠️ WARNING: Chat response is empty or too short, using fallback")
+                response_text = "I'm here to help. What can I do for you today?"
+            
             return response_text
         except Exception as e:
+            print(f"❌ Chat error in get_response: {e}")
+            import traceback
+            traceback.print_exc()
             return f"Error: {str(e)}"
     
     # Run async function

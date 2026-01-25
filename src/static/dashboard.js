@@ -25,6 +25,18 @@ document.addEventListener('DOMContentLoaded', function() {
             filterJobs();
         });
     });
+    
+    // Setup Enter key for chat
+    const chatInput = document.getElementById('chatInput');
+    if (chatInput) {
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
+    }
+    
+    console.log('💬 Chat initialized. Conversation has', chatConversation.length, 'messages');
 });
 
 // Tab functionality
@@ -996,7 +1008,15 @@ async function sendChatMessage() {
         chatConversation = data.conversation;
         
         console.log('🤖 AI response:', data.response);
-        console.log('📋 Full conversation:', data.conversation);
+        console.log('📋 Full conversation (' + data.conversation.length + ' messages):', data.conversation);
+        
+        // Check if response is empty or just whitespace
+        const cleanResponse = data.response.trim();
+        if (!cleanResponse) {
+            console.error('⚠️ Empty response received from server!');
+            replaceChatMessage(typingId, 'assistant', 'I apologize, I had trouble responding. Could you please try again?');
+            return;
+        }
         
         // Replace typing indicator with actual response
         replaceChatMessage(typingId, 'assistant', data.response);
@@ -1029,6 +1049,12 @@ function addChatMessage(role, text) {
     const messagesDiv = document.getElementById('chatMessages');
     const messageId = 'msg-' + Date.now();
     
+    // Remove the empty state message if it exists
+    const emptyState = messagesDiv.querySelector('.empty-state, div[style*=\"text-align: center\"]');
+    if (emptyState) {
+        emptyState.remove();
+    }
+    
     const messageDiv = document.createElement('div');
     messageDiv.id = messageId;
     messageDiv.style.cssText = `
@@ -1042,6 +1068,8 @@ function addChatMessage(role, text) {
     
     messagesDiv.appendChild(messageDiv);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    
+    console.log('💬 Added ' + role + ' message:', text.substring(0, 50) + (text.length > 50 ? '...' : ''));
     
     return messageId;
 }
@@ -1076,5 +1104,25 @@ async function resetChat() {
     } catch (error) {
         console.error('Reset error:', error);
         alert('Error resetting chat: ' + error.message);
+    }
+}
+
+// Function to display full conversation history (useful for debugging)
+function displayConversationHistory() {
+    console.log('📋 Displaying conversation history (' + chatConversation.length + ' messages)');
+    const messagesDiv = document.getElementById('chatMessages');
+    
+    // Clear the messages div first
+    messagesDiv.innerHTML = '';
+    
+    // Display each message in the conversation
+    for (const msg of chatConversation) {
+        // Skip system messages (they're internal)
+        if (msg.role === 'system') continue;
+        
+        // Add user or assistant message
+        if (msg.role === 'user' || msg.role === 'assistant') {
+            addChatMessage(msg.role, msg.content);
+        }
     }
 }

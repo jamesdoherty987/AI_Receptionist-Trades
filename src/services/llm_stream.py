@@ -2187,12 +2187,13 @@ When customer wants to reschedule:
         
         # Make another call to get LLM's response based on tool results
         print("   🔄 Getting LLM response with tool results...")
+        print(f"   📊 Tool results being sent to LLM: {[{**tr, 'content': tr['content'][:100] + '...' if len(tr['content']) > 100 else tr['content']} for tr in tool_results]}")
         try:
             follow_up_stream = client.chat.completions.create(
                 model=config.CHAT_MODEL,
                 stream=True,
-                temperature=0,
-                max_tokens=100,  # Shorter for faster responses after tool calls
+                temperature=0.3,  # Slightly higher for more natural responses
+                max_tokens=150,  # Increased for more complete responses
                 presence_penalty=0.3,
                 frequency_penalty=0.3,
                 messages=[{"role": "system", "content": system_prompt_with_time}, *messages],
@@ -2202,6 +2203,7 @@ When customer wants to reschedule:
             
             follow_up_response = ""
             follow_up_token_count = 0
+            print(f"   ⏳ Starting follow-up stream...")
             for part in follow_up_stream:
                 delta = part.choices[0].delta.content
                 if delta:
@@ -2213,10 +2215,19 @@ When customer wants to reschedule:
                         print(f"   🗣️ Follow-up first token: '{cleaned_delta[:50]}...'")
                     yield cleaned_delta  # Send cleaned to TTS
             
+            print(f"   📊 Follow-up stream complete: {follow_up_token_count} tokens generated")
+            
             if follow_up_token_count == 0:
                 print("⚠️ WARNING: Follow-up LLM call generated NO tokens!")
+                print(f"   🔍 Debug - Last messages sent to LLM:")
+                for i, msg in enumerate(messages[-5:]):
+                    role = msg.get('role', 'unknown')
+                    content = str(msg.get('content', ''))[:100]
+                    print(f"      [{i}] {role}: {content}...")
+                
                 # Yield a fallback response so user isn't left with silence
-                fallback = "I've checked that for you. "
+                fallback = "I've checked that for you. What would work best for you?"
+                print(f"   ⚠️ Using fallback response: '{fallback}'")
                 yield fallback
                 follow_up_response = fallback
             else:
@@ -2231,7 +2242,8 @@ When customer wants to reschedule:
             print(f"❌ Error in follow-up LLM stream: {e}")
             import traceback
             traceback.print_exc()
-            error_msg = "I've checked that for you. What would work best?"
+            error_msg = "I've checked that for you. What time would work best for you?"
+            print(f"   ⚠️ Yielding error fallback: '{error_msg}'")
             yield error_msg
             messages.append({"role": "assistant", "content": error_msg})
     
