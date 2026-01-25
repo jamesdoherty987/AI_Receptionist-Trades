@@ -254,7 +254,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     from src.utils.config import config
     
     google_calendar = services.get('google_calendar')
-    db = services.get('db')
+    db = services.get('db') or services.get('database')  # Support both keys
     
     try:
         if tool_name == "check_availability":
@@ -430,6 +430,16 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     clients = db.get_clients_by_name(customer_name.lower())
                     if len(clients) == 1:
                         client = clients[0]
+                        # Get most recent booking to find last used address
+                        bookings = db.get_client_bookings(client['id'])
+                        last_address = None
+                        if bookings:
+                            # Get most recent booking with an address
+                            for booking in bookings:
+                                if booking.get('address'):
+                                    last_address = booking['address']
+                                    break
+                        
                         return {
                             "success": True,
                             "customer_exists": True,
@@ -437,9 +447,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 "id": client['id'],
                                 "name": client['name'],
                                 "phone": client.get('phone'),
-                                "email": client.get('email')
+                                "email": client.get('email'),
+                                "last_address": last_address
                             },
-                            "message": f"Found customer: {client['name']}"
+                            "message": f"Found returning customer: {client['name']}, phone {client.get('phone')}, email {client.get('email')}" + (f", last job was at {last_address}" if last_address else "")
                         }
                     elif len(clients) > 1:
                         return {
@@ -462,6 +473,15 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             
                             if similarity >= 0.75:  # 75% similar = likely match
                                 print(f"✅ Fuzzy match: '{customer_name}' → '{potential_client['name']}' (similarity: {similarity:.2%})")
+                                # Get most recent booking address
+                                bookings = db.get_client_bookings(potential_client['id'])
+                                last_address = None
+                                if bookings:
+                                    for booking in bookings:
+                                        if booking.get('address'):
+                                            last_address = booking['address']
+                                            break
+                                
                                 return {
                                     "success": True,
                                     "customer_exists": True,
@@ -472,9 +492,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                         "id": potential_client['id'],
                                         "name": potential_client['name'],
                                         "phone": potential_client.get('phone'),
-                                        "email": potential_client.get('email')
+                                        "email": potential_client.get('email'),
+                                        "last_address": last_address
                                     },
-                                    "message": f"Found returning customer: {potential_client['name']} (I heard {customer_name}, but found a close match)"
+                                    "message": f"Found returning customer: {potential_client['name']} (I heard {customer_name}, but found a close match), phone {potential_client.get('phone')}, email {potential_client.get('email')}" + (f", last job at {last_address}" if last_address else "")
                                 }
                         
                         return {
@@ -545,9 +566,22 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             end_hour = business_hours.get('end', 17)
             
             if requested_hour < start_hour or requested_hour >= end_hour:
+                # Generate user-friendly message based on whether time is before or after hours
+                if requested_hour < start_hour:
+                    time_msg = f"We don't open until {start_hour}:00 AM"
+                else:
+                    # Convert to 12-hour format for end time
+                    end_hour_12 = end_hour if end_hour <= 12 else end_hour - 12
+                    end_period = "AM" if end_hour < 12 else "PM"
+                    time_msg = f"We close at {end_hour_12}:00 {end_period}"
+                
+                # Format business hours for display
+                end_display = end_hour if end_hour <= 12 else end_hour - 12
+                end_display_period = "AM" if end_hour < 12 else "PM"
+                
                 return {
                     "success": False,
-                    "error": f"The requested time {parsed_time.strftime('%I:%M %p')} is outside business hours ({start_hour}:00 - {end_hour}:00). Please check availability using check_availability and suggest a time within business hours.",
+                    "error": f"{time_msg}. Please check availability using check_availability and suggest a time within business hours ({start_hour}:00 AM - {end_display}:00 {end_display_period}).",
                     "needs_clarification": "datetime"
                 }
             
@@ -556,7 +590,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             if not is_available:
                 return {
                     "success": False,
-                    "error": f"The time slot at {parsed_time.strftime('%B %d at %I:%M %p')} is not available"
+                    "error": f"That time slot is already booked. Please check availability and suggest another time."
                 }
             
             # Create calendar event
@@ -789,7 +823,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             if not is_available:
                 return {
                     "success": False,
-                    "error": f"The new time slot ({new_time.strftime('%B %d at %I:%M %p')}) is not available",
+                    "error": f"That time slot is already booked. Please suggest another available time.",
                     "new_time_unavailable": True
                 }
             
@@ -936,9 +970,22 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             end_hour = business_hours.get('end', 17)
             
             if requested_hour < start_hour or requested_hour >= end_hour:
+                # Generate user-friendly message based on whether time is before or after hours
+                if requested_hour < start_hour:
+                    time_msg = f"We don't open until {start_hour}:00 AM"
+                else:
+                    # Convert to 12-hour format for end time
+                    end_hour_12 = end_hour if end_hour <= 12 else end_hour - 12
+                    end_period = "AM" if end_hour < 12 else "PM"
+                    time_msg = f"We close at {end_hour_12}:00 {end_period}"
+                
+                # Format business hours for display
+                end_display = end_hour if end_hour <= 12 else end_hour - 12
+                end_display_period = "AM" if end_hour < 12 else "PM"
+                
                 return {
                     "success": False,
-                    "error": f"The requested time {parsed_time.strftime('%I:%M %p')} is outside business hours ({start_hour}:00 - {end_hour}:00). Please check availability using check_availability and suggest a time within business hours.",
+                    "error": f"{time_msg}. Please check availability using check_availability and suggest a time within business hours ({start_hour}:00 AM - {end_display}:00 {end_display_period}).",
                     "needs_clarification": "datetime"
                 }
             
@@ -947,7 +994,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             if not is_available:
                 return {
                     "success": False,
-                    "error": f"The time slot at {parsed_time.strftime('%B %d at %I:%M %p')} is not available. Please check availability and suggest another time."
+                    "error": f"That time slot is already booked. Please check availability and suggest another time."
                 }
             
             # Create calendar event with trades details
@@ -977,14 +1024,18 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         date_of_birth=None
                     )
                     
-                    # Add booking
+                    # Add booking with address information
                     booking_id = db.add_booking(
                         client_id=client_id,
                         calendar_event_id=event.get('id'),
                         appointment_time=parsed_time,
                         service_type=f"{urgency_level}: {job_description}",
                         phone_number=phone,
-                        email=email
+                        email=email,
+                        urgency=urgency_level,
+                        address=job_address,
+                        eircode=None,  # Could be extracted from address if provided
+                        property_type=property_type
                     )
                     
                     # Add note with job details

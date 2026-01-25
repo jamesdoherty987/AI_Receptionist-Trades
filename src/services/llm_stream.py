@@ -248,7 +248,11 @@ def get_closed_day_message(dt: datetime) -> str:
     else:
         closed_days_str = ', '.join([d + 's' for d in closed_days[:-1]]) + ' and ' + closed_days[-1] + 's'
     
-    return f"[SYSTEM: {day_name} is not a working day. We're only open {open_days_str}, {start_hour} AM to {end_hour} PM (closed on {closed_days_str}). Politely let them know and suggest checking availability on a working day instead. Ask when would work for them.]"
+    # Convert end hour to 12-hour format
+    end_hour_12 = end_hour if end_hour <= 12 else end_hour - 12
+    end_period = "AM" if end_hour < 12 else "PM"
+    
+    return f"[SYSTEM: We're not open on {closed_days_str}. Our hours are {open_days_str}, {start_hour}:00 AM to {end_hour_12}:00 {end_period}. Politely let them know and suggest checking availability on a working day instead. Ask when would work for them.]"
 
 
 def remove_repetition(text: str) -> str:

@@ -479,7 +479,14 @@ class Database:
             booking = {
                 'id': row[0], 'client_id': row[1], 'calendar_event_id': row[2],
                 'appointment_time': row[3], 'service_type': row[4], 'status': row[5],
-                'phone_number': row[6], 'email': row[7], 'created_at': row[8]
+                'phone_number': row[6], 'email': row[7], 'created_at': row[8],
+                'charge': row[9] if len(row) > 9 else None,
+                'payment_status': row[10] if len(row) > 10 else None,
+                'payment_method': row[11] if len(row) > 11 else None,
+                'urgency': row[12] if len(row) > 12 else None,
+                'address': row[13] if len(row) > 13 else None,
+                'eircode': row[14] if len(row) > 14 else None,
+                'property_type': row[15] if len(row) > 15 else None
             }
             # Get notes for this booking
             booking['notes'] = self.get_appointment_notes(booking['id'])

@@ -653,23 +653,6 @@ def worker_api(worker_id):
         return jsonify({"error": "Worker not found"}), 404
 
 
-@app.route("/api/email/test", methods=["POST"])
-def send_test_email():
-    """Send a test email"""
-    try:
-        # This is a placeholder for email functionality
-        # You can integrate with services like SendGrid, AWS SES, or SMTP
-        return jsonify({
-            "success": True,
-            "message": "Test email sent successfully (placeholder)"
-        })
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-
 @app.route("/api/email/send", methods=["POST"])
 def send_email_to_client():
     """Send email to a client"""

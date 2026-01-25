@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadCustomers();
     loadWorkers();
     loadFinances();
+    loadCalendar();
     
     // Setup job filters
     document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
@@ -42,6 +43,7 @@ function initializeTabs() {
             
             // Load data when switching tabs
             if (tabName === 'finances') loadFinances();
+            if (tabName === 'calendar') loadCalendar();
         });
     });
 }
@@ -117,11 +119,9 @@ function displayJobs(jobs) {
                 <div class="job-detail-item">
                     <span class="job-detail-label">Email:</span> ${escapeHtml(job.email || 'N/A')}
                 </div>
-                ${job.address ? `
                 <div class="job-detail-item">
-                    <span class="job-detail-label">Address:</span> ${escapeHtml(job.address)}
+                    <span class="job-detail-label">Address:</span> ${escapeHtml(job.address || 'No address provided')}
                 </div>
-                ` : ''}
                 ${job.eircode ? `
                 <div class="job-detail-item">
                     <span class="job-detail-label">Eircode:</span> ${escapeHtml(job.eircode)}
@@ -135,6 +135,9 @@ function displayJobs(jobs) {
                 <button class="btn btn-sm btn-secondary job-action-btn" data-booking-id="${job.id}" data-status="in-progress" onclick="event.stopPropagation()">▶ Start Job</button>
                 <button class="btn btn-sm btn-success job-action-btn" data-booking-id="${job.id}" data-status="completed" onclick="event.stopPropagation()">✓ Complete</button>
                 <button class="btn btn-sm btn-danger job-action-btn" data-booking-id="${job.id}" data-status="cancelled" onclick="event.stopPropagation()">✕ Cancel</button>
+                ${(job.address && job.address !== 'No address provided') ? `
+                <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); openDirections('${escapeHtml(job.address)}${job.eircode ? ', ' + escapeHtml(job.eircode) : ''}')">🗺️ Directions</button>
+                ` : ''}
             </div>
         </div>
     `).join('');
@@ -296,6 +299,212 @@ async function loadFinances() {
     }
 }
 
+// Load Calendar
+async function loadCalendar() {
+    try {
+        const response = await fetch('/api/bookings');
+        const bookings = await response.json();
+        
+        // Create calendar view
+        displayCalendar(bookings);
+    } catch (error) {
+        console.error('Error loading calendar:', error);
+        document.getElementById('calendarContent').innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">❌</div>
+                <p>Error loading calendar</p>
+            </div>
+        `;
+    }
+}
+
+// Display calendar
+function displayCalendar(bookings) {
+    const container = document.getElementById('calendarContent');
+    
+    if (!bookings || bookings.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">📅</div>
+                <p>No appointments scheduled</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Get current date
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    
+    // Create calendar HTML with navigation
+    let html = `
+        <div style="padding: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <button class="btn btn-secondary btn-sm" onclick="navigateMonth(-1)">← Previous</button>
+                <h2 id="calendarMonthYear" style="font-size: 1.5rem; font-weight: 600; color: #0f172a;"></h2>
+                <button class="btn btn-secondary btn-sm" onclick="navigateMonth(1)">Next →</button>
+            </div>
+            <div id="calendarGrid"></div>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // Store bookings globally for navigation
+    window.calendarBookings = bookings;
+    window.calendarCurrentMonth = currentMonth;
+    window.calendarCurrentYear = currentYear;
+    
+    // Render the calendar
+    renderCalendarMonth();
+}
+
+// Navigate between months
+function navigateMonth(direction) {
+    window.calendarCurrentMonth += direction;
+    
+    if (window.calendarCurrentMonth > 11) {
+        window.calendarCurrentMonth = 0;
+        window.calendarCurrentYear++;
+    } else if (window.calendarCurrentMonth < 0) {
+        window.calendarCurrentMonth = 11;
+        window.calendarCurrentYear--;
+    }
+    
+    renderCalendarMonth();
+}
+
+// Render calendar month
+function renderCalendarMonth() {
+    const month = window.calendarCurrentMonth;
+    const year = window.calendarCurrentYear;
+    const bookings = window.calendarBookings || [];
+    
+    // Update header
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                       'July', 'August', 'September', 'October', 'November', 'December'];
+    document.getElementById('calendarMonthYear').textContent = `${monthNames[month]} ${year}`;
+    
+    // Get first day of month and number of days
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    
+    // Group bookings by date
+    const bookingsByDate = {};
+    bookings.forEach(booking => {
+        try {
+            const bookingDate = new Date(booking.appointment_time);
+            if (bookingDate.getMonth() === month && bookingDate.getFullYear() === year) {
+                const dateKey = bookingDate.getDate();
+                if (!bookingsByDate[dateKey]) {
+                    bookingsByDate[dateKey] = [];
+                }
+                bookingsByDate[dateKey].push(booking);
+            }
+        } catch (e) {
+            console.error('Error parsing booking date:', booking.appointment_time);
+        }
+    });
+    
+    // Build calendar grid
+    let html = `
+        <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: #e2e8f0; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+            <!-- Day headers -->
+            <div style="background: #6366f1; color: white; padding: 0.75rem; text-align: center; font-weight: 600;">Sun</div>
+            <div style="background: #6366f1; color: white; padding: 0.75rem; text-align: center; font-weight: 600;">Mon</div>
+            <div style="background: #6366f1; color: white; padding: 0.75rem; text-align: center; font-weight: 600;">Tue</div>
+            <div style="background: #6366f1; color: white; padding: 0.75rem; text-align: center; font-weight: 600;">Wed</div>
+            <div style="background: #6366f1; color: white; padding: 0.75rem; text-align: center; font-weight: 600;">Thu</div>
+            <div style="background: #6366f1; color: white; padding: 0.75rem; text-align: center; font-weight: 600;">Fri</div>
+            <div style="background: #6366f1; color: white; padding: 0.75rem; text-align: center; font-weight: 600;">Sat</div>
+    `;
+    
+    // Add empty cells for days before month starts
+    for (let i = 0; i < startingDayOfWeek; i++) {
+        html += '<div style="background: #f8fafc; min-height: 120px;"></div>';
+    }
+    
+    // Add calendar days
+    const today = new Date();
+    const isCurrentMonth = today.getMonth() === month && today.getFullYear() === year;
+    
+    for (let day = 1; day <= daysInMonth; day++) {
+        const isToday = isCurrentMonth && today.getDate() === day;
+        const dayBookings = bookingsByDate[day] || [];
+        
+        html += `
+            <div style="background: white; min-height: 120px; padding: 0.5rem; position: relative; ${isToday ? 'border: 2px solid #6366f1;' : ''}">
+                <div style="font-weight: 600; color: ${isToday ? '#6366f1' : '#0f172a'}; margin-bottom: 0.5rem; font-size: 0.875rem;">
+                    ${day}
+                    ${isToday ? '<span style="background: #6366f1; color: white; padding: 0.125rem 0.5rem; border-radius: 999px; font-size: 0.75rem; margin-left: 0.25rem;">Today</span>' : ''}
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+        `;
+        
+        // Sort bookings by time
+        dayBookings.sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
+        
+        // Show up to 3 bookings per day
+        dayBookings.slice(0, 3).forEach(booking => {
+            const time = new Date(booking.appointment_time).toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+            });
+            const statusColor = getStatusColor(booking.status);
+            const bgColor = statusColor === 'success' ? '#dcfce7' : statusColor === 'warning' ? '#fef3c7' : '#dbeafe';
+            const textColor = statusColor === 'success' ? '#166534' : statusColor === 'warning' ? '#92400e' : '#1e40af';
+            
+            html += `
+                <div onclick="showJobDetail(${booking.id})" style="
+                    background: ${bgColor};
+                    color: ${textColor};
+                    padding: 0.375rem;
+                    border-radius: 4px;
+                    font-size: 0.75rem;
+                    cursor: pointer;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                " title="${escapeHtml(booking.client_name)} - ${time}">
+                    <strong>${time}</strong> ${escapeHtml(booking.client_name)}
+                </div>
+            `;
+        });
+        
+        // Show "more" indicator if there are more than 3 bookings
+        if (dayBookings.length > 3) {
+            html += `
+                <div style="font-size: 0.75rem; color: #6366f1; font-weight: 600; padding: 0.25rem;">
+                    +${dayBookings.length - 3} more
+                </div>
+            `;
+        }
+        
+        html += `
+                </div>
+            </div>
+        `;
+    }
+    
+    // Add empty cells to complete the grid
+    const totalCells = startingDayOfWeek + daysInMonth;
+    const remainingCells = 7 - (totalCells % 7);
+    if (remainingCells < 7) {
+        for (let i = 0; i < remainingCells; i++) {
+            html += '<div style="background: #f8fafc; min-height: 120px;"></div>';
+        }
+    }
+    
+    html += '</div>';
+    
+    document.getElementById('calendarGrid').innerHTML = html;
+}
+
+
 // Display finances table
 function displayFinances(bookings) {
     const container = document.getElementById('financesTable');
@@ -430,6 +639,12 @@ async function showJobDetail(bookingId) {
                         <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">Status</div>
                         <div><span class="badge badge-${getStatusColor(job.status)}">${job.status}</span></div>
                     </div>
+                    ${job.address ? `
+                    <div style="grid-column: 1 / -1;">
+                        <div style="color: #64748b; font-size: 0.875rem; margin-bottom: 0.25rem;">📍 Job Address</div>
+                        <div style="font-weight: 600; font-size: 1.1rem;">${escapeHtml(job.address)}</div>
+                    </div>
+                    ` : ''}
                 </div>
             </div>
             
@@ -564,10 +779,15 @@ async function showJobDetail(bookingId) {
             <div>
                 ${detailsHtml}
                 
-                <div style="display: flex; gap: 1rem; padding-top: 1.5rem; border-top: 2px solid #e2e8f0;">
+                <div style="display: flex; gap: 1rem; padding-top: 1.5rem; border-top: 2px solid #e2e8f0; flex-wrap: wrap;">
                     <button class="btn btn-primary" onclick="sendInvoice(${bookingId})" id="invoiceBtn-${bookingId}">
                         📧 Send Invoice
                     </button>
+                    ${(job.address && job.address !== 'No address provided') ? `
+                    <button class="btn btn-primary" onclick="openDirections('${escapeHtml(job.address)}${job.eircode ? ', ' + escapeHtml(job.eircode) : ''}')">
+                        🗺️ Get Directions
+                    </button>
+                    ` : ''}
                     <button class="btn btn-secondary" onclick="closeModal('jobDetailModal')">
                         Close
                     </button>
@@ -743,6 +963,8 @@ async function sendChatMessage() {
     
     if (!message) return;
     
+    console.log('💬 User message:', message);
+    
     // Clear input
     input.value = '';
     
@@ -773,13 +995,34 @@ async function sendChatMessage() {
         // Update conversation
         chatConversation = data.conversation;
         
+        console.log('🤖 AI response:', data.response);
+        console.log('📋 Full conversation:', data.conversation);
+        
         // Replace typing indicator with actual response
         replaceChatMessage(typingId, 'assistant', data.response);
         
     } catch (error) {
-        console.error('Chat error:', error);
+        console.error('❌ Chat error:', error);
+        console.error('Error details:', error.message, error.stack);
         replaceChatMessage(typingId, 'assistant', '❌ Error: ' + error.message);
     }
+}
+
+// Open Google Maps directions
+function openDirections(address) {
+    if (!address || address === 'No address provided') {
+        alert('No address available for this job');
+        return;
+    }
+    
+    // Encode the address for URL
+    const encodedAddress = encodeURIComponent(address);
+    
+    // Open Google Maps in a new tab with directions
+    // This will show directions from the user's current location to the destination
+    const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`;
+    
+    window.open(mapsUrl, '_blank');
 }
 
 function addChatMessage(role, text) {
