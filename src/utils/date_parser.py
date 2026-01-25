@@ -250,20 +250,10 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
             result += timedelta(days=1)
             print(f"📅 No date specified, defaulting to tomorrow")
         
-        # Enforce business hours
-        if result:
-            if result.hour < config.BUSINESS_HOURS_START:
-                result = result.replace(hour=config.BUSINESS_HOURS_START, minute=0)
-                print(f"⏰ Adjusted to business hours: {config.BUSINESS_HOURS_START}:00")
-            elif result.hour > config.BUSINESS_HOURS_END:
-                result = result.replace(hour=config.BUSINESS_HOURS_START, minute=0)
-                result += timedelta(days=1)
-                print(f"⏰ After hours, moved to next day {config.BUSINESS_HOURS_START}:00")
-            
-            # Ensure it's in the future (unless allow_past is True)
-            if not allow_past and result <= now:
-                result += timedelta(days=1)
-                print(f"⏰ Date was in past, moved to future")
+        # Validate result is in the future (unless allow_past is True)
+        if result and not allow_past and result <= now:
+            result += timedelta(days=1)
+            print(f"⏰ Date was in past, moved to future")
         
         return result
         
@@ -548,14 +538,5 @@ def _fallback_parse_datetime(text: str) -> datetime:
         # Make sure it's in the future
         if result <= now:
             result += timedelta(days=1)
-    
-    # Enforce business hours
-    if result.hour < config.BUSINESS_HOURS_START:
-        # Before business hours - move to opening time
-        result = result.replace(hour=config.BUSINESS_HOURS_START, minute=0)
-    elif result.hour > config.BUSINESS_HOURS_END:
-        # After business hours - move to next day opening time
-        result = result.replace(hour=config.BUSINESS_HOURS_START, minute=0)
-        result += timedelta(days=1)
     
     return result

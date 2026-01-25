@@ -67,12 +67,55 @@ def load_business_info():
     except FileNotFoundError:
         print("⚠️ business_info.json not found, using defaults")
         return {
-            "business_name": "Munster Physio",
-            "staff": {"primary_practitioner": "James"},
-            "location": {"address": "University of Limerick", "parking": "Available on campus"},
-            "services": {"offerings": ["Physiotherapy"]},
-            "pricing": {"standard_appointment": "€50", "payment_methods": ["cash", "card"]},
+            "business_name": "Swift Trade Services",
+            "staff": {"business_owner": "James"},
+            "location": {"service_area": "Limerick and surrounding counties"},
+            "services": {"offerings": ["Multi-trade services"]},
+            "pricing": {"callout_fee": "€60", "payment_methods": ["cash", "card"]},
         }
+
+
+def load_services_menu():
+    """Load services menu from JSON file"""
+    services_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+        'config', 'services_menu.json'
+    )
+    try:
+        with open(services_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print("⚠️ services_menu.json not found, returning defaults")
+        return {
+            "business_hours": {
+                "start_hour": 9,
+                "end_hour": 17,
+                "days_open": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+            },
+            "services": [],
+            "pricing_notes": {}
+        }
+
+
+def get_business_hours_from_menu():
+    """Get business hours from services menu"""
+    menu = load_services_menu()
+    hours = menu.get('business_hours', {})
+    return {
+        'start': hours.get('start_hour', config.BUSINESS_HOURS_START),
+        'end': hours.get('end_hour', config.BUSINESS_HOURS_END),
+        'days_open': hours.get('days_open', ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']),
+        'notes': hours.get('notes', '')
+    }
+
+
+def is_business_day(dt: datetime) -> bool:
+    """Check if a given datetime is on a business day"""
+    try:
+        business_hours = config.get_business_days_indices()
+        return dt.weekday() in business_hours
+    except:
+        return dt.weekday() in config.BUSINESS_DAYS
 
 
 def load_system_prompt():
@@ -83,43 +126,72 @@ def load_system_prompt():
         'prompts', 'receptionist_prompt_fast.txt'  # Using condensed version for speed
     )
     
-    # Load business info
+    # Load business info and services menu
     business_info = load_business_info()
+    services_menu = load_services_menu()
+    
+    # Get business hours from database settings (not from services menu)
+    business_hours_data = config.get_business_hours()
+    business_hours = {
+        'start_hour': business_hours_data['start'],
+        'end_hour': business_hours_data['end'],
+        'days_open': business_hours_data['days_open']
+    }
     
     try:
         with open(prompt_path, 'r', encoding='utf-8') as f:
             prompt_template = f.read()
         
         # Inject business information into the prompt
-        # Replace placeholders with actual business data
-        prompt = prompt_template.replace("{{BUSINESS_NAME}}", business_info.get("business_name", "Munster Physio"))
-        prompt = prompt.replace("{{PRACTITIONER_NAME}}", business_info.get("staff", {}).get("primary_practitioner", "James"))
-        prompt = prompt.replace("{{APPOINTMENT_PRICE}}", business_info.get("pricing", {}).get("standard_appointment", "€50"))
-        prompt = prompt.replace("{{LOCATION}}", business_info.get("location", {}).get("address", "University of Limerick"))
-        prompt = prompt.replace("{{PARKING}}", business_info.get("location", {}).get("parking", "Available on campus"))
+        prompt = prompt_template.replace("{{BUSINESS_NAME}}", business_info.get("business_name", "Swift Trade Services"))
+        prompt = prompt.replace("{{PRACTITIONER_NAME}}", business_info.get("staff", {}).get("business_owner", "James"))
+        
+        # Build services list from menu
+        services_list = []
+        for service in services_menu.get('services', []):
+            if service.get('active', True):
+                service_line = f"{service['name']} ({service['category']}) - €{service['price']}"
+                if service.get('emergency_price'):
+                    service_line += f" (Emergency: €{service['emergency_price']})"
+                service_line += f" - {service['duration_minutes']} minutes"
+                services_list.append(service_line)
+        
+        # Build business hours string
+        hours_str = f"{business_hours.get('start_hour', 9)}:00 to {business_hours.get('end_hour', 17)}:00"
+        days_str = ', '.join(business_hours.get('days_open', ['Monday-Friday']))
         
         # Add business info section at the end of prompt
         business_context = f"""
 
 ###############################################################################
-## BUSINESS INFORMATION (Auto-loaded from config/business_info.json)
+## BUSINESS INFORMATION (Auto-loaded from config files)
 ###############################################################################
 
-BUSINESS: {business_info.get('business_name', 'Munster Physio')}
-PRACTITIONER: {business_info.get('staff', {}).get('primary_practitioner', 'James')}
+BUSINESS: {business_info.get('business_name', 'Swift Trade Services')}
+TYPE: {business_info.get('business_type', 'Multi-Trade Services Company')}
+OWNER: {business_info.get('staff', {}).get('business_owner', 'James')}
 
-LOCATION: {business_info.get('location', {}).get('address', 'Unknown')}
-PARKING: {business_info.get('location', {}).get('parking', 'Ask for details')}
+LOCATION: {business_info.get('location', {}).get('service_area', 'Limerick and surrounding counties')}
 
-SERVICES: {', '.join(business_info.get('services', {}).get('offerings', ['Physiotherapy']))}
-APPOINTMENT DURATION: {business_info.get('services', {}).get('appointment_duration', '60 minutes')}
+BUSINESS HOURS: {hours_str}
+DAYS OPEN: {days_str}
+{business_hours.get('notes', '')}
 
-PRICING: {business_info.get('pricing', {}).get('standard_appointment', '€50')} per appointment
-PAYMENT: {', '.join(business_info.get('pricing', {}).get('payment_methods', ['cash', 'card']))}
+SERVICES OFFERED:
+{chr(10).join('- ' + s for s in services_list) if services_list else '- General trade services'}
 
-CONTACT: {business_info.get('contact', {}).get('phone', 'N/A')}
+PRICING NOTES:
+- Callout fee: {services_menu.get('pricing_notes', {}).get('callout_fee', '€60 minimum')}
+- Hourly rate: {services_menu.get('pricing_notes', {}).get('hourly_rate', '€50 per hour')}
+- Payment methods: {', '.join(services_menu.get('pricing_notes', {}).get('payment_methods', ['Cash', 'Card']))}
+- Free quotes: {'Yes' if services_menu.get('pricing_notes', {}).get('free_quotes', True) else 'No'}
 
-Use this information to answer customer questions accurately.
+POLICIES:
+- Cancellation notice: {services_menu.get('service_policies', {}).get('cancellation_notice', '2 hours')}
+- Emergency response: {services_menu.get('service_policies', {}).get('emergency_response_hours', '2 hours')} hours
+- Warranty: {services_menu.get('service_policies', {}).get('warranty_months', 12)} months
+
+IMPORTANT: Use this information to answer customer questions accurately. Quote prices from the services list above.
 """
         prompt += business_context
         
@@ -127,11 +199,11 @@ Use this information to answer customer questions accurately.
         
     except FileNotFoundError:
         # Fallback to basic prompt if file not found
-        return f"""You are a professional AI receptionist for {business_info.get('business_name', 'Munster Physio')}.
+        hours = get_business_hours_from_menu()
+        return f"""You are a professional AI receptionist for {business_info.get('business_name', 'Swift Trade Services')}.
         
-Business hours: {config.BUSINESS_HOURS_START}:00 AM to {config.BUSINESS_HOURS_END}:00 PM
-Open 7 days a week including holidays.
-All appointments are {business_info.get('pricing', {}).get('standard_appointment', '€50')} for 60 minutes.
+Business hours: {hours['start']}:00 to {hours['end']}:00
+Days open: {', '.join(hours['days_open'])}
 Keep responses brief (1-2 sentences for phone calls).
 Be friendly and natural."""
 
@@ -142,14 +214,25 @@ SYSTEM_PROMPT = load_system_prompt()
 def get_closed_day_message(dt: datetime) -> str:
     """
     Generate a message for when a requested day is closed.
-    Dynamically determines which day(s) are closed based on config.BUSINESS_DAYS.
+    Dynamically determines which day(s) are closed based on services menu.
     """
     day_name = dt.strftime('%A')
     
-    # Find which days are closed (not in BUSINESS_DAYS)
+    # Get dynamic business hours from services menu
+    try:
+        business_hours = config.get_business_hours()
+        start_hour = business_hours['start']
+        end_hour = business_hours['end']
+        open_days = business_hours['days_open']
+    except:
+        start_hour = config.BUSINESS_HOURS_START
+        end_hour = config.BUSINESS_HOURS_END
+        all_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        open_days = [all_days[i] for i in config.BUSINESS_DAYS]
+    
+    # Find which days are closed
     all_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    open_days = [all_days[i] for i in config.BUSINESS_DAYS]
-    closed_days = [day for i, day in enumerate(all_days) if i not in config.BUSINESS_DAYS]
+    closed_days = [day for day in all_days if day not in open_days]
     
     # Format the open days string
     if len(open_days) >= 2:
@@ -165,7 +248,7 @@ def get_closed_day_message(dt: datetime) -> str:
     else:
         closed_days_str = ', '.join([d + 's' for d in closed_days[:-1]]) + ' and ' + closed_days[-1] + 's'
     
-    return f"[SYSTEM: {day_name} is not a working day. We're only open {open_days_str}, {config.BUSINESS_HOURS_START} AM to {config.BUSINESS_HOURS_END} PM (closed on {closed_days_str}). Politely let them know and suggest checking availability on a working day instead. Ask when would work for them.]"
+    return f"[SYSTEM: {day_name} is not a working day. We're only open {open_days_str}, {start_hour} AM to {end_hour} PM (closed on {closed_days_str}). Politely let them know and suggest checking availability on a working day instead. Ask when would work for them.]"
 
 
 def remove_repetition(text: str) -> str:
@@ -1259,7 +1342,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                             print(f"⚠️ Could not parse new_time '{new_time}' - asking user for clarification")
                                             messages.append({"role": "system", "content": RESCHEDULE_MESSAGES["ask_new_time"]})
                                             should_process = False
-                                        elif new_dt.weekday() not in config.BUSINESS_DAYS:
+                                        elif not is_business_day(new_dt):
                                             # Check for closed day
                                             messages.append({"role": "system", "content": get_closed_day_message(new_dt)})
                                             print(f"❌ Attempted booking on closed day: {new_dt.strftime('%A')}")
@@ -1343,7 +1426,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                     new_dt = parse_datetime(new_time)
                                     
                                     # Check for closed day
-                                    if new_dt.weekday() not in config.BUSINESS_DAYS:
+                                    if not is_business_day(new_dt):
                                         messages.append({"role": "system", "content": get_closed_day_message(new_dt)})
                                         print(f"❌ Attempted booking on closed day: {new_dt.strftime('%A')}")
                                         should_process = False
@@ -1379,7 +1462,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                         new_dt = parse_datetime(new_time)
                                         
                                         # Check for closed day
-                                        if new_dt.weekday() not in config.BUSINESS_DAYS:
+                                        if not is_business_day(new_dt):
                                             messages.append({"role": "system", "content": get_closed_day_message(new_dt)})
                                             print(f"❌ Attempted booking on closed day: {new_dt.strftime('%A')}")
                                             should_process = False
@@ -1883,7 +1966,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                     parsed = parse_datetime(date_ref)
                                     if parsed:
                                         day_name = parsed.strftime('%A, %B %d')
-                                        if parsed.weekday() not in config.BUSINESS_DAYS:
+                                        if not is_business_day(parsed):
                                             system_message = get_closed_day_message(parsed)
                                         else:
                                             system_message = f"[SYSTEM: Unfortunately, there are no available appointments on {day_name}. That day is fully booked. Suggest nearby alternative days when we're open, and ask when would work for them.]"
@@ -2587,7 +2670,7 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
                 query_date = now.replace(hour=9, minute=0, second=0, microsecond=0)
             
             # Check the REQUESTED day first (don't search other days)
-            if query_date.weekday() not in config.BUSINESS_DAYS:
+            if not is_business_day(query_date):
                 day_name = query_date.strftime('%A')
                 print(f"⚠️ Requested day is closed: {day_name}, {query_date.strftime('%B %d')} - not available")
                 print(f"\n{'='*60}")

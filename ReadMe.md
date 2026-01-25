@@ -16,8 +16,11 @@ Professional AI-powered phone receptionist with job booking and Google Calendar 
 - 🔔 **Email/SMS reminders** sent 24 hours before jobs
 - 💬 **Reminder confirmations** via email or SMS replies
 - 🚫 **Interrupt handling** for natural conversations
-- ⏰ **Business hours enforcement** (8 AM - 6 PM, 24/7 emergency available)
+- ⏰ **Business hours enforcement** (configurable, default 9 AM - 5 PM Mon-Fri)
 - 🌍 **Timezone support** (Europe/Dublin)
+- 🛠️ **Services menu management** - Add/edit/delete services with pricing via web UI
+- ⚙️ **Settings management** - Configure business hours, services, and pricing without editing code
+- 📊 **Dashboard** - View bookings, manage clients, track finances
 
 ## Project Structure
 

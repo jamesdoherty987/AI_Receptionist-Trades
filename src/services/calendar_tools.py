@@ -251,6 +251,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     """
     from datetime import datetime, timedelta
     from ..utils.date_parser import parse_datetime
+    from src.utils.config import config
     
     google_calendar = services.get('google_calendar')
     db = services.get('db')
@@ -306,10 +307,16 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             print(f"🔍 Checking availability from {current_date.strftime('%Y-%m-%d')} to {end_search.strftime('%Y-%m-%d')}")
             
+            # Get dynamic business days
+            try:
+                business_days = config.get_business_days_indices()
+            except:
+                business_days = config.BUSINESS_DAYS
+            
             # Check all days in range (no early exit - we want full picture)
             while current_date <= end_search:
                 # Only check business days (configured in config.BUSINESS_DAYS)
-                if current_date.weekday() in config.BUSINESS_DAYS:
+                if current_date.weekday() in business_days:
                     print(f"   📅 Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
                     try:
                         day_slots = google_calendar.get_available_slots_for_day(current_date)
@@ -527,6 +534,20 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 return {
                     "success": False,
                     "error": f"Could not parse date/time: '{appointment_datetime}'. Please ask the customer for a specific date and time (e.g., 'tomorrow at 2pm', 'Monday at 9am').",
+                    "needs_clarification": "datetime"
+                }
+            
+            # Validate business hours
+            from src.utils.config import Config
+            business_hours = Config.get_business_hours()
+            requested_hour = parsed_time.hour
+            start_hour = business_hours.get('start', 9)
+            end_hour = business_hours.get('end', 17)
+            
+            if requested_hour < start_hour or requested_hour >= end_hour:
+                return {
+                    "success": False,
+                    "error": f"The requested time {parsed_time.strftime('%I:%M %p')} is outside business hours ({start_hour}:00 - {end_hour}:00). Please check availability using check_availability and suggest a time within business hours.",
                     "needs_clarification": "datetime"
                 }
             
@@ -904,6 +925,20 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 return {
                     "success": False,
                     "error": f"Could not parse date/time: '{appointment_datetime}'. Please ask the customer for a specific date and time (e.g., 'tomorrow at 2pm', 'Monday at 9am').",
+                    "needs_clarification": "datetime"
+                }
+            
+            # Validate business hours
+            from src.utils.config import Config
+            business_hours = Config.get_business_hours()
+            requested_hour = parsed_time.hour
+            start_hour = business_hours.get('start', 9)
+            end_hour = business_hours.get('end', 17)
+            
+            if requested_hour < start_hour or requested_hour >= end_hour:
+                return {
+                    "success": False,
+                    "error": f"The requested time {parsed_time.strftime('%I:%M %p')} is outside business hours ({start_hour}:00 - {end_hour}:00). Please check availability using check_availability and suggest a time within business hours.",
                     "needs_clarification": "datetime"
                 }
             

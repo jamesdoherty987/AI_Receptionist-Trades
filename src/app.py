@@ -130,6 +130,12 @@ def settings_page():
     return send_from_directory('static', 'settings.html')
 
 
+@app.route("/settings/menu")
+def settings_menu_page():
+    """Serve the services/menu settings page"""
+    return send_from_directory('static', 'settings_menu.html')
+
+
 @app.route("/settings/developer")
 def developer_settings_page():
     """Serve the developer settings page"""
@@ -181,6 +187,75 @@ def settings_history_api():
     limit = request.args.get('limit', 50, type=int)
     history = settings_mgr.get_settings_history(limit)
     return jsonify(history)
+
+
+@app.route("/api/services/menu", methods=["GET", "POST"])
+def services_menu_api():
+    """Get or update services menu"""
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    
+    if request.method == "GET":
+        menu = settings_mgr.get_services_menu()
+        return jsonify(menu)
+    
+    elif request.method == "POST":
+        data = request.json
+        success = settings_mgr.update_services_menu(data)
+        if success:
+            return jsonify({"message": "Services menu updated successfully"})
+        return jsonify({"error": "Failed to update services menu"}), 500
+
+
+@app.route("/api/services/menu/service", methods=["POST"])
+def add_service_api():
+    """Add a new service"""
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    
+    data = request.json
+    success = settings_mgr.add_service(data)
+    if success:
+        return jsonify({"message": "Service added successfully"})
+    return jsonify({"error": "Failed to add service"}), 500
+
+
+@app.route("/api/services/menu/service/<service_id>", methods=["PUT", "DELETE"])
+def manage_service_api(service_id):
+    """Update or delete a service"""
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    
+    if request.method == "PUT":
+        data = request.json
+        success = settings_mgr.update_service(service_id, data)
+        if success:
+            return jsonify({"message": "Service updated successfully"})
+        return jsonify({"error": "Service not found"}), 404
+    
+    elif request.method == "DELETE":
+        success = settings_mgr.delete_service(service_id)
+        if success:
+            return jsonify({"message": "Service deleted successfully"})
+        return jsonify({"error": "Service not found"}), 404
+
+
+@app.route("/api/services/business-hours", methods=["GET", "POST"])
+def business_hours_api():
+    """Get or update business hours"""
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    
+    if request.method == "GET":
+        menu = settings_mgr.get_services_menu()
+        return jsonify(menu.get('business_hours', {}))
+    
+    elif request.method == "POST":
+        data = request.json
+        success = settings_mgr.update_business_hours(data)
+        if success:
+            return jsonify({"message": "Business hours updated successfully"})
+        return jsonify({"error": "Failed to update business hours"}), 500
 
 
 @app.route("/api/clients", methods=["GET", "POST"])

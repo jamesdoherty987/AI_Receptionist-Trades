@@ -63,11 +63,54 @@ class Config:
     FROM_EMAIL = os.getenv("FROM_EMAIL")
     REMINDER_METHOD = os.getenv("REMINDER_METHOD", "email")  # "email" or "sms"
     
-    # Business hours (24-hour format)
-    BUSINESS_HOURS_START = int(os.getenv("BUSINESS_HOURS_START", 9))
-    BUSINESS_HOURS_END = int(os.getenv("BUSINESS_HOURS_END", 17))
+    # Business hours - ONLY defined in database (configure at /settings)
+    # These are hardcoded fallbacks only if database is completely unavailable
+    BUSINESS_HOURS_START = 9  # Hardcoded fallback only
+    BUSINESS_HOURS_END = 17   # Hardcoded fallback only
     # Business days (0=Monday, 6=Sunday)
     BUSINESS_DAYS = [0, 1, 2, 3, 4]  # Monday to Friday (closed weekends)
+    
+    @staticmethod
+    def get_business_hours():
+        """Get business hours from database settings or fallback to env"""
+        try:
+            from src.services.settings_manager import get_settings_manager
+            settings_mgr = get_settings_manager()
+            settings = settings_mgr.get_business_settings()
+            
+            if settings:
+                # Parse days_open if it's a string
+                days_open = settings.get('days_open', [])
+                if isinstance(days_open, str):
+                    import json
+                    days_open = json.loads(days_open)
+                
+                return {
+                    'start': settings.get('opening_hours_start', Config.BUSINESS_HOURS_START),
+                    'end': settings.get('opening_hours_end', Config.BUSINESS_HOURS_END),
+                    'days_open': days_open if days_open else ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+                }
+        except Exception as e:
+            print(f"⚠️ Could not load business hours from database: {e}")
+        
+        # Fallback to env
+        return {
+            'start': Config.BUSINESS_HOURS_START,
+            'end': Config.BUSINESS_HOURS_END,
+            'days_open': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+        }
+    
+    @staticmethod
+    def get_business_days_indices():
+        """Get business days as weekday indices (0=Monday, 6=Sunday) from database"""
+        try:
+            hours = Config.get_business_hours()
+            days_open = hours.get('days_open', [])
+            day_map = {'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 
+                      'Friday': 4, 'Saturday': 5, 'Sunday': 6}
+            return [day_map[day] for day in days_open if day in day_map]
+        except:
+            return Config.BUSINESS_DAYS
     
     # Financial settings
     DEFAULT_APPOINTMENT_CHARGE = float(os.getenv("DEFAULT_APPOINTMENT_CHARGE", 50.0))

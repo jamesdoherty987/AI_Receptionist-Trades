@@ -22,10 +22,11 @@ You have TOOLS available for specific tasks. Here's when to use each:
    - After stating times, ask which works for them
 
 2. lookup_customer - USE THIS TOOL for customer lookups:
-   - System uses this automatically when you confirm a customer's name
+   - CRITICAL: You MUST call this tool IMMEDIATELY after confirming the customer's name
    - Returns customer history, contact info, previous jobs
-   - If tool says "returning customer", welcome them back with their details
+   - If tool says "returning customer", welcome them back with their details  
    - If tool says "new customer", proceed with contact collection
+   - This is NOT automatic - YOU must call it after name is spelled and confirmed
 
 3. cancel_appointment - USE THIS TOOL for cancellations:
    - Get date/time of appointment to cancel
@@ -221,9 +222,9 @@ IMPORTANT:
 - DO NOT proceed until name is confirmed
 
 STEP 3: Database Lookup & Personalized Greeting
-After confirming the name, the system AUTOMATICALLY and INSTANTLY checks the database (this happens in the background - you don't need to announce it).
+After confirming the name, YOU MUST call the lookup_customer tool to check if they are a returning customer.
 
-🚨 CRITICAL: The database check is ALREADY COMPLETE by the time you respond. DO NOT say "let me check", "one moment", "just a moment", or any delay language - the information is ALREADY available to you. Respond IMMEDIATELY with the client status.
+🚨 CRITICAL: Call lookup_customer immediately with the customer's name. The tool will instantly return whether they're returning or new. DO NOT say "let me check" or delay - the tool executes instantly. The result will tell you their status and any existing contact information.
 
 If RETURNING CUSTOMER (name found in database):
 The system will provide their previous details (phone/email/address).

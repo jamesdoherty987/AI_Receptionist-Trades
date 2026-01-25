@@ -512,14 +512,44 @@ async function showJobDetail(bookingId) {
         
         // Add additional notes if available
         if (notes && notes.length > 0) {
-            const notesHtml = notes.map(note => `
-                <div style="background: white; padding: 1rem; border-radius: 8px; margin-bottom: 0.75rem; border-left: 3px solid #3b82f6;">
-                    <p style="margin: 0; white-space: pre-wrap; color: #334155;">${escapeHtml(note.note)}</p>
-                    <small style="color: #94a3b8; margin-top: 0.5rem; display: block;">
-                        Added by ${note.created_by} • ${formatDateTime(note.created_at)}
-                    </small>
-                </div>
-            `).join('');
+            const notesHtml = notes.map(note => {
+                // Replace placeholder text with actual database values
+                let noteText = note.note;
+                
+                // Replace address placeholders
+                if (job.address) {
+                    noteText = noteText.replace(/same address on file/gi, job.address);
+                    noteText = noteText.replace(/address on file/gi, job.address);
+                }
+                
+                // Replace eircode placeholders
+                if (job.eircode) {
+                    noteText = noteText.replace(/same eircode on file/gi, job.eircode);
+                    noteText = noteText.replace(/eircode on file/gi, job.eircode);
+                }
+                
+                // Replace phone placeholders
+                if (job.phone_number) {
+                    noteText = noteText.replace(/same phone number on file/gi, job.phone_number);
+                    noteText = noteText.replace(/phone number on file/gi, job.phone_number);
+                    noteText = noteText.replace(/same number on file/gi, job.phone_number);
+                }
+                
+                // Replace email placeholders
+                if (job.email) {
+                    noteText = noteText.replace(/same email on file/gi, job.email);
+                    noteText = noteText.replace(/email on file/gi, job.email);
+                }
+                
+                return `
+                    <div style="background: white; padding: 1rem; border-radius: 8px; margin-bottom: 0.75rem; border-left: 3px solid #3b82f6;">
+                        <p style="margin: 0; white-space: pre-wrap; color: #334155;">${escapeHtml(noteText)}</p>
+                        <small style="color: #94a3b8; margin-top: 0.5rem; display: block;">
+                            Added by ${note.created_by} • ${formatDateTime(note.created_at)}
+                        </small>
+                    </div>
+                `;
+            }).join('');
             
             detailsHtml += `
                 <div style="background: #f8fafc; border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 2px solid #e2e8f0;">

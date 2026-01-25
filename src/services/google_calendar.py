@@ -535,8 +535,14 @@ class GoogleCalendarService:
         if not self.service:
             self.authenticate()
         
-        # Check if it's a closed day (not in BUSINESS_DAYS)
-        if target_date.weekday() not in config.BUSINESS_DAYS:
+        # Check if it's a closed day (use dynamic business days)
+        try:
+            business_days = config.get_business_days_indices()
+            is_closed = target_date.weekday() not in business_days
+        except:
+            is_closed = target_date.weekday() not in config.BUSINESS_DAYS
+        
+        if is_closed:
             day_name = target_date.strftime('%A')
             print(f"⏭️ Skipping closed day: {target_date.strftime('%A, %B %d')}")
             return []  # No slots on closed days
@@ -544,13 +550,18 @@ class GoogleCalendarService:
         available_slots = []
         now = datetime.now()
         
-        # Calculate last appointment time (appointment ends at BUSINESS_HOURS_END)
-        # For 60-minute appointments, last start time is BUSINESS_HOURS_END - 1
+        # Get dynamic business hours from database
+        hours = config.get_business_hours()
+        business_start = hours['start']
+        business_end = hours['end']
+        
+        # Calculate last appointment time (appointment ends at business_end)
+        # For 60-minute appointments, last start time is business_end - 1
         duration_hours = config.APPOINTMENT_SLOT_DURATION // 60
-        last_start_hour = config.BUSINESS_HOURS_END - duration_hours
+        last_start_hour = business_end - duration_hours
         
         # Check every hour during business hours (up to last_start_hour)
-        for hour in range(config.BUSINESS_HOURS_START, last_start_hour + 1):
+        for hour in range(business_start, last_start_hour + 1):
             slot_time = target_date.replace(hour=hour, minute=0, second=0, microsecond=0)
             
             # Skip slots that are in the past (for today only)
@@ -592,10 +603,15 @@ class GoogleCalendarService:
         
         # SECOND: If we need more alternatives, check nearby days
         if len(alternatives) < 3:
+            # Get dynamic business hours
+            hours = config.get_business_hours()
+            business_start = hours['start']
+            business_end = hours['end']
+            
             for day_offset in range(1, days_to_check + 1):
                 # Check same time on different days
                 alt_time = preferred_time + timedelta(days=day_offset)
-                if config.BUSINESS_HOURS_START <= alt_time.hour < config.BUSINESS_HOURS_END:
+                if business_start <= alt_time.hour < business_end:
                     if self.check_availability(alt_time, duration_minutes=config.APPOINTMENT_SLOT_DURATION):
                         if alt_time not in alternatives:
                             alternatives.append(alt_time)

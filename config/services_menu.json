@@ -1,0 +1,160 @@
+{
+  "business_name": "Swift Trade Services",
+  "last_updated": "2026-01-24T18:54:16.433376",
+  "services": [
+    {
+      "id": "plumbing-leak",
+      "category": "Plumbing",
+      "name": "Leak Repairs",
+      "description": "Fix leaking pipes, taps, toilets, radiators",
+      "duration_minutes": 60,
+      "price": 80.0,
+      "emergency_price": 150.0,
+      "currency": "EUR",
+      "active": true
+    },
+    {
+      "id": "plumbing-install",
+      "category": "Plumbing",
+      "name": "Plumbing Installation",
+      "description": "Install new fixtures, taps, toilets, sinks",
+      "duration_minutes": 120,
+      "price": 120.0,
+      "emergency_price": null,
+      "currency": "EUR",
+      "active": true
+    },
+    {
+      "id": "electrical-wiring",
+      "category": "Electrical",
+      "name": "Electrical Wiring",
+      "description": "New wiring, socket installation, lighting circuits",
+      "duration_minutes": 120,
+      "price": 100.0,
+      "emergency_price": 180.0,
+      "currency": "EUR",
+      "active": true
+    },
+    {
+      "id": "electrical-fault",
+      "category": "Electrical",
+      "name": "Fault Finding & Repair",
+      "description": "Diagnose and fix electrical faults, tripped breakers",
+      "duration_minutes": 90,
+      "price": 90.0,
+      "emergency_price": 160.0,
+      "currency": "EUR",
+      "active": true
+    },
+    {
+      "id": "heating-boiler",
+      "category": "Heating",
+      "name": "Boiler Service & Repair",
+      "description": "Annual boiler service, repairs, maintenance",
+      "duration_minutes": 90,
+      "price": 95.0,
+      "emergency_price": 170.0,
+      "currency": "EUR",
+      "active": true
+    },
+    {
+      "id": "heating-radiator",
+      "category": "Heating",
+      "name": "Radiator Installation",
+      "description": "Install new radiators, bleed radiators, replace valves",
+      "duration_minutes": 120,
+      "price": 110.0,
+      "emergency_price": null,
+      "currency": "EUR",
+      "active": true
+    },
+    {
+      "id": "carpentry-door",
+      "category": "Carpentry",
+      "name": "Door Installation & Repair",
+      "description": "Hang doors, repair frames, fit locks",
+      "duration_minutes": 90,
+      "price": 85.0,
+      "emergency_price": null,
+      "currency": "EUR",
+      "active": true
+    },
+    {
+      "id": "carpentry-general",
+      "category": "Carpentry",
+      "name": "General Carpentry",
+      "description": "Shelving, decking, fencing, custom woodwork",
+      "duration_minutes": 120,
+      "price": 90.0,
+      "emergency_price": null,
+      "currency": "EUR",
+      "active": true
+    },
+    {
+      "id": "painting-interior",
+      "category": "Painting",
+      "name": "Interior Painting",
+      "description": "Room painting, walls, ceilings, woodwork",
+      "duration_minutes": 240,
+      "price": 200.0,
+      "emergency_price": null,
+      "currency": "EUR",
+      "active": true
+    },
+    {
+      "id": "painting-exterior",
+      "category": "Painting",
+      "name": "Exterior Painting",
+      "description": "External walls, windows, doors, weatherproofing",
+      "duration_minutes": 480,
+      "price": 400.0,
+      "emergency_price": null,
+      "currency": "EUR",
+      "active": true
+    },
+    {
+      "id": "handyman-general",
+      "category": "General Maintenance",
+      "name": "General Handyman",
+      "description": "Small repairs, odd jobs, property maintenance",
+      "duration_minutes": 60,
+      "price": 60.0,
+      "emergency_price": 110.0,
+      "currency": "EUR",
+      "active": true
+    },
+    {
+      "id": "emergency-callout",
+      "category": "Emergency",
+      "name": "Emergency Callout",
+      "description": "24/7 emergency response for urgent issues",
+      "duration_minutes": 60,
+      "price": 120.0,
+      "emergency_price": 150.0,
+      "currency": "EUR",
+      "active": true,
+      "notes": "Minimum charge, additional work charged separately"
+    }
+  ],
+  "pricing_notes": {
+    "callout_fee": "€60 minimum for all jobs within service area",
+    "hourly_rate": "€50 per hour after initial time",
+    "materials": "Materials charged separately at cost + 15%",
+    "payment_methods": [
+      "Cash",
+      "Card",
+      "Bank Transfer",
+      "Apple Pay"
+    ],
+    "free_quotes": true,
+    "vat_included": false,
+    "vat_rate": 13.5
+  },
+  "service_policies": {
+    "cancellation_notice": "2 hours",
+    "quote_validity_days": 30,
+    "emergency_response_hours": 2,
+    "warranty_months": 12,
+    "service_area_km": 30
+  }
+}

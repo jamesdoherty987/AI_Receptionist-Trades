@@ -4,6 +4,7 @@ Manages both business and developer settings
 """
 import sqlite3
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -15,6 +16,10 @@ class SettingsManager:
     def __init__(self, db_path: str = "data/receptionist.db"):
         """Initialize settings manager"""
         self.db_path = db_path
+        self.services_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+            'config', 'services_menu.json'
+        )
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         self.init_settings_tables()
     
@@ -325,6 +330,71 @@ class SettingsManager:
         ]
         
         return [dict(zip(columns, row)) for row in rows]
+    
+    # ======= Services/Menu Management =======
+    
+    def get_services_menu(self) -> Dict[str, Any]:
+        """Get services menu from JSON file"""
+        try:
+            with open(self.services_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            # Return default structure
+            return {
+                "business_name": "Swift Trade Services",
+                "business_hours": {
+                    "start_hour": 9,
+                    "end_hour": 17,
+                    "days_open": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+                },
+                "services": [],
+                "pricing_notes": {}
+            }
+    
+    def update_services_menu(self, menu_data: Dict[str, Any]) -> bool:
+        """Update services menu JSON file"""
+        try:
+            menu_data['last_updated'] = datetime.now().isoformat()
+            with open(self.services_path, 'w', encoding='utf-8') as f:
+                json.dump(menu_data, f, indent=2, ensure_ascii=False)
+            return True
+        except Exception as e:
+            print(f"Error updating services menu: {e}")
+            return False
+    
+    def add_service(self, service: Dict[str, Any]) -> bool:
+        """Add a new service to the menu"""
+        menu = self.get_services_menu()
+        if 'services' not in menu:
+            menu['services'] = []
+        menu['services'].append(service)
+        return self.update_services_menu(menu)
+    
+    def update_service(self, service_id: str, service_data: Dict[str, Any]) -> bool:
+        """Update an existing service"""
+        menu = self.get_services_menu()
+        for i, service in enumerate(menu.get('services', [])):
+            if service.get('id') == service_id:
+                menu['services'][i] = {**service, **service_data}
+                return self.update_services_menu(menu)
+        return False
+    
+    def delete_service(self, service_id: str) -> bool:
+        """Delete a service from the menu"""
+        menu = self.get_services_menu()
+        original_count = len(menu.get('services', []))
+        menu['services'] = [s for s in menu.get('services', []) if s.get('id') != service_id]
+        if len(menu['services']) < original_count:
+            return self.update_services_menu(menu)
+        return False
+    
+    def update_business_hours(self, hours_data: Dict[str, Any]) -> bool:
+        """Update business hours in services menu"""
+        menu = self.get_services_menu()
+        if 'business_hours' not in menu:
+            menu['business_hours'] = {}
+        menu['business_hours'].update(hours_data)
+        return self.update_services_menu(menu)
 
 
 # Singleton instance
