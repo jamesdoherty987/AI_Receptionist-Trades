@@ -58,6 +58,7 @@ class SettingsManager:
                 cancellation_policy TEXT,
                 reminder_hours_before INTEGER DEFAULT 24,
                 auto_confirm_bookings INTEGER DEFAULT 1,
+                fallback_phone_number TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -84,10 +85,46 @@ class SettingsManager:
                 maintenance_message TEXT,
                 rate_limit_per_minute INTEGER DEFAULT 60,
                 enable_debug_mode INTEGER DEFAULT 0,
+                ai_receptionist_enabled INTEGER DEFAULT 1,
+                fallback_phone_number TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
+        # Add new columns if table already exists (migration)
+        try:
+            # Migrate business_settings table
+            cursor.execute("PRAGMA table_info(business_settings)")
+            business_columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'fallback_phone_number' not in business_columns:
+                cursor.execute("""
+                    ALTER TABLE business_settings 
+                    ADD COLUMN fallback_phone_number TEXT
+                """)
+                print("✅ Added fallback_phone_number column to business_settings")
+            
+            # Migrate developer_settings table
+            cursor.execute("PRAGMA table_info(developer_settings)")
+            columns = [row[1] for row in cursor.fetchall()]
+            
+            if 'ai_receptionist_enabled' not in columns:
+                cursor.execute("""
+                    ALTER TABLE developer_settings 
+                    ADD COLUMN ai_receptionist_enabled INTEGER DEFAULT 1
+                """)
+                print("✅ Added ai_receptionist_enabled column")
+            
+            if 'fallback_phone_number' not in columns:
+                cursor.execute("""
+                    ALTER TABLE developer_settings 
+                    ADD COLUMN fallback_phone_number TEXT
+                """)
+                print("✅ Added fallback_phone_number column")
+        except Exception as e:
+            # Columns might already exist, that's ok
+            pass
         
         # User accounts table for access control
         cursor.execute("""
@@ -395,6 +432,92 @@ class SettingsManager:
             menu['business_hours'] = {}
         menu['business_hours'].update(hours_data)
         return self.update_services_menu(menu)
+    
+    def is_ai_receptionist_enabled(self) -> bool:
+        """Check if AI receptionist is enabled"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT ai_receptionist_enabled FROM developer_settings LIMIT 1")
+            result = cursor.fetchone()
+            conn.close()
+            return bool(result[0]) if result else True  # Default to enabled
+        except Exception as e:
+            print(f"Error checking AI receptionist status: {e}")
+            return True  # Default to enabled on error
+    
+    def set_ai_receptionist_enabled(self, enabled: bool) -> bool:
+        """Enable or disable AI receptionist"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Ensure at least one row exists
+            cursor.execute("SELECT COUNT(*) FROM developer_settings")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO developer_settings (
+                        openai_model, tts_provider, log_level, ai_receptionist_enabled
+                    ) VALUES (?, ?, ?, ?)
+                """, ("gpt-4o-mini", "deepgram", "INFO", 1 if enabled else 0))
+            else:
+                cursor.execute("""
+                    UPDATE developer_settings 
+                    SET ai_receptionist_enabled = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = (SELECT MIN(id) FROM developer_settings)
+                """, (1 if enabled else 0,))
+            
+            conn.commit()
+            conn.close()
+            print(f"✅ AI Receptionist {'enabled' if enabled else 'disabled'}")
+            return True
+        except Exception as e:
+            print(f"Error updating AI receptionist status: {e}")
+            return False
+    
+    def get_fallback_phone_number(self) -> Optional[str]:
+        """Get fallback phone number for when AI is disabled"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT fallback_phone_number FROM developer_settings LIMIT 1")
+            result = cursor.fetchone()
+            conn.close()
+            return result[0] if result and result[0] else None
+        except Exception as e:
+            print(f"Error getting fallback phone number: {e}")
+            return None
+    
+    def set_fallback_phone_number(self, phone: str) -> bool:
+        """Set fallback phone number for when AI is disabled"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Ensure at least one row exists
+            cursor.execute("SELECT COUNT(*) FROM developer_settings")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO developer_settings (
+                        openai_model, tts_provider, log_level, fallback_phone_number
+                    ) VALUES (?, ?, ?, ?)
+                """, ("gpt-4o-mini", "deepgram", "INFO", phone))
+            else:
+                cursor.execute("""
+                    UPDATE developer_settings 
+                    SET fallback_phone_number = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = (SELECT MIN(id) FROM developer_settings)
+                """, (phone,))
+            
+            conn.commit()
+            conn.close()
+            print(f"✅ Fallback phone number set to: {phone}")
+            return True
+        except Exception as e:
+            print(f"Error setting fallback phone number: {e}")
+            return False
 
 
 # Singleton instance

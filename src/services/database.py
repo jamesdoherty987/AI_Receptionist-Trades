@@ -117,6 +117,19 @@ class Database:
             )
         """)
         
+        # Worker assignments table (linking workers to jobs)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS worker_assignments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                booking_id INTEGER NOT NULL,
+                worker_id INTEGER NOT NULL,
+                assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (booking_id) REFERENCES bookings (id) ON DELETE CASCADE,
+                FOREIGN KEY (worker_id) REFERENCES workers (id) ON DELETE CASCADE,
+                UNIQUE(booking_id, worker_id)
+            )
+        """)
+        
         # Add charge column to bookings if it doesn't exist
         cursor.execute("""
             PRAGMA table_info(bookings)
@@ -833,7 +846,199 @@ class Database:
         rows_affected = cursor.rowcount
         conn.commit()
         conn.close()
+        
         return rows_affected > 0
+    
+    # Worker Assignment methods
+    def assign_worker_to_job(self, booking_id: int, worker_id: int) -> Dict:
+        """Assign a worker to a job with conflict detection"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # First, get the job details to check timing
+        cursor.execute("""
+            SELECT b.appointment_time, b.service_type, c.name as client_name 
+            FROM bookings b
+            LEFT JOIN clients c ON b.client_id = c.id
+            WHERE b.id = ?
+        """, (booking_id,))
+        job = cursor.fetchone()
+        
+        if not job:
+            conn.close()
+            return {"success": False, "error": "Job not found"}
+        
+        job_time = datetime.fromisoformat(job[0].replace('Z', '+00:00')) if isinstance(job[0], str) else job[0]
+        
+        # Check if worker is already assigned to another job at the same time
+        # We'll consider a conflict if jobs overlap within a 2-hour window
+        cursor.execute("""
+            SELECT b.id, b.appointment_time, c.name as client_name, b.service_type
+            FROM worker_assignments wa
+            JOIN bookings b ON wa.booking_id = b.id
+            LEFT JOIN clients c ON b.client_id = c.id
+            WHERE wa.worker_id = ?
+            AND b.status != 'cancelled'
+            AND b.status != 'completed'
+            AND b.id != ?
+        """, (worker_id, booking_id,))
+        
+        existing_assignments = cursor.fetchall()
+        
+        # Check for time conflicts (within 2 hours)
+        for assignment in existing_assignments:
+            existing_time = datetime.fromisoformat(assignment[1].replace('Z', '+00:00')) if isinstance(assignment[1], str) else assignment[1]
+            time_diff = abs((job_time - existing_time).total_seconds() / 3600)  # hours
+            
+            if time_diff < 2:  # Conflict if within 2 hours
+                conn.close()
+                return {
+                    "success": False,
+                    "error": "Worker is already assigned to another job at this time",
+                    "conflict": {
+                        "job_id": assignment[0],
+                        "time": assignment[1],
+                        "client": assignment[2],
+                        "service": assignment[3]
+                    }
+                }
+        
+        # No conflicts, proceed with assignment
+        try:
+            cursor.execute("""
+                INSERT INTO worker_assignments (booking_id, worker_id)
+                VALUES (?, ?)
+            """, (booking_id, worker_id))
+            
+            assignment_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            return {
+                "success": True,
+                "assignment_id": assignment_id,
+                "message": "Worker assigned successfully"
+            }
+        except sqlite3.IntegrityError:
+            conn.close()
+            return {
+                "success": False,
+                "error": "Worker is already assigned to this job"
+            }
+    
+    def remove_worker_from_job(self, booking_id: int, worker_id: int) -> bool:
+        """Remove a worker assignment from a job"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            DELETE FROM worker_assignments
+            WHERE booking_id = ? AND worker_id = ?
+        """, (booking_id, worker_id))
+        
+        rows_affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        return rows_affected > 0
+    
+    def get_job_workers(self, booking_id: int) -> List[Dict]:
+        """Get all workers assigned to a specific job"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT w.id, w.name, w.phone, w.email, w.trade_specialty, wa.assigned_at
+            FROM worker_assignments wa
+            JOIN workers w ON wa.worker_id = w.id
+            WHERE wa.booking_id = ?
+        """, (booking_id,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [{
+            'id': row[0],
+            'name': row[1],
+            'phone': row[2],
+            'email': row[3],
+            'trade_specialty': row[4],
+            'assigned_at': row[5]
+        } for row in rows]
+    
+    def get_worker_jobs(self, worker_id: int, include_completed: bool = False) -> List[Dict]:
+        """Get all jobs assigned to a specific worker"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT b.id, b.appointment_time, c.name as client_name, b.service_type, 
+                   b.status, b.address, b.phone_number, wa.assigned_at
+            FROM worker_assignments wa
+            JOIN bookings b ON wa.booking_id = b.id
+            LEFT JOIN clients c ON b.client_id = c.id
+            WHERE wa.worker_id = ?
+        """
+        
+        if not include_completed:
+            query += " AND b.status != 'completed' AND b.status != 'cancelled'"
+        
+        query += " ORDER BY b.appointment_time ASC"
+        
+        cursor.execute(query, (worker_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [{
+            'id': row[0],
+            'appointment_time': row[1],
+            'client_name': row[2],
+            'service_type': row[3],
+            'status': row[4],
+            'address': row[5],
+            'phone_number': row[6],
+            'assigned_at': row[7]
+        } for row in rows]
+    
+    def get_worker_schedule(self, worker_id: int, start_date: str = None, end_date: str = None) -> List[Dict]:
+        """Get worker's schedule within a date range"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT b.id, b.appointment_time, c.name as client_name, b.service_type, 
+                   b.status, b.address
+            FROM worker_assignments wa
+            JOIN bookings b ON wa.booking_id = b.id
+            LEFT JOIN clients c ON b.client_id = c.id
+            WHERE wa.worker_id = ?
+            AND b.status != 'cancelled'
+        """
+        
+        params = [worker_id]
+        
+        if start_date:
+            query += " AND b.appointment_time >= ?"
+            params.append(start_date)
+        
+        if end_date:
+            query += " AND b.appointment_time <= ?"
+            params.append(end_date)
+        
+        query += " ORDER BY b.appointment_time ASC"
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [{
+            'id': row[0],
+            'appointment_time': row[1],
+            'client_name': row[2],
+            'service_type': row[3],
+            'status': row[4],
+            'address': row[5]
+        } for row in rows]
 
 
 # Global database instance

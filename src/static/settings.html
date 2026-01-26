@@ -248,6 +248,76 @@
             cursor: not-allowed;
         }
 
+        /* Toggle Switch Styling */
+        .toggle-container {
+            display: inline-block;
+        }
+
+        .toggle-input {
+            display: none;
+        }
+
+        .toggle-label {
+            position: relative;
+            display: inline-block;
+            width: 140px;
+            height: 48px;
+            background: var(--danger-color);
+            border-radius: 24px;
+            cursor: pointer;
+            transition: background 0.3s;
+            user-select: none;
+        }
+
+        .toggle-switch {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: 40px;
+            height: 40px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .toggle-text-on,
+        .toggle-text-off {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: white;
+            transition: opacity 0.3s;
+        }
+
+        .toggle-text-on {
+            right: 12px;
+            opacity: 0;
+        }
+
+        .toggle-text-off {
+            left: 12px;
+            opacity: 1;
+        }
+
+        .toggle-input:checked + .toggle-label {
+            background: var(--success-color);
+        }
+
+        .toggle-input:checked + .toggle-label .toggle-switch {
+            transform: translateX(92px);
+        }
+
+        .toggle-input:checked + .toggle-label .toggle-text-on {
+            opacity: 1;
+        }
+
+        .toggle-input:checked + .toggle-label .toggle-text-off {
+            opacity: 0;
+        }
+
         .notification {
             position: fixed;
             top: 20px;
@@ -514,6 +584,35 @@
                     </div>
                 </div>
 
+                <!-- AI Receptionist Toggle -->
+                <div class="settings-section">
+                    <h2>🤖 AI Receptionist Control</h2>
+                    <div class="form-grid">
+                        <div class="form-group full-width">
+                            <label style="display: flex; align-items: center; gap: 1rem;">
+                                <span style="flex: 1;">AI Receptionist Status</span>
+                                <div class="toggle-container">
+                                    <input type="checkbox" id="ai_receptionist_enabled" class="toggle-input">
+                                    <label for="ai_receptionist_enabled" class="toggle-label">
+                                        <span class="toggle-switch"></span>
+                                        <span class="toggle-text-on">ON</span>
+                                        <span class="toggle-text-off">OFF</span>
+                                    </label>
+                                </div>
+                            </label>
+                            <p class="help-text" id="ai_status_text">AI receptionist will answer incoming calls</p>
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="fallback_phone_number">
+                                Fallback Phone Number (when AI is OFF)
+                                <span style="color: var(--danger-color); font-weight: bold;">*</span>
+                            </label>
+                            <input type="tel" id="fallback_phone_number" name="fallback_phone_number" placeholder="+353 XX XXX XXXX">
+                            <p class="help-text">⚠️ Required to disable AI - Calls will be forwarded to this number when AI is OFF</p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Services & Pricing -->
                 <div class="settings-section">
                     <h2>💰 Services & Pricing</h2>
@@ -584,7 +683,9 @@
         // Load settings on page load
         document.addEventListener('DOMContentLoaded', () => {
             loadSettings();
+            loadAIReceptionistStatus();
             setupDaySelector();
+            setupAIToggleListener();
         });
 
         async function loadSettings() {
@@ -599,6 +700,115 @@
                 showNotification('Error loading settings', 'error');
             }
         }
+
+        async function loadAIReceptionistStatus() {
+            try {
+                const response = await fetch('/api/ai-receptionist/toggle');
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('ai_receptionist_enabled').checked = data.enabled;
+                    if (data.fallback_phone_number) {
+                        document.getElementById('fallback_phone_number').value = data.fallback_phone_number;
+                    }
+                    updateAIStatusText(data.enabled);
+                }
+            } catch (error) {
+                console.error('Error loading AI receptionist status:', error);
+            }
+        }
+
+        function setupAIToggleListener() {
+            const toggle = document.getElementById('ai_receptionist_enabled');
+            const fallbackInput = document.getElementById('fallback_phone_number');
+            
+            toggle.addEventListener('change', async (e) => {
+                const enabled = e.target.checked;
+                const fallbackPhone = fallbackInput.value.trim();
+                
+                // Validation: Don't allow disabling without a fallback number
+                if (!enabled && !fallbackPhone) {
+                    e.target.checked = true; // Revert toggle
+                    fallbackInput.focus();
+                    fallbackInput.style.borderColor = 'var(--danger-color)';
+                    showNotification('⚠️ Please enter a fallback phone number before disabling AI', 'error');
+                    return;
+                }
+                
+                // Reset border color
+                fallbackInput.style.borderColor = '';
+                
+                try {
+                    const response = await fetch('/api/ai-receptionist/toggle', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            enabled: enabled,
+                            fallback_phone_number: fallbackPhone
+                        })
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        showNotification(result.message, 'success');
+                        updateAIStatusText(enabled);
+                    } else {
+                        const error = await response.json();
+                        // Revert toggle on error
+                        e.target.checked = !enabled;
+                        showNotification(error.error || 'Failed to update AI receptionist status', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error toggling AI receptionist:', error);
+                    e.target.checked = !enabled;
+                    showNotification('Error updating AI receptionist', 'error');
+                }
+            });
+
+            // Save fallback number when it changes and remove error styling
+            fallbackInput.addEventListener('input', (e) => {
+                if (e.target.value.trim()) {
+                    e.target.style.borderColor = '';
+                }
+            });
+            
+            // Save fallback number when it changes
+            fallbackInput.addEventListener('blur', async (e) => {
+                const fallbackPhone = e.target.value.trim();
+                const enabled = toggle.checked;
+                
+                if (fallbackPhone) {
+                    try {
+                        await fetch('/api/ai-receptionist/toggle', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                enabled: enabled,
+                                fallback_phone_number: fallbackPhone
+                            })
+                        });
+                        showNotification('✅ Fallback number saved', 'success');
+                    } catch (error) {
+                        console.error('Error saving fallback number:', error);
+                    }
+                }
+            });
+        }
+
+        function updateAIStatusText(enabled) {
+            const statusText = document.getElementById('ai_status_text');
+            if (enabled) {
+                statusText.textContent = '✅ AI receptionist will answer incoming calls';
+                statusText.style.color = 'var(--success-color)';
+            } else {
+                statusText.textContent = '⚠️ Calls will be forwarded to your fallback number';
+                statusText.style.color = 'var(--warning-color)';
+            }
+        }
+
 
         function populateForm(settings) {
             // Basic fields

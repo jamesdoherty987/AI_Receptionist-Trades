@@ -95,7 +95,7 @@ function displayJobs(jobs) {
     }
     
     content.innerHTML = jobs.map(job => `
-        <div class="job-card">
+        <div class="job-card" id="job-${job.id}">
             <div class="job-header">
                 <div>
                     <div class="job-client-name">${escapeHtml(job.client_name || 'Unknown')}</div>
@@ -130,14 +130,21 @@ function displayJobs(jobs) {
                 <div class="job-detail-item">
                     <span class="job-detail-label">Charge:</span> €${(job.charge || 0).toFixed(2)}
                 </div>
+                <div class="job-detail-item" id="workers-display-${job.id}">
+                    <span class="job-detail-label">👷 Workers:</span> <span class="worker-loading">Loading...</span>
+                </div>
             </div>
-            <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+            <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button class="btn btn-sm btn-primary" onclick="showAssignWorkerModal(${job.id})">👷 Assign Worker</button>
                 <button class="btn btn-sm btn-secondary" onclick="changeJobStatus(${job.id}, 'in-progress')">Start Job</button>
                 <button class="btn btn-sm btn-success" onclick="changeJobStatus(${job.id}, 'completed')">Mark Complete</button>
                 <button class="btn btn-sm btn-danger" onclick="changeJobStatus(${job.id}, 'cancelled')">Cancel</button>
             </div>
         </div>
     `).join('');
+    
+    // Load workers for each job
+    jobs.forEach(job => loadJobWorkers(job.id));
 }
 
 // Load Customers
@@ -381,6 +388,138 @@ async function changeJobStatus(bookingId, newStatus) {
     } catch (error) {
         console.error('Error updating job status:', error);
         alert('Error updating job status');
+    }
+}
+
+// Load workers assigned to a job
+async function loadJobWorkers(jobId) {
+    try {
+        const response = await fetch(`/api/bookings/${jobId}/workers`);
+        const workers = await response.json();
+        
+        const displayElement = document.getElementById(`workers-display-${jobId}`);
+        if (!displayElement) return;
+        
+        if (workers.length === 0) {
+            displayElement.innerHTML = '<span class="job-detail-label">👷 Workers:</span> <span style="color: #94a3b8;">None assigned</span>';
+        } else {
+            displayElement.innerHTML = `
+                <span class="job-detail-label">👷 Workers:</span>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                    ${workers.map(w => `
+                        <span class="worker-badge">
+                            ${escapeHtml(w.name)}
+                            <button onclick="removeWorkerFromJob(${jobId}, ${w.id})" class="remove-worker-btn" title="Remove">
+                                ×
+                            </button>
+                        </span>
+                    `).join('')}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading job workers:', error);
+        const displayElement = document.getElementById(`workers-display-${jobId}`);
+        if (displayElement) {
+            displayElement.innerHTML = '<span class="job-detail-label">👷 Workers:</span> <span style="color: #ef4444;">Error loading</span>';
+        }
+    }
+}
+
+// Show assign worker modal
+function showAssignWorkerModal(jobId) {
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job) return;
+    
+    const modalContent = `
+        <h2>Assign Worker to Job</h2>
+        <div style="margin: 1rem 0; padding: 1rem; background: #f8fafc; border-radius: 8px;">
+            <div><strong>Client:</strong> ${escapeHtml(job.client_name || 'Unknown')}</div>
+            <div><strong>Time:</strong> ${formatDateTime(job.appointment_time)}</div>
+            <div><strong>Service:</strong> ${escapeHtml(job.service_type || 'N/A')}</div>
+        </div>
+        <div style="margin: 1rem 0;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Select Worker:</label>
+            <select id="workerSelect" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;">
+                <option value="">-- Choose a worker --</option>
+                ${allWorkers.filter(w => w.status === 'active').map(w => `
+                    <option value="${w.id}">${escapeHtml(w.name)} ${w.trade_specialty ? '(' + escapeHtml(w.trade_specialty) + ')' : ''}</option>
+                `).join('')}
+            </select>
+        </div>
+        <div id="assignmentError" style="color: #ef4444; margin: 0.5rem 0; display: none;"></div>
+        <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
+            <button class="btn btn-secondary" onclick="closeModal('assignWorkerModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="assignWorker(${jobId})">Assign Worker</button>
+        </div>
+    `;
+    
+    document.getElementById('assignWorkerModalContent').innerHTML = modalContent;
+    document.getElementById('assignWorkerModal').classList.add('active');
+}
+
+// Assign worker to job
+async function assignWorker(jobId) {
+    const workerId = document.getElementById('workerSelect').value;
+    const errorDiv = document.getElementById('assignmentError');
+    
+    if (!workerId) {
+        errorDiv.textContent = 'Please select a worker';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/bookings/${jobId}/assign-worker`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ worker_id: parseInt(workerId) })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            closeModal('assignWorkerModal');
+            loadJobWorkers(jobId);
+        } else {
+            errorDiv.textContent = result.error || 'Error assigning worker';
+            errorDiv.style.display = 'block';
+            
+            // If there's a conflict, show details
+            if (result.conflict) {
+                errorDiv.innerHTML = `
+                    <strong>⚠️ Schedule Conflict!</strong><br>
+                    This worker is already assigned to:<br>
+                    <em>${escapeHtml(result.conflict.client)} - ${formatDateTime(result.conflict.time)}</em>
+                `;
+            }
+        }
+    } catch (error) {
+        console.error('Error assigning worker:', error);
+        errorDiv.textContent = 'Error assigning worker';
+        errorDiv.style.display = 'block';
+    }
+}
+
+// Remove worker from job
+async function removeWorkerFromJob(jobId, workerId) {
+    if (!confirm('Remove this worker from the job?')) return;
+    
+    try {
+        const response = await fetch(`/api/bookings/${jobId}/remove-worker`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ worker_id: workerId })
+        });
+        
+        if (response.ok) {
+            loadJobWorkers(jobId);
+        } else {
+            alert('Error removing worker');
+        }
+    } catch (error) {
+        console.error('Error removing worker:', error);
+        alert('Error removing worker');
     }
 }
 

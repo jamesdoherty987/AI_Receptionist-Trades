@@ -109,7 +109,7 @@ function displayJobs(jobs) {
     }
     
     content.innerHTML = jobs.map(job => `
-        <div class="job-card" onclick="showJobDetail(${job.id})" style="cursor: pointer;">
+        <div class="job-card" id="job-${job.id}" onclick="showJobDetail(${job.id})" style="cursor: pointer;">
             <div class="job-header">
                 <div>
                     <div class="job-client-name">${escapeHtml(job.client_name || 'Unknown')}</div>
@@ -142,8 +142,12 @@ function displayJobs(jobs) {
                 <div class="job-detail-item">
                     <span class="job-detail-label">Charge:</span> €${(job.charge || 0).toFixed(2)}
                 </div>
+                <div class="job-detail-item" id="workers-display-${job.id}">
+                    <span class="job-detail-label">👷 Workers:</span> <span class="worker-loading">Loading...</span>
+                </div>
             </div>
             <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); showAssignWorkerModal(${job.id})">👷 Assign Worker</button>
                 <button class="btn btn-sm btn-secondary job-action-btn" data-booking-id="${job.id}" data-status="in-progress" onclick="event.stopPropagation()">▶ Start Job</button>
                 <button class="btn btn-sm btn-success job-action-btn" data-booking-id="${job.id}" data-status="completed" onclick="event.stopPropagation()">✓ Complete</button>
                 <button class="btn btn-sm btn-danger job-action-btn" data-booking-id="${job.id}" data-status="cancelled" onclick="event.stopPropagation()">✕ Cancel</button>
@@ -153,6 +157,9 @@ function displayJobs(jobs) {
             </div>
         </div>
     `).join('');
+    
+    // Load workers for each job
+    jobs.forEach(job => loadJobWorkers(job.id));
     
     // Add event delegation for job action buttons
     setupJobActionButtons();
@@ -175,6 +182,138 @@ function setupJobActionButtons() {
             changeJobStatus(bookingId, status, e.target);
         }
     });
+}
+
+// Load workers assigned to a job
+async function loadJobWorkers(jobId) {
+    try {
+        const response = await fetch(`/api/bookings/${jobId}/workers`);
+        const workers = await response.json();
+        
+        const displayElement = document.getElementById(`workers-display-${jobId}`);
+        if (!displayElement) return;
+        
+        if (workers.length === 0) {
+            displayElement.innerHTML = '<span class="job-detail-label">👷 Workers:</span> <span style="color: #94a3b8;">None assigned</span>';
+        } else {
+            displayElement.innerHTML = `
+                <span class="job-detail-label">👷 Workers:</span>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem;">
+                    ${workers.map(w => `
+                        <span class="worker-badge">
+                            ${escapeHtml(w.name)}
+                            <button onclick="removeWorkerFromJob(${jobId}, ${w.id}); event.stopPropagation();" class="remove-worker-btn" title="Remove">
+                                ×
+                            </button>
+                        </span>
+                    `).join('')}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading job workers:', error);
+        const displayElement = document.getElementById(`workers-display-${jobId}`);
+        if (displayElement) {
+            displayElement.innerHTML = '<span class="job-detail-label">👷 Workers:</span> <span style="color: #ef4444;">Error loading</span>';
+        }
+    }
+}
+
+// Show assign worker modal
+function showAssignWorkerModal(jobId) {
+    const job = allJobs.find(j => j.id === jobId);
+    if (!job) return;
+    
+    const modalContent = `
+        <h2>Assign Worker to Job</h2>
+        <div style="margin: 1rem 0; padding: 1rem; background: #f8fafc; border-radius: 8px;">
+            <div><strong>Client:</strong> ${escapeHtml(job.client_name || 'Unknown')}</div>
+            <div><strong>Time:</strong> ${formatDateTime(job.appointment_time)}</div>
+            <div><strong>Service:</strong> ${escapeHtml(job.service_type || 'N/A')}</div>
+        </div>
+        <div style="margin: 1rem 0;">
+            <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Select Worker:</label>
+            <select id="workerSelect" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;">
+                <option value="">-- Choose a worker --</option>
+                ${allWorkers.filter(w => w.status === 'active').map(w => `
+                    <option value="${w.id}">${escapeHtml(w.name)} ${w.trade_specialty ? '(' + escapeHtml(w.trade_specialty) + ')' : ''}</option>
+                `).join('')}
+            </select>
+        </div>
+        <div id="assignmentError" style="color: #ef4444; margin: 0.5rem 0; display: none;"></div>
+        <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem;">
+            <button class="btn btn-secondary" onclick="closeModal('assignWorkerModal')">Cancel</button>
+            <button class="btn btn-primary" onclick="assignWorker(${jobId})">Assign Worker</button>
+        </div>
+    `;
+    
+    document.getElementById('assignWorkerModalContent').innerHTML = modalContent;
+    document.getElementById('assignWorkerModal').classList.add('active');
+}
+
+// Assign worker to job
+async function assignWorker(jobId) {
+    const workerId = document.getElementById('workerSelect').value;
+    const errorDiv = document.getElementById('assignmentError');
+    
+    if (!workerId) {
+        errorDiv.textContent = 'Please select a worker';
+        errorDiv.style.display = 'block';
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/bookings/${jobId}/assign-worker`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ worker_id: parseInt(workerId) })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            closeModal('assignWorkerModal');
+            loadJobWorkers(jobId);
+        } else {
+            errorDiv.textContent = result.error || 'Error assigning worker';
+            errorDiv.style.display = 'block';
+            
+            // If there's a conflict, show details
+            if (result.conflict) {
+                errorDiv.innerHTML = `
+                    <strong>⚠️ Schedule Conflict!</strong><br>
+                    This worker is already assigned to:<br>
+                    <em>${escapeHtml(result.conflict.client)} - ${formatDateTime(result.conflict.time)}</em>
+                `;
+            }
+        }
+    } catch (error) {
+        console.error('Error assigning worker:', error);
+        errorDiv.textContent = 'Error assigning worker';
+        errorDiv.style.display = 'block';
+    }
+}
+
+// Remove worker from job
+async function removeWorkerFromJob(jobId, workerId) {
+    if (!confirm('Remove this worker from the job?')) return;
+    
+    try {
+        const response = await fetch(`/api/bookings/${jobId}/remove-worker`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ worker_id: workerId })
+        });
+        
+        if (response.ok) {
+            loadJobWorkers(jobId);
+        } else {
+            alert('Error removing worker');
+        }
+    } catch (error) {
+        console.error('Error removing worker:', error);
+        alert('Error removing worker');
+    }
 }
 
 // Load Customers
@@ -274,7 +413,7 @@ function displayWorkers() {
     }
     
     container.innerHTML = allWorkers.map(worker => `
-        <div class="worker-card">
+        <div class="worker-card" onclick="showWorkerDetail(${worker.id})" style="cursor: pointer;">
             <div class="worker-info">
                 <h3>${escapeHtml(worker.name)}</h3>
                 <div class="worker-details">
@@ -282,10 +421,6 @@ function displayWorkers() {
                     <div>✉️ ${escapeHtml(worker.email || 'N/A')}</div>
                     <div>🔧 ${escapeHtml(worker.trade_specialty || 'General')}</div>
                 </div>
-            </div>
-            <div class="worker-actions">
-                <button class="btn btn-secondary btn-sm" onclick="editWorker(${worker.id})">Edit</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteWorker(${worker.id})">Delete</button>
             </div>
         </div>
     `).join('');
@@ -957,14 +1092,153 @@ function showAddWorkerModal() {
     alert('Add worker feature coming soon!');
 }
 
-function editWorker(workerId) {
-    alert('Edit worker feature coming soon!');
+// Show worker detail modal
+async function showWorkerDetail(workerId) {
+    try {
+        const response = await fetch(`/api/workers/${workerId}`);
+        const worker = await response.json();
+        
+        if (!worker || worker.error) {
+            alert('Worker not found');
+            return;
+        }
+        
+        // Get worker's jobs
+        const jobsResponse = await fetch(`/api/workers/${workerId}/jobs?include_completed=true`);
+        const jobs = await jobsResponse.json();
+        
+        const activeJobs = jobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled');
+        const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'cancelled');
+        
+        document.getElementById('workerDetailContent').innerHTML = `
+            <div class="detail-header">
+                <h2>👷 ${escapeHtml(worker.name)}</h2>
+            </div>
+            
+            <div style="background: #f8fafc; padding: 1.5rem; border-radius: 8px; margin: 1rem 0;">
+                <h3 style="margin-bottom: 1rem;">Contact Information</h3>
+                <div class="form-group">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-input" id="editWorkerName" value="${escapeHtml(worker.name)}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Phone</label>
+                    <input type="tel" class="form-input" id="editWorkerPhone" value="${escapeHtml(worker.phone || '')}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-input" id="editWorkerEmail" value="${escapeHtml(worker.email || '')}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Trade Specialty</label>
+                    <input type="text" class="form-input" id="editWorkerTrade" value="${escapeHtml(worker.trade_specialty || '')}" placeholder="e.g., Electrician, Plumber">
+                </div>
+                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                    <button class="btn btn-primary" onclick="saveWorkerChanges(${workerId})">💾 Save Changes</button>
+                    <button class="btn btn-danger" onclick="deleteWorker(${workerId})">🗑️ Delete Worker</button>
+                </div>
+            </div>
+            
+            <div style="margin-top: 2rem;">
+                <h3>📋 Active Jobs (${activeJobs.length})</h3>
+                ${activeJobs.length > 0 ? `
+                    <div style="margin-top: 1rem;">
+                        ${activeJobs.map(job => `
+                            <div style="background: white; border: 1px solid #e2e8f0; padding: 1rem; margin-bottom: 0.5rem; border-radius: 6px;">
+                                <div style="display: flex; justify-content: space-between; align-items: start;">
+                                    <div>
+                                        <strong>${escapeHtml(job.client_name || 'Unknown')}</strong>
+                                        <div style="color: #64748b; font-size: 0.875rem;">
+                                            📅 ${formatDateTime(job.appointment_time)}
+                                        </div>
+                                        <div style="color: #64748b; font-size: 0.875rem;">
+                                            ${escapeHtml(job.service_type || 'N/A')}
+                                        </div>
+                                    </div>
+                                    <span class="badge badge-${getStatusColor(job.status)}">${job.status}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : '<p style="color: #94a3b8; margin-top: 0.5rem;">No active jobs</p>'}
+            </div>
+            
+            <div style="margin-top: 2rem;">
+                <h3>✅ Completed Jobs (${completedJobs.length})</h3>
+                ${completedJobs.length > 0 ? `
+                    <div style="margin-top: 1rem; max-height: 300px; overflow-y: auto;">
+                        ${completedJobs.slice(0, 10).map(job => `
+                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.75rem; margin-bottom: 0.5rem; border-radius: 6px; font-size: 0.875rem;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <div>
+                                        <strong>${escapeHtml(job.client_name || 'Unknown')}</strong> - ${formatDateTime(job.appointment_time)}
+                                    </div>
+                                    <span class="badge badge-${getStatusColor(job.status)}">${job.status}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                        ${completedJobs.length > 10 ? `<p style="color: #64748b; font-size: 0.875rem; margin-top: 0.5rem;">Showing 10 of ${completedJobs.length} completed jobs</p>` : ''}
+                    </div>
+                ` : '<p style="color: #94a3b8; margin-top: 0.5rem;">No completed jobs</p>'}
+            </div>
+        `;
+        
+        document.getElementById('workerDetailModal').classList.add('active');
+    } catch (error) {
+        console.error('Error loading worker details:', error);
+        alert('Error loading worker details');
+    }
 }
 
-function deleteWorker(workerId) {
-    if (confirm('Are you sure you want to delete this worker?')) {
-        // TODO: Implement delete
-        alert('Delete worker feature coming soon!');
+// Save worker changes
+async function saveWorkerChanges(workerId) {
+    const name = document.getElementById('editWorkerName').value.trim();
+    const phone = document.getElementById('editWorkerPhone').value.trim();
+    const email = document.getElementById('editWorkerEmail').value.trim();
+    const trade_specialty = document.getElementById('editWorkerTrade').value.trim();
+    
+    if (!name) {
+        alert('Worker name is required');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/workers/${workerId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, phone, email, trade_specialty })
+        });
+        
+        if (response.ok) {
+            closeModal('workerDetailModal');
+            loadWorkers();
+        } else {
+            alert('Error updating worker');
+        }
+    } catch (error) {
+        console.error('Error updating worker:', error);
+        alert('Error updating worker');
+    }
+}
+
+// Delete worker
+async function deleteWorker(workerId) {
+    if (!confirm('Are you sure you want to delete this worker? This cannot be undone.')) return;
+    
+    try {
+        const response = await fetch(`/api/workers/${workerId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            closeModal('workerDetailModal');
+            loadWorkers();
+        } else {
+            alert('Error deleting worker');
+        }
+    } catch (error) {
+        console.error('Error deleting worker:', error);
+        alert('Error deleting worker');
     }
 }
 

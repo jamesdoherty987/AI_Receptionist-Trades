@@ -31,27 +31,84 @@ except Exception as e:
 def twilio_voice():
     """
     Twilio voice webhook endpoint
-    Returns TwiML to connect call to media stream
+    Returns TwiML to connect call to media stream OR forward to fallback number
     """
-    ws_url = config.WS_PUBLIC_URL
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    
+    # Check if AI receptionist is enabled
+    ai_enabled = settings_mgr.is_ai_receptionist_enabled()
     
     # Extract caller phone number from Twilio request
     caller_phone = request.form.get("From", "")
-
+    
     twiml = VoiceResponse()
-    with twiml.connect() as connect:
-        stream = connect.stream(url=ws_url)
-        # Pass caller phone as custom parameter
-        if caller_phone:
-            stream.parameter(name="From", value=caller_phone)
+    
+    if not ai_enabled:
+        # AI is disabled - forward to fallback number (real person)
+        fallback_number = settings_mgr.get_fallback_phone_number()
+        
+        print("=" * 60)
+        print("📞 Incoming Twilio Call - AI DISABLED")
+        print(f"📱 Caller: {caller_phone}")
+        print(f"📲 Forwarding to: {fallback_number or 'No fallback number set!'}")
+        print("=" * 60)
+        
+        if fallback_number:
+            twiml.say("Please hold while we connect you.")
+            # Create Dial verb with proper nested Number noun
+            dial = twiml.dial(timeout=60, action='/twilio/dial-status', method='POST')
+            dial.number(fallback_number)
+            print(f"📋 Generated TwiML for forwarding:")
+            print(str(twiml))
+        else:
+            twiml.say("We're sorry, but our AI receptionist is currently unavailable and no fallback number is configured. Please try again later.")
+    else:
+        # AI is enabled - connect to media stream
+        ws_url = config.WS_PUBLIC_URL
+        
+        with twiml.connect() as connect:
+            stream = connect.stream(url=ws_url)
+            # Pass caller phone as custom parameter
+            if caller_phone:
+                stream.parameter(name="From", value=caller_phone)
 
-    print("=" * 60)
-    print("📞 Incoming Twilio Call")
-    print(f"📱 Caller: {caller_phone}")
-    print(f"WS_PUBLIC_URL: {ws_url}")
-    print("=" * 60)
+        print("=" * 60)
+        print("📞 Incoming Twilio Call - AI ENABLED")
+        print(f"📱 Caller: {caller_phone}")
+        print(f"🤖 Connecting to AI at: {ws_url}")
+        print("=" * 60)
     
     return Response(str(twiml), mimetype="text/xml")
+
+
+@app.route("/twilio/dial-status", methods=["POST"])
+def dial_status():
+    """Callback for dial status - helps debug forwarding issues"""
+    dial_status = request.form.get("DialCallStatus", "unknown")
+    dial_duration = request.form.get("DialCallDuration", "0")
+    error_code = request.form.get("ErrorCode", "")
+    error_message = request.form.get("ErrorMessage", "")
+    
+    print("=" * 60)
+    print("📞 Dial Status Callback")
+    print(f"Status: {dial_status}")
+    print(f"Duration: {dial_duration}s")
+    if error_code:
+        print(f"⚠️  ERROR {error_code}: {error_message}")
+    print(f"Full data: {dict(request.form)}")
+    print("=" * 60)
+    
+    # Return empty TwiML to end the call gracefully
+    response = VoiceResponse()
+    if dial_status in ["busy", "no-answer", "failed"]:
+        if error_code == "13227":
+            # Geo-permissions error - provide helpful message
+            response.say("We're sorry, call forwarding is not currently configured. Please contact us directly.")
+        else:
+            response.say("We're sorry, but we couldn't connect your call. Please try again later.")
+    
+    return Response(str(response), mimetype="text/xml")
 
 
 @app.route("/health", methods=["GET"])
@@ -176,6 +233,51 @@ def developer_settings_api():
         if success:
             return jsonify({"message": "Developer settings updated successfully"})
         return jsonify({"error": "Failed to update settings"}), 500
+
+
+@app.route("/api/ai-receptionist/toggle", methods=["GET", "POST"])
+def ai_receptionist_toggle_api():
+    """Get or toggle AI receptionist status"""
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    
+    if request.method == "GET":
+        enabled = settings_mgr.is_ai_receptionist_enabled()
+        fallback = settings_mgr.get_fallback_phone_number()
+        return jsonify({
+            "enabled": enabled,
+            "fallback_phone_number": fallback
+        })
+    
+    elif request.method == "POST":
+        data = request.json
+        enabled = data.get("enabled", True)
+        fallback_phone = data.get("fallback_phone_number", "").strip()
+        
+        # Validation: Cannot disable AI without a fallback number
+        if not enabled:
+            current_fallback = settings_mgr.get_fallback_phone_number()
+            effective_fallback = fallback_phone or current_fallback
+            
+            if not effective_fallback:
+                return jsonify({
+                    "error": "Cannot disable AI receptionist without a fallback phone number"
+                }), 400
+        
+        # Save fallback phone number first if provided
+        if fallback_phone:
+            settings_mgr.set_fallback_phone_number(fallback_phone)
+        
+        # Update AI status
+        success = settings_mgr.set_ai_receptionist_enabled(enabled)
+        
+        if success:
+            status = "enabled" if enabled else "disabled"
+            return jsonify({
+                "message": f"AI Receptionist {status} successfully",
+                "enabled": enabled
+            })
+        return jsonify({"error": "Failed to update AI receptionist status"}), 500
 
 
 @app.route("/api/settings/history", methods=["GET"])
@@ -651,6 +753,69 @@ def worker_api(worker_id):
         if success:
             return jsonify({"message": "Worker deleted"})
         return jsonify({"error": "Worker not found"}), 404
+
+
+@app.route("/api/bookings/<int:booking_id>/assign-worker", methods=["POST"])
+def assign_worker_to_job_api(booking_id):
+    """Assign a worker to a job"""
+    db = get_database()
+    data = request.json
+    worker_id = data.get('worker_id')
+    
+    if not worker_id:
+        return jsonify({"error": "worker_id is required"}), 400
+    
+    result = db.assign_worker_to_job(booking_id, worker_id)
+    
+    if result['success']:
+        return jsonify(result), 201
+    else:
+        return jsonify(result), 400
+
+
+@app.route("/api/bookings/<int:booking_id>/remove-worker", methods=["POST"])
+def remove_worker_from_job_api(booking_id):
+    """Remove a worker from a job"""
+    db = get_database()
+    data = request.json
+    worker_id = data.get('worker_id')
+    
+    if not worker_id:
+        return jsonify({"error": "worker_id is required"}), 400
+    
+    success = db.remove_worker_from_job(booking_id, worker_id)
+    
+    if success:
+        return jsonify({"success": True, "message": "Worker removed from job"})
+    else:
+        return jsonify({"error": "Worker assignment not found"}), 404
+
+
+@app.route("/api/bookings/<int:booking_id>/workers", methods=["GET"])
+def get_job_workers_api(booking_id):
+    """Get all workers assigned to a job"""
+    db = get_database()
+    workers = db.get_job_workers(booking_id)
+    return jsonify(workers)
+
+
+@app.route("/api/workers/<int:worker_id>/jobs", methods=["GET"])
+def get_worker_jobs_api(worker_id):
+    """Get all jobs assigned to a worker"""
+    db = get_database()
+    include_completed = request.args.get('include_completed', 'false').lower() == 'true'
+    jobs = db.get_worker_jobs(worker_id, include_completed)
+    return jsonify(jobs)
+
+
+@app.route("/api/workers/<int:worker_id>/schedule", methods=["GET"])
+def get_worker_schedule_api(worker_id):
+    """Get worker's schedule"""
+    db = get_database()
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    schedule = db.get_worker_schedule(worker_id, start_date, end_date)
+    return jsonify(schedule)
 
 
 @app.route("/api/email/send", methods=["POST"])

@@ -787,6 +787,41 @@
                 display: none !important;
             }
         }
+
+        /* Worker badges */
+        .worker-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 0.375rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .remove-worker-btn {
+            background: none;
+            border: none;
+            color: #1e40af;
+            font-size: 1.25rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 0;
+            margin-left: 0.25rem;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .remove-worker-btn:hover {
+            opacity: 1;
+        }
+
+        .worker-loading {
+            color: #94a3b8;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -1037,6 +1072,30 @@
                 <button class="close-btn" onclick="closeModal('jobDetailModal')">&times;</button>
             </div>
             <div id="jobDetailContent" style="padding: 1.5rem;">
+                <!-- Content will be dynamically loaded -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Assign Worker Modal -->
+    <div class="modal" id="assignWorkerModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <button class="close-btn" onclick="closeModal('assignWorkerModal')">&times;</button>
+            </div>
+            <div id="assignWorkerModalContent" style="padding: 1.5rem;">
+                <!-- Content will be dynamically loaded -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Worker Detail Modal -->
+    <div class="modal" id="workerDetailModal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <button class="close-btn" onclick="closeModal('workerDetailModal')">&times;</button>
+            </div>
+            <div id="workerDetailContent" style="padding: 1.5rem;">
                 <!-- Content will be dynamically loaded -->
             </div>
         </div>
