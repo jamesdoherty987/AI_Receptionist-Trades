@@ -516,12 +516,154 @@ def appointment_note_api(booking_id, note_id):
         return jsonify({"error": "Note not found"}), 404
 
 
-@app.route("/api/bookings", methods=["GET"])
+@app.route("/api/bookings", methods=["GET", "POST"])
 def bookings_api():
-    """Get all bookings"""
+    """Get all bookings or create a new booking"""
     db = get_database()
-    bookings = db.get_all_bookings()
-    return jsonify(bookings)
+    
+    if request.method == "GET":
+        bookings = db.get_all_bookings()
+        return jsonify(bookings)
+    
+    elif request.method == "POST":
+        data = request.json
+        
+        # Required fields
+        client_id = data.get('client_id')
+        appointment_time = data.get('appointment_time')
+        service_type = data.get('service_type')
+        
+        if not all([client_id, appointment_time, service_type]):
+            return jsonify({"error": "Missing required fields: client_id, appointment_time, service_type"}), 400
+        
+        try:
+            # Parse appointment time
+            from datetime import datetime, timedelta
+            if isinstance(appointment_time, str):
+                appointment_dt = datetime.fromisoformat(appointment_time.replace('Z', '+00:00'))
+            else:
+                appointment_dt = appointment_time
+            
+            # Check for time conflicts (same time or overlapping within 1 hour)
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            
+            # Check for bookings within 1 hour of the requested time
+            time_buffer_before = appointment_dt - timedelta(minutes=59)
+            time_buffer_after = appointment_dt + timedelta(minutes=59)
+            
+            cursor.execute("""
+                SELECT id, client_id, appointment_time, service_type
+                FROM bookings
+                WHERE status NOT IN ('cancelled', 'completed')
+                AND appointment_time BETWEEN ? AND ?
+            """, (time_buffer_before, time_buffer_after))
+            
+            conflicting_bookings = cursor.fetchall()
+            conn.close()
+            
+            if conflicting_bookings:
+                conflict = conflicting_bookings[0]
+                conflict_time = datetime.fromisoformat(str(conflict[2]))
+                
+                # Get client name for the conflicting booking
+                conflict_client = db.get_client(conflict[1])
+                conflict_client_name = conflict_client['name'] if conflict_client else 'Unknown'
+                
+                return jsonify({
+                    "error": f"Time conflict: There is already a booking at {conflict_time.strftime('%I:%M %p')} for {conflict_client_name} ({conflict[3]}). Please choose a different time.",
+                    "conflict": True,
+                    "conflicting_time": conflict_time.isoformat(),
+                    "conflicting_client": conflict_client_name
+                }), 409  # 409 Conflict status code
+            
+            # Optional: Create Google Calendar event
+            calendar_event_id = None
+            client = None  # Store client info for reuse
+            
+            try:
+                # Check if Google Calendar credentials exist
+                import os.path
+                if os.path.exists(config.GOOGLE_CALENDAR_CREDENTIALS):
+                    from src.services.google_calendar import GoogleCalendarService
+                    cal_service = GoogleCalendarService()
+                    
+                    # Get client info for calendar event
+                    client = db.get_client(client_id)
+                    if client:
+                        event = cal_service.create_event(
+                            summary=f"{service_type} - {client['name']}",
+                            description=data.get('notes', ''),
+                            start_time=appointment_dt,
+                            duration_minutes=60,
+                            attendee_email=client.get('email')
+                        )
+                        calendar_event_id = event.get('id') if event else None
+            except Exception as e:
+                print(f"⚠️ Could not create calendar event: {e}")
+            
+            # Get client info if not already loaded
+            if not client:
+                client = db.get_client(client_id)
+            
+            # Use client's address/eircode if not provided in job data
+            job_address = data.get('address')
+            job_eircode = data.get('eircode')
+            job_property_type = data.get('property_type')
+            
+            if client:
+                if not job_address and client.get('address'):
+                    job_address = client['address']
+                    print(f"📍 Using client's address: {job_address}")
+                
+                if not job_eircode and client.get('eircode'):
+                    job_eircode = client['eircode']
+                    print(f"📮 Using client's eircode: {job_eircode}")
+                
+                if not job_property_type and client.get('property_type'):
+                    job_property_type = client['property_type']
+                    print(f"🏠 Using client's property type: {job_property_type}")
+            
+            # Create booking
+            booking_id = db.add_booking(
+                client_id=client_id,
+                calendar_event_id=calendar_event_id,
+                appointment_time=appointment_dt,
+                service_type=service_type,
+                phone_number=data.get('phone_number'),
+                email=data.get('email'),
+                address=job_address,
+                eircode=job_eircode,
+                property_type=job_property_type,
+                charge=data.get('charge')
+            )
+            
+            # Add initial note if provided
+            if data.get('notes'):
+                db.add_appointment_note(
+                    booking_id=booking_id,
+                    note=data['notes'],
+                    created_by="user"
+                )
+            
+            # Update client description
+            try:
+                from src.services.client_description_generator import update_client_description
+                update_client_description(client_id)
+            except Exception as e:
+                print(f"⚠️ Could not update client description: {e}")
+            
+            return jsonify({
+                "success": True,
+                "booking_id": booking_id,
+                "message": "Job created successfully"
+            }), 201
+            
+        except Exception as e:
+            print(f"❌ Error creating booking: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/bookings/<int:booking_id>", methods=["PUT"])

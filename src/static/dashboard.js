@@ -22,7 +22,11 @@ document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             currentJobFilter = this.dataset.filter;
-            filterJobs();
+            
+            // Preserve search term when changing filters
+            const searchInput = document.getElementById('jobSearchInput');
+            const searchTerm = searchInput ? searchInput.value : null;
+            filterJobs(searchTerm);
         });
     });
     
@@ -83,12 +87,30 @@ async function loadJobs() {
     }
 }
 
-function filterJobs() {
+function filterJobs(searchTerm = null) {
     let filteredJobs = allJobs;
     
     // Filter by status
     if (currentJobFilter !== 'all') {
         filteredJobs = filteredJobs.filter(job => job.status === currentJobFilter);
+    }
+    
+    // Filter by search term
+    if (searchTerm && searchTerm.trim() !== '') {
+        const term = searchTerm.toLowerCase().trim();
+        filteredJobs = filteredJobs.filter(job => {
+            const clientName = (job.client_name || '').toLowerCase();
+            const service = (job.service_type || '').toLowerCase();
+            const phone = (job.phone_number || '').toLowerCase();
+            const email = (job.email || '').toLowerCase();
+            const address = (job.address || '').toLowerCase();
+            
+            return clientName.includes(term) || 
+                   service.includes(term) || 
+                   phone.includes(term) || 
+                   email.includes(term) ||
+                   address.includes(term);
+        });
     }
     
     displayJobs(filteredJobs);
@@ -334,15 +356,19 @@ async function loadCustomers() {
     }
 }
 
+// Alias for consistency with addClient function
+const loadClients = loadCustomers;
+
 // Display customers table
-function displayCustomers() {
+function displayCustomers(filteredCustomers = null) {
     const container = document.getElementById('customersTable');
+    const customersToDisplay = filteredCustomers || allCustomers;
     
-    if (allCustomers.length === 0) {
+    if (customersToDisplay.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
                 <div class="empty-state-icon">👥</div>
-                <p>No customers yet</p>
+                <p>${filteredCustomers ? 'No customers match your search' : 'No customers yet'}</p>
             </div>
         `;
         return;
@@ -362,7 +388,7 @@ function displayCustomers() {
                 </tr>
             </thead>
             <tbody>
-                ${allCustomers.map(customer => `
+                ${customersToDisplay.map(customer => `
                     <tr>
                         <td><strong>${escapeHtml(customer.name)}</strong></td>
                         <td>${escapeHtml(customer.phone || 'N/A')}</td>
@@ -378,6 +404,26 @@ function displayCustomers() {
         </table>
         </div>
     `;
+}
+
+// Filter clients by search term
+function filterClients(searchTerm) {
+    if (!searchTerm || searchTerm.trim() === '') {
+        // Show all clients if search is empty
+        displayCustomers();
+        return;
+    }
+    
+    const term = searchTerm.toLowerCase().trim();
+    const filtered = allCustomers.filter(customer => {
+        const name = (customer.name || '').toLowerCase();
+        const phone = (customer.phone || '').toLowerCase();
+        const email = (customer.email || '').toLowerCase();
+        
+        return name.includes(term) || phone.includes(term) || email.includes(term);
+    });
+    
+    displayCustomers(filtered);
 }
 
 // Load Workers
@@ -1085,11 +1131,294 @@ function getStatusColor(status) {
 
 // Placeholder functions for future features
 function showAddClientModal() {
-    alert('Add client feature coming soon!');
+    document.getElementById('addClientModal').classList.add('active');
 }
 
 function showAddWorkerModal() {
-    alert('Add worker feature coming soon!');
+    document.getElementById('addWorkerModal').classList.add('active');
+}
+
+// Show Add Job Modal
+async function showAddJobModal() {
+    // Load customers into dropdown
+    try {
+        const response = await fetch('/api/clients');
+        const clients = await response.json();
+        
+        // Store all clients globally for filtering
+        window.allJobClients = clients;
+        
+        const select = document.getElementById('jobClient');
+        select.innerHTML = '<option value="" disabled selected>Select a customer...</option>';
+        select.size = 1; // Reset to normal dropdown
+        
+        clients.forEach(client => {
+            const option = document.createElement('option');
+            option.value = client.id;
+            option.textContent = `${client.name}${client.phone ? ' - ' + client.phone : ''}`;
+            option.dataset.name = client.name.toLowerCase();
+            option.dataset.phone = (client.phone || '').toLowerCase();
+            select.appendChild(option);
+        });
+        
+        // Clear search input
+        document.getElementById('jobClientSearch').value = '';
+        
+        // Set default date to tomorrow at 9 AM
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(9, 0, 0, 0);
+        
+        document.getElementById('jobDate').value = tomorrow.toISOString().split('T')[0];
+        document.getElementById('jobTime').value = '09:00';
+        
+        // Clear other fields
+        document.getElementById('jobService').value = '';
+        document.getElementById('jobAddress').value = '';
+        document.getElementById('jobEircode').value = '';
+        document.getElementById('jobPropertyType').value = '';
+        document.getElementById('jobCharge').value = '';
+        document.getElementById('jobNotes').value = '';
+        
+        document.getElementById('addJobModal').classList.add('active');
+    } catch (error) {
+        console.error('Error loading customers:', error);
+        alert('Error loading customer list');
+    }
+}
+
+// Filter job client dropdown based on search
+function filterJobClientDropdown(searchTerm) {
+    const select = document.getElementById('jobClient');
+    const options = select.querySelectorAll('option');
+    
+    if (!searchTerm || searchTerm.trim() === '') {
+        // Show all options and reset to normal dropdown
+        options.forEach(option => {
+            option.style.display = '';
+        });
+        select.value = '';
+        return;
+    }
+    
+    const term = searchTerm.toLowerCase().trim();
+    let visibleCount = 0;
+    let firstVisibleOption = null;
+    
+    options.forEach(option => {
+        if (option.value === '') {
+            option.style.display = 'none'; // Hide the placeholder
+            return;
+        }
+        
+        const name = option.dataset.name || '';
+        const phone = option.dataset.phone || '';
+        
+        if (name.includes(term) || phone.includes(term)) {
+            option.style.display = '';
+            visibleCount++;
+            if (!firstVisibleOption) {
+                firstVisibleOption = option;
+            }
+        } else {
+            option.style.display = 'none';
+        }
+    });
+    
+    // Auto-select if only one match
+    if (visibleCount === 1 && firstVisibleOption) {
+        select.value = firstVisibleOption.value;
+    } else if (visibleCount === 0) {
+        select.value = '';
+    }
+}
+
+// Set quick date for job scheduling
+function setQuickDate(type) {
+    const dateInput = document.getElementById('jobDate');
+    const timeInput = document.getElementById('jobTime');
+    const now = new Date();
+    
+    let targetDate = new Date();
+    let targetTime = '09:00';
+    
+    switch(type) {
+        case 'today':
+            // If it's past 9 AM, set to next available hour, otherwise 9 AM
+            if (now.getHours() >= 9) {
+                const nextHour = now.getHours() + 1;
+                targetTime = `${String(nextHour).padStart(2, '0')}:00`;
+            }
+            break;
+            
+        case 'tomorrow':
+            targetDate.setDate(targetDate.getDate() + 1);
+            targetTime = '09:00';
+            break;
+            
+        case 'nextWeek':
+            // Next Monday at 9 AM
+            const daysUntilMonday = (8 - targetDate.getDay()) % 7 || 7;
+            targetDate.setDate(targetDate.getDate() + daysUntilMonday);
+            targetTime = '09:00';
+            break;
+            
+        case 'custom':
+            // Just focus on the date input
+            dateInput.focus();
+            return;
+    }
+    
+    dateInput.value = targetDate.toISOString().split('T')[0];
+    timeInput.value = targetTime;
+}
+
+// Add new job
+async function addJob(event) {
+    event.preventDefault();
+    
+    // Get the submit button and add loading state
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    // Disable button and show loading state
+    submitBtn.disabled = true;
+    submitBtn.classList.add('loading');
+    submitBtn.textContent = '⏳ Creating Job...';
+    
+    // Combine date and time
+    const dateValue = document.getElementById('jobDate').value;
+    const timeValue = document.getElementById('jobTime').value;
+    const dateTimeString = `${dateValue}T${timeValue}:00`;
+    
+    const jobData = {
+        client_id: parseInt(document.getElementById('jobClient').value),
+        appointment_time: dateTimeString,
+        service_type: document.getElementById('jobService').value,
+        address: document.getElementById('jobAddress').value || null,
+        eircode: document.getElementById('jobEircode').value || null,
+        property_type: document.getElementById('jobPropertyType').value || null,
+        charge: parseFloat(document.getElementById('jobCharge').value) || null,
+        notes: document.getElementById('jobNotes').value || null
+    };
+    
+    try {
+        const response = await fetch('/api/bookings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(jobData)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            closeModal('addJobModal');
+            await loadJobs(); // Reload jobs list
+            alert('✅ Job created successfully!');
+        } else if (response.status === 409) {
+            // Time conflict error
+            alert('⚠️ ' + result.error);
+        } else {
+            alert('Error: ' + (result.error || 'Failed to create job'));
+        }
+    } catch (error) {
+        console.error('Error creating job:', error);
+        alert('Error creating job');
+    } finally {
+        // Re-enable button and restore original state
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('loading');
+        submitBtn.textContent = originalText;
+    }
+}
+
+// Add new client
+async function addClient(event) {
+    event.preventDefault();
+    
+    // Get the submit button and add loading state
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    // Disable button and show loading state
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Adding...';
+    
+    const clientData = {
+        name: document.getElementById('clientName').value,
+        phone: document.getElementById('clientPhone').value || null,
+        email: document.getElementById('clientEmail').value || null
+    };
+    
+    try {
+        const response = await fetch('/api/clients', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(clientData)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            closeModal('addClientModal');
+            await loadClients(); // Reload customers list
+            alert('✅ Customer added successfully!');
+        } else {
+            alert('Error: ' + (result.error || 'Failed to add customer'));
+        }
+    } catch (error) {
+        console.error('Error adding customer:', error);
+        alert('Error adding customer');
+    } finally {
+        // Re-enable button and restore original state
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
+}
+
+// Add new worker
+async function addWorker(event) {
+    event.preventDefault();
+    
+    // Get the submit button and add loading state
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    // Disable button and show loading state
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Adding...';
+    
+    const workerData = {
+        name: document.getElementById('workerName').value,
+        phone: document.getElementById('workerPhone').value || null,
+        email: document.getElementById('workerEmail').value || null,
+        trade_specialty: document.getElementById('workerTrade').value || null
+    };
+    
+    try {
+        const response = await fetch('/api/workers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(workerData)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            closeModal('addWorkerModal');
+            await loadWorkers(); // Reload workers list
+            alert('✅ Worker added successfully!');
+        } else {
+            alert('Error: ' + (result.error || 'Failed to add worker'));
+        }
+    } catch (error) {
+        console.error('Error adding worker:', error);
+        alert('Error adding worker');
+    } finally {
+        // Re-enable button and restore original state
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+    }
 }
 
 // Show worker detail modal

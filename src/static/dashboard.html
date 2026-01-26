@@ -864,6 +864,14 @@
             <div class="card">
                 <div class="card-header">
                     <h2 class="card-title">Jobs</h2>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="jobSearchInput" placeholder="🔍 Search jobs..." 
+                               style="padding: 0.5rem 1rem; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.875rem; width: 250px;"
+                               oninput="filterJobs(this.value)">
+                        <button class="btn btn-primary btn-sm" onclick="showAddJobModal()">
+                            + Add Job
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="filter-bar">
@@ -889,6 +897,9 @@
                 <div class="card-header">
                     <h2 class="card-title">Customers</h2>
                     <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="clientSearchInput" placeholder="🔍 Search customers..." 
+                               style="padding: 0.5rem 1rem; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 0.875rem; width: 250px;"
+                               oninput="filterClients(this.value)">
                         <button class="btn btn-primary btn-sm" onclick="showAddClientModal()">
                             + Add Customer
                         </button>
@@ -1048,6 +1059,82 @@
                 </div>
                 <div class="form-group">
                     <button type="submit" class="btn btn-primary" style="width: 100%;">Add Worker</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Job Modal -->
+    <div class="modal" id="addJobModal">
+        <div class="modal-content" style="max-width: 650px;">
+            <div class="modal-header">
+                <h2 class="modal-title">Add New Job</h2>
+                <button class="close-btn" onclick="closeModal('addJobModal')">&times;</button>
+            </div>
+            <form onsubmit="addJob(event)">
+                <div class="form-group">
+                    <label class="form-label">Customer *</label>
+                    <input type="text" class="form-input" id="jobClientSearch" placeholder="🔍 Search customer by name or phone..." 
+                           style="margin-bottom: 0.5rem;" oninput="filterJobClientDropdown(this.value)">
+                    <select class="form-input" id="jobClient" required>
+                        <option value="" disabled selected>Select a customer...</option>
+                    </select>
+                    <small style="display: block; margin-top: 0.25rem; color: #64748b;">
+                        Or <a href="#" onclick="event.preventDefault(); closeModal('addJobModal'); showAddClientModal(); return false;" style="color: #2563eb; text-decoration: underline;">add new customer</a>
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Date & Time *</label>
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="setQuickDate('today')">Today</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="setQuickDate('tomorrow')">Tomorrow</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="setQuickDate('nextWeek')">Next Week</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="setQuickDate('custom')">Custom</button>
+                    </div>
+                    <div id="customDateTimeSection">
+                        <input type="date" class="form-input" id="jobDate" required style="margin-bottom: 0.5rem;">
+                        <select class="form-input" id="jobTime" required>
+                            <option value="">Select time...</option>
+                            <option value="08:00">8:00 AM</option>
+                            <option value="09:00">9:00 AM</option>
+                            <option value="10:00">10:00 AM</option>
+                            <option value="11:00">11:00 AM</option>
+                            <option value="12:00">12:00 PM</option>
+                            <option value="13:00">1:00 PM</option>
+                            <option value="14:00">2:00 PM</option>
+                            <option value="15:00">3:00 PM</option>
+                            <option value="16:00">4:00 PM</option>
+                            <option value="17:00">5:00 PM</option>
+                            <option value="18:00">6:00 PM</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Service Type *</label>
+                    <input type="text" class="form-input" id="jobService" placeholder="e.g., Plumbing repair, Electrical work" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Job Address</label>
+                    <textarea class="form-input" id="jobAddress" rows="2" placeholder="If different from customer's address"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Eircode</label>
+                    <input type="text" class="form-input" id="jobEircode">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Property Type</label>
+                    <input type="text" class="form-input" id="jobPropertyType" placeholder="e.g., House, Apartment, Commercial">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Estimated Charge (€)</label>
+                    <input type="number" class="form-input" id="jobCharge" step="0.01" min="0" placeholder="0.00">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-input" id="jobNotes" rows="3" placeholder="Additional details about the job"></textarea>
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Create Job</button>
                 </div>
             </form>
         </div>
