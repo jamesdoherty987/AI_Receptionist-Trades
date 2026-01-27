@@ -520,6 +520,15 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                     last_address = booking['address']
                                     break
                         
+                        # Build the message with all available info
+                        msg_parts = [f"Found returning customer: {client['name']}"]
+                        if client.get('phone'):
+                            msg_parts.append(f"phone {client.get('phone')}")
+                        if client.get('email'):
+                            msg_parts.append(f"email {client.get('email')}")
+                        if last_address:
+                            msg_parts.append(f"last address {last_address}")
+                        
                         return {
                             "success": True,
                             "customer_exists": True,
@@ -530,7 +539,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 "email": client.get('email'),
                                 "last_address": last_address
                             },
-                            "message": f"Found returning customer: {client['name']}, phone {client.get('phone')}, email {client.get('email')}" + (f", last job was at {last_address}" if last_address else "")
+                            "message": ", ".join(msg_parts)
                         }
                     elif len(clients) > 1:
                         return {
@@ -562,6 +571,15 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                             last_address = booking['address']
                                             break
                                 
+                                # Build the message with all available info
+                                msg_parts = [f"Found returning customer: {potential_client['name']} (I heard {customer_name}, but found a close match)"]
+                                if potential_client.get('phone'):
+                                    msg_parts.append(f"phone {potential_client.get('phone')}")
+                                if potential_client.get('email'):
+                                    msg_parts.append(f"email {potential_client.get('email')}")
+                                if last_address:
+                                    msg_parts.append(f"last address {last_address}")
+                                
                                 return {
                                     "success": True,
                                     "customer_exists": True,
@@ -575,7 +593,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                         "email": potential_client.get('email'),
                                         "last_address": last_address
                                     },
-                                    "message": f"Found returning customer: {potential_client['name']} (I heard {customer_name}, but found a close match), phone {potential_client.get('phone')}, email {potential_client.get('email')}" + (f", last job at {last_address}" if last_address else "")
+                                    "message": ", ".join(msg_parts)
                                 }
                         
                         return {

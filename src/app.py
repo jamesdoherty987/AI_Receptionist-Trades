@@ -606,23 +606,37 @@ def bookings_api():
             if not client:
                 client = db.get_client(client_id)
             
-            # Use client's address/eircode if not provided in job data
+            # Use client's most recent booking address if not provided in job data
             job_address = data.get('address')
             job_eircode = data.get('eircode')
             job_property_type = data.get('property_type')
             
-            if client:
-                if not job_address and client.get('address'):
-                    job_address = client['address']
-                    print(f"📍 Using client's address: {job_address}")
+            # If address not provided, try to get from client's previous bookings
+            if not job_address or not job_eircode or not job_property_type:
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT address, eircode, property_type
+                    FROM bookings
+                    WHERE client_id = ? AND (address IS NOT NULL OR eircode IS NOT NULL OR property_type IS NOT NULL)
+                    ORDER BY appointment_time DESC
+                    LIMIT 1
+                """, (client_id,))
+                previous_booking = cursor.fetchone()
+                conn.close()
                 
-                if not job_eircode and client.get('eircode'):
-                    job_eircode = client['eircode']
-                    print(f"📮 Using client's eircode: {job_eircode}")
-                
-                if not job_property_type and client.get('property_type'):
-                    job_property_type = client['property_type']
-                    print(f"🏠 Using client's property type: {job_property_type}")
+                if previous_booking:
+                    if not job_address and previous_booking[0]:
+                        job_address = previous_booking[0]
+                        print(f"📍 Using address from previous booking: {job_address}")
+                    
+                    if not job_eircode and previous_booking[1]:
+                        job_eircode = previous_booking[1]
+                        print(f"📮 Using eircode from previous booking: {job_eircode}")
+                    
+                    if not job_property_type and previous_booking[2]:
+                        job_property_type = previous_booking[2]
+                        print(f"🏠 Using property type from previous booking: {job_property_type}")
             
             # Create booking
             booking_id = db.add_booking(

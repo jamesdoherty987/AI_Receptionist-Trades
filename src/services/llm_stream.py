@@ -1997,8 +1997,17 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     # Enhanced prompt for tool usage
     tool_usage_guidance = """
 
+CRITICAL RESPONSE RULES:
+- NEVER say "let me check" or "one moment" WITHOUT immediately providing results
+- When tools execute, results come back INSTANTLY - no waiting needed
+- Provide COMPLETE responses, not partial ones
+- If you check availability, IMMEDIATELY share what times are available
+- NEVER leave the customer hanging with "checking..." messages
+
 TOOL USAGE INSTRUCTIONS:
 1. check_availability: Use IMMEDIATELY when customer asks about available times/slots
+   - Tool returns results INSTANTLY (no delay)
+   - After calling this tool, you MUST tell customer what times are available
 2. lookup_customer: Use to verify customer identity before appointments
 3. cancel_appointment: Use when customer confirms they want to cancel. REQUIRES:
    - Appointment date/time (ask customer to confirm)
@@ -2014,11 +2023,12 @@ TOOL USAGE INSTRUCTIONS:
 BOOKING: Continue conversation to collect details (system handles booking through conversation flow)
 
 When customer wants to cancel:
-1. Ask for date/time of appointment to cancel
-2. Find the appointment and tell them the name on it
-3. Ask "Is this your appointment?" 
-4. When they confirm, ask "Just to confirm, you want to cancel this appointment?"
-5. When they confirm again, call cancel_appointment tool
+1. Ask for date/time of appointment to cancel: "What day and time was the appointment?"
+2. Call cancel_appointment with ONLY the datetime (DO NOT ask for name first)
+3. System returns the customer name found at that time
+4. Tell customer: "I found the appointment on [date/time] - that's for [NAME]. Is that the one you want to cancel?"
+5. When they confirm, call cancel_appointment again with both datetime AND name to complete
+6. Confirm completion: "All done! Your appointment on [date/time] has been cancelled."
 
 When customer wants to reschedule:
 1. Ask for current appointment date/time
@@ -2035,7 +2045,7 @@ When customer wants to reschedule:
             model=config.CHAT_MODEL,
             stream=True,
             temperature=0,  # Zero for maximum speed and consistency
-            max_tokens=150,  # Reduced for faster generation in phone calls
+            max_tokens=200,  # Sufficient for complete responses without unnecessary verbosity
             presence_penalty=0.3,
             frequency_penalty=0.3,
             messages=[{"role": "system", "content": system_prompt_with_time}, *messages],
@@ -2189,11 +2199,17 @@ When customer wants to reschedule:
         print("   🔄 Getting LLM response with tool results...")
         print(f"   📊 Tool results being sent to LLM: {[{**tr, 'content': tr['content'][:100] + '...' if len(tr['content']) > 100 else tr['content']} for tr in tool_results]}")
         try:
+            # Add a system message to ensure LLM provides a complete response
+            messages.append({
+                "role": "system",
+                "content": "[SYSTEM: You just executed a tool. Based on the tool results, provide a COMPLETE helpful response to the customer. DO NOT just say 'let me check' or leave them hanging. Tell them what you found and what the next steps are. Be specific and actionable. If slots are available, list them. If booking was successful, confirm it. Always provide a full response, not a partial one.]"
+            })
+            
             follow_up_stream = client.chat.completions.create(
                 model=config.CHAT_MODEL,
                 stream=True,
                 temperature=0.3,  # Slightly higher for more natural responses
-                max_tokens=150,  # Increased for more complete responses
+                max_tokens=250,  # Increased to ensure complete responses
                 presence_penalty=0.3,
                 frequency_penalty=0.3,
                 messages=[{"role": "system", "content": system_prompt_with_time}, *messages],
@@ -2204,7 +2220,18 @@ When customer wants to reschedule:
             follow_up_response = ""
             follow_up_token_count = 0
             print(f"   ⏳ Starting follow-up stream...")
+            
+            # Add timeout protection to prevent infinite hangs
+            import time
+            start_time = time.time()
+            timeout_seconds = 10
+            
             for part in follow_up_stream:
+                # Check timeout
+                if time.time() - start_time > timeout_seconds:
+                    print(f"⚠️ WARNING: Follow-up stream timed out after {timeout_seconds}s")
+                    break
+                    
                 delta = part.choices[0].delta.content
                 if delta:
                     follow_up_token_count += 1
@@ -2215,7 +2242,7 @@ When customer wants to reschedule:
                         print(f"   🗣️ Follow-up first token: '{cleaned_delta[:50]}...'")
                     yield cleaned_delta  # Send cleaned to TTS
             
-            print(f"   📊 Follow-up stream complete: {follow_up_token_count} tokens generated")
+            print(f"   📊 Follow-up stream complete: {follow_up_token_count} tokens generated in {time.time() - start_time:.2f}s")
             
             if follow_up_token_count == 0:
                 print("⚠️ WARNING: Follow-up LLM call generated NO tokens!")
@@ -2225,9 +2252,34 @@ When customer wants to reschedule:
                     content = str(msg.get('content', ''))[:100]
                     print(f"      [{i}] {role}: {content}...")
                 
-                # Yield a fallback response so user isn't left with silence
-                fallback = "I've checked that for you. What would work best for you?"
-                print(f"   ⚠️ Using fallback response: '{fallback}'")
+                # Create a context-aware fallback based on the tool that was called
+                tool_name = tool_calls[0]["function"]["name"] if tool_calls else None
+                
+                if tool_name == "check_availability":
+                    # Parse the tool result to see what slots were found
+                    try:
+                        result_content = json.loads(tool_results[0]["content"])
+                        if result_content.get("success") and result_content.get("available_times"):
+                            times = result_content["available_times"]
+                            if len(times) > 0:
+                                times_str = ", ".join(times[:3])  # Show first 3
+                                fallback = f"I have {times_str} available. Which works best for you?"
+                            else:
+                                fallback = "Unfortunately that time is fully booked. Would you like to try a different day?"
+                        else:
+                            fallback = result_content.get("message", "I've checked that for you. What time would work best?")
+                    except:
+                        fallback = "I've checked that for you. What time would work best?"
+                elif tool_name == "book_appointment":
+                    fallback = "Your appointment has been booked. You'll receive a confirmation shortly."
+                elif tool_name == "cancel_appointment":
+                    fallback = "Your appointment has been cancelled. Is there anything else I can help you with?"
+                elif tool_name == "reschedule_appointment":
+                    fallback = "Your appointment has been rescheduled. You'll receive an updated confirmation."
+                else:
+                    fallback = "I've checked that for you. What would work best for you?"
+                
+                print(f"   ⚠️ Using context-aware fallback response: '{fallback}'")
                 yield fallback
                 follow_up_response = fallback
             else:

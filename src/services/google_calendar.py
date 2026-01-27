@@ -82,8 +82,17 @@ class GoogleCalendarService:
         # If no valid credentials, let user log in
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
+                try:
+                    creds.refresh(Request())
+                except Exception as e:
+                    # Token is invalid/revoked - delete it and re-authenticate
+                    print(f"⚠️ Token refresh failed: {e}")
+                    print("🔄 Deleting expired token and re-authenticating...")
+                    if os.path.exists(self.token_path):
+                        os.remove(self.token_path)
+                    creds = None
+            
+            if not creds:
                 if not os.path.exists(self.credentials_path):
                     raise FileNotFoundError(
                         f"Credentials file not found: {self.credentials_path}\n"
