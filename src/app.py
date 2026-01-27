@@ -172,7 +172,7 @@ from flask import redirect
 @app.route("/")
 def dashboard():
     """Serve the dashboard"""
-    return send_from_directory('static', 'dashboard.html')
+    return send_from_directory('static', 'modern_dashboard.html')
 
 
 # Redirect /dashboard to /
@@ -184,7 +184,7 @@ def dashboard_redirect():
 @app.route("/settings")
 def settings_page():
     """Serve the business settings page"""
-    return send_from_directory('static', 'settings.html')
+    return send_from_directory('static', 'modern_settings.html')
 
 
 @app.route("/settings/menu")

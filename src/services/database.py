@@ -400,6 +400,7 @@ class Database:
     def get_all_clients(self) -> List[Dict]:
         """Get all clients"""
         conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT * FROM clients ORDER BY created_at DESC")
@@ -407,10 +408,17 @@ class Database:
         conn.close()
         
         return [{
-            'id': row[0], 'name': row[1], 'phone': row[2], 'email': row[3],
-            'first_visit': row[4], 'last_visit': row[5], 
-            'total_appointments': row[6], 'created_at': row[7], 'updated_at': row[8],
-            'date_of_birth': row[9], 'description': row[10]
+            'id': row['id'], 
+            'name': row['name'], 
+            'phone': row['phone'], 
+            'email': row['email'],
+            'first_visit': row['first_visit'], 
+            'last_visit': row['last_visit'], 
+            'total_appointments': row['total_appointments'], 
+            'created_at': row['created_at'], 
+            'updated_at': row['updated_at'],
+            'date_of_birth': row['date_of_birth'] if 'date_of_birth' in row.keys() else None, 
+            'description': row['description'] if 'description' in row.keys() else None
         } for row in rows]
     
     def update_client(self, client_id: int, **kwargs):

@@ -136,7 +136,7 @@ function displayJobs(jobs) {
                 <div>
                     <div class="job-client-name">${escapeHtml(job.client_name || 'Unknown')}</div>
                     <div class="job-date">
-                        📅 ${formatDateTime(job.appointment_time)}
+                        <i class="fas fa-calendar-alt"></i> ${formatDateTime(job.appointment_time)}
                     </div>
                 </div>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -165,14 +165,14 @@ function displayJobs(jobs) {
                     <span class="job-detail-label">Charge:</span> €${(job.charge || 0).toFixed(2)}
                 </div>
                 <div class="job-detail-item" id="workers-display-${job.id}">
-                    <span class="job-detail-label">👷 Workers:</span> <span class="worker-loading">Loading...</span>
+                    <span class="job-detail-label"><i class="fas fa-hard-hat"></i> Workers:</span> <span class="worker-loading">Loading...</span>
                 </div>
             </div>
             <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); showAssignWorkerModal(${job.id})">👷 Assign Worker</button>
-                <button class="btn btn-sm btn-secondary job-action-btn" data-booking-id="${job.id}" data-status="in-progress" onclick="event.stopPropagation()">▶ Start Job</button>
-                <button class="btn btn-sm btn-success job-action-btn" data-booking-id="${job.id}" data-status="completed" onclick="event.stopPropagation()">✓ Complete</button>
-                <button class="btn btn-sm btn-danger job-action-btn" data-booking-id="${job.id}" data-status="cancelled" onclick="event.stopPropagation()">✕ Cancel</button>
+                <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); showAssignWorkerModal(${job.id})"><i class="fas fa-user-plus"></i> Assign Worker</button>
+                <button class="btn btn-sm btn-secondary job-action-btn" data-booking-id="${job.id}" data-status="in-progress"><i class="fas fa-play"></i> Start Job</button>
+                <button class="btn btn-sm btn-success job-action-btn" data-booking-id="${job.id}" data-status="completed"><i class="fas fa-check"></i> Complete</button>
+                <button class="btn btn-sm btn-danger job-action-btn" data-booking-id="${job.id}" data-status="cancelled"><i class="fas fa-times"></i> Cancel</button>
                 ${(job.address && job.address !== 'No address provided') ? `
                 <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); openDirections('${escapeHtml(job.address)}${job.eircode ? ', ' + escapeHtml(job.eircode) : ''}')">🗺️ Directions</button>
                 ` : ''}
@@ -196,14 +196,16 @@ function setupJobActionButtons() {
     const newJobsContent = jobsContent.cloneNode(true);
     jobsContent.parentNode.replaceChild(newJobsContent, jobsContent);
     
-    // Add new listener
+    // Add new listener with capture phase to stop propagation before inline onclick
     document.getElementById('jobsContent').addEventListener('click', function(e) {
         if (e.target.classList.contains('job-action-btn')) {
+            e.stopPropagation(); // Prevent card click
+            e.preventDefault(); // Prevent any default action
             const bookingId = parseInt(e.target.dataset.bookingId);
             const status = e.target.dataset.status;
             changeJobStatus(bookingId, status, e.target);
         }
-    });
+    }, true); // Use capture phase
 }
 
 // Load workers assigned to a job
@@ -216,10 +218,10 @@ async function loadJobWorkers(jobId) {
         if (!displayElement) return;
         
         if (workers.length === 0) {
-            displayElement.innerHTML = '<span class="job-detail-label">👷 Workers:</span> <span style="color: #94a3b8;">None assigned</span>';
+            displayElement.innerHTML = '<span class="job-detail-label"><i class="fas fa-hard-hat"></i> Workers:</span> <span style="color: #94a3b8;">None assigned</span>';
         } else {
             displayElement.innerHTML = `
-                <span class="job-detail-label">👷 Workers:</span>
+                <span class="job-detail-label"><i class="fas fa-hard-hat"></i> Workers:</span>
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem;">
                     ${workers.map(w => `
                         <span class="worker-badge">
@@ -236,7 +238,7 @@ async function loadJobWorkers(jobId) {
         console.error('Error loading job workers:', error);
         const displayElement = document.getElementById(`workers-display-${jobId}`);
         if (displayElement) {
-            displayElement.innerHTML = '<span class="job-detail-label">👷 Workers:</span> <span style="color: #ef4444;">Error loading</span>';
+            displayElement.innerHTML = '<span class="job-detail-label"><i class="fas fa-hard-hat"></i> Workers:</span> <span style="color: #ef4444;">Error loading</span>';
         }
     }
 }
@@ -518,7 +520,7 @@ function displayCalendar(bookings) {
     if (!bookings || bookings.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <div class="empty-state-icon">📅</div>
+                <div class="empty-state-icon"><i class="fas fa-calendar-alt"></i></div>
                 <p>No appointments scheduled</p>
             </div>
         `;
@@ -1041,8 +1043,7 @@ async function sendInvoice(bookingId) {
 async function changeJobStatus(bookingId, newStatus, buttonElement) {
     if (!buttonElement) return;
     
-    // Add loading state
-    buttonElement.classList.add('loading');
+    // Disable button during request
     buttonElement.disabled = true;
     
     try {
@@ -1053,21 +1054,14 @@ async function changeJobStatus(bookingId, newStatus, buttonElement) {
         });
         
         if (response.ok) {
-            // Show success feedback
-            buttonElement.style.background = '#10b981';
-            buttonElement.textContent = '✓ Done';
-            
-            setTimeout(() => {
-                loadJobs(); // Reload jobs
-            }, 400);
+            // Reload jobs immediately
+            loadJobs();
         } else {
-            buttonElement.classList.remove('loading');
             buttonElement.disabled = false;
             alert('Error updating job status');
         }
     } catch (error) {
         console.error('Error updating job status:', error);
-        buttonElement.classList.remove('loading');
         buttonElement.disabled = false;
         alert('Error updating job status');
     }
@@ -1143,26 +1137,25 @@ async function showAddJobModal() {
     // Load customers into dropdown
     try {
         const response = await fetch('/api/clients');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const clients = await response.json();
+        
+        if (!Array.isArray(clients)) {
+            console.error('Invalid response format:', clients);
+            throw new Error('Invalid response format - expected array');
+        }
         
         // Store all clients globally for filtering
         window.allJobClients = clients;
         
-        const select = document.getElementById('jobClient');
-        select.innerHTML = '<option value="" disabled selected>Select a customer...</option>';
-        select.size = 1; // Reset to normal dropdown
-        
-        clients.forEach(client => {
-            const option = document.createElement('option');
-            option.value = client.id;
-            option.textContent = `${client.name}${client.phone ? ' - ' + client.phone : ''}`;
-            option.dataset.name = client.name.toLowerCase();
-            option.dataset.phone = (client.phone || '').toLowerCase();
-            select.appendChild(option);
-        });
-        
-        // Clear search input
+        // Clear search and hidden input
         document.getElementById('jobClientSearch').value = '';
+        document.getElementById('jobClient').value = '';
+        document.getElementById('customerDropdown').style.display = 'none';
         
         // Set default date to tomorrow at 9 AM
         const tomorrow = new Date();
@@ -1183,9 +1176,163 @@ async function showAddJobModal() {
         document.getElementById('addJobModal').classList.add('active');
     } catch (error) {
         console.error('Error loading customers:', error);
-        alert('Error loading customer list');
+        alert(`Error loading customer list: ${error.message}`);
     }
 }
+
+// Filter and display customer results
+function filterAndShowCustomers(searchTerm) {
+    const dropdown = document.getElementById('customerDropdown');
+    const listContainer = document.getElementById('customerList');
+    
+    if (!window.allJobClients || window.allJobClients.length === 0) {
+        dropdown.style.display = 'none';
+        return;
+    }
+    
+    const term = searchTerm.toLowerCase().trim();
+    
+    // Filter clients
+    let filtered = window.allJobClients;
+    if (term) {
+        filtered = window.allJobClients.filter(client => {
+            const name = (client.name || '').toLowerCase();
+            const phone = (client.phone || '').toLowerCase();
+            return name.includes(term) || phone.includes(term);
+        });
+    }
+    
+    // Show all if no search term, limit to 50 for performance
+    if (!term) {
+        filtered = filtered.slice(0, 50);
+    }
+    
+    if (filtered.length === 0) {
+        listContainer.innerHTML = '<div style="padding: 1rem; color: var(--text-secondary); text-align: center;">No customers found</div>';
+        dropdown.style.display = 'block';
+        return;
+    }
+    
+    // Build list
+    listContainer.innerHTML = filtered.map(client => `
+        <div class="customer-item" 
+             onclick="selectCustomer(${client.id}, '${client.name.replace(/'/g, "\\'")}', '${(client.phone || '').replace(/'/g, "\\'")}')">
+            <div style="font-weight: 500; color: var(--text-primary);">${client.name}</div>
+            ${client.phone ? `<div style="font-size: 0.8rem; color: var(--text-secondary);">${client.phone}</div>` : ''}
+        </div>
+    `).join('');
+    
+    dropdown.style.display = 'block';
+}
+
+// Select a customer from the list
+function selectCustomer(id, name, phone) {
+    document.getElementById('jobClient').value = id;
+    document.getElementById('jobClientSearch').value = `${name}${phone ? ' - ' + phone : ''}`;
+    document.getElementById('customerDropdown').style.display = 'none';
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    const searchInput = document.getElementById('jobClientSearch');
+    const dropdown = document.getElementById('customerDropdown');
+    
+    if (searchInput && dropdown && 
+        !searchInput.contains(e.target) && 
+        !dropdown.contains(e.target)) {
+        dropdown.style.display = 'none';
+    }
+});
+
+// Handle client selection from dropdown
+function handleClientSelection(select) {
+    if (select.value) {
+        select.size = 1; // Collapse after selection
+    }
+}
+
+// Expand dropdown on focus
+function expandClientDropdown(select) {
+    const visibleOptions = Array.from(select.options).filter(opt => opt.style.display !== 'none' && opt.value !== '');
+    if (visibleOptions.length > 0) {
+        select.size = Math.min(visibleOptions.length, 8);
+    }
+}
+
+// Collapse dropdown on blur
+function collapseClientDropdown(select) {
+    setTimeout(() => {
+        select.size = 1;
+    }, 200);
+}
+
+// Enable keyboard search in select dropdown
+document.addEventListener('DOMContentLoaded', () => {
+    let searchBuffer = '';
+    let searchTimeout;
+    
+    document.addEventListener('keydown', (e) => {
+        const select = document.getElementById('jobClient');
+        if (!select || document.activeElement !== select) return;
+        
+        // Only handle printable characters
+        if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            e.preventDefault();
+            searchBuffer += e.key.toLowerCase();
+            
+            // Filter options
+            const options = select.querySelectorAll('option');
+            let visibleCount = 0;
+            let firstMatch = null;
+            
+            options.forEach(option => {
+                if (option.value === '') {
+                    option.style.display = 'none';
+                    return;
+                }
+                
+                const name = option.dataset.name || '';
+                const phone = option.dataset.phone || '';
+                
+                if (name.includes(searchBuffer) || phone.includes(searchBuffer)) {
+                    option.style.display = '';
+                    visibleCount++;
+                    if (!firstMatch) firstMatch = option;
+                } else {
+                    option.style.display = 'none';
+                }
+            });
+            
+            // Adjust size
+            if (visibleCount > 0) {
+                select.size = Math.min(visibleCount, 8);
+                if (visibleCount === 1 && firstMatch) {
+                    select.value = firstMatch.value;
+                    select.size = 1;
+                }
+            }
+            
+            // Clear buffer after delay
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                searchBuffer = '';
+            }, 1000);
+        } else if (e.key === 'Escape' || e.key === 'Backspace') {
+            e.preventDefault();
+            searchBuffer = '';
+            // Reset to show all
+            const options = select.querySelectorAll('option');
+            options.forEach(option => {
+                if (option.value === '') {
+                    option.style.display = 'none';
+                } else {
+                    option.style.display = '';
+                }
+            });
+            select.size = Math.min(options.length - 1, 8);
+        }
+    });
+});
 
 // Filter job client dropdown based on search
 function filterJobClientDropdown(searchTerm) {
@@ -1198,6 +1345,7 @@ function filterJobClientDropdown(searchTerm) {
             option.style.display = '';
         });
         select.value = '';
+        select.size = 1; // Normal dropdown
         return;
     }
     
@@ -1225,9 +1373,17 @@ function filterJobClientDropdown(searchTerm) {
         }
     });
     
+    // Adjust dropdown size based on results
+    if (visibleCount > 0) {
+        select.size = Math.min(visibleCount, 8); // Show up to 8 results
+    } else {
+        select.size = 1;
+    }
+    
     // Auto-select if only one match
     if (visibleCount === 1 && firstVisibleOption) {
         select.value = firstVisibleOption.value;
+        select.size = 1; // Collapse after selection
     } else if (visibleCount === 0) {
         select.value = '';
     }
@@ -1469,7 +1625,7 @@ async function showWorkerDetail(workerId) {
             </div>
             
             <div style="margin-top: 2rem;">
-                <h3>📋 Active Jobs (${activeJobs.length})</h3>
+                <h3><i class="fas fa-briefcase"></i> Active Jobs (${activeJobs.length})</h3>
                 ${activeJobs.length > 0 ? `
                     <div style="margin-top: 1rem;">
                         ${activeJobs.map(job => `
@@ -1478,7 +1634,7 @@ async function showWorkerDetail(workerId) {
                                     <div>
                                         <strong>${escapeHtml(job.client_name || 'Unknown')}</strong>
                                         <div style="color: #64748b; font-size: 0.875rem;">
-                                            📅 ${formatDateTime(job.appointment_time)}
+                                            <i class="fas fa-calendar-alt"></i> ${formatDateTime(job.appointment_time)}
                                         </div>
                                         <div style="color: #64748b; font-size: 0.875rem;">
                                             ${escapeHtml(job.service_type || 'N/A')}
