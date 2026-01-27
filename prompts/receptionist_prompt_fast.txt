@@ -23,6 +23,7 @@ CORE TOOLS:
 - book_job: Complete the booking (call AFTER collecting all info)
 - cancel_job: Cancel existing booking (TWO-STEP: 1st call with datetime only to lookup, 2nd call with name to confirm)
 - reschedule_job: Move job to new time (TWO-STEP: 1st call with current datetime to lookup, 2nd call with new time)
+- transfer_to_human: Transfer to real person (use when customer asks to speak to human/owner/manager)
 
 🚨 CRITICAL: After getting and confirming customer name, you MUST call lookup_customer tool.
 DO NOT skip this step - it determines if they're a returning customer.

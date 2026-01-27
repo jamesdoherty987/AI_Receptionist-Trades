@@ -58,6 +58,7 @@ async def media_handler(ws):
 
     conversation = []
     stream_sid = None
+    call_sid = None  # Store call SID for potential transfer
     caller_phone = None  # Store caller's phone number
 
     # --- TTS / turn state ---
@@ -114,7 +115,7 @@ async def media_handler(ws):
         nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at
 
         async def run():
-            nonlocal speaking, tts_started_at, tts_ended_at
+            nonlocal speaking, tts_started_at, tts_ended_at, call_sid
             speaking = True
             interrupt = False
             tts_started_at = asyncio.get_event_loop().time()
@@ -122,9 +123,22 @@ async def media_handler(ws):
 
             try:
                 token_count = 0
+                transfer_number = None
+                
                 async def simple_stream():
-                    nonlocal token_count, speaking
+                    nonlocal token_count, speaking, transfer_number
                     async for token in text_stream:
+                        # Check for transfer marker
+                        if token.startswith("<<<TRANSFER:"):
+                            # Extract phone number from marker
+                            transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
+                            print(f"📞 TRANSFER MARKER DETECTED: {transfer_number}")
+                            continue  # Don't send this to TTS
+                        
+                        # Skip other control markers
+                        if token.startswith("<<<") and token.endswith(">>>"):
+                            continue
+                        
                         token_count += 1
                         yield token
                         # After first token is sent, allow listening immediately
@@ -136,6 +150,53 @@ async def media_handler(ws):
                     stream_tts(simple_stream(), ws, stream_sid, lambda: interrupt),
                     timeout=20.0  # Reduced timeout for faster responses
                 )
+                
+                # After TTS completes, check if transfer was requested
+                if transfer_number:
+                    print(f"📞 INITIATING CALL TRANSFER TO: {transfer_number}")
+                    # Use Twilio REST API to redirect/transfer the call
+                    try:
+                        # Import Twilio client
+                        from twilio.rest import Client
+                        import os
+                        
+                        account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+                        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+                        
+                        if account_sid and auth_token and call_sid:
+                            client = Client(account_sid, auth_token)
+                            
+                            # Update the call to redirect to a new TwiML that dials the transfer number
+                            # We'll use the existing /twilio/transfer endpoint
+                            from src.utils.config import config
+                            from urllib.parse import quote
+                            
+                            # URL-encode the phone number to handle special characters
+                            encoded_number = quote(transfer_number)
+                            transfer_url = f"{config.PUBLIC_URL}/twilio/transfer?number={encoded_number}"
+                            
+                            print(f"📞 Updating call {call_sid} to transfer URL: {transfer_url}")
+                            
+                            call = client.calls(call_sid).update(
+                                url=transfer_url,
+                                method='POST'
+                            )
+                            
+                            print(f"✅ Call transfer initiated successfully to {transfer_number}")
+                        else:
+                            print("⚠️ Missing Twilio credentials or call SID - cannot complete transfer")
+                            print(f"   Account SID: {'set' if account_sid else 'missing'}")
+                            print(f"   Auth Token: {'set' if auth_token else 'missing'}")
+                            print(f"   Call SID: {call_sid if call_sid else 'missing'}")
+                            # NOTE: If transfer fails, the call continues normally with AI.
+                            # The user already heard "Transferring you now" but call stays with AI.
+                            # This is logged for debugging. Consider adding fallback TTS message.
+                        
+                    except Exception as transfer_error:
+                        print(f"❌ Transfer error: {transfer_error}")
+                        import traceback
+                        traceback.print_exc()
+                
             except asyncio.TimeoutError:
                 print("⏱️ TTS timeout -> forcing end")
             except asyncio.CancelledError:

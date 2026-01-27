@@ -111,6 +111,33 @@ def dial_status():
     return Response(str(response), mimetype="text/xml")
 
 
+@app.route("/twilio/transfer", methods=["POST"])
+def transfer_call():
+    """Transfer an active call to a human (fallback number)"""
+    transfer_number = request.args.get('number')
+    
+    if not transfer_number:
+        print("⚠️ Transfer endpoint called without number parameter")
+        response = VoiceResponse()
+        response.say("Sorry, transfer failed. No number provided.")
+        return Response(str(response), mimetype="text/xml")
+    
+    print("=" * 60)
+    print("📞 TRANSFER ENDPOINT CALLED")
+    print(f"📲 Transferring to: {transfer_number}")
+    print("=" * 60)
+    
+    # Create TwiML to transfer the call
+    response = VoiceResponse()
+    response.say("Transferring you now. Please hold.")
+    dial = response.dial(timeout=60, action='/twilio/dial-status', method='POST')
+    dial.number(transfer_number)
+    
+    print(f"📋 Generated transfer TwiML:\n{str(response)}")
+    
+    return Response(str(response), mimetype="text/xml")
+
+
 @app.route("/health", methods=["GET"])
 def health():
     """Health check endpoint"""

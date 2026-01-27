@@ -229,6 +229,23 @@ CALENDAR_TOOLS = [
                 "required": ["current_datetime"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "transfer_to_human",
+            "description": "Transfer the call to a real human/staff member. Use this when the customer explicitly requests to speak with a real person, human, manager, or owner. Ask for confirmation first: 'Let me transfer you to someone who can help. One moment please.'",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief reason for the transfer (e.g., 'customer requested human', 'complex inquiry', 'complaint')"
+                    }
+                },
+                "required": ["reason"]
+            }
+        }
     }
 ]
 
@@ -1181,6 +1198,33 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
         elif tool_name == "reschedule_job":
             # Alias for reschedule_appointment - same functionality
             return execute_tool_call("reschedule_appointment", arguments, services)
+        
+        elif tool_name == "transfer_to_human":
+            """Transfer call to a real human"""
+            reason = arguments.get('reason', 'customer requested human')
+            
+            # Get fallback number from settings
+            from src.services.settings_manager import get_settings_manager
+            settings_mgr = get_settings_manager()
+            fallback_number = settings_mgr.get_fallback_phone_number()
+            
+            if not fallback_number:
+                return {
+                    "success": False,
+                    "error": "No fallback number configured. Cannot transfer call.",
+                    "message": "I'm sorry, but I don't have a number to transfer you to right now. Is there anything else I can help you with?"
+                }
+            
+            print(f"📞 TRANSFER REQUEST: {reason}")
+            print(f"📲 Transferring to: {fallback_number}")
+            
+            return {
+                "success": True,
+                "transfer": True,
+                "fallback_number": fallback_number,
+                "reason": reason,
+                "message": "Let me transfer you now. Please hold."
+            }
         
         else:
             return {

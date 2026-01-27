@@ -2161,6 +2161,14 @@ When customer wants to reschedule:
                     result = execute_tool_call(tool_name, arguments, services)
                     if not result:
                         raise Exception("Tool returned None")
+                    
+                    # Check if this is a transfer request
+                    if result.get("transfer") and result.get("success"):
+                        print(f"📞 TRANSFER REQUESTED: {result.get('reason')}")
+                        print(f"📲 Will transfer to: {result.get('fallback_number')}")
+                        # Add a special marker in the result for the media handler to detect
+                        result["__TRANSFER_REQUESTED__"] = True
+                        
                 except Exception as tool_error:
                     print(f"   ⚠️ Tool execution error: {tool_error}")
                     result = {"success": False, "error": str(tool_error), "message": "Unable to complete request"}
@@ -2244,6 +2252,20 @@ When customer wants to reschedule:
             
             print(f"   📊 Follow-up stream complete: {follow_up_token_count} tokens generated in {time.time() - start_time:.2f}s")
             
+            # Check if any tool result requested a transfer
+            transfer_requested = False
+            transfer_info = None
+            for tr in tool_results:
+                try:
+                    result_data = json.loads(tr["content"])
+                    if result_data.get("__TRANSFER_REQUESTED__"):
+                        transfer_requested = True
+                        transfer_info = result_data
+                        print(f"📞 Transfer flag detected in tool results")
+                        break
+                except:
+                    pass
+            
             if follow_up_token_count == 0:
                 print("⚠️ WARNING: Follow-up LLM call generated NO tokens!")
                 print(f"   🔍 Debug - Last messages sent to LLM:")
@@ -2276,6 +2298,8 @@ When customer wants to reschedule:
                     fallback = "Your appointment has been cancelled. Is there anything else I can help you with?"
                 elif tool_name == "reschedule_appointment":
                     fallback = "Your appointment has been rescheduled. You'll receive an updated confirmation."
+                elif tool_name == "transfer_to_human":
+                    fallback = "Let me transfer you now. Please hold."
                 else:
                     fallback = "I've checked that for you. What would work best for you?"
                 
@@ -2289,6 +2313,12 @@ When customer wants to reschedule:
             if follow_up_response:
                 cleaned = remove_repetition(follow_up_response.strip())
                 messages.append({"role": "assistant", "content": cleaned})
+            
+            # After the response is sent, check if transfer was requested
+            if transfer_requested and transfer_info:
+                print(f"📞 INITIATING TRANSFER TO: {transfer_info.get('fallback_number')}")
+                # Yield special transfer marker that the media handler will detect
+                yield f"<<<TRANSFER:{transfer_info.get('fallback_number')}>>>"
                 
         except Exception as e:
             print(f"❌ Error in follow-up LLM stream: {e}")

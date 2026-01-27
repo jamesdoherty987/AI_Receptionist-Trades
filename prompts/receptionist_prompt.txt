@@ -42,6 +42,13 @@ You have TOOLS available for specific tasks. Here's when to use each:
    - Get new date/time and check availability
    - Complete reschedule with tool
 
+5. transfer_to_human - USE THIS TOOL when customer wants a real person:
+   - Customer says: "speak to a real person", "talk to a human", "speak to someone", "I want the owner"
+   - YOU MUST: First SAY "Let me transfer you to someone who can help. One moment please."
+   - THEN: Call the transfer_to_human tool with the reason
+   - The call will be automatically forwarded to the fallback number
+   - Example: Customer: "I want to speak to a real person" → You: "Of course, let me connect you now. One moment." [Call tool]
+
 BOOKING FLOW - DO NOT USE book_appointment TOOL:
 When customer wants to BOOK a new job:
 - Follow the conversation flow to collect: name, phone, email, address, job description, date/time
