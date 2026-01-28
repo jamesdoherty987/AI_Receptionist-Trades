@@ -1,12 +1,17 @@
 # AI Receptionist for Trades Companies
 
-Professional AI-powered phone receptionist with job booking and Google Calendar integration for Swift Trade Services - optimized for plumbing, electrical, heating, and general trade businesses.
+Professional AI-powered phone receptionist with job booking and Google Calendar integration - optimized for plumbing, electrical, heating, and general trade businesses.
 
-## Features
+## ✨ Modern React Dashboard
+
+This project now features a **professional React-based web interface** for managing your AI receptionist.
+
+### Features
 - ☎️ **Real-time phone conversations** via Twilio Media Streams
-- 🎤 **Speech recognition** powered by Deepgram ASR
 - 🤖 **Natural language AI** using OpenAI GPT-4o-mini
+- 🎤 **Speech recognition** powered by Deepgram ASR
 - 🗣️ **Text-to-speech** with Deepgram/ElevenLabs
+- 📊 **Modern React Dashboard** - Manage everything from a beautiful web interface
 - 🔧 **Intelligent job booking** (emergency/same-day/scheduled/quotes)
 - 📆 **Google Calendar integration** with availability checking
 - 📱 **Automatic phone & email capture** with validation
@@ -16,38 +21,76 @@ Professional AI-powered phone receptionist with job booking and Google Calendar 
 - 🔔 **Email/SMS reminders** sent 24 hours before jobs
 - 💬 **Reminder confirmations** via email or SMS replies
 - 🚫 **Interrupt handling** for natural conversations
-- ⏰ **Business hours enforcement** (configurable, default 9 AM - 5 PM Mon-Fri)
-- 🌍 **Timezone support** (Europe/Dublin)
-- 🛠️ **Services menu management** - Add/edit/delete services with pricing via web UI
-- ⚙️ **Settings management** - Configure business hours, services, and pricing without editing code
-- 📊 **Dashboard** - View bookings, manage clients, track finances
+- ⚙️ **Settings management** - Configure business hours, services, and pricing via web UI
+- 🎨 **Beautiful UI** - Glassmorphism design with smooth animations
 
-## Project Structure
+## 🚀 Quick Start
+
+### 1. Install Dependencies
+
+**Backend:**
+```bash
+pip install -r requirements.txt
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm install
+```
+
+### 2. Start Development
+
+**Option A: Automatic (Recommended)**
+```bash
+start-dev.bat
+```
+
+**Option B: Manual**
+```bash
+# Terminal 1 - Backend
+python src/app.py
+
+# Terminal 2 - Frontend
+cd frontend
+npm run dev
+```
+
+### 3. Access Dashboard
+Open browser to: **http://localhost:3000**
+
+For detailed setup, see [QUICKSTART_REACT.md](QUICKSTART_REACT.md)
+
+## 📁 Project Structure
 
 ```
-AI-Receptionist/
-├── src/                          # Main application code
-│   ├── app.py                   # Flask server (voice + SMS webhooks)
-│   ├── media_ws.py              # WebSocket server for audio streaming
+AI-Receptionist-Trades/
+├── frontend/                     # ⚛️ React Dashboard (NEW)
+│   ├── src/
+│   │   ├── components/          # Reusable React components
+│   │   ├── pages/               # Dashboard, Settings, etc.
+│   │   ├── services/            # API client
+│   │   └── utils/               # Helper functions
+│   ├── package.json
+│   └── vite.config.js
+├── src/                          # 🐍 Python Backend
+│   ├── app.py                   # Flask server (API + webhooks)
+│   ├── media_ws.py              # WebSocket for audio streaming
 │   ├── handlers/                # Request handlers
 │   │   └── media_handler.py    # Real-time audio processing
 │   ├── services/                # Core services
 │   │   ├── appointment_detector.py  # Intent classification
 │   │   ├── asr_deepgram.py         # Speech-to-text
 │   │   ├── google_calendar.py      # Calendar operations
-│   │   ├── llm_stream.py           # AI conversation management
-│   │   ├── sms_reminder.py         # SMS reminder sending
-│   │   ├── reminder_scheduler.py   # 24-hour reminder checker
-│   │   ├── tts_deepgram.py         # Text-to-speech (Deepgram)
-│   │   └── tts_elevenlabs.py       # Text-to-speech (ElevenLabs)
+│   │   ├── llm_stream.py           # AI conversation
+│   │   ├── sms_reminder.py         # SMS reminders
+│   │   ├── tts_deepgram.py         # Text-to-speech
+│   │   └── settings_manager.py     # Settings management
+│   ├── static/
+│   │   └── dist/                # React build output
 │   └── utils/                   # Utilities
-│       ├── audio_utils.py       # Audio processing
-│       ├── config.py            # Configuration loader
-│       └── date_parser.py       # Natural language date parsing
-├── scripts/                      # Utility scripts
-│   └── check_reminders.py       # Reminder checker (run via cron/scheduler)
 ├── config/                       # Configuration files
-│   ├── business_info.json       # Business details (editable)
+│   ├── business_info.json       # Business details
 │   └── sent_reminders.json      # Tracks sent reminders
 ├── docs/                         # Documentation
 │   └── REMINDERS.md             # Reminder system setup guide

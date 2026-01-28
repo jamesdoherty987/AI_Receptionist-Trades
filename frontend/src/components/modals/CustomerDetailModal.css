@@ -1,0 +1,373 @@
+.customer-detail-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Loading */
+.modal-loading {
+  padding: 3rem;
+  text-align: center;
+}
+
+.modal-loading .loading-spinner {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 1rem;
+  border: 4px solid var(--border-color);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Header */
+.customer-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.customer-modal-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.customer-modal-info {
+  flex: 1;
+}
+
+.customer-modal-info h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem 0;
+  color: var(--text-primary);
+}
+
+.name-input {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+}
+
+.stats-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.stat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-secondary);
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.stat-badge i {
+  color: var(--accent-blue);
+}
+
+.stat-badge.completed {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success);
+}
+
+.stat-badge.completed i {
+  color: var(--success);
+}
+
+.stat-badge.spent {
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--accent-purple);
+}
+
+.stat-badge.spent i {
+  color: var(--accent-purple);
+}
+
+.customer-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* Grid Layout */
+.customer-modal-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1.5rem;
+}
+
+.customer-modal-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Info Cards */
+.info-card {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.info-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 1rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.info-card h3 i {
+  color: var(--accent-blue);
+  width: 20px;
+}
+
+/* Info Rows - Horizontal */
+.info-row {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1rem;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.info-cell {
+  flex: 1;
+  min-width: 0;
+}
+
+.info-cell.flex-2 {
+  flex: 2;
+}
+
+.info-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.25rem;
+}
+
+.info-value {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.info-value .link {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+.info-value .link:hover {
+  text-decoration: underline;
+}
+
+.not-provided {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+/* Edit Form */
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+}
+
+.form-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group.flex-2 {
+  flex: 2;
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Notes */
+.existing-note {
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  border: 2px solid var(--border-color);
+}
+
+.existing-note p {
+  margin: 0;
+  color: var(--text-primary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.add-note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.add-note textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.add-note .btn {
+  align-self: flex-end;
+}
+
+/* Bookings Card */
+.bookings-card {
+  height: 100%;
+  max-height: 500px;
+  display: flex;
+  flex-direction: column;
+}
+
+.bookings-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.empty-bookings {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+}
+
+.empty-bookings i {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+  opacity: 0.4;
+}
+
+.empty-bookings p {
+  margin: 0;
+}
+
+.booking-item {
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 2px solid var(--border-color);
+}
+
+.booking-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.booking-service {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.badge-sm {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+}
+
+.booking-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.booking-date {
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.booking-date i {
+  color: var(--accent-blue);
+}
+
+.booking-price {
+  font-weight: 600;
+  color: var(--success);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .customer-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .customer-modal-header {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .customer-modal-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .stats-row {
+    justify-content: center;
+  }
+
+  .customer-modal-actions {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 600px) {
+  .info-row {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .form-row {
+    flex-direction: column;
+  }
+}

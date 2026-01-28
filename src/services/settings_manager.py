@@ -105,6 +105,13 @@ class SettingsManager:
                 """)
                 print("✅ Added fallback_phone_number column to business_settings")
             
+            if 'logo_url' not in business_columns:
+                cursor.execute("""
+                    ALTER TABLE business_settings 
+                    ADD COLUMN logo_url TEXT
+                """)
+                print("✅ Added logo_url column to business_settings")
+            
             # Migrate developer_settings table
             cursor.execute("PRAGMA table_info(developer_settings)")
             columns = [row[1] for row in cursor.fetchall()]
@@ -191,6 +198,10 @@ class SettingsManager:
         conn = self.get_connection()
         cursor = conn.cursor()
         
+        # Get actual column names from database
+        cursor.execute("PRAGMA table_info(business_settings)")
+        db_columns = [col[1] for col in cursor.fetchall()]
+        
         cursor.execute("SELECT * FROM business_settings ORDER BY id DESC LIMIT 1")
         row = cursor.fetchone()
         conn.close()
@@ -198,16 +209,15 @@ class SettingsManager:
         if not row:
             return {}
         
-        columns = [
-            'id', 'business_name', 'business_type', 'phone', 'email', 'website',
-            'address', 'city', 'country', 'timezone', 'currency', 'default_charge',
-            'appointment_duration', 'opening_hours_start', 'opening_hours_end',
-            'days_open', 'max_booking_days_ahead', 'allow_weekend_booking',
-            'services', 'payment_methods', 'cancellation_policy',
-            'reminder_hours_before', 'auto_confirm_bookings', 'created_at', 'updated_at'
-        ]
+        settings = dict(zip(db_columns, row))
         
-        settings = dict(zip(columns, row))
+        # Map database column names to frontend field names
+        if 'phone' in settings:
+            settings['business_phone'] = settings.get('phone')
+        if 'email' in settings:
+            settings['business_email'] = settings.get('email')
+        if 'address' in settings:
+            settings['business_address'] = settings.get('address')
         
         # Parse JSON fields
         if settings.get('days_open'):
@@ -238,6 +248,21 @@ class SettingsManager:
         # Get old settings for logging
         old_settings = self.get_business_settings()
         
+        # Map frontend field names to database column names
+        field_mapping = {
+            'business_phone': 'phone',
+            'business_email': 'email',
+            'business_address': 'address',
+        }
+        
+        # Create a new dict with mapped field names
+        mapped_settings = {}
+        for key, value in settings.items():
+            mapped_key = field_mapping.get(key, key)
+            mapped_settings[mapped_key] = value
+        
+        settings = mapped_settings
+        
         # Convert lists to JSON strings
         if 'days_open' in settings and isinstance(settings['days_open'], list):
             settings['days_open'] = json.dumps(settings['days_open'])
@@ -246,11 +271,22 @@ class SettingsManager:
         if 'payment_methods' in settings and isinstance(settings['payment_methods'], list):
             settings['payment_methods'] = json.dumps(settings['payment_methods'])
         
+        # Valid database columns
+        valid_columns = [
+            'business_name', 'business_type', 'phone', 'email', 'website',
+            'address', 'city', 'country', 'timezone', 'currency', 'default_charge',
+            'appointment_duration', 'opening_hours_start', 'opening_hours_end',
+            'days_open', 'max_booking_days_ahead', 'allow_weekend_booking',
+            'services', 'payment_methods', 'cancellation_policy',
+            'reminder_hours_before', 'auto_confirm_bookings', 'fallback_phone_number',
+            'logo_url'
+        ]
+        
         # Build update query
         update_fields = []
         values = []
         for key, value in settings.items():
-            if key not in ['id', 'created_at', 'updated_at']:
+            if key not in ['id', 'created_at', 'updated_at'] and key in valid_columns:
                 update_fields.append(f"{key} = ?")
                 values.append(value)
         

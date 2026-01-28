@@ -1,0 +1,394 @@
+.job-detail-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Modal Loading */
+.modal-loading {
+  padding: 3rem;
+  text-align: center;
+}
+
+.modal-loading .loading-spinner {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 1rem;
+  border: 4px solid var(--border-color);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Top Header */
+.job-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 1.25rem;
+  border-bottom: 2px solid var(--border-color);
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.job-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.job-modal-title h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.badge-lg {
+  font-size: 0.9rem;
+  padding: 0.5rem 1rem;
+}
+
+.job-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.job-modal-actions .btn {
+  white-space: nowrap;
+}
+
+.job-modal-actions a.btn {
+  text-decoration: none;
+}
+
+/* Get Directions Button */
+.job-modal-actions .btn-success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: none;
+  color: white;
+  padding: 0.75rem 1.25rem;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  transition: all 0.2s ease;
+}
+
+.job-modal-actions .btn-success:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+}
+
+.job-modal-actions .btn-success i {
+  margin-right: 0.35rem;
+}
+
+/* Status Dropdown */
+.status-dropdown {
+  position: relative;
+}
+
+.status-dropdown:hover .status-dropdown-menu {
+  display: block;
+}
+
+.status-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: white;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  min-width: 160px;
+  z-index: 100;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.status-dropdown-menu button {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  transition: background 0.15s;
+}
+
+.status-dropdown-menu button:hover {
+  background: var(--bg-secondary);
+}
+
+/* Two Column Grid */
+.job-modal-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 1.5rem;
+}
+
+.job-modal-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Info Cards */
+.info-card {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+.info-card h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 1rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.info-card h3 i {
+  color: var(--accent-blue);
+  width: 20px;
+}
+
+/* Info Rows - Horizontal Layout */
+.info-row {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+.info-row.full {
+  display: block;
+}
+
+.info-cell {
+  flex: 1;
+  min-width: 0;
+}
+
+.info-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.25rem;
+}
+
+.info-value {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.info-value.price {
+  color: var(--success);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.info-value .link {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+
+.info-value .link:hover {
+  text-decoration: underline;
+}
+
+/* Notes */
+.notes-text {
+  margin: 0;
+  color: var(--text-primary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Workers Card */
+.workers-card {
+  height: 100%;
+}
+
+.card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.card-header-row h3 {
+  margin: 0;
+}
+
+/* Assign Box */
+.assign-box {
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.assign-box .form-select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.assign-buttons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+/* Workers List */
+.workers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.empty-workers {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+}
+
+.empty-workers i {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  opacity: 0.5;
+}
+
+.empty-workers p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.worker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid var(--border-color);
+}
+
+.worker-item-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-orange), var(--accent-red));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1rem;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.worker-item-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.worker-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.worker-name {
+  display: block;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.worker-specialty {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.btn-remove {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.btn-remove:hover {
+  background: var(--danger);
+  color: white;
+}
+
+.btn-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .job-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .job-modal-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .job-modal-actions {
+    width: 100%;
+  }
+
+  .job-modal-actions .btn {
+    flex: 1;
+  }
+}
+
+@media (max-width: 600px) {
+  .info-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .job-modal-title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+}

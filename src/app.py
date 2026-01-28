@@ -15,7 +15,19 @@ from src.utils.config import config
 from src.services.database import get_database
 from src.services.google_calendar import GoogleCalendarService
 
-app = Flask(__name__, static_folder=str(Path(__file__).parent / "static"))
+# Set up Flask to serve React build or development files
+static_folder = Path(__file__).parent / "static" / "dist"
+if not static_folder.exists():
+    # Fallback to regular static folder during development
+    static_folder = Path(__file__).parent / "static"
+
+app = Flask(__name__, 
+            static_folder=str(static_folder),
+            static_url_path='')
+
+# Configure CORS for development
+from flask_cors import CORS
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Start auto-complete scheduler on app startup
 print("\\n🚀 Starting appointment auto-complete scheduler...")
@@ -196,13 +208,25 @@ def twilio_sms():
 
 # Dashboard and API endpoints
 from flask import redirect
+
 @app.route("/")
-def dashboard():
-    """Serve the dashboard"""
-    return send_from_directory('static', 'modern_dashboard.html')
+def index():
+    """Serve the React app"""
+    return send_from_directory(app.static_folder, 'index.html')
+
+# Catch all routes and serve React app
+@app.route("/<path:path>")
+def catch_all(path):
+    """Serve React app for all non-API routes"""
+    # If it's a file that exists, serve it
+    file_path = Path(app.static_folder) / path
+    if file_path.exists() and file_path.is_file():
+        return send_from_directory(app.static_folder, path)
+    # Otherwise, serve index.html for React Router
+    return send_from_directory(app.static_folder, 'index.html')
 
 
-# Redirect /dashboard to /
+# Legacy redirects for backwards compatibility
 @app.route("/dashboard")
 def dashboard_redirect():
     return redirect("/", code=302)
@@ -210,20 +234,20 @@ def dashboard_redirect():
 
 @app.route("/settings")
 def settings_page():
-    """Serve the business settings page"""
-    return send_from_directory('static', 'modern_settings.html')
+    """Redirect to React app"""
+    return redirect("/settings", code=302)
 
 
 @app.route("/settings/menu")
 def settings_menu_page():
-    """Serve the services/menu settings page"""
-    return send_from_directory('static', 'settings_menu.html')
+    """Redirect to React app"""
+    return redirect("/settings/menu", code=302)
 
 
 @app.route("/settings/developer")
 def developer_settings_page():
-    """Serve the developer settings page"""
-    return send_from_directory('static', 'settings_developer.html')
+    """Redirect to React app"""
+    return redirect("/settings/developer", code=302)
 
 
 @app.route("/api/settings/business", methods=["GET", "POST"])
@@ -707,6 +731,72 @@ def bookings_api():
             return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/bookings/<int:booking_id>", methods=["GET", "PUT"])
+def booking_detail_api(booking_id):
+    """Get or update a specific booking"""
+    db = get_database()
+    
+    if request.method == "GET":
+        # Get booking details
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT 
+                b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
+                b.service_type, b.status, b.phone_number, b.email, b.created_at,
+                b.charge, b.payment_status, b.payment_method, b.urgency, 
+                b.address, b.eircode, b.property_type,
+                c.name as client_name, c.phone as client_phone, c.email as client_email
+            FROM bookings b
+            LEFT JOIN clients c ON b.client_id = c.id
+            WHERE b.id = ?
+        """, (booking_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            return jsonify({"error": "Booking not found"}), 404
+        
+        booking = {
+            'id': row[0],
+            'client_id': row[1],
+            'calendar_event_id': row[2],
+            'appointment_time': row[3],
+            'service_type': row[4],
+            'service': row[4],
+            'status': row[5],
+            'phone_number': row[6],
+            'phone': row[6] or row[17],
+            'email': row[7] or row[18],
+            'created_at': row[8],
+            'charge': row[9],
+            'estimated_charge': row[9],
+            'payment_status': row[10],
+            'payment_method': row[11],
+            'urgency': row[12],
+            'address': row[13],
+            'job_address': row[13],
+            'eircode': row[14],
+            'property_type': row[15],
+            'customer_name': row[16],
+            'client_name': row[16],
+            'notes': ''
+        }
+        
+        return jsonify(booking)
+    
+    elif request.method == "PUT":
+        # Update booking
+        data = request.json
+        success = db.update_booking(booking_id, **data)
+        if success:
+            return jsonify({"success": True})
+        return jsonify({"error": "Failed to update booking"}), 400
+
+
+# Keep old endpoint for backward compatibility
 @app.route("/api/bookings/<int:booking_id>", methods=["PUT"])
 def update_booking_api(booking_id):
     """Update booking (including charge and payment info)"""
@@ -910,7 +1000,8 @@ def workers_api():
             name=data['name'],
             phone=data.get('phone'),
             email=data.get('email'),
-            trade_specialty=data.get('trade_specialty')
+            trade_specialty=data.get('trade_specialty'),
+            image_url=data.get('image_url')
         )
         return jsonify({"id": worker_id, "message": "Worker added"}), 201
 
@@ -1237,6 +1328,79 @@ def chat_reset():
     from src.services.llm_stream import reset_appointment_state
     reset_appointment_state()
     return jsonify({"message": "Chat state reset"})
+
+
+@app.route("/api/finances", methods=["GET"])
+def get_finances():
+    """Get financial overview and stats"""
+    try:
+        db = get_database()
+        bookings = db.get_all_bookings()
+        
+        total_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings if b.get('status') == 'completed')
+        pending_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings if b.get('status') in ['pending', 'scheduled'])
+        completed_revenue = total_revenue
+        
+        # Build transactions list for detailed view
+        transactions = []
+        for booking in bookings:
+            if booking.get('charge') and float(booking.get('charge', 0)) > 0:
+                transactions.append({
+                    'id': booking.get('id'),
+                    'customer_name': booking.get('customer_name') or booking.get('client_name') or 'Unknown',
+                    'description': booking.get('service_type') or booking.get('service') or 'Service',
+                    'amount': float(booking.get('charge', 0)),
+                    'status': booking.get('status'),
+                    'payment_status': booking.get('payment_status'),
+                    'date': booking.get('appointment_time'),
+                    'payment_method': booking.get('payment_method')
+                })
+        
+        # Group by month
+        from collections import defaultdict
+        from datetime import datetime
+        monthly = defaultdict(float)
+        for booking in bookings:
+            if booking.get('status') == 'completed' and booking.get('appointment_time'):
+                try:
+                    date = datetime.fromisoformat(booking['appointment_time'].replace('Z', '+00:00'))
+                    month_key = date.strftime('%Y-%m')
+                    monthly[month_key] += float(booking.get('charge', 0) or 0)
+                except:
+                    pass
+        
+        monthly_revenue = [{"month": k, "revenue": v} for k, v in sorted(monthly.items())]
+        
+        return jsonify({
+            "total_revenue": total_revenue,
+            "pending_revenue": pending_revenue,
+            "completed_revenue": completed_revenue,
+            "monthly_revenue": monthly_revenue,
+            "transactions": transactions
+        })
+    except Exception as e:
+        print(f"Finances error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/calendar/events", methods=["GET"])
+def get_calendar_events():
+    """Get calendar events from Google Calendar"""
+    try:
+        from src.services.google_calendar import GoogleCalendarService
+        calendar_service = GoogleCalendarService()
+        
+        # Get date range from query params
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        events = calendar_service.get_events(start_date=start_date, end_date=end_date)
+        return jsonify(events or [])
+    except Exception as e:
+        print(f"Calendar error: {e}")
+        return jsonify([])
 
 
 if __name__ == "__main__":

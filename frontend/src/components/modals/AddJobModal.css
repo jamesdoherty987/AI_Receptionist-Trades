@@ -1,0 +1,238 @@
+/* Customer Search Container */
+.customer-search-container {
+  position: relative;
+  width: 100%;
+}
+
+.customer-search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 1rem;
+  color: #6b7280;
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.customer-search-input {
+  padding-left: 2.75rem !important;
+  font-size: 1rem;
+}
+
+/* Selected Customer Display */
+.selected-customer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 2px solid #10b981;
+  border-radius: 10px;
+  padding: 0.875rem 1rem;
+  gap: 1rem;
+}
+
+.selected-customer-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 600;
+  color: #047857;
+}
+
+.selected-customer-info i {
+  font-size: 1.1rem;
+}
+
+.selected-name {
+  text-transform: capitalize;
+}
+
+.clear-selection-btn {
+  background: #fee2e2;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #dc2626;
+  transition: all 0.2s ease;
+}
+
+.clear-selection-btn:hover {
+  background: #fecaca;
+  transform: scale(1.05);
+}
+
+/* Customer Dropdown */
+.customer-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.dropdown-empty {
+  padding: 2rem;
+  text-align: center;
+  color: #6b7280;
+}
+
+.dropdown-empty i {
+  font-size: 2rem;
+  color: #d1d5db;
+  margin-bottom: 0.5rem;
+}
+
+.dropdown-empty p {
+  margin: 0.5rem 0 0.25rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.dropdown-empty small {
+  color: #9ca3af;
+}
+
+.customer-list {
+  list-style: none;
+  padding: 0.5rem;
+  margin: 0;
+}
+
+.customer-option {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.customer-option:hover {
+  background: #f3f4f6;
+}
+
+.customer-option:active {
+  background: #e5e7eb;
+  transform: scale(0.99);
+}
+
+.customer-option-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.customer-option-details {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.customer-option-name {
+  font-weight: 600;
+  color: #1f2937;
+  text-transform: capitalize;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.customer-option-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-top: 0.125rem;
+}
+
+.customer-option-contact span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.customer-option-contact i {
+  font-size: 0.7rem;
+  color: #9ca3af;
+}
+
+.dropdown-more {
+  padding: 0.75rem 1rem;
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.85rem;
+  background: #f9fafb;
+  border-radius: 0 0 10px 10px;
+  margin: 0.25rem -0.5rem -0.5rem;
+}
+
+/* Quick Date Buttons */
+.quick-date-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.quick-date-btn {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  background: #f3f4f6;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4b5563;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quick-date-btn:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+}
+
+.quick-date-btn.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border-color: #2563eb;
+  color: white;
+}
+
+/* Form hint */
+.form-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.form-hint i {
+  color: #9ca3af;
+}
+

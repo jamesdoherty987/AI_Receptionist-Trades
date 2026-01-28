@@ -170,6 +170,18 @@ class Database:
             """)
             print("✅ Added description column to clients table")
         
+        if 'address' not in client_columns:
+            cursor.execute("""
+                ALTER TABLE clients ADD COLUMN address TEXT
+            """)
+            print("✅ Added address column to clients table")
+        
+        if 'eircode' not in client_columns:
+            cursor.execute("""
+                ALTER TABLE clients ADD COLUMN eircode TEXT
+            """)
+            print("✅ Added eircode column to clients table")
+        
         # Add new fields to bookings table if they don't exist
         cursor.execute("""
             PRAGMA table_info(bookings)
@@ -198,6 +210,18 @@ class Database:
             cursor.execute("""
                 ALTER TABLE bookings ADD COLUMN property_type TEXT
             """)
+            print("✅ Added property_type column to bookings table")
+        
+        # Add image_url to workers table if it doesn't exist
+        cursor.execute("""
+            PRAGMA table_info(workers)
+        """)
+        worker_columns = [column[1] for column in cursor.fetchall()]
+        if 'image_url' not in worker_columns:
+            cursor.execute("""
+                ALTER TABLE workers ADD COLUMN image_url TEXT
+            """)
+            print("✅ Added image_url column to workers table")
             print("✅ Added property_type column to bookings table")
         
         conn.commit()
@@ -292,6 +316,7 @@ class Database:
     def get_client(self, client_id: int) -> Optional[Dict]:
         """Get client by ID"""
         conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
         cursor.execute("SELECT * FROM clients WHERE id = ?", (client_id,))
@@ -300,10 +325,19 @@ class Database:
         
         if row:
             return {
-                'id': row[0], 'name': row[1], 'phone': row[2], 'email': row[3],
-                'first_visit': row[4], 'last_visit': row[5], 
-                'total_appointments': row[6], 'created_at': row[7], 'updated_at': row[8],
-                'date_of_birth': row[9], 'description': row[10]
+                'id': row['id'], 
+                'name': row['name'], 
+                'phone': row['phone'], 
+                'email': row['email'],
+                'first_visit': row['first_visit'] if 'first_visit' in row.keys() else None, 
+                'last_visit': row['last_visit'] if 'last_visit' in row.keys() else None, 
+                'total_appointments': row['total_appointments'] if 'total_appointments' in row.keys() else 0, 
+                'created_at': row['created_at'] if 'created_at' in row.keys() else None, 
+                'updated_at': row['updated_at'] if 'updated_at' in row.keys() else None,
+                'date_of_birth': row['date_of_birth'] if 'date_of_birth' in row.keys() else None, 
+                'description': row['description'] if 'description' in row.keys() else None,
+                'address': row['address'] if 'address' in row.keys() else None,
+                'eircode': row['eircode'] if 'eircode' in row.keys() else None
             }
         return None
     
@@ -412,13 +446,15 @@ class Database:
             'name': row['name'], 
             'phone': row['phone'], 
             'email': row['email'],
-            'first_visit': row['first_visit'], 
-            'last_visit': row['last_visit'], 
-            'total_appointments': row['total_appointments'], 
-            'created_at': row['created_at'], 
-            'updated_at': row['updated_at'],
+            'first_visit': row['first_visit'] if 'first_visit' in row.keys() else None, 
+            'last_visit': row['last_visit'] if 'last_visit' in row.keys() else None, 
+            'total_appointments': row['total_appointments'] if 'total_appointments' in row.keys() else 0, 
+            'created_at': row['created_at'] if 'created_at' in row.keys() else None, 
+            'updated_at': row['updated_at'] if 'updated_at' in row.keys() else None,
             'date_of_birth': row['date_of_birth'] if 'date_of_birth' in row.keys() else None, 
-            'description': row['description'] if 'description' in row.keys() else None
+            'description': row['description'] if 'description' in row.keys() else None,
+            'address': row['address'] if 'address' in row.keys() else None,
+            'eircode': row['eircode'] if 'eircode' in row.keys() else None
         } for row in rows]
     
     def update_client(self, client_id: int, **kwargs):
@@ -429,7 +465,7 @@ class Database:
         fields = []
         values = []
         for key, value in kwargs.items():
-            if key in ['name', 'phone', 'email', 'date_of_birth', 'description']:
+            if key in ['name', 'phone', 'email', 'date_of_birth', 'description', 'address', 'eircode']:
                 fields.append(f"{key} = ?")
                 values.append(value)
         
@@ -533,7 +569,12 @@ class Database:
         cursor = conn.cursor()
         
         cursor.execute("""
-            SELECT b.*, c.name as client_name 
+            SELECT 
+                b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
+                b.service_type, b.status, b.phone_number, b.email, b.created_at,
+                b.charge, b.payment_status, b.payment_method, b.urgency, 
+                b.address, b.eircode, b.property_type,
+                c.name as client_name, c.phone as client_phone, c.email as client_email
             FROM bookings b
             LEFT JOIN clients c ON b.client_id = c.id
             ORDER BY b.appointment_time DESC
@@ -543,12 +584,29 @@ class Database:
         conn.close()
         
         return [{
-            'id': row[0], 'client_id': row[1], 'calendar_event_id': row[2],
-            'appointment_time': row[3], 'service_type': row[4], 'status': row[5],
-            'phone_number': row[6], 'email': row[7], 'created_at': row[8],
-            'charge': row[9], 'payment_status': row[10], 'payment_method': row[11],
-            'urgency': row[12], 'address': row[13], 'eircode': row[14], 
-            'property_type': row[15], 'client_name': row[16]
+            'id': row[0], 
+            'client_id': row[1], 
+            'calendar_event_id': row[2],
+            'appointment_time': row[3], 
+            'service_type': row[4], 
+            'service': row[4],  # Alias for compatibility
+            'status': row[5],
+            'phone_number': row[6],
+            'phone': row[6] or row[17],  # Use booking phone or client phone as fallback
+            'email': row[7] or row[18],  # Use booking email or client email as fallback
+            'created_at': row[8],
+            'charge': row[9],
+            'estimated_charge': row[9],  # Alias for compatibility
+            'payment_status': row[10], 
+            'payment_method': row[11],
+            'urgency': row[12], 
+            'address': row[13],
+            'job_address': row[13],  # Alias for compatibility
+            'eircode': row[14], 
+            'property_type': row[15],
+            'customer_name': row[16],
+            'client_name': row[16],  # Alias for compatibility
+            'notes': ''  # Will be fetched separately if needed
         } for row in rows]
     
     def update_booking(self, booking_id: int, **kwargs) -> bool:
@@ -776,15 +834,15 @@ class Database:
         conn.close()
     
     # Worker methods
-    def add_worker(self, name: str, phone: str = None, email: str = None, trade_specialty: str = None) -> int:
+    def add_worker(self, name: str, phone: str = None, email: str = None, trade_specialty: str = None, image_url: str = None) -> int:
         """Add a new worker/tradesperson"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
-            INSERT INTO workers (name, phone, email, trade_specialty)
-            VALUES (?, ?, ?, ?)
-        """, (name, phone, email, trade_specialty))
+            INSERT INTO workers (name, phone, email, trade_specialty, image_url)
+            VALUES (?, ?, ?, ?, ?)
+        """, (name, phone, email, trade_specialty, image_url))
         
         worker_id = cursor.lastrowid
         conn.commit()
@@ -803,7 +861,8 @@ class Database:
         return [{
             'id': row[0], 'name': row[1], 'phone': row[2], 'email': row[3],
             'trade_specialty': row[4], 'status': row[5], 
-            'created_at': row[6], 'updated_at': row[7]
+            'created_at': row[6], 'updated_at': row[7],
+            'image_url': row[8] if len(row) > 8 else None
         } for row in rows]
     
     def get_worker(self, worker_id: int) -> Optional[Dict]:
@@ -828,11 +887,18 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         
+        # Map frontend field names to database column names
+        field_mapping = {
+            'specialty': 'trade_specialty'
+        }
+        
         fields = []
         values = []
         for key, value in kwargs.items():
-            if key in ['name', 'phone', 'email', 'trade_specialty', 'status']:
-                fields.append(f"{key} = ?")
+            # Map field name if needed
+            db_key = field_mapping.get(key, key)
+            if db_key in ['name', 'phone', 'email', 'trade_specialty', 'status', 'image_url']:
+                fields.append(f"{db_key} = ?")
                 values.append(value)
         
         if fields:
