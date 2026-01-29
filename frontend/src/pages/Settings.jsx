@@ -102,13 +102,9 @@ function Settings() {
 
           {/* Navigation Buttons */}
           <div className="settings-nav">
-            <Link to="/" className="btn btn-secondary">
+            <Link to="/dashboard" className="btn btn-secondary">
               <i className="fas fa-arrow-left"></i>
               Back to Dashboard
-            </Link>
-            <Link to="/settings/developer" className="btn btn-secondary">
-              <i className="fas fa-code"></i>
-              Developer Settings
             </Link>
           </div>
 

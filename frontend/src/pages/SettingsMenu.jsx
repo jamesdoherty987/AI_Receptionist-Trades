@@ -67,7 +67,7 @@ function SettingsMenu() {
     },
   });
 
-  const hourssMutation = useMutation({
+  const hoursMutation = useMutation({
     mutationFn: updateBusinessHours,
     onSuccess: () => {
       queryClient.invalidateQueries(['business-hours']);

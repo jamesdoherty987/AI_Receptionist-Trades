@@ -123,7 +123,6 @@ function Signup() {
     <div className="auth-page">
       <div className="auth-bg">
         <div className="auth-gradient"></div>
-        <div className="auth-grid"></div>
       </div>
 
       <div className="auth-container signup-container">
@@ -163,68 +162,56 @@ function Signup() {
               <>
                 <div className="form-group">
                   <label htmlFor="company_name">Company Name</label>
-                  <div className="input-wrapper">
-                    <i className="fas fa-building"></i>
-                    <input
-                      type="text"
-                      id="company_name"
-                      name="company_name"
-                      placeholder="Your business name"
-                      value={formData.company_name}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    id="company_name"
+                    name="company_name"
+                    placeholder="Your business name"
+                    value={formData.company_name}
+                    onChange={handleChange}
+                    required
+                  />
                 </div>
 
                 <div className="form-group">
                   <label htmlFor="owner_name">Your Name</label>
-                  <div className="input-wrapper">
-                    <i className="fas fa-user"></i>
-                    <input
-                      type="text"
-                      id="owner_name"
-                      name="owner_name"
-                      placeholder="Full name"
-                      value={formData.owner_name}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    id="owner_name"
+                    name="owner_name"
+                    placeholder="Full name"
+                    value={formData.owner_name}
+                    onChange={handleChange}
+                    required
+                  />
                 </div>
 
                 <div className="form-group">
                   <label htmlFor="trade_type">Your Trade</label>
-                  <div className="input-wrapper">
-                    <i className="fas fa-hard-hat"></i>
-                    <select
-                      id="trade_type"
-                      name="trade_type"
-                      value={formData.trade_type}
-                      onChange={handleChange}
-                      required
-                    >
-                      <option value="">Select your trade</option>
-                      {tradeTypes.map((trade) => (
-                        <option key={trade} value={trade}>{trade}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <select
+                    id="trade_type"
+                    name="trade_type"
+                    value={formData.trade_type}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="">Select your trade</option>
+                    {tradeTypes.map((trade) => (
+                      <option key={trade} value={trade}>{trade}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="form-group">
                   <label htmlFor="phone">Phone Number (Optional)</label>
-                  <div className="input-wrapper">
-                    <i className="fas fa-phone"></i>
-                    <input
-                      type="tel"
-                      id="phone"
-                      name="phone"
-                      placeholder="+353 86 XXX XXXX"
-                      value={formData.phone}
-                      onChange={handleChange}
-                    />
-                  </div>
+                  <input
+                    type="tel"
+                    id="phone"
+                    name="phone"
+                    placeholder="+353 86 XXX XXXX"
+                    value={formData.phone}
+                    onChange={handleChange}
+                  />
                 </div>
 
                 <button type="button" className="auth-submit" onClick={handleNext}>
@@ -238,50 +225,41 @@ function Signup() {
               <>
                 <div className="form-group">
                   <label htmlFor="email">Email Address</label>
-                  <div className="input-wrapper">
-                    <i className="fas fa-envelope"></i>
-                    <input
-                      type="email"
-                      id="email"
-                      name="email"
-                      placeholder="you@company.com"
-                      value={formData.email}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    placeholder="you@company.com"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                  />
                 </div>
 
                 <div className="form-group">
                   <label htmlFor="password">Password</label>
-                  <div className="input-wrapper">
-                    <i className="fas fa-lock"></i>
-                    <input
-                      type="password"
-                      id="password"
-                      name="password"
-                      placeholder="Min. 8 characters"
-                      value={formData.password}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
+                  <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Min. 8 characters"
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                  />
                 </div>
 
                 <div className="form-group">
                   <label htmlFor="confirm_password">Confirm Password</label>
-                  <div className="input-wrapper">
-                    <i className="fas fa-lock"></i>
-                    <input
-                      type="password"
-                      id="confirm_password"
-                      name="confirm_password"
-                      placeholder="Re-enter your password"
-                      value={formData.confirm_password}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
+                  <input
+                    type="password"
+                    id="confirm_password"
+                    name="confirm_password"
+                    placeholder="Re-enter your password"
+                    value={formData.confirm_password}
+                    onChange={handleChange}
+                    required
+                  />
                 </div>
 
                 <div className="form-buttons">
@@ -325,4 +303,3 @@ function Signup() {
 }
 
 export default Signup;
-

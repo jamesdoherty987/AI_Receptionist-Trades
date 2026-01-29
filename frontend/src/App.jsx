@@ -10,7 +10,6 @@ import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
 import SettingsMenu from './pages/SettingsMenu'
-import SettingsDeveloper from './pages/SettingsDeveloper'
 
 // Loading component
 import LoadingSpinner from './components/LoadingSpinner'
@@ -61,7 +60,7 @@ function PublicRoute({ children }) {
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center',
-        background: '#0a0a0f'
+        background: '#f8fafc'
       }}>
         <LoadingSpinner />
       </div>
@@ -119,14 +118,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <SettingsMenu />
-          </ProtectedRoute>
-        } 
-      />
-      <Route 
-        path="/settings/developer" 
-        element={
-          <ProtectedRoute>
-            <SettingsDeveloper />
           </ProtectedRoute>
         } 
       />

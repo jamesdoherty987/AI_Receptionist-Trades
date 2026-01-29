@@ -44,7 +44,6 @@ function Login() {
     <div className="auth-page">
       <div className="auth-bg">
         <div className="auth-gradient"></div>
-        <div className="auth-grid"></div>
       </div>
 
       <div className="auth-container">
@@ -69,34 +68,28 @@ function Login() {
           <form onSubmit={handleSubmit} className="auth-form">
             <div className="form-group">
               <label htmlFor="email">Email address</label>
-              <div className="input-wrapper">
-                <i className="fas fa-envelope"></i>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  placeholder="you@company.com"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
+              <input
+                type="email"
+                id="email"
+                name="email"
+                placeholder="you@company.com"
+                value={formData.email}
+                onChange={handleChange}
+                required
+              />
             </div>
 
             <div className="form-group">
               <label htmlFor="password">Password</label>
-              <div className="input-wrapper">
-                <i className="fas fa-lock"></i>
-                <input
-                  type="password"
-                  id="password"
-                  name="password"
-                  placeholder="Enter your password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
+              <input
+                type="password"
+                id="password"
+                name="password"
+                placeholder="Enter your password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+              />
             </div>
 
             <div className="form-row">
@@ -142,4 +135,3 @@ function Login() {
 }
 
 export default Login;
-

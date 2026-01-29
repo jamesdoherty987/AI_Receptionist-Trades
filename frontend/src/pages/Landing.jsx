@@ -1,35 +1,136 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import DarkVeil from '../components/DarkVeil';
 import './Landing.css';
 
+// Animated counter component with intersection observer
+function NumberTicker({ end, duration = 2000, suffix = '' }) {
+  const [count, setCount] = useState(0);
+  const [isVisible, setIsVisible] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isVisible) return;
+
+    let startTime;
+    const animate = (currentTime) => {
+      if (!startTime) startTime = currentTime;
+      const progress = (currentTime - startTime) / duration;
+
+      if (progress < 1) {
+        setCount(Math.floor(end * progress));
+        requestAnimationFrame(animate);
+      } else {
+        setCount(end);
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [isVisible, end, duration]);
+
+  return <span ref={ref}>{count.toLocaleString()}{suffix}</span>;
+}
+
+// Marquee component for testimonials
+function Marquee({ children, direction = 'left', speed = 30, pauseOnHover = true }) {
+  return (
+    <div className={`marquee-container ${pauseOnHover ? 'pause-on-hover' : ''}`}>
+      <div className={`marquee-content ${direction}`} style={{ '--speed': `${speed}s` }}>
+        {children}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Review Card for marquee
+function ReviewCard({ name, company, image, text, rating }) {
+  return (
+    <figure className="review-card">
+      <div className="review-header">
+        <img src={image} alt={name} className="review-avatar" />
+        <div className="review-info">
+          <figcaption className="review-name">{name}</figcaption>
+          <p className="review-company">{company}</p>
+        </div>
+      </div>
+      <div className="review-rating">
+        {[...Array(rating)].map((_, i) => (
+          <i key={i} className="fas fa-star"></i>
+        ))}
+      </div>
+      <blockquote className="review-text">"{text}"</blockquote>
+    </figure>
+  );
+}
+
 function Landing() {
-  const navigate = useNavigate();
-  const [activeTestimonial, setActiveTestimonial] = useState(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const testimonials = [
+  const reviews = [
     {
       name: "Mike O'Brien",
       company: "O'Brien Plumbing",
       image: "https://randomuser.me/api/portraits/men/32.jpg",
-      text: "This AI receptionist has completely transformed how we handle calls. We never miss a lead now, even when we're knee-deep in a job. It's like having a full-time receptionist for a fraction of the cost.",
+      text: "This AI receptionist has completely transformed how we handle calls. We never miss a lead now!",
       rating: 5
     },
     {
       name: "Sarah Thompson",
       company: "Thompson Electrical",
       image: "https://randomuser.me/api/portraits/women/44.jpg",
-      text: "The booking system is seamless. Customers love being able to schedule appointments instantly, and I love that my calendar stays organized without me lifting a finger.",
+      text: "The booking system is seamless. Customers love being able to schedule appointments instantly.",
       rating: 5
     },
     {
       name: "James McCarthy",
       company: "McCarthy Roofing",
       image: "https://randomuser.me/api/portraits/men/67.jpg",
-      text: "We've seen a 40% increase in booked jobs since using this system. The AI handles everything professionally - from quotes to scheduling. Worth every penny!",
+      text: "We've seen a 40% increase in booked jobs since using this system. Worth every penny!",
+      rating: 5
+    },
+    {
+      name: "Emma Walsh",
+      company: "Walsh HVAC",
+      image: "https://randomuser.me/api/portraits/women/68.jpg",
+      text: "Finally, a system that understands the trades business. My customers love the quick responses.",
+      rating: 5
+    },
+    {
+      name: "David Ryan",
+      company: "Ryan Carpentry",
+      image: "https://randomuser.me/api/portraits/men/52.jpg",
+      text: "I can focus on the job knowing calls are being handled professionally. Game changer!",
+      rating: 5
+    },
+    {
+      name: "Lisa Brennan",
+      company: "Brennan Painting",
+      image: "https://randomuser.me/api/portraits/women/33.jpg",
+      text: "The AI is so professional, customers don't even realize it's not a real person!",
       rating: 5
     }
   ];
+
+  const firstRow = reviews.slice(0, 3);
+  const secondRow = reviews.slice(3);
 
   const features = [
     {
@@ -113,16 +214,9 @@ function Landing() {
     }
   ];
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveTestimonial((prev) => (prev + 1) % testimonials.length);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
   return (
     <div className="landing">
-      {/* Navigation */}
+      {/* Navigation - Light Theme */}
       <nav className="landing-nav">
         <div className="nav-container">
           <div className="nav-logo">
@@ -146,13 +240,20 @@ function Landing() {
 
       {/* Hero Section */}
       <section className="hero">
-        <div className="hero-bg">
-          <div className="hero-gradient"></div>
-          <div className="hero-grid"></div>
+        {/* DarkVeil Background Effect */}
+        <div className="hero-veil">
+          <DarkVeil
+            hueShift={0}
+            noiseIntensity={0}
+            scanlineIntensity={0}
+            speed={0.5}
+            scanlineFrequency={0}
+            warpAmount={0}
+          />
         </div>
         <div className="hero-content">
           <div className="hero-badge">
-            <i className="fas fa-star"></i>
+            <span className="badge-dot"></span>
             Trusted by 500+ tradespeople across Ireland
           </div>
           <h1>
@@ -175,23 +276,30 @@ function Landing() {
           </div>
           <div className="hero-stats">
             <div className="stat">
-              <span className="stat-number">10,000+</span>
+              <span className="stat-number">
+                <NumberTicker end={10000} suffix="+" />
+              </span>
               <span className="stat-label">Calls Handled</span>
             </div>
             <div className="stat-divider"></div>
             <div className="stat">
-              <span className="stat-number">98%</span>
-              <span className="stat-label">Customer Satisfaction</span>
+              <span className="stat-number">
+                <NumberTicker end={98} suffix="%" />
+              </span>
+              <span className="stat-label">Satisfaction</span>
             </div>
             <div className="stat-divider"></div>
             <div className="stat">
-              <span className="stat-number">40%</span>
+              <span className="stat-number">
+                <NumberTicker end={40} suffix="%" />
+              </span>
               <span className="stat-label">More Bookings</span>
             </div>
           </div>
         </div>
         <div className="hero-visual">
           <div className="phone-mockup">
+            <div className="phone-notch"></div>
             <div className="phone-screen">
               <div className="call-ui">
                 <div className="caller-avatar">
@@ -202,6 +310,7 @@ function Landing() {
                   <span className="caller-number">+353 86 XXX XXXX</span>
                 </div>
                 <div className="ai-badge">
+                  <span className="ai-pulse"></span>
                   <i className="fas fa-robot"></i> AI Answering
                 </div>
                 <div className="call-wave">
@@ -213,17 +322,33 @@ function Landing() {
         </div>
       </section>
 
+      {/* Logos Section */}
+      <section className="logos-section">
+        <div className="section-container">
+          <p className="logos-title">Integrates with tools you already use</p>
+          <div className="logos-grid">
+            <div className="logo-item"><i className="fab fa-google"></i> Google Calendar</div>
+            <div className="logo-item"><i className="fas fa-phone-alt"></i> Twilio</div>
+            <div className="logo-item"><i className="fab fa-stripe-s"></i> Stripe</div>
+            <div className="logo-item"><i className="fas fa-brain"></i> OpenAI</div>
+          </div>
+        </div>
+      </section>
+
       {/* Features Section */}
       <section id="features" className="features">
         <div className="section-container">
           <div className="section-header">
             <span className="section-badge">Features</span>
-            <h2>Everything you need to grow your trade business</h2>
+            <h2>Everything you need to <span className="gradient-text">grow your business</span></h2>
             <p>Powerful tools designed specifically for tradespeople like plumbers, electricians, roofers, and more.</p>
           </div>
           <div className="features-grid">
             {features.map((feature, index) => (
-              <div key={index} className="feature-card" style={{ animationDelay: `${index * 0.1}s` }}>
+              <div 
+                key={index} 
+                className="feature-card"
+              >
                 <div className="feature-icon">
                   <i className={feature.icon}></i>
                 </div>
@@ -240,7 +365,7 @@ function Landing() {
         <div className="section-container">
           <div className="section-header">
             <span className="section-badge">How It Works</span>
-            <h2>Get started in minutes</h2>
+            <h2>Get started in <span className="gradient-text">3 simple steps</span></h2>
           </div>
           <div className="steps">
             <div className="step">
@@ -264,46 +389,27 @@ function Landing() {
         </div>
       </section>
 
-      {/* Testimonials Section */}
+      {/* Testimonials Section with Marquee */}
       <section id="testimonials" className="testimonials">
         <div className="section-container">
           <div className="section-header">
             <span className="section-badge">Testimonials</span>
-            <h2>Loved by tradespeople across Ireland</h2>
+            <h2>Loved by <span className="gradient-text">tradespeople</span> across Ireland</h2>
           </div>
-          <div className="testimonial-showcase">
-            <div className="testimonial-cards">
-              {testimonials.map((testimonial, index) => (
-                <div 
-                  key={index} 
-                  className={`testimonial-card ${index === activeTestimonial ? 'active' : ''}`}
-                >
-                  <div className="testimonial-rating">
-                    {[...Array(testimonial.rating)].map((_, i) => (
-                      <i key={i} className="fas fa-star"></i>
-                    ))}
-                  </div>
-                  <p className="testimonial-text">"{testimonial.text}"</p>
-                  <div className="testimonial-author">
-                    <img src={testimonial.image} alt={testimonial.name} />
-                    <div>
-                      <span className="author-name">{testimonial.name}</span>
-                      <span className="author-company">{testimonial.company}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="testimonial-dots">
-              {testimonials.map((_, index) => (
-                <button
-                  key={index}
-                  className={`dot ${index === activeTestimonial ? 'active' : ''}`}
-                  onClick={() => setActiveTestimonial(index)}
-                />
-              ))}
-            </div>
-          </div>
+        </div>
+        <div className="testimonials-marquee">
+          <Marquee direction="left" speed={40}>
+            {firstRow.map((review, index) => (
+              <ReviewCard key={index} {...review} />
+            ))}
+          </Marquee>
+          <Marquee direction="right" speed={40}>
+            {secondRow.map((review, index) => (
+              <ReviewCard key={index} {...review} />
+            ))}
+          </Marquee>
+          <div className="marquee-fade marquee-fade-left"></div>
+          <div className="marquee-fade marquee-fade-right"></div>
         </div>
       </section>
 
@@ -312,7 +418,7 @@ function Landing() {
         <div className="section-container">
           <div className="section-header">
             <span className="section-badge">Pricing</span>
-            <h2>Simple, transparent pricing</h2>
+            <h2>Simple, <span className="gradient-text">transparent pricing</span></h2>
             <p>No hidden fees. Cancel anytime.</p>
           </div>
           <div className="pricing-grid">
@@ -406,4 +512,3 @@ function Landing() {
 }
 
 export default Landing;
-

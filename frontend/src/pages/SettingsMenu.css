@@ -25,9 +25,17 @@
 
 .service-form input {
   padding: 0.75rem;
-  border: 2px solid var(--bg-tertiary);
+  border: 2px solid var(--border-color);
   border-radius: var(--radius-md);
   font-size: 0.95rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.service-form input:focus {
+  border-color: var(--accent-blue);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
 }
 
 .services-list {
@@ -101,11 +109,13 @@
 
 .service-edit-form input {
   padding: 0.875rem 1rem;
-  border: 2px solid var(--bg-tertiary);
+  border: 2px solid var(--border-color);
   border-radius: var(--radius-md);
   font-size: 1rem;
   min-height: 48px;
   width: 100%;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .service-edit-form input:focus {
