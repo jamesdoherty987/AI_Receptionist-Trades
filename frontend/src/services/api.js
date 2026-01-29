@@ -5,7 +5,17 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Important for session cookies
 });
+
+// Authentication
+export const login = (email, password) => api.post('/api/auth/login', { email, password });
+export const signup = (data) => api.post('/api/auth/signup', data);
+export const logout = () => api.post('/api/auth/logout');
+export const getCurrentUser = () => api.get('/api/auth/me');
+export const updateProfile = (data) => api.put('/api/auth/profile', data);
+export const changePassword = (currentPassword, newPassword) => 
+  api.post('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword });
 
 // Bookings / Jobs
 export const getBookings = () => api.get('/api/bookings');

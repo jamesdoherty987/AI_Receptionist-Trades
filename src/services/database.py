@@ -117,6 +117,31 @@ class Database:
             )
         """)
         
+        # Companies/Users table (for authentication and multi-tenancy)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS companies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_name TEXT NOT NULL,
+                owner_name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                phone TEXT,
+                trade_type TEXT,
+                address TEXT,
+                logo_url TEXT,
+                subscription_tier TEXT DEFAULT 'free',
+                subscription_status TEXT DEFAULT 'active',
+                stripe_customer_id TEXT,
+                is_verified INTEGER DEFAULT 0,
+                verification_token TEXT,
+                reset_token TEXT,
+                reset_token_expires TIMESTAMP,
+                last_login TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
         # Worker assignments table (linking workers to jobs)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS worker_assignments (
@@ -1113,6 +1138,114 @@ class Database:
             'status': row[4],
             'address': row[5]
         } for row in rows]
+
+
+    # Company/Auth methods
+    def create_company(self, company_name: str, owner_name: str, email: str, 
+                       password_hash: str, phone: str = None, trade_type: str = None) -> Optional[int]:
+        """Create a new company account"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                INSERT INTO companies (company_name, owner_name, email, password_hash, phone, trade_type)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (company_name, owner_name, email.lower().strip(), password_hash, phone, trade_type))
+            
+            company_id = cursor.lastrowid
+            conn.commit()
+            return company_id
+        except sqlite3.IntegrityError:
+            # Email already exists
+            conn.rollback()
+            return None
+        finally:
+            conn.close()
+    
+    def get_company_by_email(self, email: str) -> Optional[Dict]:
+        """Get company by email address"""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM companies WHERE email = ?", (email.lower().strip(),))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return dict(row)
+        return None
+    
+    def get_company(self, company_id: int) -> Optional[Dict]:
+        """Get company by ID"""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM companies WHERE id = ?", (company_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return dict(row)
+        return None
+    
+    def update_company(self, company_id: int, **kwargs) -> bool:
+        """Update company information"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        allowed_fields = ['company_name', 'owner_name', 'phone', 'trade_type', 
+                          'address', 'logo_url', 'subscription_tier', 'subscription_status',
+                          'stripe_customer_id', 'is_verified', 'verification_token',
+                          'reset_token', 'reset_token_expires', 'last_login']
+        
+        fields = []
+        values = []
+        for key, value in kwargs.items():
+            if key in allowed_fields:
+                fields.append(f"{key} = ?")
+                values.append(value)
+        
+        if fields:
+            values.append(datetime.now())
+            values.append(company_id)
+            query = f"UPDATE companies SET {', '.join(fields)}, updated_at = ? WHERE id = ?"
+            cursor.execute(query, values)
+            conn.commit()
+            success = cursor.rowcount > 0
+        else:
+            success = False
+        
+        conn.close()
+        return success
+    
+    def update_company_password(self, company_id: int, password_hash: str) -> bool:
+        """Update company password"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE companies SET password_hash = ?, updated_at = ? WHERE id = ?
+        """, (password_hash, datetime.now(), company_id))
+        
+        success = cursor.rowcount > 0
+        conn.commit()
+        conn.close()
+        return success
+    
+    def update_last_login(self, company_id: int):
+        """Update the last login timestamp"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE companies SET last_login = ? WHERE id = ?
+        """, (datetime.now(), company_id))
+        
+        conn.commit()
+        conn.close()
 
 
 # Global database instance

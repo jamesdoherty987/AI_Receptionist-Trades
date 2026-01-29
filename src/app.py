@@ -3,12 +3,15 @@ Flask application for Twilio voice webhook
 """
 import os
 import sys
+import secrets
+import hashlib
 from pathlib import Path
+from functools import wraps
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, Response, request, jsonify, send_from_directory
+from flask import Flask, Response, request, jsonify, send_from_directory, session
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.twiml.messaging_response import MessagingResponse
 from src.utils.config import config
@@ -27,7 +30,40 @@ app = Flask(__name__,
 
 # Configure CORS for development
 from flask_cors import CORS
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+
+# Configure session
+app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+
+# Helper functions for authentication
+def hash_password(password: str) -> str:
+    """Hash a password using SHA-256 with salt"""
+    salt = secrets.token_hex(16)
+    password_hash = hashlib.sha256((password + salt).encode()).hexdigest()
+    return f"{salt}:{password_hash}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    """Verify a password against a stored hash"""
+    try:
+        salt, password_hash = stored_hash.split(':')
+        return hashlib.sha256((password + salt).encode()).hexdigest() == password_hash
+    except:
+        return False
+
+
+def login_required(f):
+    """Decorator to require login for API endpoints"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'company_id' not in session:
+            return jsonify({"error": "Authentication required"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Start auto-complete scheduler on app startup
 print("\\n🚀 Starting appointment auto-complete scheduler...")
@@ -154,6 +190,219 @@ def transfer_call():
 def health():
     """Health check endpoint"""
     return {"status": "healthy", "service": "AI Receptionist"}
+
+
+# ============================================
+# AUTHENTICATION ENDPOINTS
+# ============================================
+
+@app.route("/api/auth/signup", methods=["POST"])
+def signup():
+    """Create a new company account"""
+    data = request.json
+    
+    # Validate required fields
+    required_fields = ['company_name', 'owner_name', 'email', 'password']
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({"error": f"{field.replace('_', ' ').title()} is required"}), 400
+    
+    # Validate email format
+    email = data['email'].lower().strip()
+    if '@' not in email or '.' not in email:
+        return jsonify({"error": "Invalid email format"}), 400
+    
+    # Validate password strength
+    password = data['password']
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    
+    db = get_database()
+    
+    # Check if email already exists
+    existing = db.get_company_by_email(email)
+    if existing:
+        return jsonify({"error": "An account with this email already exists"}), 409
+    
+    # Hash password and create account
+    password_hash = hash_password(password)
+    company_id = db.create_company(
+        company_name=data['company_name'],
+        owner_name=data['owner_name'],
+        email=email,
+        password_hash=password_hash,
+        phone=data.get('phone'),
+        trade_type=data.get('trade_type')
+    )
+    
+    if company_id:
+        # Log the user in
+        session['company_id'] = company_id
+        session['email'] = email
+        
+        company = db.get_company(company_id)
+        return jsonify({
+            "success": True,
+            "message": "Account created successfully",
+            "user": {
+                "id": company_id,
+                "company_name": company['company_name'],
+                "owner_name": company['owner_name'],
+                "email": company['email'],
+                "subscription_tier": company['subscription_tier']
+            }
+        }), 201
+    else:
+        return jsonify({"error": "Failed to create account"}), 500
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    """Log in to an existing account"""
+    data = request.json
+    
+    email = data.get('email', '').lower().strip()
+    password = data.get('password', '')
+    
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+    
+    db = get_database()
+    company = db.get_company_by_email(email)
+    
+    if not company:
+        return jsonify({"error": "Invalid email or password"}), 401
+    
+    if not verify_password(password, company['password_hash']):
+        return jsonify({"error": "Invalid email or password"}), 401
+    
+    # Update last login
+    db.update_last_login(company['id'])
+    
+    # Create session
+    session['company_id'] = company['id']
+    session['email'] = company['email']
+    
+    return jsonify({
+        "success": True,
+        "message": "Logged in successfully",
+        "user": {
+            "id": company['id'],
+            "company_name": company['company_name'],
+            "owner_name": company['owner_name'],
+            "email": company['email'],
+            "phone": company['phone'],
+            "trade_type": company['trade_type'],
+            "logo_url": company['logo_url'],
+            "subscription_tier": company['subscription_tier']
+        }
+    })
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+def logout():
+    """Log out the current user"""
+    session.clear()
+    return jsonify({"success": True, "message": "Logged out successfully"})
+
+
+@app.route("/api/auth/me", methods=["GET"])
+def get_current_user():
+    """Get the currently logged in user"""
+    if 'company_id' not in session:
+        return jsonify({"authenticated": False}), 200
+    
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        session.clear()
+        return jsonify({"authenticated": False}), 200
+    
+    return jsonify({
+        "authenticated": True,
+        "user": {
+            "id": company['id'],
+            "company_name": company['company_name'],
+            "owner_name": company['owner_name'],
+            "email": company['email'],
+            "phone": company['phone'],
+            "trade_type": company['trade_type'],
+            "address": company['address'],
+            "logo_url": company['logo_url'],
+            "subscription_tier": company['subscription_tier'],
+            "subscription_status": company['subscription_status']
+        }
+    })
+
+
+@app.route("/api/auth/profile", methods=["PUT"])
+def update_profile():
+    """Update company profile"""
+    if 'company_id' not in session:
+        return jsonify({"error": "Authentication required"}), 401
+    
+    data = request.json
+    db = get_database()
+    
+    # Filter allowed fields
+    allowed_updates = {}
+    for field in ['company_name', 'owner_name', 'phone', 'trade_type', 'address', 'logo_url']:
+        if field in data:
+            allowed_updates[field] = data[field]
+    
+    if allowed_updates:
+        success = db.update_company(session['company_id'], **allowed_updates)
+        if success:
+            company = db.get_company(session['company_id'])
+            return jsonify({
+                "success": True,
+                "message": "Profile updated successfully",
+                "user": {
+                    "id": company['id'],
+                    "company_name": company['company_name'],
+                    "owner_name": company['owner_name'],
+                    "email": company['email'],
+                    "phone": company['phone'],
+                    "trade_type": company['trade_type'],
+                    "address": company['address'],
+                    "logo_url": company['logo_url'],
+                    "subscription_tier": company['subscription_tier']
+                }
+            })
+    
+    return jsonify({"error": "No valid fields to update"}), 400
+
+
+@app.route("/api/auth/change-password", methods=["POST"])
+def change_password():
+    """Change password for logged in user"""
+    if 'company_id' not in session:
+        return jsonify({"error": "Authentication required"}), 401
+    
+    data = request.json
+    current_password = data.get('current_password', '')
+    new_password = data.get('new_password', '')
+    
+    if not current_password or not new_password:
+        return jsonify({"error": "Current and new password are required"}), 400
+    
+    if len(new_password) < 8:
+        return jsonify({"error": "New password must be at least 8 characters"}), 400
+    
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not verify_password(current_password, company['password_hash']):
+        return jsonify({"error": "Current password is incorrect"}), 401
+    
+    new_hash = hash_password(new_password)
+    success = db.update_company_password(session['company_id'], new_hash)
+    
+    if success:
+        return jsonify({"success": True, "message": "Password changed successfully"})
+    
+    return jsonify({"error": "Failed to change password"}), 500
 
 
 @app.route("/twilio/sms", methods=["POST"])
