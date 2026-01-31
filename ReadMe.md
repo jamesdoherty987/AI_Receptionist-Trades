@@ -41,12 +41,11 @@ npm install
 
 ### 2. Start Development
 
-**Option A: Automatic (Recommended)**
+**Local Development (No Remote Access):**
 ```bash
 start-dev.bat
 ```
-
-**Option B: Manual**
+Or manually:
 ```bash
 # Terminal 1 - Backend
 python src/app.py
@@ -56,10 +55,43 @@ cd frontend
 npm run dev
 ```
 
-### 3. Access Dashboard
-Open browser to: **http://localhost:3000**
+**With Ngrok (Access from Other Devices):**
 
-For detailed setup, see [QUICKSTART_REACT.md](QUICKSTART_REACT.md)
+Open 4 separate terminals and run these commands:
+
+**Terminal 1 - Flask Backend:**
+```bash
+venv\Scripts\activate
+python src/app.py
+```
+
+**Terminal 2 - WebSocket Server:**
+```bash
+venv\Scripts\activate
+python src/media_ws.py
+```
+
+**Terminal 3 - Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
+**Terminal 4 - Ngrok:**
+```bash
+ngrok start --config=ngrok.yml --all
+```
+
+After ngrok starts, check the ngrok window for your public URLs:
+- Frontend: `https://xxxx-xxxx-xxxx.ngrok-free.app` (port 3000)
+- Backend: `https://xxxx-xxxx-xxxx.ngrok-free.app` (port 5000)
+- WebSocket: `https://xxxx-xxxx-xxxx.ngrok-free.app` (port 8765)
+
+**Note:** If accessing from remote devices, you may need to update `frontend/vite.config.js` to change the API proxy target from `http://localhost:5000` to your ngrok backend URL.
+
+### 3. Access Dashboard
+- **Local:** http://localhost:3000
+- **Remote:** Use the frontend ngrok URL from Terminal 4
 
 ## 📁 Project Structure
 
@@ -112,14 +144,9 @@ AI-Receptionist-Trades/
 └── ngrok.yml                     # Ngrok configuration
 ```
 
-## Quick Start
+## Configuration
 
-### 1. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Configure Environment
+### Environment Variables
 Create a `.env` file in the root directory:
 ```env
 # OpenAI
@@ -148,6 +175,13 @@ SMTP_PASSWORD=your_app_password
 FROM_EMAIL=your_email@gmail.com
 REMINDER_METHOD=email  # Use "email" or "sms"
 
+# Stripe Payment (for invoices with payment links)
+STRIPE_SECRET_KEY=sk_live_your_stripe_secret_key
+STRIPE_PUBLIC_KEY=pk_live_your_stripe_public_key
+
+# Company Branding (optional)
+COMPANY_LOGO_URL=https://your-domain.com/logo.png
+
 # Google Calendar
 CALENDAR_ID=primary
 CALENDAR_TIMEZONE=Europe/Dublin
@@ -157,13 +191,13 @@ BUSINESS_HOURS_START=9
 BUSINESS_HOURS_END=17
 ```
 
-### 3. Set Up Google Calendar
+### Set Up Google Calendar
 ```bash
 python scripts/setup_calendar.py
 ```
 Follow the prompts to authenticate with Google Calendar.
 
-### 4. Configure Business Information
+### Configure Business Information
 Edit `config/business_info.json` with your business details:
 ```json
 {
@@ -178,24 +212,7 @@ Edit `config/business_info.json` with your business details:
 }
 ```
 
-### 5. Run the Application
-
-**Terminal 1 - Flask Server:**
-```bash
-python src/app.py
-```
-
-**Terminal 2 - WebSocket Server:**
-```bash
-python src/media_ws.py
-```
-
-**Terminal 3 - Ngrok:**
-```bash
-ngrok start --config=ngrok.yml --all
-```
-
-### 6. Configure Twilio
+### Configure Twilio
 1. Update `.env` with your ngrok URLs
 2. In Twilio Console, set your phone number's webhook to:
    ```
@@ -350,27 +367,6 @@ Proprietary - Munster Physio
 
 ## Google Calendar Setup
 
-See [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed Google Calendar integration instructions.
-
-Quick steps:
-1. Enable Google Calendar API in Cloud Console
+1. Enable Google Calendar API in Google Cloud Console
 2. Download OAuth credentials to `config/credentials.json`
-3. Run the app - it will prompt for authorization on first use
-
-## Project Structure
-
-```
-src/
-├── app.py                    # Flask application
-├── media_ws.py              # WebSocket server
-├── handlers/                # Request handlers
-├── services/                # Core services (ASR, TTS, LLM, Calendar)
-└── utils/                   # Utilities and config
-```
-
-## Documentation
-- [SETUP_GUIDE.md](SETUP_GUIDE.md) - Complete setup instructions
-- [OPTIMIZATION_NOTES.md](OPTIMIZATION_NOTES.md) - Performance details
-
-## License
-MIT
+3. Run `python scripts/setup_calendar.py` - it will prompt for authorization

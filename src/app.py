@@ -938,7 +938,9 @@ def bookings_api():
                         job_property_type = previous_booking[2]
                         print(f"🏠 Using property type from previous booking: {job_property_type}")
             
-            # Create booking
+            # Create booking - accept both 'charge' and 'estimated_charge' from frontend
+            job_charge = data.get('charge') or data.get('estimated_charge')
+            
             booking_id = db.add_booking(
                 client_id=client_id,
                 calendar_event_id=calendar_event_id,
@@ -949,7 +951,7 @@ def bookings_api():
                 address=job_address,
                 eircode=job_eircode,
                 property_type=job_property_type,
-                charge=data.get('charge')
+                charge=job_charge
             )
             
             # Add initial note if provided
@@ -1008,6 +1010,10 @@ def booking_detail_api(booking_id):
         if not row:
             return jsonify({"error": "Booking not found"}), 404
         
+        # Get notes for this booking
+        appointment_notes = db.get_appointment_notes(booking_id)
+        notes_text = appointment_notes[0]['note'] if appointment_notes else ''
+        
         booking = {
             'id': row[0],
             'client_id': row[1],
@@ -1031,7 +1037,7 @@ def booking_detail_api(booking_id):
             'property_type': row[15],
             'customer_name': row[16],
             'client_name': row[16],
-            'notes': ''
+            'notes': notes_text
         }
         
         return jsonify(booking)
@@ -1039,7 +1045,25 @@ def booking_detail_api(booking_id):
     elif request.method == "PUT":
         # Update booking
         data = request.json
+        
+        # Handle notes separately (stored in appointment_notes table)
+        notes = data.pop('notes', None)
+        
         success = db.update_booking(booking_id, **data)
+        
+        # Update notes if provided
+        if notes is not None:
+            # Clear existing notes and add the new note
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM appointment_notes WHERE booking_id = ?", (booking_id,))
+            conn.commit()
+            conn.close()
+            
+            if notes.strip():
+                db.add_appointment_note(booking_id, notes, created_by="user")
+            success = True
+        
         if success:
             return jsonify({"success": True})
         return jsonify({"error": "Failed to update booking"}), 400
@@ -1107,20 +1131,58 @@ def complete_booking_api(booking_id):
 
 @app.route("/api/bookings/<int:booking_id>/send-invoice", methods=["POST"])
 def send_invoice_api(booking_id):
-    """Send invoice email for a booking"""
+    """Send invoice email for a booking with Stripe payment link"""
     db = get_database()
     
     try:
-        # Get the booking details using the existing method
-        bookings = db.get_all_bookings()
-        booking = None
-        for b in bookings:
-            if b['id'] == booking_id:
-                booking = b
-                break
+        # Get the booking details directly from database to ensure we have the latest charge
+        conn = db.get_connection()
+        cursor = conn.cursor()
         
-        if not booking:
+        cursor.execute("""
+            SELECT 
+                b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
+                b.service_type, b.status, b.phone_number, b.email, b.created_at,
+                b.charge, b.payment_status, b.payment_method, b.urgency, 
+                b.address, b.eircode, b.property_type,
+                c.name as client_name, c.phone as client_phone, c.email as client_email
+            FROM bookings b
+            LEFT JOIN clients c ON b.client_id = c.id
+            WHERE b.id = ?
+        """, (booking_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
             return jsonify({"error": "Booking not found"}), 404
+        
+        # Build booking dict with latest data
+        booking = {
+            'id': row[0],
+            'client_id': row[1],
+            'calendar_event_id': row[2],
+            'appointment_time': row[3],
+            'service_type': row[4],
+            'status': row[5],
+            'phone_number': row[6],
+            'phone': row[6] or row[17],
+            'email': row[7] or row[18],
+            'created_at': row[8],
+            'charge': row[9],  # This is the actual charge from database
+            'estimated_charge': row[9],  # Alias for compatibility
+            'payment_status': row[10],
+            'payment_method': row[11],
+            'urgency': row[12],
+            'address': row[13],
+            'job_address': row[13],
+            'eircode': row[14],
+            'property_type': row[15],
+            'customer_name': row[16],
+            'client_name': row[16]
+        }
+        
+        print(f"💰 Invoice: Using charge amount €{booking['charge']} from database for booking {booking_id}")
     
         # Use test email for now (as requested)
         # In production, this would be: to_email = booking['email']
@@ -1129,12 +1191,76 @@ def send_invoice_api(booking_id):
         if not booking['client_name']:
             return jsonify({"error": "Customer name not found"}), 400
         
-        if not booking.get('charge') or booking['charge'] <= 0:
+        # Get charge amount - use charge or estimated_charge, default to None if not set
+        charge_amount = booking.get('charge') or booking.get('estimated_charge')
+        
+        if not charge_amount or charge_amount <= 0:
             return jsonify({"error": "Invalid charge amount"}), 400
         
-        # Send the invoice email
+        charge_amount = float(charge_amount)
+        print(f"💰 Invoice: Final charge amount = €{charge_amount}")
+        
+        # Generate Stripe payment link
+        from src.utils.config import config
         from src.services.email_reminder import get_email_service
         from datetime import datetime
+        stripe_payment_link = None
+        
+        # Try to create Stripe payment link if configured
+        stripe_secret_key = getattr(config, 'STRIPE_SECRET_KEY', None)
+        
+        # Debug: Check if key is loaded
+        if stripe_secret_key:
+            print(f"🔑 Stripe key found: {stripe_secret_key[:12]}...{stripe_secret_key[-4:]}")
+        else:
+            # Try loading directly from environment as fallback
+            stripe_secret_key = os.getenv('STRIPE_SECRET_KEY')
+            if stripe_secret_key:
+                print(f"🔑 Stripe key loaded from env: {stripe_secret_key[:12]}...{stripe_secret_key[-4:]}")
+            else:
+                print("❌ STRIPE_SECRET_KEY not found in config or environment!")
+        
+        if stripe_secret_key:
+            try:
+                import stripe
+                stripe.api_key = stripe_secret_key
+                
+                # Create a payment link using Stripe Checkout
+                # Amount must be in cents
+                amount_cents = int(charge_amount * 100)
+                
+                print(f"💳 Creating Stripe checkout session for €{charge_amount} ({amount_cents} cents)...")
+                
+                checkout_session = stripe.checkout.Session.create(
+                    payment_method_types=['card'],
+                    line_items=[{
+                        'price_data': {
+                            'currency': 'eur',
+                            'product_data': {
+                                'name': f"{booking.get('service_type') or 'Service'} - Invoice #{booking_id}",
+                                'description': f"Service for {booking['client_name']}",
+                            },
+                            'unit_amount': amount_cents,
+                        },
+                        'quantity': 1,
+                    }],
+                    mode='payment',
+                    success_url=f"{os.getenv('PUBLIC_URL', 'http://localhost:5000')}/payment-success?session_id={{CHECKOUT_SESSION_ID}}",
+                    cancel_url=f"{os.getenv('PUBLIC_URL', 'http://localhost:5000')}/payment-cancelled",
+                    metadata={
+                        'booking_id': str(booking_id),
+                        'customer_name': booking['client_name'],
+                    }
+                )
+                stripe_payment_link = checkout_session.url
+                print(f"✅ Stripe payment link created: {stripe_payment_link}")
+            except Exception as stripe_error:
+                print(f"⚠️ Could not create Stripe payment link: {stripe_error}")
+                import traceback
+                traceback.print_exc()
+                # Continue without Stripe link - invoice will still be sent
+        else:
+            print("ℹ️ Stripe not configured - sending invoice without payment link")
         
         email_service = get_email_service()
         
@@ -1146,19 +1272,30 @@ def send_invoice_api(booking_id):
             except:
                 pass
         
+        # Generate invoice number
+        invoice_number = f"INV-{booking_id}-{datetime.now().strftime('%Y%m%d')}"
+        
+        # Get job address
+        job_address = booking.get('address') or booking.get('job_address') or ''
+        
         success = email_service.send_invoice(
             to_email=to_email,
             customer_name=booking['client_name'],
             service_type=booking.get('service_type') or 'Service',
-            charge=float(booking['charge']),
-            appointment_time=appointment_time
+            charge=charge_amount,
+            appointment_time=appointment_time,
+            stripe_payment_link=stripe_payment_link,
+            job_address=job_address,
+            invoice_number=invoice_number
         )
         
         if success:
             return jsonify({
                 "success": True,
                 "message": f"Invoice sent to {to_email}",
-                "sent_to": to_email
+                "sent_to": to_email,
+                "invoice_number": invoice_number,
+                "has_payment_link": stripe_payment_link is not None
             })
         else:
             return jsonify({"error": "Failed to send invoice email"}), 500

@@ -62,13 +62,36 @@ class EmailReminderService:
             return False
         
         try:
+            import sqlite3
+            import os
+            
+            # Load business name DIRECTLY from DATABASE
+            business_name = 'Your Business'
+            try:
+                db_paths = [
+                    'data/receptionist.db',
+                    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'receptionist.db'),
+                ]
+                for path in db_paths:
+                    if os.path.exists(path):
+                        conn = sqlite3.connect(path)
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT business_name FROM business_settings ORDER BY id DESC LIMIT 1")
+                        row = cursor.fetchone()
+                        conn.close()
+                        if row and row[0]:
+                            business_name = row[0]
+                        break
+            except Exception as e:
+                print(f"⚠️ Could not load business name from database: {e}")
+            
             # Format the appointment time
             time_str = appointment_time.strftime('%A, %B %d at %I:%M %p')
             
             # Create message
             msg = MIMEMultipart('alternative')
             msg['Subject'] = f'Reminder: Your {service_type.title()} Appointment Tomorrow'
-            msg['From'] = self.from_email
+            msg['From'] = f'{business_name} <{self.from_email}>'
             msg['To'] = to_email
             
             # Plain text version
@@ -78,12 +101,11 @@ Hi {customer_name},
 This is a friendly reminder about your {service_type} appointment tomorrow:
 
 Date & Time: {time_str}
-Location: Munster Physio
 
 If you need to cancel or reschedule, please call us as soon as possible.
 
 Best regards,
-Munster Physio Team
+{business_name}
             """.strip()
             
             # HTML version (prettier)
@@ -99,13 +121,12 @@ Munster Physio Team
         
         <div style="background-color: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin: 20px 0;">
             <p style="margin: 5px 0;"><strong>📅 Date & Time:</strong> {time_str}</p>
-            <p style="margin: 5px 0;"><strong>📍 Location:</strong> Munster Physio</p>
         </div>
         
         <p>If you need to cancel or reschedule, please call us as soon as possible.</p>
         
         <p style="margin-top: 30px;">Best regards,<br>
-        <strong>Munster Physio Team</strong></p>
+        <strong>{business_name}</strong></p>
         
         <hr style="margin-top: 30px; border: none; border-top: 1px solid #ddd;">
         <p style="font-size: 12px; color: #666;">
@@ -169,9 +190,11 @@ Munster Physio Team
             return False
     
     def send_invoice(self, to_email: str, customer_name: str, service_type: str, 
-                    charge: float, appointment_time: datetime = None) -> bool:
+                    charge: float, appointment_time: datetime = None,
+                    stripe_payment_link: str = None, job_address: str = None,
+                    invoice_number: str = None) -> bool:
         """
-        Send an invoice email
+        Send a professional invoice email with optional Stripe payment link
         
         Args:
             to_email: Recipient email address
@@ -179,6 +202,9 @@ Munster Physio Team
             service_type: Type of service performed
             charge: Amount to charge
             appointment_time: Appointment datetime (optional)
+            stripe_payment_link: Stripe payment URL (optional)
+            job_address: Address where service was performed (optional)
+            invoice_number: Unique invoice number (optional)
             
         Returns:
             True if sent successfully, False otherwise
@@ -188,70 +214,279 @@ Munster Physio Team
             return False
         
         try:
+            from src.utils.config import config
+            import sqlite3
+            import os
+            
+            # Load business info DIRECTLY from DATABASE
+            business_name = None
+            business_phone = ''
+            business_email = self.from_email
+            business_website = ''
+            business_city = ''
+            
+            try:
+                # Get the database path - check multiple locations
+                db_paths = [
+                    'data/receptionist.db',
+                    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'receptionist.db'),
+                ]
+                
+                db_path = None
+                for path in db_paths:
+                    if os.path.exists(path):
+                        db_path = path
+                        break
+                
+                if db_path:
+                    conn = sqlite3.connect(db_path)
+                    cursor = conn.cursor()
+                    
+                    # Get the business settings directly
+                    cursor.execute("""
+                        SELECT business_name, phone, email, website, city 
+                        FROM business_settings 
+                        ORDER BY id DESC LIMIT 1
+                    """)
+                    row = cursor.fetchone()
+                    conn.close()
+                    
+                    if row:
+                        business_name = row[0] if row[0] else None
+                        business_phone = row[1] if row[1] else ''
+                        business_email = row[2] if row[2] else self.from_email
+                        business_website = row[3] if row[3] else ''
+                        business_city = row[4] if row[4] else ''
+                        print(f"📧 Invoice loaded from database - Business: {business_name}")
+                    else:
+                        print("⚠️ No business settings found in database")
+                else:
+                    print(f"⚠️ Database not found at any path")
+                    
+            except Exception as db_error:
+                print(f"⚠️ Database error: {db_error}")
+                import traceback
+                traceback.print_exc()
+            
+            # Final fallback if database didn't work
+            if not business_name:
+                business_name = 'Your Business'
+                print("⚠️ Using fallback business name")
+            
+            # Get logo URL from config
+            logo_url = getattr(config, 'COMPANY_LOGO_URL', '') or ''
+            
             # Format the date if provided
             date_str = appointment_time.strftime('%A, %B %d, %Y') if appointment_time else 'Recent service'
             
+            # Generate invoice number if not provided
+            if not invoice_number:
+                from datetime import datetime as dt
+                invoice_number = f"INV-{dt.now().strftime('%Y%m%d%H%M%S')}"
+            
             # Create message
             msg = MIMEMultipart('alternative')
-            msg['Subject'] = f'Invoice for {service_type.title()} Service'
-            msg['From'] = self.from_email
+            msg['Subject'] = f'Invoice #{invoice_number} from {business_name}'
+            msg['From'] = f'{business_name} <{self.from_email}>'
             msg['To'] = to_email
+            
+            # Payment link text
+            payment_text = ""
+            if stripe_payment_link:
+                payment_text = f"\nPay securely online: {stripe_payment_link}"
             
             # Plain text version
             text_body = f"""
-Hi {customer_name},
+{business_name}
+Invoice #{invoice_number}
+{'='*50}
 
-Thank you for choosing our services!
+Dear {customer_name},
+
+Thank you for choosing {business_name}!
 
 INVOICE DETAILS:
+----------------
+Invoice Number: {invoice_number}
 Service: {service_type}
 Date: {date_str}
-Amount Due: €{charge:.2f}
+{f'Location: {job_address}' if job_address else ''}
 
-Please remit payment at your earliest convenience.
+AMOUNT DUE: €{charge:.2f}
+{payment_text}
 
-If you have any questions about this invoice, please don't hesitate to contact us.
+Payment Methods:
+- Online: Click the payment link above
+- Cash or Card on completion
+- Bank Transfer
+
+If you have any questions about this invoice, please contact us:
+Phone: {business_phone}
+Email: {business_email}
 
 Best regards,
-The Team
+{business_name}
+{business_city}
+
+---
+This invoice was generated automatically.
             """.strip()
             
-            # HTML version (prettier)
-            html_body = f"""
+            # Logo HTML (if URL provided)
+            logo_html = ""
+            if logo_url:
+                logo_html = f'''
+                <img src="{logo_url}" alt="{business_name}" style="max-width: 180px; max-height: 80px; margin-bottom: 20px;" />
+                '''
+            else:
+                # Fallback to text logo with styling
+                logo_html = f'''
+                <div style="font-size: 28px; font-weight: 800; color: #1e40af; margin-bottom: 20px; letter-spacing: -0.5px;">
+                    {business_name}
+                </div>
+                '''
+            
+            # Payment button HTML - always show a prominent pay section
+            if stripe_payment_link:
+                payment_button_html = f'''
+                <div style="text-align: center; margin: 35px 0; padding: 25px; background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-radius: 12px; border: 2px solid #10b981;">
+                    <p style="margin: 0 0 15px 0; font-size: 16px; color: #065f46; font-weight: 600;">Ready to pay? Click below for secure online payment:</p>
+                    <a href="{stripe_payment_link}" 
+                       style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); 
+                              color: white; text-decoration: none; padding: 18px 50px; font-size: 20px; 
+                              font-weight: 700; border-radius: 10px; box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+                              letter-spacing: 0.5px;">
+                        💳 PAY NOW - €{charge:.2f}
+                    </a>
+                    <p style="margin-top: 15px; font-size: 13px; color: #047857;">
+                        🔒 Secure payment powered by Stripe
+                    </p>
+                </div>
+                '''
+            else:
+                payment_button_html = f'''
+                <div style="text-align: center; margin: 35px 0; padding: 25px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border: 2px solid #f59e0b;">
+                    <p style="margin: 0 0 10px 0; font-size: 18px; color: #92400e; font-weight: 700;">Amount Due: €{charge:.2f}</p>
+                    <p style="margin: 0; font-size: 14px; color: #b45309;">
+                        Please contact us to arrange payment via cash, card, or bank transfer.
+                    </p>
+                </div>
+                '''
+            
+            # HTML version (professional design)
+            html_body = f'''
+<!DOCTYPE html>
 <html>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px;">INVOICE</h2>
-        
-        <p>Hi {customer_name},</p>
-        
-        <p>Thank you for choosing our services!</p>
-        
-        <div style="background-color: #f8f9fa; border-left: 4px solid #10b981; padding: 20px; margin: 20px 0;">
-            <h3 style="margin-top: 0; color: #2c3e50;">Invoice Details</h3>
-            <p style="margin: 5px 0;"><strong>Service:</strong> {service_type}</p>
-            <p style="margin: 5px 0;"><strong>Date:</strong> {date_str}</p>
-            <p style="margin: 15px 0 5px 0; font-size: 1.3em;">
-                <strong>Amount Due:</strong> 
-                <span style="color: #10b981; font-weight: bold;">€{charge:.2f}</span>
-            </p>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <!-- Main Card -->
+        <div style="background: white; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); overflow: hidden;">
+            
+            <!-- Header with gradient -->
+            <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 30px; text-align: center;">
+                {logo_html.replace('color: #1e40af', 'color: white') if not logo_url else logo_html}
+                <div style="font-size: 14px; color: rgba(255,255,255,0.9); margin-top: 5px;">Professional Trade Services</div>
+            </div>
+            
+            <!-- Invoice Badge -->
+            <div style="text-align: center; margin-top: -20px;">
+                <span style="background: white; border: 3px solid #e5e7eb; padding: 10px 24px; border-radius: 30px; 
+                             font-size: 14px; font-weight: 700; color: #374151; display: inline-block;
+                             box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    INVOICE #{invoice_number}
+                </span>
+            </div>
+            
+            <!-- Content -->
+            <div style="padding: 30px;">
+                <p style="font-size: 16px; color: #374151; margin: 0 0 25px 0;">
+                    Dear <strong>{customer_name}</strong>,
+                </p>
+                <p style="font-size: 15px; color: #6b7280; margin: 0 0 30px 0; line-height: 1.6;">
+                    Thank you for choosing {business_name}. Please find your invoice details below.
+                </p>
+                
+                <!-- Invoice Details Box -->
+                <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 12px; padding: 24px; margin-bottom: 25px; border: 1px solid #e2e8f0;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">
+                                <span style="color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Service</span>
+                            </td>
+                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; text-align: right;">
+                                <span style="color: #1e293b; font-weight: 600; font-size: 15px;">{service_type}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">
+                                <span style="color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Date</span>
+                            </td>
+                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; text-align: right;">
+                                <span style="color: #1e293b; font-weight: 500; font-size: 15px;">{date_str}</span>
+                            </td>
+                        </tr>
+                        {f'''<tr>
+                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">
+                                <span style="color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Location</span>
+                            </td>
+                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; text-align: right;">
+                                <span style="color: #1e293b; font-weight: 500; font-size: 14px;">{job_address}</span>
+                            </td>
+                        </tr>''' if job_address else ''}
+                    </table>
+                    
+                    <!-- Amount Due -->
+                    <div style="margin-top: 20px; padding-top: 20px; border-top: 2px dashed #cbd5e1; text-align: center;">
+                        <div style="color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Amount Due</div>
+                        <div style="font-size: 42px; font-weight: 800; color: #059669; letter-spacing: -1px;">€{charge:.2f}</div>
+                    </div>
+                </div>
+                
+                <!-- Payment Button -->
+                {payment_button_html}
+                
+                <!-- Alternative Payment Methods -->
+                <div style="background: #fefce8; border-radius: 8px; padding: 16px; margin-bottom: 25px; border-left: 4px solid #eab308;">
+                    <div style="font-weight: 600; color: #854d0e; font-size: 14px; margin-bottom: 8px;">
+                        💡 Other Payment Options
+                    </div>
+                    <div style="color: #a16207; font-size: 13px; line-height: 1.6;">
+                        Cash or Card on completion • Bank Transfer
+                    </div>
+                </div>
+                
+                <!-- Contact Section -->
+                <div style="text-align: center; padding: 20px 0; border-top: 1px solid #e5e7eb;">
+                    <p style="color: #6b7280; font-size: 14px; margin: 0 0 15px 0;">Questions about this invoice?</p>
+                    <div style="display: inline-block;">
+                        {f'<a href="tel:{business_phone}" style="color: #3b82f6; text-decoration: none; font-weight: 600; font-size: 14px; margin: 0 10px;">📞 {business_phone}</a>' if business_phone else ''}
+                        {f'<a href="mailto:{business_email}" style="color: #3b82f6; text-decoration: none; font-weight: 600; font-size: 14px; margin: 0 10px;">✉️ {business_email}</a>' if business_email else ''}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div style="background: #1e293b; padding: 24px; text-align: center;">
+                <div style="color: white; font-weight: 700; font-size: 16px; margin-bottom: 5px;">{business_name}</div>
+                <div style="color: #94a3b8; font-size: 13px;">{business_city}</div>
+                {f'<div style="color: #64748b; font-size: 12px; margin-top: 8px;">{business_website}</div>' if business_website else ''}
+            </div>
         </div>
         
-        <p>Please remit payment at your earliest convenience.</p>
-        
-        <p>If you have any questions about this invoice, please don't hesitate to contact us.</p>
-        
-        <p style="margin-top: 30px;">Best regards,<br>
-        <strong>The Team</strong></p>
-        
-        <hr style="margin-top: 30px; border: none; border-top: 1px solid #ddd;">
-        <p style="font-size: 12px; color: #666;">
-            This is an automated invoice. Thank you for your business!
-        </p>
+        <!-- Footer Note -->
+        <div style="text-align: center; margin-top: 20px;">
+            <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+                This invoice was generated automatically. Thank you for your business!
+            </p>
+        </div>
     </div>
 </body>
 </html>
-            """.strip()
+            '''.strip()
             
             # Attach both versions
             part1 = MIMEText(text_body, 'plain')
@@ -265,11 +500,13 @@ The Team
                 server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)
             
-            print(f"✅ Invoice email sent to {to_email}")
+            print(f"✅ Invoice email sent to {to_email} (Invoice #{invoice_number})")
             return True
             
         except Exception as e:
             print(f"❌ Failed to send invoice email: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
 

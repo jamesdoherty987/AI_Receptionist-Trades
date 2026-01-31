@@ -71,6 +71,9 @@ export const getJobWorkers = (jobId) => api.get(`/api/bookings/${jobId}/workers`
 export const getFinances = () => api.get('/api/finances');
 export const getFinanceStats = () => api.get('/api/finances/stats');
 
+// Invoices
+export const sendInvoice = (bookingId) => api.post(`/api/bookings/${bookingId}/send-invoice`);
+
 // Calendar
 export const getCalendarEvents = (params) => api.get('/api/calendar/events', { params });
 

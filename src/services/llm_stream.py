@@ -56,20 +56,48 @@ def get_openai_client():
 
 
 def load_business_info():
-    """Load business information from JSON file"""
+    """Load business information - prioritize database settings, fall back to JSON file"""
+    import sqlite3
+    
+    # First try to get business name DIRECTLY from database
+    db_business_name = None
+    try:
+        db_paths = [
+            'data/receptionist.db',
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'receptionist.db'),
+        ]
+        for path in db_paths:
+            if os.path.exists(path):
+                conn = sqlite3.connect(path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT business_name FROM business_settings ORDER BY id DESC LIMIT 1")
+                row = cursor.fetchone()
+                conn.close()
+                if row and row[0]:
+                    db_business_name = row[0]
+                    print(f"📋 Loaded business name from database: {db_business_name}")
+                break
+    except Exception as e:
+        print(f"⚠️ Could not load from database: {e}")
+    
+    # Load JSON file for other details
     business_info_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
         'config', 'business_info.json'
     )
     try:
         with open(business_info_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            info = json.load(f)
+            # Override with database business name if available
+            if db_business_name:
+                info['business_name'] = db_business_name
+            return info
     except FileNotFoundError:
         print("⚠️ business_info.json not found, using defaults")
         return {
-            "business_name": "Swift Trade Services",
-            "staff": {"business_owner": "James"},
-            "location": {"service_area": "Limerick and surrounding counties"},
+            "business_name": db_business_name or "Your Business",
+            "staff": {"business_owner": "Owner"},
+            "location": {"service_area": "Local area"},
             "services": {"offerings": ["Multi-trade services"]},
             "pricing": {"callout_fee": "€60", "payment_methods": ["cash", "card"]},
         }
@@ -143,7 +171,7 @@ def load_system_prompt():
             prompt_template = f.read()
         
         # Inject business information into the prompt
-        prompt = prompt_template.replace("{{BUSINESS_NAME}}", business_info.get("business_name", "Swift Trade Services"))
+        prompt = prompt_template.replace("{{BUSINESS_NAME}}", business_info.get("business_name", "JP Enterprise Trades"))
         prompt = prompt.replace("{{PRACTITIONER_NAME}}", business_info.get("staff", {}).get("business_owner", "James"))
         
         # Build services list from menu
@@ -167,7 +195,7 @@ def load_system_prompt():
 ## BUSINESS INFORMATION (Auto-loaded from config files)
 ###############################################################################
 
-BUSINESS: {business_info.get('business_name', 'Swift Trade Services')}
+BUSINESS: {business_info.get('business_name', 'JP Enterprise Trades')}
 TYPE: {business_info.get('business_type', 'Multi-Trade Services Company')}
 OWNER: {business_info.get('staff', {}).get('business_owner', 'James')}
 
@@ -200,7 +228,7 @@ IMPORTANT: Use this information to answer customer questions accurately. Quote p
     except FileNotFoundError:
         # Fallback to basic prompt if file not found
         hours = get_business_hours_from_menu()
-        return f"""You are a professional AI receptionist for {business_info.get('business_name', 'Swift Trade Services')}.
+        return f"""You are a professional AI receptionist for {business_info.get('business_name', 'JP Enterprise Trades')}.
         
 Business hours: {hours['start']}:00 to {hours['end']}:00
 Days open: {', '.join(hours['days_open'])}
@@ -338,7 +366,7 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
         print(f"👤 New customer: {caller_name}")
         return {
             "status": "new",
-            "message": f"Welcome to Swift Trade Services! I'll get you set up in our system.",
+            "message": f"Welcome to JP Enterprise Trades! I'll get you set up in our system.",
             "clients": []
         }
     elif len(matching_clients) == 1:

@@ -1,11 +1,12 @@
 {
-  "business_name": "Swift Trade Services",
+  "business_name": "Your Business",
   "business_type": "Multi-Trade Services Company",
+  "_note": "Business name is loaded from database settings (Settings page in dashboard). This file is only used as a fallback.",
   
   "contact": {
     "phone": "+353 XX XXX XXXX",
-    "email": "info@swifttradeservices.ie",
-    "website": "www.swifttradeservices.ie"
+    "email": "j.p.enterprisehq@gmail.com",
+    "website": ""
   },
   
   "location": {

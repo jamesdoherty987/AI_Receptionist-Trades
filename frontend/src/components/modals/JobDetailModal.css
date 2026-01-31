@@ -67,6 +67,34 @@
   text-decoration: none;
 }
 
+/* Send Invoice Button */
+.job-modal-actions .btn-invoice {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  border: none;
+  color: white;
+  padding: 0.75rem 1.25rem;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.job-modal-actions .btn-invoice:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(139, 92, 246, 0.4);
+}
+
+.job-modal-actions .btn-invoice:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Get Directions Button */
 .job-modal-actions .btn-success {
   background: linear-gradient(135deg, #10b981 0%, #059669 100%);
@@ -360,6 +388,132 @@
   cursor: not-allowed;
 }
 
+/* Edit Button */
+.job-modal-actions .btn-edit {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  border: none;
+  color: white;
+  padding: 0.75rem 1.25rem;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.job-modal-actions .btn-edit:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+}
+
+/* Edit Form Styles */
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.edit-row {
+  display: flex;
+  gap: 1rem;
+}
+
+.edit-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.edit-field.full-width {
+  flex: 1 1 100%;
+}
+
+.edit-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.edit-input {
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: white;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.edit-input::placeholder {
+  color: #9ca3af;
+}
+
+.edit-textarea {
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: white;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+  resize: vertical;
+  min-height: 80px;
+  width: 100%;
+}
+
+.edit-textarea:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.edit-textarea::placeholder {
+  color: #9ca3af;
+}
+
+/* Primary button style */
+.job-modal-actions .btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  border: none;
+  color: white;
+  padding: 0.75rem 1.25rem;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.job-modal-actions .btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+}
+
+.job-modal-actions .btn-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
   .job-modal-grid {
@@ -390,5 +544,10 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
+  }
+
+  .edit-row {
+    flex-direction: column;
+    gap: 0.75rem;
   }
 }

@@ -35,7 +35,7 @@ function Header() {
     setShowUserMenu(false);
   };
 
-  // Close menu when clicking outside
+  // Close menu when clicking/touching outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -43,7 +43,11 @@ function Header() {
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   return (

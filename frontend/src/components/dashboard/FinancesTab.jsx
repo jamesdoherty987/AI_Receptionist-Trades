@@ -1,9 +1,14 @@
 import { useState, useMemo } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { formatCurrency, formatDateTime } from '../../utils/helpers';
+import { sendInvoice } from '../../services/api';
+import { useToast } from '../Toast';
 import './FinancesTab.css';
 
 function FinancesTab({ finances }) {
   const [showAll, setShowAll] = useState(false);
+  const [sendingInvoice, setSendingInvoice] = useState(null);
+  const { addToast } = useToast();
 
   const {
     total_revenue = 0,
@@ -37,6 +42,33 @@ function FinancesTab({ finances }) {
   }, [monthly_revenue]);
 
   const displayedTransactions = showAll ? transactions : unpaidTransactions;
+
+  const invoiceMutation = useMutation({
+    mutationFn: (bookingId) => sendInvoice(bookingId),
+    onMutate: (bookingId) => {
+      setSendingInvoice(bookingId);
+    },
+    onSuccess: (response) => {
+      const data = response.data;
+      addToast(`Invoice sent to ${data.sent_to}!`, 'success');
+      setSendingInvoice(null);
+    },
+    onError: (error) => {
+      const message = error.response?.data?.error || 'Failed to send invoice';
+      addToast(message, 'error');
+      setSendingInvoice(null);
+    }
+  });
+
+  const handleSendInvoice = (transaction, e) => {
+    e.stopPropagation();
+    if (!transaction.booking_id && !transaction.id) {
+      addToast('Cannot send invoice: No booking ID found', 'warning');
+      return;
+    }
+    const bookingId = transaction.booking_id || transaction.id;
+    invoiceMutation.mutate(bookingId);
+  };
 
   return (
     <div className="finances-tab">
@@ -118,39 +150,58 @@ function FinancesTab({ finances }) {
                 <p>All invoices paid!</p>
               </div>
             ) : (
-              displayedTransactions.map((transaction, index) => (
-                <div key={index} className="transaction-card">
-                  <div className="transaction-main">
-                    <div className="transaction-customer">
-                      <div className="customer-avatar">
-                        {transaction.customer_name?.charAt(0) || '?'}
+              displayedTransactions.map((transaction, index) => {
+                const isUnpaid = transaction.status !== 'completed' && 
+                                 transaction.payment_status !== 'paid' &&
+                                 transaction.status !== 'cancelled';
+                const bookingId = transaction.booking_id || transaction.id;
+                const isSending = sendingInvoice === bookingId;
+                
+                return (
+                  <div key={index} className="transaction-card">
+                    <div className="transaction-main">
+                      <div className="transaction-customer">
+                        <div className="customer-avatar">
+                          {transaction.customer_name?.charAt(0) || '?'}
+                        </div>
+                        <div className="customer-info">
+                          <h4>{transaction.customer_name || 'Unknown'}</h4>
+                          <p>{transaction.description || 'Service'}</p>
+                          {transaction.date && (
+                            <span className="transaction-date">
+                              <i className="fas fa-calendar"></i>
+                              {formatDateTime(transaction.date)}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="customer-info">
-                        <h4>{transaction.customer_name || 'Unknown'}</h4>
-                        <p>{transaction.description || 'Service'}</p>
-                        {transaction.date && (
-                          <span className="transaction-date">
-                            <i className="fas fa-calendar"></i>
-                            {formatDateTime(transaction.date)}
-                          </span>
+                      <div className="transaction-status">
+                        <div className="transaction-amount">
+                          {formatCurrency(transaction.amount)}
+                        </div>
+                        <span className={`badge badge-${
+                          transaction.status === 'completed' || transaction.payment_status === 'paid' 
+                            ? 'success' 
+                            : 'warning'
+                        }`}>
+                          {transaction.payment_status || transaction.status}
+                        </span>
+                        {isUnpaid && transaction.amount > 0 && (
+                          <button 
+                            className="btn-send-invoice"
+                            onClick={(e) => handleSendInvoice(transaction, e)}
+                            disabled={isSending}
+                            title="Send invoice email"
+                          >
+                            <i className={`fas ${isSending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`}></i>
+                            {isSending ? 'Sending...' : 'Send Invoice'}
+                          </button>
                         )}
                       </div>
                     </div>
-                    <div className="transaction-status">
-                      <div className="transaction-amount">
-                        {formatCurrency(transaction.amount)}
-                      </div>
-                      <span className={`badge badge-${
-                        transaction.status === 'completed' || transaction.payment_status === 'paid' 
-                          ? 'success' 
-                          : 'warning'
-                      }`}>
-                        {transaction.payment_status || transaction.status}
-                      </span>
-                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

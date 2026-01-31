@@ -134,29 +134,98 @@
 }
 
 @media (max-width: 768px) {
+  .customers-tab {
+    gap: 1rem;
+  }
+
   .customers-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.75rem;
   }
 
-  .customer-card {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .customer-avatar {
-    width: 50px;
-    height: 50px;
+  .customers-header h2 {
     font-size: 1.25rem;
   }
 
-  .customer-details {
+  .customers-controls {
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.625rem;
+  }
+
+  .customers-controls .search-box {
+    min-width: 100%;
+  }
+
+  .customers-controls .btn {
+    justify-content: center;
+  }
+
+  .customers-list {
+    gap: 0.625rem;
+  }
+
+  /* Compact customer cards */
+  .customer-card {
+    flex-direction: row;
+    align-items: center;
+    padding: 0.875rem;
+    border-radius: var(--radius-md);
+    gap: 0.75rem;
+  }
+
+  .customer-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
+
+  .customer-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .customer-info h3 {
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .customer-details {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.625rem;
+    margin-bottom: 0;
+  }
+
+  .customer-detail {
+    font-size: 0.8rem;
+    gap: 0.375rem;
+  }
+
+  .customer-detail i {
+    width: 14px;
+    font-size: 0.75rem;
+  }
+
+  .customer-notes {
+    display: none;
   }
 
   .customer-stats {
-    width: 100%;
-    justify-content: center;
+    flex-shrink: 0;
+    width: auto;
+    gap: 0;
+  }
+
+  .stat-item {
+    text-align: center;
+  }
+
+  .stat-number {
+    font-size: 1.25rem;
+  }
+
+  .stat-text {
+    font-size: 0.7rem;
   }
 }

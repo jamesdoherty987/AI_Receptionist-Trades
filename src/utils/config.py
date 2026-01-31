@@ -63,6 +63,13 @@ class Config:
     FROM_EMAIL = os.getenv("FROM_EMAIL")
     REMINDER_METHOD = os.getenv("REMINDER_METHOD", "email")  # "email" or "sms"
     
+    # Stripe Payment
+    STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+    STRIPE_PUBLIC_KEY = os.getenv("STRIPE_PUBLIC_KEY")
+    
+    # Business branding
+    COMPANY_LOGO_URL = os.getenv("COMPANY_LOGO_URL", "")  # URL to company logo for invoices
+    
     # Business hours - ONLY defined in database (configure at /settings)
     # These are hardcoded fallbacks only if database is completely unavailable
     BUSINESS_HOURS_START = 9  # Hardcoded fallback only

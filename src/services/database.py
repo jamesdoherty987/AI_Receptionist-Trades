@@ -639,14 +639,35 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         
+        # Map frontend field names to database field names
+        field_mapping = {
+            'estimated_charge': 'charge',
+            'job_address': 'address',
+            'customer_name': None,  # Handled separately - update client record
+            'phone': 'phone_number',
+        }
+        
         fields = []
         values = []
+        customer_name = None
+        
         for key, value in kwargs.items():
-            if key in ['calendar_event_id', 'appointment_time', 'service_type', 
+            # Check if this field needs mapping
+            db_field = field_mapping.get(key, key)
+            
+            # Skip fields that shouldn't go directly to bookings table
+            if db_field is None:
+                if key == 'customer_name':
+                    customer_name = value
+                continue
+            
+            if db_field in ['calendar_event_id', 'appointment_time', 'service_type', 
                       'status', 'phone_number', 'email', 'charge', 'payment_status', 
                       'payment_method', 'urgency', 'address', 'eircode', 'property_type']:
-                fields.append(f"{key} = ?")
+                fields.append(f"{db_field} = ?")
                 values.append(value)
+        
+        success = False
         
         if fields:
             values.append(booking_id)
@@ -654,8 +675,15 @@ class Database:
             cursor.execute(query, values)
             conn.commit()
             success = cursor.rowcount > 0
-        else:
-            success = False
+        
+        # Update customer name in clients table if provided
+        if customer_name:
+            cursor.execute("SELECT client_id FROM bookings WHERE id = ?", (booking_id,))
+            row = cursor.fetchone()
+            if row and row[0]:
+                cursor.execute("UPDATE clients SET name = ? WHERE id = ?", (customer_name, row[0]))
+                conn.commit()
+                success = True
         
         conn.close()
         return success

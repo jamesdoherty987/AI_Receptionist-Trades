@@ -172,7 +172,7 @@ class SettingsManager:
                     timezone, currency, default_charge
                 ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
-                "Munster Physio",
+                "JP Enterprise Trades",
                 "Physiotherapy Clinic",
                 "+353 XX XXX XXXX",
                 "info@munsterphysio.ie",
@@ -414,7 +414,7 @@ class SettingsManager:
         except FileNotFoundError:
             # Return default structure
             return {
-                "business_name": "Swift Trade Services",
+                "business_name": "JP Enterprise Trades",
                 "business_hours": {
                     "start_hour": 9,
                     "end_hour": 17,
