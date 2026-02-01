@@ -83,8 +83,8 @@ async def media_handler(ws):
     last_audio_time = 0.0  # Track last audio received for watchdog
 
     # --- Optimized Tunables for Speed and Responsiveness ---
-    SPEECH_ENERGY = 1100  # Lower threshold for better detection
-    SILENCE_ENERGY = 700   # Lower threshold to detect silence better
+    SPEECH_ENERGY = 1600  # Higher threshold to reduce false positives from background noise
+    SILENCE_ENERGY = 1000  # Higher threshold to better distinguish actual silence from ambient noise
     SILENCE_HOLD = 0.6     # Slightly longer to prevent premature cutoff
 
     INTERRUPT_ENERGY = 3500  # Much higher - require very clear speech to interrupt
