@@ -59,6 +59,7 @@ class SettingsManager:
                 reminder_hours_before INTEGER DEFAULT 24,
                 auto_confirm_bookings INTEGER DEFAULT 1,
                 fallback_phone_number TEXT,
+                business_hours TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -111,6 +112,13 @@ class SettingsManager:
                     ADD COLUMN logo_url TEXT
                 """)
                 print("✅ Added logo_url column to business_settings")
+            
+            if 'business_hours' not in business_columns:
+                cursor.execute("""
+                    ALTER TABLE business_settings 
+                    ADD COLUMN business_hours TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)'
+                """)
+                print("✅ Added business_hours column to business_settings")
             
             # Migrate developer_settings table
             cursor.execute("PRAGMA table_info(developer_settings)")
@@ -279,7 +287,7 @@ class SettingsManager:
             'days_open', 'max_booking_days_ahead', 'allow_weekend_booking',
             'services', 'payment_methods', 'cancellation_policy',
             'reminder_hours_before', 'auto_confirm_bookings', 'fallback_phone_number',
-            'logo_url'
+            'logo_url', 'business_hours'
         ]
         
         # Build update query

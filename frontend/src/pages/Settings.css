@@ -328,6 +328,167 @@
   color: var(--error);
 }
 
+/* Business Hours Configuration */
+.hours-config {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.time-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.time-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 140px;
+}
+
+.time-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.time-inputs {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.hour-select,
+.period-select,
+.days-select {
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.hour-select {
+  width: 70px;
+  flex: 1;
+}
+
+.period-select {
+  width: 70px;
+  flex: 1;
+}
+
+.days-select {
+  width: 100%;
+  max-width: 200px;
+}
+
+.hour-select:hover,
+.period-select:hover,
+.days-select:hover {
+  border-color: var(--primary);
+}
+
+.hour-select:focus,
+.period-select:focus,
+.days-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.time-separator {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.95rem;
+  padding: 0 0.25rem;
+  padding-bottom: 0.5rem;
+}
+
+.days-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.days-checkboxes {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.day-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  min-width: 70px;
+}
+
+.day-checkbox:hover {
+  border-color: var(--primary);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.day-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--primary);
+  margin: 0;
+}
+
+.day-checkbox span {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.day-checkbox input[type="checkbox"]:checked + span {
+  color: var(--primary);
+}
+
+.emergency-checkbox {
+  padding-top: 0.25rem;
+}
+
+.emergency-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.emergency-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+.emergency-checkbox span {
+  user-select: none;
+}
+
 @media (max-width: 768px) {
   .settings-main {
     padding: 1.5rem 0;
@@ -363,5 +524,47 @@
   .logo-preview {
     width: 100%;
     height: 150px;
+  }
+
+  .hours-config {
+    padding: 1rem;
+  }
+
+  .time-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+  }
+
+  .time-selector {
+    min-width: 100%;
+  }
+
+  .time-separator {
+    padding: 0;
+    text-align: center;
+  }
+
+  .time-inputs {
+    flex-wrap: nowrap;
+  }
+
+  .hour-select,
+  .period-select {
+    min-width: 60px;
+  }
+
+  .days-checkboxes {
+    gap: 0.5rem;
+  }
+
+  .day-checkbox {
+    min-width: 60px;
+    flex: 1;
+    justify-content: center;
+  }
+
+  .days-select {
+    max-width: 100%;
   }
 }

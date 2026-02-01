@@ -15,6 +15,24 @@ function Settings() {
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState({});
   const [saveMessage, setSaveMessage] = useState('');
+  
+  // Business hours breakdown state
+  const [hoursConfig, setHoursConfig] = useState({
+    startHour: '8',
+    startPeriod: 'AM',
+    endHour: '6',
+    endPeriod: 'PM',
+    days: {
+      monday: true,
+      tuesday: true,
+      wednesday: true,
+      thursday: true,
+      friday: true,
+      saturday: true,
+      sunday: false
+    },
+    emergencyAvailable: true
+  });
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['business-settings'],
@@ -26,10 +44,63 @@ function Settings() {
     refetchOnMount: true,
   });
 
+  // Parse business hours string into components
+  const parseBusinessHours = (hoursString) => {
+    if (!hoursString) return;
+    
+    // Parse format: "8 AM - 6 PM Mon-Sat (24/7 emergency available)"
+    const timeMatch = hoursString.match(/(\d+)\s*(AM|PM)\s*-\s*(\d+)\s*(AM|PM)/i);
+    const daysMatch = hoursString.match(/(Mon-Sat|Mon-Fri|Mon-Sun|Monday-Saturday|Monday-Friday|Monday-Sunday|Daily|[\w\s,-]+?)(?:\s*\(|$)/i);
+    const emergencyMatch = hoursString.match(/emergency/i);
+    
+    if (timeMatch) {
+      // Parse which days are selected
+      const daysText = daysMatch ? daysMatch[1].trim().toLowerCase() : 'mon-sat';
+      const days = {
+        monday: false,
+        tuesday: false,
+        wednesday: false,
+        thursday: false,
+        friday: false,
+        saturday: false,
+        sunday: false
+      };
+      
+      if (daysText.includes('daily') || daysText.includes('mon-sun') || daysText.includes('monday-sunday')) {
+        Object.keys(days).forEach(day => days[day] = true);
+      } else if (daysText.includes('mon-sat') || daysText.includes('monday-saturday')) {
+        days.monday = days.tuesday = days.wednesday = days.thursday = days.friday = days.saturday = true;
+      } else if (daysText.includes('mon-fri') || daysText.includes('monday-friday')) {
+        days.monday = days.tuesday = days.wednesday = days.thursday = days.friday = true;
+      } else {
+        // Parse individual days
+        if (daysText.includes('mon')) days.monday = true;
+        if (daysText.includes('tue')) days.tuesday = true;
+        if (daysText.includes('wed')) days.wednesday = true;
+        if (daysText.includes('thu')) days.thursday = true;
+        if (daysText.includes('fri')) days.friday = true;
+        if (daysText.includes('sat')) days.saturday = true;
+        if (daysText.includes('sun')) days.sunday = true;
+      }
+      
+      setHoursConfig({
+        startHour: timeMatch[1],
+        startPeriod: timeMatch[2].toUpperCase(),
+        endHour: timeMatch[3],
+        endPeriod: timeMatch[4].toUpperCase(),
+        days,
+        emergencyAvailable: !!emergencyMatch
+      });
+    }
+  };
+
   // Update formData when settings data changes
   useEffect(() => {
     if (settings) {
       setFormData(settings);
+      if (settings.business_hours) {
+        parseBusinessHours(settings.business_hours);
+      }
     }
   }, [settings]);
 
@@ -69,9 +140,66 @@ function Settings() {
     }));
   };
 
+  const handleHoursChange = (field, value) => {
+    setHoursConfig(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleDayToggle = (day) => {
+    setHoursConfig(prev => ({
+      ...prev,
+      days: {
+        ...prev.days,
+        [day]: !prev.days[day]
+      }
+    }));
+  };
+
+  const formatBusinessHours = () => {
+    const { startHour, startPeriod, endHour, endPeriod, days, emergencyAvailable } = hoursConfig;
+    
+    // Format days string
+    const dayNames = {
+      monday: 'Mon',
+      tuesday: 'Tue',
+      wednesday: 'Wed',
+      thursday: 'Thu',
+      friday: 'Fri',
+      saturday: 'Sat',
+      sunday: 'Sun'
+    };
+    
+    const selectedDays = Object.keys(days).filter(day => days[day]);
+    let daysText = '';
+    
+    if (selectedDays.length === 7) {
+      daysText = 'Daily';
+    } else if (selectedDays.length === 6 && !days.sunday) {
+      daysText = 'Mon-Sat';
+    } else if (selectedDays.length === 5 && !days.saturday && !days.sunday) {
+      daysText = 'Mon-Fri';
+    } else if (selectedDays.length > 0) {
+      daysText = selectedDays.map(day => dayNames[day]).join(', ');
+    } else {
+      daysText = 'No days selected';
+    }
+    
+    let formatted = `${startHour} ${startPeriod} - ${endHour} ${endPeriod} ${daysText}`;
+    if (emergencyAvailable) {
+      formatted += ' (24/7 emergency available)';
+    }
+    return formatted;
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    saveMutation.mutate(formData);
+    const updatedData = {
+      ...formData,
+      business_hours: formatBusinessHours()
+    };
+    saveMutation.mutate(updatedData);
   };
 
   const handleToggleAI = () => {
@@ -172,6 +300,98 @@ function Settings() {
                       onChange={handleChange}
                       placeholder="e.g., Plumbing, HVAC, Electrical"
                     />
+                  </div>
+                  <div className="form-group full-width">
+                    <label>Business Hours</label>
+                    <div className="hours-config">
+                      <div className="time-row">
+                        <div className="time-selector">
+                          <label className="time-label">Start Time</label>
+                          <div className="time-inputs">
+                            <select
+                              value={hoursConfig.startHour}
+                              onChange={(e) => handleHoursChange('startHour', e.target.value)}
+                              className="hour-select"
+                            >
+                              {[...Array(12)].map((_, i) => (
+                                <option key={i + 1} value={i + 1}>{i + 1}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={hoursConfig.startPeriod}
+                              onChange={(e) => handleHoursChange('startPeriod', e.target.value)}
+                              className="period-select"
+                            >
+                              <option value="AM">AM</option>
+                              <option value="PM">PM</option>
+                            </select>
+                          </div>
+                        </div>
+                        
+                        <span className="time-separator">to</span>
+                        
+                        <div className="time-selector">
+                          <label className="time-label">End Time</label>
+                          <div className="time-inputs">
+                            <select
+                              value={hoursConfig.endHour}
+                              onChange={(e) => handleHoursChange('endHour', e.target.value)}
+                              className="hour-select"
+                            >
+                              {[...Array(12)].map((_, i) => (
+                                <option key={i + 1} value={i + 1}>{i + 1}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={hoursConfig.endPeriod}
+                              onChange={(e) => handleHoursChange('endPeriod', e.target.value)}
+                              className="period-select"
+                            >
+                              <option value="AM">AM</option>
+                              <option value="PM">PM</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="days-selector">
+                        <label className="time-label">Days Open</label>
+                        <div className="days-checkboxes">
+                          {[
+                            { key: 'monday', label: 'Mon' },
+                            { key: 'tuesday', label: 'Tue' },
+                            { key: 'wednesday', label: 'Wed' },
+                            { key: 'thursday', label: 'Thu' },
+                            { key: 'friday', label: 'Fri' },
+                            { key: 'saturday', label: 'Sat' },
+                            { key: 'sunday', label: 'Sun' }
+                          ].map(day => (
+                            <label key={day.key} className="day-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={hoursConfig.days[day.key]}
+                                onChange={() => handleDayToggle(day.key)}
+                              />
+                              <span>{day.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div className="emergency-checkbox">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={hoursConfig.emergencyAvailable}
+                            onChange={(e) => handleHoursChange('emergencyAvailable', e.target.checked)}
+                          />
+                          <span>24/7 emergency available</span>
+                        </label>
+                      </div>
+                    </div>
+                    <small className="form-help">
+                      Preview: {formatBusinessHours()}
+                    </small>
                   </div>
                   <div className="form-group">
                     <label htmlFor="business_phone">Business Phone *</label>

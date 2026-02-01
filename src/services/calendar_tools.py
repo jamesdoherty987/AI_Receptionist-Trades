@@ -6,6 +6,15 @@ ARCHITECTURE: Hybrid Approach
 - CALLBACKS: Booking/cancellation/rescheduling - uses existing verification flow
 """
 
+# Import address validation utilities
+from src.utils.address_validator import (
+    AddressValidator, 
+    validate_address_input,
+    extract_eircode_from_text,
+    is_address_incomplete,
+    get_address_completion_prompt
+)
+
 CALENDAR_TOOLS = [
     {
         "type": "function",
@@ -537,13 +546,20 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                     last_address = booking['address']
                                     break
                         
-                        # Build the message with all available info
+                        # Build the message with all available info and address confirmation
                         msg_parts = [f"Found returning customer: {client['name']}"]
                         if client.get('phone'):
                             msg_parts.append(f"phone {client.get('phone')}")
                         if client.get('email'):
                             msg_parts.append(f"email {client.get('email')}")
+                        
+                        # Create address confirmation message using validator
+                        address_confirmation_msg = None
                         if last_address:
+                            from src.utils.address_validator import enhance_customer_address_lookup
+                            enhanced_data = enhance_customer_address_lookup(client, "")
+                            if enhanced_data.get('address_confirmation_needed'):
+                                address_confirmation_msg = enhanced_data['suggested_response']
                             msg_parts.append(f"last address {last_address}")
                         
                         return {
@@ -554,9 +570,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 "name": client['name'],
                                 "phone": client.get('phone'),
                                 "email": client.get('email'),
-                                "last_address": last_address
+                                "last_address": last_address,
+                                "address_confirmation_prompt": address_confirmation_msg
                             },
-                            "message": ", ".join(msg_parts)
+                            "message": ", ".join(msg_parts),
+                            "address_prompt": address_confirmation_msg
                         }
                     elif len(clients) > 1:
                         return {
@@ -1044,6 +1062,28 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "needs_clarification": "job_address"
                 }
             
+            # Enhanced address validation and processing
+            address_validator = AddressValidator()
+            address_data = address_validator.parse_address_input(job_address)
+            
+            # Check if address needs clarification
+            if address_data['needs_clarification']:
+                return {
+                    "success": False,
+                    "error": address_data['suggestions'][0] if address_data['suggestions'] else "Please provide a more complete address.",
+                    "needs_clarification": "job_address",
+                    "address_type": address_data['type']
+                }
+            
+            # Extract and normalize eircode if present
+            extracted_eircode = address_data.get('eircode')
+            if extracted_eircode:
+                print(f"📮 Extracted eircode from address: {extracted_eircode}")
+            
+            # Use validated and potentially enhanced address
+            validated_address = address_data['full_address']
+            print(f"📍 Address validation result: {address_data['type']} - {validated_address}")
+            
             if not job_description:
                 return {
                     "success": False,
@@ -1118,7 +1158,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 summary=summary,
                 start_time=parsed_time,
                 duration_minutes=60,
-                description=f"Booked via AI receptionist\n\nCustomer: {customer_name}\nPhone: {phone}\nEmail: {email}\n\nJob Address: {job_address}\nJob Description: {job_description}\nUrgency: {urgency_level}\nProperty Type: {property_type}",
+                description=f"Booked via AI receptionist\n\nCustomer: {customer_name}\nPhone: {phone}\nEmail: {email}\n\nJob Address: {validated_address}\nJob Description: {job_description}\nUrgency: {urgency_level}\nProperty Type: {property_type}",
                 phone_number=phone
             )
             
@@ -1143,7 +1183,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     job_charge = get_service_price(job_description, urgency_level)
                     print(f"💰 Calculated charge for '{job_description}' ({urgency_level}): €{job_charge}")
                     
-                    # Add booking with address information and correct charge
+                    # Add booking with validated address information and correct charge
                     booking_id = db.add_booking(
                         client_id=client_id,
                         calendar_event_id=event.get('id'),
@@ -1152,8 +1192,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         phone_number=phone,
                         email=email,
                         urgency=urgency_level,
-                        address=job_address,
-                        eircode=None,  # Could be extracted from address if provided
+                        address=validated_address,
+                        eircode=extracted_eircode,  # Use extracted eircode if available
                         property_type=property_type,
                         charge=job_charge
                     )
@@ -1161,7 +1201,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     # Add note with job details
                     db.add_appointment_note(
                         booking_id, 
-                        f"Booked via AI receptionist\n\nJob Address: {job_address}\nJob Description: {job_description}\nUrgency: {urgency_level}\nProperty Type: {property_type}", 
+                        f"Booked via AI receptionist\n\nJob Address: {validated_address}\nJob Description: {job_description}\nUrgency: {urgency_level}\nProperty Type: {property_type}", 
                         created_by="system"
                     )
                     
@@ -1178,16 +1218,17 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             return {
                 "success": True,
-                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')}. {urgency_level.title()} job at {job_address}.",
+                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')}. {urgency_level.title()} job at {validated_address}.",
                 "appointment_details": {
                     "customer": customer_name,
                     "time": parsed_time.strftime('%A, %B %d at %I:%M %p'),
-                    "job_address": job_address,
+                    "job_address": validated_address,
                     "job_description": job_description,
                     "urgency": urgency_level,
                     "phone": phone,
                     "email": email,
-                    "property_type": property_type
+                    "property_type": property_type,
+                    "eircode": extracted_eircode
                 }
             }
         

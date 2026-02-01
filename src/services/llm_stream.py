@@ -59,8 +59,9 @@ def load_business_info():
     """Load business information - prioritize database settings, fall back to JSON file"""
     import sqlite3
     
-    # First try to get business name DIRECTLY from database
+    # First try to get business settings DIRECTLY from database
     db_business_name = None
+    db_business_hours = None
     try:
         db_paths = [
             'data/receptionist.db',
@@ -70,12 +71,16 @@ def load_business_info():
             if os.path.exists(path):
                 conn = sqlite3.connect(path)
                 cursor = conn.cursor()
-                cursor.execute("SELECT business_name FROM business_settings ORDER BY id DESC LIMIT 1")
+                cursor.execute("SELECT business_name, business_hours FROM business_settings ORDER BY id DESC LIMIT 1")
                 row = cursor.fetchone()
                 conn.close()
-                if row and row[0]:
-                    db_business_name = row[0]
-                    print(f"📋 Loaded business name from database: {db_business_name}")
+                if row:
+                    if row[0]:
+                        db_business_name = row[0]
+                        print(f"📋 Loaded business name from database: {db_business_name}")
+                    if row[1]:
+                        db_business_hours = row[1]
+                        print(f"📋 Loaded business hours from database: {db_business_hours}")
                 break
     except Exception as e:
         print(f"⚠️ Could not load from database: {e}")
@@ -88,14 +93,17 @@ def load_business_info():
     try:
         with open(business_info_path, 'r', encoding='utf-8') as f:
             info = json.load(f)
-            # Override with database business name if available
+            # Override with database values if available
             if db_business_name:
                 info['business_name'] = db_business_name
+            if db_business_hours:
+                info['business_hours'] = db_business_hours
             return info
     except FileNotFoundError:
         print("⚠️ business_info.json not found, using defaults")
         return {
             "business_name": db_business_name or "Your Business",
+            "business_hours": db_business_hours or "8 AM - 6 PM Mon-Sat (24/7 emergency available)",
             "staff": {"business_owner": "Owner"},
             "location": {"service_area": "Local area"},
             "services": {"offerings": ["Multi-trade services"]},
@@ -173,6 +181,9 @@ def load_system_prompt():
         # Inject business information into the prompt
         prompt = prompt_template.replace("{{BUSINESS_NAME}}", business_info.get("business_name", "JP Enterprise Trades"))
         prompt = prompt.replace("{{PRACTITIONER_NAME}}", business_info.get("staff", {}).get("business_owner", "James"))
+        prompt = prompt.replace("{{BUSINESS_OWNER}}", business_info.get("staff", {}).get("business_owner", "James"))
+        prompt = prompt.replace("{{BUSINESS_HOURS}}", business_info.get("business_hours", "8 AM - 6 PM Mon-Sat (24/7 emergency available)"))
+        prompt = prompt.replace("{{CALLOUT_FEE}}", services_menu.get('pricing_notes', {}).get('callout_fee', '€60'))
         
         # Build services list from menu
         services_list = []
@@ -2072,14 +2083,17 @@ When customer wants to reschedule:
         stream = client.chat.completions.create(
             model=config.CHAT_MODEL,
             stream=True,
-            temperature=0,  # Zero for maximum speed and consistency
-            max_tokens=200,  # Sufficient for complete responses without unnecessary verbosity
-            presence_penalty=0.3,
-            frequency_penalty=0.3,
+            temperature=0.1,  # Very low for speed and consistency, but not zero to avoid stiffness  
+            max_tokens=180,   # Reduced for faster responses while maintaining completeness
+            presence_penalty=0.1,  # Reduced to prevent excessive avoidance
+            frequency_penalty=0.1, # Reduced to prevent excessive avoidance
             messages=[{"role": "system", "content": system_prompt_with_time}, *messages],
             tools=CALENDAR_TOOLS,
             tool_choice="auto",
-            parallel_tool_calls=True  # Enable parallel tool execution for speed
+            parallel_tool_calls=True,  # Enable parallel tool execution for speed
+            # Additional optimization parameters
+            top_p=0.9,  # Focus on most likely tokens for speed
+            stream_options={"include_usage": False}  # Disable usage tracking for speed
         )
     except Exception as e:
         print(f"❌ Error creating LLM stream: {e}")
@@ -2244,13 +2258,15 @@ When customer wants to reschedule:
             follow_up_stream = client.chat.completions.create(
                 model=config.CHAT_MODEL,
                 stream=True,
-                temperature=0.3,  # Slightly higher for more natural responses
-                max_tokens=250,  # Increased to ensure complete responses
-                presence_penalty=0.3,
-                frequency_penalty=0.3,
+                temperature=0.2,  # Optimal balance for natural but fast responses
+                max_tokens=200,   # Reduced for faster completion  
+                presence_penalty=0.1,
+                frequency_penalty=0.1,
                 messages=[{"role": "system", "content": system_prompt_with_time}, *messages],
                 tools=CALENDAR_TOOLS,
-                tool_choice="none"  # Prevent nested tool calls
+                tool_choice="none",  # Prevent nested tool calls
+                top_p=0.9,  # Focus on most likely tokens
+                stream_options={"include_usage": False}  # Disable usage tracking for speed
             )
             
             follow_up_response = ""
@@ -2260,7 +2276,7 @@ When customer wants to reschedule:
             # Add timeout protection to prevent infinite hangs
             import time
             start_time = time.time()
-            timeout_seconds = 10
+            timeout_seconds = 20  # Increased to prevent cutting off longer responses
             
             for part in follow_up_stream:
                 # Check timeout

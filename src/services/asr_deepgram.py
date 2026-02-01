@@ -29,12 +29,16 @@ class DeepgramASR:
             "&model=nova-2-phonecall"  # Optimized for phone calls
             "&punctuate=true"  # Better sentence detection
             "&smart_format=true"  # Format numbers, dates properly
-            "&filler_words=false",  # Remove um, uh, etc
+            "&filler_words=false"  # Remove um, uh, etc
+            "&profanity_filter=false"  # Don't filter in case addresses contain unexpected words
+            "&redact=false"  # Don't redact anything for addresses
+            "&numerals=true"  # Better number handling for addresses
+            "&search=address,location,postcode,eircode",  # Hint for address-related content
             extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
-            open_timeout=10,
-            close_timeout=5,
-            ping_interval=20,
-            ping_timeout=20,
+            open_timeout=8,   # Faster connection
+            close_timeout=3,  # Faster close
+            ping_interval=15, # More frequent pings
+            ping_timeout=10,  # Shorter timeout
         )
         self._recv_task = asyncio.create_task(self._recv())
         self._send_task = asyncio.create_task(self._send())

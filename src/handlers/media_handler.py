@@ -60,6 +60,10 @@ async def media_handler(ws):
     stream_sid = None
     call_sid = None  # Store call SID for potential transfer
     caller_phone = None  # Store caller's phone number
+    
+    # Conversation logging
+    conversation_log = []  # Full conversation transcript
+    response_times = []  # Track response times
 
     # --- TTS / turn state ---
     speaking = False
@@ -71,6 +75,7 @@ async def media_handler(ws):
     # --- Speech segmentation with sentence-level detection ---
     in_speech = False
     silence_since = 0.0
+    speech_start_time = 0.0
     pending_text = ""
     last_committed = ""
     last_interim = ""
@@ -78,17 +83,21 @@ async def media_handler(ws):
     last_audio_time = 0.0  # Track last audio received for watchdog
 
     # --- Optimized Tunables for Speed and Responsiveness ---
-    SPEECH_ENERGY = 1200
-    SILENCE_ENERGY = 800
-    SILENCE_HOLD = 0.8  # Reduced - respond faster after silence
+    SPEECH_ENERGY = 1100  # Lower threshold for better detection
+    SILENCE_ENERGY = 700   # Lower threshold to detect silence better
+    SILENCE_HOLD = 0.6     # Slightly longer to prevent premature cutoff
 
-    INTERRUPT_ENERGY = 2200
-    NO_BARGEIN_WINDOW = 0.15  # Reduced - allow interruption very early
-    BARGEIN_HOLD = 0.06  # Faster interrupt detection
+    INTERRUPT_ENERGY = 3500  # Much higher - require very clear speech to interrupt
+    NO_BARGEIN_WINDOW = 1.5  # Protect first 1.5s of response from any interruption
+    BARGEIN_HOLD = 0.4       # Require 400ms of sustained loud speech to interrupt
 
-    POST_TTS_IGNORE = 0.02  # Very short - start listening immediately
-    MIN_WORDS = 2  # Reduced - respond to shorter phrases
-    DUPLICATE_WINDOW = 2.5  # Reduced - less aggressive duplicate prevention
+    POST_TTS_IGNORE = 0.05   # Longer to prevent immediate false triggers
+    MIN_WORDS = 1            # Allow single word responses
+    DUPLICATE_WINDOW = 3.0   # Longer window for better duplicate detection
+    
+    # Additional settings to prevent cutoffs
+    MIN_SPEECH_DURATION = 0.3  # Minimum speech duration before processing
+    COMPLETION_WAIT = 0.2      # Wait for sentence completion
 
     bargein_since = 0.0
 
@@ -115,7 +124,7 @@ async def media_handler(ws):
         nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at
 
         async def run():
-            nonlocal speaking, tts_started_at, tts_ended_at, call_sid
+            nonlocal speaking, tts_started_at, tts_ended_at, call_sid, conversation_log
             speaking = True
             interrupt = False
             tts_started_at = asyncio.get_event_loop().time()
@@ -124,9 +133,11 @@ async def media_handler(ws):
             try:
                 token_count = 0
                 transfer_number = None
+                full_text = ""  # Capture full text for logging
+                MIN_TOKENS_BEFORE_INTERRUPT = 8  # Require at least 8 tokens (~2 words) before allowing interrupt
                 
                 async def simple_stream():
-                    nonlocal token_count, speaking, transfer_number
+                    nonlocal token_count, speaking, transfer_number, full_text
                     async for token in text_stream:
                         # Check for transfer marker
                         if token.startswith("<<<TRANSFER:"):
@@ -140,16 +151,29 @@ async def media_handler(ws):
                             continue
                         
                         token_count += 1
+                        full_text += token  # Accumulate for logging
                         yield token
-                        # After first token is sent, allow listening immediately
-                        if token_count == 1:
+                        # After minimum tokens are sent, allow listening
+                        if token_count == MIN_TOKENS_BEFORE_INTERRUPT:
                             speaking = False
                             print(f"✅ Ready to listen (text streaming)")
                 
+                # Try primary TTS first
                 await asyncio.wait_for(
                     stream_tts(simple_stream(), ws, stream_sid, lambda: interrupt),
-                    timeout=20.0  # Reduced timeout for faster responses
+                    timeout=20.0  # Max timeout - responds immediately when audio done
                 )
+                
+                # Log the complete response
+                if full_text.strip():
+                    conversation_log.append({
+                        "role": "assistant",
+                        "content": full_text.strip(),
+                        "timestamp": asyncio.get_event_loop().time()
+                    })
+                    print(f"\n{'='*80}")
+                    print(f"🤖 RECEPTIONIST: {full_text.strip()}")
+                    print(f"{'='*80}\n")
                 
                 # After TTS completes, check if transfer was requested
                 if transfer_number:
@@ -223,8 +247,17 @@ async def media_handler(ws):
 
     async def greet():
         """Send initial greeting"""
+        greeting_text = "Hi, thank you for calling. How can I help you today?"
         async def tokens():
-            yield "Hi, thank you for calling. How can I help you today?"
+            yield greeting_text
+        print(f"\n{'='*80}")
+        print(f"🤖 RECEPTIONIST (GREETING): {greeting_text}")
+        print(f"{'='*80}\n")
+        conversation_log.append({
+            "role": "assistant",
+            "content": greeting_text,
+            "timestamp": asyncio.get_event_loop().time()
+        })
         await start_tts(tokens(), label="greet")
 
     try:
@@ -289,21 +322,32 @@ async def media_handler(ws):
 
                 # ---- While speaking: barge-in only ----
                 if speaking:
+                    # Don't allow interruption in critical first moments
                     if (now - tts_started_at) <= NO_BARGEIN_WINDOW:
                         continue
 
+                    # Require sustained high energy for interruption
                     if energy > INTERRUPT_ENERGY:
                         if bargein_since == 0.0:
                             bargein_since = now
                         elif (now - bargein_since) >= BARGEIN_HOLD:
-                            interrupt = True
-                            print("✋ interrupt triggered")
-                            await clear_twilio_audio()
-                            if respond_task and not respond_task.done():
-                                respond_task.cancel()
-                            speaking = False
-                            tts_ended_at = now
-                            bargein_since = 0.0
+                            # Additional check: ensure this isn't just noise
+                            await asr.feed(audio)
+                            interim_check = asr.get_interim()
+                            # Require substantial speech (at least 5 characters or a recognizable word)
+                            words = interim_check.strip().split()
+                            if len(words) >= 1 and len(interim_check.strip()) >= 3:
+                                interrupt = True
+                                print(f"✋ legitimate interrupt triggered: '{interim_check}'")
+                                await clear_twilio_audio()
+                                if respond_task and not respond_task.done():
+                                    respond_task.cancel()
+                                speaking = False
+                                tts_ended_at = now
+                                bargein_since = 0.0
+                            else:
+                                # Reset if not real speech
+                                bargein_since = 0.0
                     else:
                         bargein_since = 0.0
                     continue
@@ -325,11 +369,12 @@ async def media_handler(ws):
                     last_interim = current_text
                     pending_text = current_text.strip()
 
-                # ---- Speech detection ----
+                # ---- Speech detection with improved stability ----
                 if energy > SPEECH_ENERGY:
                     if not in_speech:
                         in_speech = True
                         silence_since = 0.0
+                        speech_start_time = now  # Track speech start
 
                     silence_since = 0.0
 
@@ -342,11 +387,24 @@ async def media_handler(ws):
                         else:
                             silence_since = 0.0
 
-                        # TRIGGER RESPONSE after silence threshold
-                        if silence_since and (now - silence_since) >= SILENCE_HOLD:
+                        # TRIGGER RESPONSE after silence threshold AND minimum speech duration
+                        if (silence_since and 
+                            (now - silence_since) >= SILENCE_HOLD and
+                            (now - speech_start_time) >= MIN_SPEECH_DURATION):
                             text = (final_text or pending_text).strip()
                             
                             if text and len(text.split()) >= MIN_WORDS:
+                                # Check if sentence appears complete
+                                is_complete_thought = (
+                                    text.endswith(('.', '!', '?')) or
+                                    len(text.split()) >= 4 or  # Longer phrases are usually complete
+                                    any(word in text.lower() for word in ['yes', 'no', 'okay', 'thanks', 'hello', 'help'])
+                                )
+                                
+                                # If not complete, wait a bit more unless it's been too long
+                                if not is_complete_thought and (now - silence_since) < (SILENCE_HOLD + COMPLETION_WAIT):
+                                    continue
+                                
                                 # Enhanced duplicate detection
                                 is_duplicate = False
                                 
@@ -359,6 +417,24 @@ async def media_handler(ws):
                                         is_duplicate = True
                                 
                                 if not is_duplicate:
+                                    # Log the user speech
+                                    conversation_log.append({
+                                        "role": "user",
+                                        "content": text,
+                                        "timestamp": now
+                                    })
+                                    print(f"\n{'='*80}")
+                                    print(f"👤 CALLER: {text}")
+                                    print(f"{'='*80}\n")
+                                    
+                                    # Calculate response time if this is a follow-up
+                                    if len(conversation_log) > 1:
+                                        prev_msg = conversation_log[-2]
+                                        if prev_msg['role'] == 'assistant':
+                                            response_time = now - prev_msg['timestamp']
+                                            response_times.append(response_time)
+                                            print(f"⏱️ Caller response time: {response_time:.2f}s")
+                                    
                                     # Reset state
                                     in_speech = False
                                     silence_since = 0.0
@@ -385,22 +461,38 @@ async def media_handler(ws):
                                         )
                                         print(f"✅ Response complete, continuing to listen...")
                                         
-                                        # Ensure we're ready to listen again
+                                        # Ensure we're ready to listen again with proper reset
+                                        await asyncio.sleep(0.1)  # Small delay for cleanup
                                         speaking = False
                                         interrupt = False
                                         in_speech = False
                                         silence_since = 0.0
                                         bargein_since = 0.0
+                                        pending_text = ""
+                                        last_interim = ""
+                                        
+                                        # Clear any remaining audio buffer
+                                        await clear_twilio_audio()
                                         
                                     except Exception as e:
                                         print(f"❌ Error during response: {e}")
                                         import traceback
                                         traceback.print_exc()
                                         
-                                        # Reset state on error
+                                        # Complete reset on error to prevent stuck states
                                         speaking = False
                                         interrupt = False
                                         in_speech = False
+                                        silence_since = 0.0
+                                        bargain_since = 0.0
+                                        pending_text = ""
+                                        last_interim = ""
+                                        
+                                        # Clear audio and ASR state
+                                        await clear_twilio_audio()
+                                        asr.text = ""
+                                        asr.interim_text = ""
+                                        asr.reset_final_flag()
                                 else:
                                     # Duplicate detected, just reset
                                     in_speech = False
@@ -428,6 +520,30 @@ async def media_handler(ws):
         import traceback
         traceback.print_exc()
     finally:
+        # Print conversation summary
+        print(f"\n\n{'#'*80}")
+        print(f"📊 CALL SUMMARY")
+        print(f"{'#'*80}")
+        print(f"📞 Call SID: {call_sid}")
+        print(f"📱 Caller: {caller_phone}")
+        print(f"🔢 Total messages: {len(conversation_log)}")
+        print(f"\n📝 FULL CONVERSATION TRANSCRIPT:")
+        print(f"{'-'*80}")
+        for i, msg in enumerate(conversation_log, 1):
+            role_emoji = "👤" if msg['role'] == 'user' else "🤖"
+            role_name = "CALLER" if msg['role'] == 'user' else "RECEPTIONIST"
+            print(f"\n[{i}] {role_emoji} {role_name}: {msg['content']}")
+        print(f"\n{'-'*80}")
+        
+        if response_times:
+            avg_response = sum(response_times) / len(response_times)
+            print(f"\n⏱️ RESPONSE TIME STATS:")
+            print(f"   Average: {avg_response:.2f}s")
+            print(f"   Fastest: {min(response_times):.2f}s")
+            print(f"   Slowest: {max(response_times):.2f}s")
+        
+        print(f"\n{'#'*80}\n\n")
+        
         if respond_task and not respond_task.done():
             respond_task.cancel()
         await asr.close()

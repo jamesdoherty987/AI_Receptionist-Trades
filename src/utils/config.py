@@ -23,6 +23,7 @@ class Config:
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
     ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID")
+    ELEVENLABS_FALLBACK_VOICE_ID = os.getenv("ELEVENLABS_FALLBACK_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Rachel as fallback
     DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
     
     # Models

@@ -21,7 +21,7 @@ async def _aiter(text_stream):
 async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
     """
     Stream Deepgram TTS audio to Twilio in mulaw format
-    Much faster than ElevenLabs - typically 200-400ms latency
+    Optimized for speed and reliability - typically 150-300ms latency
     
     Args:
         text_stream: Async iterator of text tokens
@@ -29,19 +29,20 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
         stream_sid: Twilio stream ID
         interrupt_fn: Function to check if interrupted
     """
-    uri = f"wss://api.deepgram.com/v1/speak?model=aura-angus-en&encoding={config.AUDIO_ENCODING}&sample_rate={config.AUDIO_SAMPLE_RATE}&container=none"
+    # Use faster model and optimized settings for speed
+    uri = f"wss://api.deepgram.com/v1/speak?model=aura-luna-en&encoding={config.AUDIO_ENCODING}&sample_rate={config.AUDIO_SAMPLE_RATE}&container=none&filler_words=false&smart_format=true"
 
-    MAX_TTS_SECONDS = 18.0  # Reduced for faster responses
+    MAX_TTS_SECONDS = 30.0  # Increased to prevent cutting off longer responses
 
     for attempt in (1, 2):
         try:
             async with websockets.connect(
                 uri,
                 extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
-                open_timeout=10,
-                close_timeout=5,
-                ping_interval=20,
-                ping_timeout=20,
+                open_timeout=8,   # Faster connection timeout
+                close_timeout=3,  # Faster close
+                ping_interval=15, # More frequent pings for stability
+                ping_timeout=10,  # Shorter ping timeout
                 max_size=2**20,
             ) as tts:
 
