@@ -153,46 +153,6 @@ function JobsTab({ bookings }) {
 
   return (
     <div className="jobs-tab">
-      {/* Stats Cards */}
-      <div className="stats-grid">
-        <div className="stat-card highlight">
-          <div className="stat-icon" style={{ background: 'rgba(239, 68, 68, 0.1)' }}>
-            <i className="fas fa-calendar-day" style={{ color: 'var(--danger)' }}></i>
-          </div>
-          <div className="stat-content">
-            <div className="stat-value">{stats.todayCount}</div>
-            <div className="stat-label">Today</div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: 'rgba(59, 130, 246, 0.1)' }}>
-            <i className="fas fa-calendar" style={{ color: 'var(--accent-blue)' }}></i>
-          </div>
-          <div className="stat-content">
-            <div className="stat-value">{stats.upcoming}</div>
-            <div className="stat-label">Upcoming</div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: 'rgba(16, 185, 129, 0.1)' }}>
-            <i className="fas fa-check-circle" style={{ color: 'var(--success)' }}></i>
-          </div>
-          <div className="stat-content">
-            <div className="stat-value">{stats.completed}</div>
-            <div className="stat-label">Completed</div>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: 'rgba(59, 130, 246, 0.1)' }}>
-            <i className="fas fa-briefcase" style={{ color: 'var(--accent-blue)' }}></i>
-          </div>
-          <div className="stat-content">
-            <div className="stat-value">{stats.total}</div>
-            <div className="stat-label">Total Jobs</div>
-          </div>
-        </div>
-      </div>
-
       {/* Controls */}
       <div className="jobs-controls">
         <div className="search-box">
@@ -204,6 +164,27 @@ function JobsTab({ bookings }) {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+        
+        {/* Compact Stats Badges */}
+        <div className="stats-badges">
+          <div className="stats-badge stats-today">
+            <span className="badge-value">{stats.todayCount}</span>
+            <span className="badge-label">Today</span>
+          </div>
+          <div className="stats-badge stats-upcoming">
+            <span className="badge-value">{stats.upcoming}</span>
+            <span className="badge-label">Upcoming</span>
+          </div>
+          <div className="stats-badge stats-completed">
+            <span className="badge-value">{stats.completed}</span>
+            <span className="badge-label">Completed</span>
+          </div>
+          <div className="stats-badge stats-total">
+            <span className="badge-value">{stats.total}</span>
+            <span className="badge-label">Total Jobs</span>
+          </div>
+        </div>
+        
         <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
           <i className="fas fa-plus"></i> Add Job
         </button>

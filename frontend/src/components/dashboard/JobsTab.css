@@ -4,59 +4,75 @@
   gap: 1.5rem;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.75rem;
+.stats-badges {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 
-.stat-card {
-  background: white;
-  padding: 0.875rem;
-  border-radius: var(--radius-md);
+.stats-badge {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  box-shadow: var(--shadow-sm);
+  gap: 0.625rem;
+  padding: 0.625rem 1rem;
+  border-radius: var(--radius-sm);
+  background: white;
+  border: 1.5px solid;
+  font-size: 0.85rem;
   transition: all var(--transition-base);
 }
 
-.stat-card.highlight {
-  background: white;
-}
-
-.stat-card:hover {
-  box-shadow: var(--shadow-md);
+.stats-badge:hover {
   transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
-.stat-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1rem;
-}
-
-.stat-content {
-  flex: 1;
-}
-
-.stat-value {
-  font-size: 1.25rem;
+.stats-badge .badge-value {
   font-weight: 700;
-  color: var(--text-primary);
+  font-size: 1.25rem;
   line-height: 1;
 }
 
-.stat-label {
-  font-size: 0.7rem;
+.stats-badge .badge-label {
   color: var(--text-secondary);
-  margin-top: 0.15rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.stats-today {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.stats-today .badge-value {
+  color: var(--danger);
+}
+
+.stats-upcoming {
+  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.stats-upcoming .badge-value {
+  color: var(--accent-blue);
+}
+
+.stats-completed {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.stats-completed .badge-value {
+  color: var(--success);
+}
+
+.stats-total {
+  border-color: rgba(99, 102, 241, 0.3);
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.stats-total .badge-value {
+  color: #6366f1;
 }
 
 /* Controls */
