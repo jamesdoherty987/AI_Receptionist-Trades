@@ -459,6 +459,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         Text tokens from LLM
     """
     
+    import random  # For random message selection
+    
     print(f"🤖 stream_llm called with {len(messages)} messages")
 
     import re  # Import at function level for use in birth year detection
@@ -2025,6 +2027,73 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         _appointment_state.pop("skip_llm_response", None)  # Clear flag
         # Don't return - continue to generate response with callback result now in messages
     
+    # PRE-CHECK: Detect if user message likely requires a tool call
+    # If so, speak acknowledgment IMMEDIATELY before calling OpenAI (to avoid OpenAI latency)
+    user_message = messages[-1]["content"].lower() if messages and messages[-1].get("role") == "user" else ""
+    likely_needs_tool = False
+    checking_msg = None
+    
+    # Detect transfer/human requests
+    transfer_phrases = ["transfer", "speak to a", "talk to a", "speak with", "talk with", "real person", "actual person", "someone else", "a human", "the manager", "the owner"]
+    if any(phrase in user_message for phrase in transfer_phrases):
+        likely_needs_tool = True
+        checking_msg = random.choice([
+            "No problem, one moment please.",
+            "Sure, let me transfer you now.",
+            "Of course, transferring you now."
+        ])
+        print(f"   🚀 PRE-CHECK: Transfer request detected")
+    
+    # Detect availability/schedule checking
+    availability_phrases = ["available", "availability", "what times", "when are you", "when can", "any slots", "free", "open"]
+    if not likely_needs_tool and any(phrase in user_message for phrase in availability_phrases):
+        likely_needs_tool = True
+        checking_msg = random.choice([
+            "Let me check that for you.",
+            "One moment, let me see what's available.",
+            "Let me look that up for you."
+        ])
+        print(f"   🚀 PRE-CHECK: Availability check detected")
+    
+    # Detect cancellation requests
+    cancel_phrases = ["cancel", "cancelling", "canceling"]
+    cancel_context = ["appointment", "booking", "scheduled"]
+    if not likely_needs_tool and any(phrase in user_message for phrase in cancel_phrases) and any(ctx in user_message for ctx in cancel_context):
+        likely_needs_tool = True
+        checking_msg = random.choice([
+            "No problem, let me pull that up.",
+            "Sure, one moment please.",
+            "Let me find that appointment."
+        ])
+        print(f"   🚀 PRE-CHECK: Cancellation request detected")
+    
+    # Detect reschedule requests
+    reschedule_phrases = ["reschedule", "change my appointment", "move my appointment", "different time"]
+    if not likely_needs_tool and any(phrase in user_message for phrase in reschedule_phrases):
+        likely_needs_tool = True
+        checking_msg = random.choice([
+            "No problem, let me check availability.",
+            "Sure, let me see what times are available.",
+            "Let me look that up for you."
+        ])
+        print(f"   🚀 PRE-CHECK: Reschedule request detected")
+    
+    # Detect lookup/verification requests (when asking about existing appointments)
+    lookup_phrases = ["my appointment", "do i have", "what time is my", "when is my"]
+    if not likely_needs_tool and any(phrase in user_message for phrase in lookup_phrases):
+        likely_needs_tool = True
+        checking_msg = random.choice([
+            "Let me check that for you.",
+            "One moment, let me pull that up.",
+            "Let me look that up."
+        ])
+        print(f"   🚀 PRE-CHECK: Appointment lookup detected")
+    
+    if likely_needs_tool and checking_msg:
+        print(f"   🗣️ Speaking BEFORE OpenAI call: '{checking_msg}'")
+        print(f"   📝 User message: '{user_message[:100]}...'")
+        yield f"<<<SPLIT_TTS:{checking_msg}>>>"
+    
     # Stream from OpenAI with optimized settings
     client = get_openai_client()
     
@@ -2104,7 +2173,7 @@ When customer wants to reschedule:
     tool_calls = []
     current_tool_call = None
     token_count = 0
-    has_spoken_checking_message = False
+    has_yielded_split_marker = likely_needs_tool  # Already yielded if pre-check detected it
     
     try:
         for part in stream:
@@ -2112,22 +2181,20 @@ When customer wants to reschedule:
             
             # Handle tool calls
             if delta.tool_calls:
-                # If this is the first tool call we're seeing, speak a checking message IMMEDIATELY
-                if not has_spoken_checking_message and len(tool_calls) == 0:
+                # IMMEDIATELY yield the split marker on the FIRST tool call detection
+                # (only if we didn't already yield it in pre-check)
+                if not has_yielded_split_marker:
                     checking_phrases = [
                         "Let me check that for you.",
                         "One moment please.",
                         "Let me look that up."
                     ]
-                    import random
                     checking_msg = random.choice(checking_phrases)
-                    print(f"   🗣️ Tool call detected - speaking before execution: '{checking_msg}'")
-                    # Yield the checking message
-                    yield checking_msg
-                    # Yield special flush marker to force TTS to speak NOW before continuing
-                    yield "<<<FLUSH>>>"
-                    has_spoken_checking_message = True
+                    print(f"   🗣️ IMMEDIATE: First tool call detected - yielding split marker with: '{checking_msg}'")
+                    yield f"<<<SPLIT_TTS:{checking_msg}>>>"
+                    has_yielded_split_marker = True
                 
+                # Now collect the tool call data
                 for tool_call_delta in delta.tool_calls:
                     # Initialize new tool call
                     if tool_call_delta.index is not None:
@@ -2148,14 +2215,15 @@ When customer wants to reschedule:
                         if tool_call_delta.function.arguments:
                             current_tool_call["function"]["arguments"] += tool_call_delta.function.arguments
             
-            # Handle regular content - but suppress it if we have tool calls
+            # Handle regular content - but suppress it if we have tool calls OR if we yielded split marker
             if delta.content:
                 token_count += 1
                 full_response += delta.content  # Keep original for history
                 
-                # Only yield content if we're NOT making tool calls
-                # When tool calls are present, we've already spoken the checking message
-                if not tool_calls:
+                # Only yield content if:
+                # 1. We're NOT making tool calls (tool calls suppress content)
+                # 2. We haven't yielded a split marker (split marker means content comes in continuation)
+                if not tool_calls and not has_yielded_split_marker:
                     # Strip markdown formatting to prevent TTS reading "**" as "star star"
                     cleaned_token = delta.content.replace('**', '').replace('__', '').replace('~~', '')
                     yield cleaned_token  # Send cleaned version to TTS
@@ -2174,10 +2242,28 @@ When customer wants to reschedule:
         print(f"   Tool calls: {len(tool_calls)}")
         print(f"   Full response length: {len(full_response)}")
     
+    # SAFETY CHECK: If we yielded a split marker in pre-check but OpenAI didn't actually call tools
+    if has_yielded_split_marker and not tool_calls:
+        if full_response:
+            print(f"⚠️ Pre-check fired but no tools were called - yielding suppressed response: '{full_response[:50]}...'")
+            # Yield the response that was collected but suppressed
+            # Strip markdown formatting
+            cleaned_response = full_response.replace('**', '').replace('__', '').replace('~~', '')
+            yield cleaned_response
+            messages.append({"role": "assistant", "content": full_response})
+        else:
+            # Edge case: Pre-check fired but OpenAI returned nothing - provide fallback
+            print(f"⚠️ Pre-check fired but OpenAI returned no content and no tools!")
+            fallback = "How can I help you with that?"
+            yield fallback
+            messages.append({"role": "assistant", "content": fallback})
+        return
+    
     # Process tool calls if any were made
     if tool_calls:
         print(f"\n🔧 LLM requested {len(tool_calls)} tool call(s)")
-        print(f"   (Checking message already spoken during streaming)")
+        print(f"   (Split marker already yielded during stream)")
+        print(f"   ⏳ Now executing tools...")
         
         # Import services inside this block to avoid shadowing issues
         from src.services.google_calendar import get_calendar_service as get_cal_service
@@ -2249,10 +2335,10 @@ When customer wants to reschedule:
         print("   🔄 Getting LLM response with tool results...")
         print(f"   📊 Tool results being sent to LLM: {[{**tr, 'content': tr['content'][:100] + '...' if len(tr['content']) > 100 else tr['content']} for tr in tool_results]}")
         try:
-            # Add a system message to ensure LLM provides a complete response
+            # Add a system message to ensure LLM provides a complete response WITHOUT repeating the checking message
             messages.append({
                 "role": "system",
-                "content": "[SYSTEM: You just executed a tool. Based on the tool results, provide a COMPLETE helpful response to the customer. DO NOT just say 'let me check' or leave them hanging. Tell them what you found and what the next steps are. Be specific and actionable. If slots are available, list them. If booking was successful, confirm it. Always provide a full response, not a partial one.]"
+                "content": "[SYSTEM INSTRUCTION: You ALREADY told the customer 'let me check that for you' before executing the tool. The tool has now COMPLETED and returned results. DO NOT say 'let me check', 'one moment', 'checking', 'I've checked', or any similar phrases. The customer is waiting for the actual answer, not another acknowledgment. Immediately provide the actual results in your first words. For example: Start with 'I have [times] available' or 'Your appointment is confirmed for' or 'I found your appointment', NOT 'let me check' or 'I've looked that up'. Get straight to the point.]"
             })
             
             follow_up_stream = client.chat.completions.create(

@@ -135,10 +135,26 @@ async def media_handler(ws):
                 transfer_number = None
                 full_text = ""  # Capture full text for logging
                 MIN_TOKENS_BEFORE_INTERRUPT = 8  # Require at least 8 tokens (~2 words) before allowing interrupt
+                needs_continuation = False  # Track if we need a second TTS session
                 
                 async def simple_stream():
-                    nonlocal token_count, speaking, transfer_number, full_text
+                    nonlocal token_count, speaking, transfer_number, full_text, needs_continuation
+                    
                     async for token in text_stream:
+                        # Check for SPLIT_TTS marker - this means we need to speak something NOW
+                        # then continue in a separate TTS session for the rest
+                        if token.startswith("<<<SPLIT_TTS:"):
+                            # Extract the message to speak immediately
+                            split_msg = token.replace("<<<SPLIT_TTS:", "").replace(">>>", "").strip()
+                            print(f"🔀 SPLIT_TTS MARKER DETECTED: '{split_msg}'")
+                            # Yield this message so it gets spoken now in its own TTS session
+                            yield split_msg
+                            full_text += split_msg + " "
+                            # Mark that we need to continue with a second TTS session after this
+                            needs_continuation = True
+                            # Break here so this TTS session completes with just the checking message
+                            break
+                        
                         # Check for transfer marker
                         if token.startswith("<<<TRANSFER:"):
                             # Extract phone number from marker
@@ -158,11 +174,46 @@ async def media_handler(ws):
                             speaking = False
                             print(f"✅ Ready to listen (text streaming)")
                 
-                # Try primary TTS first
+                # First TTS session - will speak either the full response OR just the checking message
+                print(f"   🗣️ Starting first TTS session...")
                 await asyncio.wait_for(
                     stream_tts(simple_stream(), ws, stream_sid, lambda: interrupt),
                     timeout=20.0  # Max timeout - responds immediately when audio done
                 )
+                print(f"   ✅ First TTS session complete")
+                
+                # If we need continuation (due to SPLIT_TTS), start a second TTS session for the rest
+                if needs_continuation:
+                    print(f"   🔄 Starting second TTS session for remaining content...")
+                    token_count = 0  # Reset for second session
+                    
+                    async def continuation_stream():
+                        nonlocal token_count, speaking, transfer_number, full_text
+                        # Continue consuming from the same text_stream generator where we left off
+                        async for token in text_stream:
+                            # Check for transfer marker
+                            if token.startswith("<<<TRANSFER:"):
+                                transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
+                                print(f"📞 TRANSFER MARKER DETECTED: {transfer_number}")
+                                continue
+                            
+                            # Skip control markers
+                            if token.startswith("<<<") and token.endswith(">>>"):
+                                continue
+                            
+                            token_count += 1
+                            full_text += token
+                            yield token
+                            if token_count == MIN_TOKENS_BEFORE_INTERRUPT:
+                                speaking = False
+                                print(f"✅ Ready to listen (continuation)")
+                    
+                    # Second TTS session with the actual results
+                    await asyncio.wait_for(
+                        stream_tts(continuation_stream(), ws, stream_sid, lambda: interrupt),
+                        timeout=20.0
+                    )
+                    print(f"   ✅ Second TTS session complete")
                 
                 # Log the complete response
                 if full_text.strip():

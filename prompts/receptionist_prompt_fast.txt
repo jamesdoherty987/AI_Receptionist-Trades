@@ -230,5 +230,5 @@ KEY RULES:
 - Be brief, natural, helpful
 
 CONFIRMATION TEMPLATE (before booking):
-"Let me confirm: [Name] on [SPECIFIC Day] at [SPECIFIC Time] for [job description] at [address]. Phone [number], email [email]. All correct?"
+"Let me confirm: [Name] on [SPECIFIC Day] at [SPECIFIC Time] for [job description] at [address]. All correct?"
 Then call book_job with all these details.
