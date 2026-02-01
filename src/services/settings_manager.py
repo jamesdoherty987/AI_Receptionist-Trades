@@ -521,47 +521,30 @@ class SettingsManager:
             return False
     
     def get_fallback_phone_number(self) -> Optional[str]:
-        """Get fallback phone number for when AI is disabled"""
+        """Get business phone number for transfers and when AI is disabled"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT fallback_phone_number FROM developer_settings LIMIT 1")
+            cursor.execute("SELECT phone FROM business_settings LIMIT 1")
             result = cursor.fetchone()
             conn.close()
-            return result[0] if result and result[0] else None
+            if result and result[0]:
+                phone = result[0]
+                # Ensure phone has country code format
+                if not phone.startswith('+'):
+                    # Add Ireland country code if missing
+                    phone = f"+353{phone.lstrip('0')}"
+                return phone
+            return None
         except Exception as e:
-            print(f"Error getting fallback phone number: {e}")
+            print(f"Error getting business phone number: {e}")
             return None
     
     def set_fallback_phone_number(self, phone: str) -> bool:
-        """Set fallback phone number for when AI is disabled"""
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            # Ensure at least one row exists
-            cursor.execute("SELECT COUNT(*) FROM developer_settings")
-            if cursor.fetchone()[0] == 0:
-                cursor.execute("""
-                    INSERT INTO developer_settings (
-                        openai_model, tts_provider, log_level, fallback_phone_number
-                    ) VALUES (?, ?, ?, ?)
-                """, ("gpt-4o-mini", "deepgram", "INFO", phone))
-            else:
-                cursor.execute("""
-                    UPDATE developer_settings 
-                    SET fallback_phone_number = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = (SELECT MIN(id) FROM developer_settings)
-                """, (phone,))
-            
-            conn.commit()
-            conn.close()
-            print(f"✅ Fallback phone number set to: {phone}")
-            return True
-        except Exception as e:
-            print(f"Error setting fallback phone number: {e}")
-            return False
+        """Deprecated: Use business phone instead. This method is kept for backwards compatibility."""
+        print(f"⚠️ set_fallback_phone_number is deprecated. Business phone is now used for transfers.")
+        print(f"   Update the business phone in business settings instead.")
+        return False
 
 
 # Singleton instance

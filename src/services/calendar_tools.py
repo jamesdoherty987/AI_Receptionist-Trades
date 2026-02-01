@@ -243,7 +243,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "transfer_to_human",
-            "description": "Transfer the call to a real human/staff member. Use this when the customer explicitly requests to speak with a real person, human, manager, or owner. Ask for confirmation first: 'Let me transfer you to someone who can help. One moment please.'",
+            "description": "IMMEDIATELY transfer the call to a real human/staff member when customer asks to speak with a person, human, manager, owner, or real person. CRITICAL: You MUST call this function - do not just say you will transfer, actually invoke this tool. The system will automatically say 'transferring you now' - you just need to call the function.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -263,6 +263,8 @@ def get_service_price(job_description: str, urgency: str = 'scheduled') -> float
     """
     Get the price for a service from the services menu based on job description and urgency.
     
+    Uses simple term-based semantic matching against service names and descriptions.
+    
     Args:
         job_description: Description of the job (e.g., 'exterior painting', 'leak repairs')
         urgency: Urgency level ('emergency', 'same-day', 'scheduled', 'quote')
@@ -273,6 +275,7 @@ def get_service_price(job_description: str, urgency: str = 'scheduled') -> float
     try:
         import json
         from pathlib import Path
+        import re
         
         # Load services menu
         services_menu_path = Path(__file__).parent.parent.parent / 'config' / 'services_menu.json'
@@ -282,10 +285,14 @@ def get_service_price(job_description: str, urgency: str = 'scheduled') -> float
         # Normalize job description for matching
         job_lower = job_description.lower().strip()
         
-        # Try exact/best matches first
+        # Extract meaningful terms from job description (words > 3 chars)
+        job_terms = set(re.findall(r'\b\w{3,}\b', job_lower))
+        
         best_match = None
         best_score = 0
+        matched_service_name = None
         
+        # Score each service based on term overlap
         for service in menu.get('services', []):
             if not service.get('active', True):
                 continue
@@ -293,49 +300,66 @@ def get_service_price(job_description: str, urgency: str = 'scheduled') -> float
             service_name = service.get('name', '').lower()
             service_desc = service.get('description', '').lower()
             service_category = service.get('category', '').lower()
-            service_id = service.get('id', '').lower()
             
-            # Calculate match score
+            # Extract all text for matching
+            service_full_text = f"{service_name} {service_desc} {service_category}"
+            service_terms = set(re.findall(r'\b\w{3,}\b', service_full_text))
+            
+            # Calculate overlap score
+            matching_terms = job_terms.intersection(service_terms)
+            term_match_count = len(matching_terms)
+            
             score = 0
             
-            # Exact match is best
+            # Exact name match is best
             if job_lower == service_name:
                 score = 100
-            # Check if service name is in job description (e.g., "exterior painting" in job)
+            # Substring match in name
             elif service_name in job_lower:
-                score = 90
-            # Check if job description is in service name
+                score = 95
+            # Job description in service name
             elif job_lower in service_name:
-                score = 80
-            # Check service ID (e.g., "painting-exterior")
-            elif job_lower.replace(' ', '-') in service_id or service_id in job_lower.replace(' ', '-'):
-                score = 85
-            # Check description match
+                score = 90
+            # Multiple term matches
+            elif term_match_count >= 2:
+                score = 80 + (term_match_count * 3)
+            # Single term match
+            elif term_match_count == 1:
+                score = 50
+            # Description contains key words
             elif any(word in service_desc for word in job_lower.split() if len(word) > 4):
-                score = 60
-            # Check category match (must have at least one meaningful word match)
-            elif service_category in job_lower and len(service_category) > 4:
                 score = 40
             
-            # Update best match if this score is higher
+            # Bonus for category match
+            if service_category in job_lower:
+                score += 15
+            
+            # Update best match
             if score > best_score:
                 best_score = score
                 best_match = service
+                matched_service_name = service_name
         
-        # Only use match if score is good enough (> 70 for reliability)
-        if best_match and best_score > 70:
+        # Use match if score is good enough (threshold: 40)
+        if best_match and best_score >= 40:
             # Use emergency price if urgency is emergency and available
             if urgency == 'emergency' and best_match.get('emergency_price'):
-                return float(best_match['emergency_price'])
+                price = float(best_match['emergency_price'])
+                print(f"💰 Matched '{job_description}' to '{matched_service_name}' (score: {best_score}) - EMERGENCY PRICE: €{price}")
+                return price
             else:
-                return float(best_match['price'])
+                price = float(best_match['price'])
+                print(f"💰 Matched '{job_description}' to '{matched_service_name}' (score: {best_score}) - Standard price: €{price}")
+                return price
         
         # Default fallback
-        print(f"⚠️ No service price found for '{job_description}', using default €50")
+        print(f"⚠️ No service price found for '{job_description}' (best match score: {best_score}), using default €50")
         return 50.0
         
     except Exception as e:
         print(f"⚠️ Error loading service price: {e}, using default €50")
+        import traceback
+        traceback.print_exc()
         return 50.0
 
 
@@ -1244,25 +1268,25 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             """Transfer call to a real human"""
             reason = arguments.get('reason', 'customer requested human')
             
-            # Get fallback number from settings
+            # Get business phone number for transfer
             from src.services.settings_manager import get_settings_manager
             settings_mgr = get_settings_manager()
-            fallback_number = settings_mgr.get_fallback_phone_number()
+            transfer_number = settings_mgr.get_fallback_phone_number()  # Returns business phone
             
-            if not fallback_number:
+            if not transfer_number:
                 return {
                     "success": False,
-                    "error": "No fallback number configured. Cannot transfer call.",
+                    "error": "No business phone number configured. Cannot transfer call.",
                     "message": "I'm sorry, but I don't have a number to transfer you to right now. Is there anything else I can help you with?"
                 }
             
             print(f"📞 TRANSFER REQUEST: {reason}")
-            print(f"📲 Transferring to: {fallback_number}")
+            print(f"📲 Transferring to business phone: {transfer_number}")
             
             return {
                 "success": True,
                 "transfer": True,
-                "fallback_number": fallback_number,
+                "fallback_number": transfer_number,
                 "reason": reason,
                 "message": "Let me transfer you now. Please hold."
             }

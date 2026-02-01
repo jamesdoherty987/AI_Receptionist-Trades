@@ -402,7 +402,11 @@ function Settings() {
                       value={formData.business_phone || ''}
                       onChange={handleChange}
                       required
+                      placeholder="e.g., 0852635954"
                     />
+                    <small className="form-help">
+                      Main contact number. Also used for call transfers and when AI is disabled.
+                    </small>
                   </div>
                   <div className="form-group">
                     <label htmlFor="business_email">Business Email</label>
@@ -457,25 +461,7 @@ function Settings() {
                 </div>
               </div>
 
-              <div className="form-section">
-                <h3>Fallback Settings</h3>
-                <div className="form-grid">
-                  <div className="form-group full-width">
-                    <label htmlFor="fallback_phone_number">Fallback Phone Number</label>
-                    <input
-                      type="tel"
-                      id="fallback_phone_number"
-                      name="fallback_phone_number"
-                      value={formData.fallback_phone_number || ''}
-                      onChange={handleChange}
-                      placeholder="Number to forward calls when AI is disabled"
-                    />
-                    <small className="form-help">
-                      When AI receptionist is disabled, calls will be forwarded to this number
-                    </small>
-                  </div>
-                </div>
-              </div>
+              {/* Fallback settings section removed - business phone is now used for everything */}
 
               <div className="form-actions">
                 {saveMessage && (

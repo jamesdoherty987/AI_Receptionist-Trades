@@ -6,7 +6,7 @@
       "id": "plumbing-leak",
       "category": "Plumbing",
       "name": "Leak Repairs",
-      "description": "Fix leaking pipes, taps, toilets, radiators",
+      "description": "Fix leaking pipes, taps, toilets, radiators, drains, burst pipes",
       "duration_minutes": 60,
       "price": 80,
       "emergency_price": 150,

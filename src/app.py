@@ -79,7 +79,7 @@ except Exception as e:
 def twilio_voice():
     """
     Twilio voice webhook endpoint
-    Returns TwiML to connect call to media stream OR forward to fallback number
+    Returns TwiML to connect call to media stream OR forward to business phone
     """
     from src.services.settings_manager import get_settings_manager
     settings_mgr = get_settings_manager()
@@ -93,24 +93,24 @@ def twilio_voice():
     twiml = VoiceResponse()
     
     if not ai_enabled:
-        # AI is disabled - forward to fallback number (real person)
-        fallback_number = settings_mgr.get_fallback_phone_number()
+        # AI is disabled - forward to business phone number
+        business_phone = settings_mgr.get_fallback_phone_number()  # Returns business phone
         
         print("=" * 60)
         print("📞 Incoming Twilio Call - AI DISABLED")
         print(f"📱 Caller: {caller_phone}")
-        print(f"📲 Forwarding to: {fallback_number or 'No fallback number set!'}")
+        print(f"📲 Forwarding to business phone: {business_phone or 'No phone number set!'}")
         print("=" * 60)
         
-        if fallback_number:
+        if business_phone:
             twiml.say("Please hold while we connect you.")
             # Create Dial verb with proper nested Number noun
             dial = twiml.dial(timeout=60, action='/twilio/dial-status', method='POST')
-            dial.number(fallback_number)
+            dial.number(business_phone)
             print(f"📋 Generated TwiML for forwarding:")
             print(str(twiml))
         else:
-            twiml.say("We're sorry, but our AI receptionist is currently unavailable and no fallback number is configured. Please try again later.")
+            twiml.say("We're sorry, but our AI receptionist is currently unavailable and no business phone number is configured. Please try again later.")
     else:
         # AI is enabled - connect to media stream
         ws_url = config.WS_PUBLIC_URL
@@ -543,30 +543,24 @@ def ai_receptionist_toggle_api():
     
     if request.method == "GET":
         enabled = settings_mgr.is_ai_receptionist_enabled()
-        fallback = settings_mgr.get_fallback_phone_number()
+        business_phone = settings_mgr.get_fallback_phone_number()  # Now returns business phone
         return jsonify({
             "enabled": enabled,
-            "fallback_phone_number": fallback
+            "business_phone": business_phone  # Renamed from fallback_phone_number
         })
     
     elif request.method == "POST":
         data = request.json
         enabled = data.get("enabled", True)
-        fallback_phone = data.get("fallback_phone_number", "").strip()
         
-        # Validation: Cannot disable AI without a fallback number
+        # Validation: Cannot disable AI without a business phone number
         if not enabled:
-            current_fallback = settings_mgr.get_fallback_phone_number()
-            effective_fallback = fallback_phone or current_fallback
+            business_phone = settings_mgr.get_fallback_phone_number()  # Now gets business phone
             
-            if not effective_fallback:
+            if not business_phone:
                 return jsonify({
-                    "error": "Cannot disable AI receptionist without a fallback phone number"
+                    "error": "Cannot disable AI receptionist without a business phone number configured"
                 }), 400
-        
-        # Save fallback phone number first if provided
-        if fallback_phone:
-            settings_mgr.set_fallback_phone_number(fallback_phone)
         
         # Update AI status
         success = settings_mgr.set_ai_receptionist_enabled(enabled)
