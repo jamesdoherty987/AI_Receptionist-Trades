@@ -29,7 +29,8 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: '../src/static/dist',
+    // Use 'dist' for Vercel, or '../src/static/dist' for local Flask serving
+    outDir: process.env.VERCEL ? 'dist' : '../src/static/dist',
     emptyOutDir: true,
   }
 })
