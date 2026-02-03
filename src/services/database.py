@@ -21,14 +21,22 @@ if USE_POSTGRES:
         import psycopg2
         from psycopg2.extras import RealDictCursor
         POSTGRES_AVAILABLE = True
-        print("✅ Using PostgreSQL database")
-    except ImportError:
+        db_url = os.getenv('DATABASE_URL') or os.getenv('SUPABASE_DB_URL')
+        print(f"✅ Using PostgreSQL database")
+        print(f"   Database: {db_url[:30]}..." if db_url else "   No URL found")
+    except ImportError as e:
         POSTGRES_AVAILABLE = False
         USE_POSTGRES = False
-        print("⚠️ psycopg2 not installed, falling back to SQLite")
+        print(f"⚠️ psycopg2 import failed: {e}")
+        print("⚠️ Falling back to SQLite")
+    except Exception as e:
+        POSTGRES_AVAILABLE = False
+        USE_POSTGRES = False
+        print(f"⚠️ PostgreSQL setup error: {e}")
+        print("⚠️ Falling back to SQLite")
 else:
     POSTGRES_AVAILABLE = False
-    print("✅ Using SQLite database")
+    print("✅ Using SQLite database (no DATABASE_URL set)")
 
 class Database:
     """SQLite database for client, job, and worker management"""
