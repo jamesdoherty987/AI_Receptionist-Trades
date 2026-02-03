@@ -1381,7 +1381,8 @@ def workers_api():
             phone=data.get('phone'),
             email=data.get('email'),
             trade_specialty=data.get('trade_specialty'),
-            image_url=data.get('image_url')
+            image_url=data.get('image_url'),
+            weekly_hours_expected=data.get('weekly_hours_expected', 40.0)
         )
         return jsonify({"id": worker_id, "message": "Worker added"}), 201
 
@@ -1470,6 +1471,14 @@ def get_worker_schedule_api(worker_id):
     end_date = request.args.get('end_date')
     schedule = db.get_worker_schedule(worker_id, start_date, end_date)
     return jsonify(schedule)
+
+
+@app.route("/api/workers/<int:worker_id>/hours-this-week", methods=["GET"])
+def get_worker_hours_this_week_api(worker_id):
+    """Get hours worked by worker this week"""
+    db = get_database()
+    hours = db.get_worker_hours_this_week(worker_id)
+    return jsonify({"hours_worked": hours})
 
 
 @app.route("/api/email/send", methods=["POST"])

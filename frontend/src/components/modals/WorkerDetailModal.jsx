@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getWorker, updateWorker, deleteWorker, getWorkerJobs } from '../../services/api';
+import { getWorker, updateWorker, deleteWorker, getWorkerJobs, getWorkerHoursThisWeek } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import ImageUpload from '../ImageUpload';
@@ -28,6 +28,15 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     queryKey: ['worker-jobs', workerId],
     queryFn: async () => {
       const response = await getWorkerJobs(workerId);
+      return response.data;
+    },
+    enabled: isOpen && !!workerId
+  });
+
+  const { data: hoursData } = useQuery({
+    queryKey: ['worker-hours', workerId],
+    queryFn: async () => {
+      const response = await getWorkerHoursThisWeek(workerId);
       return response.data;
     },
     enabled: isOpen && !!workerId
@@ -89,8 +98,9 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
       name: worker.name || '',
       phone: worker.phone || '',
       email: worker.email || '',
-      specialty: worker.specialty || '',
-      image_url: worker.image_url || ''
+      specialty: worker.specialty || worker.trade_specialty || '',
+      image_url: worker.image_url || '',
+      weekly_hours_expected: worker.weekly_hours_expected || 40.0
     });
     setIsEditing(true);
   };
@@ -178,6 +188,12 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                 <i className="fas fa-check-circle"></i>
                 <span>{jobsByPeriod.completed} Done</span>
               </div>
+              <div className="stat-badge hours">
+                <i className="fas fa-clock"></i>
+                <span>
+                  {hoursData?.hours_worked || 0}h / {worker.weekly_hours_expected || 40}h this week
+                </span>
+              </div>
             </div>
           </div>
           <div className="worker-modal-actions">
@@ -246,6 +262,19 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                       value={editData.image_url}
                       onChange={(value) => setEditData({...editData, image_url: value})}
                       placeholder="Upload Profile Picture"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Expected Weekly Hours</label>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={editData.weekly_hours_expected}
+                      onChange={(e) => setEditData({...editData, weekly_hours_expected: parseFloat(e.target.value) || 40.0})}
+                      placeholder="40"
+                      min="0"
+                      max="168"
+                      step="0.5"
                     />
                   </div>
                 </div>

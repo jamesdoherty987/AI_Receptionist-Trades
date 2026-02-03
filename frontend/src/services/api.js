@@ -61,6 +61,7 @@ export const updateWorker = (id, data) => api.put(`/api/workers/${id}`, data);
 export const deleteWorker = (id) => api.delete(`/api/workers/${id}`);
 export const getWorkerJobs = (id) => api.get(`/api/workers/${id}/jobs`);
 export const getWorkerSchedule = (id) => api.get(`/api/workers/${id}/schedule`);
+export const getWorkerHoursThisWeek = (id) => api.get(`/api/workers/${id}/hours-this-week`);
 
 // Job-Worker Assignment
 export const assignWorkerToJob = (jobId, data) => api.post(`/api/bookings/${jobId}/assign-worker`, data);

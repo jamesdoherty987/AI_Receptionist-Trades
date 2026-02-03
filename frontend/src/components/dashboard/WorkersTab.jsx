@@ -1,4 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getWorkerHoursThisWeek } from '../../services/api';
 import AddWorkerModal from '../modals/AddWorkerModal';
 import WorkerDetailModal from '../modals/WorkerDetailModal';
 import './WorkersTab.css';
@@ -6,6 +8,28 @@ import './WorkersTab.css';
 function WorkersTab({ workers, bookings }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedWorkerId, setSelectedWorkerId] = useState(null);
+  const [workersHours, setWorkersHours] = useState({});
+
+  // Fetch hours for all workers
+  useEffect(() => {
+    const fetchHours = async () => {
+      const hoursMap = {};
+      for (const worker of workers) {
+        try {
+          const response = await getWorkerHoursThisWeek(worker.id);
+          hoursMap[worker.id] = response.data.hours_worked;
+        } catch (error) {
+          console.error(`Error fetching hours for worker ${worker.id}:`, error);
+          hoursMap[worker.id] = 0;
+        }
+      }
+      setWorkersHours(hoursMap);
+    };
+    
+    if (workers.length > 0) {
+      fetchHours();
+    }
+  }, [workers]);
 
   // Calculate worker status based on their jobs today
   const workersWithStatus = useMemo(() => {
@@ -41,10 +65,12 @@ function WorkersTab({ workers, bookings }) {
         isBusy: !!currentJob,
         currentJob,
         jobsToday,
-        nextJob
+        nextJob,
+        hoursWorked: workersHours[worker.id] || 0,
+        weeklyHoursExpected: worker.weekly_hours_expected || 40
       };
     });
-  }, [workers, bookings]);
+  }, [workers, bookings, workersHours]);
 
   return (
     <div className="workers-tab">
@@ -108,6 +134,12 @@ function WorkersTab({ workers, bookings }) {
                     )}
                   </div>
                 )}
+                <div className="worker-hours-info">
+                  <span className="hours-badge">
+                    <i className="fas fa-clock"></i>
+                    {worker.hoursWorked}h / {worker.weeklyHoursExpected}h this week
+                  </span>
+                </div>
               </div>
               <div className="worker-status">
                 <span className={`status-badge ${worker.isBusy ? 'busy' : 'available'}`}>

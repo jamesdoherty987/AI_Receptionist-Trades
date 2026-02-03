@@ -247,6 +247,12 @@ class Database:
                 ALTER TABLE workers ADD COLUMN image_url TEXT
             """)
             print("✅ Added image_url column to workers table")
+        
+        if 'weekly_hours_expected' not in worker_columns:
+            cursor.execute("""
+                ALTER TABLE workers ADD COLUMN weekly_hours_expected REAL DEFAULT 40.0
+            """)
+            print("✅ Added weekly_hours_expected column to workers table")
             print("✅ Added property_type column to bookings table")
         
         conn.commit()
@@ -887,15 +893,15 @@ class Database:
         conn.close()
     
     # Worker methods
-    def add_worker(self, name: str, phone: str = None, email: str = None, trade_specialty: str = None, image_url: str = None) -> int:
+    def add_worker(self, name: str, phone: str = None, email: str = None, trade_specialty: str = None, image_url: str = None, weekly_hours_expected: float = 40.0) -> int:
         """Add a new worker/tradesperson"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
-            INSERT INTO workers (name, phone, email, trade_specialty, image_url)
-            VALUES (?, ?, ?, ?, ?)
-        """, (name, phone, email, trade_specialty, image_url))
+            INSERT INTO workers (name, phone, email, trade_specialty, image_url, weekly_hours_expected)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (name, phone, email, trade_specialty, image_url, weekly_hours_expected))
         
         worker_id = cursor.lastrowid
         conn.commit()
@@ -915,7 +921,8 @@ class Database:
             'id': row[0], 'name': row[1], 'phone': row[2], 'email': row[3],
             'trade_specialty': row[4], 'status': row[5], 
             'created_at': row[6], 'updated_at': row[7],
-            'image_url': row[8] if len(row) > 8 else None
+            'image_url': row[8] if len(row) > 8 else None,
+            'weekly_hours_expected': row[9] if len(row) > 9 else 40.0
         } for row in rows]
     
     def get_worker(self, worker_id: int) -> Optional[Dict]:
@@ -931,7 +938,9 @@ class Database:
             return {
                 'id': row[0], 'name': row[1], 'phone': row[2], 'email': row[3],
                 'trade_specialty': row[4], 'status': row[5],
-                'created_at': row[6], 'updated_at': row[7]
+                'created_at': row[6], 'updated_at': row[7],
+                'image_url': row[8] if len(row) > 8 else None,
+                'weekly_hours_expected': row[9] if len(row) > 9 else 40.0
             }
         return None
     
@@ -1166,6 +1175,41 @@ class Database:
             'status': row[4],
             'address': row[5]
         } for row in rows]
+    
+    def get_worker_hours_this_week(self, worker_id: int) -> float:
+        """Calculate hours worked by a worker this week (Monday-Sunday)"""
+        from datetime import datetime, timedelta
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Calculate start and end of current week (Monday-Sunday)
+        today = datetime.now()
+        start_of_week = today - timedelta(days=today.weekday())  # Monday
+        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_week = start_of_week + timedelta(days=7)  # Next Monday
+        
+        # Query to get completed jobs this week for the worker
+        # Assuming each job is approximately 2 hours (you can adjust this)
+        query = """
+            SELECT COUNT(*) as job_count
+            FROM worker_assignments wa
+            JOIN bookings b ON wa.booking_id = b.id
+            WHERE wa.worker_id = ?
+            AND b.appointment_time >= ?
+            AND b.appointment_time < ?
+            AND b.status = 'completed'
+        """
+        
+        cursor.execute(query, (worker_id, start_of_week.isoformat(), end_of_week.isoformat()))
+        result = cursor.fetchone()
+        conn.close()
+        
+        # Estimate 2 hours per completed job
+        job_count = result[0] if result else 0
+        hours_worked = job_count * 2.0
+        
+        return hours_worked
 
 
     # Company/Auth methods

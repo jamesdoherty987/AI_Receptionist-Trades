@@ -38,8 +38,29 @@ class Config:
     VAD_START_ENERGY = int(os.getenv("VAD_START_ENERGY", 1800))
     VAD_CONTINUE_ENERGY = int(os.getenv("VAD_CONTINUE_ENERGY", 1400))
     
-    # Barge-in
+    # Barge-in (legacy - kept for compatibility)
     BARGE_IN_ENERGY = int(os.getenv("BARGE_IN_ENERGY", 2600))
+    
+    # Media Handler - Speech Detection
+    SPEECH_ENERGY = int(os.getenv("SPEECH_ENERGY", 1600))
+    SILENCE_ENERGY = int(os.getenv("SILENCE_ENERGY", 1000))
+    SILENCE_HOLD = float(os.getenv("SILENCE_HOLD", 0.7))
+    
+    # Media Handler - Interruption Settings
+    INTERRUPT_ENERGY = int(os.getenv("INTERRUPT_ENERGY", 2800))
+    NO_BARGEIN_WINDOW = float(os.getenv("NO_BARGEIN_WINDOW", 1.5))
+    BARGEIN_HOLD = float(os.getenv("BARGEIN_HOLD", 0.4))
+    
+    # Media Handler - Post-TTS and Speech Processing
+    POST_TTS_IGNORE = float(os.getenv("POST_TTS_IGNORE", 0.05))
+    MIN_WORDS = int(os.getenv("MIN_WORDS", 1))
+    DUPLICATE_WINDOW = float(os.getenv("DUPLICATE_WINDOW", 3.0))
+    MIN_SPEECH_DURATION = float(os.getenv("MIN_SPEECH_DURATION", 0.3))
+    COMPLETION_WAIT = float(os.getenv("COMPLETION_WAIT", 0.2))
+    
+    # Media Handler - TTS Settings
+    MIN_TOKENS_BEFORE_INTERRUPT = int(os.getenv("MIN_TOKENS_BEFORE_INTERRUPT", 8))
+    TTS_TIMEOUT = float(os.getenv("TTS_TIMEOUT", 20.0))
     
     # TTS Chunk Sizes
     MIN_TTS_CHUNK_CHARS = int(os.getenv("MIN_TTS_CHUNK_CHARS", 20))

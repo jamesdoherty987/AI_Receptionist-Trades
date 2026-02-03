@@ -13,7 +13,8 @@ function AddWorkerModal({ isOpen, onClose }) {
     phone: '',
     email: '',
     specialty: '',
-    image_url: ''
+    image_url: '',
+    weekly_hours_expected: 40.0
   });
 
   const mutation = useMutation({
@@ -21,7 +22,7 @@ function AddWorkerModal({ isOpen, onClose }) {
     onSuccess: () => {
       queryClient.invalidateQueries(['workers']);
       onClose();
-      setFormData({ name: '', phone: '', email: '', specialty: '', image_url: '' });
+      setFormData({ name: '', phone: '', email: '', specialty: '', image_url: '', weekly_hours_expected: 40.0 });
       addToast('Worker added successfully!', 'success');
     },
     onError: (error) => {
@@ -101,6 +102,21 @@ function AddWorkerModal({ isOpen, onClose }) {
             value={formData.image_url}
             onChange={(value) => setFormData({ ...formData, image_url: value })}
             placeholder="Upload Profile Picture"
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Expected Weekly Hours</label>
+          <input
+            type="number"
+            name="weekly_hours_expected"
+            className="form-input"
+            value={formData.weekly_hours_expected}
+            onChange={(e) => setFormData({ ...formData, weekly_hours_expected: parseFloat(e.target.value) || 40.0 })}
+            placeholder="40"
+            min="0"
+            max="168"
+            step="0.5"
           />
         </div>
 

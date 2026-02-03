@@ -82,22 +82,20 @@ async def media_handler(ws):
     last_response_time = 0.0
     last_audio_time = 0.0  # Track last audio received for watchdog
 
-    # --- Optimized Tunables for Speed and Responsiveness ---
-    SPEECH_ENERGY = 1600  # Higher threshold to reduce false positives from background noise
-    SILENCE_ENERGY = 1000  # Higher threshold to better distinguish actual silence from ambient noise
-    SILENCE_HOLD = 0.6     # Slightly longer to prevent premature cutoff
+    # --- Configurable Tunables (loaded from .env via config) ---
+    SPEECH_ENERGY = config.SPEECH_ENERGY
+    SILENCE_ENERGY = config.SILENCE_ENERGY
+    SILENCE_HOLD = config.SILENCE_HOLD
 
-    INTERRUPT_ENERGY = 3500  # Much higher - require very clear speech to interrupt
-    NO_BARGEIN_WINDOW = 1.5  # Protect first 1.5s of response from any interruption
-    BARGEIN_HOLD = 0.4       # Require 400ms of sustained loud speech to interrupt
+    INTERRUPT_ENERGY = config.INTERRUPT_ENERGY
+    NO_BARGEIN_WINDOW = config.NO_BARGEIN_WINDOW
+    BARGEIN_HOLD = config.BARGEIN_HOLD
 
-    POST_TTS_IGNORE = 0.05   # Longer to prevent immediate false triggers
-    MIN_WORDS = 1            # Allow single word responses
-    DUPLICATE_WINDOW = 3.0   # Longer window for better duplicate detection
-    
-    # Additional settings to prevent cutoffs
-    MIN_SPEECH_DURATION = 0.3  # Minimum speech duration before processing
-    COMPLETION_WAIT = 0.2      # Wait for sentence completion
+    POST_TTS_IGNORE = config.POST_TTS_IGNORE
+    MIN_WORDS = config.MIN_WORDS
+    DUPLICATE_WINDOW = config.DUPLICATE_WINDOW
+    MIN_SPEECH_DURATION = config.MIN_SPEECH_DURATION
+    COMPLETION_WAIT = config.COMPLETION_WAIT
 
     bargein_since = 0.0
 
@@ -134,7 +132,7 @@ async def media_handler(ws):
                 token_count = 0
                 transfer_number = None
                 full_text = ""  # Capture full text for logging
-                MIN_TOKENS_BEFORE_INTERRUPT = 8  # Require at least 8 tokens (~2 words) before allowing interrupt
+                MIN_TOKENS_BEFORE_INTERRUPT = config.MIN_TOKENS_BEFORE_INTERRUPT
                 needs_continuation = False  # Track if we need a second TTS session
                 
                 async def simple_stream():
@@ -178,7 +176,7 @@ async def media_handler(ws):
                 print(f"   🗣️ Starting first TTS session...")
                 await asyncio.wait_for(
                     stream_tts(simple_stream(), ws, stream_sid, lambda: interrupt),
-                    timeout=20.0  # Max timeout - responds immediately when audio done
+                    timeout=config.TTS_TIMEOUT
                 )
                 print(f"   ✅ First TTS session complete")
                 
@@ -211,7 +209,7 @@ async def media_handler(ws):
                     # Second TTS session with the actual results
                     await asyncio.wait_for(
                         stream_tts(continuation_stream(), ws, stream_sid, lambda: interrupt),
-                        timeout=20.0
+                        timeout=config.TTS_TIMEOUT
                     )
                     print(f"   ✅ Second TTS session complete")
                 

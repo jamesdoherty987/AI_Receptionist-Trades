@@ -95,6 +95,11 @@
   color: #059669;
 }
 
+.stat-badge.hours {
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--accent-purple);
+}
+
 .stat-badge.upcoming {
   background: rgba(59, 130, 246, 0.1);
   color: var(--accent-blue);
