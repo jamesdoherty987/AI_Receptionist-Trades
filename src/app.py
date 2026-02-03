@@ -805,16 +805,12 @@ def appointment_notes_api(booking_id):
     
     elif request.method == "POST":
         # Get booking to find client_id for description update
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT client_id FROM bookings WHERE id = ?", (booking_id,))
-        row = cursor.fetchone()
-        conn.close()
+        booking = db.get_booking(booking_id)
         
-        if not row:
+        if not booking:
             return jsonify({"error": "Booking not found"}), 404
         
-        client_id = row[0]
+        client_id = booking['client_id']
         
         data = request.json
         note_id = db.add_appointment_note(
@@ -846,12 +842,8 @@ def appointment_note_api(booking_id, note_id):
     db = get_database()
     
     # Get client_id for description update
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT client_id FROM bookings WHERE id = ?", (booking_id,))
-    result = cursor.fetchone()
-    conn.close()
-    client_id = result[0] if result else None
+    booking = db.get_booking(booking_id)
+    client_id = booking['client_id'] if booking else None
     
     if request.method == "PUT":
         data = request.json
@@ -924,33 +916,25 @@ def bookings_api():
                 appointment_dt = appointment_time
             
             # Check for time conflicts (same time or overlapping within 1 hour)
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            
             # Check for bookings within 1 hour of the requested time
             time_buffer_before = appointment_dt - timedelta(minutes=59)
             time_buffer_after = appointment_dt + timedelta(minutes=59)
             
-            cursor.execute("""
-                SELECT id, client_id, appointment_time, service_type
-                FROM bookings
-                WHERE status NOT IN ('cancelled', 'completed')
-                AND appointment_time BETWEEN ? AND ?
-            """, (time_buffer_before, time_buffer_after))
-            
-            conflicting_bookings = cursor.fetchall()
-            conn.close()
+            conflicting_bookings = db.get_conflicting_bookings(
+                start_time=time_buffer_before.strftime('%Y-%m-%d %H:%M:%S'),
+                end_time=time_buffer_after.strftime('%Y-%m-%d %H:%M:%S')
+            )
             
             if conflicting_bookings:
                 conflict = conflicting_bookings[0]
-                conflict_time = datetime.fromisoformat(str(conflict[2]))
+                conflict_time = datetime.fromisoformat(str(conflict['appointment_time']))
                 
                 # Get client name for the conflicting booking
-                conflict_client = db.get_client(conflict[1])
+                conflict_client = db.get_client(conflict['client_id'])
                 conflict_client_name = conflict_client['name'] if conflict_client else 'Unknown'
                 
                 return jsonify({
-                    "error": f"Time conflict: There is already a booking at {conflict_time.strftime('%I:%M %p')} for {conflict_client_name} ({conflict[3]}). Please choose a different time.",
+                    "error": f"Time conflict: There is already a booking at {conflict_time.strftime('%I:%M %p')} for {conflict_client_name} ({conflict['service_type']}). Please choose a different time.",
                     "conflict": True,
                     "conflicting_time": conflict_time.isoformat(),
                     "conflicting_client": conflict_client_name
@@ -992,28 +976,18 @@ def bookings_api():
             
             # If address not provided, try to get from client's previous bookings
             if not job_address or not job_eircode or not job_property_type:
-                conn = db.get_connection()
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT address, eircode, property_type
-                    FROM bookings
-                    WHERE client_id = ? AND (address IS NOT NULL OR eircode IS NOT NULL OR property_type IS NOT NULL)
-                    ORDER BY appointment_time DESC
-                    LIMIT 1
-                """, (client_id,))
-                previous_booking = cursor.fetchone()
-                conn.close()
+                previous_booking = db.get_client_last_booking_with_address(client_id)
                 
                 if previous_booking:
-                    if not job_address and previous_booking[0]:
-                        job_address = previous_booking[0]
+                    if not job_address and previous_booking['address']:
+                        job_address = previous_booking['address']
                         print(f"📍 Using address from previous booking: {job_address}")
                     
-                    if not job_eircode and previous_booking[1]:
-                        job_eircode = previous_booking[1]
+                    if not job_eircode and previous_booking['eircode']:
+                        job_eircode = previous_booking['eircode']
                         print(f"📮 Using eircode from previous booking: {job_eircode}")
                     
-                    if not job_property_type and previous_booking[2]:
+                    if not job_property_type and previous_booking['property_type']:
                         job_property_type = previous_booking[2]
                         print(f"🏠 Using property type from previous booking: {job_property_type}")
             
@@ -1135,7 +1109,7 @@ def booking_detail_api(booking_id):
             # Clear existing notes and add the new note
             conn = db.get_connection()
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM appointment_notes WHERE booking_id = ?", (booking_id,))
+            db.delete_appointment_notes_by_booking(booking_id)
             conn.commit()
             conn.close()
             
@@ -1166,16 +1140,13 @@ def complete_booking_api(booking_id):
     db = get_database()
     
     # Get the booking to find the client
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT client_id, status FROM bookings WHERE id = ?", (booking_id,))
-    row = cursor.fetchone()
-    conn.close()
+    booking = db.get_booking(booking_id)
     
-    if not row:
+    if not booking:
         return jsonify({"error": "Booking not found"}), 404
     
-    client_id, current_status = row
+    client_id = booking['client_id']
+    current_status = booking['status']
     
     # Update booking status to completed
     db.update_booking(booking_id, status='completed')

@@ -238,19 +238,24 @@ class PostgreSQLDatabaseWrapper:
     # Authentication & Company Management Methods
     
     def create_company(self, company_name: str, owner_name: str, email: str, 
-                      password_hash: str, phone: str = None, address: str = None) -> int:
-        """Create a new company"""
+                      password_hash: str, phone: str = None, trade_type: str = None) -> Optional[int]:
+        """Create a new company account"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                INSERT INTO companies (company_name, owner_name, email, password_hash, phone, address)
+                INSERT INTO companies (company_name, owner_name, email, password_hash, phone, trade_type)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, (company_name, owner_name, email, password_hash, phone, address))
+            """, (company_name, owner_name, email.lower().strip(), password_hash, phone, trade_type))
             company_id = cursor.fetchone()[0]
             conn.commit()
             return company_id
+        except Exception as e:
+            # Email already exists or other error
+            conn.rollback()
+            print(f"Error creating company: {e}")
+            return None
         finally:
             cursor.close()
             conn.close()
@@ -273,6 +278,174 @@ class PostgreSQLDatabaseWrapper:
         """Get company by ID"""
         conn = self.get_connection()
         cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def get_company(self, company_id: int) -> Optional[Dict]:
+        """Get company by ID (alias for get_company_by_id)"""
+        return self.get_company_by_id(company_id)
+    
+    def update_company(self, company_id: int, **kwargs) -> bool:
+        """Update company information"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            allowed_fields = ['company_name', 'owner_name', 'phone', 'trade_type', 
+                              'address', 'logo_url', 'subscription_tier', 'subscription_status',
+                              'stripe_customer_id', 'is_verified', 'verification_token',
+                              'reset_token', 'reset_token_expires', 'last_login']
+            
+            fields = []
+            values = []
+            for key, value in kwargs.items():
+                if key in allowed_fields:
+                    fields.append(f"{key} = %s")
+                    values.append(value)
+            
+            if fields:
+                values.append(datetime.now())
+                values.append(company_id)
+                query = f"UPDATE companies SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
+                cursor.execute(query, values)
+                conn.commit()
+                success = cursor.rowcount > 0
+            else:
+                success = False
+            
+            return success
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def update_company_password(self, company_id: int, password_hash: str) -> bool:
+        """Update company password"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                UPDATE companies SET password_hash = %s, updated_at = %s WHERE id = %s
+            """, (password_hash, datetime.now(), company_id))
+            
+            conn.commit()
+            success = cursor.rowcount > 0
+            return success
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def update_last_login(self, company_id: int):
+        """Update the last login timestamp"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                UPDATE companies SET last_login = %s WHERE id = %s
+            """, (datetime.now(), company_id))
+            
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+    
+    # Booking Methods
+    
+    def get_booking_by_calendar_event_id(self, calendar_event_id: str) -> Optional[Dict]:
+        """Get booking by calendar event ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("SELECT * FROM bookings WHERE calendar_event_id = %s", (calendar_event_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def get_booking(self, booking_id: int) -> Optional[Dict]:
+        """Get booking by ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("SELECT * FROM bookings WHERE id = %s", (booking_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def get_conflicting_bookings(self, start_time: str, end_time: str, exclude_statuses: list = None) -> List[Dict]:
+        """Get bookings that conflict with a time range"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            if exclude_statuses is None:
+                exclude_statuses = ['cancelled', 'completed']
+            
+            # Use ANY for PostgreSQL array matching
+            cursor.execute("""
+                SELECT id, client_id, appointment_time, service_type
+                FROM bookings
+                WHERE status != ALL(%s)
+                AND appointment_time BETWEEN %s AND %s
+            """, (exclude_statuses, start_time, end_time))
+            
+            rows = cursor.fetchall()
+            bookings = []
+            for row in rows:
+                bookings.append({
+                    'id': row[0],
+                    'client_id': row[1],
+                    'appointment_time': row[2],
+                    'service_type': row[3]
+                })
+            return bookings
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def get_client_last_booking_with_address(self, client_id: int) -> Optional[Dict]:
+        """Get most recent booking for client that has address/eircode/property_type"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                SELECT address, eircode, property_type
+                FROM bookings
+                WHERE client_id = %s 
+                AND (address IS NOT NULL OR eircode IS NOT NULL OR property_type IS NOT NULL)
+                ORDER BY appointment_time DESC
+                LIMIT 1
+            """, (client_id,))
+            
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'address': row[0],
+                    'eircode': row[1],
+                    'property_type': row[2]
+                }
+            return None
+        finally:
+            cursor.close()
+            conn.close()
         try:
             cursor.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
             row = cursor.fetchone()
@@ -317,24 +490,42 @@ class PostgreSQLDatabaseWrapper:
         """
         Delegate unknown method calls to Database class
         This allows fallback for methods not yet implemented in PostgreSQL wrapper
+        
+        WARNING: This fallback mechanism is fragile and should only be used for
+        read-only operations or simple methods that don't rely on database-specific syntax.
         """
         # Import here to avoid circular import
         from src.services.database import Database
         
-        # For missing methods, try to use the SQLite Database implementation
-        # but with PostgreSQL connection hijacking
-        print(f"⚠️ Method '{name}' not implemented in PostgreSQL wrapper, using SQLite fallback")
+        print(f"⚠️ Method '{name}' not implemented in PostgreSQL wrapper, attempting fallback")
         
-        # Create a Database instance if needed
+        # Create a Database instance if needed (for method delegation only)
         if '_sqlite_db_proxy' not in self.__dict__:
             # Temporarily clear DATABASE_URL to create SQLite instance
             original_url = os.environ.pop('DATABASE_URL', None)
+            original_supabase = os.environ.pop('SUPABASE_DB_URL', None)
+            
             try:
-                self._sqlite_db_proxy = Database()
-                # Override its get_connection method
-                self._sqlite_db_proxy.get_connection = self.get_connection
+                # Create Database with a temporary path (won't actually be used for data)
+                self._sqlite_db_proxy = Database(db_path="data/.temp_postgres_proxy.db")
+                
+                # CRITICAL: Override get_connection to use PostgreSQL
+                # This redirects all database operations to PostgreSQL while keeping SQLite business logic
+                original_get_connection = self.get_connection
+                self._sqlite_db_proxy.get_connection = lambda: original_get_connection()
+                
+            except Exception as e:
+                print(f"❌ Failed to create fallback proxy: {e}")
+                raise AttributeError(f"Method '{name}' not implemented in PostgreSQL wrapper and fallback failed")
             finally:
+                # Restore environment variables
                 if original_url:
                     os.environ['DATABASE_URL'] = original_url
+                if original_supabase:
+                    os.environ['SUPABASE_DB_URL'] = original_supabase
         
-        return getattr(self._sqlite_db_proxy, name)
+        # Get the attribute from the proxied Database instance
+        try:
+            return getattr(self._sqlite_db_proxy, name)
+        except AttributeError:
+            raise AttributeError(f"Method '{name}' not found in PostgreSQL wrapper or SQLite Database")

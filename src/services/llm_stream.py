@@ -2766,15 +2766,11 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
                     try:
                         from src.services.database import get_database
                         db = get_database()
-                        # Find booking by calendar_event_id
-                        conn = db.get_connection()
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT id FROM bookings WHERE calendar_event_id = ?", (event_id,))
-                        booking_row = cursor.fetchone()
-                        conn.close()
+                        # Find booking by calendar_event_id using database method
+                        booking = db.get_booking_by_calendar_event_id(event_id)
                         
-                        if booking_row:
-                            booking_id = booking_row[0]
+                        if booking:
+                            booking_id = booking['id']
                             # Update the appointment time in database
                             db.update_booking(booking_id, appointment_time=new_time)
                             print(f"✅ Updated database for booking ID {booking_id}")

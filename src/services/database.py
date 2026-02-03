@@ -587,6 +587,88 @@ class Database:
         conn.close()
         return booking_id
     
+    def get_booking_by_calendar_event_id(self, calendar_event_id: str) -> Optional[Dict]:
+        """Get booking by calendar event ID"""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM bookings WHERE calendar_event_id = ?", (calendar_event_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return dict(row)
+        return None
+    
+    def get_booking(self, booking_id: int) -> Optional[Dict]:
+        """Get booking by ID"""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return dict(row)
+        return None
+    
+    def get_conflicting_bookings(self, start_time: str, end_time: str, exclude_statuses: list = None) -> List[Dict]:
+        """Get bookings that conflict with a time range"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        if exclude_statuses is None:
+            exclude_statuses = ['cancelled', 'completed']
+        
+        placeholders = ','.join('?' * len(exclude_statuses))
+        cursor.execute(f"""
+            SELECT id, client_id, appointment_time, service_type
+            FROM bookings
+            WHERE status NOT IN ({placeholders})
+            AND appointment_time BETWEEN ? AND ?
+        """, (*exclude_statuses, start_time, end_time))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        bookings = []
+        for row in rows:
+            bookings.append({
+                'id': row[0],
+                'client_id': row[1],
+                'appointment_time': row[2],
+                'service_type': row[3]
+            })
+        return bookings
+    
+    def get_client_last_booking_with_address(self, client_id: int) -> Optional[Dict]:
+        """Get most recent booking for client that has address/eircode/property_type"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT address, eircode, property_type
+            FROM bookings
+            WHERE client_id = ? 
+            AND (address IS NOT NULL OR eircode IS NOT NULL OR property_type IS NOT NULL)
+            ORDER BY appointment_time DESC
+            LIMIT 1
+        """, (client_id,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'address': row[0],
+                'eircode': row[1],
+                'property_type': row[2]
+            }
+        return None
+    
     def get_client_bookings(self, client_id: int) -> List[Dict]:
         """Get all bookings for a client with their notes"""
         conn = self.get_connection()
