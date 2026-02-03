@@ -1882,7 +1882,9 @@ if __name__ == "__main__":
         config.validate()
         print("✅ Configuration validated")
         print(f"🚀 Starting Flask server on port {config.PORT}")
-        app.run(port=config.PORT, debug=(config.FLASK_ENV == "development"), use_reloader=False)
+        # Bind to 0.0.0.0 for production (Render/cloud), 127.0.0.1 for local dev
+        host = "0.0.0.0" if config.FLASK_ENV == "production" else "127.0.0.1"
+        app.run(host=host, port=config.PORT, debug=(config.FLASK_ENV == "development"), use_reloader=False)
     except ValueError as e:
         print(f"❌ Configuration error: {e}")
         exit(1)
