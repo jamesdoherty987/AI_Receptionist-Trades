@@ -29,19 +29,21 @@ def auto_complete_overdue_appointments() -> int:
     conn = db.get_connection()
     cursor = conn.cursor()
     
-    # Find appointments that:
-    # 1. Are not already completed
-    # 2. Are more than 24 hours past their scheduled time
-    cursor.execute("""
-        SELECT id, client_id, appointment_time, service_type 
-        FROM bookings 
-        WHERE status != 'completed' 
-        AND appointment_time < ?
-        ORDER BY appointment_time ASC
-    """, (cutoff_str,))
-    
-    overdue_bookings = cursor.fetchall()
-    conn.close()
+    try:
+        # Find appointments that:
+        # 1. Are not already completed
+        # 2. Are more than 24 hours past their scheduled time
+        cursor.execute("""
+            SELECT id, client_id, appointment_time, service_type 
+            FROM bookings 
+            WHERE status != %s 
+            AND appointment_time < %s
+            ORDER BY appointment_time ASC
+        """, ('completed', cutoff_str))
+        
+        overdue_bookings = cursor.fetchall()
+    finally:
+        conn.close()
     
     if not overdue_bookings:
         print(f"✅ No overdue appointments found")
