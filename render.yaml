@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: python src/app.py
+    startCommand: gunicorn --worker-class sync --workers 2 --bind 0.0.0.0:5000 --timeout 120 src.app:app
     envVars:
       - key: FLASK_ENV
         value: production
