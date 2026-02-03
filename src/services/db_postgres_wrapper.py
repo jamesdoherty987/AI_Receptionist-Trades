@@ -235,41 +235,106 @@ class PostgreSQLDatabaseWrapper:
     # would need to be re-implemented here or we need to make the Database class
     # work with both SQLite and PostgreSQL by detecting the connection type.
     
-    # For now, we'll import the Database class and use composition to delegate calls
-    # This is a simplified approach - in production you'd want to refactor Database
-    # to be database-agnostic
-
+    # Authentication & Company Management Methods
+    
+    def create_company(self, company_name: str, owner_name: str, email: str, 
+                      password_hash: str, phone: str = None, address: str = None) -> int:
+        """Create a new company"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO companies (company_name, owner_name, email, password_hash, phone, address)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (company_name, owner_name, email, password_hash, phone, address))
+            company_id = cursor.fetchone()[0]
+            conn.commit()
+            return company_id
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def get_company_by_email(self, email: str) -> Optional[Dict]:
+        """Get company by email"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM companies WHERE email = %s", (email,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def get_company_by_id(self, company_id: int) -> Optional[Dict]:
+        """Get company by ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def update_company_session(self, company_id: int, session_token: str) -> bool:
+        """Update company session token"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE companies 
+                SET session_token = %s, last_login = CURRENT_TIMESTAMP 
+                WHERE id = %s
+            """, (session_token, company_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            cursor.close()
+            conn.close()
+    
+    def get_company_by_session(self, session_token: str) -> Optional[Dict]:
+        """Get company by session token"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT * FROM companies WHERE session_token = %s", (session_token,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+        finally:
+            cursor.close()
+            conn.close()
+    
     def __getattr__(self, name):
         """
-        Delegate method calls to Database class instance
-        This allows all existing methods to work without rewriting them
-        
-        IMPORTANT: This uses a clever proxy pattern that intercepts get_connection()
-        calls and redirects them to PostgreSQL while keeping all SQLite business logic
+        Delegate unknown method calls to Database class
+        This allows fallback for methods not yet implemented in PostgreSQL wrapper
         """
         # Import here to avoid circular import
         from src.services.database import Database
         
-        # Create a modified Database instance that uses our PostgreSQL connection
-        # Use __dict__ to avoid triggering __getattr__ recursion
-        if '_sqlite_db_proxy' not in self.__dict__:
-            # Temporarily disable PostgreSQL to prevent infinite recursion
-            original_use_postgres = os.getenv('DATABASE_URL')
-            os.environ['DATABASE_URL'] = ''
-            
-            # Create SQLite Database instance (but we'll hijack its connection)
-            self._sqlite_db_proxy = Database()
-            
-            # Restore DATABASE_URL
-            if original_use_postgres:
-                os.environ['DATABASE_URL'] = original_use_postgres
-            
-            # Override get_connection to use PostgreSQL instead of SQLite
-            def postgres_get_connection():
-                return self.get_connection()
-            
-            self._sqlite_db_proxy.get_connection = postgres_get_connection
+        # For missing methods, try to use the SQLite Database implementation
+        # but with PostgreSQL connection hijacking
+        print(f"⚠️ Method '{name}' not implemented in PostgreSQL wrapper, using SQLite fallback")
         
-        # Get the attribute from the proxied Database instance
-        attr = getattr(self._sqlite_db_proxy, name)
-        return attr
+        # Create a Database instance if needed
+        if '_sqlite_db_proxy' not in self.__dict__:
+            # Temporarily clear DATABASE_URL to create SQLite instance
+            original_url = os.environ.pop('DATABASE_URL', None)
+            try:
+                self._sqlite_db_proxy = Database()
+                # Override its get_connection method
+                self._sqlite_db_proxy.get_connection = self.get_connection
+            finally:
+                if original_url:
+                    os.environ['DATABASE_URL'] = original_url
+        
+        return getattr(self._sqlite_db_proxy, name)
