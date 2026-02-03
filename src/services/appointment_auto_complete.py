@@ -4,7 +4,6 @@ Automatically completes appointments that are more than 24 hours past their sche
 """
 from datetime import datetime, timedelta
 from typing import List, Dict
-from src.services.database import Database
 from src.services.client_description_generator import update_client_description
 
 
@@ -16,7 +15,8 @@ def auto_complete_overdue_appointments() -> int:
     Returns:
         Number of appointments auto-completed
     """
-    db = Database()
+    from src.services.database import get_database
+    db = get_database()
     
     # Calculate cutoff time (24 hours ago)
     cutoff_time = datetime.now() - timedelta(hours=24)

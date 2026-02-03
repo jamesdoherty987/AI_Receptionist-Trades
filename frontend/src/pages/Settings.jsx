@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import LoadingSpinner from '../components/LoadingSpinner';
+import ImageUpload from '../components/ImageUpload';
 import { 
   getBusinessSettings, 
   updateBusinessSettings,
@@ -13,6 +15,7 @@ import './Settings.css';
 
 function Settings() {
   const queryClient = useQueryClient();
+  const { checkAuth } = useAuth();
   const [formData, setFormData] = useState({});
   const [saveMessage, setSaveMessage] = useState('');
   
@@ -114,8 +117,9 @@ function Settings() {
 
   const saveMutation = useMutation({
     mutationFn: updateBusinessSettings,
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries(['business-settings']);
+      await checkAuth(); // Refresh user context to update logo
       setSaveMessage('Settings saved successfully!');
       setTimeout(() => setSaveMessage(''), 3000);
     },
@@ -434,30 +438,14 @@ function Settings() {
               <div className="form-section">
                 <h3>Business Logo</h3>
                 <div className="logo-upload-section">
-                  <div className="logo-preview">
-                    {formData.logo_url ? (
-                      <img src={formData.logo_url} alt="Business Logo" className="logo-image" />
-                    ) : (
-                      <div className="logo-placeholder">
-                        <i className="fas fa-building"></i>
-                        <span>No logo</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="logo-input">
-                    <label htmlFor="logo_url">Logo URL</label>
-                    <input
-                      type="url"
-                      id="logo_url"
-                      name="logo_url"
-                      value={formData.logo_url || ''}
-                      onChange={handleChange}
-                      placeholder="https://example.com/logo.png"
-                    />
-                    <small className="form-help">
-                      Enter a URL to your company logo. The logo will appear in the header.
-                    </small>
-                  </div>
+                  <ImageUpload
+                    value={formData.logo_url}
+                    onChange={(value) => setFormData(prev => ({ ...prev, logo_url: value }))}
+                    placeholder="Upload Your Company Logo"
+                  />
+                  <small className="form-help" style={{ display: 'block', marginTop: '10px', color: '#666' }}>
+                    Upload your company logo. It will appear in the header and on invoices. Maximum file size: 2MB.
+                  </small>
                 </div>
               </div>
 

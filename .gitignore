@@ -2,6 +2,8 @@
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
 
 # Python
 __pycache__/
@@ -42,6 +44,10 @@ venv.bak/
 
 # Google Calendar - Keep credentials template, ignore tokens
 config/token.json
+config/credentials.json
+
+# Cloudflare R2 credentials
+.r2-config
 
 # Logs
 *.log

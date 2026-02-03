@@ -345,6 +345,48 @@ def update_profile():
     data = request.json
     db = get_database()
     
+    # Handle logo upload to R2 if logo_url is base64
+    if 'logo_url' in data and data['logo_url'] and data['logo_url'].startswith('data:image/'):
+        try:
+            # Try to upload to R2 if configured
+            from src.services.storage_r2 import R2Storage
+            import base64
+            import io
+            import secrets
+            from datetime import datetime
+            
+            # Extract base64 data and content type
+            header, encoded = data['logo_url'].split(',', 1)
+            content_type = header.split(';')[0].split(':')[1]
+            extension = content_type.split('/')[-1]
+            
+            # Decode base64
+            image_data = base64.b64decode(encoded)
+            
+            # Generate unique filename
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"logo_{timestamp}_{secrets.token_hex(4)}.{extension}"
+            
+            # Upload to R2
+            r2 = R2Storage()
+            public_url = r2.upload_file(
+                file_data=io.BytesIO(image_data),
+                filename=filename,
+                folder='logos',
+                content_type=content_type
+            )
+            
+            # Replace base64 with R2 URL
+            data['logo_url'] = public_url
+            print(f"✅ Logo uploaded to R2: {public_url}")
+            
+        except ValueError as ve:
+            # R2 not configured - keep base64 in database
+            print(f"ℹ️ R2 not configured, storing logo as base64: {str(ve)}")
+        except Exception as e:
+            # R2 upload failed - keep base64 in database
+            print(f"⚠️ R2 upload failed, storing logo as base64: {e}")
+    
     # Filter allowed fields
     allowed_updates = {}
     for field in ['company_name', 'owner_name', 'phone', 'trade_type', 'address', 'logo_url']:
@@ -511,6 +553,49 @@ def business_settings_api():
     
     elif request.method == "POST":
         data = request.json
+        
+        # Handle logo upload to R2 if logo_url is base64
+        if 'logo_url' in data and data['logo_url'] and data['logo_url'].startswith('data:image/'):
+            try:
+                # Try to upload to R2 if configured
+                from src.services.storage_r2 import R2Storage
+                import base64
+                import io
+                import secrets
+                from datetime import datetime
+                
+                # Extract base64 data and content type
+                header, encoded = data['logo_url'].split(',', 1)
+                content_type = header.split(';')[0].split(':')[1]
+                extension = content_type.split('/')[-1]
+                
+                # Decode base64
+                image_data = base64.b64decode(encoded)
+                
+                # Generate unique filename
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"logo_{timestamp}_{secrets.token_hex(4)}.{extension}"
+                
+                # Upload to R2
+                r2 = R2Storage()
+                public_url = r2.upload_file(
+                    file_data=io.BytesIO(image_data),
+                    filename=filename,
+                    folder='logos',
+                    content_type=content_type
+                )
+                
+                # Replace base64 with R2 URL
+                data['logo_url'] = public_url
+                print(f"✅ Logo uploaded to R2: {public_url}")
+                
+            except ValueError as ve:
+                # R2 not configured - keep base64 in database
+                print(f"ℹ️ R2 not configured, storing logo as base64: {str(ve)}")
+            except Exception as e:
+                # R2 upload failed - keep base64 in database
+                print(f"⚠️ R2 upload failed, storing logo as base64: {e}")
+        
         success = settings_mgr.update_business_settings(data, user_id=None)
         if success:
             return jsonify({"message": "Business settings updated successfully"})

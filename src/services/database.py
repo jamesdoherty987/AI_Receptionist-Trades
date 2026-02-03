@@ -1,7 +1,9 @@
 """
 Database models for AI Trades Receptionist
 Stores client information, jobs, notes, and workers
+Supports both SQLite (local) and PostgreSQL (production via Supabase)
 """
+import os
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +12,23 @@ import json
 
 
 from src.utils.config import config
+
+# Check if PostgreSQL is configured
+USE_POSTGRES = bool(os.getenv('DATABASE_URL') or os.getenv('SUPABASE_DB_URL'))
+
+if USE_POSTGRES:
+    try:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        POSTGRES_AVAILABLE = True
+        print("✅ Using PostgreSQL database")
+    except ImportError:
+        POSTGRES_AVAILABLE = False
+        USE_POSTGRES = False
+        print("⚠️ psycopg2 not installed, falling back to SQLite")
+else:
+    POSTGRES_AVAILABLE = False
+    print("✅ Using SQLite database")
 
 class Database:
     """SQLite database for client, job, and worker management"""
@@ -1324,8 +1343,23 @@ class Database:
 _db = None
 
 def get_database() -> Database:
-    """Get or create global database instance"""
+    """
+    Get or create global database instance
+    Automatically uses PostgreSQL if DATABASE_URL is set, otherwise SQLite
+    """
     global _db
     if _db is None:
-        _db = Database()
+        if USE_POSTGRES and POSTGRES_AVAILABLE:
+            # Import PostgreSQL database wrapper
+            try:
+                from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+                db_url = os.getenv('DATABASE_URL') or os.getenv('SUPABASE_DB_URL')
+                _db = PostgreSQLDatabaseWrapper(db_url)
+                print("✅ Connected to PostgreSQL database")
+            except Exception as e:
+                print(f"⚠️ Failed to connect to PostgreSQL: {e}")
+                print("⚠️ Falling back to SQLite")
+                _db = Database()
+        else:
+            _db = Database()
     return _db

@@ -55,9 +55,10 @@ function Header() {
       <div className="container">
         <div className="header-content">
           <Link to="/dashboard" className="logo">
-            {logoUrl ? (
+            {logoUrl && (
               <img src={logoUrl} alt={businessName} className="header-logo-img" />
-            ) : (
+            )}
+            {!logoUrl && (
               <i className="fas fa-bolt" style={{ color: '#fbbf24' }}></i>
             )}
             <span className="logo-text">{businessName}</span>

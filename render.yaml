@@ -1,0 +1,60 @@
+services:
+  - type: web
+    name: ai-receptionist-backend
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python src/app.py
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-receptionist-db
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: GOOGLE_CALENDAR_API_KEY
+        sync: false
+      - key: GOOGLE_CALENDAR_CREDENTIALS
+        sync: false
+      - key: GOOGLE_CALENDAR_TOKEN
+        sync: false
+      - key: GOOGLE_CALENDAR_ID
+        value: primary
+      - key: CALENDAR_TIMEZONE
+        value: Europe/Dublin
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false
+      - key: CHAT_MODEL
+        value: gpt-4o-mini
+      - key: TTS_PROVIDER
+        value: elevenlabs
+      - key: ELEVENLABS_VOICE_ID
+        value: pNInz6obpgDQGcFmaJgB
+
+databases:
+  - name: ai-receptionist-db
+    plan: free
+    databaseName: ai_receptionist
+    user: ai_receptionist_user

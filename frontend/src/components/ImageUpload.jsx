@@ -1,10 +1,15 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import './ImageUpload.css';
 
 function ImageUpload({ value, onChange, placeholder = "Upload Image" }) {
   const [preview, setPreview] = useState(value || null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
+
+  // Sync preview with value prop changes
+  useEffect(() => {
+    setPreview(value || null);
+  }, [value]);
 
   const handleFileChange = (file) => {
     if (!file) return;

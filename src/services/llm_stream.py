@@ -25,7 +25,6 @@ def extract_time_window(text):
     return extract_time_window_ai(text)
 from src.services.appointment_detector import AppointmentDetector, AppointmentIntent, print_appointment_action
 from src.services.google_calendar import get_calendar_service
-from src.services.database import Database
 from src.services.ai_reschedule_handler import AIRescheduleHandler
 from src.utils.reschedule_config import (
     RESCHEDULE_MESSAGES, 
@@ -365,7 +364,8 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
             "clients": []
         }
     
-    db = Database()
+    from src.services.database import get_database
+    db = get_database()
     
     # Normalize name for case-insensitive search
     normalized_name = caller_name.lower().strip()
@@ -2267,10 +2267,11 @@ When customer wants to reschedule:
         
         # Import services inside this block to avoid shadowing issues
         from src.services.google_calendar import get_calendar_service as get_cal_service
+        from src.services.database import get_database
         
         # Prepare services for tool execution
         calendar = get_cal_service()
-        db = Database()
+        db = get_database()
         services = {
             'google_calendar': calendar,
             'db': db
@@ -2763,7 +2764,8 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
                 if updated_event:
                     # Also update the database
                     try:
-                        db = Database()
+                        from src.services.database import get_database
+                        db = get_database()
                         # Find booking by calendar_event_id
                         conn = db.get_connection()
                         cursor = conn.cursor()

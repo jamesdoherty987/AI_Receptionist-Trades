@@ -4,7 +4,6 @@ Client Description Generator - Creates AI-generated summaries of client history
 from datetime import datetime
 from typing import Dict, List, Optional
 from openai import OpenAI
-from src.services.database import Database
 from src.utils.config import config
 
 # Lazy initialization of OpenAI client
@@ -44,7 +43,8 @@ def generate_client_description_from_notes(client_id: int, use_ai: bool = True) 
     Returns:
         Generated description string or None if no bookings
     """
-    db = Database()
+    from src.services.database import get_database
+    db = get_database()
     
     # Get client info
     client = db.get_client(client_id)
@@ -243,7 +243,8 @@ def update_client_description(client_id: int) -> bool:
             print(f"✅ Generated description ({len(description)} chars)")
             print(f"📝 Preview: {description[:100]}...")
             
-            db = Database()
+            from src.services.database import get_database
+            db = get_database()
             db.update_client_description(client_id, description)
             print(f"💾 Saved to database for client {client_id}")
             print(f"{'='*60}\\n")
@@ -267,7 +268,8 @@ def update_all_client_descriptions() -> int:
     Returns:
         Number of descriptions updated
     """
-    db = Database()
+    from src.services.database import get_database
+    db = get_database()
     all_clients = db.get_all_clients()
     
     updated_count = 0
