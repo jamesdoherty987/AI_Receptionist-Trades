@@ -251,7 +251,8 @@ class PostgreSQLDatabaseWrapper:
         from src.services.database import Database
         
         # Create a modified Database instance that uses our PostgreSQL connection
-        if not hasattr(self, '_sqlite_db_proxy'):
+        # Use __dict__ to avoid triggering __getattr__ recursion
+        if '_sqlite_db_proxy' not in self.__dict__:
             # Temporarily disable PostgreSQL to prevent infinite recursion
             original_use_postgres = os.getenv('DATABASE_URL')
             os.environ['DATABASE_URL'] = ''
