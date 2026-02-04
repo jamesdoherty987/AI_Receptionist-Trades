@@ -182,6 +182,25 @@ class Database:
             )
         """)
         
+        # Services table (formerly in services_menu.json)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS services (
+                id TEXT PRIMARY KEY,
+                category TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                duration_minutes INTEGER DEFAULT 60,
+                price REAL DEFAULT 0,
+                emergency_price REAL,
+                currency TEXT DEFAULT 'EUR',
+                active INTEGER DEFAULT 1,
+                image_url TEXT,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
         # Add charge column to bookings if it doesn't exist
         cursor.execute("""
             PRAGMA table_info(bookings)
@@ -1427,6 +1446,120 @@ class Database:
         
         conn.commit()
         conn.close()
+    
+    # Service management methods
+    def add_service(self, service_id: str, category: str, name: str, 
+                   description: str = None, duration_minutes: int = 60,
+                   price: float = 0, emergency_price: float = None,
+                   currency: str = 'EUR', active: bool = True,
+                   image_url: str = None, sort_order: int = 0) -> bool:
+        """Add a new service"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                INSERT INTO services (id, category, name, description, duration_minutes,
+                                    price, emergency_price, currency, active, image_url, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (service_id, category, name, description, duration_minutes,
+                  price, emergency_price, currency, 1 if active else 0, image_url, sort_order))
+            
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
+    def get_all_services(self, active_only: bool = True) -> List[Dict]:
+        """Get all services"""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        if active_only:
+            cursor.execute("SELECT * FROM services WHERE active = 1 ORDER BY sort_order, category, name")
+        else:
+            cursor.execute("SELECT * FROM services ORDER BY sort_order, category, name")
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [{
+            'id': row['id'],
+            'category': row['category'],
+            'name': row['name'],
+            'description': row['description'],
+            'duration_minutes': row['duration_minutes'],
+            'price': row['price'],
+            'emergency_price': row['emergency_price'],
+            'currency': row['currency'],
+            'active': bool(row['active']),
+            'image_url': row['image_url'],
+            'sort_order': row['sort_order'],
+            'created_at': row['created_at'],
+            'updated_at': row['updated_at']
+        } for row in rows]
+    
+    def get_service(self, service_id: str) -> Optional[Dict]:
+        """Get service by ID"""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT * FROM services WHERE id = ?", (service_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return dict(row)
+        return None
+    
+    def update_service(self, service_id: str, **kwargs) -> bool:
+        """Update service information"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        allowed_fields = ['category', 'name', 'description', 'duration_minutes',
+                         'price', 'emergency_price', 'currency', 'active',
+                         'image_url', 'sort_order']
+        
+        fields = []
+        values = []
+        for key, value in kwargs.items():
+            if key in allowed_fields:
+                if key == 'active' and isinstance(value, bool):
+                    value = 1 if value else 0
+                fields.append(f"{key} = ?")
+                values.append(value)
+        
+        if fields:
+            values.append(datetime.now())
+            values.append(service_id)
+            query = f"UPDATE services SET {', '.join(fields)}, updated_at = ? WHERE id = ?"
+            cursor.execute(query, values)
+            conn.commit()
+            success = cursor.rowcount > 0
+        else:
+            success = False
+        
+        conn.close()
+        return success
+    
+    def delete_service(self, service_id: str) -> bool:
+        """Delete a service"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM services WHERE id = ?", (service_id,))
+        
+        rows_affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        return rows_affected > 0
 
 
 # Global database instance

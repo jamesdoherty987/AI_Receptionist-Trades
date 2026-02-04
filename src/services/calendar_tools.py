@@ -273,14 +273,12 @@ def get_service_price(job_description: str, urgency: str = 'scheduled') -> float
         Price in EUR, or 50.0 as default if not found
     """
     try:
-        import json
-        from pathlib import Path
         import re
+        from src.services.settings_manager import get_settings_manager
         
-        # Load services menu
-        services_menu_path = Path(__file__).parent.parent.parent / 'config' / 'services_menu.json'
-        with open(services_menu_path, 'r') as f:
-            menu = json.load(f)
+        # Load services from database
+        settings_mgr = get_settings_manager()
+        services = settings_mgr.get_services()
         
         # Normalize job description for matching
         job_lower = job_description.lower().strip()
@@ -293,10 +291,7 @@ def get_service_price(job_description: str, urgency: str = 'scheduled') -> float
         matched_service_name = None
         
         # Score each service based on term overlap
-        for service in menu.get('services', []):
-            if not service.get('active', True):
-                continue
-            
+        for service in services:
             service_name = service.get('name', '').lower()
             service_desc = service.get('description', '').lower()
             service_category = service.get('category', '').lower()

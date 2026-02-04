@@ -172,6 +172,25 @@ class PostgreSQLDatabaseWrapper:
                 )
             """)
             
+            # Services table (formerly in services_menu.json)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS services (
+                    id TEXT PRIMARY KEY,
+                    category TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    duration_minutes INTEGER DEFAULT 60,
+                    price REAL DEFAULT 0,
+                    emergency_price REAL,
+                    currency TEXT DEFAULT 'EUR',
+                    active INTEGER DEFAULT 1,
+                    image_url TEXT,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Create indexes for better performance
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_email ON clients(email)")
@@ -1334,6 +1353,111 @@ class PostgreSQLDatabaseWrapper:
             hours_worked = job_count * 2.0
             
             return hours_worked
+        finally:
+            self.return_connection(conn)
+    
+    # Service management methods
+    def add_service(self, service_id: str, category: str, name: str, 
+                   description: str = None, duration_minutes: int = 60,
+                   price: float = 0, emergency_price: float = None,
+                   currency: str = 'EUR', active: bool = True,
+                   image_url: str = None, sort_order: int = 0) -> bool:
+        """Add a new service"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("""
+                INSERT INTO services (id, category, name, description, duration_minutes,
+                                    price, emergency_price, currency, active, image_url, sort_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (service_id, category, name, description, duration_minutes,
+                  price, emergency_price, currency, 1 if active else 0, image_url, sort_order))
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Error adding service: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+    
+    def get_all_services(self, active_only: bool = True) -> List[Dict]:
+        """Get all services"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            if active_only:
+                cursor.execute("SELECT * FROM services WHERE active = 1 ORDER BY sort_order, category, name")
+            else:
+                cursor.execute("SELECT * FROM services ORDER BY sort_order, category, name")
+            
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            self.return_connection(conn)
+    
+    def get_service(self, service_id: str) -> Optional[Dict]:
+        """Get service by ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            cursor.execute("SELECT * FROM services WHERE id = %s", (service_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            self.return_connection(conn)
+    
+    def update_service(self, service_id: str, **kwargs) -> bool:
+        """Update service information"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            allowed_fields = ['category', 'name', 'description', 'duration_minutes',
+                             'price', 'emergency_price', 'currency', 'active',
+                             'image_url', 'sort_order']
+            
+            fields = []
+            values = []
+            for key, value in kwargs.items():
+                if key in allowed_fields:
+                    if key == 'active' and isinstance(value, bool):
+                        value = 1 if value else 0
+                    fields.append(f"{key} = %s")
+                    values.append(value)
+            
+            if fields:
+                values.append(datetime.now())
+                values.append(service_id)
+                query = f"UPDATE services SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
+                cursor.execute(query, values)
+                conn.commit()
+                success = cursor.rowcount > 0
+            else:
+                success = False
+            
+            return success
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ Error updating service: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+    
+    def delete_service(self, service_id: str) -> bool:
+        """Delete a service"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            cursor.execute("DELETE FROM services WHERE id = %s", (service_id,))
+            rows_affected = cursor.rowcount
+            conn.commit()
+            return rows_affected > 0
         finally:
             self.return_connection(conn)
     

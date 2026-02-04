@@ -111,16 +111,14 @@ def load_business_info():
 
 
 def load_services_menu():
-    """Load services menu from JSON file"""
-    services_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-        'config', 'services_menu.json'
-    )
+    """Load services menu from database"""
+    from src.services.settings_manager import get_settings_manager
+    
     try:
-        with open(services_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print("⚠️ services_menu.json not found, returning defaults")
+        settings_mgr = get_settings_manager()
+        return settings_mgr.get_services_menu()
+    except Exception as e:
+        print(f"⚠️ Error loading services from database: {e}")
         return {
             "business_hours": {
                 "start_hour": 9,
@@ -133,15 +131,26 @@ def load_services_menu():
 
 
 def get_business_hours_from_menu():
-    """Get business hours from services menu"""
-    menu = load_services_menu()
-    hours = menu.get('business_hours', {})
-    return {
-        'start': hours.get('start_hour', config.BUSINESS_HOURS_START),
-        'end': hours.get('end_hour', config.BUSINESS_HOURS_END),
-        'days_open': hours.get('days_open', ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']),
-        'notes': hours.get('notes', '')
-    }
+    """Get business hours from settings"""
+    from src.services.settings_manager import get_settings_manager
+    
+    try:
+        settings_mgr = get_settings_manager()
+        hours = settings_mgr.get_business_hours()
+        return {
+            'start': hours.get('start_hour', config.BUSINESS_HOURS_START),
+            'end': hours.get('end_hour', config.BUSINESS_HOURS_END),
+            'days_open': hours.get('days_open', ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']),
+            'notes': ''
+        }
+    except Exception as e:
+        print(f"⚠️ Error loading business hours: {e}")
+        return {
+            'start': config.BUSINESS_HOURS_START,
+            'end': config.BUSINESS_HOURS_END,
+            'days_open': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+            'notes': ''
+        }
 
 
 def is_business_day(dt: datetime) -> bool:
