@@ -84,6 +84,10 @@ function ReviewCard({ name, company, image, text, rating }) {
 function Landing() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  // Feature flags - set to false to hide sections
+  const showReviews = false;
+  const showPricing = false;
+
   const reviews = [
     {
       name: "Mike O'Brien",
@@ -230,8 +234,8 @@ function Landing() {
 
           <div className={`nav-links ${isMenuOpen ? 'open' : ''}`}>
             <a href="#features">Features</a>
-            <a href="#testimonials">Testimonials</a>
-            <a href="#pricing">Pricing</a>
+            {showReviews && <a href="#testimonials">Testimonials</a>}
+            {showPricing && <a href="#pricing">Pricing</a>}
             <Link to="/login" className="nav-link-btn">Log In</Link>
             <Link to="/signup" className="nav-btn-primary">Get Started</Link>
           </div>
@@ -390,31 +394,34 @@ function Landing() {
       </section>
 
       {/* Testimonials Section with Marquee */}
-      <section id="testimonials" className="testimonials">
-        <div className="section-container">
-          <div className="section-header">
-            <span className="section-badge">Testimonials</span>
-            <h2>Loved by <span className="gradient-text">tradespeople</span> across Ireland</h2>
+      {showReviews && (
+        <section id="testimonials" className="testimonials">
+          <div className="section-container">
+            <div className="section-header">
+              <span className="section-badge">Testimonials</span>
+              <h2>Loved by <span className="gradient-text">tradespeople</span> across Ireland</h2>
+            </div>
           </div>
-        </div>
-        <div className="testimonials-marquee">
-          <Marquee direction="left" speed={40}>
-            {firstRow.map((review, index) => (
-              <ReviewCard key={index} {...review} />
-            ))}
-          </Marquee>
-          <Marquee direction="right" speed={40}>
-            {secondRow.map((review, index) => (
-              <ReviewCard key={index} {...review} />
-            ))}
-          </Marquee>
-          <div className="marquee-fade marquee-fade-left"></div>
-          <div className="marquee-fade marquee-fade-right"></div>
-        </div>
-      </section>
+          <div className="testimonials-marquee">
+            <Marquee direction="left" speed={40}>
+              {firstRow.map((review, index) => (
+                <ReviewCard key={index} {...review} />
+              ))}
+            </Marquee>
+            <Marquee direction="right" speed={40}>
+              {secondRow.map((review, index) => (
+                <ReviewCard key={index} {...review} />
+              ))}
+            </Marquee>
+            <div className="marquee-fade marquee-fade-left"></div>
+            <div className="marquee-fade marquee-fade-right"></div>
+          </div>
+        </section>
+      )}
 
       {/* Pricing Section */}
-      <section id="pricing" className="pricing">
+      {showPricing && (
+        <section id="pricing" className="pricing">
         <div className="section-container">
           <div className="section-header">
             <span className="section-badge">Pricing</span>
@@ -450,6 +457,7 @@ function Landing() {
           </div>
         </div>
       </section>
+      )}
 
       {/* CTA Section */}
       <section className="cta-section">
@@ -485,8 +493,8 @@ function Landing() {
               <div className="footer-column">
                 <h4>Product</h4>
                 <a href="#features">Features</a>
-                <a href="#pricing">Pricing</a>
-                <a href="#testimonials">Testimonials</a>
+                {showPricing && <a href="#pricing">Pricing</a>}
+                {showReviews && <a href="#testimonials">Testimonials</a>}
               </div>
               <div className="footer-column">
                 <h4>Company</h4>
