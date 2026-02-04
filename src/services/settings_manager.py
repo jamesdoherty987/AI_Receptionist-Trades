@@ -346,7 +346,7 @@ class SettingsManager:
             
             # Return format compatible with old JSON structure
             return {
-                "business_name": business_settings.get('business_name', 'JP Enterprise Trades'),
+                "business_name": business_settings.get('business_name', 'Your Business'),
                 "business_hours": {
                     "start_hour": business_settings.get('opening_hours_start', 9),
                     "end_hour": business_settings.get('opening_hours_end', 17),
@@ -359,7 +359,7 @@ class SettingsManager:
             print(f"Error getting services from database: {e}")
             # Return default structure
             return {
-                "business_name": "JP Enterprise Trades",
+                "business_name": "Your Business",
                 "business_hours": {
                     "start_hour": 9,
                     "end_hour": 17,
@@ -449,11 +449,12 @@ class SettingsManager:
             settings = self.get_business_settings()
             phone = settings.get('phone')
             if phone:
-                # Ensure phone has country code format
-                if not phone.startswith('+'):
-                    # Add Ireland country code if missing
-                    phone = f"+353{phone.lstrip('0')}"
-                return phone
+                # Return phone as-is if it already has country code
+                if phone.startswith('+'):
+                    return phone
+                # Otherwise add country code from settings, default to Ireland
+                country_code = settings.get('country_code', '+353')
+                return f"{country_code}{phone.lstrip('0')}"
             return None
         except Exception as e:
             print(f"Error getting business phone number: {e}")

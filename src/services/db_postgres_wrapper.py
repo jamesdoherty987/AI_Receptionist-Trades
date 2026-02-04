@@ -291,7 +291,7 @@ class PostgreSQLDatabaseWrapper:
             return None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_company_by_id(self, company_id: int) -> Optional[Dict]:
         """Get company by ID"""
@@ -305,7 +305,7 @@ class PostgreSQLDatabaseWrapper:
             return None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_company(self, company_id: int) -> Optional[Dict]:
         """Get company by ID (alias for get_company_by_id)"""
@@ -342,7 +342,7 @@ class PostgreSQLDatabaseWrapper:
             return success
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def update_company_password(self, company_id: int, password_hash: str) -> bool:
         """Update company password"""
@@ -359,7 +359,7 @@ class PostgreSQLDatabaseWrapper:
             return success
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def update_last_login(self, company_id: int):
         """Update the last login timestamp"""
@@ -374,7 +374,7 @@ class PostgreSQLDatabaseWrapper:
             conn.commit()
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     # Booking Methods
     
@@ -391,7 +391,7 @@ class PostgreSQLDatabaseWrapper:
             return None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_booking(self, booking_id: int) -> Optional[Dict]:
         """Get booking by ID"""
@@ -406,7 +406,7 @@ class PostgreSQLDatabaseWrapper:
             return None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_conflicting_bookings(self, start_time: str, end_time: str, exclude_statuses: list = None) -> List[Dict]:
         """Get bookings that conflict with a time range"""
@@ -437,7 +437,7 @@ class PostgreSQLDatabaseWrapper:
             return bookings
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_client_last_booking_with_address(self, client_id: int) -> Optional[Dict]:
         """Get most recent booking for client that has address/eircode/property_type"""
@@ -464,7 +464,7 @@ class PostgreSQLDatabaseWrapper:
             return None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
         try:
             cursor.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
             row = cursor.fetchone()
@@ -473,7 +473,7 @@ class PostgreSQLDatabaseWrapper:
             return None
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def update_company_session(self, company_id: int, session_token: str) -> bool:
         """Update company session token"""
@@ -489,7 +489,7 @@ class PostgreSQLDatabaseWrapper:
             return cursor.rowcount > 0
         finally:
             cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_company_by_session(self, session_token: str) -> Optional[Dict]:
         """Get company by session token"""

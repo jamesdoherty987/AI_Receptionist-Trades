@@ -1555,22 +1555,28 @@ def send_email_to_client():
                 "error": "Email not configured. Please set SMTP_PASSWORD in .env file"
             }), 500
         
+        # Get business name from settings
+        from src.services.settings_manager import get_settings_manager
+        settings_mgr = get_settings_manager()
+        business_settings = settings_mgr.get_business_settings()
+        business_name = business_settings.get('business_name', 'Your Business')
+        
         # Create message
         msg = MIMEMultipart('alternative')
-        msg['Subject'] = 'Message from JP Enterprise Trades'
-        msg['From'] = f'JP Enterprise Trades <{from_email}>'
+        msg['Subject'] = f'Message from {business_name}'
+        msg['From'] = f'{business_name} <{from_email}>'
         msg['To'] = to_email
         
         # Email body
         text_body = f"""
 Hello {client_name},
 
-Thank you for choosing JP Enterprise Trades for your service needs.
+Thank you for choosing {business_name} for your service needs.
 
 We wanted to reach out and see if there's anything we can help you with. Whether you need a quote, want to book a service, or have any questions, we're here to help!
 
 Best regards,
-JP Enterprise Trades Team
+{business_name} Team
 
 ---
 This is an automated message. Please reply to this email if you need assistance.
@@ -1582,7 +1588,7 @@ This is an automated message. Please reply to this email if you need assistance.
     <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #2563eb;">Hello {client_name},</h2>
         
-        <p>Thank you for choosing <strong>JP Enterprise Trades</strong> for your service needs.</p>
+        <p>Thank you for choosing <strong>{business_name}</strong> for your service needs.</p>
         
         <p>We wanted to reach out and see if there's anything we can help you with. Whether you need a quote, want to book a service, or have any questions, we're here to help!</p>
         
@@ -1594,7 +1600,7 @@ This is an automated message. Please reply to this email if you need assistance.
         
         <p style="color: #64748b; font-size: 0.9em; margin-top: 30px;">
             Best regards,<br>
-            <strong>JP Enterprise Trades Team</strong>
+            <strong>{business_name} Team</strong>
         </p>
         
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">

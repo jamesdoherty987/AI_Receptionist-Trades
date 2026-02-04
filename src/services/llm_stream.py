@@ -187,7 +187,7 @@ def load_system_prompt():
             prompt_template = f.read()
         
         # Inject business information into the prompt
-        prompt = prompt_template.replace("{{BUSINESS_NAME}}", business_info.get("business_name", "JP Enterprise Trades"))
+        prompt = prompt_template.replace("{{BUSINESS_NAME}}", business_info.get("business_name", "Your Business"))
         prompt = prompt.replace("{{PRACTITIONER_NAME}}", business_info.get("staff", {}).get("business_owner", "James"))
         prompt = prompt.replace("{{BUSINESS_OWNER}}", business_info.get("staff", {}).get("business_owner", "James"))
         prompt = prompt.replace("{{BUSINESS_HOURS}}", business_info.get("business_hours", "8 AM - 6 PM Mon-Sat (24/7 emergency available)"))
@@ -214,7 +214,7 @@ def load_system_prompt():
 ## BUSINESS INFORMATION (Auto-loaded from config files)
 ###############################################################################
 
-BUSINESS: {business_info.get('business_name', 'JP Enterprise Trades')}
+BUSINESS: {business_info.get('business_name', 'Your Business')}
 TYPE: {business_info.get('business_type', 'Multi-Trade Services Company')}
 OWNER: {business_info.get('staff', {}).get('business_owner', 'James')}
 
@@ -247,7 +247,7 @@ IMPORTANT: Use this information to answer customer questions accurately. Quote p
     except FileNotFoundError:
         # Fallback to basic prompt if file not found
         hours = get_business_hours_from_menu()
-        return f"""You are a professional AI receptionist for {business_info.get('business_name', 'JP Enterprise Trades')}.
+        return f"""You are a professional AI receptionist for {business_info.get('business_name', 'Your Business')}.
         
 Business hours: {hours['start']}:00 to {hours['end']}:00
 Days open: {', '.join(hours['days_open'])}
@@ -386,7 +386,7 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
         print(f"👤 New customer: {caller_name}")
         return {
             "status": "new",
-            "message": f"Welcome to JP Enterprise Trades! I'll get you set up in our system.",
+            "message": f"Welcome! I'll get you set up in our system.",
             "clients": []
         }
     elif len(matching_clients) == 1:
