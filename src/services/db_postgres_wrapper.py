@@ -557,6 +557,786 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
+    def get_all_workers(self) -> List[Dict]:
+        """Get all workers"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("SELECT * FROM workers ORDER BY name ASC")
+            rows = cursor.fetchall()
+            
+            return [{
+                'id': row['id'],
+                'name': row['name'],
+                'phone': row['phone'],
+                'email': row['email'],
+                'trade_specialty': row['trade_specialty'],
+                'status': row['status'],
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at'],
+                'image_url': row.get('image_url'),
+                'weekly_hours_expected': row.get('weekly_hours_expected', 40.0)
+            } for row in rows]
+        finally:
+            self.return_connection(conn)
+    
+    def add_client(self, name: str, phone: str = None, email: str = None, 
+                   date_of_birth: str = None, description: str = None) -> Optional[int]:
+        """Add a new client"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                INSERT INTO clients (name, phone, email, date_of_birth, description, first_visit)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (name, phone, email, date_of_birth, description, datetime.now()))
+            
+            result = cursor.fetchone()
+            client_id = result['id'] if result else None
+            conn.commit()
+            return client_id
+        except Exception as e:
+            # Client already exists or other error
+            conn.rollback()
+            print(f"Error adding client: {e}")
+            # Try to find existing client
+            try:
+                cursor.execute("""
+                    SELECT id FROM clients 
+                    WHERE name = %s AND (phone = %s OR email = %s)
+                """, (name, phone, email))
+                row = cursor.fetchone()
+                return row['id'] if row else None
+            except:
+                return None
+        finally:
+            self.return_connection(conn)
+    
+    def find_or_create_client(self, name: str, phone: str = None, email: str = None, date_of_birth: str = None) -> int:
+        """Find existing client or create new one"""
+        if not phone and not email:
+            raise ValueError("Client must have either phone number or email address")
+        
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            name = name.lower().strip()
+            
+            # First priority: Try to find by name + DOB if DOB is provided
+            if date_of_birth:
+                cursor.execute("""
+                    SELECT id FROM clients WHERE name = %s AND date_of_birth = %s
+                """, (name, date_of_birth))
+                row = cursor.fetchone()
+                if row:
+                    print(f"✅ Found existing client by name + DOB: {name} (ID: {row['id']})")
+                    return row['id']
+                else:
+                    # DOB provided but no match found - create new client
+                    print(f"✅ Creating NEW client (same name, different DOB): {name} (DOB: {date_of_birth})")
+                    return self.add_client(name, phone, email, date_of_birth)
+            
+            # No DOB provided - fall back to matching by name + contact info
+            if phone:
+                cursor.execute("""
+                    SELECT id FROM clients WHERE name = %s AND phone = %s
+                """, (name, phone))
+            elif email:
+                cursor.execute("""
+                    SELECT id FROM clients WHERE name = %s AND email = %s
+                """, (name, email))
+            
+            row = cursor.fetchone()
+            
+            if row:
+                return row['id']
+            else:
+                return self.add_client(name, phone, email, date_of_birth)
+        finally:
+            self.return_connection(conn)
+    
+    def get_clients_by_name(self, name: str) -> List[Dict]:
+        """Get all clients with a given name (case-insensitive)"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            name = name.lower().strip()
+            cursor.execute("SELECT * FROM clients WHERE name = %s", (name,))
+            rows = cursor.fetchall()
+            
+            return [{
+                'id': row['id'],
+                'name': row['name'],
+                'phone': row['phone'],
+                'email': row['email'],
+                'first_visit': row.get('first_visit'),
+                'last_visit': row.get('last_visit'),
+                'total_appointments': row.get('total_appointments', 0),
+                'created_at': row.get('created_at'),
+                'updated_at': row.get('updated_at'),
+                'date_of_birth': row.get('date_of_birth'),
+                'description': row.get('description')
+            } for row in rows]
+        finally:
+            self.return_connection(conn)
+    
+    def get_client(self, client_id: int) -> Optional[Dict]:
+        """Get client by ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("SELECT * FROM clients WHERE id = %s", (client_id,))
+            row = cursor.fetchone()
+            
+            if row:
+                return {
+                    'id': row['id'],
+                    'name': row['name'],
+                    'phone': row['phone'],
+                    'email': row['email'],
+                    'first_visit': row.get('first_visit'),
+                    'last_visit': row.get('last_visit'),
+                    'total_appointments': row.get('total_appointments', 0),
+                    'created_at': row.get('created_at'),
+                    'updated_at': row.get('updated_at'),
+                    'date_of_birth': row.get('date_of_birth'),
+                    'description': row.get('description'),
+                    'address': row.get('address'),
+                    'eircode': row.get('eircode')
+                }
+            return None
+        finally:
+            self.return_connection(conn)
+    
+    def update_client(self, client_id: int, **kwargs):
+        """Update client information"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            fields = []
+            values = []
+            for key, value in kwargs.items():
+                if key in ['name', 'phone', 'email', 'date_of_birth', 'description', 'address', 'eircode']:
+                    fields.append(f"{key} = %s")
+                    values.append(value)
+            
+            if fields:
+                values.append(datetime.now())
+                values.append(client_id)
+                cursor.execute(f"""
+                    UPDATE clients 
+                    SET {', '.join(fields)}, updated_at = %s
+                    WHERE id = %s
+                """, values)
+                conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"Error updating client: {e}")
+        finally:
+            self.return_connection(conn)
+    
+    def update_client_description(self, client_id: int, description: str):
+        """Update client description (AI-generated summary)"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                UPDATE clients 
+                SET description = %s, updated_at = %s
+                WHERE id = %s
+            """, (description, datetime.now(), client_id))
+            
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"Error updating client description: {e}")
+        finally:
+            self.return_connection(conn)
+    
+    def add_booking(self, client_id: int, calendar_event_id: str, appointment_time: str,
+                    service_type: str, phone_number: str = None, email: str = None,
+                    urgency: str = None, address: str = None, eircode: str = None,
+                    property_type: str = None, charge: float = None) -> Optional[int]:
+        """Add a new booking"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            # If phone/email not provided, get from client record
+            if not phone_number and not email:
+                cursor.execute("SELECT phone, email FROM clients WHERE id = %s", (client_id,))
+                client = cursor.fetchone()
+                if client:
+                    phone_number = client.get('phone')
+                    email = client.get('email')
+            
+            # Insert booking
+            if charge is not None:
+                cursor.execute("""
+                    INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
+                                        service_type, phone_number, email, urgency, address,
+                                        eircode, property_type, charge)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (client_id, calendar_event_id, appointment_time, service_type, 
+                      phone_number, email, urgency, address, eircode, property_type, charge))
+            else:
+                cursor.execute("""
+                    INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
+                                        service_type, phone_number, email, urgency, address,
+                                        eircode, property_type)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (client_id, calendar_event_id, appointment_time, service_type, 
+                      phone_number, email, urgency, address, eircode, property_type))
+            
+            result = cursor.fetchone()
+            booking_id = result['id'] if result else None
+            
+            # Update client stats
+            cursor.execute("""
+                UPDATE clients 
+                SET total_appointments = total_appointments + 1,
+                    last_visit = %s,
+                    updated_at = %s
+                WHERE id = %s
+            """, (appointment_time, datetime.now(), client_id))
+            
+            conn.commit()
+            return booking_id
+        except Exception as e:
+            conn.rollback()
+            print(f"Error adding booking: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+    
+    def update_booking(self, booking_id: int, **kwargs) -> bool:
+        """Update booking information"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            field_mapping = {
+                'estimated_charge': 'charge',
+                'job_address': 'address',
+                'customer_name': None,
+                'phone': 'phone_number',
+            }
+            
+            fields = []
+            values = []
+            customer_name = None
+            
+            for key, value in kwargs.items():
+                db_field = field_mapping.get(key, key)
+                
+                if db_field is None:
+                    if key == 'customer_name':
+                        customer_name = value
+                    continue
+                
+                if db_field in ['calendar_event_id', 'appointment_time', 'service_type', 
+                          'status', 'phone_number', 'email', 'charge', 'payment_status', 
+                          'payment_method', 'urgency', 'address', 'eircode', 'property_type']:
+                    fields.append(f"{db_field} = %s")
+                    values.append(value)
+            
+            success = False
+            
+            if fields:
+                values.append(booking_id)
+                query = f"UPDATE bookings SET {', '.join(fields)} WHERE id = %s"
+                cursor.execute(query, values)
+                conn.commit()
+                success = cursor.rowcount > 0
+            
+            if customer_name:
+                cursor.execute("SELECT client_id FROM bookings WHERE id = %s", (booking_id,))
+                row = cursor.fetchone()
+                if row and row['client_id']:
+                    cursor.execute("UPDATE clients SET name = %s WHERE id = %s", (customer_name, row['client_id']))
+                    conn.commit()
+                    success = True
+            
+            return success
+        except Exception as e:
+            conn.rollback()
+            print(f"Error updating booking: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+    
+    def delete_booking(self, booking_id: int) -> bool:
+        """Delete a booking completely from the database"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            # Delete associated appointment notes first (foreign key constraint)
+            cursor.execute("DELETE FROM appointment_notes WHERE booking_id = %s", (booking_id,))
+            # Delete the booking
+            cursor.execute("DELETE FROM bookings WHERE id = %s", (booking_id,))
+            conn.commit()
+            success = cursor.rowcount > 0
+            if success:
+                print(f"✅ Deleted booking from database (ID: {booking_id})")
+            return success
+        except Exception as e:
+            print(f"❌ Failed to delete booking: {e}")
+            conn.rollback()
+            return False
+        finally:
+            self.return_connection(conn)
+    
+    def get_client_bookings(self, client_id: int) -> List[Dict]:
+        """Get all bookings for a client"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT * FROM bookings 
+                WHERE client_id = %s 
+                ORDER BY appointment_time DESC
+            """, (client_id,))
+            rows = cursor.fetchall()
+            
+            bookings = []
+            for row in rows:
+                booking = dict(row)
+                booking['notes'] = self.get_appointment_notes(booking['id'])
+                bookings.append(booking)
+            
+            return bookings
+        finally:
+            self.return_connection(conn)
+    
+    def get_client_notes(self, client_id: int) -> List[Dict]:
+        """Get all notes for a client"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT * FROM notes 
+                WHERE client_id = %s 
+                ORDER BY created_at DESC
+            """, (client_id,))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            self.return_connection(conn)
+    
+    def add_note(self, client_id: int, note: str, created_by: str = "system") -> int:
+        """Add a note to a client"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                INSERT INTO notes (client_id, note, created_by)
+                VALUES (%s, %s, %s)
+                RETURNING id
+            """, (client_id, note, created_by))
+            
+            result = cursor.fetchone()
+            note_id = result['id'] if result else None
+            conn.commit()
+            return note_id
+        except Exception as e:
+            conn.rollback()
+            print(f"Error adding note: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+    
+    def get_appointment_notes(self, booking_id: int) -> List[Dict]:
+        """Get all notes for a specific appointment"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT * FROM appointment_notes 
+                WHERE booking_id = %s 
+                ORDER BY created_at DESC
+            """, (booking_id,))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            self.return_connection(conn)
+    
+    def add_appointment_note(self, booking_id: int, note: str, created_by: str = "system") -> int:
+        """Add a note to a specific appointment"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                INSERT INTO appointment_notes (booking_id, note, created_by)
+                VALUES (%s, %s, %s)
+                RETURNING id
+            """, (booking_id, note, created_by))
+            
+            result = cursor.fetchone()
+            note_id = result['id'] if result else None
+            conn.commit()
+            return note_id
+        except Exception as e:
+            conn.rollback()
+            print(f"Error adding appointment note: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+    
+    def update_appointment_note(self, note_id: int, note: str) -> bool:
+        """Update an appointment note"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                UPDATE appointment_notes 
+                SET note = %s, updated_at = %s
+                WHERE id = %s
+            """, (note, datetime.now(), note_id))
+            
+            rows_affected = cursor.rowcount
+            conn.commit()
+            return rows_affected > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"Error updating appointment note: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+    
+    def delete_appointment_note(self, note_id: int) -> bool:
+        """Delete an appointment note"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("DELETE FROM appointment_notes WHERE id = %s", (note_id,))
+            
+            rows_affected = cursor.rowcount
+            conn.commit()
+            return rows_affected > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"Error deleting appointment note: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+    
+    def delete_appointment_notes_by_booking(self, booking_id: int) -> bool:
+        """Delete all notes for a specific booking"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("DELETE FROM appointment_notes WHERE booking_id = %s", (booking_id,))
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            print(f"Error deleting appointment notes: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+    
+    def get_financial_stats(self) -> Dict:
+        """Get financial statistics"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            # Total revenue
+            cursor.execute("""
+                SELECT SUM(charge) FROM bookings 
+                WHERE status != 'cancelled'
+            """)
+            total_revenue = cursor.fetchone()['sum'] or 0
+            
+            # Payment breakdown
+            cursor.execute("""
+                SELECT payment_status, SUM(charge)
+                FROM bookings
+                WHERE status != 'cancelled'
+                GROUP BY payment_status
+            """)
+            payment_breakdown = cursor.fetchall()
+            
+            # Monthly revenue
+            cursor.execute("""
+                SELECT TO_CHAR(appointment_time, 'YYYY-MM') as month,
+                       SUM(charge) as revenue,
+                       COUNT(*) as appointments
+                FROM bookings 
+                WHERE status != 'cancelled'
+                GROUP BY month
+                ORDER BY month DESC
+                LIMIT 12
+            """)
+            monthly_revenue = cursor.fetchall()
+            
+            # Revenue by payment method
+            cursor.execute("""
+                SELECT payment_method, SUM(charge), COUNT(*)
+                FROM bookings
+                WHERE status != 'cancelled' AND payment_method IS NOT NULL
+                GROUP BY payment_method
+            """)
+            payment_methods = cursor.fetchall()
+            
+            breakdown_dict = {'paid': 0, 'unpaid': 0}
+            for row in payment_breakdown:
+                status = row['payment_status'] or 'unpaid'
+                amount = float(row['sum'] or 0)
+                if status in breakdown_dict:
+                    breakdown_dict[status] = amount
+            
+            return {
+                'total_revenue': float(total_revenue),
+                'payment_breakdown': breakdown_dict,
+                'monthly_revenue': [
+                    {'month': row['month'], 'revenue': float(row['revenue'] or 0), 'appointments': row['appointments']}
+                    for row in monthly_revenue
+                ],
+                'payment_methods': {
+                    row['payment_method']: float(row['sum'] or 0)
+                    for row in payment_methods
+                }
+            }
+        finally:
+            self.return_connection(conn)
+    
+    def add_worker(self, name: str, phone: str = None, email: str = None, 
+                   trade_specialty: str = None, image_url: str = None, weekly_hours_expected: float = 40.0) -> int:
+        """Add a new worker"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                INSERT INTO workers (name, phone, email, trade_specialty, image_url, weekly_hours_expected)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (name, phone, email, trade_specialty, image_url, weekly_hours_expected))
+            
+            result = cursor.fetchone()
+            worker_id = result['id'] if result else None
+            conn.commit()
+            return worker_id
+        except Exception as e:
+            conn.rollback()
+            print(f"Error adding worker: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+    
+    def get_worker(self, worker_id: int) -> Optional[Dict]:
+        """Get worker by ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("SELECT * FROM workers WHERE id = %s", (worker_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            self.return_connection(conn)
+    
+    def update_worker(self, worker_id: int, **kwargs):
+        """Update worker information"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            field_mapping = {
+                'specialty': 'trade_specialty'
+            }
+            
+            fields = []
+            values = []
+            for key, value in kwargs.items():
+                db_key = field_mapping.get(key, key)
+                if db_key in ['name', 'phone', 'email', 'trade_specialty', 'status', 'image_url']:
+                    fields.append(f"{db_key} = %s")
+                    values.append(value)
+            
+            if fields:
+                values.append(datetime.now())
+                values.append(worker_id)
+                query = f"UPDATE workers SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
+                cursor.execute(query, values)
+                conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"Error updating worker: {e}")
+        finally:
+            self.return_connection(conn)
+    
+    def delete_worker(self, worker_id: int) -> bool:
+        """Delete a worker"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("DELETE FROM workers WHERE id = %s", (worker_id,))
+            
+            rows_affected = cursor.rowcount
+            conn.commit()
+            return rows_affected > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"Error deleting worker: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+    
+    def assign_worker_to_job(self, booking_id: int, worker_id: int) -> Dict:
+        """Assign a worker to a job"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                INSERT INTO worker_assignments (booking_id, worker_id)
+                VALUES (%s, %s)
+                RETURNING id
+            """, (booking_id, worker_id))
+            
+            result = cursor.fetchone()
+            assignment_id = result['id'] if result else None
+            conn.commit()
+            
+            return {
+                "success": True,
+                "assignment_id": assignment_id,
+                "message": "Worker assigned successfully"
+            }
+        except Exception as e:
+            conn.rollback()
+            return {
+                "success": False,
+                "error": str(e)
+            }
+        finally:
+            self.return_connection(conn)
+    
+    def remove_worker_from_job(self, booking_id: int, worker_id: int) -> bool:
+        """Remove a worker assignment from a job"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                DELETE FROM worker_assignments
+                WHERE booking_id = %s AND worker_id = %s
+            """, (booking_id, worker_id))
+            
+            rows_affected = cursor.rowcount
+            conn.commit()
+            return rows_affected > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"Error removing worker from job: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+    
+    def get_job_workers(self, booking_id: int) -> List[Dict]:
+        """Get all workers assigned to a specific job"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT w.id, w.name, w.phone, w.email, w.trade_specialty, wa.assigned_at
+                FROM worker_assignments wa
+                JOIN workers w ON wa.worker_id = w.id
+                WHERE wa.booking_id = %s
+            """, (booking_id,))
+            
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            self.return_connection(conn)
+    
+    def get_worker_jobs(self, worker_id: int, include_completed: bool = False) -> List[Dict]:
+        """Get all jobs assigned to a specific worker"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            query = """
+                SELECT b.id, b.appointment_time, c.name as client_name, b.service_type, 
+                       b.status, b.address, b.phone_number, wa.assigned_at
+                FROM worker_assignments wa
+                JOIN bookings b ON wa.booking_id = b.id
+                LEFT JOIN clients c ON b.client_id = c.id
+                WHERE wa.worker_id = %s
+            """
+            
+            if not include_completed:
+                query += " AND b.status != 'completed' AND b.status != 'cancelled'"
+            
+            query += " ORDER BY b.appointment_time ASC"
+            
+            cursor.execute(query, (worker_id,))
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            self.return_connection(conn)
+    
+    def get_worker_schedule(self, worker_id: int, start_date: str = None, end_date: str = None) -> List[Dict]:
+        """Get worker's schedule within a date range"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            query = """
+                SELECT b.id, b.appointment_time, c.name as client_name, b.service_type, 
+                       b.status, b.address
+                FROM worker_assignments wa
+                JOIN bookings b ON wa.booking_id = b.id
+                LEFT JOIN clients c ON b.client_id = c.id
+                WHERE wa.worker_id = %s
+                AND b.status != 'cancelled'
+            """
+            
+            params = [worker_id]
+            
+            if start_date:
+                query += " AND b.appointment_time >= %s"
+                params.append(start_date)
+            
+            if end_date:
+                query += " AND b.appointment_time <= %s"
+                params.append(end_date)
+            
+            query += " ORDER BY b.appointment_time ASC"
+            
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            self.return_connection(conn)
+    
+    def get_worker_hours_this_week(self, worker_id: int) -> float:
+        """Calculate hours worked by a worker this week"""
+        from datetime import timedelta
+        
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            today = datetime.now()
+            start_of_week = today - timedelta(days=today.weekday())
+            start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_week = start_of_week + timedelta(days=7)
+            
+            query = """
+                SELECT COUNT(*) as job_count
+                FROM worker_assignments wa
+                JOIN bookings b ON wa.booking_id = b.id
+                WHERE wa.worker_id = %s
+                AND b.appointment_time >= %s
+                AND b.appointment_time < %s
+                AND b.status = 'completed'
+            """
+            
+            cursor.execute(query, (worker_id, start_of_week.isoformat(), end_of_week.isoformat()))
+            result = cursor.fetchone()
+            
+            job_count = result['job_count'] if result else 0
+            hours_worked = job_count * 2.0
+            
+            return hours_worked
+        finally:
+            self.return_connection(conn)
+    
     def __getattr__(self, name):
         """
         Delegate unknown method calls to Database class
