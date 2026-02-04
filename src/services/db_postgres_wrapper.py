@@ -248,7 +248,8 @@ class PostgreSQLDatabaseWrapper:
                 VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (company_name, owner_name, email.lower().strip(), password_hash, phone, trade_type))
-            company_id = cursor.fetchone()[0]
+            result = cursor.fetchone()
+            company_id = result['id'] if result else None
             conn.commit()
             return company_id
         except Exception as e:
@@ -257,8 +258,7 @@ class PostgreSQLDatabaseWrapper:
             print(f"Error creating company: {e}")
             return None
         finally:
-            cursor.close()
-            conn.close()
+            self.return_connection(conn)
     
     def get_company_by_email(self, email: str) -> Optional[Dict]:
         """Get company by email"""
@@ -483,8 +483,79 @@ class PostgreSQLDatabaseWrapper:
                 return dict(row)
             return None
         finally:
-            cursor.close()
-            conn.close()
+            self.return_connection(conn)
+    
+    def get_all_clients(self) -> List[Dict]:
+        """Get all clients"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("SELECT * FROM clients ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+            
+            return [{
+                'id': row['id'],
+                'name': row['name'],
+                'phone': row['phone'],
+                'email': row['email'],
+                'first_visit': row.get('first_visit'),
+                'last_visit': row.get('last_visit'),
+                'total_appointments': row.get('total_appointments', 0),
+                'created_at': row.get('created_at'),
+                'updated_at': row.get('updated_at'),
+                'date_of_birth': row.get('date_of_birth'),
+                'description': row.get('description'),
+                'address': row.get('address'),
+                'eircode': row.get('eircode')
+            } for row in rows]
+        finally:
+            self.return_connection(conn)
+    
+    def get_all_bookings(self) -> List[Dict]:
+        """Get all bookings"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT 
+                    b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
+                    b.service_type, b.status, b.phone_number, b.email, b.created_at,
+                    b.charge, b.payment_status, b.payment_method, b.urgency, 
+                    b.address, b.eircode, b.property_type,
+                    c.name as client_name, c.phone as client_phone, c.email as client_email
+                FROM bookings b
+                LEFT JOIN clients c ON b.client_id = c.id
+                ORDER BY b.appointment_time DESC
+            """)
+            rows = cursor.fetchall()
+            
+            return [{
+                'id': row['id'],
+                'client_id': row['client_id'],
+                'calendar_event_id': row['calendar_event_id'],
+                'appointment_time': row['appointment_time'],
+                'service_type': row['service_type'],
+                'service': row['service_type'],  # Alias for compatibility
+                'status': row['status'],
+                'phone_number': row['phone_number'],
+                'phone': row['phone_number'] or row['client_phone'],  # Use booking phone or client phone as fallback
+                'email': row['email'] or row['client_email'],  # Use booking email or client email as fallback
+                'created_at': row['created_at'],
+                'charge': row['charge'],
+                'estimated_charge': row['charge'],  # Alias for compatibility
+                'payment_status': row['payment_status'],
+                'payment_method': row['payment_method'],
+                'urgency': row['urgency'],
+                'address': row['address'],
+                'job_address': row['address'],  # Alias for compatibility
+                'eircode': row['eircode'],
+                'property_type': row['property_type'],
+                'customer_name': row['client_name'],
+                'client_name': row['client_name'],  # Alias for compatibility
+                'notes': ''  # Will be fetched separately if needed
+            } for row in rows]
+        finally:
+            self.return_connection(conn)
     
     def __getattr__(self, name):
         """
