@@ -1041,55 +1041,48 @@ def booking_detail_api(booking_id):
     db = get_database()
     
     if request.method == "GET":
-        # Get booking details
-        conn = db.get_connection()
-        cursor = conn.cursor()
+        # Get booking details using database method
+        booking = db.get_booking(booking_id)
         
-        cursor.execute("""
-            SELECT 
-                b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
-                b.service_type, b.status, b.phone_number, b.email, b.created_at,
-                b.charge, b.payment_status, b.payment_method, b.urgency, 
-                b.address, b.eircode, b.property_type,
-                c.name as client_name, c.phone as client_phone, c.email as client_email
-            FROM bookings b
-            LEFT JOIN clients c ON b.client_id = c.id
-            WHERE b.id = ?
-        """, (booking_id,))
-        
-        row = cursor.fetchone()
-        conn.close()
-        
-        if not row:
+        if not booking:
             return jsonify({"error": "Booking not found"}), 404
         
         # Get notes for this booking
         appointment_notes = db.get_appointment_notes(booking_id)
         notes_text = appointment_notes[0]['note'] if appointment_notes else ''
         
-        booking = {
-            'id': row[0],
-            'client_id': row[1],
-            'calendar_event_id': row[2],
-            'appointment_time': row[3],
-            'service_type': row[4],
-            'service': row[4],
-            'status': row[5],
-            'phone_number': row[6],
-            'phone': row[6] or row[17],
-            'email': row[7] or row[18],
-            'created_at': row[8],
-            'charge': row[9],
-            'estimated_charge': row[9],
-            'payment_status': row[10],
-            'payment_method': row[11],
-            'urgency': row[12],
-            'address': row[13],
-            'job_address': row[13],
-            'eircode': row[14],
-            'property_type': row[15],
-            'customer_name': row[16],
-            'client_name': row[16],
+        # Get client details if client_id exists
+        if booking.get('client_id'):
+            client = db.get_client(booking['client_id'])
+            if client:
+                booking['client_name'] = client.get('name')
+                booking['customer_name'] = client.get('name')
+                booking['client_phone'] = client.get('phone')
+                booking['client_email'] = client.get('email')
+        
+        response_booking = {
+            'id': booking.get('id'),
+            'client_id': booking.get('client_id'),
+            'calendar_event_id': booking.get('calendar_event_id'),
+            'appointment_time': booking.get('appointment_time'),
+            'service_type': booking.get('service_type'),
+            'service': booking.get('service_type'),
+            'status': booking.get('status'),
+            'phone_number': booking.get('phone_number'),
+            'phone': booking.get('phone_number') or booking.get('client_phone'),
+            'email': booking.get('email') or booking.get('client_email'),
+            'created_at': booking.get('created_at'),
+            'charge': booking.get('charge'),
+            'estimated_charge': booking.get('charge'),
+            'payment_status': booking.get('payment_status'),
+            'payment_method': booking.get('payment_method'),
+            'urgency': booking.get('urgency'),
+            'address': booking.get('address'),
+            'job_address': booking.get('address'),
+            'eircode': booking.get('eircode'),
+            'property_type': booking.get('property_type'),
+            'customer_name': booking.get('customer_name') or booking.get('client_name'),
+            'client_name': booking.get('client_name') or booking.get('customer_name'),
             'notes': notes_text
         }
         
@@ -1107,11 +1100,7 @@ def booking_detail_api(booking_id):
         # Update notes if provided
         if notes is not None:
             # Clear existing notes and add the new note
-            conn = db.get_connection()
-            cursor = conn.cursor()
             db.delete_appointment_notes_by_booking(booking_id)
-            conn.commit()
-            conn.close()
             
             if notes.strip():
                 db.add_appointment_note(booking_id, notes, created_by="user")
@@ -1185,64 +1174,61 @@ def send_invoice_api(booking_id):
     db = get_database()
     
     try:
-        # Get the booking details directly from database to ensure we have the latest charge
-        conn = db.get_connection()
-        cursor = conn.cursor()
+        # Get the booking details using database method
+        booking = db.get_booking(booking_id)
         
-        cursor.execute("""
-            SELECT 
-                b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
-                b.service_type, b.status, b.phone_number, b.email, b.created_at,
-                b.charge, b.payment_status, b.payment_method, b.urgency, 
-                b.address, b.eircode, b.property_type,
-                c.name as client_name, c.phone as client_phone, c.email as client_email
-            FROM bookings b
-            LEFT JOIN clients c ON b.client_id = c.id
-            WHERE b.id = ?
-        """, (booking_id,))
-        
-        row = cursor.fetchone()
-        conn.close()
-        
-        if not row:
+        if not booking:
             return jsonify({"error": "Booking not found"}), 404
         
-        # Build booking dict with latest data
-        booking = {
-            'id': row[0],
-            'client_id': row[1],
-            'calendar_event_id': row[2],
-            'appointment_time': row[3],
-            'service_type': row[4],
-            'status': row[5],
-            'phone_number': row[6],
-            'phone': row[6] or row[17],
-            'email': row[7] or row[18],
-            'created_at': row[8],
-            'charge': row[9],  # This is the actual charge from database
-            'estimated_charge': row[9],  # Alias for compatibility
-            'payment_status': row[10],
-            'payment_method': row[11],
-            'urgency': row[12],
-            'address': row[13],
-            'job_address': row[13],
-            'eircode': row[14],
-            'property_type': row[15],
-            'customer_name': row[16],
-            'client_name': row[16]
+        # Get client details if client_id exists
+        if booking.get('client_id'):
+            client = db.get_client(booking['client_id'])
+            if client:
+                booking['client_name'] = client.get('name')
+                booking['customer_name'] = client.get('name')
+                booking['client_phone'] = client.get('phone')
+                booking['client_email'] = client.get('email')
+                # Use client email/phone if booking doesn't have them
+                if not booking.get('phone_number'):
+                    booking['phone_number'] = client.get('phone')
+                if not booking.get('email'):
+                    booking['email'] = client.get('email')
+        
+        # Normalize booking dict for compatibility
+        booking_dict = {
+            'id': booking.get('id'),
+            'client_id': booking.get('client_id'),
+            'calendar_event_id': booking.get('calendar_event_id'),
+            'appointment_time': booking.get('appointment_time'),
+            'service_type': booking.get('service_type'),
+            'status': booking.get('status'),
+            'phone_number': booking.get('phone_number'),
+            'phone': booking.get('phone_number') or booking.get('client_phone'),
+            'email': booking.get('email') or booking.get('client_email'),
+            'created_at': booking.get('created_at'),
+            'charge': booking.get('charge'),
+            'estimated_charge': booking.get('charge'),
+            'payment_status': booking.get('payment_status'),
+            'payment_method': booking.get('payment_method'),
+            'urgency': booking.get('urgency'),
+            'address': booking.get('address'),
+            'job_address': booking.get('address'),
+            'eircode': booking.get('eircode'),
+            'property_type': booking.get('property_type'),
+            'customer_name': booking.get('customer_name') or booking.get('client_name'),
+            'client_name': booking.get('client_name') or booking.get('customer_name')
         }
         
-        print(f"💰 Invoice: Using charge amount €{booking['charge']} from database for booking {booking_id}")
-    
+        print(f"💰 Invoice: Using charge amount €{booking_dict['charge']} from database for booking {booking_id}")
         # Use test email for now (as requested)
-        # In production, this would be: to_email = booking['email']
+        # In production, this would be: to_email = booking_dict['email']
         to_email = 'jkdoherty123@gmail.com'  # Test email
         
-        if not booking['client_name']:
+        if not booking_dict['client_name']:
             return jsonify({"error": "Customer name not found"}), 400
         
         # Get charge amount - use charge or estimated_charge, default to None if not set
-        charge_amount = booking.get('charge') or booking.get('estimated_charge')
+        charge_amount = booking_dict.get('charge') or booking_dict.get('estimated_charge')
         
         if not charge_amount or charge_amount <= 0:
             return jsonify({"error": "Invalid charge amount"}), 400
@@ -1287,8 +1273,8 @@ def send_invoice_api(booking_id):
                         'price_data': {
                             'currency': 'eur',
                             'product_data': {
-                                'name': f"{booking.get('service_type') or 'Service'} - Invoice #{booking_id}",
-                                'description': f"Service for {booking['client_name']}",
+                                'name': f"{booking_dict.get('service_type') or 'Service'} - Invoice #{booking_id}",
+                                'description': f"Service for {booking_dict['client_name']}",
                             },
                             'unit_amount': amount_cents,
                         },
@@ -1299,7 +1285,7 @@ def send_invoice_api(booking_id):
                     cancel_url=f"{os.getenv('PUBLIC_URL', 'http://localhost:5000')}/payment-cancelled",
                     metadata={
                         'booking_id': str(booking_id),
-                        'customer_name': booking['client_name'],
+                        'customer_name': booking_dict['client_name'],
                     }
                 )
                 stripe_payment_link = checkout_session.url
@@ -1316,9 +1302,9 @@ def send_invoice_api(booking_id):
         
         # Parse appointment time
         appointment_time = None
-        if booking.get('appointment_time'):
+        if booking_dict.get('appointment_time'):
             try:
-                appointment_time = datetime.fromisoformat(booking['appointment_time'].replace('Z', '+00:00'))
+                appointment_time = datetime.fromisoformat(booking_dict['appointment_time'].replace('Z', '+00:00'))
             except:
                 pass
         
@@ -1326,12 +1312,12 @@ def send_invoice_api(booking_id):
         invoice_number = f"INV-{booking_id}-{datetime.now().strftime('%Y%m%d')}"
         
         # Get job address
-        job_address = booking.get('address') or booking.get('job_address') or ''
+        job_address = booking_dict.get('address') or booking_dict.get('job_address') or ''
         
         success = email_service.send_invoice(
             to_email=to_email,
-            customer_name=booking['client_name'],
-            service_type=booking.get('service_type') or 'Service',
+            customer_name=booking_dict['client_name'],
+            service_type=booking_dict.get('service_type') or 'Service',
             charge=charge_amount,
             appointment_time=appointment_time,
             stripe_payment_link=stripe_payment_link,
