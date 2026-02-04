@@ -37,7 +37,7 @@ class PostgreSQLDatabaseWrapper:
         """Initialize database tables with PostgreSQL syntax"""
         conn = self.get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             # Clients table
             cursor.execute("""
@@ -201,7 +201,7 @@ class PostgreSQLDatabaseWrapper:
         """Execute query with automatic connection management"""
         conn = self.get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             pg_query = self._convert_query(query)
             
             if params:
@@ -241,7 +241,7 @@ class PostgreSQLDatabaseWrapper:
                       password_hash: str, phone: str = None, trade_type: str = None) -> Optional[int]:
         """Create a new company account"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
                 INSERT INTO companies (company_name, owner_name, email, password_hash, phone, trade_type)
@@ -263,7 +263,7 @@ class PostgreSQLDatabaseWrapper:
     def get_company_by_email(self, email: str) -> Optional[Dict]:
         """Get company by email"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("SELECT * FROM companies WHERE email = %s", (email,))
             row = cursor.fetchone()
@@ -277,7 +277,7 @@ class PostgreSQLDatabaseWrapper:
     def get_company_by_id(self, company_id: int) -> Optional[Dict]:
         """Get company by ID"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
             row = cursor.fetchone()
@@ -295,7 +295,7 @@ class PostgreSQLDatabaseWrapper:
     def update_company(self, company_id: int, **kwargs) -> bool:
         """Update company information"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
             allowed_fields = ['company_name', 'owner_name', 'phone', 'trade_type', 
@@ -328,7 +328,7 @@ class PostgreSQLDatabaseWrapper:
     def update_company_password(self, company_id: int, password_hash: str) -> bool:
         """Update company password"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
             cursor.execute("""
@@ -345,7 +345,7 @@ class PostgreSQLDatabaseWrapper:
     def update_last_login(self, company_id: int):
         """Update the last login timestamp"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
             cursor.execute("""
@@ -362,7 +362,7 @@ class PostgreSQLDatabaseWrapper:
     def get_booking_by_calendar_event_id(self, calendar_event_id: str) -> Optional[Dict]:
         """Get booking by calendar event ID"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
             cursor.execute("SELECT * FROM bookings WHERE calendar_event_id = %s", (calendar_event_id,))
@@ -377,7 +377,7 @@ class PostgreSQLDatabaseWrapper:
     def get_booking(self, booking_id: int) -> Optional[Dict]:
         """Get booking by ID"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
             cursor.execute("SELECT * FROM bookings WHERE id = %s", (booking_id,))
@@ -392,7 +392,7 @@ class PostgreSQLDatabaseWrapper:
     def get_conflicting_bookings(self, start_time: str, end_time: str, exclude_statuses: list = None) -> List[Dict]:
         """Get bookings that conflict with a time range"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
             if exclude_statuses is None:
@@ -423,7 +423,7 @@ class PostgreSQLDatabaseWrapper:
     def get_client_last_booking_with_address(self, client_id: int) -> Optional[Dict]:
         """Get most recent booking for client that has address/eircode/property_type"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
             cursor.execute("""
@@ -459,7 +459,7 @@ class PostgreSQLDatabaseWrapper:
     def update_company_session(self, company_id: int, session_token: str) -> bool:
         """Update company session token"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
                 UPDATE companies 
@@ -475,7 +475,7 @@ class PostgreSQLDatabaseWrapper:
     def get_company_by_session(self, session_token: str) -> Optional[Dict]:
         """Get company by session token"""
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("SELECT * FROM companies WHERE session_token = %s", (session_token,))
             row = cursor.fetchone()
