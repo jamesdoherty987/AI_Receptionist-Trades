@@ -124,10 +124,16 @@ AI-Receptionist-Trades/
 ├── config/                       # Configuration files
 │   ├── business_info.json       # Business details
 │   └── sent_reminders.json      # Tracks sent reminders
-├── docs/                         # Documentation
-│   └── REMINDERS.md             # Reminder system setup guide
-│   ├── credentials.json         # Google Calendar credentials
-│   └── token.json              # Google Calendar auth token
+├── db_scripts/                   # 🗄️ Database Management Tools
+│   ├── add_phone_numbers_production.py  # Add phones to production
+│   ├── manage_phone_numbers.py          # Local phone management
+│   ├── reset_phone_pool.py              # Reset phone pool
+│   ├── seed_production_db.py            # Seed production database
+│   └── import_services_to_db.py         # Import services
+├── docs/                         # 📚 Documentation
+│   ├── HOW_TO_ADD_PHONE_NUMBERS.md     # Phone number management guide
+│   ├── credentials.json                 # Google Calendar credentials
+│   └── token.json                       # Google Calendar auth token
 ├── prompts/                      # AI prompts
 │   └── receptionist_prompt.txt  # Main system prompt
 ├── scripts/                      # Utility scripts
@@ -162,10 +168,13 @@ ELEVENLABS_API_KEY=your_elevenlabs_api_key
 PUBLIC_URL=https://your-ngrok-url.ngrok.io
 WS_PUBLIC_URL=wss://your-ngrok-url.ngrok.io/ws
 
-# Twilio SMS (for appointment reminders - optional, check regional availability)
+# Twilio - Master Account (phone numbers assigned from pool)
 TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
-TWILIO_PHONE_NUMBER=+1234567890
+TWILIO_PHONE_NUMBER=+1234567890  # Your first phone number for the pool
+
+# Database (Production - get from Render Dashboard)
+DATABASE_URL=postgresql://user:password@host.render.com:5432/database_name
 
 # Email (for appointment reminders - recommended for Ireland/EU)
 SMTP_SERVER=smtp.gmail.com
@@ -191,6 +200,38 @@ BUSINESS_HOURS_START=9
 BUSINESS_HOURS_END=17
 ```
 
+### Database Setup
+
+#### Local Development (SQLite)
+Local development automatically uses SQLite - no setup needed!
+
+#### Production (PostgreSQL on Render)
+
+**Get your database URL:**
+1. Go to Render Dashboard: https://dashboard.render.com
+2. Click on your PostgreSQL database
+3. Copy the **External Database URL**
+
+**Add to your .env file:**
+```env
+# Database (Production - get from Render Dashboard)
+DATABASE_URL=postgresql://user:password@host.render.com:5432/database_name
+```
+
+**Add phone numbers to production database:**
+
+```bash
+# Simply run the script - it automatically loads DATABASE_URL from .env
+python db_scripts/add_phone_numbers_production.py +353123456789 +353987654321
+```
+
+**List phone numbers in pool:**
+```powershell
+python add_phone_numbers_production.py --list
+```
+
+See [docs/HOW_TO_ADD_PHONE_NUMBERS.md](docs/HOW_TO_ADD_PHONE_NUMBERS.md) for detailed instructions.
+
 ### Set Up Google Calendar
 ```bash
 python scripts/setup_calendar.py
@@ -213,11 +254,36 @@ Edit `config/business_info.json` with your business details:
 ```
 
 ### Configure Twilio
-1. Update `.env` with your ngrok URLs
-2. In Twilio Console, set your phone number's webhook to:
+
+**New Phone Number Pool System:**
+
+Users no longer configure Twilio credentials. Instead:
+
+1. **Initialize Phone Pool:**
+   ```bash
+   python manage_phone_numbers.py
    ```
-   https://YOUR_PUBLIC_URL/twilio/voice
+   This adds your TWILIO_PHONE_NUMBER to the pool.
+
+2. **Add More Numbers (Optional):**
+   ```bash
+   python manage_phone_numbers.py +1234567890 +1234567891
    ```
+
+3. **Configure Webhooks in Twilio Console:**
+   - Go to Phone Numbers → Manage → Active Numbers
+   - Click each phone number
+   - Under "Voice Configuration":
+     - **A Call Comes In**: Webhook
+     - **URL**: `https://your-backend.onrender.com/twilio/voice`
+     - **HTTP Method**: POST
+   - Save
+
+**How it works:**
+- When users sign up, they automatically get assigned a phone number from the pool
+- Users see their assigned number in Settings (read-only)
+- Incoming calls route to the correct company based on which number was called
+- No Twilio configuration needed by users!
 
 ## Testing
 

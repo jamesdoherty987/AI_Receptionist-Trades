@@ -1,14 +1,21 @@
 """
 Import Services from JSON to Database
 Migrates services from config/services_menu.json to database
+Make sure DATABASE_URL is set in your .env file for production
+Usage: python db_scripts/import_services_to_db.py
 """
 import json
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 # Add project root to path
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.services.database import get_database
 
@@ -16,10 +23,11 @@ from src.services.database import get_database
 def import_services_from_json():
     """Import services from JSON file to database"""
     
-    # Path to JSON file
-    json_path = os.path.join(os.path.dirname(__file__), 'config', 'services_menu.json')
+    # Path to JSON file (config folder is in project root)
+    project_root = Path(__file__).parent.parent
+    json_path = project_root / 'config' / 'services_menu.json'
     
-    if not os.path.exists(json_path):
+    if not json_path.exists():
         print(f"❌ Services JSON file not found: {json_path}")
         return False
     

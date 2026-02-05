@@ -165,9 +165,8 @@ class Database:
                 reset_token TEXT,
                 reset_token_expires TIMESTAMP,
                 last_login TIMESTAMP,
-                twilio_account_sid TEXT,
-                twilio_auth_token TEXT,
-                twilio_phone_number TEXT,
+                twilio_phone_number TEXT UNIQUE,
+                -- Legacy fields (no longer used - kept for backwards compatibility)
                 openai_api_key TEXT,
                 deepgram_api_key TEXT,
                 elevenlabs_api_key TEXT,
@@ -178,6 +177,29 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
+        """)
+        
+        # Twilio Phone Numbers Pool
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS twilio_phone_numbers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone_number TEXT UNIQUE NOT NULL,
+                assigned_to_company_id INTEGER REFERENCES companies(id) ON DELETE SET NULL,
+                assigned_at TIMESTAMP,
+                status TEXT DEFAULT 'available' CHECK(status IN ('available', 'assigned')),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create indexes for quick lookups
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_twilio_phone_status 
+            ON twilio_phone_numbers(status)
+        """)
+        
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_twilio_phone_company 
+            ON twilio_phone_numbers(assigned_to_company_id)
         """)
         
         # Worker assignments table (linking workers to jobs)
@@ -272,12 +294,10 @@ class Database:
         
         new_company_fields = {
             'business_hours': "TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)'",
-            'twilio_account_sid': 'TEXT',
-            'twilio_auth_token': 'TEXT',
             'twilio_phone_number': 'TEXT',
-            'openai_api_key': 'TEXT',
-            'deepgram_api_key': 'TEXT',
-            'elevenlabs_api_key': 'TEXT',
+            'openai_api_key': 'TEXT',  # Legacy field (no longer used - kept for backwards compatibility)
+            'deepgram_api_key': 'TEXT',  # Legacy field (no longer used - kept for backwards compatibility)
+            'elevenlabs_api_key': 'TEXT',  # Legacy field (no longer used - kept for backwards compatibility)
             'elevenlabs_voice_id': 'TEXT',
             'google_calendar_id': 'TEXT',
             'google_credentials_json': 'TEXT',
@@ -377,6 +397,53 @@ class Database:
             conn.close()
         
         return client_id
+    
+    def assign_phone_number(self, company_id: int):
+        """Assign an available phone number to a company"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Get first available number
+            cursor.execute("""
+                SELECT phone_number FROM twilio_phone_numbers 
+                WHERE status = 'available'
+                ORDER BY created_at
+                LIMIT 1
+            """)
+            result = cursor.fetchone()
+            
+            if not result:
+                conn.close()
+                raise Exception("No available phone numbers in pool")
+            
+            phone_number = result[0]
+            
+            # Update phone number status
+            cursor.execute("""
+                UPDATE twilio_phone_numbers 
+                SET assigned_to_company_id = ?, 
+                    assigned_at = CURRENT_TIMESTAMP,
+                    status = 'assigned'
+                WHERE phone_number = ?
+            """, (company_id, phone_number))
+            
+            # Update company with phone number
+            cursor.execute("""
+                UPDATE companies 
+                SET twilio_phone_number = ?
+                WHERE id = ?
+            """, (phone_number, company_id))
+            
+            conn.commit()
+            conn.close()
+            
+            print(f"✅ Assigned {phone_number} to company {company_id}")
+            return phone_number
+        except Exception as e:
+            conn.close()
+            print(f"❌ Error assigning phone number: {e}")
+            raise
     
     def find_or_create_client(self, name: str, phone: str = None, email: str = None, date_of_birth: str = None) -> int:
         """

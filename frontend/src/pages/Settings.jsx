@@ -438,44 +438,23 @@ function Settings() {
               <div className="form-section">
                 <h3>Phone Configuration</h3>
                 <p className="section-description">
-                  Configure your Twilio phone number for receiving calls. All other AI services (OpenAI, Deepgram, ElevenLabs) are configured via environment variables.
+                  Your assigned phone number for receiving calls. This number is automatically assigned when you create your account.
                 </p>
                 <div className="form-grid">
                   <div className="form-group full-width">
-                    <label htmlFor="twilio_phone_number">Twilio Phone Number</label>
+                    <label htmlFor="twilio_phone_number">Assigned Phone Number</label>
                     <input
                       type="tel"
                       id="twilio_phone_number"
                       name="twilio_phone_number"
-                      value={formData.twilio_phone_number || ''}
-                      onChange={handleChange}
-                      placeholder="+1234567890"
+                      value={formData.twilio_phone_number || 'Not assigned'}
+                      readOnly
+                      disabled
+                      style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
                     />
                     <small className="form-help">
-                      Your Twilio phone number that will receive calls (e.g., +1234567890)
+                      This is your dedicated phone number. Configure the webhook URL in your Twilio console to point to your backend API.
                     </small>
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="twilio_account_sid">Twilio Account SID</label>
-                    <input
-                      type="text"
-                      id="twilio_account_sid"
-                      name="twilio_account_sid"
-                      value={formData.twilio_account_sid || ''}
-                      onChange={handleChange}
-                      placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="twilio_auth_token">Twilio Auth Token</label>
-                    <input
-                      type="password"
-                      id="twilio_auth_token"
-                      name="twilio_auth_token"
-                      value={formData.twilio_auth_token || ''}
-                      onChange={handleChange}
-                      placeholder="••••••••••••••••••••"
-                    />
                   </div>
                 </div>
               </div>

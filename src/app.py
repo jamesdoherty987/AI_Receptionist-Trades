@@ -78,26 +78,28 @@ except Exception as e:
 @app.route("/twilio/voice", methods=["POST"])
 def twilio_voice():
     """
-    Twilio voice webhook endpoint
+    Twilio voice webhook endpoint - identifies company by incoming phone number
     Returns TwiML to connect call to media stream OR forward to business phone
-    Note: This is called by Twilio, not authenticated. Uses first company's settings.
     """
     db = get_database()
     
-    # Get first company's settings (in multi-tenant system, would determine by phone number)
-    # For now, use the first/only company
+    # Extract TO number (the Twilio number that was called)
+    to_number = request.form.get("To", "")
+    caller_phone = request.form.get("From", "")
+    
+    # Find company by their assigned Twilio phone number
     try:
         conn = db.get_connection()
         if hasattr(db, 'use_postgres') and db.use_postgres:
             from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("SELECT * FROM companies ORDER BY id LIMIT 1")
+            cursor.execute("SELECT * FROM companies WHERE twilio_phone_number = %s", (to_number,))
             company = cursor.fetchone()
             db.return_connection(conn)
             company = dict(company) if company else None
         else:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM companies ORDER BY id LIMIT 1")
+            cursor.execute("SELECT * FROM companies WHERE twilio_phone_number = ?", (to_number,))
             row = cursor.fetchone()
             if row:
                 cursor.execute("PRAGMA table_info(companies)")
@@ -107,14 +109,18 @@ def twilio_voice():
                 company = None
             conn.close()
     except Exception as e:
-        print(f"⚠️ Error fetching company settings: {e}")
+        print(f"⚠️ Error fetching company by phone {to_number}: {e}")
         company = None
     
-    # Check if AI receptionist is enabled
-    ai_enabled = company.get('ai_enabled', True) if company else True
+    if not company:
+        # No company found for this number - return error
+        twiml = VoiceResponse()
+        twiml.say("This phone number is not configured. Please contact support.")
+        print(f"❌ No company found for Twilio number: {to_number}")
+        return Response(str(twiml), mimetype="text/xml")
     
-    # Extract caller phone number from Twilio request
-    caller_phone = request.form.get("From", "")
+    # Check if AI receptionist is enabled
+    ai_enabled = company.get('ai_enabled', True)
     
     twiml = VoiceResponse()
     
@@ -262,6 +268,14 @@ def signup():
     )
     
     if company_id:
+        # Auto-assign Twilio phone number from pool
+        try:
+            phone_number = db.assign_phone_number(company_id)
+            print(f"✅ Auto-assigned phone number {phone_number} to company {company_id}")
+        except Exception as e:
+            print(f"⚠️ Could not auto-assign phone number: {e}")
+            # Continue anyway - phone number can be assigned later
+        
         # Log the user in
         session['company_id'] = company_id
         session['email'] = email
@@ -413,16 +427,11 @@ def update_profile():
             # R2 upload failed - keep base64 in database
             print(f"⚠️ R2 upload failed, storing logo as base64: {e}")
     
-    # Filter allowed fields (including API configurations)
+    # Filter allowed fields (basic business info only)
     allowed_updates = {}
-    api_config_fields = [
-        'twilio_account_sid', 'twilio_auth_token', 'twilio_phone_number',
-        'openai_api_key', 'deepgram_api_key', 'elevenlabs_api_key',
-        'elevenlabs_voice_id', 'google_calendar_id', 'google_credentials_json', 'ai_enabled'
-    ]
     basic_fields = ['company_name', 'owner_name', 'phone', 'trade_type', 'address', 'logo_url']
     
-    for field in basic_fields + api_config_fields:
+    for field in basic_fields:
         if field in data:
             allowed_updates[field] = data[field]
     
@@ -535,19 +544,12 @@ from flask import redirect
 
 @app.route("/")
 def index():
-    """Serve the React app"""
-    return send_from_directory(app.static_folder, 'index.html')
-
-# Catch all routes and serve React app
-@app.route("/<path:path>")
-def catch_all(path):
-    """Serve React app for all non-API routes"""
-    # If it's a file that exists, serve it
-    file_path = Path(app.static_folder) / path
-    if file_path.exists() and file_path.is_file():
-        return send_from_directory(app.static_folder, path)
-    # Otherwise, serve index.html for React Router
-    return send_from_directory(app.static_folder, 'index.html')
+    """Health check endpoint - backend only serves API, not frontend"""
+    return jsonify({
+        "status": "healthy",
+        "service": "AI Receptionist Backend",
+        "message": "Frontend is served by Vercel. This backend only handles API requests."
+    })
 
 
 # Legacy redirects for backwards compatibility
@@ -587,7 +589,8 @@ def business_settings_api():
             return jsonify({"error": "Company not found"}), 404
         
         # Return company data in the format the frontend expects
-        # OpenAI, Deepgram, ElevenLabs configured via environment variables only
+        # API keys configured via environment variables only (not user-configurable)
+        # Twilio phone number assigned from pool (read-only)
         settings = {
             'business_name': company.get('company_name'),
             'business_phone': company.get('phone'),
@@ -596,10 +599,7 @@ def business_settings_api():
             'logo_url': company.get('logo_url'),
             'country_code': '+353',  # Default, could be added to schema if needed
             'business_hours': company.get('business_hours') or '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
-            # Twilio configuration (user-configurable)
-            'twilio_account_sid': company.get('twilio_account_sid'),
-            'twilio_auth_token': company.get('twilio_auth_token'),
-            'twilio_phone_number': company.get('twilio_phone_number'),
+            'twilio_phone_number': company.get('twilio_phone_number'),  # Read-only, assigned from pool
             'ai_enabled': company.get('ai_enabled', True)
         }
         return jsonify(settings)
@@ -650,7 +650,7 @@ def business_settings_api():
                 print(f"⚠️ R2 upload failed, storing logo as base64: {e}")
         
         # Map frontend field names to database column names
-        # Only save Twilio credentials - other API keys use env variables
+        # Only basic business info - no API keys or Twilio credentials
         update_data = {}
         field_mapping = {
             'business_name': 'company_name',
@@ -659,9 +659,6 @@ def business_settings_api():
             'business_address': 'address',
             'logo_url': 'logo_url',
             'business_hours': 'business_hours',
-            'twilio_account_sid': 'twilio_account_sid',
-            'twilio_auth_token': 'twilio_auth_token',
-            'twilio_phone_number': 'twilio_phone_number',
             'ai_enabled': 'ai_enabled'
         }
         
@@ -1869,11 +1866,8 @@ def get_calendar_events():
 # Global error handlers
 @app.errorhandler(404)
 def not_found(e):
-    """Handle 404 errors - serve React app for frontend routes"""
-    if request.path.startswith('/api/') or request.path.startswith('/twilio/'):
-        return jsonify({"error": "Not found"}), 404
-    # For all other routes, serve the React app (SPA routing)
-    return app.send_static_file('index.html')
+    """Handle 404 errors - API only (frontend on Vercel)"""
+    return jsonify({"error": "Not found"}), 404
 
 
 @app.errorhandler(500)

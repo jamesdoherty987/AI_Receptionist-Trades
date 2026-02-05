@@ -155,10 +155,9 @@ class PostgreSQLDatabaseWrapper:
                     reset_token TEXT,
                     reset_token_expires TIMESTAMP,
                     last_login TIMESTAMP,
-                    -- API Configurations (per company)
-                    twilio_account_sid TEXT,
-                    twilio_auth_token TEXT,
-                    twilio_phone_number TEXT,
+                    -- Twilio phone number assigned from pool
+                    twilio_phone_number TEXT UNIQUE,
+                    -- Legacy fields (no longer used - kept for backwards compatibility)
                     openai_api_key TEXT,
                     deepgram_api_key TEXT,
                     elevenlabs_api_key TEXT,
@@ -169,6 +168,30 @@ class PostgreSQLDatabaseWrapper:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """)
+            
+            # Twilio Phone Numbers Pool
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS twilio_phone_numbers (
+                    id BIGSERIAL PRIMARY KEY,
+                    phone_number TEXT UNIQUE NOT NULL,
+                    assigned_to_company_id BIGINT REFERENCES companies(id) ON DELETE SET NULL,
+                    assigned_at TIMESTAMP,
+                    status TEXT DEFAULT 'available',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CHECK (status IN ('available', 'assigned'))
+                )
+            """)
+            
+            # Index for quick lookups
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_twilio_phone_status 
+                ON twilio_phone_numbers(status)
+            """)
+            
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_twilio_phone_company 
+                ON twilio_phone_numbers(assigned_to_company_id)
             """)
             
             # Worker assignments table
@@ -220,7 +243,7 @@ class PostgreSQLDatabaseWrapper:
                 )
             """)
             
-            # Developer settings table
+            # Developer settings table (deprecated - kept for backwards compatibility)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS developer_settings (
                     id BIGSERIAL PRIMARY KEY,
@@ -228,9 +251,6 @@ class PostgreSQLDatabaseWrapper:
                     deepgram_api_key TEXT,
                     elevenlabs_api_key TEXT,
                     elevenlabs_voice_id TEXT,
-                    twilio_account_sid TEXT,
-                    twilio_auth_token TEXT,
-                    twilio_phone_number TEXT,
                     google_credentials_json TEXT,
                     stripe_secret_key TEXT,
                     stripe_price_id TEXT,
@@ -725,6 +745,53 @@ class PostgreSQLDatabaseWrapper:
                 return self.add_client(name, phone, email, date_of_birth)
         finally:
             self.return_connection(conn)
+    
+    def assign_phone_number(self, company_id: int):
+        """Assign an available phone number to a company"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Get first available number
+            cursor.execute("""
+                SELECT phone_number FROM twilio_phone_numbers 
+                WHERE status = 'available'
+                ORDER BY created_at
+                LIMIT 1
+            """)
+            result = cursor.fetchone()
+            
+            if not result:
+                self.return_connection(conn)
+                raise Exception("No available phone numbers in pool")
+            
+            phone_number = result[0]
+            
+            # Update phone number status
+            cursor.execute("""
+                UPDATE twilio_phone_numbers 
+                SET assigned_to_company_id = %s, 
+                    assigned_at = CURRENT_TIMESTAMP,
+                    status = 'assigned'
+                WHERE phone_number = %s
+            """, (company_id, phone_number))
+            
+            # Update company with phone number
+            cursor.execute("""
+                UPDATE companies 
+                SET twilio_phone_number = %s
+                WHERE id = %s
+            """, (phone_number, company_id))
+            
+            conn.commit()
+            self.return_connection(conn)
+            
+            print(f"✅ Assigned {phone_number} to company {company_id}")
+            return phone_number
+        except Exception as e:
+            self.return_connection(conn)
+            print(f"❌ Error assigning phone number: {e}")
+            raise
     
     def get_clients_by_name(self, name: str) -> List[Dict]:
         """Get all clients with a given name (case-insensitive)"""

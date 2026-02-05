@@ -1,22 +1,28 @@
 """
 Production Database Seeder
 Run this ONCE to populate your PostgreSQL database with sample data
-Usage: python seed_production_db.py
+Make sure DATABASE_URL is set in your .env file
+Usage: python db_scripts/seed_production_db.py
 """
 import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent))
-
-# Set DATABASE_URL environment variable BEFORE importing database
-# Replace with your actual Render PostgreSQL URL
-DATABASE_URL = os.getenv('DATABASE_URL') or input("Enter your PostgreSQL DATABASE_URL: ")
-os.environ['DATABASE_URL'] = DATABASE_URL
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.services.database import get_database
+
+# Check if DATABASE_URL is set
+if not os.getenv('DATABASE_URL'):
+    print("❌ ERROR: DATABASE_URL not found in .env file")
+    print("Please add DATABASE_URL to your .env file and try again.")
+    sys.exit(1)
 
 def seed_database():
     """Seed the production database with sample data"""
