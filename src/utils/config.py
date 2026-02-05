@@ -14,12 +14,15 @@ class Config:
     FLASK_ENV = os.getenv("FLASK_ENV", "development")
     PORT = int(os.getenv("PORT", 5000))
     
+    # Feature Flags
+    USE_GOOGLE_CALENDAR = False  # Google Calendar integration disabled
+    
     # URLs
     PUBLIC_URL = os.getenv("PUBLIC_URL")
     WS_PUBLIC_URL = os.getenv("WS_PUBLIC_URL")
     WS_PATH = os.getenv("WS_PATH", "/media")
     
-    # API Keys
+    # API Keys (configured via environment variables only)
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
     ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID")

@@ -106,7 +106,16 @@ class AIRescheduleHandler:
     def find_appointment_by_time(old_time_str):
         """Find appointment by time reference"""
         try:
+            from src.utils.config import config
+            
+            # Check if calendar is enabled
+            if not config.USE_GOOGLE_CALENDAR:
+                return None, "Calendar functionality is currently disabled"
+            
             calendar = get_calendar_service()
+            if not calendar:
+                return None, "Calendar service is unavailable"
+                
             parsed_time = parse_datetime(old_time_str)
             
             if not parsed_time:

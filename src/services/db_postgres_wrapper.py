@@ -134,7 +134,7 @@ class PostgreSQLDatabaseWrapper:
                 )
             """)
             
-            # Companies/Users table
+            # Companies/Users table (includes API configurations per company)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS companies (
                     id BIGSERIAL PRIMARY KEY,
@@ -146,6 +146,7 @@ class PostgreSQLDatabaseWrapper:
                     trade_type TEXT,
                     address TEXT,
                     logo_url TEXT,
+                    business_hours TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
                     subscription_tier TEXT DEFAULT 'free',
                     subscription_status TEXT DEFAULT 'active',
                     stripe_customer_id TEXT,
@@ -154,6 +155,17 @@ class PostgreSQLDatabaseWrapper:
                     reset_token TEXT,
                     reset_token_expires TIMESTAMP,
                     last_login TIMESTAMP,
+                    -- API Configurations (per company)
+                    twilio_account_sid TEXT,
+                    twilio_auth_token TEXT,
+                    twilio_phone_number TEXT,
+                    openai_api_key TEXT,
+                    deepgram_api_key TEXT,
+                    elevenlabs_api_key TEXT,
+                    elevenlabs_voice_id TEXT,
+                    google_calendar_id TEXT,
+                    google_credentials_json TEXT,
+                    ai_enabled BOOLEAN DEFAULT true,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -186,6 +198,45 @@ class PostgreSQLDatabaseWrapper:
                     active INTEGER DEFAULT 1,
                     image_url TEXT,
                     sort_order INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Business settings table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS business_settings (
+                    id BIGSERIAL PRIMARY KEY,
+                    business_name TEXT,
+                    phone TEXT,
+                    email TEXT,
+                    address TEXT,
+                    country_code TEXT DEFAULT '+353',
+                    calendar_id TEXT,
+                    working_hours JSONB,
+                    logo_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Developer settings table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS developer_settings (
+                    id BIGSERIAL PRIMARY KEY,
+                    openai_api_key TEXT,
+                    deepgram_api_key TEXT,
+                    elevenlabs_api_key TEXT,
+                    elevenlabs_voice_id TEXT,
+                    twilio_account_sid TEXT,
+                    twilio_auth_token TEXT,
+                    twilio_phone_number TEXT,
+                    google_credentials_json TEXT,
+                    stripe_secret_key TEXT,
+                    stripe_price_id TEXT,
+                    public_url TEXT,
+                    ws_public_url TEXT,
+                    ai_enabled BOOLEAN DEFAULT true,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )

@@ -16,7 +16,7 @@ from twilio.twiml.voice_response import VoiceResponse
 from twilio.twiml.messaging_response import MessagingResponse
 from src.utils.config import config
 from src.services.database import get_database
-from src.services.google_calendar import GoogleCalendarService
+# Google Calendar disabled - USE_GOOGLE_CALENDAR = False
 
 # Set up Flask to serve React build or development files
 static_folder = Path(__file__).parent / "static" / "dist"
@@ -80,12 +80,38 @@ def twilio_voice():
     """
     Twilio voice webhook endpoint
     Returns TwiML to connect call to media stream OR forward to business phone
+    Note: This is called by Twilio, not authenticated. Uses first company's settings.
     """
-    from src.services.settings_manager import get_settings_manager
-    settings_mgr = get_settings_manager()
+    db = get_database()
+    
+    # Get first company's settings (in multi-tenant system, would determine by phone number)
+    # For now, use the first/only company
+    try:
+        conn = db.get_connection()
+        if hasattr(db, 'use_postgres') and db.use_postgres:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("SELECT * FROM companies ORDER BY id LIMIT 1")
+            company = cursor.fetchone()
+            db.return_connection(conn)
+            company = dict(company) if company else None
+        else:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM companies ORDER BY id LIMIT 1")
+            row = cursor.fetchone()
+            if row:
+                cursor.execute("PRAGMA table_info(companies)")
+                columns = [col[1] for col in cursor.fetchall()]
+                company = dict(zip(columns, row))
+            else:
+                company = None
+            conn.close()
+    except Exception as e:
+        print(f"⚠️ Error fetching company settings: {e}")
+        company = None
     
     # Check if AI receptionist is enabled
-    ai_enabled = settings_mgr.is_ai_receptionist_enabled()
+    ai_enabled = company.get('ai_enabled', True) if company else True
     
     # Extract caller phone number from Twilio request
     caller_phone = request.form.get("From", "")
@@ -94,7 +120,7 @@ def twilio_voice():
     
     if not ai_enabled:
         # AI is disabled - forward to business phone number
-        business_phone = settings_mgr.get_fallback_phone_number()  # Returns business phone
+        business_phone = company.get('phone') if company else None
         
         print("=" * 60)
         print("📞 Incoming Twilio Call - AI DISABLED")
@@ -387,9 +413,16 @@ def update_profile():
             # R2 upload failed - keep base64 in database
             print(f"⚠️ R2 upload failed, storing logo as base64: {e}")
     
-    # Filter allowed fields
+    # Filter allowed fields (including API configurations)
     allowed_updates = {}
-    for field in ['company_name', 'owner_name', 'phone', 'trade_type', 'address', 'logo_url']:
+    api_config_fields = [
+        'twilio_account_sid', 'twilio_auth_token', 'twilio_phone_number',
+        'openai_api_key', 'deepgram_api_key', 'elevenlabs_api_key',
+        'elevenlabs_voice_id', 'google_calendar_id', 'google_credentials_json', 'ai_enabled'
+    ]
+    basic_fields = ['company_name', 'owner_name', 'phone', 'trade_type', 'address', 'logo_url']
+    
+    for field in basic_fields + api_config_fields:
         if field in data:
             allowed_updates[field] = data[field]
     
@@ -542,13 +575,33 @@ def developer_settings_page():
 
 
 @app.route("/api/settings/business", methods=["GET", "POST"])
+@login_required
 def business_settings_api():
-    """Get or update business settings"""
-    from src.services.settings_manager import get_settings_manager
-    settings_mgr = get_settings_manager()
+    """Get or update business settings (now stored in companies table)"""
+    db = get_database()
+    company_id = session.get('company_id')
     
     if request.method == "GET":
-        settings = settings_mgr.get_business_settings()
+        company = db.get_company(company_id)
+        if not company:
+            return jsonify({"error": "Company not found"}), 404
+        
+        # Return company data in the format the frontend expects
+        # OpenAI, Deepgram, ElevenLabs configured via environment variables only
+        settings = {
+            'business_name': company.get('company_name'),
+            'business_phone': company.get('phone'),
+            'business_email': company.get('email'),
+            'business_address': company.get('address'),
+            'logo_url': company.get('logo_url'),
+            'country_code': '+353',  # Default, could be added to schema if needed
+            'business_hours': company.get('business_hours') or '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
+            # Twilio configuration (user-configurable)
+            'twilio_account_sid': company.get('twilio_account_sid'),
+            'twilio_auth_token': company.get('twilio_auth_token'),
+            'twilio_phone_number': company.get('twilio_phone_number'),
+            'ai_enabled': company.get('ai_enabled', True)
+        }
         return jsonify(settings)
     
     elif request.method == "POST":
@@ -596,59 +649,77 @@ def business_settings_api():
                 # R2 upload failed - keep base64 in database
                 print(f"⚠️ R2 upload failed, storing logo as base64: {e}")
         
-        success = settings_mgr.update_business_settings(data, user_id=None)
-        if success:
-            return jsonify({"message": "Business settings updated successfully"})
+        # Map frontend field names to database column names
+        # Only save Twilio credentials - other API keys use env variables
+        update_data = {}
+        field_mapping = {
+            'business_name': 'company_name',
+            'business_phone': 'phone',
+            'business_email': 'email',
+            'business_address': 'address',
+            'logo_url': 'logo_url',
+            'business_hours': 'business_hours',
+            'twilio_account_sid': 'twilio_account_sid',
+            'twilio_auth_token': 'twilio_auth_token',
+            'twilio_phone_number': 'twilio_phone_number',
+            'ai_enabled': 'ai_enabled'
+        }
+        
+        for frontend_field, db_field in field_mapping.items():
+            if frontend_field in data:
+                update_data[db_field] = data[frontend_field]
+        
+        if update_data:
+            success = db.update_company(company_id, **update_data)
+            if success:
+                return jsonify({"message": "Settings updated successfully"})
+        
         return jsonify({"error": "Failed to update settings"}), 500
 
 
-@app.route("/api/settings/developer", methods=["GET", "POST"])
-def developer_settings_api():
-    """Get or update developer settings"""
-    from src.services.settings_manager import get_settings_manager
-    settings_mgr = get_settings_manager()
-    
-    if request.method == "GET":
-        settings = settings_mgr.get_developer_settings()
-        return jsonify(settings)
-    
-    elif request.method == "POST":
-        data = request.json
-        success = settings_mgr.update_developer_settings(data, user_id=None)
-        if success:
-            return jsonify({"message": "Developer settings updated successfully"})
-        return jsonify({"error": "Failed to update settings"}), 500
+# Developer settings endpoint removed - all settings now in companies table via /api/settings/business
 
 
 @app.route("/api/ai-receptionist/toggle", methods=["GET", "POST"])
+@login_required
 def ai_receptionist_toggle_api():
-    """Get or toggle AI receptionist status"""
-    from src.services.settings_manager import get_settings_manager
-    settings_mgr = get_settings_manager()
+    """Get or toggle AI receptionist status (now stored in companies table)"""
+    db = get_database()
+    company_id = session.get('company_id')
     
     if request.method == "GET":
-        enabled = settings_mgr.is_ai_receptionist_enabled()
-        business_phone = settings_mgr.get_fallback_phone_number()  # Now returns business phone
+        company = db.get_company(company_id)
+        if not company:
+            return jsonify({"error": "Company not found"}), 404
+        
+        enabled = company.get('ai_enabled', True)
+        business_phone = company.get('phone')
+        
         return jsonify({
-            "enabled": enabled,
-            "business_phone": business_phone  # Renamed from fallback_phone_number
+            "enabled": bool(enabled) if isinstance(enabled, int) else enabled,
+            "business_phone": business_phone
         })
     
     elif request.method == "POST":
         data = request.json
         enabled = data.get("enabled", True)
         
+        # Get current company data
+        company = db.get_company(company_id)
+        if not company:
+            return jsonify({"error": "Company not found"}), 404
+        
         # Validation: Cannot disable AI without a business phone number
         if not enabled:
-            business_phone = settings_mgr.get_fallback_phone_number()  # Now gets business phone
+            business_phone = company.get('phone')
             
             if not business_phone:
                 return jsonify({
                     "error": "Cannot disable AI receptionist without a business phone number configured"
                 }), 400
         
-        # Update AI status
-        success = settings_mgr.set_ai_receptionist_enabled(enabled)
+        # Update AI status in companies table
+        success = db.update_company(company_id, ai_enabled=1 if enabled else 0)
         
         if success:
             status = "enabled" if enabled else "disabled"
@@ -940,34 +1011,11 @@ def bookings_api():
                     "conflicting_client": conflict_client_name
                 }), 409  # 409 Conflict status code
             
-            # Optional: Create Google Calendar event
+            # Google Calendar integration disabled (USE_GOOGLE_CALENDAR = False)
             calendar_event_id = None
-            client = None  # Store client info for reuse
             
-            try:
-                # Check if Google Calendar credentials exist
-                import os.path
-                if os.path.exists(config.GOOGLE_CALENDAR_CREDENTIALS):
-                    from src.services.google_calendar import GoogleCalendarService
-                    cal_service = GoogleCalendarService()
-                    
-                    # Get client info for calendar event
-                    client = db.get_client(client_id)
-                    if client:
-                        event = cal_service.create_event(
-                            summary=f"{service_type} - {client['name']}",
-                            description=data.get('notes', ''),
-                            start_time=appointment_dt,
-                            duration_minutes=60,
-                            attendee_email=client.get('email')
-                        )
-                        calendar_event_id = event.get('id') if event else None
-            except Exception as e:
-                print(f"⚠️ Could not create calendar event: {e}")
-            
-            # Get client info if not already loaded
-            if not client:
-                client = db.get_client(client_id)
+            # Get client info
+            client = db.get_client(client_id)
             
             # Use client's most recent booking address if not provided in job data
             job_address = data.get('address')
@@ -1374,11 +1422,11 @@ def financial_stats_api():
 def stats_api():
     """Get dashboard statistics"""
     db = get_database()
-    calendar = GoogleCalendarService()
+    # Google Calendar disabled (USE_GOOGLE_CALENDAR = False)
     
     clients = db.get_all_clients()
     bookings = db.get_all_bookings()
-    upcoming = calendar.get_upcoming_appointments(days_ahead=7)
+    upcoming = []  # Calendar disabled
     
     stats = {
         "total_clients": len(clients),
@@ -1640,17 +1688,6 @@ This is an automated message. Please reply to this email if you need assistance.
         }), 500
 
 
-@app.route("/config/business_info.json", methods=["GET"])
-def business_info_api():
-    """Serve business info configuration"""
-    import os
-    import json
-    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'business_info.json')
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-    return jsonify(config)
-
-
 @app.route("/api/tests/run", methods=["POST"])
 def run_tests():
     """Run test suite"""
@@ -1824,20 +1861,33 @@ def get_finances():
 
 @app.route("/api/calendar/events", methods=["GET"])
 def get_calendar_events():
-    """Get calendar events from Google Calendar"""
-    try:
-        from src.services.google_calendar import GoogleCalendarService
-        calendar_service = GoogleCalendarService()
-        
-        # Get date range from query params
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
-        
-        events = calendar_service.get_events(start_date=start_date, end_date=end_date)
-        return jsonify(events or [])
-    except Exception as e:
-        print(f"Calendar error: {e}")
-        return jsonify([])
+    """Get calendar events (disabled - USE_GOOGLE_CALENDAR = False)"""
+    # Google Calendar integration disabled
+    return jsonify([])
+
+
+# Global error handlers
+@app.errorhandler(404)
+def not_found(e):
+    """Handle 404 errors - serve React app for frontend routes"""
+    if request.path.startswith('/api/') or request.path.startswith('/twilio/'):
+        return jsonify({"error": "Not found"}), 404
+    # For all other routes, serve the React app (SPA routing)
+    return app.send_static_file('index.html')
+
+
+@app.errorhandler(500)
+def internal_error(e):
+    """Handle 500 errors"""
+    print(f"Internal server error: {e}")
+    return jsonify({"error": "Internal server error"}), 500
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Handle all uncaught exceptions"""
+    print(f"Unhandled exception: {e}")
+    return jsonify({"error": "An unexpected error occurred"}), 500
 
 
 if __name__ == "__main__":

@@ -381,6 +381,13 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     google_calendar = services.get('google_calendar')
     db = services.get('db') or services.get('database')  # Support both keys
     
+    # If Google Calendar is disabled, return appropriate responses
+    if not google_calendar and tool_name in ['check_availability', 'book_appointment', 'reschedule_appointment', 'cancel_appointment']:
+        return {
+            'success': False,
+            'message': 'Calendar functionality is currently disabled. Please contact support to enable calendar features.'
+        }
+    
     try:
         if tool_name == "check_availability":
             start_date_str = arguments.get('start_date')

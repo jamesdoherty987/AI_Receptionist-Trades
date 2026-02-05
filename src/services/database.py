@@ -156,6 +156,7 @@ class Database:
                 trade_type TEXT,
                 address TEXT,
                 logo_url TEXT,
+                business_hours TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
                 subscription_tier TEXT DEFAULT 'free',
                 subscription_status TEXT DEFAULT 'active',
                 stripe_customer_id TEXT,
@@ -164,6 +165,16 @@ class Database:
                 reset_token TEXT,
                 reset_token_expires TIMESTAMP,
                 last_login TIMESTAMP,
+                twilio_account_sid TEXT,
+                twilio_auth_token TEXT,
+                twilio_phone_number TEXT,
+                openai_api_key TEXT,
+                deepgram_api_key TEXT,
+                elevenlabs_api_key TEXT,
+                elevenlabs_voice_id TEXT,
+                google_calendar_id TEXT,
+                google_credentials_json TEXT,
+                ai_enabled INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -252,6 +263,33 @@ class Database:
                 ALTER TABLE clients ADD COLUMN eircode TEXT
             """)
             print("✅ Added eircode column to clients table")
+        
+        # Add new API configuration fields to companies table if they don't exist
+        cursor.execute("""
+            PRAGMA table_info(companies)
+        """)
+        company_columns = [column[1] for column in cursor.fetchall()]
+        
+        new_company_fields = {
+            'business_hours': "TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)'",
+            'twilio_account_sid': 'TEXT',
+            'twilio_auth_token': 'TEXT',
+            'twilio_phone_number': 'TEXT',
+            'openai_api_key': 'TEXT',
+            'deepgram_api_key': 'TEXT',
+            'elevenlabs_api_key': 'TEXT',
+            'elevenlabs_voice_id': 'TEXT',
+            'google_calendar_id': 'TEXT',
+            'google_credentials_json': 'TEXT',
+            'ai_enabled': 'INTEGER DEFAULT 1'
+        }
+        
+        for field_name, field_type in new_company_fields.items():
+            if field_name not in company_columns:
+                cursor.execute(f"""
+                    ALTER TABLE companies ADD COLUMN {field_name} {field_type}
+                """)
+                print(f"✅ Added {field_name} column to companies table")
         
         # Add new fields to bookings table if they don't exist
         cursor.execute("""

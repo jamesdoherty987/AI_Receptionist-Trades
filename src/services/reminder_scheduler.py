@@ -20,7 +20,14 @@ class ReminderScheduler:
     
     def __init__(self):
         """Initialize reminder scheduler"""
-        self.calendar = GoogleCalendarService()
+        # Only initialize calendar if enabled
+        self.calendar = None
+        if config.USE_GOOGLE_CALENDAR:
+            try:
+                self.calendar = GoogleCalendarService()
+            except Exception as e:
+                print(f"⚠️ Could not initialize calendar service: {e}")
+        
         self.reminder_method = config.REMINDER_METHOD.lower()
         
         # Initialize only the service we need
@@ -149,6 +156,11 @@ class ReminderScheduler:
         print("\n" + "="*60)
         print("🔔 Checking for appointments needing reminders...")
         print("="*60)
+        
+        # Skip if calendar is disabled
+        if not self.calendar:
+            print("⚠️ Calendar service is disabled - skipping reminder check")
+            return
         
         # Get appointments for next 2 days
         upcoming = self.calendar.get_upcoming_appointments(days_ahead=2)

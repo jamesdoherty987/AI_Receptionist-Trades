@@ -638,6 +638,10 @@ def get_calendar_service() -> Optional[GoogleCalendarService]:
     """Get or create Google Calendar service instance"""
     global _calendar_service
     
+    # Check if Google Calendar is enabled in config
+    if not config.USE_GOOGLE_CALENDAR:
+        return None
+    
     if not GOOGLE_AVAILABLE:
         return None
     

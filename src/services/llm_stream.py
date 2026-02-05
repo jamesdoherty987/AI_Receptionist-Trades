@@ -55,59 +55,56 @@ def get_openai_client():
 
 
 def load_business_info():
-    """Load business information - prioritize database settings, fall back to JSON file"""
-    import sqlite3
+    """Load business information from companies table (first company)"""
+    from src.services.database import get_database
     
-    # First try to get business settings DIRECTLY from database
-    db_business_name = None
-    db_business_hours = None
     try:
-        db_paths = [
-            'data/receptionist.db',
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'receptionist.db'),
-        ]
-        for path in db_paths:
-            if os.path.exists(path):
-                conn = sqlite3.connect(path)
-                cursor = conn.cursor()
-                cursor.execute("SELECT business_name, business_hours FROM business_settings ORDER BY id DESC LIMIT 1")
-                row = cursor.fetchone()
-                conn.close()
-                if row:
-                    if row[0]:
-                        db_business_name = row[0]
-                        print(f"📋 Loaded business name from database: {db_business_name}")
-                    if row[1]:
-                        db_business_hours = row[1]
-                        print(f"📋 Loaded business hours from database: {db_business_hours}")
-                break
+        db = get_database()
+        conn = db.get_connection()
+        
+        # Get first company's information
+        if hasattr(db, 'use_postgres') and db.use_postgres:
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("SELECT company_name, business_hours, phone, email, address FROM companies ORDER BY id LIMIT 1")
+            row = cursor.fetchone()
+            db.return_connection(conn)
+            company = dict(row) if row else None
+        else:
+            cursor = conn.cursor()
+            cursor.execute("SELECT company_name, business_hours, phone, email, address FROM companies ORDER BY id LIMIT 1")
+            row = cursor.fetchone()
+            if row:
+                cursor.execute("PRAGMA table_info(companies)")
+                columns = [col[1] for col in cursor.fetchall()]
+                company = dict(zip(columns, row))
+            else:
+                company = None
+            conn.close()
+        
+        if company:
+            # Return in the format expected by the rest of the code
+            business_name = company.get('company_name') or 'Your Business'
+            print(f"📋 Loaded business name from database: {business_name}")
+            
+            return {
+                'business_name': business_name,
+                'business_hours': company.get('business_hours') or '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
+                'phone': company.get('phone') or 'Not configured',
+                'email': company.get('email') or 'Not configured',
+                'address': company.get('address') or 'Not configured'
+            }
     except Exception as e:
-        print(f"⚠️ Could not load from database: {e}")
+        print(f"⚠️ Could not load business info from database: {e}")
     
-    # Load JSON file for other details
-    business_info_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-        'config', 'business_info.json'
-    )
-    try:
-        with open(business_info_path, 'r', encoding='utf-8') as f:
-            info = json.load(f)
-            # Override with database values if available
-            if db_business_name:
-                info['business_name'] = db_business_name
-            if db_business_hours:
-                info['business_hours'] = db_business_hours
-            return info
-    except FileNotFoundError:
-        print("⚠️ business_info.json not found, using defaults")
-        return {
-            "business_name": db_business_name or "Your Business",
-            "business_hours": db_business_hours or "8 AM - 6 PM Mon-Sat (24/7 emergency available)",
-            "staff": {"business_owner": "Owner"},
-            "location": {"service_area": "Local area"},
-            "services": {"offerings": ["Multi-trade services"]},
-            "pricing": {"callout_fee": "€60", "payment_methods": ["cash", "card"]},
-        }
+    # Fallback to generic info
+    return {
+        'business_name': 'Your Business',
+        'business_hours': '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
+        'phone': 'Not configured',
+        'email': 'Not configured',
+        'address': 'Not configured'
+    }
 
 
 def load_services_menu():
@@ -1153,36 +1150,43 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                 from src.services.google_calendar import get_calendar_service
                                 calendar = get_calendar_service()
                                 
-                                # Find next future appointment by name only
-                                event = calendar.find_next_appointment_by_name(customer_name)
-                                
-                                if event:
-                                    # Extract appointment details
-                                    event_start_str = event.get('start', {}).get('dateTime')
-                                    if event_start_str:
-                                        event_start = datetime.fromisoformat(event_start_str.replace('Z', '+00:00')).replace(tzinfo=None)
-                                        
-                                        # Store found appointment
-                                        _appointment_state["reschedule_found_appointment"] = event
-                                        _appointment_state["reschedule_customer_name"] = customer_name
-                                        
-                                        # Ask for confirmation
-                                        time_display = event_start.strftime('%B %d at %I:%M %p')
-                                        confirm_msg = RESCHEDULE_MESSAGES["confirm_name"](
-                                            customer_name, 
-                                            time_display
-                                        )
-                                        messages.append({"role": "system", "content": confirm_msg})
-                                        print(f"✅ Found next appointment for {customer_name} at {time_display}, asking for confirmation")
-                                        should_process = False
-                                else:
-                                    # No future appointments found
-                                    no_appt_msg = f"[SYSTEM: I couldn't find any upcoming appointments for {customer_name}. Tell them politely and ask if they'd like to book a new appointment instead.]"
-                                    messages.append({"role": "system", "content": no_appt_msg})
-                                    print(f"❌ No future appointments found for {customer_name}")
-                                    # Clean up state
+                                if not calendar:
+                                    # Calendar disabled
+                                    error_msg = "[SYSTEM: Calendar service is currently disabled. Inform the user that rescheduling is not available at the moment.]"
+                                    messages.append({"role": "system", "content": error_msg})
                                     _appointment_state.pop("reschedule_active", None)
                                     should_process = False
+                                else:
+                                    # Find next future appointment by name only
+                                    event = calendar.find_next_appointment_by_name(customer_name)
+                                
+                                    if event:
+                                        # Extract appointment details
+                                        event_start_str = event.get('start', {}).get('dateTime')
+                                        if event_start_str:
+                                            event_start = datetime.fromisoformat(event_start_str.replace('Z', '+00:00')).replace(tzinfo=None)
+                                            
+                                            # Store found appointment
+                                            _appointment_state["reschedule_found_appointment"] = event
+                                            _appointment_state["reschedule_customer_name"] = customer_name
+                                            
+                                            # Ask for confirmation
+                                            time_display = event_start.strftime('%B %d at %I:%M %p')
+                                            confirm_msg = RESCHEDULE_MESSAGES["confirm_name"](
+                                                customer_name, 
+                                                time_display
+                                            )
+                                            messages.append({"role": "system", "content": confirm_msg})
+                                            print(f"✅ Found next appointment for {customer_name} at {time_display}, asking for confirmation")
+                                            should_process = False
+                                    else:
+                                        # No future appointments found
+                                        no_appt_msg = f"[SYSTEM: I couldn't find any upcoming appointments for {customer_name}. Tell them politely and ask if they'd like to book a new appointment instead.]"
+                                        messages.append({"role": "system", "content": no_appt_msg})
+                                        print(f"❌ No future appointments found for {customer_name}")
+                                        # Clean up state
+                                        _appointment_state.pop("reschedule_active", None)
+                                        should_process = False
                             except Exception as e:
                                 print(f"❌ Error finding appointment by name: {e}")
                                 import traceback
@@ -1226,49 +1230,57 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         try:
                             from src.services.google_calendar import get_calendar_service
                             calendar = get_calendar_service()
-                            parsed_old_time = parse_datetime(old_time)
                             
-                            if parsed_old_time:
-                                # Find appointment by TIME ONLY (no name required)
-                                event = calendar.find_appointment_by_details(customer_name=None, appointment_time=parsed_old_time)
-                                
-                                if event:
-                                    # Extract customer name from the appointment
-                                    event_summary = event.get('summary', '')
-                                    # Parse name from summary (format: "Service - CustomerName" or just "CustomerName")
-                                    if ' - ' in event_summary:
-                                        extracted_name = event_summary.split(' - ')[-1].strip()
-                                    else:
-                                        # Try to extract from "between X and Y" format
-                                        between_match = re.search(r'between\s+([^and]+)\s+and', event_summary, re.IGNORECASE)
-                                        if between_match:
-                                            extracted_name = between_match.group(1).strip()
-                                        else:
-                                            extracted_name = event_summary.strip()
-                                    
-                                    # Store found appointment and extracted name in state
-                                    _appointment_state["reschedule_found_appointment"] = event
-                                    _appointment_state["reschedule_customer_name"] = extracted_name
-                                    
-                                    # Ask for name confirmation using config
-                                    time_display = parsed_old_time.strftime('%B %d at %I:%M %p') if parsed_old_time else 'the appointment time'
-                                    confirm_msg = RESCHEDULE_MESSAGES["confirm_name"](
-                                        extracted_name, 
-                                        time_display
-                                    )
-                                    messages.append({"role": "system", "content": confirm_msg})
-                                    print(f"✅ Found appointment for {extracted_name}, asking for confirmation")
-                                    should_process = False
-                                else:
-                                    # No appointment found at that time - use config
-                                    time_display = parsed_old_time.strftime('%B %d at %I:%M %p') if parsed_old_time else 'that time'
-                                    not_found_msg = RESCHEDULE_MESSAGES["not_found"](time_display)
-                                    messages.append({"role": "system", "content": not_found_msg})
-                                    print(f"❌ No appointment found at {time_display}")
-                                    should_process = False
-                            else:
-                                print(f"⚠️ Could not parse old time: {old_time}")
+                            if not calendar:
+                                # Calendar disabled
+                                error_msg = "[SYSTEM: Calendar service is currently disabled. Inform the user that rescheduling is not available at the moment.]"
+                                messages.append({"role": "system", "content": error_msg})
+                                _appointment_state.pop("reschedule_active", None)
                                 should_process = False
+                            else:
+                                parsed_old_time = parse_datetime(old_time)
+                                
+                                if parsed_old_time:
+                                    # Find appointment by TIME ONLY (no name required)
+                                    event = calendar.find_appointment_by_details(customer_name=None, appointment_time=parsed_old_time)
+                                
+                                    if event:
+                                        # Extract customer name from the appointment
+                                        event_summary = event.get('summary', '')
+                                        # Parse name from summary (format: "Service - CustomerName" or just "CustomerName")
+                                        if ' - ' in event_summary:
+                                            extracted_name = event_summary.split(' - ')[-1].strip()
+                                        else:
+                                            # Try to extract from "between X and Y" format
+                                            between_match = re.search(r'between\s+([^and]+)\s+and', event_summary, re.IGNORECASE)
+                                            if between_match:
+                                                extracted_name = between_match.group(1).strip()
+                                            else:
+                                                extracted_name = event_summary.strip()
+                                        
+                                        # Store found appointment and extracted name in state
+                                        _appointment_state["reschedule_found_appointment"] = event
+                                        _appointment_state["reschedule_customer_name"] = extracted_name
+                                        
+                                        # Ask for name confirmation using config
+                                        time_display = parsed_old_time.strftime('%B %d at %I:%M %p') if parsed_old_time else 'the appointment time'
+                                        confirm_msg = RESCHEDULE_MESSAGES["confirm_name"](
+                                            extracted_name, 
+                                            time_display
+                                        )
+                                        messages.append({"role": "system", "content": confirm_msg})
+                                        print(f"✅ Found appointment for {extracted_name}, asking for confirmation")
+                                        should_process = False
+                                    else:
+                                        # No appointment found at that time - use config
+                                        time_display = parsed_old_time.strftime('%B %d at %I:%M %p') if parsed_old_time else 'that time'
+                                        not_found_msg = RESCHEDULE_MESSAGES["not_found"](time_display)
+                                        messages.append({"role": "system", "content": not_found_msg})
+                                        print(f"❌ No appointment found at {time_display}")
+                                        should_process = False
+                                else:
+                                    print(f"⚠️ Could not parse old time: {old_time}")
+                                    should_process = False
                         except Exception as e:
                             print(f"❌ Error finding appointment: {e}")
                             should_process = False
@@ -1647,34 +1659,41 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                 from src.services.google_calendar import get_calendar_service
                                 calendar = get_calendar_service()
                                 
-                                # Find next future appointment by name only
-                                event = calendar.find_next_appointment_by_name(customer_name)
-                                
-                                if event:
-                                    # Extract appointment details
-                                    event_start_str = event.get('start', {}).get('dateTime')
-                                    if event_start_str:
-                                        event_start = datetime.fromisoformat(event_start_str.replace('Z', '+00:00')).replace(tzinfo=None)
-                                        
-                                        # Store found appointment
-                                        _appointment_state["cancel_found_appointment"] = event
-                                        _appointment_state["cancel_customer_name"] = customer_name
-                                        
-                                        # Ask for confirmation
-                                        time_display = event_start.strftime('%B %d at %I:%M %p')
-                                        msg = f"[SYSTEM: Confirm this is the right appointment - say something like: 'I found an appointment for {customer_name} on {time_display}. Is that the one you want to cancel?']"
-                                        messages.append({"role": "system", "content": msg})
-                                        print(f"✅ Found appointment for {customer_name} at {time_display}")
-                                        should_process = False
-                                else:
-                                    # No future appointments found
-                                    msg = f"[SYSTEM: I couldn't find any upcoming appointments for {customer_name}. Ask them if they have an appointment booked or if perhaps it's under a different name.]"
-                                    messages.append({"role": "system", "content": msg})
-                                    print(f"❌ No future appointments found for {customer_name}")
-                                    # Clean up cancel state
+                                if not calendar:
+                                    # Calendar disabled
+                                    error_msg = "[SYSTEM: Calendar service is currently disabled. Inform the user that cancellation is not available at the moment.]"
+                                    messages.append({"role": "system", "content": error_msg})
                                     _appointment_state.pop("cancel_active", None)
-                                    _appointment_state.pop("user_cant_remember_cancel_time", None)
                                     should_process = False
+                                else:
+                                    # Find next future appointment by name only
+                                    event = calendar.find_next_appointment_by_name(customer_name)
+                                
+                                    if event:
+                                        # Extract appointment details
+                                        event_start_str = event.get('start', {}).get('dateTime')
+                                        if event_start_str:
+                                            event_start = datetime.fromisoformat(event_start_str.replace('Z', '+00:00')).replace(tzinfo=None)
+                                            
+                                            # Store found appointment
+                                            _appointment_state["cancel_found_appointment"] = event
+                                            _appointment_state["cancel_customer_name"] = customer_name
+                                            
+                                            # Ask for confirmation
+                                            time_display = event_start.strftime('%B %d at %I:%M %p')
+                                            msg = f"[SYSTEM: Confirm this is the right appointment - say something like: 'I found an appointment for {customer_name} on {time_display}. Is that the one you want to cancel?']"
+                                            messages.append({"role": "system", "content": msg})
+                                            print(f"✅ Found appointment for {customer_name} at {time_display}")
+                                            should_process = False
+                                    else:
+                                        # No future appointments found
+                                        msg = f"[SYSTEM: I couldn't find any upcoming appointments for {customer_name}. Ask them if they have an appointment booked or if perhaps it's under a different name.]"
+                                        messages.append({"role": "system", "content": msg})
+                                        print(f"❌ No future appointments found for {customer_name}")
+                                        # Clean up cancel state
+                                        _appointment_state.pop("cancel_active", None)
+                                        _appointment_state.pop("user_cant_remember_cancel_time", None)
+                                        should_process = False
                             except Exception as e:
                                 print(f"❌ Error finding appointment by name: {e}")
                                 import traceback
@@ -1690,50 +1709,58 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         try:
                             from src.services.google_calendar import get_calendar_service
                             calendar = get_calendar_service()
-                            parsed_time = parse_datetime(cancel_time)
                             
-                            if parsed_time:
-                                # Find appointment by TIME ONLY (no name required)
-                                event = calendar.find_appointment_by_details(customer_name=None, appointment_time=parsed_time)
-                                
-                                if event:
-                                    # Extract customer name from the appointment
-                                    event_summary = event.get('summary', '')
-                                    # Parse name from summary (format: "Service - CustomerName" or just "CustomerName")
-                                    if ' - ' in event_summary:
-                                        extracted_name = event_summary.split(' - ')[-1].strip()
-                                    else:
-                                        # Try to extract from "between X and Y" format
-                                        between_match = re.search(r'between\s+([^and]+)\s+and', event_summary, re.IGNORECASE)
-                                        if between_match:
-                                            extracted_name = between_match.group(1).strip()
-                                        else:
-                                            extracted_name = event_summary.strip()
-                                    
-                                    _appointment_state["cancel_found_appointment"] = event
-                                    _appointment_state["cancel_customer_name"] = extracted_name
-                                    
-                                    # Ask for name confirmation - FORCE this message to be used
-                                    time_display = parsed_time.strftime('%B %d at %I:%M %p') if parsed_time else 'the appointment time'
-                                    msg = f"[SYSTEM: CRITICAL - IGNORE ALL OTHER INSTRUCTIONS. You just looked up the appointment and found it. The appointment on {time_display} is for {extracted_name}. You MUST respond with ONLY this: 'Just to confirm, that appointment on {time_display} is for {extracted_name}. Is that correct?' DO NOT ask them for their name. DO NOT ask any other question. Say ONLY what I told you to say above.]"
-                                    messages.append({"role": "system", "content": msg})
-                                    print(f"✅ Found appointment for {extracted_name} at {time_display} - FORCING confirmation message")
-                                    print(f"📝 System message added: {msg[:100]}...")
-                                    should_process = False
-                                else:
-                                    # No appointment found - confirm the date/time with caller first
-                                    msg = f"[SYSTEM: No appointment found at {parsed_time.strftime('%B %d at %I:%M %p')}. BEFORE assuming there's no appointment, confirm with the caller: 'Just to confirm, you said {parsed_time.strftime('%A, %B %d at %I:%M %p')} - is that correct?' If they confirm, then tell them no appointment exists. If they clarify a different time, search again.]"
-                                    messages.append({"role": "system", "content": msg})
-                                    print(f"❓ No appointment found - asking caller to confirm date/time first")
-                                    # Store the attempted time so we can track if they're confirming or clarifying
-                                    _appointment_state["cancel_attempted_time"] = cancel_time
-                                    should_process = False
-                            else:
-                                # Couldn't parse the time - ask caller to clarify
-                                msg = f"[SYSTEM: I'm having trouble understanding the date and time. Ask them to clarify: 'I want to make sure I have the right appointment. Can you tell me the date and time again? For example, Monday January 20th at 3pm']"
-                                messages.append({"role": "system", "content": msg})
-                                print(f"⚠️ Could not parse time: {cancel_time} - asking for clarification")
+                            if not calendar:
+                                # Calendar disabled
+                                error_msg = "[SYSTEM: Calendar service is currently disabled. Inform the user that cancellation is not available at the moment.]"
+                                messages.append({"role": "system", "content": error_msg})
+                                _appointment_state.pop("cancel_active", None)
                                 should_process = False
+                            else:
+                                parsed_time = parse_datetime(cancel_time)
+                                
+                                if parsed_time:
+                                    # Find appointment by TIME ONLY (no name required)
+                                    event = calendar.find_appointment_by_details(customer_name=None, appointment_time=parsed_time)
+                                
+                                    if event:
+                                        # Extract customer name from the appointment
+                                        event_summary = event.get('summary', '')
+                                        # Parse name from summary (format: "Service - CustomerName" or just "CustomerName")
+                                        if ' - ' in event_summary:
+                                            extracted_name = event_summary.split(' - ')[-1].strip()
+                                        else:
+                                            # Try to extract from "between X and Y" format
+                                            between_match = re.search(r'between\s+([^and]+)\s+and', event_summary, re.IGNORECASE)
+                                            if between_match:
+                                                extracted_name = between_match.group(1).strip()
+                                            else:
+                                                extracted_name = event_summary.strip()
+                                        
+                                        _appointment_state["cancel_found_appointment"] = event
+                                        _appointment_state["cancel_customer_name"] = extracted_name
+                                        
+                                        # Ask for name confirmation - FORCE this message to be used
+                                        time_display = parsed_time.strftime('%B %d at %I:%M %p') if parsed_time else 'the appointment time'
+                                        msg = f"[SYSTEM: CRITICAL - IGNORE ALL OTHER INSTRUCTIONS. You just looked up the appointment and found it. The appointment on {time_display} is for {extracted_name}. You MUST respond with ONLY this: 'Just to confirm, that appointment on {time_display} is for {extracted_name}. Is that correct?' DO NOT ask them for their name. DO NOT ask any other question. Say ONLY what I told you to say above.]"
+                                        messages.append({"role": "system", "content": msg})
+                                        print(f"✅ Found appointment for {extracted_name} at {time_display} - FORCING confirmation message")
+                                        print(f"📝 System message added: {msg[:100]}...")
+                                        should_process = False
+                                    else:
+                                        # No appointment found - confirm the date/time with caller first
+                                        msg = f"[SYSTEM: No appointment found at {parsed_time.strftime('%B %d at %I:%M %p')}. BEFORE assuming there's no appointment, confirm with the caller: 'Just to confirm, you said {parsed_time.strftime('%A, %B %d at %I:%M %p')} - is that correct?' If they confirm, then tell them no appointment exists. If they clarify a different time, search again.]"
+                                        messages.append({"role": "system", "content": msg})
+                                        print(f"❓ No appointment found - asking caller to confirm date/time first")
+                                        # Store the attempted time so we can track if they're confirming or clarifying
+                                        _appointment_state["cancel_attempted_time"] = cancel_time
+                                        should_process = False
+                                else:
+                                    # Couldn't parse the time - ask caller to clarify
+                                    msg = f"[SYSTEM: I'm having trouble understanding the date and time. Ask them to clarify: 'I want to make sure I have the right appointment. Can you tell me the date and time again? For example, Monday January 20th at 3pm']"
+                                    messages.append({"role": "system", "content": msg})
+                                    print(f"⚠️ Could not parse time: {cancel_time} - asking for clarification")
+                                    should_process = False
                         except Exception as e:
                             msg = "[SYSTEM: I'm having trouble looking up appointments right now. Ask them to try again or provide their appointment details more clearly.]"
                             messages.append({"role": "system", "content": msg})
@@ -1885,11 +1912,15 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             requested_time = parse_datetime(appointment_details["datetime"])
                             calendar = get_calendar_service()
                             
-                            # Get all available slots for the same day
-                            same_day_slots = calendar.get_available_slots_for_day(requested_time)
-                            
-                            # Also get general alternatives (same day + nearby days)
-                            alternatives = calendar.get_alternative_times(requested_time, days_to_check=3)
+                            if calendar:
+                                # Get all available slots for the same day
+                                same_day_slots = calendar.get_available_slots_for_day(requested_time)
+                                
+                                # Also get general alternatives (same day + nearby days)
+                                alternatives = calendar.get_alternative_times(requested_time, days_to_check=3)
+                            else:
+                                same_day_slots = []
+                                alternatives = []
                             
                             alt_text = ""
                             if same_day_slots:
@@ -2275,11 +2306,19 @@ When customer wants to reschedule:
         print(f"   ⏳ Now executing tools...")
         
         # Import services inside this block to avoid shadowing issues
-        from src.services.google_calendar import get_calendar_service as get_cal_service
+        from src.utils.config import config
         from src.services.database import get_database
         
         # Prepare services for tool execution
-        calendar = get_cal_service()
+        # Google Calendar disabled if USE_GOOGLE_CALENDAR = False
+        calendar = None
+        if config.USE_GOOGLE_CALENDAR:
+            try:
+                from src.services.google_calendar import get_calendar_service as get_cal_service
+                calendar = get_cal_service()
+            except Exception as e:
+                print(f"⚠️ Could not load calendar service: {e}")
+        
         db = get_database()
         services = {
             'google_calendar': calendar,

@@ -20,7 +20,7 @@ export function AuthProvider({ children }) {
         setUser(response.data.user);
       }
     } catch (error) {
-      console.log('Not authenticated');
+      // Not authenticated - silent fail
     } finally {
       setLoading(false);
       setInitialized(true);
@@ -59,7 +59,7 @@ export function AuthProvider({ children }) {
     try {
       await api.post('/api/auth/logout');
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('Logout error:', error.message || error);
     } finally {
       setUser(null);
     }
