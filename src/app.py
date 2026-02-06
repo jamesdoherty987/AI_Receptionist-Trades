@@ -36,7 +36,8 @@ CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Required for cross-origin cookies
+app.config['SESSION_COOKIE_SECURE'] = True  # Required for HTTPS in production
 
 
 # Helper functions for authentication
