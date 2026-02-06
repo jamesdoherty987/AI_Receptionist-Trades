@@ -43,10 +43,6 @@ npm install
 
 **Local Development (No Remote Access):**
 ```bash
-start-dev.bat
-```
-Or manually:
-```bash
 # Terminal 1 - Backend
 python src/app.py
 
