@@ -58,11 +58,12 @@ function Dashboard() {
       icon: 'fas fa-calendar',
       content: <CalendarTab />
     },
-    {
+    // Test Chat tab - only show in development (controlled by VITE_ENABLE_TEST_CHAT)
+    ...(import.meta.env.VITE_ENABLE_TEST_CHAT === 'true' ? [{
       label: 'AI Chat',
       icon: 'fas fa-comments',
       content: <ChatTab />
-    }
+    }] : [])
   ];
 
   return (

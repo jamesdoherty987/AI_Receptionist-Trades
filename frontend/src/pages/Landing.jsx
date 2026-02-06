@@ -225,7 +225,7 @@ function Landing() {
         <div className="nav-container">
           <div className="nav-logo">
             <i className="fas fa-bolt"></i>
-            <span>TradesAI</span>
+            <span>BookedForYou</span>
           </div>
           
           <button className="mobile-menu-btn" onClick={() => setIsMenuOpen(!isMenuOpen)}>
@@ -464,7 +464,7 @@ function Landing() {
         <div className="cta-container">
           <div className="cta-content">
             <h2>Ready to never miss a call again?</h2>
-            <p>Join hundreds of tradespeople who are growing their business with TradesAI.</p>
+            <p>Join hundreds of tradespeople who are growing their business with BookedForYou.</p>
             <Link to="/signup" className="btn-cta">
               Get Started Free
               <i className="fas fa-arrow-right"></i>
@@ -480,7 +480,7 @@ function Landing() {
             <div className="footer-brand">
               <div className="footer-logo">
                 <i className="fas fa-bolt"></i>
-                <span>TradesAI</span>
+                <span>BookedForYou</span>
               </div>
               <p>AI-powered receptionist and business management for tradespeople.</p>
               <div className="social-links">
@@ -511,7 +511,7 @@ function Landing() {
             </div>
           </div>
           <div className="footer-bottom">
-            <p>&copy; 2026 TradesAI. All rights reserved.</p>
+            <p>&copy; 2026 BookedForYou. All rights reserved.</p>
           </div>
         </div>
       </footer>
