@@ -268,15 +268,7 @@ def signup():
     )
     
     if company_id:
-        # Auto-assign Twilio phone number from pool
-        try:
-            phone_number = db.assign_phone_number(company_id)
-            print(f"✅ Auto-assigned phone number {phone_number} to company {company_id}")
-        except Exception as e:
-            print(f"⚠️ Could not auto-assign phone number: {e}")
-            # Continue anyway - phone number can be assigned later
-        
-        # Log the user in
+        # Log the user in (phone number will be configured separately)
         session['company_id'] = company_id
         session['email'] = email
         
@@ -289,7 +281,8 @@ def signup():
                 "company_name": company['company_name'],
                 "owner_name": company['owner_name'],
                 "email": company['email'],
-                "subscription_tier": company['subscription_tier']
+                "subscription_tier": company['subscription_tier'],
+                "twilio_phone_number": company.get('twilio_phone_number')
             }
         }), 201
     else:
@@ -334,7 +327,8 @@ def login():
             "phone": company['phone'],
             "trade_type": company['trade_type'],
             "logo_url": company['logo_url'],
-            "subscription_tier": company['subscription_tier']
+            "subscription_tier": company['subscription_tier'],
+            "twilio_phone_number": company.get('twilio_phone_number')
         }
     })
 
@@ -371,7 +365,8 @@ def get_current_user():
             "address": company['address'],
             "logo_url": company['logo_url'],
             "subscription_tier": company['subscription_tier'],
-            "subscription_status": company['subscription_status']
+            "subscription_status": company['subscription_status'],
+            "twilio_phone_number": company.get('twilio_phone_number')
         }
     })
 
@@ -485,6 +480,89 @@ def change_password():
     
     if success:
         return jsonify({"success": True, "message": "Password changed successfully"})
+
+
+# ============================================
+# PHONE NUMBER MANAGEMENT ENDPOINTS
+# ============================================
+
+@app.route("/api/phone-numbers/available", methods=["GET"])
+def get_available_phone_numbers():
+    """Get list of available phone numbers"""
+    if 'company_id' not in session:
+        return jsonify({"error": "Authentication required"}), 401
+    
+    db = get_database()
+    
+    try:
+        available_numbers = db.get_available_phone_numbers()
+        return jsonify({
+            "success": True,
+            "numbers": available_numbers,
+            "count": len(available_numbers)
+        })
+    except AttributeError as e:
+        # Method doesn't exist - return friendly error
+        print(f"⚠️ Method not found: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Phone number management not configured",
+            "numbers": []
+        }), 500
+    except Exception as e:
+        print(f"❌ Error getting phone numbers: {e}")
+        return jsonify({
+            "success": False,
+            "error": f"Database error: {str(e)}",
+            "numbers": []
+        }), 500
+
+
+@app.route("/api/phone-numbers/assign", methods=["POST"])
+def assign_phone_number():
+    """Assign a phone number to the current company"""
+    if 'company_id' not in session:
+        return jsonify({"error": "Authentication required"}), 401
+    
+    data = request.json
+    phone_number = data.get('phone_number')
+    
+    if not phone_number:
+        return jsonify({"error": "Phone number is required"}), 400
+    
+    db = get_database()
+    company_id = session['company_id']
+    
+    # Check if company already has a phone number
+    company = db.get_company(company_id)
+    if company.get('twilio_phone_number'):
+        return jsonify({"error": "Company already has a phone number assigned"}), 400
+    
+    try:
+        assigned_number = db.assign_phone_number(company_id, phone_number)
+        return jsonify({
+            "success": True,
+            "message": "Phone number assigned successfully",
+            "phone_number": assigned_number
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/phone-numbers/current", methods=["GET"])
+def get_current_phone_number():
+    """Get the current company's assigned phone number"""
+    if 'company_id' not in session:
+        return jsonify({"error": "Authentication required"}), 401
+    
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    return jsonify({
+        "success": True,
+        "phone_number": company.get('twilio_phone_number'),
+        "has_phone": bool(company.get('twilio_phone_number'))
+    })
     
     return jsonify({"error": "Failed to change password"}), 500
 
@@ -1895,3 +1973,4 @@ if __name__ == "__main__":
     except ValueError as e:
         print(f"❌ Configuration error: {e}")
         exit(1)
+

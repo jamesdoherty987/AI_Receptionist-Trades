@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import PhoneConfigModal from '../components/modals/PhoneConfigModal';
 import './Auth.css';
 
 function Signup() {
@@ -18,6 +19,7 @@ function Signup() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
 
   const tradeTypes = [
     'Plumbing',
@@ -108,7 +110,8 @@ function Signup() {
       });
 
       if (result.success) {
-        navigate('/dashboard');
+        // Show phone configuration modal after successful signup
+        setShowPhoneModal(true);
       } else {
         setError(result.error || 'Registration failed');
       }
@@ -117,6 +120,11 @@ function Signup() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePhoneConfigComplete = () => {
+    // Navigate to dashboard after phone is configured or skipped
+    navigate('/dashboard');
   };
 
   return (
@@ -298,6 +306,14 @@ function Signup() {
           <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>
         </p>
       </div>
+
+      {/* Phone Configuration Modal */}
+      <PhoneConfigModal
+        isOpen={showPhoneModal}
+        onClose={handlePhoneConfigComplete}
+        onSuccess={handlePhoneConfigComplete}
+        allowSkip={true}
+      />
     </div>
   );
 }

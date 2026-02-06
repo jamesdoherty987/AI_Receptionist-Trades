@@ -196,6 +196,21 @@
   grid-column: 1 / -1;
 }
 
+.phone-number-display {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.phone-number-display input {
+  flex: 1;
+}
+
+.phone-number-display .btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .form-group label {
   font-weight: 600;
   color: var(--text-primary);

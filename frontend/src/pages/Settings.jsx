@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
+import PhoneConfigModal from '../components/modals/PhoneConfigModal';
 import { 
   getBusinessSettings, 
   updateBusinessSettings,
@@ -18,6 +19,7 @@ function Settings() {
   const { checkAuth } = useAuth();
   const [formData, setFormData] = useState({});
   const [saveMessage, setSaveMessage] = useState('');
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
   
   // Business hours breakdown state
   const [hoursConfig, setHoursConfig] = useState({
@@ -209,6 +211,13 @@ function Settings() {
   const handleToggleAI = () => {
     const newStatus = !aiStatus?.enabled;
     toggleMutation.mutate(newStatus);
+  };
+
+  const handlePhoneConfigSuccess = (phoneNumber) => {
+    // Refresh settings to show the new phone number
+    queryClient.invalidateQueries(['business-settings']);
+    setSaveMessage('Phone number configured successfully!');
+    setTimeout(() => setSaveMessage(''), 3000);
   };
 
   if (isLoading) {
@@ -438,22 +447,37 @@ function Settings() {
               <div className="form-section">
                 <h3>Phone Configuration</h3>
                 <p className="section-description">
-                  Your assigned phone number for receiving calls. This number is automatically assigned when you create your account.
+                  Your assigned phone number for receiving calls. {!formData.twilio_phone_number ? 'Click the button below to select your number.' : 'This number is permanently assigned to your account.'}
                 </p>
                 <div className="form-grid">
                   <div className="form-group full-width">
                     <label htmlFor="twilio_phone_number">Assigned Phone Number</label>
-                    <input
-                      type="tel"
-                      id="twilio_phone_number"
-                      name="twilio_phone_number"
-                      value={formData.twilio_phone_number || 'Not assigned'}
-                      readOnly
-                      disabled
-                      style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
-                    />
+                    <div className="phone-number-display">
+                      <input
+                        type="tel"
+                        id="twilio_phone_number"
+                        name="twilio_phone_number"
+                        value={formData.twilio_phone_number || 'Not assigned'}
+                        readOnly
+                        disabled
+                        style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
+                      />
+                      {!formData.twilio_phone_number && (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={() => setShowPhoneModal(true)}
+                          style={{ marginLeft: '1rem' }}
+                        >
+                          <i className="fas fa-phone"></i>
+                          Configure Phone
+                        </button>
+                      )}
+                    </div>
                     <small className="form-help">
-                      This is your dedicated phone number. Configure the webhook URL in your Twilio console to point to your backend API.
+                      {formData.twilio_phone_number 
+                        ? 'This is your dedicated phone number. It cannot be changed once assigned.'
+                        : 'You need to configure a phone number to receive calls.'}
                     </small>
                   </div>
                 </div>
@@ -494,6 +518,14 @@ function Settings() {
           </div>
         </div>
       </main>
+
+      {/* Phone Configuration Modal */}
+      <PhoneConfigModal
+        isOpen={showPhoneModal}
+        onClose={() => setShowPhoneModal(false)}
+        onSuccess={handlePhoneConfigSuccess}
+        allowSkip={false}
+      />
     </div>
   );
 }

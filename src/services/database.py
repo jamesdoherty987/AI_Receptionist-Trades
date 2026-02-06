@@ -398,26 +398,55 @@ class Database:
         
         return client_id
     
-    def assign_phone_number(self, company_id: int):
-        """Assign an available phone number to a company"""
+    def get_available_phone_numbers(self) -> List[Dict]:
+        """Get list of all available phone numbers"""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT phone_number, created_at 
+            FROM twilio_phone_numbers 
+            WHERE status = 'available'
+            ORDER BY created_at
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+    
+    def assign_phone_number(self, company_id: int, phone_number: str = None):
+        """Assign a phone number to a company (either specific number or first available)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            # Get first available number
-            cursor.execute("""
-                SELECT phone_number FROM twilio_phone_numbers 
-                WHERE status = 'available'
-                ORDER BY created_at
-                LIMIT 1
-            """)
-            result = cursor.fetchone()
-            
-            if not result:
-                conn.close()
-                raise Exception("No available phone numbers in pool")
-            
-            phone_number = result[0]
+            if not phone_number:
+                # Get first available number if none specified
+                cursor.execute("""
+                    SELECT phone_number FROM twilio_phone_numbers 
+                    WHERE status = 'available'
+                    ORDER BY created_at
+                    LIMIT 1
+                """)
+                result = cursor.fetchone()
+                
+                if not result:
+                    conn.close()
+                    raise Exception("No available phone numbers in pool")
+                
+                phone_number = result[0]
+            else:
+                # Verify the specific number is available
+                cursor.execute("""
+                    SELECT phone_number FROM twilio_phone_numbers 
+                    WHERE phone_number = ? AND status = 'available'
+                """, (phone_number,))
+                result = cursor.fetchone()
+                
+                if not result:
+                    conn.close()
+                    raise Exception(f"Phone number {phone_number} is not available")
             
             # Update phone number status
             cursor.execute("""

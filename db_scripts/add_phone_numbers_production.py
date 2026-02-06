@@ -32,8 +32,9 @@ def add_numbers_to_production(phone_numbers: list):
     from src.services.database import get_database
     
     db = get_database()
+    is_postgres = db.__class__.__name__ == 'PostgreSQLDatabaseWrapper'
     print(f"\n📞 Adding {len(phone_numbers)} phone numbers to database...")
-    print(f"Database type: {'PostgreSQL' if hasattr(db, 'use_postgres') and db.use_postgres else 'SQLite'}\n")
+    print(f"Database type: {'PostgreSQL' if is_postgres else 'SQLite'}\n")
     
     added = 0
     skipped = 0
@@ -48,7 +49,7 @@ def add_numbers_to_production(phone_numbers: list):
             
         try:
             conn = db.get_connection()
-            if hasattr(db, 'use_postgres') and db.use_postgres:
+            if is_postgres:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO twilio_phone_numbers (phone_number, status)
@@ -98,10 +99,11 @@ def list_all_numbers():
     from src.services.database import get_database
     
     db = get_database()
+    is_postgres = db.__class__.__name__ == 'PostgreSQLDatabaseWrapper'
     conn = db.get_connection()
     
     try:
-        if hasattr(db, 'use_postgres') and db.use_postgres:
+        if is_postgres:
             from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
