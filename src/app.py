@@ -12,6 +12,8 @@ from functools import wraps
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from flask import Flask, Response, request, jsonify, send_from_directory, session
+from flask_cors import CORS
+from flask_compress import Compress
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.twiml.messaging_response import MessagingResponse
 from src.utils.config import config
@@ -29,8 +31,10 @@ app = Flask(__name__,
             static_url_path='')
 
 # Configure CORS for development
-from flask_cors import CORS
 CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+
+# Enable response compression for better performance
+Compress(app)
 
 # Configure session
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
@@ -369,6 +373,47 @@ def get_current_user():
             "twilio_phone_number": company.get('twilio_phone_number')
         }
     })
+
+
+@app.route("/api/dashboard", methods=["GET"])
+@login_required
+def get_dashboard_data():
+    """
+    Batch endpoint to get all dashboard data in one request.
+    Reduces 4 separate API calls to 1, improving page load performance.
+    """
+    try:
+        db = get_database()
+        
+        # Get all data in parallel operations (within same DB connection context)
+        bookings = db.get_all_bookings()
+        clients = db.get_all_clients()
+        workers = db.get_all_workers()
+        
+        # Calculate finances
+        total_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings if b.get('status') == 'completed')
+        pending_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings if b.get('status') in ['pending', 'scheduled'])
+        
+        finances = {
+            'total_revenue': total_revenue,
+            'pending_revenue': pending_revenue,
+            'completed_jobs': len([b for b in bookings if b.get('status') == 'completed']),
+            'pending_jobs': len([b for b in bookings if b.get('status') in ['pending', 'scheduled']])
+        }
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'bookings': bookings,
+                'clients': clients,
+                'workers': workers,
+                'finances': finances
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ Dashboard data error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route("/api/auth/profile", methods=["PUT"])

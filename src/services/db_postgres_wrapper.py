@@ -18,11 +18,14 @@ class PostgreSQLDatabaseWrapper:
     def __init__(self, database_url: str):
         """Initialize PostgreSQL connection pool"""
         self.database_url = database_url
+        # Connection pool sized for free tier - keeps connections warm
         self.connection_pool = psycopg2_pool.SimpleConnectionPool(
-            minconn=1,
-            maxconn=20,
+            minconn=2,  # Keep 2 connections always open
+            maxconn=20,  # Allow up to 20 concurrent connections
             dsn=database_url
         )
+        self.use_postgres = True  # Flag for compatibility
+        print(f"✅ PostgreSQL connection pool initialized (2-20 connections)")
         self.init_database()
     
     def get_connection(self):

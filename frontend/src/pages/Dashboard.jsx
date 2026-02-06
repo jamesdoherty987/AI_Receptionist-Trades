@@ -9,62 +9,44 @@ import FinancesTab from '../components/dashboard/FinancesTab';
 import CalendarTab from '../components/dashboard/CalendarTab';
 import ChatTab from '../components/dashboard/ChatTab';
 import ServicesTab from '../components/dashboard/ServicesTab';
-import { getBookings, getClients, getWorkers, getFinances } from '../services/api';
+import { getDashboardData } from '../services/api';
 import './Dashboard.css';
 
 function Dashboard() {
-  const { data: bookings, isLoading: loadingBookings } = useQuery({
-    queryKey: ['bookings'],
+  // Use single batched API call instead of 4 separate requests
+  const { data: dashboardData, isLoading } = useQuery({
+    queryKey: ['dashboard'],
     queryFn: async () => {
-      const response = await getBookings();
-      return response.data;
+      const response = await getDashboardData();
+      return response.data.data;
     },
   });
 
-  const { data: clients, isLoading: loadingClients } = useQuery({
-    queryKey: ['clients'],
-    queryFn: async () => {
-      const response = await getClients();
-      return response.data;
-    },
-  });
-
-  const { data: workers, isLoading: loadingWorkers } = useQuery({
-    queryKey: ['workers'],
-    queryFn: async () => {
-      const response = await getWorkers();
-      return response.data;
-    },
-  });
-
-  const { data: finances, isLoading: loadingFinances } = useQuery({
-    queryKey: ['finances'],
-    queryFn: async () => {
-      const response = await getFinances();
-      return response.data;
-    },
-  });
+  const bookings = dashboardData?.bookings || [];
+  const clients = dashboardData?.clients || [];
+  const workers = dashboardData?.workers || [];
+  const finances = dashboardData?.finances || {};
 
   const tabs = [
     {
       label: 'Jobs',
       icon: 'fas fa-briefcase',
-      content: loadingBookings ? <LoadingSpinner /> : <JobsTab bookings={bookings || []} />
+      content: isLoading ? <LoadingSpinner /> : <JobsTab bookings={bookings} />
     },
     {
       label: 'Customers',
       icon: 'fas fa-users',
-      content: loadingClients ? <LoadingSpinner /> : <CustomersTab clients={clients || []} bookings={bookings || []} />
+      content: isLoading ? <LoadingSpinner /> : <CustomersTab clients={clients} bookings={bookings} />
     },
     {
       label: 'Workers',
       icon: 'fas fa-hard-hat',
-      content: loadingWorkers ? <LoadingSpinner /> : <WorkersTab workers={workers || []} bookings={bookings || []} />
+      content: isLoading ? <LoadingSpinner /> : <WorkersTab workers={workers} bookings={bookings} />
     },
     {
       label: 'Finances',
       icon: 'fas fa-dollar-sign',
-      content: loadingFinances ? <LoadingSpinner /> : <FinancesTab finances={finances || {}} />
+      content: isLoading ? <LoadingSpinner /> : <FinancesTab finances={finances} />
     },
     {
       label: 'Services',

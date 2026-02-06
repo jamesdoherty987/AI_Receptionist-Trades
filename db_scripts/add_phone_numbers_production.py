@@ -40,6 +40,9 @@ def add_numbers_to_production(phone_numbers: list):
     skipped = 0
     errors = 0
     
+    # Remove duplicates from input list first
+    phone_numbers = list(set([p.strip() for p in phone_numbers]))
+    
     for phone in phone_numbers:
         phone = phone.strip()
         if not phone or not phone.startswith('+'):
@@ -51,10 +54,23 @@ def add_numbers_to_production(phone_numbers: list):
             conn = db.get_connection()
             if is_postgres:
                 cursor = conn.cursor()
+                # Check if number already exists first
+                cursor.execute("""
+                    SELECT phone_number FROM twilio_phone_numbers 
+                    WHERE phone_number = %s
+                """, (phone,))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    print(f"   ⏭️  Already exists: {phone}")
+                    skipped += 1
+                    db.return_connection(conn)
+                    continue
+                
+                # Insert new number
                 cursor.execute("""
                     INSERT INTO twilio_phone_numbers (phone_number, status)
                     VALUES (%s, 'available')
-                    ON CONFLICT (phone_number) DO NOTHING
                     RETURNING phone_number
                 """, (phone,))
                 result = cursor.fetchone()
@@ -69,15 +85,29 @@ def add_numbers_to_production(phone_numbers: list):
                     skipped += 1
             else:
                 cursor = conn.cursor()
+                # Check if number already exists first
                 cursor.execute("""
-                    INSERT OR IGNORE INTO twilio_phone_numbers (phone_number, status)
+                    SELECT phone_number FROM twilio_phone_numbers 
+                    WHERE phone_number = ?
+                """, (phone,))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    print(f"   ⏭️  Already exists: {phone}")
+                    skipped += 1
+                    conn.close()
+                    continue
+                
+                # Insert new number
+                cursor.execute("""
+                    INSERT INTO twilio_phone_numbers (phone_number, status)
                     VALUES (?, 'available')
                 """, (phone,))
                 if cursor.rowcount > 0:
                     print(f"   ✅ Added: {phone}")
                     added += 1
                 else:
-                    print(f"   ⏭️  Already exists: {phone}")
+                    print(f"   ⏭️  Skipped: {phone}")
                     skipped += 1
                 conn.commit()
                 conn.close()
@@ -200,6 +230,7 @@ Examples:
     parser.add_argument('numbers', nargs='*', help='Phone numbers to add (format: +353...)')
     parser.add_argument('--from-file', '-f', help='Read phone numbers from file (one per line)')
     parser.add_argument('--list', '-l', action='store_true', help='List all phone numbers')
+    parser.add_argument('--both', '-b', action='store_true', help='Add to both production and local databases')
     
     args = parser.parse_args()
     
@@ -246,7 +277,43 @@ Examples:
         print("   or: python add_phone_numbers_production.py --list")
         sys.exit(1)
     
-    # Add numbers
+    # Check if we should add to both databases
+    if args.both and os.getenv('DATABASE_URL'):
+        print("\n🔄 Adding to BOTH databases (Production + Local)\n")
+        
+        # First, add to production
+        print("=" * 60)
+        print("📡 PRODUCTION DATABASE (PostgreSQL)")
+        print("=" * 60)
+        success_prod = add_numbers_to_production(phone_numbers)
+        
+        # Then add to local by clearing DATABASE_URL and reloading modules
+        print("\n" + "=" * 60)
+        print("💾 LOCAL DATABASE (SQLite)")
+        print("=" * 60)
+        
+        # Save and clear DATABASE_URL
+        original_db_url = os.environ.pop('DATABASE_URL', None)
+        
+        # Clear the loaded modules to force reload without DATABASE_URL
+        import sys
+        if 'src.services.database' in sys.modules:
+            del sys.modules['src.services.database']
+        if 'src.services.db_postgres_wrapper' in sys.modules:
+            del sys.modules['src.services.db_postgres_wrapper']
+        
+        success_local = add_numbers_to_production(phone_numbers)
+        
+        # Restore DATABASE_URL
+        if original_db_url:
+            os.environ['DATABASE_URL'] = original_db_url
+        
+        print("\n" + "=" * 60)
+        print("✅ COMPLETED - Numbers added to both databases")
+        print("=" * 60)
+        sys.exit(0)
+    
+    # Add numbers (single database)
     success = add_numbers_to_production(phone_numbers)
     
     # Show summary

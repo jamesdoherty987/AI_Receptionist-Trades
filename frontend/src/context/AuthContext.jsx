@@ -15,12 +15,29 @@ export function AuthProvider({ children }) {
 
   const checkAuth = async () => {
     try {
+      // Check localStorage first for instant load
+      const cachedUser = localStorage.getItem('authUser');
+      if (cachedUser) {
+        try {
+          const parsedUser = JSON.parse(cachedUser);
+          setUser(parsedUser);
+        } catch (e) {
+          localStorage.removeItem('authUser');
+        }
+      }
+
+      // Verify with server
       const response = await api.get('/api/auth/me');
       if (response.data.authenticated) {
         setUser(response.data.user);
+        localStorage.setItem('authUser', JSON.stringify(response.data.user));
+      } else {
+        setUser(null);
+        localStorage.removeItem('authUser');
       }
     } catch (error) {
-      // Not authenticated - silent fail
+      setUser(null);
+      localStorage.removeItem('authUser');
     } finally {
       setLoading(false);
       setInitialized(true);
@@ -32,6 +49,7 @@ export function AuthProvider({ children }) {
       const response = await api.post('/api/auth/login', { email, password });
       if (response.data.success) {
         setUser(response.data.user);
+        localStorage.setItem('authUser', JSON.stringify(response.data.user));
         return { success: true };
       }
       return { success: false, error: response.data.error };
@@ -46,6 +64,7 @@ export function AuthProvider({ children }) {
       const response = await api.post('/api/auth/signup', userData);
       if (response.data.success) {
         setUser(response.data.user);
+        localStorage.setItem('authUser', JSON.stringify(response.data.user));
         return { success: true };
       }
       return { success: false, error: response.data.error };
@@ -62,6 +81,7 @@ export function AuthProvider({ children }) {
       console.error('Logout error:', error.message || error);
     } finally {
       setUser(null);
+      localStorage.removeItem('authUser');
     }
   };
 
@@ -70,6 +90,7 @@ export function AuthProvider({ children }) {
       const response = await api.put('/api/auth/profile', profileData);
       if (response.data.success) {
         setUser(response.data.user);
+        localStorage.setItem('authUser', JSON.stringify(response.data.user));
         return { success: true };
       }
       return { success: false, error: response.data.error };
