@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createBooking, getClients } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
+import AddClientModal from './AddClientModal';
 import './AddJobModal.css';
 
 function AddJobModal({ isOpen, onClose }) {
@@ -22,8 +23,11 @@ function AddJobModal({ isOpen, onClose }) {
   const [selectedQuickDate, setSelectedQuickDate] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [selectedClientName, setSelectedClientName] = useState('');
+  const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
+  const [waitingForNewClient, setWaitingForNewClient] = useState(false);
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
+  const previousClientsLengthRef = useRef(0);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -85,6 +89,7 @@ function AddJobModal({ isOpen, onClose }) {
     setSelectedQuickDate('');
     setSelectedClientName('');
     setShowClientDropdown(false);
+    setWaitingForNewClient(false);
   };
 
   const handleSelectClient = (client) => {
@@ -113,6 +118,53 @@ function AddJobModal({ isOpen, onClose }) {
     setClientSearch('');
     inputRef.current?.focus();
   };
+
+  const handleOpenAddClientModal = () => {
+    setShowClientDropdown(false);
+    setWaitingForNewClient(true);
+    setIsAddClientModalOpen(true);
+  };
+
+  const handleCloseAddClientModal = () => {
+    setIsAddClientModalOpen(false);
+    // Refetch clients to get the newly added customer
+    queryClient.invalidateQueries(['clients']);
+  };
+
+  // Track previous clients length to detect new additions
+  useEffect(() => {
+    if (clients) {
+      previousClientsLengthRef.current = clients.length;
+    }
+  }, [clients]);
+
+  // When a new client is added, auto-select them
+  useEffect(() => {
+    if (waitingForNewClient && clients && clients.length > previousClientsLengthRef.current) {
+      // A new client was added - select the most recent one
+      const sortedClients = [...clients].sort((a, b) => {
+        // Assuming clients have an id or created_at field
+        // Most recent will have the highest id
+        return (b.id || 0) - (a.id || 0);
+      });
+      const newestClient = sortedClients[0];
+      
+      if (newestClient) {
+        handleSelectClient(newestClient);
+        addToast(`Customer "${newestClient.name}" selected`, 'success');
+      }
+      
+      setWaitingForNewClient(false);
+      previousClientsLengthRef.current = clients.length;
+    }
+  }, [clients, waitingForNewClient, addToast]);
+
+  // Reset form when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setWaitingForNewClient(false);
+    }
+  }, [isOpen]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -161,6 +213,7 @@ function AddJobModal({ isOpen, onClose }) {
   };
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={onClose} title="Add New Job" size="large">
       <form onSubmit={handleSubmit} className="form">
         <div className="form-group">
@@ -202,34 +255,52 @@ function AddJobModal({ isOpen, onClose }) {
                   <div className="dropdown-empty">
                     <i className="fas fa-user-slash"></i>
                     <p>No customers found</p>
-                    <small>Try a different search term</small>
+                    <small>Try a different search term or add a new customer</small>
+                    <button 
+                      type="button"
+                      className="btn-add-customer-inline"
+                      onClick={handleOpenAddClientModal}
+                    >
+                      <i className="fas fa-user-plus"></i> Add New Customer
+                    </button>
                   </div>
                 ) : (
-                  <ul className="customer-list">
-                    {filteredClients.slice(0, 8).map(client => (
-                      <li 
-                        key={client.id}
-                        className="customer-option"
-                        onClick={() => handleSelectClient(client)}
+                  <>
+                    <ul className="customer-list">
+                      {filteredClients.slice(0, 8).map(client => (
+                        <li 
+                          key={client.id}
+                          className="customer-option"
+                          onClick={() => handleSelectClient(client)}
+                        >
+                          <div className="customer-option-avatar">
+                            {client.name?.charAt(0).toUpperCase() || '?'}
+                          </div>
+                          <div className="customer-option-details">
+                            <span className="customer-option-name">{client.name}</span>
+                            <span className="customer-option-contact">
+                              {client.phone && <span><i className="fas fa-phone"></i> {client.phone}</span>}
+                              {client.email && <span><i className="fas fa-envelope"></i> {client.email}</span>}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                      {filteredClients.length > 8 && (
+                        <li className="dropdown-more">
+                          +{filteredClients.length - 8} more results
+                        </li>
+                      )}
+                    </ul>
+                    <div className="dropdown-footer">
+                      <button 
+                        type="button"
+                        className="btn-add-customer-footer"
+                        onClick={handleOpenAddClientModal}
                       >
-                        <div className="customer-option-avatar">
-                          {client.name?.charAt(0).toUpperCase() || '?'}
-                        </div>
-                        <div className="customer-option-details">
-                          <span className="customer-option-name">{client.name}</span>
-                          <span className="customer-option-contact">
-                            {client.phone && <span><i className="fas fa-phone"></i> {client.phone}</span>}
-                            {client.email && <span><i className="fas fa-envelope"></i> {client.email}</span>}
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                    {filteredClients.length > 8 && (
-                      <li className="dropdown-more">
-                        +{filteredClients.length - 8} more results
-                      </li>
-                    )}
-                  </ul>
+                        <i className="fas fa-user-plus"></i> Add New Customer
+                      </button>
+                    </div>
+                  </>
                 )}
               </div>
             )}
@@ -369,6 +440,11 @@ function AddJobModal({ isOpen, onClose }) {
         </div>
       </form>
     </Modal>
+    <AddClientModal 
+      isOpen={isAddClientModalOpen}
+      onClose={handleCloseAddClientModal}
+    />
+    </>
   );
 }
 

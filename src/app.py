@@ -1157,7 +1157,8 @@ def bookings_api():
             client = db.get_client(client_id)
             
             # Use client's most recent booking address if not provided in job data
-            job_address = data.get('address')
+            # Accept both 'job_address' (from frontend) and 'address' (legacy)
+            job_address = data.get('job_address') or data.get('address')
             job_eircode = data.get('eircode')
             job_property_type = data.get('property_type')
             
@@ -1174,8 +1175,8 @@ def bookings_api():
                         job_eircode = previous_booking['eircode']
                         print(f"📮 Using eircode from previous booking: {job_eircode}")
                     
-                    if not job_property_type and previous_booking['property_type']:
-                        job_property_type = previous_booking[2]
+                    if not job_property_type and previous_booking.get('property_type'):
+                        job_property_type = previous_booking['property_type']
                         print(f"🏠 Using property type from previous booking: {job_property_type}")
             
             # Create booking - accept both 'charge' and 'estimated_charge' from frontend
@@ -1273,7 +1274,7 @@ def booking_detail_api(booking_id):
             'notes': notes_text
         }
         
-        return jsonify(booking)
+        return jsonify(response_booking)
     
     elif request.method == "PUT":
         # Update booking
@@ -1281,6 +1282,10 @@ def booking_detail_api(booking_id):
         
         # Handle notes separately (stored in appointment_notes table)
         notes = data.pop('notes', None)
+        
+        # Handle job_address mapping - frontend sends 'job_address', DB expects 'address'
+        if 'job_address' in data:
+            data['address'] = data.pop('job_address')
         
         success = db.update_booking(booking_id, **data)
         
@@ -1296,18 +1301,6 @@ def booking_detail_api(booking_id):
         if success:
             return jsonify({"success": True})
         return jsonify({"error": "Failed to update booking"}), 400
-
-
-# Keep old endpoint for backward compatibility
-@app.route("/api/bookings/<int:booking_id>", methods=["PUT"])
-def update_booking_api(booking_id):
-    """Update booking (including charge and payment info)"""
-    db = get_database()
-    data = request.json
-    success = db.update_booking(booking_id, **data)
-    if success:
-        return jsonify({"success": True})
-    return jsonify({"error": "Failed to update booking"}), 400
 
 
 @app.route("/api/bookings/<int:booking_id>/complete", methods=["POST"])
@@ -1407,9 +1400,12 @@ def send_invoice_api(booking_id):
         }
         
         print(f"💰 Invoice: Using charge amount €{booking_dict['charge']} from database for booking {booking_id}")
-        # Use test email for now (as requested)
-        # In production, this would be: to_email = booking_dict['email']
-        to_email = 'jkdoherty123@gmail.com'  # Test email
+        
+        # Use customer's actual email
+        to_email = booking_dict['email']
+        
+        if not to_email:
+            return jsonify({"error": "Customer email not found. Please add an email address to the customer profile."}), 400
         
         if not booking_dict['client_name']:
             return jsonify({"error": "Customer name not found"}), 400

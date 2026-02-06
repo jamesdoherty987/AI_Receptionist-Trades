@@ -105,6 +105,67 @@
 
 .dropdown-empty small {
   color: #9ca3af;
+  display: block;
+  margin-bottom: 1rem;
+}
+
+/* Add Customer Buttons */
+.btn-add-customer-inline {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+  margin-top: 0.5rem;
+}
+
+.btn-add-customer-inline:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.btn-add-customer-inline:active {
+  transform: translateY(0);
+}
+
+.dropdown-footer {
+  border-top: 1px solid #e5e7eb;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border-radius: 0 0 10px 10px;
+}
+
+.btn-add-customer-footer {
+  width: 100%;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.btn-add-customer-footer:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.btn-add-customer-footer:active {
+  transform: translateY(0);
 }
 
 .customer-list {

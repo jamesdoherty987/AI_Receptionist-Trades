@@ -297,6 +297,14 @@ function JobsTab({ bookings }) {
                         {formatDateTime(job.appointment_time)}
                       </div>
                     </div>
+                    
+                    {(job.job_address || job.address) && (
+                      <div className="job-address-row">
+                        <i className="fas fa-map-marker-alt"></i>
+                        <span>{job.job_address || job.address}</span>
+                      </div>
+                    )}
+                    
                     <div className="job-details">
                       <div className="job-detail">
                         <i className="fas fa-wrench"></i>
