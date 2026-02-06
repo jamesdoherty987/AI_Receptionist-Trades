@@ -62,26 +62,15 @@ class EmailReminderService:
             return False
         
         try:
-            import sqlite3
-            import os
+            from src.services.database import get_database
             
-            # Load business name DIRECTLY from DATABASE
+            # Load business name from database
             business_name = 'Your Business'
             try:
-                db_paths = [
-                    'data/receptionist.db',
-                    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'receptionist.db'),
-                ]
-                for path in db_paths:
-                    if os.path.exists(path):
-                        conn = sqlite3.connect(path)
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT business_name FROM business_settings ORDER BY id DESC LIMIT 1")
-                        row = cursor.fetchone()
-                        conn.close()
-                        if row and row[0]:
-                            business_name = row[0]
-                        break
+                db = get_database()
+                settings = db.get_business_settings()
+                if settings and settings.get('business_name'):
+                    business_name = settings['business_name']
             except Exception as e:
                 print(f"⚠️ Could not load business name from database: {e}")
             
@@ -214,11 +203,10 @@ Best regards,
             return False
         
         try:
+            from src.services.database import get_database
             from src.utils.config import config
-            import sqlite3
-            import os
             
-            # Load business info DIRECTLY from DATABASE
+            # Load business info from database
             business_name = None
             business_phone = ''
             business_email = self.from_email
@@ -226,43 +214,17 @@ Best regards,
             business_city = ''
             
             try:
-                # Get the database path - check multiple locations
-                db_paths = [
-                    'data/receptionist.db',
-                    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'receptionist.db'),
-                ]
-                
-                db_path = None
-                for path in db_paths:
-                    if os.path.exists(path):
-                        db_path = path
-                        break
-                
-                if db_path:
-                    conn = sqlite3.connect(db_path)
-                    cursor = conn.cursor()
-                    
-                    # Get the business settings directly
-                    cursor.execute("""
-                        SELECT business_name, phone, email, website, city 
-                        FROM business_settings 
-                        ORDER BY id DESC LIMIT 1
-                    """)
-                    row = cursor.fetchone()
-                    conn.close()
-                    
-                    if row:
-                        business_name = row[0] if row[0] else None
-                        business_phone = row[1] if row[1] else ''
-                        business_email = row[2] if row[2] else self.from_email
-                        business_website = row[3] if row[3] else ''
-                        business_city = row[4] if row[4] else ''
-                        print(f"📧 Invoice loaded from database - Business: {business_name}")
-                    else:
-                        print("⚠️ No business settings found in database")
+                db = get_database()
+                settings = db.get_business_settings()
+                if settings:
+                    business_name = settings.get('business_name')
+                    business_phone = settings.get('phone', '')
+                    business_email = settings.get('email', self.from_email)
+                    business_website = settings.get('website', '')
+                    business_city = settings.get('city', '')
+                    print(f"📧 Invoice loaded from database - Business: {business_name}")
                 else:
-                    print(f"⚠️ Database not found at any path")
-                    
+                    print("⚠️ No business settings found in database")
             except Exception as db_error:
                 print(f"⚠️ Database error: {db_error}")
                 import traceback

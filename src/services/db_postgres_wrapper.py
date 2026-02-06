@@ -1647,7 +1647,6 @@ class PostgreSQLDatabaseWrapper:
         if '_sqlite_db_proxy' not in self.__dict__:
             # Temporarily clear DATABASE_URL to create SQLite instance
             original_url = os.environ.pop('DATABASE_URL', None)
-            original_supabase = os.environ.pop('SUPABASE_DB_URL', None)
             
             try:
                 # Create Database with a temporary path (won't actually be used for data)
@@ -1665,8 +1664,6 @@ class PostgreSQLDatabaseWrapper:
                 # Restore environment variables
                 if original_url:
                     os.environ['DATABASE_URL'] = original_url
-                if original_supabase:
-                    os.environ['SUPABASE_DB_URL'] = original_supabase
         
         # Get the attribute from the proxied Database instance
         try:

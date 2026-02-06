@@ -1,7 +1,7 @@
 """
 Database models for AI Trades Receptionist
 Stores client information, jobs, notes, and workers
-Supports both SQLite (local) and PostgreSQL (production via Supabase)
+Automatically uses PostgreSQL when DATABASE_URL is set, otherwise uses SQLite
 """
 import os
 import sqlite3
@@ -14,14 +14,14 @@ import json
 from src.utils.config import config
 
 # Check if PostgreSQL is configured
-USE_POSTGRES = bool(os.getenv('DATABASE_URL') or os.getenv('SUPABASE_DB_URL'))
+USE_POSTGRES = bool(os.getenv('DATABASE_URL'))
 
 if USE_POSTGRES:
     try:
         import psycopg2
         from psycopg2.extras import RealDictCursor
         POSTGRES_AVAILABLE = True
-        db_url = os.getenv('DATABASE_URL') or os.getenv('SUPABASE_DB_URL')
+        db_url = os.getenv('DATABASE_URL')
         print(f"✅ Using PostgreSQL database")
         print(f"   Database: {db_url[:30]}..." if db_url else "   No URL found")
     except ImportError as e:
@@ -1710,7 +1710,7 @@ def get_database() -> Database:
             # Import PostgreSQL database wrapper
             try:
                 from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
-                db_url = os.getenv('DATABASE_URL') or os.getenv('SUPABASE_DB_URL')
+                db_url = os.getenv('DATABASE_URL')
                 _db = PostgreSQLDatabaseWrapper(db_url)
                 print("✅ Connected to PostgreSQL database")
             except Exception as e:

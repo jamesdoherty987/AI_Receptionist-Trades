@@ -3,7 +3,6 @@ Address validation and normalization utility for Irish addresses
 Handles full addresses, postcodes, and eircodes
 """
 import re
-import sqlite3
 from typing import Dict, Optional, Tuple, List
 from dataclasses import dataclass
 

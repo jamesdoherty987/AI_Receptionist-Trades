@@ -1,7 +1,7 @@
 """
 Settings Manager for AI Receptionist  
 Manages both business and developer settings
-Note: Uses main database (SQLite local, PostgreSQL production)
+Note: Automatically uses PostgreSQL when DATABASE_URL is set, otherwise uses SQLite
 """
 import json
 import os
@@ -12,13 +12,12 @@ from typing import Dict, Any, Optional, List
 class SettingsManager:
     """Manage application settings"""
     
-    def __init__(self, db_path: str = "data/receptionist.db"):
+    def __init__(self):
         """Initialize settings manager - automatically uses PostgreSQL if DATABASE_URL is set"""
-        self.db_path = db_path
         # Note: services_path is deprecated - services now stored in database
         
         # Check if using PostgreSQL
-        self.use_postgres = bool(os.getenv('DATABASE_URL') or os.getenv('SUPABASE_DB_URL'))
+        self.use_postgres = bool(os.getenv('DATABASE_URL'))
         
         self.init_settings_tables()
     
