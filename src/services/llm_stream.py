@@ -66,13 +66,13 @@ def load_business_info():
         if hasattr(db, 'use_postgres') and db.use_postgres:
             from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("SELECT company_name, business_hours, phone, email, address FROM companies ORDER BY id LIMIT 1")
+            cursor.execute("SELECT company_name, phone, email, address FROM companies ORDER BY id LIMIT 1")
             row = cursor.fetchone()
             db.return_connection(conn)
             company = dict(row) if row else None
         else:
             cursor = conn.cursor()
-            cursor.execute("SELECT company_name, business_hours, phone, email, address FROM companies ORDER BY id LIMIT 1")
+            cursor.execute("SELECT company_name, phone, email, address FROM companies ORDER BY id LIMIT 1")
             row = cursor.fetchone()
             if row:
                 cursor.execute("PRAGMA table_info(companies)")
@@ -2305,8 +2305,7 @@ When customer wants to reschedule:
         print(f"   (Split marker already yielded during stream)")
         print(f"   ⏳ Now executing tools...")
         
-        # Import services inside this block to avoid shadowing issues
-        from src.utils.config import config
+        # Import database service (config already imported at module level)
         from src.services.database import get_database
         
         # Prepare services for tool execution
