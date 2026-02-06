@@ -13,7 +13,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from flask import Flask, Response, request, jsonify, send_from_directory, session
 from flask_cors import CORS
-from flask_compress import Compress
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.twiml.messaging_response import MessagingResponse
 from src.utils.config import config
@@ -32,9 +31,6 @@ app = Flask(__name__,
 
 # Configure CORS for development
 CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
-
-# Enable response compression for better performance
-Compress(app)
 
 # Configure session
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
