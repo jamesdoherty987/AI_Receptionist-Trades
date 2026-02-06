@@ -59,6 +59,7 @@ logs/
 # Ngrok
 ngrok
 ngrok.exe
+ngrok.yml
 
 # Testing
 .pytest_cache/
