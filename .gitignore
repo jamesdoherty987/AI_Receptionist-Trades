@@ -42,8 +42,8 @@ venv.bak/
 *~
 .DS_Store
 
-# Python version file
-.python-version
+# Python version file - now tracked for Render deployments
+# .python-version
 
 # Google Calendar - Keep credentials template, ignore tokens
 config/token.json
