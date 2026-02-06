@@ -351,6 +351,7 @@ class PostgreSQLDatabaseWrapper:
             print(f"Error creating company: {e}")
             return None
         finally:
+            cursor.close()
             self.return_connection(conn)
     
     def get_company_by_email(self, email: str) -> Optional[Dict]:
@@ -774,30 +775,32 @@ class PostgreSQLDatabaseWrapper:
         
         try:
             if not phone_number:
-                # Get first available number if none specified
+                # Get first available number if none specified - lock the row immediately
                 cursor.execute("""
                     SELECT phone_number FROM twilio_phone_numbers 
                     WHERE status = 'available'
                     ORDER BY created_at
                     LIMIT 1
+                    FOR UPDATE SKIP LOCKED
                 """)
                 result = cursor.fetchone()
                 
                 if not result:
-                    self.return_connection(conn)
+                    conn.rollback()
                     raise Exception("No available phone numbers in pool")
                 
                 phone_number = result[0]
             else:
-                # Verify the specific number is available
+                # Verify the specific number is available and lock it
                 cursor.execute("""
                     SELECT phone_number FROM twilio_phone_numbers 
                     WHERE phone_number = %s AND status = 'available'
+                    FOR UPDATE SKIP LOCKED
                 """, (phone_number,))
                 result = cursor.fetchone()
                 
                 if not result:
-                    self.return_connection(conn)
+                    conn.rollback()
                     raise Exception(f"Phone number {phone_number} is not available")
             
             # Update phone number status
@@ -809,6 +812,11 @@ class PostgreSQLDatabaseWrapper:
                 WHERE phone_number = %s
             """, (company_id, phone_number))
             
+            # Verify the update succeeded
+            if cursor.rowcount == 0:
+                conn.rollback()
+                raise Exception(f"Failed to update phone number status")
+            
             # Update company with phone number
             cursor.execute("""
                 UPDATE companies 
@@ -816,15 +824,25 @@ class PostgreSQLDatabaseWrapper:
                 WHERE id = %s
             """, (phone_number, company_id))
             
+            # Verify company update succeeded
+            if cursor.rowcount == 0:
+                conn.rollback()
+                raise Exception(f"Failed to update company with phone number")
+            
             conn.commit()
-            self.return_connection(conn)
             
             print(f"✅ Assigned {phone_number} to company {company_id}")
             return phone_number
         except Exception as e:
-            self.return_connection(conn)
+            try:
+                conn.rollback()
+            except:
+                pass
             print(f"❌ Error assigning phone number: {e}")
             raise
+        finally:
+            cursor.close()
+            self.return_connection(conn)
     
     def get_clients_by_name(self, name: str) -> List[Dict]:
         """Get all clients with a given name (case-insensitive)"""

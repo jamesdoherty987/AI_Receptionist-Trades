@@ -29,15 +29,37 @@ app = Flask(__name__,
             static_folder=str(static_folder),
             static_url_path='')
 
-# Configure CORS for development
-CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+# Configure CORS - allow specific origins for production
+allowed_origins = [
+    "https://www.bookedforyou.info",
+    "https://bookedforyou.info",
+    "http://localhost:5173",  # Vite dev server
+    "http://localhost:5000",  # Flask dev server
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5000"
+]
+
+# Add ngrok URLs from environment if present
+public_url = os.getenv('PUBLIC_URL')
+if public_url:
+    allowed_origins.append(public_url)
+    # Also add without https:// prefix variations
+    if public_url.startswith('https://'):
+        allowed_origins.append(public_url.replace('https://', 'http://'))
+
+CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credentials=True)
 
 # Configure session
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Required for cross-origin cookies
-app.config['SESSION_COOKIE_SECURE'] = True  # Required for HTTPS in production
+
+# Only require Secure cookies on HTTPS (production and ngrok)
+# In production, this will be True. Locally with ngrok HTTPS, also True.
+is_production = os.getenv('FLASK_ENV') == 'production'
+uses_https = public_url and public_url.startswith('https://') if public_url else False
+app.config['SESSION_COOKIE_SECURE'] = is_production or uses_https
 
 
 # Helper functions for authentication
@@ -529,11 +551,9 @@ def change_password():
 # ============================================
 
 @app.route("/api/phone-numbers/available", methods=["GET"])
+@login_required
 def get_available_phone_numbers():
     """Get list of available phone numbers"""
-    if 'company_id' not in session:
-        return jsonify({"error": "Authentication required"}), 401
-    
     db = get_database()
     
     try:
@@ -561,11 +581,9 @@ def get_available_phone_numbers():
 
 
 @app.route("/api/phone-numbers/assign", methods=["POST"])
+@login_required
 def assign_phone_number():
     """Assign a phone number to the current company"""
-    if 'company_id' not in session:
-        return jsonify({"error": "Authentication required"}), 401
-    
     data = request.json
     phone_number = data.get('phone_number')
     
@@ -578,7 +596,10 @@ def assign_phone_number():
     # Check if company already has a phone number
     company = db.get_company(company_id)
     if company.get('twilio_phone_number'):
-        return jsonify({"error": "Company already has a phone number assigned"}), 400
+        return jsonify({
+            "success": False,
+            "error": "Company already has a phone number assigned"
+        }), 400
     
     try:
         assigned_number = db.assign_phone_number(company_id, phone_number)
@@ -588,15 +609,18 @@ def assign_phone_number():
             "phone_number": assigned_number
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        error_msg = str(e)
+        print(f"❌ Phone assignment failed for company {company_id}: {error_msg}")
+        return jsonify({
+            "success": False,
+            "error": error_msg
+        }), 400
 
 
 @app.route("/api/phone-numbers/current", methods=["GET"])
+@login_required
 def get_current_phone_number():
     """Get the current company's assigned phone number"""
-    if 'company_id' not in session:
-        return jsonify({"error": "Authentication required"}), 401
-    
     db = get_database()
     company = db.get_company(session['company_id'])
     
@@ -605,8 +629,6 @@ def get_current_phone_number():
         "phone_number": company.get('twilio_phone_number'),
         "has_phone": bool(company.get('twilio_phone_number'))
     })
-    
-    return jsonify({"error": "Failed to change password"}), 500
 
 
 @app.route("/twilio/sms", methods=["POST"])
