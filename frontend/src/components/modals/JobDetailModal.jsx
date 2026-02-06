@@ -219,10 +219,26 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
   const getDirectionsUrl = () => {
     const address = job.job_address || job.address;
     const eircode = job.eircode;
-    let destination = eircode || address || '';
+    
+    // Build the most specific destination possible
+    let destination = '';
+    if (address && eircode) {
+      // Use both for best accuracy
+      destination = `${address}, ${eircode}`;
+    } else if (eircode) {
+      // Eircode alone is very accurate in Ireland
+      destination = eircode;
+    } else if (address) {
+      // Fall back to address only
+      destination = address;
+    }
+    
     if (destination) {
+      console.log('Get Directions - Destination:', destination);
       return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
     }
+    
+    console.warn('No address or eircode found for job:', job);
     return null;
   };
 

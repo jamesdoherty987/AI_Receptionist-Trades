@@ -240,7 +240,7 @@ class Database:
         """)
         columns = [column[1] for column in cursor.fetchall()]
         if 'charge' not in columns:
-            cursor.execute("""
+            cursor.execute(f"""
                 ALTER TABLE bookings ADD COLUMN charge REAL DEFAULT {config.DEFAULT_APPOINTMENT_CHARGE}
             """)
             print("✅ Added charge column to bookings table")

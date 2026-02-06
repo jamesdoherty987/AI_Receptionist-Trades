@@ -62,13 +62,13 @@ class EmailReminderService:
             return False
         
         try:
-            from src.services.database import get_database
+            from src.services.settings_manager import get_settings_manager
             
             # Load business name from database
             business_name = 'Your Business'
             try:
-                db = get_database()
-                settings = db.get_business_settings()
+                settings_mgr = get_settings_manager()
+                settings = settings_mgr.get_business_settings()
                 if settings and settings.get('business_name'):
                     business_name = settings['business_name']
             except Exception as e:
@@ -204,6 +204,7 @@ Best regards,
         
         try:
             from src.services.database import get_database
+            from src.services.settings_manager import get_settings_manager
             from src.utils.config import config
             
             # Load business info from database
@@ -214,12 +215,13 @@ Best regards,
             business_city = ''
             
             try:
-                db = get_database()
-                settings = db.get_business_settings()
+                # Use SettingsManager instead of direct database call
+                settings_mgr = get_settings_manager()
+                settings = settings_mgr.get_business_settings()
                 if settings:
                     business_name = settings.get('business_name')
-                    business_phone = settings.get('phone', '')
-                    business_email = settings.get('email', self.from_email)
+                    business_phone = settings.get('phone', '') or settings.get('business_phone', '')
+                    business_email = settings.get('email', self.from_email) or settings.get('business_email', self.from_email)
                     business_website = settings.get('website', '')
                     business_city = settings.get('city', '')
                     print(f"📧 Invoice loaded from database - Business: {business_name}")
