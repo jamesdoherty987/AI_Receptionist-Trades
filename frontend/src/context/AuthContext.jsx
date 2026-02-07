@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
+import { clearSensitiveData } from '../utils/security';
 
 const AuthContext = createContext(null);
 
@@ -81,7 +82,8 @@ export function AuthProvider({ children }) {
       console.error('Logout error:', error.message || error);
     } finally {
       setUser(null);
-      localStorage.removeItem('authUser');
+      // Clear all sensitive data from storage
+      clearSensitiveData();
     }
   };
 

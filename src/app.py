@@ -1,22 +1,30 @@
 """
 Flask application for Twilio voice webhook
+Secured against OWASP Top 10 vulnerabilities
 """
 import os
 import sys
 import secrets
-import hashlib
 from pathlib import Path
 from functools import wraps
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from flask import Flask, Response, request, jsonify, send_from_directory, session
+from flask import Flask, Response, request, jsonify, send_from_directory, session, g
 from flask_cors import CORS
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.twiml.messaging_response import MessagingResponse
 from src.utils.config import config
 from src.services.database import get_database
+from src.utils.security import (
+    hash_password, verify_password, needs_rehash,
+    get_rate_limiter, get_security_logger,
+    sanitize_string, validate_email, validate_id,
+    apply_security_headers, configure_secure_session,
+    generate_csrf_token, verify_csrf_token,
+    validate_field_names, ALLOWED_COMPANY_FIELDS
+)
 # Google Calendar disabled - USE_GOOGLE_CALENDAR = False
 
 # Set up Flask to serve React build or development files
@@ -49,34 +57,29 @@ if public_url:
 
 CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credentials=True)
 
-# Configure session
+# Configure secure session
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Required for cross-origin cookies
+configure_secure_session(app)
 
-# Only require Secure cookies on HTTPS (production and ngrok)
-# In production, this will be True. Locally with ngrok HTTPS, also True.
-is_production = os.getenv('FLASK_ENV') == 'production'
-uses_https = public_url and public_url.startswith('https://') if public_url else False
-app.config['SESSION_COOKIE_SECURE'] = is_production or uses_https
+# Security: Add security headers to all responses
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses"""
+    return apply_security_headers(response)
+
+# Security: Log request details for security monitoring
+@app.before_request
+def log_request():
+    """Log request for security monitoring"""
+    g.request_start_time = __import__('time').time()
+    g.client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if g.client_ip and ',' in g.client_ip:
+        g.client_ip = g.client_ip.split(',')[0].strip()
 
 
-# Helper functions for authentication
-def hash_password(password: str) -> str:
-    """Hash a password using SHA-256 with salt"""
-    salt = secrets.token_hex(16)
-    password_hash = hashlib.sha256((password + salt).encode()).hexdigest()
-    return f"{salt}:{password_hash}"
-
-
-def verify_password(password: str, stored_hash: str) -> bool:
-    """Verify a password against a stored hash"""
-    try:
-        salt, password_hash = stored_hash.split(':')
-        return hashlib.sha256((password + salt).encode()).hexdigest() == password_hash
-    except:
-        return False
+def get_client_ip():
+    """Get the real client IP address"""
+    return getattr(g, 'client_ip', request.remote_addr)
 
 
 def login_required(f):
@@ -84,9 +87,37 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'company_id' not in session:
+            get_security_logger().log_failed_auth(
+                request.path,
+                get_client_ip(),
+                'No session'
+            )
             return jsonify({"error": "Authentication required"}), 401
         return f(*args, **kwargs)
     return decorated_function
+
+
+def rate_limit(max_requests: int = 60, window_seconds: int = 60):
+    """Decorator for rate limiting API endpoints"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            limiter = get_rate_limiter()
+            ip = get_client_ip()
+            
+            allowed, remaining = limiter.check_rate_limit(
+                ip, max_requests, window_seconds
+            )
+            
+            if not allowed:
+                get_security_logger().log_rate_limit(ip, request.path)
+                return jsonify({
+                    "error": "Too many requests. Please try again later."
+                }), 429
+            
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 # Start auto-complete scheduler on app startup
 print("\\n🚀 Starting appointment auto-complete scheduler...")
@@ -252,6 +283,7 @@ def health():
 # ============================================
 
 @app.route("/api/auth/signup", methods=["POST"])
+@rate_limit(max_requests=5, window_seconds=300)  # 5 signups per 5 minutes
 def signup():
     """Create a new company account"""
     data = request.json
@@ -262,15 +294,30 @@ def signup():
         if not data.get(field):
             return jsonify({"error": f"{field.replace('_', ' ').title()} is required"}), 400
     
-    # Validate email format
+    # Validate and sanitize email
     email = data['email'].lower().strip()
-    if '@' not in email or '.' not in email:
+    if not validate_email(email):
         return jsonify({"error": "Invalid email format"}), 400
     
-    # Validate password strength
+    # Validate password strength (OWASP recommendations)
     password = data['password']
     if len(password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
+    if len(password) > 128:
+        return jsonify({"error": "Password is too long"}), 400
+    
+    # Additional password complexity checks
+    has_upper = any(c.isupper() for c in password)
+    has_lower = any(c.islower() for c in password)
+    has_digit = any(c.isdigit() for c in password)
+    if not (has_upper and has_lower and has_digit):
+        return jsonify({
+            "error": "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+        }), 400
+    
+    # Sanitize input fields
+    company_name = sanitize_string(data['company_name'], max_length=200)
+    owner_name = sanitize_string(data['owner_name'], max_length=200)
     
     db = get_database()
     
@@ -279,15 +326,15 @@ def signup():
     if existing:
         return jsonify({"error": "An account with this email already exists"}), 409
     
-    # Hash password and create account
+    # Hash password using secure algorithm (bcrypt)
     password_hash = hash_password(password)
     company_id = db.create_company(
-        company_name=data['company_name'],
-        owner_name=data['owner_name'],
+        company_name=company_name,
+        owner_name=owner_name,
         email=email,
         password_hash=password_hash,
-        phone=data.get('phone'),
-        trade_type=data.get('trade_type')
+        phone=sanitize_string(data.get('phone', ''), max_length=20),
+        trade_type=sanitize_string(data.get('trade_type', ''), max_length=100)
     )
     
     if company_id:
@@ -313,9 +360,13 @@ def signup():
 
 
 @app.route("/api/auth/login", methods=["POST"])
+@rate_limit(max_requests=10, window_seconds=60)  # 10 login attempts per minute
 def login():
     """Log in to an existing account"""
     data = request.json
+    security_logger = get_security_logger()
+    rate_limiter = get_rate_limiter()
+    client_ip = get_client_ip()
     
     email = data.get('email', '').lower().strip()
     password = data.get('password', '')
@@ -323,14 +374,50 @@ def login():
     if not email or not password:
         return jsonify({"error": "Email and password are required"}), 400
     
+    # Check if this IP/email is blocked due to too many failed attempts
+    if rate_limiter.is_blocked(email) or rate_limiter.is_blocked(client_ip):
+        security_logger.log_failed_auth(
+            '/api/auth/login',
+            client_ip,
+            'Account temporarily blocked'
+        )
+        return jsonify({
+            "error": "Too many failed attempts. Please try again later."
+        }), 429
+    
     db = get_database()
     company = db.get_company_by_email(email)
     
     if not company:
+        # Record failed attempt but don't reveal if email exists
+        rate_limiter.record_failed_login(email)
+        rate_limiter.record_failed_login(client_ip)
+        security_logger.log_login_attempt(email, client_ip, False)
         return jsonify({"error": "Invalid email or password"}), 401
     
     if not verify_password(password, company['password_hash']):
+        # Record failed attempt
+        should_block = rate_limiter.record_failed_login(email)
+        rate_limiter.record_failed_login(client_ip)
+        security_logger.log_login_attempt(email, client_ip, False)
+        
+        if should_block:
+            return jsonify({
+                "error": "Too many failed attempts. Account temporarily locked."
+            }), 429
+        
         return jsonify({"error": "Invalid email or password"}), 401
+    
+    # Successful login - clear failed attempts
+    rate_limiter.clear_failed_logins(email)
+    rate_limiter.clear_failed_logins(client_ip)
+    security_logger.log_login_attempt(email, client_ip, True)
+    
+    # Check if password hash needs upgrade (migrate from weak hash)
+    if needs_rehash(company['password_hash']):
+        new_hash = hash_password(password)
+        db.update_company_password(company['id'], new_hash)
+        print(f"✅ Upgraded password hash for user {company['id']}")
     
     # Update last login
     db.update_last_login(company['id'])
@@ -518,6 +605,7 @@ def update_profile():
 
 
 @app.route("/api/auth/change-password", methods=["POST"])
+@rate_limit(max_requests=5, window_seconds=300)  # 5 password changes per 5 minutes
 def change_password():
     """Change password for logged in user"""
     if 'company_id' not in session:
@@ -530,19 +618,40 @@ def change_password():
     if not current_password or not new_password:
         return jsonify({"error": "Current and new password are required"}), 400
     
+    # Validate new password strength
     if len(new_password) < 8:
         return jsonify({"error": "New password must be at least 8 characters"}), 400
+    if len(new_password) > 128:
+        return jsonify({"error": "Password is too long"}), 400
+    
+    has_upper = any(c.isupper() for c in new_password)
+    has_lower = any(c.islower() for c in new_password)
+    has_digit = any(c.isdigit() for c in new_password)
+    if not (has_upper and has_lower and has_digit):
+        return jsonify({
+            "error": "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+        }), 400
     
     db = get_database()
     company = db.get_company(session['company_id'])
     
     if not verify_password(current_password, company['password_hash']):
+        get_security_logger().log_failed_auth(
+            '/api/auth/change-password',
+            get_client_ip(),
+            'Invalid current password'
+        )
         return jsonify({"error": "Current password is incorrect"}), 401
     
+    # Hash with secure algorithm
     new_hash = hash_password(new_password)
     success = db.update_company_password(session['company_id'], new_hash)
     
     if success:
+        get_security_logger().log_password_change(
+            session['company_id'],
+            get_client_ip()
+        )
         return jsonify({"success": True, "message": "Password changed successfully"})
 
 
@@ -870,6 +979,7 @@ def ai_receptionist_toggle_api():
 
 
 @app.route("/api/settings/history", methods=["GET"])
+@login_required
 def settings_history_api():
     """Get settings change history"""
     from src.services.settings_manager import get_settings_manager
@@ -881,6 +991,7 @@ def settings_history_api():
 
 
 @app.route("/api/services/menu", methods=["GET", "POST"])
+@login_required
 def services_menu_api():
     """Get or update services menu"""
     from src.services.settings_manager import get_settings_manager
@@ -899,6 +1010,7 @@ def services_menu_api():
 
 
 @app.route("/api/services/menu/service", methods=["POST"])
+@login_required
 def add_service_api():
     """Add a new service"""
     from src.services.settings_manager import get_settings_manager
@@ -912,6 +1024,7 @@ def add_service_api():
 
 
 @app.route("/api/services/menu/service/<service_id>", methods=["PUT", "DELETE"])
+@login_required
 def manage_service_api(service_id):
     """Update or delete a service"""
     from src.services.settings_manager import get_settings_manager
@@ -932,6 +1045,7 @@ def manage_service_api(service_id):
 
 
 @app.route("/api/services/business-hours", methods=["GET", "POST"])
+@login_required
 def business_hours_api():
     """Get or update business hours"""
     from src.services.settings_manager import get_settings_manager
@@ -950,6 +1064,7 @@ def business_hours_api():
 
 
 @app.route("/api/clients", methods=["GET", "POST"])
+@login_required
 def clients_api():
     """Get all clients or create a new client"""
     db = get_database()
@@ -969,6 +1084,7 @@ def clients_api():
 
 
 @app.route("/api/clients/<int:client_id>", methods=["GET", "PUT"])
+@login_required
 def client_api(client_id):
     """Get or update a specific client"""
     db = get_database()
@@ -991,6 +1107,7 @@ def client_api(client_id):
 
 
 @app.route("/api/clients/<int:client_id>/notes", methods=["POST"])
+@login_required
 def add_note_api(client_id):
     """Add a note to a client"""
     db = get_database()
@@ -1005,6 +1122,7 @@ def add_note_api(client_id):
 
 
 @app.route("/api/bookings/<int:booking_id>/notes", methods=["GET", "POST"])
+@login_required
 def appointment_notes_api(booking_id):
     """Get or add notes for a specific appointment"""
     db = get_database()
@@ -1047,6 +1165,7 @@ def appointment_notes_api(booking_id):
 
 
 @app.route("/api/bookings/<int:booking_id>/notes/<int:note_id>", methods=["PUT", "DELETE"])
+@login_required
 def appointment_note_api(booking_id, note_id):
     """Update or delete a specific appointment note"""
     db = get_database()
@@ -1098,6 +1217,7 @@ def appointment_note_api(booking_id, note_id):
 
 
 @app.route("/api/bookings", methods=["GET", "POST"])
+@login_required
 def bookings_api():
     """Get all bookings or create a new booking"""
     db = get_database()
@@ -1224,6 +1344,7 @@ def bookings_api():
 
 
 @app.route("/api/bookings/<int:booking_id>", methods=["GET", "PUT"])
+@login_required
 def booking_detail_api(booking_id):
     """Get or update a specific booking"""
     db = get_database()
@@ -1304,6 +1425,7 @@ def booking_detail_api(booking_id):
 
 
 @app.route("/api/bookings/<int:booking_id>/complete", methods=["POST"])
+@login_required
 def complete_booking_api(booking_id):
     """Mark appointment as complete and update client description using AI"""
     db = get_database()
@@ -1349,6 +1471,7 @@ def complete_booking_api(booking_id):
 
 
 @app.route("/api/bookings/<int:booking_id>/send-invoice", methods=["POST"])
+@login_required
 def send_invoice_api(booking_id):
     """Send invoice email for a booking with Stripe payment link"""
     db = get_database()
@@ -1546,6 +1669,7 @@ def auto_complete_appointments():
 
 
 @app.route("/api/finances/stats", methods=["GET"])
+@login_required
 def financial_stats_api():
     """Get financial statistics"""
     db = get_database()
@@ -1554,6 +1678,7 @@ def financial_stats_api():
 
 
 @app.route("/api/stats", methods=["GET"])
+@login_required
 def stats_api():
     """Get dashboard statistics"""
     db = get_database()
@@ -1591,6 +1716,7 @@ def config_api():
 
 
 @app.route("/api/workers", methods=["GET", "POST"])
+@login_required
 def workers_api():
     """Get all workers or create a new worker"""
     db = get_database()
@@ -1613,6 +1739,7 @@ def workers_api():
 
 
 @app.route("/api/workers/<int:worker_id>", methods=["GET", "PUT", "DELETE"])
+@login_required
 def worker_api(worker_id):
     """Get, update or delete a specific worker"""
     db = get_database()
@@ -1636,6 +1763,7 @@ def worker_api(worker_id):
 
 
 @app.route("/api/bookings/<int:booking_id>/assign-worker", methods=["POST"])
+@login_required
 def assign_worker_to_job_api(booking_id):
     """Assign a worker to a job"""
     db = get_database()
@@ -1654,6 +1782,7 @@ def assign_worker_to_job_api(booking_id):
 
 
 @app.route("/api/bookings/<int:booking_id>/remove-worker", methods=["POST"])
+@login_required
 def remove_worker_from_job_api(booking_id):
     """Remove a worker from a job"""
     db = get_database()
@@ -1672,6 +1801,7 @@ def remove_worker_from_job_api(booking_id):
 
 
 @app.route("/api/bookings/<int:booking_id>/workers", methods=["GET"])
+@login_required
 def get_job_workers_api(booking_id):
     """Get all workers assigned to a job"""
     db = get_database()
@@ -1680,6 +1810,7 @@ def get_job_workers_api(booking_id):
 
 
 @app.route("/api/workers/<int:worker_id>/jobs", methods=["GET"])
+@login_required
 def get_worker_jobs_api(worker_id):
     """Get all jobs assigned to a worker"""
     db = get_database()
@@ -1689,6 +1820,7 @@ def get_worker_jobs_api(worker_id):
 
 
 @app.route("/api/workers/<int:worker_id>/schedule", methods=["GET"])
+@login_required
 def get_worker_schedule_api(worker_id):
     """Get worker's schedule"""
     db = get_database()
@@ -1699,6 +1831,7 @@ def get_worker_schedule_api(worker_id):
 
 
 @app.route("/api/workers/<int:worker_id>/hours-this-week", methods=["GET"])
+@login_required
 def get_worker_hours_this_week_api(worker_id):
     """Get hours worked by worker this week"""
     db = get_database()
@@ -1707,6 +1840,8 @@ def get_worker_hours_this_week_api(worker_id):
 
 
 @app.route("/api/email/send", methods=["POST"])
+@login_required
+@rate_limit(max_requests=10, window_seconds=60)  # Rate limit email sending
 def send_email_to_client():
     """Send email to a client"""
     try:
@@ -1940,6 +2075,7 @@ def chat_reset():
 
 
 @app.route("/api/finances", methods=["GET"])
+@login_required
 def get_finances():
     """Get financial overview and stats"""
     try:

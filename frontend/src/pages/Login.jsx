@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { validateEmail, rateLimiter } from '../utils/security';
 import './Auth.css';
 
 function Login() {
@@ -23,6 +24,19 @@ function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Client-side rate limiting to prevent rapid-fire login attempts
+    if (!rateLimiter.isAllowed('login', 5, 60000)) {
+      setError('Too many login attempts. Please wait a moment.');
+      return;
+    }
+    
+    // Validate email format before sending
+    if (!validateEmail(formData.email)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+    
     setLoading(true);
     setError('');
 

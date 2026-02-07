@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PhoneConfigModal from '../components/modals/PhoneConfigModal';
+import { validateEmail, validatePassword, sanitizeString } from '../utils/security';
 import './Auth.css';
 
 function Signup() {
@@ -64,12 +65,15 @@ function Signup() {
       setError('Email is required');
       return false;
     }
-    if (!formData.email.includes('@')) {
+    // Use secure email validation
+    if (!validateEmail(formData.email)) {
       setError('Please enter a valid email');
       return false;
     }
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters');
+    // Use secure password validation
+    const passwordCheck = validatePassword(formData.password);
+    if (!passwordCheck.valid) {
+      setError(passwordCheck.message);
       return false;
     }
     if (formData.password !== formData.confirm_password) {
@@ -100,10 +104,11 @@ function Signup() {
     setError('');
 
     try {
+      // Sanitize inputs before sending to server
       const result = await signup({
-        company_name: formData.company_name,
-        owner_name: formData.owner_name,
-        email: formData.email,
+        company_name: sanitizeString(formData.company_name),
+        owner_name: sanitizeString(formData.owner_name),
+        email: formData.email.trim().toLowerCase(),
         phone: formData.phone,
         trade_type: formData.trade_type,
         password: formData.password
