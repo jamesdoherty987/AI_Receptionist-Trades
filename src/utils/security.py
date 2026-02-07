@@ -147,7 +147,9 @@ class RateLimiter:
     """
     
     def __init__(self):
-        self._lock = threading.Lock()
+        # Use RLock (reentrant lock) to allow nested lock acquisition
+        # This prevents deadlock when check_rate_limit calls is_blocked
+        self._lock = threading.RLock()
         self._requests: Dict[str, list] = defaultdict(list)
         self._blocked: Dict[str, datetime] = {}
         
