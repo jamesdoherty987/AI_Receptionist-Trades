@@ -119,14 +119,43 @@ def rate_limit(max_requests: int = 60, window_seconds: int = 60):
         return decorated_function
     return decorator
 
-# Start auto-complete scheduler on app startup
-print("\\n🚀 Starting appointment auto-complete scheduler...")
-try:
-    from src.services.appointment_auto_complete import start_auto_complete_scheduler
-    start_auto_complete_scheduler(interval_minutes=60)  # Check every hour
-    print("✅ Auto-complete scheduler started successfully\\n")
-except Exception as e:
-    print(f"⚠️  Warning: Could not start auto-complete scheduler: {e}\\n")
+
+# Flag to track if scheduler has been started (for worker-based initialization)
+_scheduler_started = False
+
+def start_scheduler_once():
+    """Start the auto-complete scheduler only once per worker"""
+    global _scheduler_started
+    if _scheduler_started:
+        return
+    _scheduler_started = True
+    
+    # Only start scheduler if this is the main worker (worker 0) or in development
+    worker_id = os.getenv('GUNICORN_WORKER_ID', os.getenv('WORKER_ID', '0'))
+    is_main_worker = worker_id in ('0', '', None)
+    
+    if not is_main_worker:
+        return
+    
+    print("\\n🚀 Starting appointment auto-complete scheduler...")
+    try:
+        from src.services.appointment_auto_complete import start_auto_complete_scheduler
+        start_auto_complete_scheduler(interval_minutes=60)  # Check every hour
+        print("✅ Auto-complete scheduler started successfully\\n")
+    except Exception as e:
+        print(f"⚠️  Warning: Could not start auto-complete scheduler: {e}\\n")
+
+
+# Initialize scheduler on first request (lazy init)
+_scheduler_initialized = False
+
+@app.before_request
+def init_scheduler():
+    """Initialize scheduler on first request"""
+    global _scheduler_initialized
+    if not _scheduler_initialized:
+        _scheduler_initialized = True
+        start_scheduler_once()
 
 
 @app.route("/twilio/voice", methods=["POST"])

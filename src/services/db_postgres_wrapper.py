@@ -10,6 +10,7 @@ from psycopg2 import pool as psycopg2_pool
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 from contextlib import contextmanager
+import threading
 
 
 class PostgreSQLDatabaseWrapper:
@@ -18,23 +19,68 @@ class PostgreSQLDatabaseWrapper:
     def __init__(self, database_url: str):
         """Initialize PostgreSQL connection pool"""
         self.database_url = database_url
-        # Connection pool sized for free tier - keeps connections warm
-        self.connection_pool = psycopg2_pool.SimpleConnectionPool(
-            minconn=2,  # Keep 2 connections always open
-            maxconn=20,  # Allow up to 20 concurrent connections
-            dsn=database_url
+        self._pool_lock = threading.Lock()
+        
+        # Add connection options for resilience
+        # - connect_timeout: fail fast on initial connect
+        # - keepalives: detect dead connections
+        # - application_name: for monitoring
+        connect_options = {
+            'connect_timeout': 10,
+            'keepalives': 1,
+            'keepalives_idle': 30,
+            'keepalives_interval': 10,
+            'keepalives_count': 5,
+            'application_name': 'ai_receptionist'
+        }
+        
+        # Build DSN with options
+        if '?' in database_url:
+            dsn = database_url
+        else:
+            option_str = '&'.join(f'{k}={v}' for k, v in connect_options.items())
+            dsn = f"{database_url}?{option_str}"
+        
+        # Use ThreadedConnectionPool for thread-safety with gevent workers
+        self.connection_pool = psycopg2_pool.ThreadedConnectionPool(
+            minconn=1,  # Keep 1 connection warm
+            maxconn=10,  # Conservative limit for free tier
+            dsn=dsn
         )
         self.use_postgres = True  # Flag for compatibility
-        print(f"✅ PostgreSQL connection pool initialized (2-20 connections)")
+        print(f"✅ PostgreSQL ThreadedConnectionPool initialized (1-10 connections)")
         self.init_database()
     
     def get_connection(self):
         """Get connection from pool (compatible with SQLite interface)"""
-        return self.connection_pool.getconn()
+        try:
+            conn = self.connection_pool.getconn()
+            # Test connection is still alive
+            try:
+                conn.cursor().execute("SELECT 1")
+            except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                # Connection is dead, close and get fresh one
+                try:
+                    self.connection_pool.putconn(conn, close=True)
+                except Exception:
+                    pass
+                conn = self.connection_pool.getconn()
+            return conn
+        except psycopg2_pool.PoolError as e:
+            # Pool exhausted - create direct connection as fallback
+            print(f"⚠️ Connection pool exhausted, creating direct connection: {e}")
+            return psycopg2.connect(self.database_url, connect_timeout=10)
     
     def return_connection(self, conn):
         """Return connection to pool"""
-        self.connection_pool.putconn(conn)
+        try:
+            self.connection_pool.putconn(conn)
+        except Exception as e:
+            # Connection might not belong to pool (fallback connection)
+            try:
+                conn.close()
+            except Exception:
+                pass
     
     def init_database(self):
         """Initialize database tables with PostgreSQL syntax"""

@@ -5,7 +5,7 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     pythonVersion: 3.12.7
-    startCommand: gunicorn --worker-class gevent --workers 2 --worker-connections 500 --bind 0.0.0.0:5000 --timeout 120 --keep-alive 75 --max-requests 1000 --max-requests-jitter 100 --preload src.app:app
+    startCommand: gunicorn --worker-class gevent --workers 2 --worker-connections 200 --bind 0.0.0.0:5000 --timeout 30 --keep-alive 5 --max-requests 500 --max-requests-jitter 50 src.app:app
     envVars:
       - key: FLASK_ENV
         value: production
