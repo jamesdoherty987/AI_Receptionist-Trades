@@ -444,6 +444,10 @@
 .empty-state-icon {
   font-size: 3rem;
   margin-bottom: 1rem;
+  opacity: 0.8;
+  /* Ensure emojis display with full color */
+  -webkit-text-fill-color: initial;
+  background: none;
 }
 
 .empty-state p {

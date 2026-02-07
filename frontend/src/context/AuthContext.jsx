@@ -6,6 +6,7 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
@@ -18,12 +19,17 @@ export function AuthProvider({ children }) {
     try {
       // Check localStorage first for instant load
       const cachedUser = localStorage.getItem('authUser');
+      const cachedSubscription = localStorage.getItem('authSubscription');
       if (cachedUser) {
         try {
           const parsedUser = JSON.parse(cachedUser);
           setUser(parsedUser);
+          if (cachedSubscription) {
+            setSubscription(JSON.parse(cachedSubscription));
+          }
         } catch (e) {
           localStorage.removeItem('authUser');
+          localStorage.removeItem('authSubscription');
         }
       }
 
@@ -31,14 +37,22 @@ export function AuthProvider({ children }) {
       const response = await api.get('/api/auth/me');
       if (response.data.authenticated) {
         setUser(response.data.user);
+        setSubscription(response.data.subscription || null);
         localStorage.setItem('authUser', JSON.stringify(response.data.user));
+        if (response.data.subscription) {
+          localStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
+        }
       } else {
         setUser(null);
+        setSubscription(null);
         localStorage.removeItem('authUser');
+        localStorage.removeItem('authSubscription');
       }
     } catch (error) {
       setUser(null);
+      setSubscription(null);
       localStorage.removeItem('authUser');
+      localStorage.removeItem('authSubscription');
     } finally {
       setLoading(false);
       setInitialized(true);
@@ -51,6 +65,8 @@ export function AuthProvider({ children }) {
       if (response.data.success) {
         setUser(response.data.user);
         localStorage.setItem('authUser', JSON.stringify(response.data.user));
+        // Fetch subscription info after login
+        await checkAuth();
         return { success: true };
       }
       return { success: false, error: response.data.error };
@@ -118,11 +134,33 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Check if subscription is active (trial or paid)
+  // Returns true during loading to prevent false redirects
+  const hasActiveSubscription = () => {
+    if (!initialized || loading) return true; // Assume active during loading
+    if (!subscription) return false;
+    return subscription.is_active === true;
+  };
+
+  // Get subscription tier
+  const getSubscriptionTier = () => {
+    return subscription?.tier || 'none';
+  };
+
+  // Get trial days remaining
+  const getTrialDaysRemaining = () => {
+    return subscription?.trial_days_remaining || 0;
+  };
+
   const value = {
     user,
+    subscription,
     loading,
     initialized,
     isAuthenticated: !!user,
+    hasActiveSubscription,
+    getSubscriptionTier,
+    getTrialDaysRemaining,
     login,
     signup,
     logout,

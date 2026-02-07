@@ -15,8 +15,11 @@ def auto_complete_overdue_appointments() -> int:
     Returns:
         Number of appointments auto-completed
     """
-    from src.services.database import get_database, USE_POSTGRES
+    from src.services.database import get_database
     db = get_database()
+    
+    # Check if we're using PostgreSQL by looking at the database class name
+    is_postgres = type(db).__name__ == 'PostgresDatabase'
     
     # Calculate cutoff time (24 hours ago)
     cutoff_time = datetime.now() - timedelta(hours=24)
@@ -35,7 +38,7 @@ def auto_complete_overdue_appointments() -> int:
         # 2. Are more than 24 hours past their scheduled time
         
         # Use correct placeholder for database type
-        placeholder = "%s" if USE_POSTGRES else "?"
+        placeholder = "%s" if is_postgres else "?"
         
         query = f"""
             SELECT id, client_id, appointment_time, service_type 
@@ -49,10 +52,8 @@ def auto_complete_overdue_appointments() -> int:
         
         overdue_bookings = cursor.fetchall()
     finally:
-        if USE_POSTGRES:
-            db.return_connection(conn)
-        else:
-            conn.close()
+        # Return connection (works for both SQLite and PostgreSQL now)
+        db.return_connection(conn)
     
     if not overdue_bookings:
         print(f"✅ No overdue appointments found")

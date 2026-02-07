@@ -196,9 +196,17 @@ class PostgreSQLDatabaseWrapper:
                     address TEXT,
                     logo_url TEXT,
                     business_hours TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
-                    subscription_tier TEXT DEFAULT 'free',
+                    subscription_tier TEXT DEFAULT 'trial',
                     subscription_status TEXT DEFAULT 'active',
                     stripe_customer_id TEXT,
+                    stripe_subscription_id TEXT,
+                    stripe_connect_account_id TEXT,
+                    stripe_connect_status TEXT DEFAULT 'not_connected',
+                    stripe_connect_onboarding_complete INTEGER DEFAULT 0,
+                    trial_start TIMESTAMP,
+                    trial_end TIMESTAMP,
+                    subscription_current_period_end TIMESTAMP,
+                    subscription_cancel_at_period_end INTEGER DEFAULT 0,
                     is_verified INTEGER DEFAULT 0,
                     verification_token TEXT,
                     reset_token TEXT,
@@ -319,6 +327,9 @@ class PostgreSQLDatabaseWrapper:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_calendar_event_id ON bookings(calendar_event_id)")
             
+            # Run migrations for new columns
+            self._run_migrations(cursor)
+            
             conn.commit()
             print("✅ PostgreSQL database initialized")
         except Exception as e:
@@ -327,6 +338,35 @@ class PostgreSQLDatabaseWrapper:
             raise
         finally:
             self.return_connection(conn)
+    
+    def _run_migrations(self, cursor):
+        """Run database migrations to add new columns if they don't exist"""
+        # Check existing columns in companies table
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'companies'
+        """)
+        existing_columns = [row[0] for row in cursor.fetchall()]
+        
+        # New subscription-related columns to add
+        migrations = {
+            'stripe_subscription_id': 'TEXT',
+            'stripe_connect_account_id': 'TEXT',
+            'stripe_connect_status': "TEXT DEFAULT 'not_connected'",
+            'stripe_connect_onboarding_complete': 'INTEGER DEFAULT 0',
+            'trial_start': 'TIMESTAMP',
+            'trial_end': 'TIMESTAMP',
+            'subscription_current_period_end': 'TIMESTAMP',
+            'subscription_cancel_at_period_end': 'INTEGER DEFAULT 0'
+        }
+        
+        for column_name, column_type in migrations.items():
+            if column_name not in existing_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE companies ADD COLUMN {column_name} {column_type}")
+                    print(f"✅ Added {column_name} column to companies table")
+                except Exception as e:
+                    print(f"⚠️ Could not add {column_name} column: {e}")
     
     # The following methods proxy to the Database class methods but convert
     # SQLite placeholders (?) to PostgreSQL placeholders (%s)
@@ -440,8 +480,10 @@ class PostgreSQLDatabaseWrapper:
         try:
             allowed_fields = ['company_name', 'owner_name', 'phone', 'trade_type', 
                               'address', 'logo_url', 'subscription_tier', 'subscription_status',
-                              'stripe_customer_id', 'is_verified', 'verification_token',
-                              'reset_token', 'reset_token_expires', 'last_login']
+                              'stripe_customer_id', 'stripe_subscription_id', 'is_verified', 
+                              'verification_token', 'reset_token', 'reset_token_expires', 
+                              'last_login', 'trial_start', 'trial_end',
+                              'subscription_current_period_end', 'subscription_cancel_at_period_end']
             
             fields = []
             values = []

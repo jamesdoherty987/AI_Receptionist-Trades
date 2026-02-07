@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
 import PhoneConfigModal from '../components/modals/PhoneConfigModal';
+import SubscriptionManager from '../components/dashboard/SubscriptionManager';
+import PaymentSetup from '../components/dashboard/PaymentSetup';
 import { 
   getBusinessSettings, 
   updateBusinessSettings,
@@ -17,9 +19,34 @@ import './Settings.css';
 function Settings() {
   const queryClient = useQueryClient();
   const { checkAuth } = useAuth();
+  const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({});
   const [saveMessage, setSaveMessage] = useState('');
   const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [activeTab, setActiveTab] = useState('business');
+  
+  // Handle subscription redirect messages
+  useEffect(() => {
+    const subscriptionStatus = searchParams.get('subscription');
+    if (subscriptionStatus === 'success') {
+      setSaveMessage('Subscription activated successfully! Welcome to BookedForYou Pro.');
+      setActiveTab('subscription');
+      // Clear the URL parameter
+      window.history.replaceState({}, '', '/settings');
+      // Refresh auth to get updated subscription info
+      checkAuth();
+      setTimeout(() => setSaveMessage(''), 5000);
+    } else if (subscriptionStatus === 'cancelled') {
+      setSaveMessage('Checkout was cancelled. You can try again when ready.');
+      setActiveTab('subscription');
+      window.history.replaceState({}, '', '/settings');
+      setTimeout(() => setSaveMessage(''), 5000);
+    } else if (subscriptionStatus === 'required') {
+      setSaveMessage('Your trial has expired. Please subscribe to continue using BookedForYou.');
+      setActiveTab('subscription');
+      window.history.replaceState({}, '', '/settings');
+    }
+  }, [searchParams, checkAuth]);
   
   // Business hours breakdown state
   const [hoursConfig, setHoursConfig] = useState({
@@ -237,8 +264,8 @@ function Settings() {
       <main className="settings-main">
         <div className="container">
           <div className="settings-header">
-            <h1>Business Settings</h1>
-            <p className="settings-subtitle">Configure your AI receptionist and business information</p>
+            <h1>Settings</h1>
+            <p className="settings-subtitle">Manage your subscription and business information</p>
           </div>
 
           {/* Navigation Buttons */}
@@ -248,14 +275,64 @@ function Settings() {
               Back to Dashboard
             </Link>
           </div>
+          
+          {/* Success/Error Message */}
+          {saveMessage && (
+            <div className={`settings-message ${saveMessage.includes('cancelled') ? 'warning' : 'success'}`}>
+              <i className={`fas ${saveMessage.includes('cancelled') ? 'fa-exclamation-circle' : 'fa-check-circle'}`}></i>
+              {saveMessage}
+            </div>
+          )}
 
-          {/* AI Receptionist Toggle */}
-          <div className="ai-toggle-card">
-            <div className="toggle-content">
-              <div className="toggle-info">
-                <h3>
-                  <i className="fas fa-robot"></i>
-                  AI Receptionist
+          {/* Settings Tabs */}
+          <div className="settings-tabs">
+            <button 
+              className={`settings-tab ${activeTab === 'subscription' ? 'active' : ''}`}
+              onClick={() => setActiveTab('subscription')}
+            >
+              <i className="fas fa-credit-card"></i>
+              Subscription & Billing
+            </button>
+            <button 
+              className={`settings-tab ${activeTab === 'payments' ? 'active' : ''}`}
+              onClick={() => setActiveTab('payments')}
+            >
+              <i className="fab fa-stripe-s"></i>
+              Receive Payments
+            </button>
+            <button 
+              className={`settings-tab ${activeTab === 'business' ? 'active' : ''}`}
+              onClick={() => setActiveTab('business')}
+            >
+              <i className="fas fa-building"></i>
+              Business Settings
+            </button>
+          </div>
+
+          {/* Subscription Tab */}
+          {activeTab === 'subscription' && (
+            <div className="settings-tab-content">
+              <SubscriptionManager />
+            </div>
+          )}
+
+          {/* Receive Payments Tab */}
+          {activeTab === 'payments' && (
+            <div className="settings-tab-content">
+              <PaymentSetup />
+            </div>
+          )}
+
+          {/* Business Settings Tab */}
+          {activeTab === 'business' && (
+            <>
+              {/* AI Receptionist Toggle */}
+              <div className="ai-toggle-card">
+                <div className="toggle-content">
+                  <div className="toggle-info">
+                    <h3>
+                      <i className="fas fa-robot"></i>
+                      AI Receptionist
                 </h3>
                 <p>
                   {aiStatus?.enabled 
@@ -500,11 +577,6 @@ function Settings() {
               {/* Fallback settings section removed - business phone is now used for everything */}
 
               <div className="form-actions">
-                {saveMessage && (
-                  <div className={`save-message ${saveMessage.includes('Error') ? 'error' : 'success'}`}>
-                    {saveMessage}
-                  </div>
-                )}
                 <button 
                   type="submit" 
                   className="btn btn-primary"
@@ -516,6 +588,8 @@ function Settings() {
               </div>
             </form>
           </div>
+            </>
+          )}
         </div>
       </main>
 

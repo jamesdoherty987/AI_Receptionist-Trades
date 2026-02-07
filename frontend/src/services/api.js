@@ -88,4 +88,27 @@ export const getCalendarEvents = (params) => api.get('/api/calendar/events', { p
 export const sendChatMessage = (message, conversation) => 
   api.post('/api/chat', { message, conversation });
 
+// Subscription & Billing
+export const getSubscriptionStatus = () => api.get('/api/subscription/status');
+export const createCheckoutSession = (baseUrl) => 
+  api.post('/api/subscription/create-checkout', { base_url: baseUrl });
+export const getBillingPortalUrl = (baseUrl) => 
+  api.post('/api/subscription/billing-portal', { base_url: baseUrl });
+export const cancelSubscription = () => api.post('/api/subscription/cancel');
+export const reactivateSubscription = () => api.post('/api/subscription/reactivate');
+export const getInvoices = () => api.get('/api/subscription/invoices');
+
+// Stripe Connect (Payment Setup for receiving payments)
+export const getConnectStatus = () => api.get('/api/connect/status');
+export const createConnectAccount = (country = 'IE') => 
+  api.post('/api/connect/create', { country });
+export const getConnectOnboardingLink = (baseUrl, country = 'IE') => 
+  api.post('/api/connect/onboarding-link', { base_url: baseUrl, country });
+export const getConnectDashboardLink = () => 
+  api.post('/api/connect/dashboard-link');
+export const disconnectStripeConnect = () => 
+  api.post('/api/connect/disconnect');
+export const getConnectBalance = () => api.get('/api/connect/balance');
+export const getConnectPayouts = () => api.get('/api/connect/payouts');
+
 export default api;

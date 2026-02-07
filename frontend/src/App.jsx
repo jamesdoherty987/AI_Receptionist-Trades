@@ -24,9 +24,9 @@ const queryClient = new QueryClient({
   },
 })
 
-// Protected Route component
-function ProtectedRoute({ children }) {
-  const { isAuthenticated, loading, initialized } = useAuth();
+// Protected Route component - requires authentication
+function ProtectedRoute({ children, requireSubscription = false }) {
+  const { isAuthenticated, hasActiveSubscription, loading, initialized } = useAuth();
 
   if (!initialized || loading) {
     return (
@@ -44,6 +44,11 @@ function ProtectedRoute({ children }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // If subscription is required and user doesn't have one, redirect to settings
+  if (requireSubscription && !hasActiveSubscription()) {
+    return <Navigate to="/settings?subscription=required" replace />;
   }
 
   return children;
@@ -96,19 +101,20 @@ function AppRoutes() {
         } 
       />
 
-      {/* Protected routes */}
+      {/* Protected routes - allow viewing without subscription but show upgrade prompts */}
       <Route 
         path="/dashboard" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requireSubscription={false}>
             <Dashboard />
           </ProtectedRoute>
         } 
       />
+      {/* Settings page accessible without subscription (for managing subscription) */}
       <Route 
         path="/settings" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requireSubscription={false}>
             <Settings />
           </ProtectedRoute>
         } 
@@ -116,7 +122,7 @@ function AppRoutes() {
       <Route 
         path="/settings/menu" 
         element={
-          <ProtectedRoute>
+          <ProtectedRoute requireSubscription={false}>
             <SettingsMenu />
           </ProtectedRoute>
         } 

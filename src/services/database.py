@@ -52,6 +52,11 @@ class Database:
         """Get database connection"""
         return sqlite3.connect(self.db_path)
     
+    def return_connection(self, conn):
+        """Return connection to pool (for SQLite, just close it)"""
+        if conn:
+            conn.close()
+    
     def init_database(self):
         """Initialize database tables"""
         conn = self.get_connection()
@@ -158,9 +163,17 @@ class Database:
                 address TEXT,
                 logo_url TEXT,
                 business_hours TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
-                subscription_tier TEXT DEFAULT 'free',
+                subscription_tier TEXT DEFAULT 'trial',
                 subscription_status TEXT DEFAULT 'active',
                 stripe_customer_id TEXT,
+                stripe_subscription_id TEXT,
+                stripe_connect_account_id TEXT,
+                stripe_connect_status TEXT DEFAULT 'not_connected',
+                stripe_connect_onboarding_complete INTEGER DEFAULT 0,
+                trial_start TIMESTAMP,
+                trial_end TIMESTAMP,
+                subscription_current_period_end TIMESTAMP,
+                subscription_cancel_at_period_end INTEGER DEFAULT 0,
                 is_verified INTEGER DEFAULT 0,
                 verification_token TEXT,
                 reset_token TEXT,
@@ -302,7 +315,16 @@ class Database:
             'elevenlabs_voice_id': 'TEXT',
             'google_calendar_id': 'TEXT',
             'google_credentials_json': 'TEXT',
-            'ai_enabled': 'INTEGER DEFAULT 1'
+            'ai_enabled': 'INTEGER DEFAULT 1',
+            # Subscription fields
+            'stripe_subscription_id': 'TEXT',
+            'stripe_connect_account_id': 'TEXT',
+            'stripe_connect_status': "TEXT DEFAULT 'not_connected'",
+            'stripe_connect_onboarding_complete': 'INTEGER DEFAULT 0',
+            'trial_start': 'TIMESTAMP',
+            'trial_end': 'TIMESTAMP',
+            'subscription_current_period_end': 'TIMESTAMP',
+            'subscription_cancel_at_period_end': 'INTEGER DEFAULT 0'
         }
         
         for field_name, field_type in new_company_fields.items():
@@ -1533,8 +1555,12 @@ class Database:
         
         allowed_fields = ['company_name', 'owner_name', 'phone', 'trade_type', 
                           'address', 'logo_url', 'subscription_tier', 'subscription_status',
-                          'stripe_customer_id', 'is_verified', 'verification_token',
-                          'reset_token', 'reset_token_expires', 'last_login']
+                          'stripe_customer_id', 'stripe_subscription_id', 
+                          'stripe_connect_account_id', 'stripe_connect_status', 'stripe_connect_onboarding_complete',
+                          'is_verified', 
+                          'verification_token', 'reset_token', 'reset_token_expires', 
+                          'last_login', 'trial_start', 'trial_end', 
+                          'subscription_current_period_end', 'subscription_cancel_at_period_end']
         
         fields = []
         values = []

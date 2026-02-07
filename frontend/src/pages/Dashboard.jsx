@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import Header from '../components/Header';
 import Tabs from '../components/Tabs';
 import LoadingSpinner from '../components/LoadingSpinner';
+import TrialBanner from '../components/dashboard/TrialBanner';
 import JobsTab from '../components/dashboard/JobsTab';
 import CustomersTab from '../components/dashboard/CustomersTab';
 import WorkersTab from '../components/dashboard/WorkersTab';
@@ -71,6 +72,7 @@ function Dashboard() {
       <Header />
       <main className="dashboard-main">
         <div className="container">
+          <TrialBanner />
           <div className="dashboard-header">
             <h1>Dashboard</h1>
           </div>

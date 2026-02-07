@@ -86,7 +86,7 @@ function Landing() {
 
   // Feature flags - set to false to hide sections
   const showReviews = false;
-  const showPricing = false;
+  const showPricing = true;
 
   const reviews = [
     {
@@ -171,50 +171,38 @@ function Landing() {
 
   const pricingPlans = [
     {
-      name: "Starter",
+      name: "Free Trial",
       price: "Free",
-      period: "",
-      description: "Perfect for solo tradespeople",
+      period: "for 14 days",
+      description: "Try everything risk-free",
       features: [
-        "AI receptionist (50 calls/month)",
-        "Basic scheduling",
-        "Customer database",
-        "Email support"
-      ],
-      cta: "Start Free",
-      highlighted: false
-    },
-    {
-      name: "Professional",
-      price: "€49",
-      period: "/month",
-      description: "For growing businesses",
-      features: [
+        "All features included",
         "Unlimited AI calls",
-        "Advanced scheduling",
-        "Worker management (up to 5)",
+        "Smart scheduling",
+        "Customer management",
+        "Worker management",
         "Financial tracking",
-        "Priority support",
-        "Custom AI voice"
+        "No credit card required"
       ],
-      cta: "Start Trial",
-      highlighted: true
+      cta: "Start Free Trial",
+      highlighted: false
     },
     {
-      name: "Enterprise",
-      price: "€149",
+      name: "Pro",
+      price: "€59",
       period: "/month",
-      description: "For larger operations",
+      description: "Full access to grow your business",
       features: [
-        "Everything in Professional",
-        "Unlimited workers",
-        "API access",
-        "Custom integrations",
-        "Dedicated account manager",
-        "SLA guarantee"
+        "All features included",
+        "Unlimited AI calls",
+        "Smart scheduling",
+        "Customer management",
+        "Worker management",
+        "Financial tracking & invoicing",
+        "Priority support"
       ],
-      cta: "Contact Sales",
-      highlighted: false
+      cta: "Get Started",
+      highlighted: true
     }
   ];
 

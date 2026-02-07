@@ -5,6 +5,7 @@ Secured against OWASP Top 10 vulnerabilities
 import os
 import sys
 import secrets
+import stripe
 from pathlib import Path
 from functools import wraps
 
@@ -41,8 +42,10 @@ app = Flask(__name__,
 allowed_origins = [
     "https://www.bookedforyou.info",
     "https://bookedforyou.info",
-    "http://localhost:5173",  # Vite dev server
+    "http://localhost:3000",  # Vite dev server
+    "http://localhost:5173",  # Vite dev server (alt port)
     "http://localhost:5000",  # Flask dev server
+    "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5000"
 ]
@@ -431,6 +434,19 @@ def signup():
     )
     
     if company_id:
+        # Set up 14-day trial
+        from datetime import datetime, timedelta
+        trial_start = datetime.now()
+        trial_end = trial_start + timedelta(days=14)
+        
+        db.update_company(
+            company_id,
+            subscription_tier='trial',
+            subscription_status='active',
+            trial_start=trial_start,
+            trial_end=trial_end
+        )
+        
         # Log the user in (phone number will be configured separately)
         session['company_id'] = company_id
         session['email'] = email
@@ -438,13 +454,14 @@ def signup():
         company = db.get_company(company_id)
         return jsonify({
             "success": True,
-            "message": "Account created successfully",
+            "message": "Account created successfully. Your 14-day free trial has started!",
             "user": {
                 "id": company_id,
                 "company_name": company['company_name'],
                 "owner_name": company['owner_name'],
                 "email": company['email'],
                 "subscription_tier": company['subscription_tier'],
+                "trial_end": trial_end.isoformat(),
                 "twilio_phone_number": company.get('twilio_phone_number')
             }
         }), 201
@@ -556,6 +573,9 @@ def get_current_user():
         session.clear()
         return jsonify({"authenticated": False}), 200
     
+    # Get subscription info
+    subscription_info = get_subscription_info(company)
+    
     return jsonify({
         "authenticated": True,
         "user": {
@@ -570,7 +590,8 @@ def get_current_user():
             "subscription_tier": company['subscription_tier'],
             "subscription_status": company['subscription_status'],
             "twilio_phone_number": company.get('twilio_phone_number')
-        }
+        },
+        "subscription": subscription_info
     })
 
 
@@ -793,6 +814,693 @@ def get_current_phone_number():
         "phone_number": company.get('twilio_phone_number'),
         "has_phone": bool(company.get('twilio_phone_number'))
     })
+
+
+# ============================================
+# SUBSCRIPTION & STRIPE ENDPOINTS
+# ============================================
+
+from datetime import datetime, timedelta
+from src.services.stripe_service import (
+    create_checkout_session,
+    create_billing_portal_session,
+    get_subscription_status,
+    cancel_subscription,
+    reactivate_subscription,
+    handle_webhook_event,
+    get_customer_invoices,
+    get_or_create_customer,
+    is_stripe_configured,
+    TRIAL_DAYS
+)
+
+# Webhook secret for Stripe events
+STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+
+
+def get_subscription_info(company: dict) -> dict:
+    """Get comprehensive subscription info for a company"""
+    now = datetime.now()
+    
+    subscription_tier = company.get('subscription_tier', 'trial')
+    subscription_status = company.get('subscription_status', 'active')
+    trial_end = company.get('trial_end')
+    current_period_end = company.get('subscription_current_period_end')
+    cancel_at_period_end = bool(company.get('subscription_cancel_at_period_end', 0))
+    
+    # Parse dates if they're strings
+    if isinstance(trial_end, str):
+        try:
+            trial_end = datetime.fromisoformat(trial_end.replace('Z', '+00:00'))
+        except:
+            trial_end = None
+    
+    if isinstance(current_period_end, str):
+        try:
+            current_period_end = datetime.fromisoformat(current_period_end.replace('Z', '+00:00'))
+        except:
+            current_period_end = None
+    
+    # Calculate trial days remaining (round up to include partial days)
+    trial_days_remaining = 0
+    if subscription_tier == 'trial' and trial_end:
+        # Calculate days remaining, rounding up for partial days
+        import math
+        seconds_remaining = (trial_end - now).total_seconds()
+        if seconds_remaining > 0:
+            trial_days_remaining = math.ceil(seconds_remaining / 86400)
+        else:
+            trial_days_remaining = 0
+    
+    # Determine if subscription is active (can use the app)
+    is_active = False
+    if subscription_tier == 'trial':
+        is_active = trial_end and trial_end > now
+    elif subscription_tier == 'pro':
+        is_active = subscription_status == 'active'
+    
+    return {
+        'tier': subscription_tier,
+        'status': subscription_status,
+        'is_active': is_active,
+        'trial_end': trial_end.isoformat() if trial_end else None,
+        'trial_days_remaining': trial_days_remaining,
+        'current_period_end': current_period_end.isoformat() if current_period_end else None,
+        'cancel_at_period_end': cancel_at_period_end,
+        'stripe_customer_id': company.get('stripe_customer_id'),
+        'stripe_subscription_id': company.get('stripe_subscription_id')
+    }
+
+
+def subscription_required(f):
+    """Decorator to require active subscription for API endpoints"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'company_id' not in session:
+            return jsonify({"error": "Authentication required"}), 401
+        
+        db = get_database()
+        company = db.get_company(session['company_id'])
+        
+        if not company:
+            return jsonify({"error": "Company not found"}), 404
+        
+        subscription_info = get_subscription_info(company)
+        
+        if not subscription_info['is_active']:
+            return jsonify({
+                "error": "Subscription required",
+                "subscription_status": "inactive",
+                "message": "Your trial has expired or subscription is inactive. Please subscribe to continue.",
+                "subscription": subscription_info
+            }), 403
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.route("/api/subscription/status", methods=["GET"])
+@login_required
+def get_subscription_status_endpoint():
+    """Get current subscription status"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    subscription_info = get_subscription_info(company)
+    
+    return jsonify({
+        "success": True,
+        "subscription": subscription_info
+    })
+
+
+@app.route("/api/subscription/create-checkout", methods=["POST"])
+@login_required
+@rate_limit(max_requests=10, window_seconds=60)
+def create_checkout():
+    """Create a Stripe checkout session for subscription"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    if not is_stripe_configured():
+        return jsonify({"error": "Payment system not configured"}), 503
+    
+    data = request.json or {}
+    
+    # Get base URL for redirects
+    base_url = data.get('base_url', os.getenv('FRONTEND_URL', 'http://localhost:3000'))
+    
+    # Determine if this is a trial signup (new) or upgrade (existing/expired trial)
+    subscription_info = get_subscription_info(company)
+    with_trial = subscription_info['tier'] == 'trial' and subscription_info['is_active']
+    
+    # If trial is expired or never had trial, no trial period on checkout
+    if subscription_info['tier'] == 'trial' and not subscription_info['is_active']:
+        with_trial = False
+    
+    result = create_checkout_session(
+        company_id=company['id'],
+        email=company['email'],
+        company_name=company['company_name'],
+        success_url=f"{base_url}/settings?subscription=success",
+        cancel_url=f"{base_url}/settings?subscription=cancelled",
+        with_trial=False  # Trial is separate, checkout is for immediate subscription
+    )
+    
+    if result:
+        return jsonify({
+            "success": True,
+            "checkout_url": result['url'],
+            "session_id": result['session_id']
+        })
+    else:
+        return jsonify({"error": "Failed to create checkout session"}), 500
+
+
+@app.route("/api/subscription/billing-portal", methods=["POST"])
+@login_required
+def billing_portal():
+    """Create a Stripe billing portal session"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    customer_id = company.get('stripe_customer_id')
+    if not customer_id:
+        return jsonify({"error": "No billing account found. Please subscribe first."}), 400
+    
+    data = request.json or {}
+    base_url = data.get('base_url', os.getenv('FRONTEND_URL', 'http://localhost:3000'))
+    
+    portal_url = create_billing_portal_session(customer_id, f"{base_url}/settings")
+    
+    if portal_url:
+        return jsonify({
+            "success": True,
+            "portal_url": portal_url
+        })
+    else:
+        return jsonify({"error": "Failed to create billing portal session"}), 500
+
+
+@app.route("/api/subscription/cancel", methods=["POST"])
+@login_required
+def cancel_subscription_endpoint():
+    """Cancel subscription at end of billing period"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    subscription_id = company.get('stripe_subscription_id')
+    if not subscription_id:
+        return jsonify({"error": "No active subscription found"}), 400
+    
+    success = cancel_subscription(subscription_id, at_period_end=True)
+    
+    if success:
+        # Update local database
+        db.update_company(session['company_id'], subscription_cancel_at_period_end=1)
+        
+        return jsonify({
+            "success": True,
+            "message": "Subscription will be cancelled at the end of the billing period"
+        })
+    else:
+        return jsonify({"error": "Failed to cancel subscription"}), 500
+
+
+@app.route("/api/subscription/reactivate", methods=["POST"])
+@login_required
+def reactivate_subscription_endpoint():
+    """Reactivate a subscription that was set to cancel"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    subscription_id = company.get('stripe_subscription_id')
+    if not subscription_id:
+        return jsonify({"error": "No subscription found"}), 400
+    
+    success = reactivate_subscription(subscription_id)
+    
+    if success:
+        # Update local database
+        db.update_company(session['company_id'], subscription_cancel_at_period_end=0)
+        
+        return jsonify({
+            "success": True,
+            "message": "Subscription has been reactivated"
+        })
+    else:
+        return jsonify({"error": "Failed to reactivate subscription"}), 500
+
+
+@app.route("/api/subscription/invoices", methods=["GET"])
+@login_required
+def get_invoices():
+    """Get billing invoices for the company"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    customer_id = company.get('stripe_customer_id')
+    if not customer_id:
+        return jsonify({"success": True, "invoices": []})
+    
+    invoices = get_customer_invoices(customer_id)
+    
+    return jsonify({
+        "success": True,
+        "invoices": invoices
+    })
+
+
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    """Handle Stripe webhook events"""
+    payload = request.data
+    sig_header = request.headers.get('Stripe-Signature', '')
+    
+    if not STRIPE_WEBHOOK_SECRET:
+        print("⚠️ Stripe webhook secret not configured")
+        return jsonify({"error": "Webhook not configured"}), 400
+    
+    result = handle_webhook_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    
+    if not result['success']:
+        print(f"❌ Webhook error: {result['error']}")
+        return jsonify({"error": result['error']}), 400
+    
+    event_type = result['event_type']
+    data = result['data']
+    db = get_database()
+    
+    try:
+        if event_type == 'checkout.session.completed':
+            # Subscription checkout completed
+            company_id = int(data.get('metadata', {}).get('company_id', 0))
+            customer_id = data.get('customer')
+            subscription_id = data.get('subscription')
+            
+            if company_id:
+                # Get subscription details
+                import stripe
+                sub = stripe.Subscription.retrieve(subscription_id)
+                
+                db.update_company(
+                    company_id,
+                    subscription_tier='pro',
+                    subscription_status='active',
+                    stripe_customer_id=customer_id,
+                    stripe_subscription_id=subscription_id,
+                    subscription_current_period_end=datetime.fromtimestamp(sub.current_period_end),
+                    subscription_cancel_at_period_end=0
+                )
+                print(f"✅ Subscription activated for company {company_id}")
+        
+        elif event_type == 'customer.subscription.updated':
+            # Subscription updated (e.g., renewed, cancelled)
+            subscription_id = data.get('id')
+            status = data.get('status')
+            cancel_at_period_end = data.get('cancel_at_period_end', False)
+            current_period_end = data.get('current_period_end')
+            
+            # Find company by subscription ID
+            # We need to search by stripe_subscription_id
+            company_id = int(data.get('metadata', {}).get('company_id', 0))
+            
+            if company_id:
+                update_data = {
+                    'subscription_status': status,
+                    'subscription_cancel_at_period_end': 1 if cancel_at_period_end else 0
+                }
+                
+                if current_period_end:
+                    update_data['subscription_current_period_end'] = datetime.fromtimestamp(current_period_end)
+                
+                db.update_company(company_id, **update_data)
+                print(f"✅ Subscription updated for company {company_id}: {status}")
+        
+        elif event_type == 'customer.subscription.deleted':
+            # Subscription cancelled/expired
+            company_id = int(data.get('metadata', {}).get('company_id', 0))
+            
+            if company_id:
+                db.update_company(
+                    company_id,
+                    subscription_tier='expired',
+                    subscription_status='cancelled',
+                    stripe_subscription_id=None
+                )
+                print(f"⚠️ Subscription cancelled for company {company_id}")
+        
+        elif event_type == 'invoice.payment_failed':
+            # Payment failed
+            customer_id = data.get('customer')
+            company_id = int(data.get('subscription_details', {}).get('metadata', {}).get('company_id', 0))
+            
+            if company_id:
+                db.update_company(company_id, subscription_status='past_due')
+                print(f"⚠️ Payment failed for company {company_id}")
+    
+    except Exception as e:
+        print(f"❌ Error processing webhook {event_type}: {e}")
+        # Still return 200 to acknowledge receipt
+    
+    return jsonify({"received": True})
+
+
+# ==================== STRIPE CONNECT ENDPOINTS ====================
+# These endpoints allow users (tradespeople) to connect their Stripe account
+# to receive payments from their customers
+
+from src.services.stripe_connect_service import (
+    create_connect_account,
+    create_account_link,
+    create_login_link,
+    get_account_status,
+    delete_connect_account,
+    create_payment_link,
+    get_account_balance,
+    get_account_payouts,
+    handle_connect_webhook_event
+)
+
+
+@app.route("/api/connect/status", methods=["GET"])
+@login_required
+def get_connect_status():
+    """Get the current Stripe Connect status for the user"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    account_id = company.get('stripe_connect_account_id')
+    
+    if not account_id:
+        return jsonify({
+            "success": True,
+            "connected": False,
+            "status": "not_connected",
+            "message": "Connect your Stripe account to receive payments"
+        })
+    
+    # Get live status from Stripe
+    account_status = get_account_status(account_id)
+    
+    # Determine overall status
+    if not account_status['exists']:
+        status = 'error'
+        message = 'Account not found. Please reconnect.'
+    elif account_status['charges_enabled'] and account_status['payouts_enabled']:
+        status = 'active'
+        message = 'Your Stripe account is fully set up and ready to receive payments!'
+    elif account_status['details_submitted']:
+        status = 'pending'
+        message = 'Account submitted. Waiting for Stripe verification.'
+    else:
+        status = 'incomplete'
+        message = 'Please complete your Stripe account setup.'
+    
+    return jsonify({
+        "success": True,
+        "connected": True,
+        "status": status,
+        "message": message,
+        "account_id": account_id,
+        "details_submitted": account_status['details_submitted'],
+        "charges_enabled": account_status['charges_enabled'],
+        "payouts_enabled": account_status['payouts_enabled'],
+        "requirements": account_status.get('currently_due', []),
+        "errors": account_status.get('errors', [])
+    })
+
+
+@app.route("/api/connect/create", methods=["POST"])
+@login_required
+def create_connect():
+    """Create a new Stripe Connect account for the user"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    # Check if already has an account
+    existing_account = company.get('stripe_connect_account_id')
+    if existing_account:
+        # Check if the existing account is still valid
+        status = get_account_status(existing_account)
+        if status['exists']:
+            return jsonify({
+                "error": "You already have a connected Stripe account",
+                "account_id": existing_account
+            }), 400
+    
+    data = request.json or {}
+    country = data.get('country', 'IE')  # Default to Ireland
+    
+    # Create the Connect account
+    result = create_connect_account(
+        company_id=company['id'],
+        email=company['email'],
+        company_name=company['company_name'],
+        country=country
+    )
+    
+    if not result:
+        return jsonify({"error": "Failed to create Stripe Connect account"}), 500
+    
+    # Save the account ID
+    db.update_company(
+        company['id'],
+        stripe_connect_account_id=result['account_id'],
+        stripe_connect_status='pending'
+    )
+    
+    return jsonify({
+        "success": True,
+        "account_id": result['account_id'],
+        "message": "Stripe Connect account created. Please complete the onboarding."
+    })
+
+
+@app.route("/api/connect/onboarding-link", methods=["POST"])
+@login_required
+def get_onboarding_link():
+    """Get/create the onboarding link for Stripe Connect setup"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    account_id = company.get('stripe_connect_account_id')
+    
+    # If no account exists, create one first
+    if not account_id:
+        data = request.json or {}
+        country = data.get('country', 'IE')
+        
+        result = create_connect_account(
+            company_id=company['id'],
+            email=company['email'],
+            company_name=company['company_name'],
+            country=country
+        )
+        
+        if not result:
+            return jsonify({"error": "Failed to create Stripe Connect account"}), 500
+        
+        account_id = result['account_id']
+        db.update_company(
+            company['id'],
+            stripe_connect_account_id=account_id,
+            stripe_connect_status='pending'
+        )
+    
+    data = request.json or {}
+    base_url = data.get('base_url', os.getenv('FRONTEND_URL', 'http://localhost:3000'))
+    
+    # Create the account link
+    onboarding_url = create_account_link(
+        account_id=account_id,
+        refresh_url=f"{base_url}/settings?connect=refresh",
+        return_url=f"{base_url}/settings?connect=return"
+    )
+    
+    if not onboarding_url:
+        return jsonify({"error": "Failed to create onboarding link"}), 500
+    
+    return jsonify({
+        "success": True,
+        "onboarding_url": onboarding_url
+    })
+
+
+@app.route("/api/connect/dashboard-link", methods=["POST"])
+@login_required
+def get_dashboard_link():
+    """Get a link to the user's Stripe Express Dashboard"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    account_id = company.get('stripe_connect_account_id')
+    if not account_id:
+        return jsonify({"error": "No Stripe Connect account found"}), 400
+    
+    dashboard_url = create_login_link(account_id)
+    
+    if not dashboard_url:
+        return jsonify({"error": "Failed to create dashboard link"}), 500
+    
+    return jsonify({
+        "success": True,
+        "dashboard_url": dashboard_url
+    })
+
+
+@app.route("/api/connect/disconnect", methods=["POST"])
+@login_required
+def disconnect_connect():
+    """Disconnect the Stripe Connect account"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    account_id = company.get('stripe_connect_account_id')
+    if not account_id:
+        return jsonify({"error": "No Stripe Connect account to disconnect"}), 400
+    
+    # Note: We don't actually delete the Stripe account, just unlink it from our platform
+    # The user can reconnect later or use their Stripe account elsewhere
+    
+    db.update_company(
+        company['id'],
+        stripe_connect_account_id=None,
+        stripe_connect_status='not_connected',
+        stripe_connect_onboarding_complete=0
+    )
+    
+    return jsonify({
+        "success": True,
+        "message": "Stripe account disconnected successfully"
+    })
+
+
+@app.route("/api/connect/balance", methods=["GET"])
+@login_required
+def get_connect_balance():
+    """Get the balance for the connected account"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    account_id = company.get('stripe_connect_account_id')
+    if not account_id:
+        return jsonify({"error": "No Stripe Connect account found"}), 400
+    
+    balance = get_account_balance(account_id)
+    
+    if not balance:
+        return jsonify({"error": "Failed to get balance"}), 500
+    
+    return jsonify({
+        "success": True,
+        "balance": balance
+    })
+
+
+@app.route("/api/connect/payouts", methods=["GET"])
+@login_required
+def get_connect_payouts():
+    """Get recent payouts for the connected account"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    account_id = company.get('stripe_connect_account_id')
+    if not account_id:
+        return jsonify({"error": "No Stripe Connect account found"}), 400
+    
+    payouts = get_account_payouts(account_id)
+    
+    return jsonify({
+        "success": True,
+        "payouts": payouts
+    })
+
+
+@app.route("/stripe/connect/webhook", methods=["POST"])
+def stripe_connect_webhook():
+    """Handle Stripe Connect webhook events"""
+    payload = request.data
+    sig_header = request.headers.get('Stripe-Signature', '')
+    
+    # Use a separate webhook secret for Connect events if configured
+    connect_webhook_secret = os.getenv('STRIPE_CONNECT_WEBHOOK_SECRET', STRIPE_WEBHOOK_SECRET)
+    
+    if not connect_webhook_secret:
+        print("⚠️ Stripe Connect webhook secret not configured")
+        return jsonify({"error": "Webhook not configured"}), 400
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, connect_webhook_secret
+        )
+    except ValueError as e:
+        return jsonify({"error": f"Invalid payload: {e}"}), 400
+    except stripe.error.SignatureVerificationError as e:
+        return jsonify({"error": f"Invalid signature: {e}"}), 400
+    
+    event_type = event['type']
+    data = event['data']['object']
+    
+    print(f"📨 Received Stripe Connect webhook: {event_type}")
+    
+    db = get_database()
+    
+    # Handle account updates
+    if event_type == 'account.updated':
+        account_id = data.get('id')
+        charges_enabled = data.get('charges_enabled', False)
+        payouts_enabled = data.get('payouts_enabled', False)
+        details_submitted = data.get('details_submitted', False)
+        
+        # Find company by connect account ID and update status
+        # Note: We'd need a method to look up by connect account ID
+        # For now, we'll just log it
+        if charges_enabled and payouts_enabled:
+            print(f"✅ Connect account {account_id} is now fully active")
+        elif details_submitted:
+            print(f"⏳ Connect account {account_id} submitted, waiting for verification")
+    
+    return jsonify({"received": True})
 
 
 @app.route("/twilio/sms", methods=["POST"])
