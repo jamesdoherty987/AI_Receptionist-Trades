@@ -635,11 +635,15 @@ def configure_secure_session(app):
     if not app.secret_key or app.secret_key == 'dev':
         app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
     
+    is_production = os.getenv('FLASK_ENV') == 'production'
+    
     # Session configuration
+    # Note: For cross-origin requests (frontend on different domain than backend),
+    # SameSite must be 'None' and Secure must be True
     app.config.update(
-        SESSION_COOKIE_SECURE=os.getenv('FLASK_ENV') == 'production',
+        SESSION_COOKIE_SECURE=is_production,  # Must be True for SameSite=None
         SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE='Lax',  # 'Strict' for more security, 'Lax' for usability
+        SESSION_COOKIE_SAMESITE='None' if is_production else 'Lax',  # None for cross-origin
         PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
         SESSION_REFRESH_EACH_REQUEST=True,
     )
