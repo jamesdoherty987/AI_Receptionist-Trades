@@ -120,6 +120,70 @@ def rate_limit(max_requests: int = 60, window_seconds: int = 60):
     return decorator
 
 
+# ============================================
+# IMAGE UPLOAD HELPER (R2 STORAGE)
+# ============================================
+
+def upload_base64_image_to_r2(base64_data: str, company_id: int, file_type: str = 'images') -> str:
+    """
+    Upload a base64 image to R2 storage
+    
+    Args:
+        base64_data: Base64 encoded image data (e.g., 'data:image/png;base64,...')
+        company_id: Company ID for folder separation
+        file_type: Type of file (logos, workers, services, etc.)
+    
+    Returns:
+        R2 public URL if successful, or original base64 if R2 fails/not configured
+    """
+    # Skip if not base64 data
+    if not base64_data or not base64_data.startswith('data:image/'):
+        return base64_data or ''
+    
+    try:
+        from src.services.storage_r2 import upload_company_file, is_r2_enabled
+        import base64
+        import io
+        from datetime import datetime
+        
+        # Only proceed if R2 is configured
+        if not is_r2_enabled():
+            print("⚠️ R2 not configured, image will be stored as base64 in database")
+            return base64_data
+        
+        # Extract base64 data and content type
+        header, encoded = base64_data.split(',', 1)
+        content_type = header.split(';')[0].split(':')[1]
+        extension = content_type.split('/')[-1]
+        
+        # Decode base64
+        image_data = base64.b64decode(encoded)
+        
+        # Generate unique filename with company separation
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{file_type}_{timestamp}_{secrets.token_hex(4)}.{extension}"
+        
+        # Upload to R2 with company-specific folder
+        public_url = upload_company_file(
+            company_id=company_id,
+            file_data=io.BytesIO(image_data),
+            filename=filename,
+            file_type=file_type,
+            content_type=content_type
+        )
+        
+        if public_url:
+            print(f"✅ Image uploaded to R2: {public_url}")
+            return public_url
+        else:
+            print("⚠️ R2 upload returned None, storing as base64")
+            return base64_data
+            
+    except Exception as e:
+        print(f"⚠️ R2 upload failed, storing as base64: {e}")
+        return base64_data
+
+
 # Flag to track if scheduler has been started (for worker-based initialization)
 _scheduler_started = False
 
@@ -562,46 +626,7 @@ def update_profile():
     
     # Handle logo upload to R2 if logo_url is base64
     if 'logo_url' in data and data['logo_url'] and data['logo_url'].startswith('data:image/'):
-        try:
-            # Try to upload to R2 if configured
-            from src.services.storage_r2 import upload_company_file
-            import base64
-            import io
-            import secrets
-            from datetime import datetime
-            
-            # Extract base64 data and content type
-            header, encoded = data['logo_url'].split(',', 1)
-            content_type = header.split(';')[0].split(':')[1]
-            extension = content_type.split('/')[-1]
-            
-            # Decode base64
-            image_data = base64.b64decode(encoded)
-            
-            # Generate unique filename with company separation
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"logo_{timestamp}_{secrets.token_hex(4)}.{extension}"
-            
-            # Upload to R2 with company-specific folder using helper function
-            public_url = upload_company_file(
-                company_id=session['company_id'],
-                file_data=io.BytesIO(image_data),
-                filename=filename,
-                file_type='logos',
-                content_type=content_type
-            )
-            
-            if public_url:
-                # Replace base64 with R2 URL
-                data['logo_url'] = public_url
-                print(f"✅ Logo uploaded to R2: {public_url}")
-            else:
-                # R2 not configured - keep base64 in database
-                print(f"ℹ️ R2 not configured, storing logo as base64")
-                
-        except Exception as e:
-            # R2 upload failed - keep base64 in database
-            print(f"⚠️ R2 upload failed, storing logo as base64: {e}")
+        data['logo_url'] = upload_base64_image_to_r2(data['logo_url'], session['company_id'], 'logos')
     
     # Filter allowed fields (basic business info only)
     allowed_updates = {}
@@ -890,46 +915,7 @@ def business_settings_api():
         
         # Handle logo upload to R2 if logo_url is base64
         if 'logo_url' in data and data['logo_url'] and data['logo_url'].startswith('data:image/'):
-            try:
-                # Try to upload to R2 if configured
-                from src.services.storage_r2 import upload_company_file
-                import base64
-                import io
-                import secrets
-                from datetime import datetime
-                
-                # Extract base64 data and content type
-                header, encoded = data['logo_url'].split(',', 1)
-                content_type = header.split(';')[0].split(':')[1]
-                extension = content_type.split('/')[-1]
-                
-                # Decode base64
-                image_data = base64.b64decode(encoded)
-                
-                # Generate unique filename with company separation
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"logo_{timestamp}_{secrets.token_hex(4)}.{extension}"
-                
-                # Upload to R2 with company-specific folder using helper function
-                public_url = upload_company_file(
-                    company_id=company_id,
-                    file_data=io.BytesIO(image_data),
-                    filename=filename,
-                    file_type='logos',
-                    content_type=content_type
-                )
-                
-                if public_url:
-                    # Replace base64 with R2 URL
-                    data['logo_url'] = public_url
-                    print(f"✅ Logo uploaded to R2: {public_url}")
-                else:
-                    # R2 not configured - keep base64 in database
-                    print(f"ℹ️ R2 not configured, storing logo as base64")
-                    
-            except Exception as e:
-                # R2 upload failed - keep base64 in database
-                print(f"⚠️ R2 upload failed, storing logo as base64: {e}")
+            data['logo_url'] = upload_base64_image_to_r2(data['logo_url'], company_id, 'logos')
         
         # Map frontend field names to database column names
         # Only basic business info - no API keys or Twilio credentials
@@ -1048,6 +1034,12 @@ def add_service_api():
     settings_mgr = get_settings_manager()
     
     data = request.json
+    
+    # Upload image to R2 if it's base64
+    if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
+        company_id = session.get('company_id', 0)
+        data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'services')
+    
     success = settings_mgr.add_service(data)
     if success:
         return jsonify({"message": "Service added successfully"})
@@ -1063,6 +1055,12 @@ def manage_service_api(service_id):
     
     if request.method == "PUT":
         data = request.json
+        
+        # Upload image to R2 if it's base64
+        if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
+            company_id = session.get('company_id', 0)
+            data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'services')
+        
         success = settings_mgr.update_service(service_id, data)
         if success:
             return jsonify({"message": "Service updated successfully"})
@@ -1758,12 +1756,19 @@ def workers_api():
     
     elif request.method == "POST":
         data = request.json
+        
+        # Upload image to R2 if it's base64
+        image_url = data.get('image_url', '')
+        if image_url and image_url.startswith('data:image/'):
+            company_id = session.get('company_id', 0)
+            image_url = upload_base64_image_to_r2(image_url, company_id, 'workers')
+        
         worker_id = db.add_worker(
             name=data['name'],
             phone=data.get('phone'),
             email=data.get('email'),
             trade_specialty=data.get('trade_specialty'),
-            image_url=data.get('image_url'),
+            image_url=image_url,
             weekly_hours_expected=data.get('weekly_hours_expected', 40.0)
         )
         return jsonify({"id": worker_id, "message": "Worker added"}), 201
@@ -1783,6 +1788,12 @@ def worker_api(worker_id):
     
     elif request.method == "PUT":
         data = request.json
+        
+        # Upload image to R2 if it's base64
+        if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
+            company_id = session.get('company_id', 0)
+            data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'workers')
+        
         db.update_worker(worker_id, **data)
         return jsonify({"message": "Worker updated"})
     
