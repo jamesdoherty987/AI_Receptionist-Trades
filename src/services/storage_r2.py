@@ -6,7 +6,7 @@ import os
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
-from typing import Optional, BinaryIO
+from typing import Optional, BinaryIO, List
 import mimetypes
 from pathlib import Path
 
@@ -172,6 +172,83 @@ class R2Storage:
         except ClientError as e:
             print(f"❌ Error listing R2 files: {e}")
             return []
+
+
+def upload_company_file(company_id: int, file_data: BinaryIO, filename: str, 
+                       file_type: str = 'uploads', content_type: Optional[str] = None) -> Optional[str]:
+    """
+    Upload a file for a specific company with proper folder separation
+    
+    Args:
+        company_id: Company ID for folder separation
+        file_data: File binary data
+        filename: Name of the file
+        file_type: Type of file (logos, documents, images, etc.)
+        content_type: MIME type (auto-detected if not provided)
+    
+    Returns:
+        Public URL of the uploaded file or None if R2 not configured
+    """
+    r2 = get_r2_storage()
+    if not r2:
+        return None
+    
+    try:
+        return r2.upload_file(
+            file_data=file_data,
+            filename=filename,
+            folder=f'company_{company_id}/{file_type}',
+            content_type=content_type
+        )
+    except Exception as e:
+        print(f"❌ Failed to upload file for company {company_id}: {e}")
+        return None
+
+
+def delete_company_file(company_id: int, file_url: str) -> bool:
+    """
+    Delete a file for a specific company with security check
+    
+    Args:
+        company_id: Company ID for security verification
+        file_url: Full URL of the file to delete
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    r2 = get_r2_storage()
+    if not r2:
+        return False
+    
+    # Security check - ensure file belongs to this company
+    expected_prefix = f'company_{company_id}/'
+    if expected_prefix not in file_url:
+        print(f"🚨 Security: Company {company_id} attempted to delete file not in their folder: {file_url}")
+        return False
+    
+    return r2.delete_file(file_url)
+
+
+def list_company_files(company_id: int, file_type: str = '') -> List[str]:
+    """
+    List files for a specific company
+    
+    Args:
+        company_id: Company ID
+        file_type: Optional file type filter (logos, documents, etc.)
+    
+    Returns:
+        List of file keys for this company
+    """
+    r2 = get_r2_storage()
+    if not r2:
+        return []
+    
+    prefix = f'company_{company_id}/'
+    if file_type:
+        prefix += f'{file_type}/'
+    
+    return r2.list_files(prefix=prefix)
 
 
 # Global instance (lazy initialization)

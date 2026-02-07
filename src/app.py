@@ -535,7 +535,7 @@ def update_profile():
     if 'logo_url' in data and data['logo_url'] and data['logo_url'].startswith('data:image/'):
         try:
             # Try to upload to R2 if configured
-            from src.services.storage_r2 import R2Storage
+            from src.services.storage_r2 import upload_company_file
             import base64
             import io
             import secrets
@@ -549,26 +549,27 @@ def update_profile():
             # Decode base64
             image_data = base64.b64decode(encoded)
             
-            # Generate unique filename
+            # Generate unique filename with company separation
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"logo_{timestamp}_{secrets.token_hex(4)}.{extension}"
             
-            # Upload to R2
-            r2 = R2Storage()
-            public_url = r2.upload_file(
+            # Upload to R2 with company-specific folder using helper function
+            public_url = upload_company_file(
+                company_id=session['company_id'],
                 file_data=io.BytesIO(image_data),
                 filename=filename,
-                folder='logos',
+                file_type='logos',
                 content_type=content_type
             )
             
-            # Replace base64 with R2 URL
-            data['logo_url'] = public_url
-            print(f"✅ Logo uploaded to R2: {public_url}")
-            
-        except ValueError as ve:
-            # R2 not configured - keep base64 in database
-            print(f"ℹ️ R2 not configured, storing logo as base64: {str(ve)}")
+            if public_url:
+                # Replace base64 with R2 URL
+                data['logo_url'] = public_url
+                print(f"✅ Logo uploaded to R2: {public_url}")
+            else:
+                # R2 not configured - keep base64 in database
+                print(f"ℹ️ R2 not configured, storing logo as base64")
+                
         except Exception as e:
             # R2 upload failed - keep base64 in database
             print(f"⚠️ R2 upload failed, storing logo as base64: {e}")
@@ -862,7 +863,7 @@ def business_settings_api():
         if 'logo_url' in data and data['logo_url'] and data['logo_url'].startswith('data:image/'):
             try:
                 # Try to upload to R2 if configured
-                from src.services.storage_r2 import R2Storage
+                from src.services.storage_r2 import upload_company_file
                 import base64
                 import io
                 import secrets
@@ -876,26 +877,27 @@ def business_settings_api():
                 # Decode base64
                 image_data = base64.b64decode(encoded)
                 
-                # Generate unique filename
+                # Generate unique filename with company separation
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 filename = f"logo_{timestamp}_{secrets.token_hex(4)}.{extension}"
                 
-                # Upload to R2
-                r2 = R2Storage()
-                public_url = r2.upload_file(
+                # Upload to R2 with company-specific folder using helper function
+                public_url = upload_company_file(
+                    company_id=company_id,
                     file_data=io.BytesIO(image_data),
                     filename=filename,
-                    folder='logos',
+                    file_type='logos',
                     content_type=content_type
                 )
                 
-                # Replace base64 with R2 URL
-                data['logo_url'] = public_url
-                print(f"✅ Logo uploaded to R2: {public_url}")
-                
-            except ValueError as ve:
-                # R2 not configured - keep base64 in database
-                print(f"ℹ️ R2 not configured, storing logo as base64: {str(ve)}")
+                if public_url:
+                    # Replace base64 with R2 URL
+                    data['logo_url'] = public_url
+                    print(f"✅ Logo uploaded to R2: {public_url}")
+                else:
+                    # R2 not configured - keep base64 in database
+                    print(f"ℹ️ R2 not configured, storing logo as base64")
+                    
             except Exception as e:
                 # R2 upload failed - keep base64 in database
                 print(f"⚠️ R2 upload failed, storing logo as base64: {e}")
