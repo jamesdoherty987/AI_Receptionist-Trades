@@ -5,6 +5,7 @@ Automatically uses PostgreSQL when DATABASE_URL is set, otherwise uses SQLite
 """
 import os
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Any
@@ -1698,25 +1699,29 @@ class Database:
 
 # Global database instance
 _db = None
+_db_lock = threading.Lock()
 
 def get_database() -> Database:
     """
-    Get or create global database instance
+    Get or create global database instance (thread-safe)
     Automatically uses PostgreSQL if DATABASE_URL is set, otherwise SQLite
     """
     global _db
     if _db is None:
-        if USE_POSTGRES and POSTGRES_AVAILABLE:
-            # Import PostgreSQL database wrapper
-            try:
-                from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
-                db_url = os.getenv('DATABASE_URL')
-                _db = PostgreSQLDatabaseWrapper(db_url)
-                print("✅ Connected to PostgreSQL database")
-            except Exception as e:
-                print(f"⚠️ Failed to connect to PostgreSQL: {e}")
-                print("⚠️ Falling back to SQLite")
-                _db = Database()
-        else:
-            _db = Database()
+        with _db_lock:
+            # Double-check locking pattern
+            if _db is None:
+                if USE_POSTGRES and POSTGRES_AVAILABLE:
+                    # Import PostgreSQL database wrapper
+                    try:
+                        from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+                        db_url = os.getenv('DATABASE_URL')
+                        _db = PostgreSQLDatabaseWrapper(db_url)
+                        print("✅ Connected to PostgreSQL database")
+                    except Exception as e:
+                        print(f"⚠️ Failed to connect to PostgreSQL: {e}")
+                        print("⚠️ Falling back to SQLite")
+                        _db = Database()
+                else:
+                    _db = Database()
     return _db

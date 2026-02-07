@@ -236,12 +236,16 @@ class RateLimiter:
 
 # Global rate limiter instance
 _rate_limiter = None
+_rate_limiter_lock = threading.Lock()
 
 def get_rate_limiter() -> RateLimiter:
-    """Get or create global rate limiter instance"""
+    """Get or create global rate limiter instance (thread-safe)"""
     global _rate_limiter
     if _rate_limiter is None:
-        _rate_limiter = RateLimiter()
+        with _rate_limiter_lock:
+            # Double-check locking pattern
+            if _rate_limiter is None:
+                _rate_limiter = RateLimiter()
     return _rate_limiter
 
 
@@ -560,12 +564,16 @@ class SecurityLogger:
 
 # Global security logger instance
 _security_logger = None
+_security_logger_lock = threading.Lock()
 
 def get_security_logger() -> SecurityLogger:
-    """Get or create global security logger instance"""
+    """Get or create global security logger instance (thread-safe)"""
     global _security_logger
     if _security_logger is None:
-        _security_logger = SecurityLogger()
+        with _security_logger_lock:
+            # Double-check locking pattern
+            if _security_logger is None:
+                _security_logger = SecurityLogger()
     return _security_logger
 
 
