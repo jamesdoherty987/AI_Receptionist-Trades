@@ -18,7 +18,7 @@ if not _DATABASE_URL:
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
-    print(f"✅ Using PostgreSQL database")
+    print(f"[SUCCESS] Using PostgreSQL database")
     db_url = _DATABASE_URL
     print(f"   Database: {db_url[:30]}..." if db_url else "   No URL found")
 except ImportError as e:
@@ -49,7 +49,7 @@ def get_database():
                     _db = PostgreSQLDatabaseWrapper(db_url)
                     print("✅ Connected to PostgreSQL database")
                 except Exception as e:
-                    print(f"⚠️ PostgreSQL init_database had an issue: {e}")
+                    print(f"[WARNING] PostgreSQL init_database had an issue: {e}")
                     print("   Retrying with skip_init...")
                     # Create wrapper without init (tables likely already exist)
                     wrapper = object.__new__(PostgreSQLDatabaseWrapper)

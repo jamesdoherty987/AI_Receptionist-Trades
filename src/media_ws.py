@@ -17,9 +17,9 @@ async def main():
     """Start WebSocket server"""
     try:
         config.validate()
-        print("✅ Configuration validated")
+        print("[SUCCESS] Configuration validated")
     except ValueError as e:
-        print(f"❌ Configuration error: {e}")
+        print(f"[ERROR] Configuration error: {e}")
         exit(1)
     
     print("=" * 60)

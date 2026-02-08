@@ -8,9 +8,30 @@ import secrets
 import stripe
 from pathlib import Path
 from functools import wraps
+import io
+
+# Configure UTF-8 encoding for Windows console to prevent OSError with special characters
+if sys.platform == 'win32':
+    # Reconfigure stdout and stderr to use UTF-8 encoding with error handling
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    # Set environment variable for subprocesses
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Safe print function for Windows - handles encoding errors gracefully
+def safe_print(*args, **kwargs):
+    """Print function that handles encoding errors on Windows"""
+    try:
+        print(*args, **kwargs)
+    except (UnicodeEncodeError, OSError) as e:
+        # If encoding fails, print a safe message instead
+        try:
+            print(f"[PRINT ERROR] Could not print message due to encoding issue: {type(e).__name__}")
+        except:
+            pass  # If even this fails, silently continue
 
 from flask import Flask, Response, request, jsonify, send_from_directory, session, g
 from flask_cors import CORS
@@ -176,14 +197,14 @@ def upload_base64_image_to_r2(base64_data: str, company_id: int, file_type: str 
         )
         
         if public_url:
-            print(f"✅ Image uploaded to R2: {public_url}")
+            print(f"[SUCCESS] Image uploaded to R2: {public_url}")
             return public_url
         else:
             print("⚠️ R2 upload returned None, storing as base64")
             return base64_data
             
     except Exception as e:
-        print(f"⚠️ R2 upload failed, storing as base64: {e}")
+        print(f"[WARNING] R2 upload failed, storing as base64: {e}")
         return base64_data
 
 
@@ -210,7 +231,7 @@ def start_scheduler_once():
         start_auto_complete_scheduler(interval_minutes=60)  # Check every hour
         print("✅ Auto-complete scheduler started successfully\\n")
     except Exception as e:
-        print(f"⚠️  Warning: Could not start auto-complete scheduler: {e}\\n")
+        print(f"[WARNING] Warning: Could not start auto-complete scheduler: {e}\\n")
 
 
 # Initialize scheduler on first request (lazy init)
@@ -259,14 +280,14 @@ def twilio_voice():
                 company = None
             conn.close()
     except Exception as e:
-        print(f"⚠️ Error fetching company by phone {to_number}: {e}")
+        print(f"[WARNING] Error fetching company by phone {to_number}: {e}")
         company = None
     
     if not company:
         # No company found for this number - return error
         twiml = VoiceResponse()
         twiml.say("This phone number is not configured. Please contact support.")
-        print(f"❌ No company found for Twilio number: {to_number}")
+        print(f"[ERROR] No company found for Twilio number: {to_number}")
         return Response(str(twiml), mimetype="text/xml")
     
     # Check if AI receptionist is enabled
@@ -280,8 +301,8 @@ def twilio_voice():
         
         print("=" * 60)
         print("📞 Incoming Twilio Call - AI DISABLED")
-        print(f"📱 Caller: {caller_phone}")
-        print(f"📲 Forwarding to business phone: {business_phone or 'No phone number set!'}")
+        print(f"[PHONE] Caller: {caller_phone}")
+        print(f"[PHONE] Forwarding to business phone: {business_phone or 'No phone number set!'}")
         print("=" * 60)
         
         if business_phone:
@@ -289,7 +310,7 @@ def twilio_voice():
             # Create Dial verb with proper nested Number noun
             dial = twiml.dial(timeout=60, action='/twilio/dial-status', method='POST')
             dial.number(business_phone)
-            print(f"📋 Generated TwiML for forwarding:")
+            print(f"[INFO] Generated TwiML for forwarding:")
             print(str(twiml))
         else:
             twiml.say("We're sorry, but our AI receptionist is currently unavailable and no business phone number is configured. Please try again later.")
@@ -305,8 +326,8 @@ def twilio_voice():
 
         print("=" * 60)
         print("📞 Incoming Twilio Call - AI ENABLED")
-        print(f"📱 Caller: {caller_phone}")
-        print(f"🤖 Connecting to AI at: {ws_url}")
+        print(f"[PHONE] Caller: {caller_phone}")
+        print(f"[AI] Connecting to AI at: {ws_url}")
         print("=" * 60)
     
     return Response(str(twiml), mimetype="text/xml")
@@ -325,7 +346,7 @@ def dial_status():
     print(f"Status: {dial_status}")
     print(f"Duration: {dial_duration}s")
     if error_code:
-        print(f"⚠️  ERROR {error_code}: {error_message}")
+        print(f"[WARNING] ERROR {error_code}: {error_message}")
     print(f"Full data: {dict(request.form)}")
     print("=" * 60)
     
@@ -354,7 +375,7 @@ def transfer_call():
     
     print("=" * 60)
     print("📞 TRANSFER ENDPOINT CALLED")
-    print(f"📲 Transferring to: {transfer_number}")
+    print(f"[PHONE] Transferring to: {transfer_number}")
     print("=" * 60)
     
     # Create TwiML to transfer the call
@@ -363,7 +384,7 @@ def transfer_call():
     dial = response.dial(timeout=60, action='/twilio/dial-status', method='POST')
     dial.number(transfer_number)
     
-    print(f"📋 Generated transfer TwiML:\n{str(response)}")
+    print(f"[INFO] Generated transfer TwiML:\n{str(response)}")
     
     return Response(str(response), mimetype="text/xml")
 
@@ -527,7 +548,7 @@ def login():
     if needs_rehash(company['password_hash']):
         new_hash = hash_password(password)
         db.update_company_password(company['id'], new_hash)
-        print(f"✅ Upgraded password hash for user {company['id']}")
+        print(f"[SUCCESS] Upgraded password hash for user {company['id']}")
     
     # Update last login
     db.update_last_login(company['id'])
@@ -632,7 +653,7 @@ def get_dashboard_data():
         })
         
     except Exception as e:
-        print(f"❌ Dashboard data error: {e}")
+        print(f"[ERROR] Dashboard data error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -902,14 +923,14 @@ def get_available_phone_numbers():
         })
     except AttributeError as e:
         # Method doesn't exist - return friendly error
-        print(f"⚠️ Method not found: {e}")
+        print(f"[WARNING] Method not found: {e}")
         return jsonify({
             "success": False,
             "error": "Phone number management not configured",
             "numbers": []
         }), 500
     except Exception as e:
-        print(f"❌ Error getting phone numbers: {e}")
+        print(f"[ERROR] Error getting phone numbers: {e}")
         return jsonify({
             "success": False,
             "error": f"Database error: {str(e)}",
@@ -947,7 +968,7 @@ def assign_phone_number():
         })
     except Exception as e:
         error_msg = str(e)
-        print(f"❌ Phone assignment failed for company {company_id}: {error_msg}")
+        print(f"[ERROR] Phone assignment failed for company {company_id}: {error_msg}")
         return jsonify({
             "success": False,
             "error": error_msg
@@ -988,6 +1009,29 @@ from src.services.stripe_service import (
 
 # Webhook secret for Stripe events
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+
+
+def _ensure_payment_columns(db):
+    """Ensure bank/payment columns exist in companies table (idempotent)"""
+    conn = db.get_connection()
+    try:
+        cursor = conn.cursor()
+        columns_to_add = {
+            'bank_iban': 'TEXT',
+            'bank_bic': 'TEXT',
+            'bank_name': 'TEXT',
+            'bank_account_holder': 'TEXT',
+            'revolut_phone': 'TEXT',
+        }
+        for col_name, col_type in columns_to_add.items():
+            try:
+                cursor.execute(f"ALTER TABLE companies ADD COLUMN {col_name} {col_type}")
+                conn.commit()
+                print(f"[SUCCESS] Added missing column {col_name} to companies table")
+            except Exception:
+                conn.rollback()  # Column already exists, that's fine
+    finally:
+        db.return_connection(conn)
 
 
 def get_subscription_info(company: dict) -> dict:
@@ -1135,6 +1179,43 @@ def create_checkout():
         return jsonify({"error": "Failed to create checkout session"}), 500
 
 
+@app.route("/api/subscription/start-trial", methods=["POST"])
+@login_required
+def start_trial():
+    """Start or restart a 14-day free trial"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    # Check if already on active trial or pro
+    subscription_info = get_subscription_info(company)
+    if subscription_info['is_active'] and subscription_info['tier'] == 'pro':
+        return jsonify({"error": "You already have an active subscription"}), 400
+    
+    # Start 14-day trial
+    from datetime import timedelta
+    trial_start = datetime.now()
+    trial_end = trial_start + timedelta(days=14)
+    
+    db.update_company(
+        company['id'],
+        subscription_tier='trial',
+        subscription_status='active',
+        trial_start=trial_start,
+        trial_end=trial_end
+    )
+    
+    print(f"[SUCCESS] Free trial started for company {company['id']} until {trial_end}")
+    
+    return jsonify({
+        "success": True,
+        "message": "Your 14-day free trial has started!",
+        "trial_end": trial_end.isoformat()
+    })
+
+
 @app.route("/api/subscription/billing-portal", methods=["POST"])
 @login_required
 def billing_portal():
@@ -1254,7 +1335,7 @@ def stripe_webhook():
     result = handle_webhook_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     
     if not result['success']:
-        print(f"❌ Webhook error: {result['error']}")
+        print(f"[ERROR] Webhook error: {result['error']}")
         return jsonify({"error": result['error']}), 400
     
     event_type = result['event_type']
@@ -1282,7 +1363,7 @@ def stripe_webhook():
                     subscription_current_period_end=datetime.fromtimestamp(sub.current_period_end),
                     subscription_cancel_at_period_end=0
                 )
-                print(f"✅ Subscription activated for company {company_id}")
+                print(f"[SUCCESS] Subscription activated for company {company_id}")
         
         elif event_type == 'customer.subscription.updated':
             # Subscription updated (e.g., renewed, cancelled)
@@ -1305,7 +1386,7 @@ def stripe_webhook():
                     update_data['subscription_current_period_end'] = datetime.fromtimestamp(current_period_end)
                 
                 db.update_company(company_id, **update_data)
-                print(f"✅ Subscription updated for company {company_id}: {status}")
+                print(f"[SUCCESS] Subscription updated for company {company_id}: {status}")
         
         elif event_type == 'customer.subscription.deleted':
             # Subscription cancelled/expired
@@ -1318,7 +1399,7 @@ def stripe_webhook():
                     subscription_status='cancelled',
                     stripe_subscription_id=None
                 )
-                print(f"⚠️ Subscription cancelled for company {company_id}")
+                print(f"[WARNING] Subscription cancelled for company {company_id}")
         
         elif event_type == 'invoice.payment_failed':
             # Payment failed
@@ -1327,10 +1408,10 @@ def stripe_webhook():
             
             if company_id:
                 db.update_company(company_id, subscription_status='past_due')
-                print(f"⚠️ Payment failed for company {company_id}")
+                print(f"[WARNING] Payment failed for company {company_id}")
     
     except Exception as e:
-        print(f"❌ Error processing webhook {event_type}: {e}")
+        print(f"[ERROR] Error processing webhook {event_type}: {e}")
         # Still return 200 to acknowledge receipt
     
     return jsonify({"received": True})
@@ -1364,7 +1445,14 @@ def get_connect_status():
         return jsonify({"error": "Company not found"}), 404
     
     account_id = company.get('stripe_connect_account_id')
-    
+    remove_stripe_connect = company.get('remove_stripe_connect', False)
+    if remove_stripe_connect:
+        return jsonify({
+            "success": True,
+            "connected": False,
+            "status": "stripe_removed",
+            "message": "Stripe Connect has been removed for this user. Please use bank transfer or Revolut."
+        })
     if not account_id:
         return jsonify({
             "success": True,
@@ -1463,47 +1551,74 @@ def get_onboarding_link():
     if not company:
         return jsonify({"error": "Company not found"}), 404
     
-    account_id = company.get('stripe_connect_account_id')
+    # Ensure Stripe API key is set (may not be loaded at module level in some envs)
+    import stripe as stripe_lib
+    if not stripe_lib.api_key:
+        stripe_lib.api_key = os.getenv('STRIPE_SECRET_KEY')
     
-    # If no account exists, create one first
-    if not account_id:
+    if not stripe_lib.api_key or not stripe_lib.api_key.startswith(('sk_test_', 'sk_live_')):
+        print("❌ Stripe Connect: STRIPE_SECRET_KEY not configured")
+        return jsonify({"error": "Stripe is not configured. Please set STRIPE_SECRET_KEY in your environment."}), 503
+    
+    try:
+        # Ensure stripe_connect columns exist
+        _ensure_payment_columns(db)
+        
+        account_id = company.get('stripe_connect_account_id')
+        
+        # If no account exists, create one first
+        if not account_id:
+            data = request.json or {}
+            country = data.get('country', 'IE')
+            
+            print(f"[STRIPE] Creating Stripe Connect account for company {company['id']} ({company['email']})...")
+            
+            result = create_connect_account(
+                company_id=company['id'],
+                email=company['email'],
+                company_name=company['company_name'],
+                country=country
+            )
+            
+            if not result:
+                return jsonify({"error": "Failed to create Stripe Connect account. Check your Stripe API key."}), 500
+            
+            account_id = result['account_id']
+            db.update_company(
+                company['id'],
+                stripe_connect_account_id=account_id,
+                stripe_connect_status='pending'
+            )
+            print(f"[SUCCESS] Stripe Connect account {account_id} created and saved for company {company['id']}")
+        
         data = request.json or {}
-        country = data.get('country', 'IE')
+        base_url = data.get('base_url', os.getenv('FRONTEND_URL', 'http://localhost:3000'))
         
-        result = create_connect_account(
-            company_id=company['id'],
-            email=company['email'],
-            company_name=company['company_name'],
-            country=country
+        print(f"[STRIPE] Creating onboarding link for account {account_id}, return to {base_url}")
+        
+        # Create the account link
+        onboarding_url = create_account_link(
+            account_id=account_id,
+            refresh_url=f"{base_url}/settings?connect=refresh",
+            return_url=f"{base_url}/settings?connect=return"
         )
         
-        if not result:
-            return jsonify({"error": "Failed to create Stripe Connect account"}), 500
+        if not onboarding_url:
+            # If the account link fails, the account may be invalid — clear it and let them retry
+            print(f"[WARNING] Could not create onboarding link for {account_id}, clearing stale account")
+            db.update_company(company['id'], stripe_connect_account_id=None, stripe_connect_status='not_connected')
+            return jsonify({"error": "Could not create setup link. Please try connecting again."}), 500
         
-        account_id = result['account_id']
-        db.update_company(
-            company['id'],
-            stripe_connect_account_id=account_id,
-            stripe_connect_status='pending'
-        )
+        return jsonify({
+            "success": True,
+            "onboarding_url": onboarding_url
+        })
     
-    data = request.json or {}
-    base_url = data.get('base_url', os.getenv('FRONTEND_URL', 'http://localhost:3000'))
-    
-    # Create the account link
-    onboarding_url = create_account_link(
-        account_id=account_id,
-        refresh_url=f"{base_url}/settings?connect=refresh",
-        return_url=f"{base_url}/settings?connect=return"
-    )
-    
-    if not onboarding_url:
-        return jsonify({"error": "Failed to create onboarding link"}), 500
-    
-    return jsonify({
-        "success": True,
-        "onboarding_url": onboarding_url
-    })
+    except Exception as e:
+        print(f"[ERROR] Stripe Connect onboarding error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Stripe error: {str(e)}"}), 500
 
 
 @app.route("/api/connect/dashboard-link", methods=["POST"])
@@ -1552,12 +1667,13 @@ def disconnect_connect():
         company['id'],
         stripe_connect_account_id=None,
         stripe_connect_status='not_connected',
-        stripe_connect_onboarding_complete=0
+        stripe_connect_onboarding_complete=0,
+        remove_stripe_connect=True
     )
-    
+    print(f"[INFO] Stripe Connect removed for company {company['id']}")
     return jsonify({
         "success": True,
-        "message": "Stripe account disconnected successfully"
+        "message": "Stripe account disconnected and removed successfully"
     })
 
 
@@ -1633,24 +1749,62 @@ def stripe_connect_webhook():
     event_type = event['type']
     data = event['data']['object']
     
-    print(f"📨 Received Stripe Connect webhook: {event_type}")
+    print(f"[WEBHOOK] Received Stripe Connect webhook: {event_type}")
     
     db = get_database()
     
-    # Handle account updates
-    if event_type == 'account.updated':
-        account_id = data.get('id')
-        charges_enabled = data.get('charges_enabled', False)
-        payouts_enabled = data.get('payouts_enabled', False)
-        details_submitted = data.get('details_submitted', False)
+    try:
+        # Handle account updates (onboarding completed, verification, etc.)
+        if event_type == 'account.updated':
+            account_id = data.get('id')
+            charges_enabled = data.get('charges_enabled', False)
+            payouts_enabled = data.get('payouts_enabled', False)
+            details_submitted = data.get('details_submitted', False)
+            
+            # Find company by connect account ID and update status
+            try:
+                conn = db.get_connection()
+                from psycopg2.extras import RealDictCursor
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute("SELECT id FROM companies WHERE stripe_connect_account_id = %s", (account_id,))
+                row = cursor.fetchone()
+                db.return_connection(conn)
+                
+                if row:
+                    company_id = row['id']
+                    if charges_enabled and payouts_enabled:
+                        db.update_company(company_id, stripe_connect_status='active', stripe_connect_onboarding_complete=1)
+                        print(f"[SUCCESS] Connect account {account_id} is now fully active for company {company_id}")
+                    elif details_submitted:
+                        db.update_company(company_id, stripe_connect_status='pending')
+                        print(f"[INFO] Connect account {account_id} submitted, waiting for verification")
+            except Exception as e:
+                print(f"[WARNING] Error updating company for Connect account {account_id}: {e}")
         
-        # Find company by connect account ID and update status
-        # Note: We'd need a method to look up by connect account ID
-        # For now, we'll just log it
-        if charges_enabled and payouts_enabled:
-            print(f"✅ Connect account {account_id} is now fully active")
-        elif details_submitted:
-            print(f"⏳ Connect account {account_id} submitted, waiting for verification")
+        # Handle checkout session completed (customer paid an invoice)
+        elif event_type == 'checkout.session.completed':
+            booking_id = data.get('metadata', {}).get('booking_id')
+            if booking_id:
+                try:
+                    booking_id = int(booking_id)
+                    db.update_booking(booking_id, payment_status='paid', status='completed')
+                    print(f"[SUCCESS] Booking {booking_id} marked as paid via Stripe Connect checkout")
+                except Exception as e:
+                    print(f"[WARNING] Error updating booking {booking_id}: {e}")
+        
+        # Handle payment intent succeeded
+        elif event_type == 'payment_intent.succeeded':
+            booking_id = data.get('metadata', {}).get('booking_id')
+            if booking_id:
+                try:
+                    booking_id = int(booking_id)
+                    db.update_booking(booking_id, payment_status='paid', status='completed')
+                    print(f"[SUCCESS] Booking {booking_id} marked as paid via payment intent")
+                except Exception as e:
+                    print(f"[WARNING] Error updating booking {booking_id}: {e}")
+    
+    except Exception as e:
+        print(f"[ERROR] Error processing Connect webhook {event_type}: {e}")
     
     return jsonify({"received": True})
 
@@ -1673,7 +1827,7 @@ def twilio_sms():
         from_number = request.form.get('From', '')
         message_body = request.form.get('Body', '').strip().upper()
         
-        print(f"\n📱 SMS received from {from_number}: {message_body}")
+        print(f"\n[SMS] SMS received from {from_number}: {message_body}")
         
         # Create response
         resp = MessagingResponse()
@@ -1682,14 +1836,14 @@ def twilio_sms():
             # User confirmed the appointment
             reply = "Thank you! Your appointment is confirmed. We look forward to seeing you!"
             resp.message(reply)
-            print(f"✅ Appointment confirmed by {from_number}")
+            print(f"[SUCCESS] Appointment confirmed by {from_number}")
             
         elif 'CANCEL' in message_body:
             # User wants to cancel - we would need event ID to actually cancel
             # For now, just acknowledge and ask them to call
             reply = "We received your cancellation request. Please call us to confirm the cancellation and reschedule if needed."
             resp.message(reply)
-            print(f"⚠️ Cancellation request from {from_number}")
+            print(f"[WARNING] Cancellation request from {from_number}")
             
         else:
             # Unknown response
@@ -1699,7 +1853,7 @@ def twilio_sms():
         return Response(str(resp), mimetype="text/xml")
         
     except Exception as e:
-        print(f"❌ Error handling SMS: {e}")
+        print(f"[ERROR] Error handling SMS: {e}")
         resp = MessagingResponse()
         resp.message("Sorry, we encountered an error processing your message. Please call us directly.")
         return Response(str(resp), mimetype="text/xml")
@@ -1785,7 +1939,6 @@ def business_settings_api():
             data['logo_url'] = upload_base64_image_to_r2(data['logo_url'], company_id, 'logos')
         
         # Map frontend field names to database column names
-        # Only basic business info - no API keys or Twilio credentials
         update_data = {}
         field_mapping = {
             'business_name': 'company_name',
@@ -1807,11 +1960,28 @@ def business_settings_api():
                 update_data[db_field] = data[frontend_field]
         
         if update_data:
-            success = db.update_company(company_id, **update_data)
-            if success:
-                return jsonify({"message": "Settings updated successfully"})
+            # Ensure bank/payment columns exist before updating
+            bank_fields = {'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder', 'revolut_phone'}
+            has_bank_fields = any(f in update_data for f in bank_fields)
+            if has_bank_fields:
+                try:
+                    _ensure_payment_columns(db)
+                except Exception as e:
+                    print(f"[WARNING] Could not ensure payment columns: {e}")
+            
+            try:
+                success = db.update_company(company_id, **update_data)
+                if success:
+                    return jsonify({"message": "Settings updated successfully"})
+                else:
+                    return jsonify({"error": "No changes were saved"}), 500
+            except Exception as e:
+                print(f"[ERROR] Error updating settings: {e}")
+                import traceback
+                traceback.print_exc()
+                return jsonify({"error": f"Failed to save: {str(e)}"}), 500
         
-        return jsonify({"error": "Failed to update settings"}), 500
+        return jsonify({"error": "No valid fields to update"}), 400
 
 
 # Developer settings endpoint removed - all settings now in companies table via /api/settings/business
@@ -2049,16 +2219,16 @@ def appointment_notes_api(booking_id):
         )
         
         # Update client description after adding note
-        print(f"\n🔄 Updating client description for client_id: {client_id} after adding note...")
+        print(f"\n[UPDATE] Updating client description for client_id: {client_id} after adding note...")
         try:
             from src.services.client_description_generator import update_client_description
             success = update_client_description(client_id)
             if success:
-                print(f"✅ Successfully updated description for client {client_id}")
+                print(f"[SUCCESS] Successfully updated description for client {client_id}")
             else:
-                print(f"⚠️ Description update returned False for client {client_id}")
+                print(f"[WARNING] Description update returned False for client {client_id}")
         except Exception as e:
-            print(f"❌ ERROR updating description for client {client_id}: {e}")
+            print(f"[ERROR] ERROR updating description for client {client_id}: {e}")
             import traceback
             traceback.print_exc()
         
@@ -2081,16 +2251,16 @@ def appointment_note_api(booking_id, note_id):
         if success:
             # Update client description after editing note
             if client_id:
-                print(f"\n🔄 Updating client description for client_id: {client_id} after editing note...")
+                print(f"\n[UPDATE] Updating client description for client_id: {client_id} after editing note...")
                 try:
                     from src.services.client_description_generator import update_client_description
                     success = update_client_description(client_id)
                     if success:
-                        print(f"✅ Successfully updated description for client {client_id}")
+                        print(f"[SUCCESS] Successfully updated description for client {client_id}")
                     else:
-                        print(f"⚠️ Description update returned False for client {client_id}")
+                        print(f"[WARNING] Description update returned False for client {client_id}")
                 except Exception as e:
-                    print(f"❌ ERROR updating description: {e}")
+                    print(f"[ERROR] ERROR updating description: {e}")
                     import traceback
                     traceback.print_exc()
             return jsonify({"message": "Note updated"})
@@ -2101,16 +2271,16 @@ def appointment_note_api(booking_id, note_id):
         if success:
             # Update client description after deleting note
             if client_id:
-                print(f"\n🔄 Updating client description for client_id: {client_id} after deleting note...")
+                print(f"\n[UPDATE] Updating client description for client_id: {client_id} after deleting note...")
                 try:
                     from src.services.client_description_generator import update_client_description
                     success = update_client_description(client_id)
                     if success:
-                        print(f"✅ Successfully updated description for client {client_id}")
+                        print(f"[SUCCESS] Successfully updated description for client {client_id}")
                     else:
-                        print(f"⚠️ Description update returned False for client {client_id}")
+                        print(f"[WARNING] Description update returned False for client {client_id}")
                 except Exception as e:
-                    print(f"❌ ERROR updating description: {e}")
+                    print(f"[ERROR] ERROR updating description: {e}")
                     import traceback
                     traceback.print_exc()
             return jsonify({"message": "Note deleted"})
@@ -2190,15 +2360,15 @@ def bookings_api():
                 if previous_booking:
                     if not job_address and previous_booking['address']:
                         job_address = previous_booking['address']
-                        print(f"📍 Using address from previous booking: {job_address}")
+                        print(f"[INFO] Using address from previous booking: {job_address}")
                     
                     if not job_eircode and previous_booking['eircode']:
                         job_eircode = previous_booking['eircode']
-                        print(f"📮 Using eircode from previous booking: {job_eircode}")
+                        print(f"[INFO] Using eircode from previous booking: {job_eircode}")
                     
                     if not job_property_type and previous_booking.get('property_type'):
                         job_property_type = previous_booking['property_type']
-                        print(f"🏠 Using property type from previous booking: {job_property_type}")
+                        print(f"[INFO] Using property type from previous booking: {job_property_type}")
             
             # Create booking - accept both 'charge' and 'estimated_charge' from frontend
             job_charge = data.get('charge') or data.get('estimated_charge')
@@ -2229,7 +2399,7 @@ def bookings_api():
                 from src.services.client_description_generator import update_client_description
                 update_client_description(client_id)
             except Exception as e:
-                print(f"⚠️ Could not update client description: {e}")
+                print(f"[WARNING] Could not update client description: {e}")
             
             return jsonify({
                 "success": True,
@@ -2238,7 +2408,7 @@ def bookings_api():
             }), 201
             
         except Exception as e:
-            print(f"❌ Error creating booking: {e}")
+            print(f"[ERROR] Error creating booking: {e}")
             import traceback
             traceback.print_exc()
             return jsonify({"error": str(e)}), 500
@@ -2363,7 +2533,7 @@ def complete_booking_api(booking_id):
                 "description": None
             })
     except Exception as e:
-        print(f"❌ Error updating description: {e}")
+        print(f"[ERROR] Error updating description: {e}")
         return jsonify({
             "success": True,
             "message": "Appointment completed but description update failed",
@@ -2423,7 +2593,7 @@ def send_invoice_api(booking_id):
             'client_name': booking.get('client_name') or booking.get('customer_name')
         }
         
-        print(f"💰 Invoice: Using charge amount €{booking_dict['charge']} from database for booking {booking_id}")
+        safe_print(f"[INVOICE] Invoice: Using charge amount EUR{booking_dict['charge']} from database for booking {booking_id}")
         
         # Use customer's actual email
         to_email = booking_dict['email']
@@ -2441,7 +2611,7 @@ def send_invoice_api(booking_id):
             return jsonify({"error": "Invalid charge amount"}), 400
         
         charge_amount = float(charge_amount)
-        print(f"💰 Invoice: Final charge amount = €{charge_amount}")
+        safe_print(f"[INVOICE] Invoice: Final charge amount = EUR{charge_amount}")
         
         # Generate Stripe payment link
         from src.utils.config import config
@@ -2458,14 +2628,14 @@ def send_invoice_api(booking_id):
         
         # Debug: Check if key is loaded
         if stripe_secret_key:
-            print(f"🔑 Stripe key found: {stripe_secret_key[:12]}...{stripe_secret_key[-4:]}")
+            print(f"[STRIPE] Stripe key found: {stripe_secret_key[:12]}...{stripe_secret_key[-4:]}")
         else:
             # Try loading directly from environment as fallback
             stripe_secret_key = os.getenv('STRIPE_SECRET_KEY')
             if stripe_secret_key:
-                print(f"🔑 Stripe key loaded from env: {stripe_secret_key[:12]}...{stripe_secret_key[-4:]}")
+                print(f"[STRIPE] Stripe key loaded from env: {stripe_secret_key[:12]}...{stripe_secret_key[-4:]}")
             else:
-                print("❌ STRIPE_SECRET_KEY not found in config or environment!")
+                print("[ERROR] STRIPE_SECRET_KEY not found in config or environment!")
         
         # Only create Stripe payment link if the user has their own Connect account
         # We never charge to the platform account - payments go directly to the user
@@ -2477,7 +2647,7 @@ def send_invoice_api(booking_id):
                 # Amount must be in cents
                 amount_cents = int(charge_amount * 100)
                 
-                print(f"💳 Creating Stripe checkout via Connect account {connected_account_id} for €{charge_amount} ({amount_cents} cents)...")
+                print(f"[STRIPE] Creating Stripe checkout via Connect account {connected_account_id} for EUR{charge_amount} ({amount_cents} cents)...")
                 
                 # Build checkout session params
                 checkout_params = {
@@ -2516,9 +2686,9 @@ def send_invoice_api(booking_id):
                 )
                 
                 stripe_payment_link = checkout_session.url
-                print(f"✅ Stripe payment link created: {stripe_payment_link}")
+                print(f"[SUCCESS] Stripe payment link created: {stripe_payment_link}")
             except Exception as stripe_error:
-                print(f"⚠️ Could not create Stripe payment link: {stripe_error}")
+                print(f"[WARNING] Could not create Stripe payment link: {stripe_error}")
                 import traceback
                 traceback.print_exc()
                 # Continue without Stripe link - invoice will still be sent
@@ -2532,14 +2702,18 @@ def send_invoice_api(booking_id):
         revolut_phone = None
         if company:
             bank_iban = company.get('bank_iban', '')
-            if bank_iban:
+            bank_bic = company.get('bank_bic', '')
+            bank_name = company.get('bank_name', '')
+            account_holder = company.get('bank_account_holder', '')
+            revolut_phone_val = company.get('revolut_phone', '')
+            if bank_iban or bank_bic or bank_name or account_holder:
                 bank_details = {
                     'iban': bank_iban,
-                    'bic': company.get('bank_bic', ''),
-                    'bank_name': company.get('bank_name', ''),
-                    'account_holder': company.get('bank_account_holder', ''),
+                    'bic': bank_bic,
+                    'bank_name': bank_name,
+                    'account_holder': account_holder,
                 }
-            revolut_phone = company.get('revolut_phone', '') or None
+            revolut_phone = revolut_phone_val if revolut_phone_val else None
         
         email_service = get_email_service()
         
@@ -2567,10 +2741,18 @@ def send_invoice_api(booking_id):
             job_address=job_address,
             invoice_number=invoice_number,
             bank_details=bank_details,
-            revolut_phone=revolut_phone
+            revolut_phone=revolut_phone,
+            add_bank_details=bool(bank_details and bank_details.get('iban')),
+            add_revolut_phone=bool(revolut_phone)
         )
         
         if success:
+            # Update payment status to 'invoiced' so we know an invoice was sent
+            try:
+                db.update_booking(booking_id, payment_status='invoiced')
+            except Exception:
+                pass  # Non-critical, don't fail the response
+            
             return jsonify({
                 "success": True,
                 "message": f"Invoice sent to {to_email}",
@@ -2582,7 +2764,7 @@ def send_invoice_api(booking_id):
             return jsonify({"error": "Failed to send invoice email"}), 500
             
     except Exception as e:
-        print(f"❌ Error sending invoice: {e}")
+        safe_print(f"[ERROR] Error sending invoice: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
@@ -2600,7 +2782,7 @@ def auto_complete_appointments():
             "count": count
         })
     except Exception as e:
-        print(f"❌ Error in auto-complete: {e}")
+        print(f"[ERROR] Error in auto-complete: {e}")
         return jsonify({
             "success": False,
             "error": str(e)
@@ -2895,7 +3077,7 @@ This is an automated message. Please reply to this email if you need assistance.
             server.login(smtp_user, smtp_password)
             server.send_message(msg)
         
-        print(f"✅ Email sent successfully to {to_email}")
+        safe_print(f"[SUCCESS] Email sent successfully to {to_email}")
         
         return jsonify({
             "success": True,
@@ -2903,7 +3085,7 @@ This is an automated message. Please reply to this email if you need assistance.
         })
         
     except Exception as e:
-        print(f"❌ Error sending email: {e}")
+        safe_print(f"[ERROR] Error sending email: {e}")
         return jsonify({
             "success": False,
             "error": str(e)
@@ -2992,7 +3174,7 @@ def chat():
                     response_text += token
             
             # Add debug logging
-            print(f"📝 Chat response generated ({len(response_text)} chars): {response_text[:100]}...")
+            print(f"[CHAT] Chat response generated ({len(response_text)} chars): {response_text[:100]}...")
             
             # If response is empty or suspiciously short, add fallback
             if not response_text or len(response_text.strip()) < 5:
@@ -3001,7 +3183,7 @@ def chat():
             
             return response_text
         except Exception as e:
-            print(f"❌ Chat error in get_response: {e}")
+            print(f"[ERROR] Chat error in get_response: {e}")
             import traceback
             traceback.print_exc()
             return f"Error: {str(e)}"
@@ -3099,26 +3281,26 @@ def not_found(e):
 @app.errorhandler(500)
 def internal_error(e):
     """Handle 500 errors"""
-    print(f"Internal server error: {e}")
+    safe_print(f"Internal server error: {e}")
     return jsonify({"error": "Internal server error"}), 500
 
 
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Handle all uncaught exceptions"""
-    print(f"Unhandled exception: {e}")
+    safe_print(f"Unhandled exception: {e}")
     return jsonify({"error": "An unexpected error occurred"}), 500
 
 
 if __name__ == "__main__":
     try:
         config.validate()
-        print("✅ Configuration validated")
-        print(f"🚀 Starting Flask server on port {config.PORT}")
+        print("[SUCCESS] Configuration validated")
+        print(f"[SERVER] Starting Flask server on port {config.PORT}")
         # Bind to 0.0.0.0 for production (Render/cloud), 127.0.0.1 for local dev
         host = "0.0.0.0" if config.FLASK_ENV == "production" else "127.0.0.1"
         app.run(host=host, port=config.PORT, debug=(config.FLASK_ENV == "development"), use_reloader=False)
     except ValueError as e:
-        print(f"❌ Configuration error: {e}")
+        print(f"[ERROR] Configuration error: {e}")
         exit(1)
 

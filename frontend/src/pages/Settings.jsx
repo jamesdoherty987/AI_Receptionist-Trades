@@ -8,6 +8,8 @@ import ImageUpload from '../components/ImageUpload';
 import PhoneConfigModal from '../components/modals/PhoneConfigModal';
 import SubscriptionManager from '../components/dashboard/SubscriptionManager';
 import PaymentSetup from '../components/dashboard/PaymentSetup';
+// Global flag to remove Stripe Connect from UI
+const REMOVE_STRIPE_CONNECT = true;
 import { 
   getBusinessSettings, 
   updateBusinessSettings,
@@ -24,6 +26,8 @@ function Settings() {
   const [saveMessage, setSaveMessage] = useState('');
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [activeTab, setActiveTab] = useState('business');
+  // Flag to hide Stripe Connect component
+  const hideStripeConnect = REMOVE_STRIPE_CONNECT;
   
   // Handle subscription redirect messages
   useEffect(() => {
@@ -319,7 +323,7 @@ function Settings() {
           {/* Receive Payments Tab */}
           {activeTab === 'payments' && (
             <div className="settings-tab-content">
-              <PaymentSetup />
+                <PaymentSetup />
             </div>
           )}
 

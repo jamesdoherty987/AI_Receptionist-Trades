@@ -23,6 +23,9 @@ STRIPE_PRODUCT_DESCRIPTION = "AI Receptionist & Business Management - All Featur
 
 def is_stripe_configured() -> bool:
     """Check if Stripe is properly configured"""
+    # Re-read API key from environment if not set (handles late env loading)
+    if not stripe.api_key:
+        stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
     return bool(stripe.api_key and stripe.api_key.startswith(('sk_test_', 'sk_live_')))
 
 
@@ -58,11 +61,11 @@ def get_or_create_customer(email: str, company_name: str, company_id: int) -> Op
             }
         )
         
-        print(f"✅ Created Stripe customer: {customer.id} for {email}")
+        print(f"[SUCCESS] Created Stripe customer: {customer.id} for {email}")
         return customer.id
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error creating customer: {e}")
+        print(f"[ERROR] Stripe error creating customer: {e}")
         return None
 
 
@@ -150,14 +153,14 @@ def create_checkout_session(
         
         session = stripe.checkout.Session.create(**session_params)
         
-        print(f"✅ Created checkout session: {session.id}")
+        print(f"[SUCCESS] Created checkout session: {session.id}")
         return {
             'session_id': session.id,
             'url': session.url
         }
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error creating checkout session: {e}")
+        print(f"[ERROR] Stripe error creating checkout session: {e}")
         return None
 
 
@@ -184,7 +187,7 @@ def create_billing_portal_session(customer_id: str, return_url: str) -> Optional
         return session.url
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error creating portal session: {e}")
+        print(f"[ERROR] Stripe error creating portal session: {e}")
         return None
 
 
@@ -232,7 +235,7 @@ def get_subscription_status(customer_id: str) -> Dict[str, Any]:
         }
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error getting subscription: {e}")
+        print(f"[ERROR] Stripe error getting subscription: {e}")
         return default_response
 
 
@@ -259,11 +262,11 @@ def cancel_subscription(subscription_id: str, at_period_end: bool = True) -> boo
         else:
             stripe.Subscription.cancel(subscription_id)
         
-        print(f"✅ Cancelled subscription: {subscription_id}")
+        print(f"[SUCCESS] Cancelled subscription: {subscription_id}")
         return True
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error cancelling subscription: {e}")
+        print(f"[ERROR] Stripe error cancelling subscription: {e}")
         return False
 
 
@@ -280,11 +283,11 @@ def reactivate_subscription(subscription_id: str) -> bool:
             cancel_at_period_end=False
         )
         
-        print(f"✅ Reactivated subscription: {subscription_id}")
+        print(f"[SUCCESS] Reactivated subscription: {subscription_id}")
         return True
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error reactivating subscription: {e}")
+        print(f"[ERROR] Stripe error reactivating subscription: {e}")
         return False
 
 
@@ -312,7 +315,7 @@ def handle_webhook_event(payload: bytes, sig_header: str, webhook_secret: str) -
     event_type = event['type']
     data = event['data']['object']
     
-    print(f"📨 Received Stripe webhook: {event_type}")
+    print(f"[WEBHOOK] Received Stripe webhook: {event_type}")
     
     return {
         'success': True,
@@ -345,5 +348,5 @@ def get_customer_invoices(customer_id: str, limit: int = 10) -> list:
         } for inv in invoices.data]
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error getting invoices: {e}")
+        print(f"[ERROR] Stripe error getting invoices: {e}")
         return []

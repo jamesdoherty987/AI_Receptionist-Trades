@@ -47,7 +47,7 @@ class PostgreSQLDatabaseWrapper:
             dsn=dsn
         )
         self.use_postgres = True  # Flag for compatibility
-        print(f"✅ PostgreSQL ThreadedConnectionPool initialized (1-10 connections)")
+        print(f"[SUCCESS] PostgreSQL ThreadedConnectionPool initialized (1-10 connections)")
         self.init_database()
     
     def get_connection(self):
@@ -67,7 +67,7 @@ class PostgreSQLDatabaseWrapper:
             return conn
         except psycopg2_pool.PoolError as e:
             # Pool exhausted - create direct connection as fallback
-            print(f"⚠️ Connection pool exhausted, creating direct connection: {e}")
+            print(f"[WARNING] Connection pool exhausted, creating direct connection: {e}")
             return psycopg2.connect(self.database_url, connect_timeout=10)
     
     def return_connection(self, conn):
@@ -333,19 +333,22 @@ class PostgreSQLDatabaseWrapper:
             print("✅ PostgreSQL database initialized")
         except Exception as e:
             conn.rollback()
-            print(f"❌ Error initializing PostgreSQL database: {e}")
+            print(f"[ERROR] Error initializing PostgreSQL database: {e}")
             raise
         finally:
             self.return_connection(conn)
     
     def _run_migrations(self, cursor):
         """Run database migrations to add new columns if they don't exist"""
+        print("🔄 Running database migrations...")
+        
         # Check existing columns in companies table
         cursor.execute("""
             SELECT column_name FROM information_schema.columns 
             WHERE table_name = 'companies'
         """)
         existing_columns = [row['column_name'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()]
+        print(f"[INFO] Companies table has {len(existing_columns)} columns")
         
         # New subscription-related columns to add
         migrations = {
@@ -403,17 +406,17 @@ class PostgreSQLDatabaseWrapper:
             if col_name not in bs_existing:
                 try:
                     cursor.execute(f"ALTER TABLE business_settings ADD COLUMN {col_name} {col_type}")
-                    print(f"✅ Added {col_name} column to business_settings table")
+                    print(f"[SUCCESS] Added {col_name} column to business_settings table")
                 except Exception as e:
-                    print(f"⚠️ Could not add {col_name} to business_settings: {e}")
+                    print(f"[WARNING] Could not add {col_name} to business_settings: {e}")
         
         for column_name, column_type in migrations.items():
             if column_name not in existing_columns:
                 try:
                     cursor.execute(f"ALTER TABLE companies ADD COLUMN {column_name} {column_type}")
-                    print(f"✅ Added {column_name} column to companies table")
+                    print(f"[SUCCESS] Added {column_name} column to companies table")
                 except Exception as e:
-                    print(f"⚠️ Could not add {column_name} column: {e}")
+                    print(f"[WARNING] Could not add {column_name} column: {e}")
     
     def _convert_query(self, query: str) -> str:
         """Convert ? placeholders to %s for parameterized queries"""
@@ -542,9 +545,14 @@ class PostgreSQLDatabaseWrapper:
                 values.append(datetime.now())
                 values.append(company_id)
                 query = f"UPDATE companies SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
-                cursor.execute(query, values)
-                conn.commit()
-                success = cursor.rowcount > 0
+                try:
+                    cursor.execute(query, values)
+                    conn.commit()
+                    success = cursor.rowcount > 0
+                except Exception as e:
+                    conn.rollback()
+                    print(f"[ERROR] Error updating company {company_id}: {e}")
+                    raise
             else:
                 success = False
             
@@ -652,10 +660,10 @@ class PostgreSQLDatabaseWrapper:
             bookings = []
             for row in rows:
                 bookings.append({
-                    'id': row[0],
-                    'client_id': row[1],
-                    'appointment_time': row[2],
-                    'service_type': row[3]
+                    'id': row['id'],
+                    'client_id': row['client_id'],
+                    'appointment_time': row['appointment_time'],
+                    'service_type': row['service_type']
                 })
             return bookings
         finally:
@@ -680,9 +688,9 @@ class PostgreSQLDatabaseWrapper:
             row = cursor.fetchone()
             if row:
                 return {
-                    'address': row[0],
-                    'eircode': row[1],
-                    'property_type': row[2]
+                    'address': row['address'],
+                    'eircode': row['eircode'],
+                    'property_type': row['property_type']
                 }
             return None
         finally:
@@ -872,11 +880,11 @@ class PostgreSQLDatabaseWrapper:
                 """, (name, date_of_birth))
                 row = cursor.fetchone()
                 if row:
-                    print(f"✅ Found existing client by name + DOB: {name} (ID: {row['id']})")
+                    print(f"[SUCCESS] Found existing client by name + DOB: {name} (ID: {row['id']})")
                     return row['id']
                 else:
                     # DOB provided but no match found - create new client
-                    print(f"✅ Creating NEW client (same name, different DOB): {name} (DOB: {date_of_birth})")
+                    print(f"[SUCCESS] Creating NEW client (same name, different DOB): {name} (DOB: {date_of_birth})")
                     return self.add_client(name, phone, email, date_of_birth)
             
             # No DOB provided - fall back to matching by name + contact info
@@ -979,14 +987,14 @@ class PostgreSQLDatabaseWrapper:
             
             conn.commit()
             
-            print(f"✅ Assigned {phone_number} to company {company_id}")
+            print(f"[SUCCESS] Assigned {phone_number} to company {company_id}")
             return phone_number
         except Exception as e:
             try:
                 conn.rollback()
             except:
                 pass
-            print(f"❌ Error assigning phone number: {e}")
+            print(f"[ERROR] Error assigning phone number: {e}")
             raise
         finally:
             cursor.close()
@@ -1214,10 +1222,10 @@ class PostgreSQLDatabaseWrapper:
             conn.commit()
             success = cursor.rowcount > 0
             if success:
-                print(f"✅ Deleted booking from database (ID: {booking_id})")
+                print(f"[SUCCESS] Deleted booking from database (ID: {booking_id})")
             return success
         except Exception as e:
-            print(f"❌ Failed to delete booking: {e}")
+            print(f"[ERROR] Failed to delete booking: {e}")
             conn.rollback()
             return False
         finally:
@@ -1695,7 +1703,7 @@ class PostgreSQLDatabaseWrapper:
             return True
         except Exception as e:
             conn.rollback()
-            print(f"❌ Error adding service: {e}")
+            print(f"[ERROR] Error adding service: {e}")
             return False
         finally:
             self.return_connection(conn)
@@ -1760,7 +1768,7 @@ class PostgreSQLDatabaseWrapper:
             return success
         except Exception as e:
             conn.rollback()
-            print(f"❌ Error updating service: {e}")
+            print(f"[ERROR] Error updating service: {e}")
             return False
         finally:
             self.return_connection(conn)

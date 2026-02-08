@@ -30,10 +30,10 @@ export const formatTime = (date) => {
 };
 
 export const formatCurrency = (amount) => {
-  if (amount === null || amount === undefined) return '$0.00';
-  return new Intl.NumberFormat('en-US', {
+  if (amount === null || amount === undefined) return '€0.00';
+  return new Intl.NumberFormat('en-IE', {
     style: 'currency',
-    currency: 'USD'
+    currency: 'EUR'
   }).format(amount);
 };
 
@@ -52,6 +52,7 @@ export const getStatusColor = (status) => {
     scheduled: 'info',
     'in-progress': 'primary',
     completed: 'success',
+    paid: 'success',
     cancelled: 'error',
     confirmed: 'success',
     unconfirmed: 'warning',
@@ -61,9 +62,10 @@ export const getStatusColor = (status) => {
 
 export const getStatusBadgeClass = (status) => {
   const statusLower = status?.toLowerCase();
-  if (statusLower === 'completed' || statusLower === 'confirmed') return 'badge-success';
+  if (statusLower === 'completed' || statusLower === 'confirmed' || statusLower === 'paid') return 'badge-success';
   if (statusLower === 'pending' || statusLower === 'unconfirmed') return 'badge-warning';
   if (statusLower === 'cancelled') return 'badge-error';
+  if (statusLower === 'in-progress') return 'badge-primary';
   return 'badge-info';
 };
 

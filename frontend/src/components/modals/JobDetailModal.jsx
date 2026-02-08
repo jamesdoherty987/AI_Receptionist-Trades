@@ -287,11 +287,24 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                     Change Status <i className="fas fa-chevron-down"></i>
                   </button>
                   <div className="status-dropdown-menu">
-                    <button onClick={() => handleStatusChange('pending')}>Pending</button>
-                    <button onClick={() => handleStatusChange('scheduled')}>Scheduled</button>
-                    <button onClick={() => handleStatusChange('in-progress')}>In Progress</button>
-                    <button onClick={() => handleStatusChange('completed')}>Completed</button>
-                    <button onClick={() => handleStatusChange('cancelled')}>Cancelled</button>
+                    <button onClick={() => handleStatusChange('pending')} className={job.status === 'pending' ? 'active' : ''}>
+                      <i className="fas fa-clock" style={{color: '#f59e0b'}}></i> Pending
+                    </button>
+                    <button onClick={() => handleStatusChange('scheduled')} className={job.status === 'scheduled' ? 'active' : ''}>
+                      <i className="fas fa-calendar-check" style={{color: '#3b82f6'}}></i> Scheduled
+                    </button>
+                    <button onClick={() => handleStatusChange('in-progress')} className={job.status === 'in-progress' ? 'active' : ''}>
+                      <i className="fas fa-wrench" style={{color: '#8b5cf6'}}></i> In Progress
+                    </button>
+                    <button onClick={() => handleStatusChange('completed')} className={job.status === 'completed' ? 'active' : ''}>
+                      <i className="fas fa-check-circle" style={{color: '#22c55e'}}></i> Completed
+                    </button>
+                    <button onClick={() => handleStatusChange('paid')} className={job.status === 'paid' ? 'active' : ''}>
+                      <i className="fas fa-money-check-alt" style={{color: '#10b981'}}></i> Paid
+                    </button>
+                    <button onClick={() => handleStatusChange('cancelled')} className={job.status === 'cancelled' ? 'active' : ''}>
+                      <i className="fas fa-times-circle" style={{color: '#ef4444'}}></i> Cancelled
+                    </button>
                   </div>
                 </div>
               </>
@@ -436,6 +449,19 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                       <div className="info-cell">
                         <span className="info-label">Address</span>
                         <span className="info-value">{job.job_address || job.address} {job.eircode && `(${job.eircode})`}</span>
+                      </div>
+                    </div>
+                  )}
+                  {job.payment_status && (
+                    <div className="info-row">
+                      <div className="info-cell">
+                        <span className="info-label">Payment</span>
+                        <span className={`info-value payment-badge ${job.payment_status}`}>
+                          {job.payment_status === 'paid' && <><i className="fas fa-check-circle"></i> Paid</>}
+                          {job.payment_status === 'invoiced' && <><i className="fas fa-file-invoice"></i> Invoiced</>}
+                          {job.payment_status === 'pending' && <><i className="fas fa-clock"></i> Pending</>}
+                          {!['paid', 'invoiced', 'pending'].includes(job.payment_status) && job.payment_status}
+                        </span>
                       </div>
                     </div>
                   )}

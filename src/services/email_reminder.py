@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Email Reminder Service
 Sends appointment reminders via email - works great in Ireland/EU
@@ -35,11 +36,11 @@ class EmailReminderService:
         self.from_email = from_email or getattr(config, 'FROM_EMAIL', None)
         
         if not all([self.smtp_server, self.smtp_user, self.smtp_password, self.from_email]):
-            print("⚠️ Email service not fully configured. Email reminders will not be sent.")
+            print("[WARNING] Email service not fully configured. Email reminders will not be sent.")
             self.configured = False
         else:
             self.configured = True
-            print("✅ Email reminder service initialized")
+            print("[SUCCESS] Email reminder service initialized")
     
     def send_reminder(self, to_email: str, appointment_time: datetime, 
                      customer_name: str, service_type: str = "appointment",
@@ -58,7 +59,7 @@ class EmailReminderService:
             True if sent successfully, False otherwise
         """
         if not self.configured:
-            print("❌ Email service not configured")
+            print("[ERROR] Email service not configured")
             return False
         
         try:
@@ -72,7 +73,7 @@ class EmailReminderService:
                 if settings and settings.get('business_name'):
                     business_name = settings['business_name']
             except Exception as e:
-                print(f"⚠️ Could not load business name from database: {e}")
+                print(f"[WARNING] Could not load business name from database: {e}")
             
             # Format the appointment time
             time_str = appointment_time.strftime('%A, %B %d at %I:%M %p')
@@ -109,7 +110,7 @@ Best regards,
         <p>This is a friendly reminder about your <strong>{service_type}</strong> appointment:</p>
         
         <div style="background-color: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin: 20px 0;">
-            <p style="margin: 5px 0;"><strong>📅 Date & Time:</strong> {time_str}</p>
+            <p style="margin: 5px 0;"><strong>Date & Time:</strong> {time_str}</p>
         </div>
         
         <p>If you need to cancel or reschedule, please call us as soon as possible.</p>
@@ -138,11 +139,11 @@ Best regards,
                 server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)
             
-            print(f"✅ Email reminder sent to {to_email}")
+            print(f"[SUCCESS] Email reminder sent to {to_email}")
             return True
             
         except Exception as e:
-            print(f"❌ Failed to send email: {e}")
+            print(f"[ERROR] Failed to send email: {e}")
             return False
     
     def send_confirmation_reply(self, to_email: str, message: str) -> bool:
@@ -157,7 +158,7 @@ Best regards,
             True if sent successfully, False otherwise
         """
         if not self.configured:
-            print("❌ Email service not configured")
+            print("[ERROR] Email service not configured")
             return False
         
         try:
@@ -171,11 +172,11 @@ Best regards,
                 server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)
             
-            print(f"✅ Email sent to {to_email}")
+            print(f"[SUCCESS] Email sent to {to_email}")
             return True
             
         except Exception as e:
-            print(f"❌ Failed to send email: {e}")
+            print(f"[ERROR] Failed to send email: {e}")
             return False
     
     def send_password_reset(self, to_email: str, reset_link: str, business_name: str = 'BookedForYou') -> bool:
@@ -191,7 +192,7 @@ Best regards,
             True if sent successfully, False otherwise
         """
         if not self.configured:
-            print(f"⚠️ Email service not configured. Password reset link: {reset_link}")
+            print(f"[WARNING] Email service not configured. Password reset link: {reset_link}")
             return False
         
         try:
@@ -264,24 +265,23 @@ Best regards,
                 server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)
             
-            print(f"✅ Password reset email sent to {to_email}")
+            print(f"[SUCCESS] Password reset email sent to {to_email}")
             return True
             
         except Exception as e:
-            print(f"❌ Failed to send password reset email: {e}")
+            print(f"[ERROR] Failed to send password reset email: {e}")
             return False
     
     def send_invoice(self, to_email: str, customer_name: str, service_type: str, 
                     charge: float, appointment_time: datetime = None,
                     stripe_payment_link: str = None, job_address: str = None,
                     invoice_number: str = None, bank_details: dict = None,
-                    revolut_phone: str = None) -> bool:
+                    revolut_phone: str = None, add_bank_details: bool = False, add_revolut_phone: bool = False) -> bool:
         """
         Send a professional invoice email with optional Stripe payment link
         
         Args:
             to_email: Recipient email address
-            customer_name: Customer's name
             service_type: Type of service performed
             charge: Amount to charge
             appointment_time: Appointment datetime (optional)
@@ -293,7 +293,7 @@ Best regards,
             True if sent successfully, False otherwise
         """
         if not self.configured:
-            print("❌ Email service not configured")
+            print("[ERROR] Email service not configured")
             return False
         
         try:
@@ -301,8 +301,7 @@ Best regards,
             from src.services.settings_manager import get_settings_manager
             from src.utils.config import config
             
-            # Load business info from database
-            business_name = None
+            business_name = 'Your Business'  # Default fallback
             business_phone = ''
             business_email = self.from_email
             business_website = ''
@@ -318,24 +317,23 @@ Best regards,
                     business_email = settings.get('email', self.from_email) or settings.get('business_email', self.from_email)
                     business_website = settings.get('website', '')
                     business_city = settings.get('city', '')
-                    print(f"📧 Invoice loaded from database - Business: {business_name}")
+                    print(f"[EMAIL] Invoice loaded from database - Business: {business_name}")
                 else:
-                    print("⚠️ No business settings found in database")
+                    print("[WARNING] No business settings found in database")
             except Exception as db_error:
-                print(f"⚠️ Database error: {db_error}")
-                import traceback
+                print(f"[WARNING] Database error: {db_error}")
                 traceback.print_exc()
             
             # Final fallback if database didn't work
             if not business_name:
                 business_name = 'Your Business'
-                print("⚠️ Using fallback business name")
+                print("[WARNING] Using fallback business name")
             
             # Get logo URL from config
             logo_url = getattr(config, 'COMPANY_LOGO_URL', '') or ''
             
             # Format the date if provided
-            date_str = appointment_time.strftime('%A, %B %d, %Y') if appointment_time else 'Recent service'
+            date_str = appointment_time.strftime('%B %d, %Y at %I:%M %p') if appointment_time else 'TBD'
             
             # Generate invoice number if not provided
             if not invoice_number:
@@ -353,10 +351,30 @@ Best regards,
             if stripe_payment_link:
                 payment_text = f"\nPay securely online: {stripe_payment_link}"
             
-            # Plain text version
-            text_body = f"""
-{business_name}
-Invoice #{invoice_number}
+            # Plain text version - build it step by step to avoid nested f-string issues
+            location_line = f'Location: {job_address}\n' if job_address else ''
+            online_payment = '\n- Online: Click the payment link above' if stripe_payment_link else ''
+            
+            bank_transfer_section = ''
+            if bank_details and bank_details.get("iban"):
+                bank_transfer_section = f'''
+
+BANK TRANSFER DETAILS:
+Account Holder: {bank_details["account_holder"]}
+IBAN: {bank_details["iban"]}
+BIC: {bank_details["bic"]}
+Bank: {bank_details["bank_name"]}
+Reference: {invoice_number}'''
+            
+            revolut_section = ''
+            if revolut_phone:
+                revolut_section = f'''
+
+REVOLUT:
+Send payment via Revolut to: {revolut_phone}
+Reference: {invoice_number}'''
+            
+            text_body = f'''{business_name}
 {'='*50}
 
 Dear {customer_name},
@@ -368,25 +386,12 @@ INVOICE DETAILS:
 Invoice Number: {invoice_number}
 Service: {service_type}
 Date: {date_str}
-{f'Location: {job_address}' if job_address else ''}
-
-AMOUNT DUE: €{charge:.2f}
+{location_line}
+AMOUNT DUE: EUR {charge:.2f}
 {payment_text}
 
-Payment Methods:{f"""
-- Online: Click the payment link above""" if stripe_payment_link else ""}
-- Cash or Card on completion{f'''
-
-BANK TRANSFER DETAILS:
-Account Holder: {bank_details["account_holder"]}
-IBAN: {bank_details["iban"]}
-BIC: {bank_details["bic"]}
-Bank: {bank_details["bank_name"]}
-Reference: {invoice_number}''' if bank_details and bank_details.get("iban") else ''}{f'''
-
-REVOLUT:
-Send payment via Revolut to: {revolut_phone}
-Reference: {invoice_number}''' if revolut_phone else ''}
+Payment Methods:{online_payment}
+- Cash or Card on completion{bank_transfer_section}{revolut_section}
 
 If you have any questions about this invoice, please contact us:
 Phone: {business_phone}
@@ -397,8 +402,7 @@ Best regards,
 {business_city}
 
 ---
-This invoice was generated automatically.
-            """.strip()
+This invoice was generated automatically.'''.strip()
             
             # Logo HTML (if URL provided)
             logo_html = ""
@@ -424,26 +428,96 @@ This invoice was generated automatically.
                               color: white; text-decoration: none; padding: 18px 50px; font-size: 20px; 
                               font-weight: 700; border-radius: 10px; box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
                               letter-spacing: 0.5px;">
-                        💳 PAY NOW - €{charge:.2f}
+                        PAY NOW - EUR {charge:.2f}
                     </a>
                     <p style="margin-top: 15px; font-size: 13px; color: #047857;">
-                        🔒 Secure payment powered by Stripe
+                        [Secure] Secure payment powered by Stripe
                     </p>
                 </div>
                 '''
             else:
                 payment_button_html = f'''
                 <div style="text-align: center; margin: 35px 0; padding: 25px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; border: 2px solid #f59e0b;">
-                    <p style="margin: 0 0 10px 0; font-size: 18px; color: #92400e; font-weight: 700;">Amount Due: €{charge:.2f}</p>
+                    <p style="margin: 0 0 10px 0; font-size: 18px; color: #92400e; font-weight: 700;">Amount Due: EUR {charge:.2f}</p>
                     <p style="margin: 0; font-size: 14px; color: #b45309;">
                         Please contact us to arrange payment via cash, card, or bank transfer.
                     </p>
                 </div>
                 '''
             
-            # HTML version (professional design)
-            html_body = f'''
-<!DOCTYPE html>
+            # Pre-build conditional HTML sections to avoid nested f-strings (Python 3.13 compatibility)
+            location_row_html = f'''<tr>
+                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">
+                                <span style="color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Location</span>
+                            </td>
+                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; text-align: right;">
+                                <span style="color: #1e293b; font-weight: 500; font-size: 14px;">{job_address}</span>
+                            </td>
+                        </tr>''' if job_address else ''
+            
+            # Bank transfer section
+            if bank_details and bank_details.get('iban'):
+                bank_transfer_html = f'''<div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 12px; padding: 20px; margin-bottom: 25px; border: 1px solid #93c5fd;">
+                    <div style="font-weight: 700; color: #1e40af; font-size: 15px; margin-bottom: 12px;">
+                        Bank Transfer Details
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-size: 13px; width: 120px;">Account Holder:</td>
+                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px;">{bank_details['account_holder']}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">IBAN:</td>
+                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px; font-family: 'Courier New', monospace; letter-spacing: 1px;">{bank_details['iban']}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">BIC/SWIFT:</td>
+                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px; font-family: 'Courier New', monospace;">{bank_details['bic']}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Bank:</td>
+                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px;">{bank_details['bank_name']}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Reference:</td>
+                            <td style="padding: 6px 0; color: #1e293b; font-weight: 700; font-size: 14px; font-family: 'Courier New', monospace;">{invoice_number}</td>
+                        </tr>
+                    </table>
+                    <div style="margin-top: 10px; font-size: 12px; color: #6b7280;">Please use the reference number when making a bank transfer.</div>
+                </div>'''
+            else:
+                bank_transfer_html = '''<div style="background: #fefce8; border-radius: 8px; padding: 16px; margin-bottom: 25px; border-left: 4px solid #eab308;">
+                    <div style="font-weight: 600; color: #854d0e; font-size: 14px; margin-bottom: 8px;">
+                        Other Payment Options
+                    </div>
+                    <div style="color: #a16207; font-size: 13px; line-height: 1.6;">
+                        Cash or Card on completion
+                    </div>
+                </div>'''
+            
+            # Revolut section
+            if revolut_phone:
+                revolut_html = f'''<div style="background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%); border-radius: 12px; padding: 20px; margin-bottom: 25px; border: 1px solid #818cf8;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                        <div style="font-weight: 700; color: #4338ca; font-size: 15px;">
+                            Pay via Revolut
+                        </div>
+                    </div>
+                    <div style="color: #1e293b; font-size: 14px; line-height: 1.8;">
+                        <div>Send to: <strong style="font-family: 'Courier New', monospace;">{revolut_phone}</strong></div>
+                        <div>Reference: <strong style="font-family: 'Courier New', monospace;">{invoice_number}</strong></div>
+                    </div>
+                </div>'''
+            else:
+                revolut_html = ''
+            
+            # Contact links
+            phone_link_html = f'<a href="tel:{business_phone}" style="color: #3b82f6; text-decoration: none; font-weight: 600; font-size: 14px; margin: 0 10px;">Phone: {business_phone}</a>' if business_phone else ''
+            email_link_html = f'<a href="mailto:{business_email}" style="color: #3b82f6; text-decoration: none; font-weight: 600; font-size: 14px; margin: 0 10px;">Email: {business_email}</a>' if business_email else ''
+            website_html = f'<div style="color: #64748b; font-size: 12px; margin-top: 8px;">{business_website}</div>' if business_website else ''
+            
+            # Now build the main HTML body
+            html_body = f'''<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -497,20 +571,13 @@ This invoice was generated automatically.
                                 <span style="color: #1e293b; font-weight: 500; font-size: 15px;">{date_str}</span>
                             </td>
                         </tr>
-                        {f'''<tr>
-                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">
-                                <span style="color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Location</span>
-                            </td>
-                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; text-align: right;">
-                                <span style="color: #1e293b; font-weight: 500; font-size: 14px;">{job_address}</span>
-                            </td>
-                        </tr>''' if job_address else ''}
+                        {location_row_html}
                     </table>
                     
                     <!-- Amount Due -->
                     <div style="margin-top: 20px; padding-top: 20px; border-top: 2px dashed #cbd5e1; text-align: center;">
                         <div style="color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Amount Due</div>
-                        <div style="font-size: 42px; font-weight: 800; color: #059669; letter-spacing: -1px;">€{charge:.2f}</div>
+                        <div style="font-size: 42px; font-weight: 800; color: #059669; letter-spacing: -1px;">EUR {charge:.2f}</div>
                     </div>
                 </div>
                 
@@ -518,61 +585,16 @@ This invoice was generated automatically.
                 {payment_button_html}
                 
                 <!-- Alternative Payment Methods -->
-                {f"""<div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 12px; padding: 20px; margin-bottom: 25px; border: 1px solid #93c5fd;">
-                    <div style="font-weight: 700; color: #1e40af; font-size: 15px; margin-bottom: 12px;">
-                        🏦 Bank Transfer Details
-                    </div>
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-size: 13px; width: 120px;">Account Holder:</td>
-                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px;">{bank_details['account_holder']}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">IBAN:</td>
-                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px; font-family: 'Courier New', monospace; letter-spacing: 1px;">{bank_details['iban']}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">BIC/SWIFT:</td>
-                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px; font-family: 'Courier New', monospace;">{bank_details['bic']}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Bank:</td>
-                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px;">{bank_details['bank_name']}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Reference:</td>
-                            <td style="padding: 6px 0; color: #1e293b; font-weight: 700; font-size: 14px; font-family: 'Courier New', monospace;">{invoice_number}</td>
-                        </tr>
-                    </table>
-                    <div style="margin-top: 10px; font-size: 12px; color: #6b7280;">Please use the reference number when making a bank transfer.</div>
-                </div>""" if bank_details and bank_details.get('iban') else """<div style="background: #fefce8; border-radius: 8px; padding: 16px; margin-bottom: 25px; border-left: 4px solid #eab308;">
-                    <div style="font-weight: 600; color: #854d0e; font-size: 14px; margin-bottom: 8px;">
-                        💡 Other Payment Options
-                    </div>
-                    <div style="color: #a16207; font-size: 13px; line-height: 1.6;">
-                        Cash or Card on completion{' • Bank Transfer' if not (bank_details and bank_details.get('iban')) else ''}
-                    </div>
-                </div>"""}
+                {bank_transfer_html}
                 
-                {f"""<!-- Revolut Payment Option -->
-                <div style="background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%); border-radius: 12px; padding: 20px; margin-bottom: 25px; border: 1px solid #818cf8;">
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                        <div style="font-weight: 700; color: #4338ca; font-size: 15px;">
-                            📱 Pay via Revolut
-                        </div>
-                    </div>
-                    <div style="color: #1e293b; font-size: 14px; line-height: 1.8;">
-                        <div>Send to: <strong style="font-family: 'Courier New', monospace;">{revolut_phone}</strong></div>
-                        <div>Reference: <strong style="font-family: 'Courier New', monospace;">{invoice_number}</strong></div>
-                    </div>
-                </div>""" if revolut_phone else ""}
+                {revolut_html}
                 
                 <!-- Contact Section -->
                 <div style="text-align: center; padding: 20px 0; border-top: 1px solid #e5e7eb;">
                     <p style="color: #6b7280; font-size: 14px; margin: 0 0 15px 0;">Questions about this invoice?</p>
                     <div style="display: inline-block;">
-                        {f'<a href="tel:{business_phone}" style="color: #3b82f6; text-decoration: none; font-weight: 600; font-size: 14px; margin: 0 10px;">📞 {business_phone}</a>' if business_phone else ''}
-                        {f'<a href="mailto:{business_email}" style="color: #3b82f6; text-decoration: none; font-weight: 600; font-size: 14px; margin: 0 10px;">✉️ {business_email}</a>' if business_email else ''}
+                        {phone_link_html}
+                        {email_link_html}
                     </div>
                 </div>
             </div>
@@ -581,7 +603,7 @@ This invoice was generated automatically.
             <div style="background: #1e293b; padding: 24px; text-align: center;">
                 <div style="color: white; font-weight: 700; font-size: 16px; margin-bottom: 5px;">{business_name}</div>
                 <div style="color: #94a3b8; font-size: 13px;">{business_city}</div>
-                {f'<div style="color: #64748b; font-size: 12px; margin-top: 8px;">{business_website}</div>' if business_website else ''}
+                {website_html}
             </div>
         </div>
         
@@ -595,6 +617,9 @@ This invoice was generated automatically.
 </body>
 </html>
             '''.strip()
+            # Insert extra_payment_html if flags are set
+            if add_bank_details or add_revolut_phone:
+                print(f"[INFO] Sending invoice to {to_email} with bank details: {add_bank_details}, revolut: {add_revolut_phone}")
             
             # Attach both versions
             part1 = MIMEText(text_body, 'plain')
@@ -608,13 +633,17 @@ This invoice was generated automatically.
                 server.login(self.smtp_user, self.smtp_password)
                 server.send_message(msg)
             
-            print(f"✅ Invoice email sent to {to_email} (Invoice #{invoice_number})")
+            print(f"[SUCCESS] Invoice email sent to {to_email} (Invoice #{invoice_number})")
             return True
             
         except Exception as e:
-            print(f"❌ Failed to send invoice email: {e}")
-            import traceback
-            traceback.print_exc()
+            try:
+                import traceback
+                error_str = traceback.format_exc()
+                print(f"[ERROR] Failed to send invoice email: {e}")
+                print(error_str)
+            except Exception:
+                pass
             return False
 
 

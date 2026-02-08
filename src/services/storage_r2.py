@@ -54,7 +54,7 @@ class R2Storage:
             region_name='auto'  # R2 uses 'auto' region
         )
         
-        print(f"✅ R2 storage initialized for bucket: {self.bucket_name}")
+        print(f"[SUCCESS] R2 storage initialized for bucket: {self.bucket_name}")
     
     def upload_file(
         self,
@@ -103,7 +103,7 @@ class R2Storage:
                 return f"https://{self.bucket_name}.r2.dev/{key}"
         
         except ClientError as e:
-            print(f"❌ Error uploading to R2: {e}")
+            print(f"[ERROR] Error uploading to R2: {e}")
             raise
     
     def delete_file(self, file_url: str) -> bool:
@@ -131,7 +131,7 @@ class R2Storage:
             return True
         
         except ClientError as e:
-            print(f"❌ Error deleting from R2: {e}")
+            print(f"[ERROR] Error deleting from R2: {e}")
             return False
     
     def get_file_url(self, key: str) -> str:
@@ -170,7 +170,7 @@ class R2Storage:
             return []
         
         except ClientError as e:
-            print(f"❌ Error listing R2 files: {e}")
+            print(f"[ERROR] Error listing R2 files: {e}")
             return []
 
 
@@ -201,7 +201,7 @@ def upload_company_file(company_id: int, file_data: BinaryIO, filename: str,
             content_type=content_type
         )
     except Exception as e:
-        print(f"❌ Failed to upload file for company {company_id}: {e}")
+        print(f"[ERROR] Failed to upload file for company {company_id}: {e}")
         return None
 
 
@@ -223,7 +223,7 @@ def delete_company_file(company_id: int, file_url: str) -> bool:
     # Security check - ensure file belongs to this company
     expected_prefix = f'company_{company_id}/'
     if expected_prefix not in file_url:
-        print(f"🚨 Security: Company {company_id} attempted to delete file not in their folder: {file_url}")
+        print(f"[SECURITY] Security: Company {company_id} attempted to delete file not in their folder: {file_url}")
         return False
     
     return r2.delete_file(file_url)
@@ -263,7 +263,7 @@ def get_r2_storage() -> Optional[R2Storage]:
         try:
             _r2_storage = R2Storage()
         except ValueError as e:
-            print(f"⚠️ R2 storage not configured: {e}")
+            print(f"[WARNING] R2 storage not configured: {e}")
             return None
     
     return _r2_storage

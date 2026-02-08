@@ -20,6 +20,9 @@ STRIPE_CLIENT_ID = os.getenv('STRIPE_CLIENT_ID', '')
 
 def is_connect_configured() -> bool:
     """Check if Stripe Connect is properly configured"""
+    # Re-read API key from environment if not set (handles late env loading)
+    if not stripe.api_key:
+        stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
     return bool(stripe.api_key and stripe.api_key.startswith(('sk_test_', 'sk_live_')))
 
 
@@ -65,7 +68,7 @@ def create_connect_account(
             }
         )
         
-        print(f"✅ Created Stripe Connect account: {account.id}")
+        print(f"[SUCCESS] Created Stripe Connect account: {account.id}")
         return {
             'account_id': account.id,
             'details_submitted': account.details_submitted,
@@ -74,7 +77,7 @@ def create_connect_account(
         }
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe Connect error: {e}")
+        print(f"[ERROR] Stripe Connect error: {e}")
         return None
 
 
@@ -109,7 +112,7 @@ def create_account_link(
         return account_link.url
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error creating account link: {e}")
+        print(f"[ERROR] Stripe error creating account link: {e}")
         return None
 
 
@@ -131,7 +134,7 @@ def create_login_link(account_id: str) -> Optional[str]:
         return login_link.url
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error creating login link: {e}")
+        print(f"[ERROR] Stripe error creating login link: {e}")
         return None
 
 
@@ -172,7 +175,7 @@ def get_account_status(account_id: str) -> Dict[str, Any]:
         }
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error getting account: {e}")
+        print(f"[ERROR] Stripe error getting account: {e}")
         return default_response
 
 
@@ -194,11 +197,11 @@ def delete_connect_account(account_id: str) -> bool:
         # For Express accounts, we can't delete them, but we can reject the connection
         # The account will remain but not be connected to our platform
         account = stripe.Account.delete(account_id)
-        print(f"✅ Deleted Connect account: {account_id}")
+        print(f"[SUCCESS] Deleted Connect account: {account_id}")
         return True
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error deleting account: {e}")
+        print(f"[ERROR] Stripe error deleting account: {e}")
         return False
 
 
@@ -256,7 +259,7 @@ def create_payment_intent_for_invoice(
             stripe_account=connected_account_id  # Charge goes to connected account
         )
         
-        print(f"✅ Created PaymentIntent: {payment_intent.id} for connected account {connected_account_id}")
+        print(f"[SUCCESS] Created PaymentIntent: {payment_intent.id} for connected account {connected_account_id}")
         
         return {
             'payment_intent_id': payment_intent.id,
@@ -267,7 +270,7 @@ def create_payment_intent_for_invoice(
         }
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error creating payment intent: {e}")
+        print(f"[ERROR] Stripe error creating payment intent: {e}")
         return None
 
 
@@ -330,7 +333,7 @@ def create_payment_link(
             stripe_account=connected_account_id
         )
         
-        print(f"✅ Created Payment Link: {payment_link.url}")
+        print(f"[SUCCESS] Created Payment Link: {payment_link.url}")
         
         return {
             'id': payment_link.id,
@@ -339,7 +342,7 @@ def create_payment_link(
         }
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error creating payment link: {e}")
+        print(f"[ERROR] Stripe error creating payment link: {e}")
         return None
 
 
@@ -378,7 +381,7 @@ def get_account_balance(account_id: str) -> Optional[Dict[str, Any]]:
         }
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error getting balance: {e}")
+        print(f"[ERROR] Stripe error getting balance: {e}")
         return None
 
 
@@ -408,7 +411,7 @@ def get_account_payouts(account_id: str, limit: int = 10) -> list:
         } for payout in payouts.data]
         
     except stripe.error.StripeError as e:
-        print(f"❌ Stripe error getting payouts: {e}")
+        print(f"[ERROR] Stripe error getting payouts: {e}")
         return []
 
 
@@ -444,7 +447,7 @@ def handle_connect_webhook_event(event_type: str, data: Dict) -> Dict[str, Any]:
             result['charges_enabled'] = charges_enabled
             result['payouts_enabled'] = payouts_enabled
             
-            print(f"📨 Account updated: {account_id} - charges: {charges_enabled}, payouts: {payouts_enabled}")
+            print(f"[WEBHOOK] Account updated: {account_id} - charges: {charges_enabled}, payouts: {payouts_enabled}")
             
         elif event_type == 'account.application.deauthorized':
             # User disconnected their account from your platform
@@ -453,7 +456,7 @@ def handle_connect_webhook_event(event_type: str, data: Dict) -> Dict[str, Any]:
             result['action'] = 'disconnect_account'
             result['account_id'] = account_id
             
-            print(f"📨 Account disconnected: {account_id}")
+            print(f"[WEBHOOK] Account disconnected: {account_id}")
             
         elif event_type == 'payment_intent.succeeded':
             # A payment was successful (on a connected account)
@@ -475,10 +478,10 @@ def handle_connect_webhook_event(event_type: str, data: Dict) -> Dict[str, Any]:
             result['payout_id'] = payout_id
             result['amount'] = amount
             
-            print(f"📨 Payout completed: {payout_id} - €{amount:.2f}")
+            print(f"[WEBHOOK] Payout completed: {payout_id} - EUR{amount:.2f}")
     
     except Exception as e:
-        print(f"❌ Error processing Connect webhook: {e}")
+        print(f"[ERROR] Error processing Connect webhook: {e}")
         result['error'] = str(e)
     
     return result

@@ -99,6 +99,7 @@ export const getBillingPortalUrl = (baseUrl) =>
   api.post('/api/subscription/billing-portal', { base_url: baseUrl });
 export const cancelSubscription = () => api.post('/api/subscription/cancel');
 export const reactivateSubscription = () => api.post('/api/subscription/reactivate');
+export const startFreeTrial = () => api.post('/api/subscription/start-trial');
 export const getInvoices = () => api.get('/api/subscription/invoices');
 
 // Stripe Connect (Payment Setup for receiving payments)

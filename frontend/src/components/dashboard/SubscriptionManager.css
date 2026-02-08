@@ -300,8 +300,8 @@
   font-size: 0.75rem;
 }
 
-/* Modal */
-.modal-overlay {
+/* Cancel Confirmation Modal - scoped to subscription-manager */
+.subscription-manager .sub-modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -314,15 +314,16 @@
   z-index: 1000;
 }
 
-.modal-content {
+.subscription-manager .sub-modal-box {
   background: white;
   border-radius: 12px;
   padding: 2rem;
   max-width: 400px;
   width: 90%;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
 }
 
-.modal-content h3 {
+.subscription-manager .sub-modal-box h3 {
   margin: 0 0 1rem;
   display: flex;
   align-items: center;
@@ -330,12 +331,12 @@
   color: #b45309;
 }
 
-.modal-content p {
+.subscription-manager .sub-modal-box p {
   color: #4b5563;
   margin-bottom: 1.5rem;
 }
 
-.modal-actions {
+.subscription-manager .sub-modal-actions {
   display: flex;
   gap: 0.75rem;
   justify-content: flex-end;

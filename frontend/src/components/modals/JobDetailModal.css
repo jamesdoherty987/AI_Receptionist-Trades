@@ -140,7 +140,9 @@
 }
 
 .status-dropdown-menu button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
   padding: 0.75rem 1rem;
   text-align: left;
@@ -155,6 +157,11 @@
 
 .status-dropdown-menu button:hover {
   background: var(--bg-secondary);
+}
+
+.status-dropdown-menu button.active {
+  background: var(--bg-secondary);
+  font-weight: 700;
 }
 
 /* Two Column Grid */
@@ -233,6 +240,31 @@
   color: var(--success);
   font-weight: 700;
   font-size: 1.1rem;
+}
+
+.info-value.payment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.info-value.payment-badge.paid {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.info-value.payment-badge.invoiced {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.info-value.payment-badge.pending {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
 }
 
 .info-value .link {

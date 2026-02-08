@@ -85,7 +85,7 @@ def load_business_info():
         if company:
             # Return in the format expected by the rest of the code
             business_name = company.get('company_name') or 'Your Business'
-            print(f"📋 Loaded business name from database: {business_name}")
+            print(f"[INFO] Loaded business name from database: {business_name}")
             
             return {
                 'business_name': business_name,
@@ -95,7 +95,7 @@ def load_business_info():
                 'address': company.get('address') or 'Not configured'
             }
     except Exception as e:
-        print(f"⚠️ Could not load business info from database: {e}")
+        print(f"[WARNING] Could not load business info from database: {e}")
     
     # Fallback to generic info
     return {
@@ -115,7 +115,7 @@ def load_services_menu():
         settings_mgr = get_settings_manager()
         return settings_mgr.get_services_menu()
     except Exception as e:
-        print(f"⚠️ Error loading services from database: {e}")
+        print(f"[WARNING] Error loading services from database: {e}")
         return {
             "business_hours": {
                 "start_hour": 9,
@@ -141,7 +141,7 @@ def get_business_hours_from_menu():
             'notes': ''
         }
     except Exception as e:
-        print(f"⚠️ Error loading business hours: {e}")
+        print(f"[WARNING] Error loading business hours: {e}")
         return {
             'start': config.BUSINESS_HOURS_START,
             'end': config.BUSINESS_HOURS_END,
@@ -380,7 +380,7 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
     matching_clients = db.get_clients_by_name(normalized_name)
     
     if len(matching_clients) == 0:
-        print(f"👤 New customer: {caller_name}")
+        print(f"[CLIENT] New customer: {caller_name}")
         return {
             "status": "new",
             "message": f"Welcome! I'll get you set up in our system.",
@@ -388,7 +388,7 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
         }
     elif len(matching_clients) == 1:
         client = matching_clients[0]
-        print(f"👤 Returning customer found by name: {client['name']} (ID: {client['id']})")
+        print(f"[CLIENT] Returning customer found by name: {client['name']} (ID: {client['id']})")
         # Include description in the message if available
         description_text = f"\n\nCustomer History: {client['description']}" if client.get('description') else ""
         return {
@@ -398,14 +398,14 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
         }
     else:
         # Multiple clients with same name - try to filter by phone or email
-        print(f"👥 Multiple customers found with name: {caller_name} ({len(matching_clients)} matches)")
+        print(f"[CLIENT] Multiple customers found with name: {caller_name} ({len(matching_clients)} matches)")
         
         # Try to narrow down by phone number if provided
         if caller_phone:
             phone_matches = [c for c in matching_clients if c.get('phone') == caller_phone]
             if len(phone_matches) == 1:
                 client = phone_matches[0]
-                print(f"✅ Matched by phone number: {client['name']} (ID: {client['id']})")
+                print(f"[SUCCESS] Matched by phone number: {client['name']} (ID: {client['id']})")
                 description_text = f"\n\nCustomer History: {client['description']}" if client.get('description') else ""
                 return {
                     "status": "returning",
@@ -418,7 +418,7 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
             email_matches = [c for c in matching_clients if c.get('email') and c.get('email').lower() == caller_email.lower()]
             if len(email_matches) == 1:
                 client = email_matches[0]
-                print(f"✅ Matched by email: {client['name']} (ID: {client['id']})")
+                print(f"[SUCCESS] Matched by email: {client['name']} (ID: {client['id']})")
                 description_text = f"\n\nCustomer History: {client['description']}" if client.get('description') else ""
                 return {
                     "status": "returning",
@@ -467,7 +467,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     
     import random  # For random message selection
     
-    print(f"🤖 stream_llm called with {len(messages)} messages")
+    print(f"[AI] stream_llm called with {len(messages)} messages")
 
     import re  # Import at function level for use in birth year detection
     global _appointment_state
@@ -487,21 +487,21 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                 if potential_name and len(potential_name.split()) <= 3:
                     _appointment_state["customer_name"] = potential_name.title()
                     _appointment_state["caller_identified"] = False
-                    print(f"✏️ Name correction detected: {potential_name.title()}")
+                    print(f"[INFO] Name correction detected: {potential_name.title()}")
                 break
     
     # --- Birth Year Detection (Trades business - optional, not required) ---
     birth_year = detect_birth_year(user_text)
     if birth_year:
         _appointment_state["birth_year"] = birth_year
-        print(f"🎂 Birth year detected: {birth_year}")
+        print(f"[INFO] Birth year detected: {birth_year}")
     
     # Store phone number if provided and not already stored
     if caller_phone and not _appointment_state.get("phone_number"):
         _appointment_state["phone_number"] = caller_phone
         # Automatically confirm phone if it came from Twilio (caller_phone)
         _appointment_state["phone_confirmed"] = True
-        print(f"📱 Caller phone automatically captured: {caller_phone}")
+        print(f"[PHONE] Caller phone automatically captured: {caller_phone}")
     
     # Check if last user message contains appointment intent
     if messages and messages[-1].get("role") == "user":
@@ -524,14 +524,14 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         if not _appointment_state.get("caller_identified") and not _appointment_state.get("initial_request"):
             if any(word in user_text.lower() for word in ["book", "schedule", "make an appointment", "get an appointment"]):
                 _appointment_state["initial_request"] = user_text
-                print(f"📝 Captured initial request: {user_text}")
+                print(f"[INFO] Captured initial request: {user_text}")
         
         # Don't trigger appointment detection if user is providing DOB
         # Simple regex check instead of expensive AI call
         birth_year_pattern = r'\b(19\d{2}|20[0-2]\d)\b'  # Years 1900-2029
         birth_year_match = re.search(birth_year_pattern, user_text)
         if birth_year_match:
-            print(f"⚠️ Message contains birth year {birth_year_match.group()} - skipping appointment detection")
+            print(f"[WARNING] Message contains birth year {birth_year_match.group()} - skipping appointment detection")
             likely_appointment = False
         
         # Check if we're in an active booking or reschedule flow
@@ -545,7 +545,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                              _appointment_state.get("reschedule_final_asked"))
         if in_reschedule_flow:
             likely_appointment = True
-            print(f"🔄 In active reschedule flow - forcing appointment detection (flags: active={_appointment_state.get('reschedule_active')}, found={_appointment_state.get('reschedule_found_appointment')}, name_confirmed={_appointment_state.get('reschedule_name_confirmed')}, final_asked={_appointment_state.get('reschedule_final_asked')})")
+            print(f"[RESCHEDULE] In active reschedule flow - forcing appointment detection (flags: active={_appointment_state.get('reschedule_active')}, found={_appointment_state.get('reschedule_found_appointment')}, name_confirmed={_appointment_state.get('reschedule_name_confirmed')}, final_asked={_appointment_state.get('reschedule_final_asked')})")
         
         # Check if we're in an active cancel flow
         in_cancel_flow = (_appointment_state.get("cancel_active") or

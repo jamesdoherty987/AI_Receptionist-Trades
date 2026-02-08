@@ -7,6 +7,7 @@ import {
   getBillingPortalUrl,
   cancelSubscription,
   reactivateSubscription,
+  startFreeTrial,
   getInvoices
 } from '../../services/api';
 import './SubscriptionManager.css';
@@ -44,6 +45,20 @@ function SubscriptionManager() {
       if (data.checkout_url) {
         window.location.href = data.checkout_url;
       }
+    }
+  });
+
+  const trialMutation = useMutation({
+    mutationFn: async () => {
+      const response = await startFreeTrial();
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['subscription-status']);
+      checkAuth();
+    },
+    onError: (error) => {
+      console.error('Trial start error:', error);
     }
   });
 
@@ -168,7 +183,7 @@ function SubscriptionManager() {
               <i className="fas fa-times-circle"></i>
               <div>
                 <strong>Subscription Inactive</strong>
-                <p>Subscribe to continue using BookedForYou</p>
+                <p>Start a free trial or subscribe to use BookedForYou</p>
               </div>
             </div>
           )}
@@ -188,6 +203,18 @@ function SubscriptionManager() {
         </div>
 
         <div className="subscription-actions">
+          {/* Show Start Trial for expired users who haven't tried yet */}
+          {isExpired && (
+            <button
+              className="btn btn-success btn-subscribe"
+              onClick={() => trialMutation.mutate()}
+              disabled={trialMutation.isPending}
+            >
+              <i className="fas fa-gift"></i>
+              {trialMutation.isPending ? 'Starting...' : 'Start 14-Day Free Trial'}
+            </button>
+          )}
+
           {/* Show Subscribe button for trial or expired users */}
           {(isTrial || isExpired) && (
             <button
@@ -273,14 +300,14 @@ function SubscriptionManager() {
 
       {/* Cancel Confirmation Modal */}
       {showCancelConfirm && (
-        <div className="modal-overlay" onClick={() => setShowCancelConfirm(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="sub-modal-overlay" onClick={() => setShowCancelConfirm(false)}>
+          <div className="sub-modal-box" onClick={(e) => e.stopPropagation()}>
             <h3><i className="fas fa-exclamation-triangle"></i> Cancel Subscription?</h3>
             <p>
               Your subscription will remain active until the end of your current billing period.
               After that, you will lose access to all features.
             </p>
-            <div className="modal-actions">
+            <div className="sub-modal-actions">
               <button
                 className="btn btn-secondary"
                 onClick={() => setShowCancelConfirm(false)}

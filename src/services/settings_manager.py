@@ -85,37 +85,29 @@ class SettingsManager:
         """Update business settings"""
         from src.services.database import get_database
         db = get_database()
-        
+        import traceback
+        import sys
         try:
+            sys.stdout.write(f"[SETTINGS_MANAGER] update_business_settings called with: {settings}\n")
             conn = db.get_connection()
-            
-            # Get old settings for logging
             old_settings = self.get_business_settings()
-            
-            # Map frontend field names to database column names
+            sys.stdout.write(f"[SETTINGS_MANAGER] old_settings: {old_settings}\n")
             field_mapping = {
                 'business_phone': 'phone',
                 'business_email': 'email',
                 'business_address': 'address',
             }
-            
-            # Create a new dict with mapped field names
             mapped_settings = {}
             for key, value in settings.items():
                 mapped_key = field_mapping.get(key, key)
                 mapped_settings[mapped_key] = value
-            
             settings = mapped_settings
-            
-            # Convert lists to JSON strings
             if 'days_open' in settings and isinstance(settings['days_open'], list):
                 settings['days_open'] = json.dumps(settings['days_open'])
             if 'services' in settings and isinstance(settings['services'], list):
                 settings['services'] = json.dumps(settings['services'])
             if 'payment_methods' in settings and isinstance(settings['payment_methods'], list):
                 settings['payment_methods'] = json.dumps(settings['payment_methods'])
-            
-            # Valid database columns
             valid_columns = [
                 'business_name', 'business_type', 'phone', 'email', 'website',
                 'address', 'city', 'country', 'timezone', 'currency', 'default_charge',
@@ -127,37 +119,41 @@ class SettingsManager:
                 'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
                 'revolut_phone'
             ]
-            
-            # Build update query
             update_fields = []
             values = []
             for key, value in settings.items():
                 if key not in ['id', 'created_at', 'updated_at'] and key in valid_columns:
                     update_fields.append(f"{key} = %s")
                     values.append(value)
-            
+            sys.stdout.write(f"[SETTINGS_MANAGER] update_fields: {update_fields}\n")
+            sys.stdout.write(f"[SETTINGS_MANAGER] values: {values}\n")
             if not update_fields:
                 db.return_connection(conn)
+                sys.stdout.write("[SETTINGS_MANAGER] No update fields found.\n")
                 return False
-            
             values.append(datetime.now().isoformat())
-            
             cursor = conn.cursor()
             update_query = f"""
                 UPDATE business_settings 
                 SET {', '.join(update_fields)}, updated_at = %s
                 WHERE id = (SELECT MAX(id) FROM business_settings)
             """
-            
-            cursor.execute(update_query, values)
-            conn.commit()
-            
+            sys.stdout.write(f"[SETTINGS_MANAGER] update_query: {update_query}\n")
+            try:
+                cursor.execute(update_query, values)
+                conn.commit()
+                sys.stdout.write("[SETTINGS_MANAGER] Update committed successfully.\n")
+            except Exception as sql_e:
+                conn.rollback()
+                sys.stdout.write(f"[SETTINGS_MANAGER] SQL error: {sql_e}\n")
+                traceback.print_exc()
+                db.return_connection(conn)
+                return False
             db.return_connection(conn)
-            
             return True
-            
         except Exception as e:
-            print(f"Error updating business settings: {e}")
+            sys.stdout.write(f"[SETTINGS_MANAGER] Exception: {e}\n")
+            traceback.print_exc()
             return False
     
     def get_developer_settings(self) -> Dict[str, Any]:
@@ -349,7 +345,7 @@ class SettingsManager:
         try:
             success = self.update_developer_settings({'ai_receptionist_enabled': 1 if enabled else 0})
             if success:
-                print(f"✅ AI Receptionist {'enabled' if enabled else 'disabled'}")
+                print(f"[SUCCESS] AI Receptionist {'enabled' if enabled else 'disabled'}")
             return success
         except Exception as e:
             print(f"Error updating AI receptionist status: {e}")
@@ -374,7 +370,7 @@ class SettingsManager:
     
     def set_fallback_phone_number(self, phone: str) -> bool:
         """Deprecated: Use business phone instead. This method is kept for backwards compatibility."""
-        print(f"⚠️ set_fallback_phone_number is deprecated. Business phone is now used for transfers.")
+        print(f"[WARNING] set_fallback_phone_number is deprecated. Business phone is now used for transfers.")
         print(f"   Update the business phone in business settings instead.")
         return False
     

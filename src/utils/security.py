@@ -108,7 +108,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
             return False
             
     except Exception as e:
-        print(f"⚠️ Password verification error: {e}")
+        print(f"[WARNING] Password verification error: {e}")
         return False
 
 
@@ -494,7 +494,7 @@ class SecurityLogger:
         }
         
         # Also print to console for development
-        print(f"🔐 [{severity}] {event_type}: {details}")
+        print(f"[SECURITY] [{severity}] {event_type}: {details}")
         
         # Write to log file
         try:
@@ -502,7 +502,7 @@ class SecurityLogger:
             with open(self._log_file, 'a') as f:
                 f.write(json.dumps(log_entry) + '\n')
         except Exception as e:
-            print(f"⚠️ Could not write security log: {e}")
+            print(f"[WARNING] Could not write security log: {e}")
     
     def log_login_attempt(self, email: str, ip_address: str, success: bool):
         """Log a login attempt"""
