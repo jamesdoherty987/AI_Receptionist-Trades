@@ -274,7 +274,8 @@ Best regards,
     def send_invoice(self, to_email: str, customer_name: str, service_type: str, 
                     charge: float, appointment_time: datetime = None,
                     stripe_payment_link: str = None, job_address: str = None,
-                    invoice_number: str = None) -> bool:
+                    invoice_number: str = None, bank_details: dict = None,
+                    revolut_phone: str = None) -> bool:
         """
         Send a professional invoice email with optional Stripe payment link
         
@@ -372,10 +373,20 @@ Date: {date_str}
 AMOUNT DUE: €{charge:.2f}
 {payment_text}
 
-Payment Methods:
-- Online: Click the payment link above
-- Cash or Card on completion
-- Bank Transfer
+Payment Methods:{f"""
+- Online: Click the payment link above""" if stripe_payment_link else ""}
+- Cash or Card on completion{f'''
+
+BANK TRANSFER DETAILS:
+Account Holder: {bank_details["account_holder"]}
+IBAN: {bank_details["iban"]}
+BIC: {bank_details["bic"]}
+Bank: {bank_details["bank_name"]}
+Reference: {invoice_number}''' if bank_details and bank_details.get("iban") else ''}{f'''
+
+REVOLUT:
+Send payment via Revolut to: {revolut_phone}
+Reference: {invoice_number}''' if revolut_phone else ''}
 
 If you have any questions about this invoice, please contact us:
 Phone: {business_phone}
@@ -507,14 +518,54 @@ This invoice was generated automatically.
                 {payment_button_html}
                 
                 <!-- Alternative Payment Methods -->
-                <div style="background: #fefce8; border-radius: 8px; padding: 16px; margin-bottom: 25px; border-left: 4px solid #eab308;">
+                {f"""<div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-radius: 12px; padding: 20px; margin-bottom: 25px; border: 1px solid #93c5fd;">
+                    <div style="font-weight: 700; color: #1e40af; font-size: 15px; margin-bottom: 12px;">
+                        🏦 Bank Transfer Details
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-size: 13px; width: 120px;">Account Holder:</td>
+                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px;">{bank_details['account_holder']}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">IBAN:</td>
+                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px; font-family: 'Courier New', monospace; letter-spacing: 1px;">{bank_details['iban']}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">BIC/SWIFT:</td>
+                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px; font-family: 'Courier New', monospace;">{bank_details['bic']}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Bank:</td>
+                            <td style="padding: 6px 0; color: #1e293b; font-weight: 600; font-size: 14px;">{bank_details['bank_name']}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 6px 0; color: #64748b; font-size: 13px;">Reference:</td>
+                            <td style="padding: 6px 0; color: #1e293b; font-weight: 700; font-size: 14px; font-family: 'Courier New', monospace;">{invoice_number}</td>
+                        </tr>
+                    </table>
+                    <div style="margin-top: 10px; font-size: 12px; color: #6b7280;">Please use the reference number when making a bank transfer.</div>
+                </div>""" if bank_details and bank_details.get('iban') else """<div style="background: #fefce8; border-radius: 8px; padding: 16px; margin-bottom: 25px; border-left: 4px solid #eab308;">
                     <div style="font-weight: 600; color: #854d0e; font-size: 14px; margin-bottom: 8px;">
                         💡 Other Payment Options
                     </div>
                     <div style="color: #a16207; font-size: 13px; line-height: 1.6;">
-                        Cash or Card on completion • Bank Transfer
+                        Cash or Card on completion{' • Bank Transfer' if not (bank_details and bank_details.get('iban')) else ''}
                     </div>
-                </div>
+                </div>"""}
+                
+                {f"""<!-- Revolut Payment Option -->
+                <div style="background: linear-gradient(135deg, #f0f4ff 0%, #e8eeff 100%); border-radius: 12px; padding: 20px; margin-bottom: 25px; border: 1px solid #818cf8;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                        <div style="font-weight: 700; color: #4338ca; font-size: 15px;">
+                            📱 Pay via Revolut
+                        </div>
+                    </div>
+                    <div style="color: #1e293b; font-size: 14px; line-height: 1.8;">
+                        <div>Send to: <strong style="font-family: 'Courier New', monospace;">{revolut_phone}</strong></div>
+                        <div>Reference: <strong style="font-family: 'Courier New', monospace;">{invoice_number}</strong></div>
+                    </div>
+                </div>""" if revolut_phone else ""}
                 
                 <!-- Contact Section -->
                 <div style="text-align: center; padding: 20px 0; border-top: 1px solid #e5e7eb;">

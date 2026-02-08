@@ -114,4 +114,8 @@ export const disconnectStripeConnect = () =>
 export const getConnectBalance = () => api.get('/api/connect/balance');
 export const getConnectPayouts = () => api.get('/api/connect/payouts');
 
+// Bank Details (for invoice bank transfer option)
+export const saveBankDetails = (data) => api.post('/api/settings/business', data);
+export const getBankDetails = () => api.get('/api/settings/business');
+
 export default api;

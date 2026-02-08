@@ -356,8 +356,56 @@ class PostgreSQLDatabaseWrapper:
             'trial_start': 'TIMESTAMP',
             'trial_end': 'TIMESTAMP',
             'subscription_current_period_end': 'TIMESTAMP',
-            'subscription_cancel_at_period_end': 'INTEGER DEFAULT 0'
+            'subscription_cancel_at_period_end': 'INTEGER DEFAULT 0',
+            'bank_iban': 'TEXT',
+            'bank_bic': 'TEXT',
+            'bank_name': 'TEXT',
+            'bank_account_holder': 'TEXT',
+            'revolut_phone': 'TEXT'
         }
+        
+        # Also migrate business_settings table for bank details
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'business_settings'
+        """)
+        bs_existing = [row['column_name'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()]
+        
+        bs_migrations = {
+            'bank_iban': 'TEXT',
+            'bank_bic': 'TEXT',
+            'bank_name': 'TEXT',
+            'bank_account_holder': 'TEXT',
+            'revolut_phone': 'TEXT',
+            'city': 'TEXT',
+            'country': 'TEXT',
+            'website': 'TEXT',
+            'timezone': 'TEXT',
+            'currency': "TEXT DEFAULT 'EUR'",
+            'business_type': 'TEXT',
+            'default_charge': 'REAL',
+            'business_hours': 'TEXT',
+            'opening_hours_start': 'INTEGER DEFAULT 9',
+            'opening_hours_end': 'INTEGER DEFAULT 17',
+            'days_open': 'TEXT',
+            'services': 'TEXT',
+            'payment_methods': 'TEXT',
+            'cancellation_policy': 'TEXT',
+            'reminder_hours_before': 'INTEGER DEFAULT 24',
+            'auto_confirm_bookings': 'INTEGER DEFAULT 1',
+            'fallback_phone_number': 'TEXT',
+            'appointment_duration': 'INTEGER DEFAULT 60',
+            'max_booking_days_ahead': 'INTEGER DEFAULT 30',
+            'allow_weekend_booking': 'INTEGER DEFAULT 1',
+        }
+        
+        for col_name, col_type in bs_migrations.items():
+            if col_name not in bs_existing:
+                try:
+                    cursor.execute(f"ALTER TABLE business_settings ADD COLUMN {col_name} {col_type}")
+                    print(f"✅ Added {col_name} column to business_settings table")
+                except Exception as e:
+                    print(f"⚠️ Could not add {col_name} to business_settings: {e}")
         
         for column_name, column_type in migrations.items():
             if column_name not in existing_columns:
@@ -470,12 +518,18 @@ class PostgreSQLDatabaseWrapper:
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
-            allowed_fields = ['company_name', 'owner_name', 'phone', 'trade_type', 
-                              'address', 'logo_url', 'subscription_tier', 'subscription_status',
-                              'stripe_customer_id', 'stripe_subscription_id', 'is_verified', 
+            allowed_fields = ['company_name', 'owner_name', 'phone', 'email', 'trade_type', 
+                              'address', 'logo_url', 'business_hours', 'ai_enabled',
+                              'subscription_tier', 'subscription_status',
+                              'stripe_customer_id', 'stripe_subscription_id',
+                              'stripe_connect_account_id', 'stripe_connect_status',
+                              'stripe_connect_onboarding_complete',
+                              'is_verified', 
                               'verification_token', 'reset_token', 'reset_token_expires', 
                               'last_login', 'trial_start', 'trial_end',
-                              'subscription_current_period_end', 'subscription_cancel_at_period_end']
+                              'subscription_current_period_end', 'subscription_cancel_at_period_end',
+                              'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
+                              'revolut_phone']
             
             fields = []
             values = []

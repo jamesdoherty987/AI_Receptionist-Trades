@@ -1766,7 +1766,14 @@ def business_settings_api():
             'country_code': '+353',  # Default, could be added to schema if needed
             'business_hours': company.get('business_hours') or '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
             'twilio_phone_number': company.get('twilio_phone_number'),  # Read-only, assigned from pool
-            'ai_enabled': company.get('ai_enabled', True)
+            'ai_enabled': company.get('ai_enabled', True),
+            # Bank details for invoice bank transfer option
+            'bank_iban': company.get('bank_iban', ''),
+            'bank_bic': company.get('bank_bic', ''),
+            'bank_name': company.get('bank_name', ''),
+            'bank_account_holder': company.get('bank_account_holder', ''),
+            # Revolut payment option
+            'revolut_phone': company.get('revolut_phone', ''),
         }
         return jsonify(settings)
     
@@ -1787,7 +1794,12 @@ def business_settings_api():
             'business_address': 'address',
             'logo_url': 'logo_url',
             'business_hours': 'business_hours',
-            'ai_enabled': 'ai_enabled'
+            'ai_enabled': 'ai_enabled',
+            'bank_iban': 'bank_iban',
+            'bank_bic': 'bank_bic',
+            'bank_name': 'bank_name',
+            'bank_account_holder': 'bank_account_holder',
+            'revolut_phone': 'revolut_phone',
         }
         
         for frontend_field, db_field in field_mapping.items():
@@ -2437,6 +2449,10 @@ def send_invoice_api(booking_id):
         from datetime import datetime
         stripe_payment_link = None
         
+        # Get the user's company to check for Stripe Connect account
+        company = db.get_company(session['company_id'])
+        connected_account_id = company.get('stripe_connect_account_id') if company else None
+        
         # Try to create Stripe payment link if configured
         stripe_secret_key = getattr(config, 'STRIPE_SECRET_KEY', None)
         
@@ -2451,20 +2467,22 @@ def send_invoice_api(booking_id):
             else:
                 print("❌ STRIPE_SECRET_KEY not found in config or environment!")
         
-        if stripe_secret_key:
+        # Only create Stripe payment link if the user has their own Connect account
+        # We never charge to the platform account - payments go directly to the user
+        if stripe_secret_key and connected_account_id:
             try:
                 import stripe
                 stripe.api_key = stripe_secret_key
                 
-                # Create a payment link using Stripe Checkout
                 # Amount must be in cents
                 amount_cents = int(charge_amount * 100)
                 
-                print(f"💳 Creating Stripe checkout session for €{charge_amount} ({amount_cents} cents)...")
+                print(f"💳 Creating Stripe checkout via Connect account {connected_account_id} for €{charge_amount} ({amount_cents} cents)...")
                 
-                checkout_session = stripe.checkout.Session.create(
-                    payment_method_types=['card'],
-                    line_items=[{
+                # Build checkout session params
+                checkout_params = {
+                    'payment_method_types': ['card'],
+                    'line_items': [{
                         'price_data': {
                             'currency': 'eur',
                             'product_data': {
@@ -2475,14 +2493,28 @@ def send_invoice_api(booking_id):
                         },
                         'quantity': 1,
                     }],
-                    mode='payment',
-                    success_url=f"{os.getenv('PUBLIC_URL', 'http://localhost:5000')}/payment-success?session_id={{CHECKOUT_SESSION_ID}}",
-                    cancel_url=f"{os.getenv('PUBLIC_URL', 'http://localhost:5000')}/payment-cancelled",
-                    metadata={
+                    'mode': 'payment',
+                    'success_url': f"{os.getenv('PUBLIC_URL', 'http://localhost:5000')}/payment-success?session_id={{CHECKOUT_SESSION_ID}}",
+                    'cancel_url': f"{os.getenv('PUBLIC_URL', 'http://localhost:5000')}/payment-cancelled",
+                    'metadata': {
                         'booking_id': str(booking_id),
                         'customer_name': booking_dict['client_name'],
                     }
+                }
+                
+                # Calculate platform fee if configured
+                platform_fee_percent = float(os.getenv('STRIPE_PLATFORM_FEE_PERCENT', '0'))
+                if platform_fee_percent > 0:
+                    application_fee = int(amount_cents * (platform_fee_percent / 100))
+                    checkout_params['payment_intent_data'] = {
+                        'application_fee_amount': application_fee,
+                    }
+                
+                checkout_session = stripe.checkout.Session.create(
+                    **checkout_params,
+                    stripe_account=connected_account_id  # Payment goes to user's account
                 )
+                
                 stripe_payment_link = checkout_session.url
                 print(f"✅ Stripe payment link created: {stripe_payment_link}")
             except Exception as stripe_error:
@@ -2490,8 +2522,24 @@ def send_invoice_api(booking_id):
                 import traceback
                 traceback.print_exc()
                 # Continue without Stripe link - invoice will still be sent
+        elif not connected_account_id:
+            print("ℹ️ No Stripe Connect account - invoice will be sent without payment link")
         else:
             print("ℹ️ Stripe not configured - sending invoice without payment link")
+        
+        # Get bank details for bank transfer option on invoice
+        bank_details = None
+        revolut_phone = None
+        if company:
+            bank_iban = company.get('bank_iban', '')
+            if bank_iban:
+                bank_details = {
+                    'iban': bank_iban,
+                    'bic': company.get('bank_bic', ''),
+                    'bank_name': company.get('bank_name', ''),
+                    'account_holder': company.get('bank_account_holder', ''),
+                }
+            revolut_phone = company.get('revolut_phone', '') or None
         
         email_service = get_email_service()
         
@@ -2517,7 +2565,9 @@ def send_invoice_api(booking_id):
             appointment_time=appointment_time,
             stripe_payment_link=stripe_payment_link,
             job_address=job_address,
-            invoice_number=invoice_number
+            invoice_number=invoice_number,
+            bank_details=bank_details,
+            revolut_phone=revolut_phone
         )
         
         if success:

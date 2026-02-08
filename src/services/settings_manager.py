@@ -123,7 +123,9 @@ class SettingsManager:
                 'days_open', 'max_booking_days_ahead', 'allow_weekend_booking',
                 'services', 'payment_methods', 'cancellation_policy',
                 'reminder_hours_before', 'auto_confirm_bookings', 'fallback_phone_number',
-                'logo_url', 'business_hours'
+                'logo_url', 'business_hours',
+                'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
+                'revolut_phone'
             ]
             
             # Build update query

@@ -428,6 +428,38 @@
   font-size: 0.7rem;
 }
 
+/* Free Trial Banner */
+.trial-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 1px solid #6ee7b7;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 1.5rem;
+}
+
+.trial-banner i {
+  font-size: 24px;
+  color: #059669;
+  flex-shrink: 0;
+}
+
+.trial-banner strong {
+  display: block;
+  color: #065f46;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.trial-banner span {
+  display: block;
+  color: #047857;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
 /* Responsive */
 @media (max-width: 480px) {
   .auth-page {
