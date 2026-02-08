@@ -1,7 +1,6 @@
 """
 PostgreSQL Database Wrapper
-Provides the same interface as SQLite Database class but uses PostgreSQL
-This allows the rest of the code to work without changes
+Primary database layer for the application using PostgreSQL
 """
 import os
 import psycopg2
@@ -14,7 +13,7 @@ import threading
 
 
 class PostgreSQLDatabaseWrapper:
-    """PostgreSQL database wrapper with SQLite-compatible interface"""
+    """PostgreSQL database wrapper"""
     
     def __init__(self, database_url: str):
         """Initialize PostgreSQL connection pool"""
@@ -52,7 +51,7 @@ class PostgreSQLDatabaseWrapper:
         self.init_database()
     
     def get_connection(self):
-        """Get connection from pool (compatible with SQLite interface)"""
+        """Get connection from pool"""
         try:
             conn = self.connection_pool.getconn()
             # Test connection is still alive
@@ -346,7 +345,7 @@ class PostgreSQLDatabaseWrapper:
             SELECT column_name FROM information_schema.columns 
             WHERE table_name = 'companies'
         """)
-        existing_columns = [row[0] for row in cursor.fetchall()]
+        existing_columns = [row['column_name'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()]
         
         # New subscription-related columns to add
         migrations = {
@@ -368,11 +367,8 @@ class PostgreSQLDatabaseWrapper:
                 except Exception as e:
                     print(f"⚠️ Could not add {column_name} column: {e}")
     
-    # The following methods proxy to the Database class methods but convert
-    # SQLite placeholders (?) to PostgreSQL placeholders (%s)
-    
     def _convert_query(self, query: str) -> str:
-        """Convert SQLite query syntax to PostgreSQL"""
+        """Convert ? placeholders to %s for parameterized queries"""
         # Replace ? with %s for parameterized queries
         return query.replace('?', '%s')
     
@@ -409,10 +405,6 @@ class PostgreSQLDatabaseWrapper:
             raise
         finally:
             self.return_connection(conn)
-    
-    # Note: All the Database class methods (add_client, get_client, etc.) 
-    # would need to be re-implemented here or we need to make the Database class
-    # work with both SQLite and PostgreSQL by detecting the connection type.
     
     # Authentication & Company Management Methods
     
@@ -503,6 +495,20 @@ class PostgreSQLDatabaseWrapper:
                 success = False
             
             return success
+        finally:
+            cursor.close()
+            self.return_connection(conn)
+    
+    def get_company_by_reset_token(self, token: str) -> Optional[Dict]:
+        """Get company by password reset token"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("SELECT * FROM companies WHERE reset_token = %s", (token,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
         finally:
             cursor.close()
             self.return_connection(conn)
@@ -1718,43 +1724,3 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def __getattr__(self, name):
-        """
-        Delegate unknown method calls to Database class
-        This allows fallback for methods not yet implemented in PostgreSQL wrapper
-        
-        WARNING: This fallback mechanism is fragile and should only be used for
-        read-only operations or simple methods that don't rely on database-specific syntax.
-        """
-        # Import here to avoid circular import
-        from src.services.database import Database
-        
-        print(f"⚠️ Method '{name}' not implemented in PostgreSQL wrapper, attempting fallback")
-        
-        # Create a Database instance if needed (for method delegation only)
-        if '_sqlite_db_proxy' not in self.__dict__:
-            # Temporarily clear DATABASE_URL to create SQLite instance
-            original_url = os.environ.pop('DATABASE_URL', None)
-            
-            try:
-                # Create Database with a temporary path (won't actually be used for data)
-                self._sqlite_db_proxy = Database(db_path="data/.temp_postgres_proxy.db")
-                
-                # CRITICAL: Override get_connection to use PostgreSQL
-                # This redirects all database operations to PostgreSQL while keeping SQLite business logic
-                original_get_connection = self.get_connection
-                self._sqlite_db_proxy.get_connection = lambda: original_get_connection()
-                
-            except Exception as e:
-                print(f"❌ Failed to create fallback proxy: {e}")
-                raise AttributeError(f"Method '{name}' not implemented in PostgreSQL wrapper and fallback failed")
-            finally:
-                # Restore environment variables
-                if original_url:
-                    os.environ['DATABASE_URL'] = original_url
-        
-        # Get the attribute from the proxied Database instance
-        try:
-            return getattr(self._sqlite_db_proxy, name)
-        except AttributeError:
-            raise AttributeError(f"Method '{name}' not found in PostgreSQL wrapper or SQLite Database")

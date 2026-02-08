@@ -1,10 +1,8 @@
 """
 Settings Manager for AI Receptionist  
-Manages both business and developer settings
-Note: Automatically uses PostgreSQL when DATABASE_URL is set, otherwise uses SQLite
+Manages both business and developer settings using PostgreSQL
 """
 import json
-import os
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
@@ -13,12 +11,7 @@ class SettingsManager:
     """Manage application settings"""
     
     def __init__(self):
-        """Initialize settings manager - automatically uses PostgreSQL if DATABASE_URL is set"""
-        # Note: services_path is deprecated - services now stored in database
-        
-        # Check if using PostgreSQL
-        self.use_postgres = bool(os.getenv('DATABASE_URL'))
-        
+        """Initialize settings manager using PostgreSQL"""
         self.init_settings_tables()
     
     def init_settings_tables(self):
@@ -41,32 +34,16 @@ class SettingsManager:
         try:
             conn = db.get_connection()
             
-            if self.use_postgres:
-                from psycopg2.extras import RealDictCursor
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
-                cursor.execute("SELECT * FROM business_settings ORDER BY id DESC LIMIT 1")
-                row = cursor.fetchone()
-                db.return_connection(conn)
-                
-                if not row:
-                    return {}
-                
-                settings = dict(row)
-            else:
-                import sqlite3
-                cursor = conn.cursor()
-                # Get actual column names from database
-                cursor.execute("PRAGMA table_info(business_settings)")
-                db_columns = [col[1] for col in cursor.fetchall()]
-                
-                cursor.execute("SELECT * FROM business_settings ORDER BY id DESC LIMIT 1")
-                row = cursor.fetchone()
-                conn.close()
-                
-                if not row:
-                    return {}
-                
-                settings = dict(zip(db_columns, row))
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("SELECT * FROM business_settings ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            db.return_connection(conn)
+            
+            if not row:
+                return {}
+            
+            settings = dict(row)
             
             # Map database column names to frontend field names
             if 'phone' in settings:
@@ -154,43 +131,26 @@ class SettingsManager:
             values = []
             for key, value in settings.items():
                 if key not in ['id', 'created_at', 'updated_at'] and key in valid_columns:
-                    if self.use_postgres:
-                        update_fields.append(f"{key} = %s")
-                    else:
-                        update_fields.append(f"{key} = ?")
+                    update_fields.append(f"{key} = %s")
                     values.append(value)
             
             if not update_fields:
-                if self.use_postgres:
-                    db.return_connection(conn)
-                else:
-                    conn.close()
+                db.return_connection(conn)
                 return False
             
             values.append(datetime.now().isoformat())
             
-            if self.use_postgres:
-                cursor = conn.cursor()
-                update_query = f"""
-                    UPDATE business_settings 
-                    SET {', '.join(update_fields)}, updated_at = %s
-                    WHERE id = (SELECT MAX(id) FROM business_settings)
-                """
-            else:
-                cursor = conn.cursor()
-                update_query = f"""
-                    UPDATE business_settings 
-                    SET {', '.join(update_fields)}, updated_at = ?
-                    WHERE id = (SELECT MAX(id) FROM business_settings)
-                """
+            cursor = conn.cursor()
+            update_query = f"""
+                UPDATE business_settings 
+                SET {', '.join(update_fields)}, updated_at = %s
+                WHERE id = (SELECT MAX(id) FROM business_settings)
+            """
             
             cursor.execute(update_query, values)
             conn.commit()
             
-            if self.use_postgres:
-                db.return_connection(conn)
-            else:
-                conn.close()
+            db.return_connection(conn)
             
             return True
             
@@ -206,25 +166,13 @@ class SettingsManager:
         try:
             conn = db.get_connection()
             
-            if self.use_postgres:
-                from psycopg2.extras import RealDictCursor
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
-                cursor.execute("SELECT * FROM developer_settings ORDER BY id DESC LIMIT 1")
-                row = cursor.fetchone()
-                db.return_connection(conn)
-                
-                return dict(row) if row else {}
-            else:
-                import sqlite3
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA table_info(developer_settings)")
-                columns = [col[1] for col in cursor.fetchall()]
-                
-                cursor.execute("SELECT * FROM developer_settings ORDER BY id DESC LIMIT 1")
-                row = cursor.fetchone()
-                conn.close()
-                
-                return dict(zip(columns, row)) if row else {}
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("SELECT * FROM developer_settings ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            db.return_connection(conn)
+            
+            return dict(row) if row else {}
                 
         except Exception as e:
             print(f"Error getting developer settings: {e}")
@@ -244,41 +192,25 @@ class SettingsManager:
             values = []
             for key, value in settings.items():
                 if key not in ['id', 'created_at', 'updated_at']:
-                    if self.use_postgres:
-                        update_fields.append(f"{key} = %s")
-                    else:
-                        update_fields.append(f"{key} = ?")
+                    update_fields.append(f"{key} = %s")
                     values.append(value)
             
             if not update_fields:
-                if self.use_postgres:
-                    db.return_connection(conn)
-                else:
-                    conn.close()
+                db.return_connection(conn)
                 return False
             
             values.append(datetime.now().isoformat())
             
-            if self.use_postgres:
-                update_query = f"""
-                    UPDATE developer_settings 
-                    SET {', '.join(update_fields)}, updated_at = %s
-                    WHERE id = (SELECT MAX(id) FROM developer_settings)
-                """
-            else:
-                update_query = f"""
-                    UPDATE developer_settings 
-                    SET {', '.join(update_fields)}, updated_at = ?
-                    WHERE id = (SELECT MAX(id) FROM developer_settings)
-                """
+            update_query = f"""
+                UPDATE developer_settings 
+                SET {', '.join(update_fields)}, updated_at = %s
+                WHERE id = (SELECT MAX(id) FROM developer_settings)
+            """
             
             cursor.execute(update_query, values)
             conn.commit()
             
-            if self.use_postgres:
-                db.return_connection(conn)
-            else:
-                conn.close()
+            db.return_connection(conn)
             
             return True
             
@@ -294,39 +226,18 @@ class SettingsManager:
         try:
             conn = db.get_connection()
             
-            if self.use_postgres:
-                from psycopg2.extras import RealDictCursor
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
-                cursor.execute("""
-                    SELECT sl.*, u.username, u.full_name
-                    FROM settings_log sl
-                    LEFT JOIN users u ON sl.user_id = u.id
-                    ORDER BY sl.changed_at DESC
-                    LIMIT %s
-                """, (limit,))
-                rows = cursor.fetchall()
-                db.return_connection(conn)
-                return [dict(row) for row in rows]
-            else:
-                import sqlite3
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT sl.*, u.username, u.full_name
-                    FROM settings_log sl
-                    LEFT JOIN users u ON sl.user_id = u.id
-                    ORDER BY sl.changed_at DESC
-                    LIMIT ?
-                """, (limit,))
-                
-                rows = cursor.fetchall()
-                conn.close()
-                
-                columns = [
-                    'id', 'user_id', 'setting_type', 'setting_key', 'old_value',
-                    'new_value', 'changed_at', 'username', 'full_name'
-                ]
-                
-                return [dict(zip(columns, row)) for row in rows]
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT sl.*, u.username, u.full_name
+                FROM settings_log sl
+                LEFT JOIN users u ON sl.user_id = u.id
+                ORDER BY sl.changed_at DESC
+                LIMIT %s
+            """, (limit,))
+            rows = cursor.fetchall()
+            db.return_connection(conn)
+            return [dict(row) for row in rows]
                 
         except Exception as e:
             print(f"Error getting settings history: {e}")

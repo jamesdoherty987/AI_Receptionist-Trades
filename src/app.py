@@ -732,6 +732,158 @@ def change_password():
 
 
 # ============================================
+# PASSWORD RESET ENDPOINTS
+# ============================================
+
+@app.route("/api/auth/forgot-password", methods=["POST"])
+@rate_limit(max_requests=5, window_seconds=300)  # 5 requests per 5 minutes
+def forgot_password():
+    """Send password reset email"""
+    import secrets
+    import sys
+    from datetime import datetime, timedelta
+    
+    data = request.json
+    email = data.get('email', '').lower().strip()
+    
+    if not email or not validate_email(email):
+        return jsonify({"error": "Please provide a valid email address"}), 400
+    
+    db = get_database()
+    company = db.get_company_by_email(email)
+    
+    # Always return success message to prevent email enumeration
+    success_msg = {
+        "success": True,
+        "message": "If an account with that email exists, we've sent a password reset link."
+    }
+    
+    if not company:
+        print(f"[FORGOT-PW] No account found for {email}", flush=True)
+        return jsonify(success_msg)
+    
+    print(f"[FORGOT-PW] Account found for {email} (ID: {company['id']})", flush=True)
+    
+    # Generate secure reset token
+    reset_token = secrets.token_urlsafe(32)
+    reset_expires = datetime.now() + timedelta(hours=1)
+    
+    # Store token in database
+    db.update_company(company['id'], 
+                      reset_token=reset_token, 
+                      reset_token_expires=reset_expires.isoformat())
+    
+    # Build reset link - use request origin or PUBLIC_URL
+    origin = request.headers.get('Origin', '')
+    if not origin:
+        origin = os.getenv('PUBLIC_URL', request.host_url.rstrip('/'))
+    reset_link = f"{origin}/reset-password?token={reset_token}"
+    
+    print(f"[FORGOT-PW] Reset link: {reset_link}", flush=True)
+    
+    # Send email
+    try:
+        from src.services.email_reminder import get_email_service
+        email_service = get_email_service()
+        
+        # Get business name for the email
+        business_name = 'BookedForYou'
+        try:
+            business_name = company.get('company_name', 'BookedForYou') or 'BookedForYou'
+        except Exception:
+            pass
+        
+        email_sent = email_service.send_password_reset(email, reset_link, business_name)
+        
+        if email_sent:
+            print(f"[FORGOT-PW] Reset email sent to {email}", flush=True)
+        else:
+            print(f"[FORGOT-PW] Email service not configured - link logged above", flush=True)
+    except Exception as e:
+        print(f"[FORGOT-PW] Email send error: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush()
+    
+    return jsonify(success_msg)
+
+
+@app.route("/api/auth/reset-password", methods=["POST"])
+@rate_limit(max_requests=10, window_seconds=300)  # 10 attempts per 5 minutes
+def reset_password():
+    """Reset password using token"""
+    data = request.json
+    token = data.get('token', '').strip()
+    new_password = data.get('new_password', '')
+    
+    if not token:
+        return jsonify({"error": "Reset token is required"}), 400
+    
+    if not new_password:
+        return jsonify({"error": "New password is required"}), 400
+    
+    # Validate password strength
+    if len(new_password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    if len(new_password) > 128:
+        return jsonify({"error": "Password is too long"}), 400
+    
+    has_upper = any(c.isupper() for c in new_password)
+    has_lower = any(c.islower() for c in new_password)
+    has_digit = any(c.isdigit() for c in new_password)
+    if not (has_upper and has_lower and has_digit):
+        return jsonify({
+            "error": "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+        }), 400
+    
+    db = get_database()
+    company = db.get_company_by_reset_token(token)
+    
+    if not company:
+        get_security_logger().log_failed_auth(
+            '/api/auth/reset-password',
+            get_client_ip(),
+            'Invalid reset token'
+        )
+        return jsonify({"error": "Invalid or expired reset link. Please request a new one."}), 400
+    
+    # Check if token has expired
+    from datetime import datetime
+    token_expires = company.get('reset_token_expires')
+    if token_expires:
+        if isinstance(token_expires, str):
+            try:
+                token_expires = datetime.fromisoformat(token_expires)
+            except ValueError:
+                token_expires = None
+        
+        if token_expires and datetime.now() > token_expires:
+            # Clear expired token
+            db.update_company(company['id'], reset_token=None, reset_token_expires=None)
+            return jsonify({"error": "Reset link has expired. Please request a new one."}), 400
+    
+    # Update password
+    new_hash = hash_password(new_password)
+    success = db.update_company_password(company['id'], new_hash)
+    
+    if success:
+        # Clear the reset token
+        db.update_company(company['id'], reset_token=None, reset_token_expires=None)
+        
+        get_security_logger().log_password_change(
+            company['id'],
+            get_client_ip()
+        )
+        
+        return jsonify({
+            "success": True,
+            "message": "Password has been reset successfully. You can now log in with your new password."
+        })
+    
+    return jsonify({"error": "Failed to reset password. Please try again."}), 500
+
+
+# ============================================
 # PHONE NUMBER MANAGEMENT ENDPOINTS
 # ============================================
 

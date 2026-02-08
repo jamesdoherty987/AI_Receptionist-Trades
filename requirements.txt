@@ -15,7 +15,7 @@ twilio==9.3.2
 # Security - Password hashing
 bcrypt>=4.1.2
 
-# Database - SQLite (local) and PostgreSQL (production)
+# Database - PostgreSQL
 psycopg2-binary>=2.9.9
 
 # Cloud Storage - Cloudflare R2 (S3-compatible)

@@ -10,6 +10,8 @@ import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
 import SettingsMenu from './pages/SettingsMenu'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 
 // Loading component
 import LoadingSpinner from './components/LoadingSpinner'
@@ -97,6 +99,22 @@ function AppRoutes() {
         element={
           <PublicRoute>
             <Signup />
+          </PublicRoute>
+        } 
+      />
+      <Route 
+        path="/forgot-password" 
+        element={
+          <PublicRoute>
+            <ForgotPassword />
+          </PublicRoute>
+        } 
+      />
+      <Route 
+        path="/reset-password" 
+        element={
+          <PublicRoute>
+            <ResetPassword />
           </PublicRoute>
         } 
       />

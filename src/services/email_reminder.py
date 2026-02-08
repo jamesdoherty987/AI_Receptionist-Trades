@@ -178,6 +178,99 @@ Best regards,
             print(f"❌ Failed to send email: {e}")
             return False
     
+    def send_password_reset(self, to_email: str, reset_link: str, business_name: str = 'BookedForYou') -> bool:
+        """
+        Send a password reset email
+        
+        Args:
+            to_email: Recipient email address
+            reset_link: Full URL link for password reset
+            business_name: Name of the business
+            
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        if not self.configured:
+            print(f"⚠️ Email service not configured. Password reset link: {reset_link}")
+            return False
+        
+        try:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = f'Reset Your Password - {business_name}'
+            msg['From'] = f'{business_name} <{self.from_email}>'
+            msg['To'] = to_email
+            
+            text_body = f"""
+Hi,
+
+We received a request to reset your password for your {business_name} account.
+
+Click the link below to reset your password:
+{reset_link}
+
+This link will expire in 1 hour.
+
+If you didn't request a password reset, you can safely ignore this email.
+
+Best regards,
+{business_name}
+            """.strip()
+            
+            html_body = f"""
+<!DOCTYPE html>
+<html>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+        <div style="background: white; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 30px; text-align: center;">
+                <div style="font-size: 28px; font-weight: 800; color: white; letter-spacing: -0.5px;">
+                    {business_name}
+                </div>
+            </div>
+            <div style="padding: 30px;">
+                <h2 style="color: #1e293b; margin: 0 0 15px 0;">Reset Your Password</h2>
+                <p style="color: #6b7280; font-size: 15px; line-height: 1.6;">
+                    We received a request to reset your password. Click the button below to create a new password.
+                </p>
+                <div style="text-align: center; margin: 30px 0;">
+                    <a href="{reset_link}" 
+                       style="display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); 
+                              color: white; text-decoration: none; padding: 16px 40px; font-size: 16px; 
+                              font-weight: 700; border-radius: 10px; box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);">
+                        Reset Password
+                    </a>
+                </div>
+                <p style="color: #9ca3af; font-size: 13px; margin-top: 20px;">
+                    This link will expire in 1 hour. If you didn't request this, you can safely ignore this email.
+                </p>
+                <p style="color: #9ca3af; font-size: 12px; margin-top: 15px; word-break: break-all;">
+                    If the button doesn't work, copy and paste this link into your browser:<br>
+                    <a href="{reset_link}" style="color: #3b82f6;">{reset_link}</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+            """.strip()
+            
+            part1 = MIMEText(text_body, 'plain')
+            part2 = MIMEText(html_body, 'html')
+            msg.attach(part1)
+            msg.attach(part2)
+            
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                server.starttls()
+                server.login(self.smtp_user, self.smtp_password)
+                server.send_message(msg)
+            
+            print(f"✅ Password reset email sent to {to_email}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Failed to send password reset email: {e}")
+            return False
+    
     def send_invoice(self, to_email: str, customer_name: str, service_type: str, 
                     charge: float, appointment_time: datetime = None,
                     stripe_payment_link: str = None, job_address: str = None,

@@ -19,6 +19,9 @@ export const getCurrentUser = () => api.get('/api/auth/me');
 export const updateProfile = (data) => api.put('/api/auth/profile', data);
 export const changePassword = (currentPassword, newPassword) => 
   api.post('/api/auth/change-password', { current_password: currentPassword, new_password: newPassword });
+export const forgotPassword = (email) => api.post('/api/auth/forgot-password', { email });
+export const resetPassword = (token, newPassword) => 
+  api.post('/api/auth/reset-password', { token, new_password: newPassword });
 
 // Bookings / Jobs
 export const getBookings = () => api.get('/api/bookings');

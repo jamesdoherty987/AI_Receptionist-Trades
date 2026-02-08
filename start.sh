@@ -5,7 +5,8 @@ echo "🚀 Starting AI Receptionist Backend..."
 
 # Check if DATABASE_URL is set
 if [ -z "$DATABASE_URL" ]; then
-    echo "⚠️  WARNING: DATABASE_URL not set, using SQLite"
+    echo "❌ ERROR: DATABASE_URL is required"
+    exit 1
 else
     echo "✅ Using PostgreSQL database"
 fi

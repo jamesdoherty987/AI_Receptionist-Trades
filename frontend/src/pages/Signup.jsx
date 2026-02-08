@@ -141,7 +141,7 @@ function Signup() {
       <div className="auth-container signup-container">
         <Link to="/" className="auth-logo">
           <i className="fas fa-bolt"></i>
-          <span>TradesAI</span>
+          <span>BookedForYou</span>
         </Link>
 
         <div className="auth-card">

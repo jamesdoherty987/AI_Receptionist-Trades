@@ -375,6 +375,59 @@
   color: var(--accent-blue);
 }
 
+/* Password Reset Success */
+.reset-success-info {
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.reset-success-icon {
+  font-size: 3rem;
+  color: var(--accent-blue);
+  margin-bottom: 1rem;
+}
+
+.reset-success-text {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 0.5rem;
+}
+
+.reset-success-hint {
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+}
+
+/* Password Requirements */
+.password-requirements {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+.password-requirements p {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  margin: 0;
+  transition: color 0.2s;
+}
+
+.password-requirements p.met {
+  color: var(--success, #10b981);
+}
+
+.password-requirements p i {
+  font-size: 0.7rem;
+}
+
 /* Responsive */
 @media (max-width: 480px) {
   .auth-page {

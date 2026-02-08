@@ -4,7 +4,8 @@ Write-Host "🚀 Starting AI Receptionist Backend..."
 
 # Check if DATABASE_URL is set
 if (-not $env:DATABASE_URL) {
-    Write-Host "⚠️  WARNING: DATABASE_URL not set, using SQLite"
+    Write-Host "❌ ERROR: DATABASE_URL is required"
+    exit 1
 } else {
     Write-Host "✅ Using PostgreSQL database"
 }
