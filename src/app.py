@@ -63,6 +63,8 @@ app = Flask(__name__,
 allowed_origins = [
     "https://www.bookedforyou.info",
     "https://bookedforyou.info",
+    "https://www.bookedforyou.ie",  # Production domain (.ie)
+    "https://bookedforyou.ie",      # Production domain without www
     "http://localhost:3000",  # Vite dev server
     "http://localhost:5173",  # Vite dev server (alt port)
     "http://localhost:5000",  # Flask dev server
