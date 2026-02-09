@@ -35,7 +35,7 @@ While the app can create prices dynamically, it's better to create them in Strip
    - **Description**: `AI Receptionist & Business Management - All Features`
 3. Add a price:
    - **Pricing model**: Recurring
-   - **Amount**: €59.00
+   - **Amount**: €99.00
    - **Billing period**: Monthly
 4. Copy the **Price ID** (starts with `price_`)
 5. Add to your `.env` file:

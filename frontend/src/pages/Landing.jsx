@@ -189,7 +189,7 @@ function Landing() {
     },
     {
       name: "Pro",
-      price: "€59",
+      price: "€99",
       period: "/month",
       description: "Full access to grow your business",
       features: [

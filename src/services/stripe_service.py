@@ -11,9 +11,9 @@ from typing import Optional, Dict, Any
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 
 # Subscription configuration
-SUBSCRIPTION_PRICE_ID = os.getenv('STRIPE_PRICE_ID')  # Monthly €59 subscription
+SUBSCRIPTION_PRICE_ID = os.getenv('STRIPE_PRICE_ID')  # Monthly €99 subscription
 TRIAL_DAYS = 14
-MONTHLY_PRICE_EUR = 59.00
+MONTHLY_PRICE_EUR = 99.00
 
 # Product/Price IDs (set these after creating in Stripe Dashboard)
 # For production, these should be environment variables

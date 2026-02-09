@@ -33,7 +33,7 @@ This guide covers everything you need to set up Stripe for:
    - **Description**: `AI-powered receptionist service for tradespeople`
 3. Add a price:
    - **Pricing model**: Recurring
-   - **Amount**: €59.00
+   - **Amount**: €99.00
    - **Billing period**: Monthly
    - **Currency**: EUR
 4. Click **Save product**
