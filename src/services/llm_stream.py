@@ -67,19 +67,20 @@ def load_business_info(company_id=None):
         if hasattr(db, 'use_postgres') and db.use_postgres:
             from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
+            # Use SELECT * to avoid issues with columns that may not exist yet
             if company_id:
-                cursor.execute("SELECT company_name, phone, email, address FROM companies WHERE id = %s", (int(company_id),))
+                cursor.execute("SELECT * FROM companies WHERE id = %s", (int(company_id),))
             else:
-                cursor.execute("SELECT company_name, phone, email, address FROM companies ORDER BY id LIMIT 1")
+                cursor.execute("SELECT * FROM companies ORDER BY id LIMIT 1")
             row = cursor.fetchone()
             db.return_connection(conn)
             company = dict(row) if row else None
         else:
             cursor = conn.cursor()
             if company_id:
-                cursor.execute("SELECT company_name, phone, email, address FROM companies WHERE id = ?", (int(company_id),))
+                cursor.execute("SELECT * FROM companies WHERE id = ?", (int(company_id),))
             else:
-                cursor.execute("SELECT company_name, phone, email, address FROM companies ORDER BY id LIMIT 1")
+                cursor.execute("SELECT * FROM companies ORDER BY id LIMIT 1")
             row = cursor.fetchone()
             if row:
                 cursor.execute("PRAGMA table_info(companies)")
@@ -99,7 +100,8 @@ def load_business_info(company_id=None):
                 'business_hours': company.get('business_hours') or '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
                 'phone': company.get('phone') or 'Not configured',
                 'email': company.get('email') or 'Not configured',
-                'address': company.get('address') or 'Not configured'
+                'address': company.get('address') or 'Not configured',
+                'company_context': company.get('company_context') or ''
             }
     except Exception as e:
         print(f"[WARNING] Could not load business info from database (company_id={company_id}): {e}")
@@ -245,6 +247,19 @@ POLICIES:
 - Warranty: {services_menu.get('service_policies', {}).get('warranty_months', 12)} months
 
 IMPORTANT: Use this information to answer customer questions accurately. Quote prices from the services list above.
+"""
+        # Add company-specific context if provided by the business owner
+        company_context_text = business_info.get('company_context', '').strip()
+        if company_context_text:
+            business_context += f"""
+
+###############################################################################
+## ADDITIONAL COMPANY DETAILS (Written by the business owner)
+###############################################################################
+
+{company_context_text}
+
+IMPORTANT: Use these details when relevant during conversations. For example, if a customer asks about parking, directions, company history, or specific policies mentioned above, use this information to answer accurately.
 """
         prompt += business_context
         
@@ -2321,18 +2336,30 @@ When customer wants to reschedule:
         from src.services.database import get_database
         
         # Prepare services for tool execution
-        # Google Calendar disabled if USE_GOOGLE_CALENDAR = False
+        # Use database calendar by default (scalable for SaaS)
+        # Optional: Use Google Calendar if USE_GOOGLE_CALENDAR = True
         calendar = None
         if config.USE_GOOGLE_CALENDAR:
             try:
                 from src.services.google_calendar import get_calendar_service as get_cal_service
                 calendar = get_cal_service()
+                print("[INFO] Using Google Calendar (OAuth-based)")
             except Exception as e:
-                print(f"⚠️ Could not load calendar service: {e}")
+                print(f"[WARNING] Could not load Google Calendar: {e}")
+        
+        # Always use database calendar as fallback (or primary if Google disabled)
+        if calendar is None:
+            try:
+                from src.services.database_calendar import get_database_calendar_service
+                calendar = get_database_calendar_service(company_id=1)  # TODO: Use actual company_id from context
+                print("[INFO] Using Database Calendar (multi-tenant ready)")
+            except Exception as e:
+                print(f"[ERROR] Could not load database calendar: {e}")
         
         db = get_database()
         services = {
             'google_calendar': calendar,
+            'calendar': calendar,  # Alias for clarity
             'db': db
         }
         

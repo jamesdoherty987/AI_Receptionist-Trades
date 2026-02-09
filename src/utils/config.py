@@ -15,7 +15,7 @@ class Config:
     PORT = int(os.getenv("PORT", 5000))
     
     # Feature Flags
-    USE_GOOGLE_CALENDAR = False  # Google Calendar integration disabled
+    USE_GOOGLE_CALENDAR = False  # Database-only by default (scalable for SaaS)
     
     # URLs
     PUBLIC_URL = os.getenv("PUBLIC_URL")
@@ -129,7 +129,7 @@ class Config:
                     'days_open': days_open if days_open else ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
                 }
         except Exception as e:
-            print(f"⚠️ Could not load business hours from database: {e}")
+            print(f"[WARNING] Could not load business hours from database: {e}")
         
         # Fallback to env
         return {

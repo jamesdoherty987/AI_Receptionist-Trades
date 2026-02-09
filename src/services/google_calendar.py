@@ -19,7 +19,7 @@ try:
     GOOGLE_AVAILABLE = True
 except ImportError:
     GOOGLE_AVAILABLE = False
-    print("⚠️ Google Calendar libraries not installed. Run: pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client")
+    print("[WARNING] Google Calendar libraries not installed. Run: pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client")
 
 
 # If modifying these scopes, delete the file token.json
@@ -59,13 +59,13 @@ class GoogleCalendarService:
             except (ConnectionResetError, socket.error, OSError) as e:
                 if attempt < max_retries - 1:
                     wait_time = (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
-                    print(f"⚠️ Connection error (attempt {attempt + 1}/{max_retries}): {e}")
-                    print(f"🔄 Retrying in {wait_time} seconds...")
+                    print(f"[WARNING] Connection error (attempt {attempt + 1}/{max_retries}): {e}")
+                    print(f"[RETRY] Retrying in {wait_time} seconds...")
                     time.sleep(wait_time)
                     # Re-authenticate to get fresh connection
                     self.authenticate()
                 else:
-                    print(f"❌ Connection failed after {max_retries} attempts")
+                    print(f"[ERROR] Connection failed after {max_retries} attempts")
                     raise
             except HttpError as e:
                 # Don't retry on HTTP errors (404, 403, etc.)
@@ -86,8 +86,8 @@ class GoogleCalendarService:
                     creds.refresh(Request())
                 except Exception as e:
                     # Token is invalid/revoked - delete it and re-authenticate
-                    print(f"⚠️ Token refresh failed: {e}")
-                    print("🔄 Deleting expired token and re-authenticating...")
+                    print(f"[WARNING] Token refresh failed: {e}")
+                    print("[INFO] Deleting expired token and re-authenticating...")
                     if os.path.exists(self.token_path):
                         os.remove(self.token_path)
                     creds = None
@@ -110,7 +110,7 @@ class GoogleCalendarService:
                 token.write(creds.to_json())
         
         self.service = build('calendar', 'v3', credentials=creds)
-        print("✅ Google Calendar authenticated")
+        print("[SUCCESS] Google Calendar authenticated")
     
     def book_appointment(self, summary: str, start_time: datetime, 
                         duration_minutes: int = None, 
@@ -172,11 +172,11 @@ class GoogleCalendarService:
             )
             event = self._execute_with_retry(request)
             
-            print(f"✅ Appointment booked: {event.get('htmlLink')}")
+            print(f"[SUCCESS] Appointment booked: {event.get('htmlLink')}")
             return event
             
         except HttpError as error:
-            print(f"❌ Error booking appointment: {error}")
+            print(f"[ERROR] Error booking appointment: {error}")
             return None
     
     def get_upcoming_appointments(self, days_ahead: int = 7) -> List[Dict[str, Any]]:
@@ -210,7 +210,7 @@ class GoogleCalendarService:
             return events
             
         except HttpError as error:
-            print(f"❌ Error fetching appointments: {error}")
+            print(f"[ERROR] Error fetching appointments: {error}")
             return []
     
     def cancel_appointment(self, event_id: str) -> bool:
@@ -233,11 +233,11 @@ class GoogleCalendarService:
             )
             self._execute_with_retry(request)
             
-            print(f"✅ Appointment cancelled: {event_id}")
+            print(f"[SUCCESS] Appointment cancelled: {event_id}")
             return True
             
         except HttpError as error:
-            print(f"❌ Error cancelling appointment: {error}")
+            print(f"[ERROR] Error cancelling appointment: {error}")
             return False
     
     def reschedule_appointment(self, event_id: str, new_start_time: datetime) -> Optional[Dict[str, Any]]:
@@ -279,11 +279,11 @@ class GoogleCalendarService:
             )
             updated_event = self._execute_with_retry(request)
             
-            print(f"✅ Appointment rescheduled: {updated_event.get('htmlLink')}")
+            print(f"[SUCCESS] Appointment rescheduled: {updated_event.get('htmlLink')}")
             return updated_event
             
         except HttpError as error:
-            print(f"❌ Error rescheduling appointment: {error}")
+            print(f"[ERROR] Error rescheduling appointment: {error}")
             return None
     
     def check_availability(self, start_time: datetime, duration_minutes: int = None) -> bool:
@@ -306,7 +306,7 @@ class GoogleCalendarService:
         # Check if the requested time is in the past
         now = datetime.now()
         if start_time < now:
-            print(f"⚠️ Requested time {start_time.strftime('%I:%M %p')} is in the past (current time: {now.strftime('%I:%M %p')})")
+            print(f"[WARNING] Requested time {start_time.strftime('%I:%M %p')} is in the past (current time: {now.strftime('%I:%M %p')})")
             return False
         
         try:
@@ -354,7 +354,7 @@ class GoogleCalendarService:
                     conflicts.append(event)
             
             if len(conflicts) > 0:
-                print(f"⚠️ Found {len(conflicts)} conflicting event(s) in this time slot:")
+                print(f"[WARNING] Found {len(conflicts)} conflicting event(s) in this time slot:")
                 for event in conflicts:
                     event_start = event.get('start', {}).get('dateTime', 'Unknown')
                     print(f"   - {event.get('summary', 'Untitled')} at {event_start}")
@@ -366,7 +366,7 @@ class GoogleCalendarService:
             return len(events) == 0
             
         except HttpError as error:
-            print(f"❌ Error checking availability: {error}")
+            print(f"[ERROR] Error checking availability: {error}")
             return False  # Assume busy if we can't check
     
     def find_next_appointment_by_name(self, customer_name: str) -> Optional[Dict[str, Any]]:
@@ -391,7 +391,7 @@ class GoogleCalendarService:
             time_min = datetime.utcnow().isoformat() + 'Z'
             time_max = (datetime.utcnow() + timedelta(days=30)).isoformat() + 'Z'
             
-            print(f"\n🔍 Searching for next future appointment:")
+            print(f"\n[SEARCH] Searching for next future appointment:")
             print(f"   Customer: {customer_name}")
             print(f"   Search range: {time_min} to {time_max}")
             
@@ -415,7 +415,7 @@ class GoogleCalendarService:
                 
                 # Check if customer name appears in summary
                 if customer_lower in event_summary:
-                    print(f"✅ Found next appointment: {event.get('summary')} at {event_start_str}")
+                    print(f"[SUCCESS] Found next appointment: {event.get('summary')} at {event_start_str}")
                     return event
                     
                 # Also check split format ("Service - Name")
@@ -423,14 +423,14 @@ class GoogleCalendarService:
                 if len(summary_parts) > 1:
                     name_part = summary_parts[-1].strip()
                     if customer_lower in name_part or name_part in customer_lower:
-                        print(f"✅ Found next appointment: {event.get('summary')} at {event_start_str}")
+                        print(f"[SUCCESS] Found next appointment: {event.get('summary')} at {event_start_str}")
                         return event
             
-            print(f"❌ No future appointments found for {customer_name}")
+            print(f"[INFO] No future appointments found for {customer_name}")
             return None
             
         except HttpError as error:
-            print(f"❌ Error searching for appointment: {error}")
+            print(f"[ERROR] Error searching for appointment: {error}")
             return None
     
     def find_appointment_by_details(self, customer_name: str = None, appointment_time: datetime = None, days_to_search: int = 30) -> Optional[Dict[str, Any]]:
@@ -453,7 +453,7 @@ class GoogleCalendarService:
             time_min = (datetime.utcnow() - timedelta(days=days_to_search)).isoformat() + 'Z'
             time_max = (datetime.utcnow() + timedelta(days=days_to_search)).isoformat() + 'Z'
             
-            print(f"\n🔍 Searching for appointment:")
+            print(f"\n[SEARCH] Searching for appointment:")
             print(f"   Customer: {customer_name}")
             print(f"   Time: {appointment_time.strftime('%Y-%m-%d %H:%M') if appointment_time else 'any'}")
             print(f"   Search range: {time_min} to {time_max}")
@@ -521,14 +521,14 @@ class GoogleCalendarService:
                 
                 # Return first match where both criteria match
                 if name_match and time_match:
-                    print(f"✅ Found appointment: {event.get('summary')} at {event.get('start', {}).get('dateTime')}")
+                    print(f"[SUCCESS] Found appointment: {event.get('summary')} at {event.get('start', {}).get('dateTime')}")
                     return event
             
-            print(f"❌ No appointment found for {customer_name or 'unknown'} at {appointment_time.strftime('%B %d at %I:%M %p') if appointment_time else 'any time'}")
+            print(f"[INFO] No appointment found for {customer_name or 'unknown'} at {appointment_time.strftime('%B %d at %I:%M %p') if appointment_time else 'any time'}")
             return None
             
         except HttpError as error:
-            print(f"❌ Error searching for appointment: {error}")
+            print(f"[ERROR] Error searching for appointment: {error}")
             return None
     
     def get_available_slots_for_day(self, target_date: datetime) -> List[datetime]:
@@ -650,7 +650,7 @@ def get_calendar_service() -> Optional[GoogleCalendarService]:
             _calendar_service = GoogleCalendarService()
             _calendar_service.authenticate()
         except Exception as e:
-            print(f"⚠️ Could not initialize Google Calendar: {e}")
+            print(f"[WARNING] Could not initialize Google Calendar: {e}")
             return None
     
     return _calendar_service

@@ -292,9 +292,9 @@ def get_service_price(job_description: str, urgency: str = 'scheduled') -> float
         
         # Score each service based on term overlap
         for service in services:
-            service_name = service.get('name', '').lower()
-            service_desc = service.get('description', '').lower()
-            service_category = service.get('category', '').lower()
+            service_name = (service.get('name') or '').lower()
+            service_desc = (service.get('description') or '').lower()
+            service_category = (service.get('category') or '').lower()
             
             # Extract all text for matching
             service_full_text = f"{service_name} {service_desc} {service_category}"
@@ -340,19 +340,19 @@ def get_service_price(job_description: str, urgency: str = 'scheduled') -> float
             # Use emergency price if urgency is emergency and available
             if urgency == 'emergency' and best_match.get('emergency_price'):
                 price = float(best_match['emergency_price'])
-                print(f"💰 Matched '{job_description}' to '{matched_service_name}' (score: {best_score}) - EMERGENCY PRICE: €{price}")
+                print(f"[PRICING] Matched '{job_description}' to '{matched_service_name}' (score: {best_score}) - EMERGENCY PRICE: EUR{price}")
                 return price
             else:
                 price = float(best_match['price'])
-                print(f"💰 Matched '{job_description}' to '{matched_service_name}' (score: {best_score}) - Standard price: €{price}")
+                print(f"[PRICING] Matched '{job_description}' to '{matched_service_name}' (score: {best_score}) - Standard price: EUR{price}")
                 return price
         
         # Default fallback
-        print(f"⚠️ No service price found for '{job_description}' (best match score: {best_score}), using default €50")
+        print(f"[WARNING] No service price found for '{job_description}' (best match score: {best_score}), using default EUR50")
         return 50.0
         
     except Exception as e:
-        print(f"⚠️ Error loading service price: {e}, using default €50")
+        print(f"[WARNING] Error loading service price: {e}, using default EUR50")
         import traceback
         traceback.print_exc()
         return 50.0
@@ -381,11 +381,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     google_calendar = services.get('google_calendar')
     db = services.get('db') or services.get('database')  # Support both keys
     
-    # If Google Calendar is disabled, return appropriate responses
-    if not google_calendar and tool_name in ['check_availability', 'book_appointment', 'reschedule_appointment', 'cancel_appointment']:
+    # Calendar should always be available (database or Google)
+    if not google_calendar and tool_name in ['check_availability', 'book_appointment', 'reschedule_appointment', 'cancel_appointment', 'book_job', 'cancel_job', 'reschedule_job']:
         return {
             'success': False,
-            'message': 'Calendar functionality is currently disabled. Please contact support to enable calendar features.'
+            'message': 'Calendar service is not available. Please contact support.'
         }
     
     try:
@@ -405,7 +405,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 
                 start_date = today.replace(hour=9, minute=0, second=0, microsecond=0)
                 end_date = this_friday.replace(hour=17, minute=0, second=0, microsecond=0)
-                print(f"📅 'this week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
+                print(f"[INFO] 'this week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
             # Special handling for "next week" - expand to Monday-Friday
             elif start_date_str and 'next week' in start_date_str.lower():
                 today = datetime.now()
@@ -418,7 +418,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 
                 start_date = next_monday.replace(hour=9, minute=0, second=0, microsecond=0)
                 end_date = next_friday.replace(hour=17, minute=0, second=0, microsecond=0)
-                print(f"📅 'next week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
+                print(f"[INFO] 'next week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
             else:
                 # Parse dates normally - allow_past=True because we're checking a date range
                 # get_available_slots_for_day will filter out past time slots
@@ -437,7 +437,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             current_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
             end_search = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
             
-            print(f"🔍 Checking availability from {current_date.strftime('%Y-%m-%d')} to {end_search.strftime('%Y-%m-%d')}")
+            print(f"[SEARCH] Checking availability from {current_date.strftime('%Y-%m-%d')} to {end_search.strftime('%Y-%m-%d')}")
             
             # Get dynamic business days
             try:
@@ -449,11 +449,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             while current_date <= end_search:
                 # Only check business days (configured in config.BUSINESS_DAYS)
                 if current_date.weekday() in business_days:
-                    print(f"   📅 Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
+                    print(f"   [CHECK] Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
                     try:
                         day_slots = google_calendar.get_available_slots_for_day(current_date)
                     except Exception as e:
-                        print(f"   ⚠️ Connection error checking {current_date.strftime('%A, %B %d')}: {e}")
+                        print(f"   [WARNING] Connection error checking {current_date.strftime('%A, %B %d')}: {e}")
                         # Re-raise so retry logic in google_calendar handles it
                         raise
                     if day_slots:
@@ -463,7 +463,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     else:
                         print(f"      No slots available")
                 else:
-                    print(f"   ⏭️ Skipping {current_date.strftime('%A, %B %d')} (weekend)")
+                    print(f"   [SKIP] Skipping {current_date.strftime('%A, %B %d')} (weekend)")
                 current_date += timedelta(days=1)
             
             if not slots_by_day:
@@ -533,7 +533,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 })
             
             # Determine appropriate time reference for message
-            time_reference = "Next week" if 'next week' in start_date_str.lower() else "This week"
+            time_reference = "Next week" if (start_date_str and 'next week' in start_date_str.lower()) else "This week"
             
             return {
                 "success": True,
@@ -622,7 +622,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 potential_client['name'].lower()).ratio()
                             
                             if similarity >= 0.75:  # 75% similar = likely match
-                                print(f"✅ Fuzzy match: '{customer_name}' → '{potential_client['name']}' (similarity: {similarity:.2%})")
+                                print(f"[SUCCESS] Fuzzy match: '{customer_name}' -> '{potential_client['name']}' (similarity: {similarity:.2%})")
                                 # Get most recent booking address
                                 bookings = db.get_client_bookings(potential_client['id'])
                                 last_address = None
@@ -663,7 +663,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             "message": f"No existing customer found for {customer_name}. This is a new customer."
                         }
                 except Exception as e:
-                    print(f"❌ Error looking up customer: {e}")
+                    print(f"[ERROR] Error looking up customer: {e}")
                     return {
                         "success": False,
                         "error": f"Database error: {str(e)}"
@@ -799,9 +799,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     except Exception:
                         pass
                     
-                    print(f"✅ Booking saved to database (ID: {booking_id})")
+                    print(f"[SUCCESS] Booking saved to database (ID: {booking_id})")
                 except Exception as e:
-                    print(f"⚠️ Database save failed: {e}")
+                    print(f"[ERROR] Database save failed: {e}")
             
             return {
                 "success": True,
@@ -894,10 +894,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         for booking in bookings:
                             if booking.get('calendar_event_id') == event_id:
                                 db.delete_booking(booking['id'])
-                                print(f"✅ Deleted booking from database (ID: {booking['id']})")
+                                print(f"[SUCCESS] Deleted booking from database (ID: {booking['id']})")
                                 break
                     except Exception as e:
-                        print(f"⚠️ Failed to delete booking from database: {e}")
+                        print(f"[ERROR] Failed to delete booking from database: {e}")
                 
                 return {
                     "success": True,
@@ -1007,8 +1007,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 if db:
                     try:
                         bookings = db.get_all_bookings()
-                        print(f"🔍 Looking for booking with calendar_event_id: {event_id}")
-                        print(f"📋 Total bookings in database: {len(bookings)}")
+                        print(f"[SEARCH] Looking for booking with calendar_event_id: {event_id}")
+                        print(f"[INFO] Total bookings in database: {len(bookings)}")
                         
                         found = False
                         for booking in bookings:
@@ -1019,14 +1019,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                     # Update booking with new appointment time
                                     success = db.update_booking(booking['id'], appointment_time=new_time.strftime('%Y-%m-%d %H:%M:%S'))
                                     if success:
-                                        print(f"✅ Updated booking in database (ID: {booking['id']}) to {new_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                                        print(f"[SUCCESS] Updated booking in database (ID: {booking['id']}) to {new_time.strftime('%Y-%m-%d %H:%M:%S')}")
                                     else:
-                                        print(f"⚠️ Database update returned False for booking {booking['id']}")
+                                        print(f"[WARNING] Database update returned False for booking {booking['id']}")
                                     found = True
                                     break
                         
                         if not found:
-                            print(f"⚠️ No booking found with calendar_event_id matching: {event_id}")
+                            print(f"[WARNING] No booking found with calendar_event_id matching: {event_id}")
                             print(f"   Customer: {customer_name}")
                             print(f"   Looking for bookings with similar names...")
                             for booking in bookings:
@@ -1035,7 +1035,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                     print(f"   Found potential match: Booking {booking['id']} for {booking.get('client_name')} at {booking.get('appointment_time')}")
                                     print(f"      calendar_event_id: {booking.get('calendar_event_id')}")
                     except Exception as e:
-                        print(f"⚠️ Failed to update booking in database: {e}")
+                        print(f"[ERROR] Failed to update booking in database: {e}")
                         import traceback
                         traceback.print_exc()
                 
@@ -1104,11 +1104,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Extract and normalize eircode if present
             extracted_eircode = address_data.get('eircode')
             if extracted_eircode:
-                print(f"📮 Extracted eircode from address: {extracted_eircode}")
+                print(f"[INFO] Extracted eircode from address: {extracted_eircode}")
             
             # Use validated and potentially enhanced address
             validated_address = address_data['full_address']
-            print(f"📍 Address validation result: {address_data['type']} - {validated_address}")
+            print(f"[INFO] Address validation result: {address_data['type']} - {validated_address}")
             
             if not job_description:
                 return {
@@ -1207,7 +1207,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     
                     # Get the correct price from services menu
                     job_charge = get_service_price(job_description, urgency_level)
-                    print(f"💰 Calculated charge for '{job_description}' ({urgency_level}): €{job_charge}")
+                    print(f"[PRICING] Calculated charge for '{job_description}' ({urgency_level}): EUR{job_charge}")
                     
                     # Add booking with validated address information and correct charge
                     booking_id = db.add_booking(
@@ -1238,9 +1238,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     except Exception:
                         pass
                     
-                    print(f"✅ Job booking saved to database (ID: {booking_id})")
+                    print(f"[SUCCESS] Job booking saved to database (ID: {booking_id})")
                 except Exception as e:
-                    print(f"⚠️ Database save failed: {e}")
+                    print(f"[ERROR] Database save failed: {e}")
             
             return {
                 "success": True,
@@ -1282,8 +1282,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "message": "I'm sorry, but I don't have a number to transfer you to right now. Is there anything else I can help you with?"
                 }
             
-            print(f"📞 TRANSFER REQUEST: {reason}")
-            print(f"📲 Transferring to business phone: {transfer_number}")
+            print(f"[TRANSFER] TRANSFER REQUEST: {reason}")
+            print(f"[TRANSFER] Transferring to business phone: {transfer_number}")
             
             return {
                 "success": True,
@@ -1300,7 +1300,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             }
     
     except Exception as e:
-        print(f"❌ Error executing tool {tool_name}: {e}")
+        print(f"[ERROR] Error executing tool {tool_name}: {e}")
         import traceback
         traceback.print_exc()
         return {

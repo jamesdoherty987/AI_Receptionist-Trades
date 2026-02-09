@@ -24,7 +24,7 @@ class SettingsManager:
         
         # Just ensure database is initialized
         # The tables will be created automatically
-        print("✅ Settings tables initialized")
+        print("[SUCCESS] Settings tables initialized")
     
     def get_business_settings(self) -> Dict[str, Any]:
         """Get current business settings"""
@@ -279,7 +279,7 @@ class SettingsManager:
     
     def update_services_menu(self, menu_data: Dict[str, Any]) -> bool:
         """Update services menu in database (deprecated - use database methods directly)"""
-        print("⚠️ update_services_menu is deprecated - use database.add_service() or database.update_service()")
+        print("[WARNING] update_services_menu is deprecated - use database.add_service() or database.update_service()")
         return False
     
     def add_service(self, service: Dict[str, Any]) -> bool:

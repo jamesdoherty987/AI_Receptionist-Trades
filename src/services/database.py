@@ -47,7 +47,7 @@ def get_database():
                 db_url = os.getenv('DATABASE_URL')
                 try:
                     _db = PostgreSQLDatabaseWrapper(db_url)
-                    print("✅ Connected to PostgreSQL database")
+                    print("[SUCCESS] Connected to PostgreSQL database")
                 except Exception as e:
                     print(f"[WARNING] PostgreSQL init_database had an issue: {e}")
                     print("   Retrying with skip_init...")
@@ -61,5 +61,5 @@ def get_database():
                     )
                     wrapper.use_postgres = True
                     _db = wrapper
-                    print("✅ Connected to PostgreSQL database (skipped init)")
+                    print("[SUCCESS] Connected to PostgreSQL database (skipped init)")
     return _db

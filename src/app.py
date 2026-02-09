@@ -2124,6 +2124,8 @@ def business_settings_api():
             'bank_account_holder': company.get('bank_account_holder', ''),
             # Revolut payment option
             'revolut_phone': company.get('revolut_phone', ''),
+            # Company context for AI receptionist
+            'company_context': company.get('company_context', ''),
         }
         return jsonify(settings)
     
@@ -2149,6 +2151,7 @@ def business_settings_api():
             'bank_name': 'bank_name',
             'bank_account_holder': 'bank_account_holder',
             'revolut_phone': 'revolut_phone',
+            'company_context': 'company_context',
         }
         
         for frontend_field, db_field in field_mapping.items():

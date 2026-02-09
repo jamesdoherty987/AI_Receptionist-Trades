@@ -330,7 +330,7 @@ class PostgreSQLDatabaseWrapper:
             self._run_migrations(cursor)
             
             conn.commit()
-            print("✅ PostgreSQL database initialized")
+            print("[SUCCESS] PostgreSQL database initialized")
         except Exception as e:
             conn.rollback()
             print(f"[ERROR] Error initializing PostgreSQL database: {e}")
@@ -340,7 +340,7 @@ class PostgreSQLDatabaseWrapper:
     
     def _run_migrations(self, cursor):
         """Run database migrations to add new columns if they don't exist"""
-        print("🔄 Running database migrations...")
+        print("[INFO] Running database migrations...")
         
         # Check existing columns in companies table
         cursor.execute("""
@@ -364,7 +364,8 @@ class PostgreSQLDatabaseWrapper:
             'bank_bic': 'TEXT',
             'bank_name': 'TEXT',
             'bank_account_holder': 'TEXT',
-            'revolut_phone': 'TEXT'
+            'revolut_phone': 'TEXT',
+            'company_context': 'TEXT'
         }
         
         # Also migrate business_settings table for bank details
@@ -532,7 +533,7 @@ class PostgreSQLDatabaseWrapper:
                               'last_login', 'trial_start', 'trial_end',
                               'subscription_current_period_end', 'subscription_cancel_at_period_end',
                               'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
-                              'revolut_phone']
+                              'revolut_phone', 'company_context']
             
             fields = []
             values = []

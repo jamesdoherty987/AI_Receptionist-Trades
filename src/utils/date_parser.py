@@ -93,7 +93,7 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
         Parsed datetime object, or None if require_time=True and no time specified
     """
     if not text:
-        print(f"⚠️ Empty text provided - returning None to prompt for date and time")
+        print(f"[WARNING] Empty text provided - returning None to prompt for date and time")
         return None
     
     # Set default time if not provided
@@ -126,23 +126,23 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
         # Extract the parsed data
         function_call = response.choices[0].message.function_call
         if not function_call:
-            print(f"⚠️ No function call returned from AI - falling back to None")
+            print(f"[WARNING] No function call returned from AI - falling back to None")
             return None
         
         import json
         parsed = json.loads(function_call.arguments)
         
-        print(f"🤖 AI parsed '{text}': {parsed}")
+        print(f"[AI] AI parsed '{text}': {parsed}")
         
         # Check if it's a birth date
         if parsed.get("is_birth_date"):
-            print(f"⚠️ Detected birth date in '{text}' - returning default appointment time")
+            print(f"[WARNING] Detected birth date in '{text}' - returning default appointment time")
             return now.replace(hour=14, minute=0, second=0, microsecond=0) + timedelta(days=1)
         
         # Check if clarification is needed
         if parsed.get("needs_clarification"):
             missing = parsed["needs_clarification"]
-            print(f"⚠️ {missing.title()} not specified in '{text}' - returning None to prompt")
+            print(f"[WARNING] {missing.title()} not specified in '{text}' - returning None to prompt")
             return None
         
         # Build the datetime from parsed components
@@ -166,15 +166,15 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
             # If no time specified, use default or return None
             if hour is None:
                 if require_time:
-                    print(f"⚠️ Day of week '{day_name}' provided without time - returning None to prompt")
+                    print(f"[WARNING] Day of week '{day_name}' provided without time - returning None to prompt")
                     return None
                 else:
                     hour, minute = default_time
-                    print(f"📅 Using default time {hour:02d}:{minute:02d} for '{day_name}'")
+                    print(f"[DATE] Using default time {hour:02d}:{minute:02d} for '{day_name}'")
             
             result = now.replace(hour=hour, minute=minute or 0, second=0, microsecond=0)
             result += timedelta(days=days_ahead)
-            print(f"📅 Day of week: {day_name} (+{days_ahead} days)")
+            print(f"[DATE] Day of week: {day_name} (+{days_ahead} days)")
         
         # Handle relative dates (tomorrow, day after tomorrow, etc.)
         elif parsed.get("relative_days") is not None:
@@ -183,30 +183,30 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
             # If no time specified, use default or return None
             if hour is None:
                 if require_time:
-                    print(f"⚠️ Relative date provided without time - returning None to prompt")
+                    print(f"[WARNING] Relative date provided without time - returning None to prompt")
                     return None
                 else:
                     hour, minute = default_time
-                    print(f"📅 Using default time {hour:02d}:{minute:02d} for relative date")
+                    print(f"[DATE] Using default time {hour:02d}:{minute:02d} for relative date")
             
             result = now.replace(hour=hour, minute=minute or 0, second=0, microsecond=0)
             result += timedelta(days=relative_days)
-            print(f"📅 Relative date: +{relative_days} days from today")
+            print(f"[DATE] Relative date: +{relative_days} days from today")
         
         # Handle next week
         elif parsed.get("is_next_week"):
             # If no time specified, use default or return None
             if hour is None:
                 if require_time:
-                    print(f"⚠️ Next week provided without time - returning None to prompt")
+                    print(f"[WARNING] Next week provided without time - returning None to prompt")
                     return None
                 else:
                     hour, minute = default_time
-                    print(f"📅 Using default time {hour:02d}:{minute:02d} for next week")
+                    print(f"[DATE] Using default time {hour:02d}:{minute:02d} for next week")
             
             result = now.replace(hour=hour, minute=minute or 0, second=0, microsecond=0)
             result += timedelta(days=7)
-            print(f"📅 Next week: +7 days")
+            print(f"[DATE] Next week: +7 days")
         
         # Handle specific date (month/day/year)
         elif parsed.get("month") and parsed.get("day"):
@@ -216,11 +216,11 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
             
             if hour is None:
                 if require_time:
-                    print(f"⚠️ Date provided without time - returning None to prompt")
+                    print(f"[WARNING] Date provided without time - returning None to prompt")
                     return None
                 else:
                     hour, minute = default_time
-                    print(f"📅 Using default time {hour:02d}:{minute:02d} for specific date")
+                    print(f"[DATE] Using default time {hour:02d}:{minute:02d} for specific date")
             
             # Create the date
             try:
@@ -229,36 +229,36 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
                 # But only if year wasn't explicitly specified
                 if not parsed.get("year") and result.date() < now.date():
                     result = datetime(year + 1, month, day, hour, minute, 0, 0)
-                    print(f"📅 Date was in past, assuming next year: {month}/{day}/{year + 1}")
+                    print(f"[DATE] Date was in past, assuming next year: {month}/{day}/{year + 1}")
                 else:
-                    print(f"📅 Specific date: {month}/{day}/{year}")
+                    print(f"[DATE] Specific date: {month}/{day}/{year}")
             except ValueError as e:
-                print(f"⚠️ Invalid date components: {e}")
+                print(f"[WARNING] Invalid date components: {e}")
                 return None
         
         # No date found
         else:
             if hour is None:
                 if require_time:
-                    print(f"⚠️ No time specified - returning None to prompt")
+                    print(f"[WARNING] No time specified - returning None to prompt")
                     return None
                 else:
                     hour, minute = default_time
-                    print(f"📅 Using default time {hour:02d}:{minute:02d}")
+                    print(f"[DATE] Using default time {hour:02d}:{minute:02d}")
             # Default to tomorrow
             result = now.replace(hour=hour, minute=minute or 0, second=0, microsecond=0)
             result += timedelta(days=1)
-            print(f"📅 No date specified, defaulting to tomorrow")
+            print(f"[DATE] No date specified, defaulting to tomorrow")
         
         # Validate result is in the future (unless allow_past is True)
         if result and not allow_past and result <= now:
             result += timedelta(days=1)
-            print(f"⏰ Date was in past, moved to future")
+            print(f"[TIME] Date was in past, moved to future")
         
         return result
         
     except Exception as e:
-        print(f"❌ AI date parsing error: {e}")
+        print(f"[ERROR] AI date parsing error: {e}")
         # Fallback to simple regex for critical patterns
         return _fallback_parse_datetime(text)
 
@@ -268,7 +268,7 @@ def _fallback_parse_datetime(text: str) -> datetime:
     Fallback regex-based parser for when AI fails
     Only handles the most common patterns
     """
-    print(f"🔄 Using fallback parser for '{text}'")
+    print(f"[RETRY] Using fallback parser for '{text}'")
     
     text = text.lower().strip()
     now = datetime.now()
@@ -296,7 +296,7 @@ def _fallback_parse_datetime(text: str) -> datetime:
                 result += timedelta(days=1)
             return result
     
-    print(f"⚠️ Fallback parser couldn't parse '{text}' - returning None")
+    print(f"[WARNING] Fallback parser couldn't parse '{text}' - returning None")
     return None
     """
     Parse natural language date/time into datetime object
@@ -310,7 +310,7 @@ def _fallback_parse_datetime(text: str) -> datetime:
     """
     if not text:
         # No text provided - return None to prompt for date and time
-        print(f"⚠️ Empty text provided - returning None to prompt for date and time")
+        print(f"[WARNING] Empty text provided - returning None to prompt for date and time")
         return None
     
     text = text.lower().strip()
@@ -355,7 +355,7 @@ def _fallback_parse_datetime(text: str) -> datetime:
             matches = get_close_matches(word_clean, month_names.keys(), n=1, cutoff=0.7)
             if matches:
                 # Replace the typo with the correct month name
-                print(f"🔧 Fuzzy match: '{word_clean}' -> '{matches[0]}'")
+                print(f"[FIX] Fuzzy match: '{word_clean}' -> '{matches[0]}'")
                 text = text.replace(word, matches[0])
     
     # Extract time - handle multiple formats
@@ -397,11 +397,11 @@ def _fallback_parse_datetime(text: str) -> datetime:
                 # 12 without AM/PM defaults to 12 PM (noon)
                 pass  # Keep as 12
             
-            print(f"🔍 Parsed time without AM/PM: {time_match_no_ampm.group(0)} -> {hour}:{minute:02d} (24-hour)")
+            print(f"[SEARCH] Parsed time without AM/PM: {time_match_no_ampm.group(0)} -> {hour}:{minute:02d} (24-hour)")
     
     # Validate hour is in correct range
     if hour is not None and (hour < 0 or hour > 23):
-        print(f"⚠️ Invalid hour value: {hour} - returning None to prompt for valid time")
+        print(f"[WARNING] Invalid hour value: {hour} - returning None to prompt for valid time")
         return None
     
     # If no specific time was provided, return None so system asks for time
@@ -419,10 +419,10 @@ def _fallback_parse_datetime(text: str) -> datetime:
         ]
         for pattern in date_only_patterns:
             if re.search(pattern, text):
-                print(f"⚠️ Date provided without time: '{text}' - returning None to prompt for time")
+                print(f"[WARNING] Date provided without time: '{text}' - returning None to prompt for time")
                 return None
         # No time provided - always ask for it
-        print(f"⚠️ No time specified in '{text}' - returning None to prompt for time")
+        print(f"[WARNING] No time specified in '{text}' - returning None to prompt for time")
         return None
     
     # Check if text contains a birth year (year < current_year - 18)
@@ -433,7 +433,7 @@ def _fallback_parse_datetime(text: str) -> datetime:
         if potential_birth_year < now.year - 18:
             # This looks like a date of birth, not an appointment
             # Return tomorrow at 2pm as default to avoid confusion
-            print(f"⚠️ Detected birth year {potential_birth_year} in date parsing - returning default appointment time")
+            print(f"[WARNING] Detected birth year {potential_birth_year} in date parsing - returning default appointment time")
             return datetime.now().replace(hour=14, minute=0, second=0, microsecond=0) + timedelta(days=1)
     
     # Match patterns like "December 25", "Dec 25th", "25th of December"
@@ -449,7 +449,7 @@ def _fallback_parse_datetime(text: str) -> datetime:
             
             # CRITICAL: If no time specified, return None to prompt user
             if hour is None:
-                print(f"⚠️ Date provided ('{text}') without time - returning None to prompt for time")
+                print(f"[WARNING] Date provided ('{text}') without time - returning None to prompt for time")
                 return None
             
             # If the date is in the past this year, assume next year
@@ -468,7 +468,7 @@ def _fallback_parse_datetime(text: str) -> datetime:
         
         # CRITICAL: If no time specified, return None to prompt user
         if hour is None:
-            print(f"⚠️ Date provided ('{text}') without time - returning None to prompt for time")
+            print(f"[WARNING] Date provided ('{text}') without time - returning None to prompt for time")
             return None
         
         # If the date is in the past this year, assume next year
@@ -482,14 +482,14 @@ def _fallback_parse_datetime(text: str) -> datetime:
     if result is None:
         # For relative terms without time, we should also ask for time
         if hour is None:
-            print(f"⚠️ Relative date without time: '{text}' - returning None to prompt for time")
+            print(f"[WARNING] Relative date without time: '{text}' - returning None to prompt for time")
             return None
         result = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         
         # Check for 'day after tomorrow' BEFORE checking 'tomorrow'
         if 'day after tomorrow' in text or 'dayafter tomorrow' in text:
             result += timedelta(days=2)
-            print(f"📅 Parsed 'day after tomorrow': {result}")
+            print(f"[DATE] Parsed 'day after tomorrow': {result}")
         elif 'tomorrow' in text:
             result += timedelta(days=1)
         elif 'today' in text:
