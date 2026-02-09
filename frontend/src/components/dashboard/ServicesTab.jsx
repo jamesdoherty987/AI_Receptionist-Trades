@@ -39,29 +39,109 @@ function ServicesTab() {
 
   const createMutation = useMutation({
     mutationFn: createService,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['services-menu']);
+    onMutate: async (newServiceData) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries(['services-menu']);
+      
+      // Snapshot previous value
+      const previousMenu = queryClient.getQueryData(['services-menu']);
+      
+      // Optimistically add new service with temporary ID
+      const tempService = {
+        ...newServiceData,
+        id: `temp-${Date.now()}`,
+        price: parseFloat(newServiceData.price) || 0,
+        duration: parseInt(newServiceData.duration) || 0
+      };
+      
+      queryClient.setQueryData(['services-menu'], (old) => ({
+        ...old,
+        services: [...(old?.services || []), tempService]
+      }));
+      
+      // Clear form immediately
       setNewService({ name: '', price: '', duration: '', image_url: '' });
       setShowAddForm(false);
+      
+      return { previousMenu };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['services-menu']);
       addToast('Service added successfully!', 'success');
     },
+    onError: (error, variables, context) => {
+      // Rollback on error
+      if (context?.previousMenu) {
+        queryClient.setQueryData(['services-menu'], context.previousMenu);
+      }
+      setShowAddForm(true);
+      setNewService(variables);
+      addToast('Failed to add service', 'error');
+    }
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => updateService(id, data),
+    onMutate: async ({ id, data }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries(['services-menu']);
+      
+      // Snapshot previous value
+      const previousMenu = queryClient.getQueryData(['services-menu']);
+      
+      // Optimistically update
+      queryClient.setQueryData(['services-menu'], (old) => ({
+        ...old,
+        services: old?.services?.map(s => 
+          s.id === id ? { ...s, ...data } : s
+        ) || []
+      }));
+      
+      setEditingService(null);
+      
+      return { previousMenu };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries(['services-menu']);
-      setEditingService(null);
       addToast('Service updated successfully!', 'success');
     },
+    onError: (error, variables, context) => {
+      // Rollback on error
+      if (context?.previousMenu) {
+        queryClient.setQueryData(['services-menu'], context.previousMenu);
+      }
+      addToast('Failed to update service', 'error');
+    }
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteService,
+    onMutate: async (serviceId) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries(['services-menu']);
+      
+      // Snapshot previous value
+      const previousMenu = queryClient.getQueryData(['services-menu']);
+      
+      // Optimistically remove service
+      queryClient.setQueryData(['services-menu'], (old) => ({
+        ...old,
+        services: old?.services?.filter(s => s.id !== serviceId) || []
+      }));
+      
+      return { previousMenu };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries(['services-menu']);
       addToast('Service deleted', 'success');
     },
+    onError: (error, variables, context) => {
+      // Rollback on error
+      if (context?.previousMenu) {
+        queryClient.setQueryData(['services-menu'], context.previousMenu);
+      }
+      addToast('Failed to delete service', 'error');
+    }
   });
 
   const handleAddService = (e) => {

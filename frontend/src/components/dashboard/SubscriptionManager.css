@@ -73,6 +73,11 @@
   color: #b45309;
 }
 
+.plan-badge.none {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
 .plan-price {
   text-align: right;
 }
@@ -140,6 +145,25 @@
 
 .expired-info i {
   color: #dc2626;
+  font-size: 1.5rem;
+}
+
+.none-info {
+  background: #f1f5f9;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.none-info i {
+  color: #3b82f6;
+  font-size: 1.5rem;
+}
+
+.plan-price .inactive-price {
+  color: #94a3b8;
   font-size: 1.5rem;
 }
 

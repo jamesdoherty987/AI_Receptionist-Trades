@@ -276,7 +276,8 @@ Best regards,
                     charge: float, appointment_time: datetime = None,
                     stripe_payment_link: str = None, job_address: str = None,
                     invoice_number: str = None, bank_details: dict = None,
-                    revolut_phone: str = None, add_bank_details: bool = False, add_revolut_phone: bool = False) -> bool:
+                    revolut_phone: str = None, add_bank_details: bool = False, 
+                    add_revolut_phone: bool = False, company_name: str = None) -> bool:
         """
         Send a professional invoice email with optional Stripe payment link
         
@@ -301,18 +302,20 @@ Best regards,
             from src.services.settings_manager import get_settings_manager
             from src.utils.config import config
             
-            business_name = 'Your Business'  # Default fallback
+            business_name = company_name or 'Your Business'
             business_phone = ''
             business_email = self.from_email
             business_website = ''
             business_city = ''
             
             try:
-                # Use SettingsManager instead of direct database call
+                # Use SettingsManager to get additional business details
                 settings_mgr = get_settings_manager()
                 settings = settings_mgr.get_business_settings()
                 if settings:
-                    business_name = settings.get('business_name')
+                    # Only override business_name from settings if we don't already have one from caller
+                    if not company_name and settings.get('business_name'):
+                        business_name = settings.get('business_name')
                     business_phone = settings.get('phone', '') or settings.get('business_phone', '')
                     business_email = settings.get('email', self.from_email) or settings.get('business_email', self.from_email)
                     business_website = settings.get('website', '')
@@ -322,9 +325,8 @@ Best regards,
                     print("[WARNING] No business settings found in database")
             except Exception as db_error:
                 print(f"[WARNING] Database error: {db_error}")
-                traceback.print_exc()
             
-            # Final fallback if database didn't work
+            # Final fallback
             if not business_name:
                 business_name = 'Your Business'
                 print("[WARNING] Using fallback business name")

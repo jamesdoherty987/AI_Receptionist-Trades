@@ -26,7 +26,6 @@ function Dashboard() {
   const bookings = dashboardData?.bookings || [];
   const clients = dashboardData?.clients || [];
   const workers = dashboardData?.workers || [];
-  const finances = dashboardData?.finances || {};
 
   const tabs = [
     {
@@ -47,7 +46,7 @@ function Dashboard() {
     {
       label: 'Finances',
       icon: 'fas fa-dollar-sign',
-      content: isLoading ? <LoadingSpinner /> : <FinancesTab finances={finances} />
+      content: <FinancesTab />
     },
     {
       label: 'Services',

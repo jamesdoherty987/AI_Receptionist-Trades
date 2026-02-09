@@ -60,6 +60,7 @@ async def media_handler(ws):
     stream_sid = None
     call_sid = None  # Store call SID for potential transfer
     caller_phone = None  # Store caller's phone number
+    company_id = None  # Store company ID for multi-tenant support
     
     # Conversation logging
     conversation_log = []  # Full conversation transcript
@@ -323,14 +324,16 @@ async def media_handler(ws):
 
             if event == "start":
                 stream_sid = data["start"]["streamSid"]
-                # Extract caller phone number from Twilio metadata
+                # Extract caller phone number and company ID from Twilio metadata
                 call_sid = data["start"].get("callSid", "")
                 custom_parameters = data["start"].get("customParameters", {})
                 caller_phone = custom_parameters.get("From", "") or data["start"].get("from", "")
+                company_id = custom_parameters.get("CompanyId", "") or None
                 
                 print("🎧 start streamSid:", stream_sid)
                 print("📞 Call SID:", call_sid)
                 print("📱 Caller phone:", caller_phone if caller_phone else "Not available")
+                print("🏢 Company ID:", company_id if company_id else "Not available")
 
                 # Inform the LLM that greeting has already been sent to avoid re-introduction
                 conversation.append({
@@ -502,10 +505,10 @@ async def media_handler(ws):
                                     conversation.append({"role": "user", "content": text})
                                     
                                     print(f"🔊 Starting LLM response (conversation length: {len(conversation)})")
-                                    # Stream LLM with appointment detection and phone number
+                                    # Stream LLM with appointment detection, phone number, and company context
                                     try:
                                         await start_tts(
-                                            stream_llm(conversation, process_appointment_with_calendar, caller_phone=caller_phone),
+                                            stream_llm(conversation, process_appointment_with_calendar, caller_phone=caller_phone, company_id=company_id),
                                             label="respond"
                                         )
                                         print(f"✅ Response complete, continuing to listen...")
@@ -533,7 +536,7 @@ async def media_handler(ws):
                                         interrupt = False
                                         in_speech = False
                                         silence_since = 0.0
-                                        bargain_since = 0.0
+                                        bargein_since = 0.0
                                         pending_text = ""
                                         last_interim = ""
                                         

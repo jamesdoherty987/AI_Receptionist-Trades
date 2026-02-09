@@ -28,7 +28,9 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       const response = await getBooking(jobId);
       return response.data;
     },
-    enabled: isOpen && !!jobId
+    enabled: isOpen && !!jobId,
+    staleTime: 30 * 1000, // 30 seconds
+    cacheTime: 5 * 60 * 1000 // 5 minutes
   });
 
   const { data: assignedWorkers } = useQuery({
@@ -37,7 +39,9 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       const response = await getJobWorkers(jobId);
       return response.data;
     },
-    enabled: isOpen && !!jobId
+    enabled: isOpen && !!jobId,
+    staleTime: 30 * 1000, // 30 seconds
+    cacheTime: 5 * 60 * 1000 // 5 minutes
   });
 
   const { data: allWorkers } = useQuery({
@@ -46,7 +50,9 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       const response = await getWorkers();
       return response.data;
     },
-    enabled: showAssignWorker
+    enabled: showAssignWorker,
+    staleTime: 60 * 1000, // 1 minute
+    cacheTime: 10 * 60 * 1000 // 10 minutes
   });
 
   // Populate edit form when job data is loaded
@@ -94,18 +100,56 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status }) => updateBooking(id, { status }),
+    onMutate: async ({ status }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries(['booking', jobId]);
+      
+      // Snapshot previous value
+      const previousJob = queryClient.getQueryData(['booking', jobId]);
+      
+      // Optimistically update to the new value
+      queryClient.setQueryData(['booking', jobId], (old) => ({
+        ...old,
+        status: status
+      }));
+      
+      // Return context with previous value
+      return { previousJob };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries(['booking', jobId]);
       queryClient.invalidateQueries(['bookings']);
       addToast('Status updated successfully!', 'success');
     },
-    onError: () => {
+    onError: (error, variables, context) => {
+      // Rollback to previous value on error
+      if (context?.previousJob) {
+        queryClient.setQueryData(['booking', jobId], context.previousJob);
+      }
       addToast('Failed to update status', 'error');
     }
   });
 
   const assignMutation = useMutation({
     mutationFn: ({ jobId, workerId }) => assignWorkerToJob(jobId, { worker_id: workerId }),
+    onMutate: async ({ workerId }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries(['job-workers', jobId]);
+      
+      // Snapshot previous value
+      const previousWorkers = queryClient.getQueryData(['job-workers', jobId]);
+      
+      // Find the worker being assigned
+      const allWorkersData = queryClient.getQueryData(['workers']);
+      const workerToAdd = allWorkersData?.find(w => w.id === workerId);
+      
+      // Optimistically add worker
+      if (workerToAdd) {
+        queryClient.setQueryData(['job-workers', jobId], (old = []) => [...old, workerToAdd]);
+      }
+      
+      return { previousWorkers };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries(['job-workers', jobId]);
       queryClient.invalidateQueries(['bookings']);
@@ -113,17 +157,42 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       setSelectedWorkerId('');
       addToast('Worker assigned successfully!', 'success');
     },
-    onError: () => {
+    onError: (error, variables, context) => {
+      // Rollback on error
+      if (context?.previousWorkers) {
+        queryClient.setQueryData(['job-workers', jobId], context.previousWorkers);
+      }
       addToast('Failed to assign worker', 'error');
     }
   });
 
   const removeMutation = useMutation({
     mutationFn: ({ jobId, workerId }) => removeWorkerFromJob(jobId, { worker_id: workerId }),
+    onMutate: async ({ workerId }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries(['job-workers', jobId]);
+      
+      // Snapshot previous value
+      const previousWorkers = queryClient.getQueryData(['job-workers', jobId]);
+      
+      // Optimistically remove worker
+      queryClient.setQueryData(['job-workers', jobId], (old = []) => 
+        old.filter(w => w.id !== workerId)
+      );
+      
+      return { previousWorkers };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries(['job-workers', jobId]);
       queryClient.invalidateQueries(['bookings']);
       addToast('Worker removed', 'success');
+    },
+    onError: (error, variables, context) => {
+      // Rollback on error
+      if (context?.previousWorkers) {
+        queryClient.setQueryData(['job-workers', jobId], context.previousWorkers);
+      }
+      addToast('Failed to remove worker', 'error');
     }
   });
 
@@ -283,8 +352,16 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                   </a>
                 )}
                 <div className="status-dropdown">
-                  <button className="btn btn-secondary">
-                    Change Status <i className="fas fa-chevron-down"></i>
+                  <button className="btn btn-secondary" disabled={statusMutation.isPending}>
+                    {statusMutation.isPending ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin"></i> Updating...
+                      </>
+                    ) : (
+                      <>
+                        Change Status <i className="fas fa-chevron-down"></i>
+                      </>
+                    )}
                   </button>
                   <div className="status-dropdown-menu">
                     <button onClick={() => handleStatusChange('pending')} className={job.status === 'pending' ? 'active' : ''}>

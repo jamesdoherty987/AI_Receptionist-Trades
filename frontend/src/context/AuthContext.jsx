@@ -13,6 +13,13 @@ export function AuthProvider({ children }) {
   // Check if user is already logged in on mount
   useEffect(() => {
     checkAuth();
+    
+    // Refresh subscription status every hour to keep trial days current
+    const interval = setInterval(() => {
+      checkAuth();
+    }, 60 * 60 * 1000); // Every 1 hour
+    
+    return () => clearInterval(interval);
   }, []);
 
   const checkAuth = async () => {
@@ -147,9 +154,25 @@ export function AuthProvider({ children }) {
     return subscription?.tier || 'none';
   };
 
-  // Get trial days remaining
+  // Get trial days remaining - compute client-side from trial_end for accuracy
   const getTrialDaysRemaining = () => {
-    return subscription?.trial_days_remaining || 0;
+    if (!subscription) return 0;
+    
+    // If server already computed it, use that
+    if (subscription.trial_days_remaining !== undefined && subscription.trial_days_remaining !== null) {
+      return subscription.trial_days_remaining;
+    }
+    
+    // Fallback: compute from trial_end
+    if (subscription.trial_end) {
+      const now = new Date();
+      const end = new Date(subscription.trial_end);
+      const diffMs = end - now;
+      if (diffMs <= 0) return 0;
+      return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    }
+    
+    return 0;
   };
 
   const value = {

@@ -246,7 +246,7 @@ function Landing() {
         <div className="hero-content">
           <div className="hero-badge">
             <span className="badge-dot"></span>
-            Trusted by 500+ tradespeople across Ireland
+            Leave Answering Your Phone In The Past
           </div>
           <h1>
             Your AI Receptionist
@@ -269,9 +269,9 @@ function Landing() {
           <div className="hero-stats">
             <div className="stat">
               <span className="stat-number">
-                <NumberTicker end={10000} suffix="+" />
+                <NumberTicker end={1000} suffix="+" />
               </span>
-              <span className="stat-label">Calls Handled</span>
+              <span className="stat-label">Calls Tested</span>
             </div>
             <div className="stat-divider"></div>
             <div className="stat">

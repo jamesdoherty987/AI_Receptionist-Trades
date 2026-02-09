@@ -54,25 +54,32 @@ def get_openai_client():
     return _client
 
 
-def load_business_info():
-    """Load business information from companies table (first company)"""
+def load_business_info(company_id=None):
+    """Load business information from companies table by company_id.
+    Falls back to first company if no company_id provided (backwards compatible).
+    """
     from src.services.database import get_database
     
     try:
         db = get_database()
         conn = db.get_connection()
         
-        # Get first company's information
         if hasattr(db, 'use_postgres') and db.use_postgres:
             from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("SELECT company_name, phone, email, address FROM companies ORDER BY id LIMIT 1")
+            if company_id:
+                cursor.execute("SELECT company_name, phone, email, address FROM companies WHERE id = %s", (int(company_id),))
+            else:
+                cursor.execute("SELECT company_name, phone, email, address FROM companies ORDER BY id LIMIT 1")
             row = cursor.fetchone()
             db.return_connection(conn)
             company = dict(row) if row else None
         else:
             cursor = conn.cursor()
-            cursor.execute("SELECT company_name, phone, email, address FROM companies ORDER BY id LIMIT 1")
+            if company_id:
+                cursor.execute("SELECT company_name, phone, email, address FROM companies WHERE id = ?", (int(company_id),))
+            else:
+                cursor.execute("SELECT company_name, phone, email, address FROM companies ORDER BY id LIMIT 1")
             row = cursor.fetchone()
             if row:
                 cursor.execute("PRAGMA table_info(companies)")
@@ -85,7 +92,7 @@ def load_business_info():
         if company:
             # Return in the format expected by the rest of the code
             business_name = company.get('company_name') or 'Your Business'
-            print(f"[INFO] Loaded business name from database: {business_name}")
+            print(f"[INFO] Loaded business info for company_id={company_id}: {business_name}")
             
             return {
                 'business_name': business_name,
@@ -95,7 +102,7 @@ def load_business_info():
                 'address': company.get('address') or 'Not configured'
             }
     except Exception as e:
-        print(f"[WARNING] Could not load business info from database: {e}")
+        print(f"[WARNING] Could not load business info from database (company_id={company_id}): {e}")
     
     # Fallback to generic info
     return {
@@ -159,16 +166,18 @@ def is_business_day(dt: datetime) -> bool:
         return dt.weekday() in config.BUSINESS_DAYS
 
 
-def load_system_prompt():
-    """Load system prompt from file and inject business information"""
+def load_system_prompt(company_id=None):
+    """Load system prompt from file and inject business information.
+    When company_id is provided, loads that company's specific info.
+    """
     # Use fast/condensed prompt for better performance
     prompt_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
         'prompts', 'receptionist_prompt_fast.txt'  # Using condensed version for speed
     )
     
-    # Load business info and services menu
-    business_info = load_business_info()
+    # Load business info (for specific company if ID provided) and services menu
+    business_info = load_business_info(company_id=company_id)
     services_menu = load_services_menu()
     
     # Get business hours from database settings (not from services menu)
@@ -452,7 +461,7 @@ def spell_out_name(name: str) -> str:
     
     return " ".join(spelled_parts)
 
-async def stream_llm(messages, process_appointment_callback=None, caller_phone=None):
+async def stream_llm(messages, process_appointment_callback=None, caller_phone=None, company_id=None):
     """
     Stream LLM responses with appointment detection
     
@@ -460,6 +469,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         messages: Conversation history
         process_appointment_callback: Optional callback for appointment processing
         caller_phone: Caller's phone number from Twilio
+        company_id: Company ID for multi-tenant business context
         
     Yields:
         Text tokens from LLM
@@ -2186,7 +2196,9 @@ When customer wants to reschedule:
 5. When they confirm, call reschedule_appointment tool
 """
     
-    system_prompt_with_time = SYSTEM_PROMPT + time_context + tool_usage_guidance
+    # Load company-specific system prompt if company_id provided, otherwise use cached default
+    active_system_prompt = load_system_prompt(company_id=company_id) if company_id else SYSTEM_PROMPT
+    system_prompt_with_time = active_system_prompt + time_context + tool_usage_guidance
     
     try:
         stream = client.chat.completions.create(

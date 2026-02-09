@@ -19,7 +19,9 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       const response = await getClient(clientId);
       return response.data;
     },
-    enabled: isOpen && !!clientId
+    enabled: isOpen && !!clientId,
+    staleTime: 30 * 1000, // 30 seconds
+    cacheTime: 5 * 60 * 1000 // 5 minutes
   });
 
   const { data: allBookings } = useQuery({
@@ -28,7 +30,9 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       const response = await getBookings();
       return response.data;
     },
-    enabled: isOpen && !!clientId
+    enabled: isOpen && !!clientId,
+    staleTime: 60 * 1000, // 1 minute
+    cacheTime: 10 * 60 * 1000 // 10 minutes
   });
 
   const clientBookings = allBookings?.filter(
@@ -52,13 +56,50 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
 
   const noteMutation = useMutation({
     mutationFn: (note) => addClientNote(clientId, note),
+    onMutate: async (note) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries(['client', clientId]);
+      
+      // Snapshot previous value
+      const previousClient = queryClient.getQueryData(['client', clientId]);
+      
+      // Optimistically update with new note appended
+      queryClient.setQueryData(['client', clientId], (old) => {
+        if (!old) return old;
+        
+        const currentNotes = old.notes || '';
+        const timestamp = new Date().toLocaleString();
+        const newNoteWithTimestamp = `[${timestamp}] ${note}`;
+        const updatedNotes = currentNotes 
+          ? `${currentNotes}\n\n${newNoteWithTimestamp}`
+          : newNoteWithTimestamp;
+        
+        return {
+          ...old,
+          notes: updatedNotes
+        };
+      });
+      
+      // Clear input immediately
+      setNewNote('');
+      
+      return { previousClient };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries(['client', clientId]);
-      setNewNote('');
+      queryClient.invalidateQueries(['clients']);
       addToast('Note added!', 'success');
     },
-    onError: (error) => {
-      addToast('Error adding note', 'error');
+    onError: (error, variables, context) => {
+      // Rollback on error
+      if (context?.previousClient) {
+        queryClient.setQueryData(['client', clientId], context.previousClient);
+      }
+      // Restore the note text so user doesn't lose it
+      setNewNote(variables);
+      const errorMsg = error.response?.data?.error || 'Error adding note';
+      addToast(errorMsg, 'error');
+      console.error('Error adding note:', error);
     }
   });
 
@@ -78,8 +119,11 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
   };
 
   const handleAddNote = () => {
-    if (newNote.trim()) {
-      noteMutation.mutate(newNote);
+    const trimmedNote = newNote.trim();
+    if (trimmedNote) {
+      noteMutation.mutate(trimmedNote);
+    } else {
+      addToast('Please enter a note', 'warning');
     }
   };
 
@@ -94,7 +138,15 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
     );
   }
 
-  if (!client) return null;
+  if (!client) {
+    return (
+      <Modal isOpen={isOpen} onClose={onClose} title="Customer Details" size="xlarge">
+        <div className="modal-loading">
+          <p>Customer not found</p>
+        </div>
+      </Modal>
+    );
+  }
 
   const totalBookings = clientBookings.length;
   const completedBookings = clientBookings.filter(b => b.status === 'completed').length;

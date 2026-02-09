@@ -23,7 +23,10 @@ function SubscriptionManager() {
       const response = await getSubscriptionStatus();
       return response.data.subscription;
     },
-    refetchOnMount: true
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    staleTime: 5 * 60 * 1000, // Consider data stale after 5 minutes
+    cacheTime: 10 * 60 * 1000 // Keep in cache for 10 minutes
   });
 
   const { data: invoicesData } = useQuery({
@@ -105,7 +108,9 @@ function SubscriptionManager() {
   const isActive = subscription.is_active;
   const isTrial = subscription.tier === 'trial';
   const isPro = subscription.tier === 'pro';
-  const isExpired = subscription.tier === 'expired' || (!isActive && !isTrial);
+  const isNone = subscription.tier === 'none' || (!subscription.tier && !isActive);
+  // Expired: trial that ran out, or explicitly expired tier
+  const isExpired = !isActive && (isTrial || subscription.tier === 'expired' || isNone);
   const cancelAtPeriodEnd = subscription.cancel_at_period_end;
 
   const formatDate = (dateString) => {
@@ -123,26 +128,33 @@ function SubscriptionManager() {
       <div className={`subscription-card ${isActive ? 'active' : 'inactive'}`}>
         <div className="subscription-header">
           <div className="plan-info">
-            <span className={`plan-badge ${subscription.tier}`}>
-              {isTrial && 'Free Trial'}
+            <span className={`plan-badge ${isPro ? 'pro' : isTrial && isActive ? 'trial' : isNone ? 'none' : 'expired'}`}>
               {isPro && 'Pro Plan'}
-              {isExpired && 'Expired'}
+              {isTrial && isActive && 'Free Trial'}
+              {isTrial && !isActive && 'Trial Expired'}
+              {isNone && 'No Plan'}
+              {!isPro && !isTrial && !isNone && 'Expired'}
             </span>
             <h3>
-              {isTrial && 'Free Trial'}
               {isPro && 'BookedForYou Pro'}
-              {isExpired && 'Subscription Expired'}
+              {isTrial && isActive && 'Free Trial'}
+              {isTrial && !isActive && 'Trial Expired'}
+              {isNone && 'Get Started with BookedForYou'}
+              {!isPro && !isTrial && !isNone && 'Subscription Expired'}
             </h3>
           </div>
           <div className="plan-price">
             {isPro && (
               <>
-                <span className="price">€59</span>
+                <span className="price">&euro;59</span>
                 <span className="period">/month</span>
               </>
             )}
-            {isTrial && (
+            {isTrial && isActive && (
               <span className="price free">Free</span>
+            )}
+            {(isNone || (isExpired && !isPro)) && (
+              <span className="price inactive-price">&euro;0</span>
             )}
           </div>
         </div>
@@ -178,12 +190,32 @@ function SubscriptionManager() {
             </div>
           )}
           
-          {isExpired && (
+          {isTrial && !isActive && (
             <div className="expired-info">
               <i className="fas fa-times-circle"></i>
               <div>
-                <strong>Subscription Inactive</strong>
-                <p>Start a free trial or subscribe to use BookedForYou</p>
+                <strong>Trial Expired</strong>
+                <p>Your free trial has ended. Subscribe to continue using BookedForYou.</p>
+              </div>
+            </div>
+          )}
+          
+          {!isPro && !isTrial && !isNone && !isActive && (
+            <div className="expired-info">
+              <i className="fas fa-times-circle"></i>
+              <div>
+                <strong>Subscription Expired</strong>
+                <p>Your subscription has ended. Resubscribe or start a trial to continue.</p>
+              </div>
+            </div>
+          )}
+          
+          {isNone && (
+            <div className="none-info">
+              <i className="fas fa-info-circle"></i>
+              <div>
+                <strong>No Active Subscription</strong>
+                <p>Start a free 14-day trial to explore all features, or subscribe to get started right away.</p>
               </div>
             </div>
           )}
@@ -203,8 +235,8 @@ function SubscriptionManager() {
         </div>
 
         <div className="subscription-actions">
-          {/* Show Start Trial for expired users who haven't tried yet */}
-          {isExpired && (
+          {/* Show Start Trial for users with no plan (never tried before) */}
+          {isNone && (
             <button
               className="btn btn-success btn-subscribe"
               onClick={() => trialMutation.mutate()}
@@ -215,8 +247,8 @@ function SubscriptionManager() {
             </button>
           )}
 
-          {/* Show Subscribe button for trial or expired users */}
-          {(isTrial || isExpired) && (
+          {/* Show Subscribe button for trial (active or expired) or no-plan users */}
+          {(!isPro || !isActive) && (
             <button
               className="btn btn-primary btn-subscribe"
               onClick={() => checkoutMutation.mutate()}

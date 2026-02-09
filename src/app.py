@@ -323,10 +323,13 @@ def twilio_voice():
             # Pass caller phone as custom parameter
             if caller_phone:
                 stream.parameter(name="From", value=caller_phone)
+            # Pass company ID so the WebSocket handler knows which business this call is for
+            stream.parameter(name="CompanyId", value=str(company.get('id', '')))
 
         print("=" * 60)
         print("📞 Incoming Twilio Call - AI ENABLED")
         print(f"[PHONE] Caller: {caller_phone}")
+        print(f"[COMPANY] ID: {company.get('id')}, Name: {company.get('company_name')}")
         print(f"[AI] Connecting to AI at: {ws_url}")
         print("=" * 60)
     
@@ -2731,6 +2734,9 @@ def send_invoice_api(booking_id):
         # Get job address
         job_address = booking_dict.get('address') or booking_dict.get('job_address') or ''
         
+        # Get business name from the company record
+        company_business_name = company.get('business_name') or company.get('name') or None if company else None
+        
         success = email_service.send_invoice(
             to_email=to_email,
             customer_name=booking_dict['client_name'],
@@ -2743,7 +2749,8 @@ def send_invoice_api(booking_id):
             bank_details=bank_details,
             revolut_phone=revolut_phone,
             add_bank_details=bool(bank_details and bank_details.get('iban')),
-            add_revolut_phone=bool(revolut_phone)
+            add_revolut_phone=bool(revolut_phone),
+            company_name=company_business_name
         )
         
         if success:
@@ -2950,6 +2957,12 @@ def get_worker_jobs_api(worker_id):
     db = get_database()
     include_completed = request.args.get('include_completed', 'false').lower() == 'true'
     jobs = db.get_worker_jobs(worker_id, include_completed)
+    
+    # Ensure customer_name is set for frontend consistency
+    for job in jobs:
+        if not job.get('customer_name') and job.get('client_name'):
+            job['customer_name'] = job['client_name']
+    
     return jsonify(jobs)
 
 
@@ -3216,17 +3229,29 @@ def get_finances():
         db = get_database()
         bookings = db.get_all_bookings()
         
-        total_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings if b.get('status') == 'completed')
-        pending_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings if b.get('status') in ['pending', 'scheduled'])
-        completed_revenue = total_revenue
+        # Calculate revenue metrics
+        paid_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings 
+                          if b.get('status') == 'completed' or b.get('payment_status') == 'paid')
+        unpaid_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings 
+                            if b.get('status') not in ['completed', 'cancelled'] 
+                            and b.get('payment_status') != 'paid')
+        total_revenue = paid_revenue + unpaid_revenue
         
         # Build transactions list for detailed view
         transactions = []
         for booking in bookings:
             if booking.get('charge') and float(booking.get('charge', 0)) > 0:
+                # Get customer name from client
+                customer_name = booking.get('customer_name') or booking.get('client_name')
+                if not customer_name and booking.get('client_id'):
+                    client = db.get_client(booking['client_id'])
+                    if client:
+                        customer_name = client.get('name')
+                
                 transactions.append({
                     'id': booking.get('id'),
-                    'customer_name': booking.get('customer_name') or booking.get('client_name') or 'Unknown',
+                    'booking_id': booking.get('id'),
+                    'customer_name': customer_name or 'Unknown',
                     'description': booking.get('service_type') or booking.get('service') or 'Service',
                     'amount': float(booking.get('charge', 0)),
                     'status': booking.get('status'),
@@ -3235,25 +3260,29 @@ def get_finances():
                     'payment_method': booking.get('payment_method')
                 })
         
-        # Group by month
+        # Group by month for chart
         from collections import defaultdict
         from datetime import datetime
         monthly = defaultdict(float)
         for booking in bookings:
-            if booking.get('status') == 'completed' and booking.get('appointment_time'):
+            if (booking.get('status') == 'completed' or booking.get('payment_status') == 'paid') and booking.get('appointment_time'):
                 try:
                     date = datetime.fromisoformat(booking['appointment_time'].replace('Z', '+00:00'))
-                    month_key = date.strftime('%Y-%m')
+                    month_key = date.strftime('%b %Y')  # e.g., "Jan 2024"
                     monthly[month_key] += float(booking.get('charge', 0) or 0)
                 except:
                     pass
         
-        monthly_revenue = [{"month": k, "revenue": v} for k, v in sorted(monthly.items())]
+        # Get last 6 months of data, sorted chronologically
+        monthly_revenue = [{"month": k, "revenue": v} for k, v in sorted(monthly.items(), 
+                          key=lambda x: datetime.strptime(x[0], '%b %Y'))][-6:]
         
         return jsonify({
             "total_revenue": total_revenue,
-            "pending_revenue": pending_revenue,
-            "completed_revenue": completed_revenue,
+            "paid_revenue": paid_revenue,
+            "unpaid_revenue": unpaid_revenue,
+            "pending_revenue": unpaid_revenue,  # For backwards compatibility
+            "completed_revenue": paid_revenue,  # For backwards compatibility
             "monthly_revenue": monthly_revenue,
             "transactions": transactions
         })

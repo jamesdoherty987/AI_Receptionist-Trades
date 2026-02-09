@@ -21,7 +21,9 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
       const response = await getWorker(workerId);
       return response.data;
     },
-    enabled: isOpen && !!workerId
+    enabled: isOpen && !!workerId,
+    staleTime: 30 * 1000, // 30 seconds
+    cacheTime: 5 * 60 * 1000 // 5 minutes
   });
 
   const { data: workerJobs } = useQuery({
@@ -30,7 +32,9 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
       const response = await getWorkerJobs(workerId);
       return response.data;
     },
-    enabled: isOpen && !!workerId
+    enabled: isOpen && !!workerId,
+    staleTime: 30 * 1000, // 30 seconds
+    cacheTime: 5 * 60 * 1000 // 5 minutes
   });
 
   const { data: hoursData } = useQuery({
@@ -39,18 +43,39 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
       const response = await getWorkerHoursThisWeek(workerId);
       return response.data;
     },
-    enabled: isOpen && !!workerId
+    enabled: isOpen && !!workerId,
+    staleTime: 60 * 1000, // 1 minute
+    cacheTime: 10 * 60 * 1000 // 10 minutes
   });
 
   const updateMutation = useMutation({
     mutationFn: (data) => updateWorker(workerId, data),
+    onMutate: async (updatedData) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries(['worker', workerId]);
+      
+      // Snapshot previous value
+      const previousWorker = queryClient.getQueryData(['worker', workerId]);
+      
+      // Optimistically update
+      queryClient.setQueryData(['worker', workerId], (old) => ({
+        ...old,
+        ...updatedData
+      }));
+      
+      return { previousWorker };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries(['worker', workerId]);
       queryClient.invalidateQueries(['workers']);
       setIsEditing(false);
       addToast('Worker updated successfully!', 'success');
     },
-    onError: (error) => {
+    onError: (error, variables, context) => {
+      // Rollback on error
+      if (context?.previousWorker) {
+        queryClient.setQueryData(['worker', workerId], context.previousWorker);
+      }
       addToast('Error updating worker: ' + (error.response?.data?.error || error.message), 'error');
     }
   });
@@ -106,7 +131,18 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
   };
 
   const handleEditSave = () => {
-    updateMutation.mutate(editData);
+    // Validate data before saving
+    const dataToSave = {
+      ...editData,
+      weekly_hours_expected: editData.weekly_hours_expected || 40.0
+    };
+    
+    if (!dataToSave.name || dataToSave.name.trim() === '') {
+      addToast('Worker name is required', 'warning');
+      return;
+    }
+    
+    updateMutation.mutate(dataToSave);
   };
 
   const handleDelete = () => {
@@ -269,8 +305,24 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                     <input
                       type="number"
                       className="form-input"
-                      value={editData.weekly_hours_expected}
-                      onChange={(e) => setEditData({...editData, weekly_hours_expected: parseFloat(e.target.value) || 40.0})}
+                      value={editData.weekly_hours_expected || ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === '') {
+                          setEditData({...editData, weekly_hours_expected: ''});
+                        } else {
+                          const numValue = parseFloat(value);
+                          if (!isNaN(numValue) && numValue >= 0 && numValue <= 168) {
+                            setEditData({...editData, weekly_hours_expected: numValue});
+                          }
+                        }
+                      }}
+                      onBlur={(e) => {
+                        // Set default of 40 if empty on blur
+                        if (e.target.value === '') {
+                          setEditData({...editData, weekly_hours_expected: 40.0});
+                        }
+                      }}
                       placeholder="40"
                       min="0"
                       max="168"
@@ -333,7 +385,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                           {isNow && <span className="now-badge">NOW</span>}
                         </div>
                         <div className="schedule-details">
-                          <span className="schedule-customer">{job.customer_name || 'Customer'}</span>
+                          <span className="schedule-customer">{job.customer_name || job.client_name || 'Customer'}</span>
                           <span className="schedule-service">{job.service_type || job.service || 'Service'}</span>
                         </div>
                         <span className={`badge badge-sm ${getStatusBadgeClass(job.status)}`}>
@@ -377,7 +429,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                           <span className="day-num">{dayNum}</span>
                         </div>
                         <div className="schedule-details">
-                          <span className="schedule-customer">{job.customer_name || 'Customer'}</span>
+                          <span className="schedule-customer">{job.customer_name || job.client_name || 'Customer'}</span>
                           <span className="schedule-service">
                             {jobDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                             {' • '}

@@ -19,7 +19,13 @@ class Config:
     
     # URLs
     PUBLIC_URL = os.getenv("PUBLIC_URL")
-    WS_PUBLIC_URL = os.getenv("WS_PUBLIC_URL")
+    # WS_PUBLIC_URL: In production (combined server), derive from PUBLIC_URL if not set.
+    # The combined server serves WebSocket at /media on the same host as HTTP.
+    _ws_url = os.getenv("WS_PUBLIC_URL")
+    if not _ws_url and PUBLIC_URL:
+        # Convert https://... to wss://... and append /media path
+        _ws_url = PUBLIC_URL.replace("https://", "wss://").replace("http://", "ws://").rstrip("/") + "/media"
+    WS_PUBLIC_URL = _ws_url
     WS_PATH = os.getenv("WS_PATH", "/media")
     
     # API Keys (configured via environment variables only)

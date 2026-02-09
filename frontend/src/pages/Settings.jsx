@@ -29,9 +29,16 @@ function Settings() {
   // Flag to hide Stripe Connect component
   const hideStripeConnect = REMOVE_STRIPE_CONNECT;
   
-  // Handle subscription redirect messages
+  // Handle subscription redirect messages and tab param
   useEffect(() => {
     const subscriptionStatus = searchParams.get('subscription');
+    const tabParam = searchParams.get('tab');
+    
+    if (tabParam === 'subscription') {
+      setActiveTab('subscription');
+      window.history.replaceState({}, '', '/settings');
+    }
+    
     if (subscriptionStatus === 'success') {
       setSaveMessage('Subscription activated successfully! Welcome to BookedForYou Pro.');
       setActiveTab('subscription');
