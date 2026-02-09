@@ -85,11 +85,27 @@ CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credenti
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 configure_secure_session(app)
 
+# Warn if SECRET_KEY is not explicitly set (critical for production)
+if not os.getenv('SECRET_KEY'):
+    print("⚠️ WARNING: SECRET_KEY environment variable is not set!")
+    print("   Sessions will be invalidated on server restart.")
+    print("   Generate a key: python -c 'import secrets; print(secrets.token_hex(32))'")
+    print("   Then set it in your production environment variables.")
+
 # Security: Add security headers to all responses
 @app.after_request
 def add_security_headers(response):
     """Add security headers to all responses"""
-    return apply_security_headers(response)
+    response = apply_security_headers(response)
+    
+    # Log Set-Cookie headers for auth endpoints (debugging)
+    if request.path.startswith('/api/auth/') and 'Set-Cookie' in response.headers:
+        cookie_header = response.headers.get('Set-Cookie', '')
+        # Don't log the actual cookie value, just the attributes
+        cookie_attrs = [attr.split('=')[0] for attr in cookie_header.split(';')]
+        print(f"[COOKIE] Setting cookie for {request.path}: {', '.join(cookie_attrs)}")
+    
+    return response
 
 # Security: Log request details for security monitoring
 @app.before_request
@@ -99,6 +115,12 @@ def log_request():
     g.client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     if g.client_ip and ',' in g.client_ip:
         g.client_ip = g.client_ip.split(',')[0].strip()
+    
+    # Log authentication requests for debugging
+    if request.path.startswith('/api/auth/'):
+        origin = request.headers.get('Origin', 'no-origin')
+        has_cookie = 'session' in request.cookies
+        print(f"[AUTH_REQUEST] {request.method} {request.path} from {origin} - Has session cookie: {has_cookie}")
 
 
 def get_client_ip():
@@ -398,6 +420,106 @@ def health():
     return {"status": "healthy", "service": "AI Receptionist"}
 
 
+@app.route("/api/config-check", methods=["GET"])
+def config_check():
+    """
+    Diagnostic endpoint to check production configuration
+    Helps debug session cookie and CORS issues
+    """
+    import sys
+    
+    is_production = os.getenv('FLASK_ENV') == 'production'
+    
+    config_info = {
+        "flask_env": os.getenv('FLASK_ENV', 'not set'),
+        "is_production_mode": is_production,
+        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "session_config": {
+            "cookie_secure": app.config.get('SESSION_COOKIE_SECURE'),
+            "cookie_httponly": app.config.get('SESSION_COOKIE_HTTPONLY'),
+            "cookie_samesite": app.config.get('SESSION_COOKIE_SAMESITE'),
+            "permanent_lifetime": str(app.config.get('PERMANENT_SESSION_LIFETIME')),
+        },
+        "cors_config": {
+            "allowed_origins": allowed_origins,
+            "supports_credentials": True
+        },
+        "urls": {
+            "public_url": os.getenv('PUBLIC_URL', 'not set'),
+            "frontend_url": os.getenv('FRONTEND_URL', 'not set')
+        },
+        "database_connected": False,
+        "recommendations": []
+    }
+    
+    # Test database connection
+    try:
+        db = get_database()
+        # Simple query to test connection
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        conn = db.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT COUNT(*) as count FROM companies")
+        result = cursor.fetchone()
+        cursor.close()
+        db.return_connection(conn)
+        config_info["database_connected"] = True
+        config_info["total_users"] = result['count']
+    except Exception as e:
+        config_info["database_error"] = str(e)
+    
+    # Add recommendations based on configuration
+    if not is_production and os.getenv('PUBLIC_URL', '').startswith('https://'):
+        config_info["recommendations"].append(
+            "⚠️ FLASK_ENV is not set to 'production' but you have a production URL. "
+            "Set FLASK_ENV=production to enable secure session cookies."
+        )
+    
+    if is_production and not app.config.get('SESSION_COOKIE_SECURE'):
+        config_info["recommendations"].append(
+            "⚠️ SESSION_COOKIE_SECURE should be True in production."
+        )
+    
+    if is_production and app.config.get('SESSION_COOKIE_SAMESITE') != 'None':
+        config_info["recommendations"].append(
+            "⚠️ SESSION_COOKIE_SAMESITE should be 'None' for cross-origin requests in production."
+        )
+    
+    if not app.secret_key or app.secret_key == 'dev':
+        config_info["recommendations"].append(
+            "⚠️ SECRET_KEY is not set or is using default value. Generate a secure key."
+        )
+    else:
+        # Check if SECRET_KEY env var is actually set (vs generated at runtime)
+        if not os.getenv('SECRET_KEY'):
+            config_info["recommendations"].append(
+                "⚠️ CRITICAL: SECRET_KEY environment variable is not set! "
+                "A random key is being generated at runtime. "
+                "All sessions will be invalidated when the server restarts. "
+                "Set SECRET_KEY in your environment variables."
+            )
+            config_info["secret_key_env_set"] = False
+        else:
+            config_info["secret_key_env_set"] = True
+    
+    # Check origin header
+    origin = request.headers.get('Origin')
+    if origin:
+        config_info["request_origin"] = origin
+        config_info["origin_allowed"] = origin in allowed_origins
+        if origin not in allowed_origins:
+            config_info["recommendations"].append(
+                f"⚠️ Request origin '{origin}' is not in allowed_origins list. "
+                "CORS requests from this origin will fail."
+            )
+    
+    if not config_info["recommendations"]:
+        config_info["recommendations"].append("✅ Configuration looks good!")
+    
+    return jsonify(config_info)
+
+
 # ============================================
 # AUTHENTICATION ENDPOINTS
 # ============================================
@@ -505,8 +627,22 @@ def login():
     email = data.get('email', '').lower().strip()
     password = data.get('password', '')
     
+    # Log detailed request information
+    origin = request.headers.get('Origin', 'no-origin')
+    user_agent = request.headers.get('User-Agent', 'unknown')[:100]
+    print(f"[LOGIN] ========== Login Attempt ==========")
+    print(f"[LOGIN] Email: {email}")
+    print(f"[LOGIN] Origin: {origin}")
+    print(f"[LOGIN] Client IP: {client_ip}")
+    print(f"[LOGIN] User Agent: {user_agent}")
+    print(f"[LOGIN] CORS Allowed: {origin in allowed_origins}")
+    
     if not email or not password:
-        return jsonify({"error": "Email and password are required"}), 400
+        print(f"[LOGIN] FAILED - Missing credentials")
+        return jsonify({
+            "error": "Email and password are required",
+            "code": "MISSING_CREDENTIALS"
+        }), 400
     
     # Check if this IP/email is blocked due to too many failed attempts
     if rate_limiter.is_blocked(email) or rate_limiter.is_blocked(client_ip):
@@ -515,6 +651,7 @@ def login():
             client_ip,
             'Account temporarily blocked'
         )
+        print(f"[LOGIN] Blocked due to too many failed attempts: {email}")
         return jsonify({
             "error": "Too many failed attempts. Please try again later."
         }), 429
@@ -527,20 +664,44 @@ def login():
         rate_limiter.record_failed_login(email)
         rate_limiter.record_failed_login(client_ip)
         security_logger.log_login_attempt(email, client_ip, False)
-        return jsonify({"error": "Invalid email or password"}), 401
+        print(f"[LOGIN] FAILED - User not found: {email}")
+        
+        error_response = {
+            "error": "Invalid email or password",
+            "code": "INVALID_CREDENTIALS"
+        }
+        
+        # Add helpful details in development
+        if os.getenv('FLASK_ENV') != 'production':
+            error_response["debug"] = "No user found with this email address"
+        
+        return jsonify(error_response), 401
     
     if not verify_password(password, company['password_hash']):
         # Record failed attempt
         should_block = rate_limiter.record_failed_login(email)
         rate_limiter.record_failed_login(client_ip)
         security_logger.log_login_attempt(email, client_ip, False)
+        print(f"[LOGIN] FAILED - Invalid password for: {email}")
         
         if should_block:
+            print(f"[LOGIN] Account temporarily locked due to too many failed attempts")
             return jsonify({
-                "error": "Too many failed attempts. Account temporarily locked."
+                "error": "Too many failed login attempts. Your account has been temporarily locked for security.",
+                "code": "ACCOUNT_LOCKED",
+                "help": "Please wait 15 minutes before trying again."
             }), 429
         
-        return jsonify({"error": "Invalid email or password"}), 401
+        error_response = {
+            "error": "Invalid email or password",
+            "code": "INVALID_CREDENTIALS"
+        }
+        
+        # Add helpful details in development
+        if os.getenv('FLASK_ENV') != 'production':
+            error_response["debug"] = "Password does not match"
+        
+        return jsonify(error_response), 401
     
     # Successful login - clear failed attempts
     rate_limiter.clear_failed_logins(email)
@@ -559,6 +720,22 @@ def login():
     # Create session
     session['company_id'] = company['id']
     session['email'] = company['email']
+    session.permanent = True  # Make session permanent (uses PERMANENT_SESSION_LIFETIME)
+    
+    # Log session creation for debugging
+    print(f"[LOGIN] ========== Login SUCCESS ==========")
+    print(f"[LOGIN] User ID: {company['id']}")
+    print(f"[LOGIN] Email: {email}")
+    print(f"[LOGIN] Session created - Company ID: {session.get('company_id')}")
+    print(f"[LOGIN] Flask ENV: {os.getenv('FLASK_ENV', 'not set')}")
+    print(f"[LOGIN] SECRET_KEY set: {bool(os.getenv('SECRET_KEY'))}")
+    print(f"[LOGIN] Session config:")
+    print(f"[LOGIN]   - Secure: {app.config.get('SESSION_COOKIE_SECURE')}")
+    print(f"[LOGIN]   - SameSite: {app.config.get('SESSION_COOKIE_SAMESITE')}")
+    print(f"[LOGIN]   - HttpOnly: {app.config.get('SESSION_COOKIE_HTTPONLY')}")
+    print(f"[LOGIN]   - Lifetime: {app.config.get('PERMANENT_SESSION_LIFETIME')}")
+    print(f"[LOGIN] Origin allowed: {origin in allowed_origins}")
+    print(f"[LOGIN] =====================================")
     
     return jsonify({
         "success": True,
@@ -580,6 +757,9 @@ def login():
 @app.route("/api/auth/logout", methods=["POST"])
 def logout():
     """Log out the current user"""
+    company_id = session.get('company_id', 'unknown')
+    email = session.get('email', 'unknown')
+    print(f"[LOGOUT] User {company_id} ({email}) logging out")
     session.clear()
     return jsonify({"success": True, "message": "Logged out successfully"})
 
@@ -587,15 +767,26 @@ def logout():
 @app.route("/api/auth/me", methods=["GET"])
 def get_current_user():
     """Get the currently logged in user"""
-    if 'company_id' not in session:
+    client_ip = get_client_ip()
+    
+    # Debug logging for session check
+    has_session = 'company_id' in session
+    company_id = session.get('company_id', 'none')
+    print(f"[AUTH_CHECK] Request from {client_ip} - Session exists: {has_session}, Company ID: {company_id}")
+    
+    if not has_session:
+        print(f"[AUTH_CHECK] No session found - user not authenticated")
         return jsonify({"authenticated": False}), 200
     
     db = get_database()
     company = db.get_company(session['company_id'])
     
     if not company:
+        print(f"[AUTH_CHECK] Company {company_id} not found in database - clearing session")
         session.clear()
         return jsonify({"authenticated": False}), 200
+    
+    print(f"[AUTH_CHECK] Authenticated user: {company['email']} (ID: {company['id']})")
     
     # Get subscription info
     subscription_info = get_subscription_info(company)

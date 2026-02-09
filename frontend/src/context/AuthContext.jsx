@@ -76,9 +76,25 @@ export function AuthProvider({ children }) {
         await checkAuth();
         return { success: true };
       }
-      return { success: false, error: response.data.error };
+      return { success: false, error: response.data.error || 'Login failed' };
     } catch (error) {
-      const errorMessage = error.response?.data?.error || 'Login failed';
+      console.error('Login error:', error);
+      
+      // Extract error message from response
+      let errorMessage = 'Login failed. Please try again.';
+      
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Invalid email or password. Please check your credentials.';
+      } else if (error.response?.status === 429) {
+        errorMessage = 'Too many login attempts. Please wait before trying again.';
+      } else if (error.response?.status === 500) {
+        errorMessage = 'Server error. Please try again later.';
+      } else if (error.request && !error.response) {
+        errorMessage = 'Cannot connect to server. Please check your connection.';
+      }
+      
       return { success: false, error: errorMessage };
     }
   };

@@ -27,7 +27,7 @@ function Login() {
     
     // Client-side rate limiting to prevent rapid-fire login attempts
     if (!rateLimiter.isAllowed('login', 5, 60000)) {
-      setError('Too many login attempts. Please wait a moment.');
+      setError('Too many login attempts. Please wait a moment before trying again.');
       return;
     }
     
@@ -45,10 +45,45 @@ function Login() {
       if (result.success) {
         navigate('/dashboard');
       } else {
-        setError(result.error || 'Login failed');
+        // Show more helpful error messages
+        let errorMessage = result.error || 'Login failed. Please try again.';
+        
+        // Add helpful hints based on error code
+        if (result.error?.includes('Invalid email or password')) {
+          errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+        } else if (result.error?.includes('Too many failed attempts')) {
+          errorMessage = 'Too many failed login attempts. Please wait 15 minutes before trying again.';
+        } else if (result.error?.includes('temporarily locked')) {
+          errorMessage = 'Your account has been temporarily locked for security. Please wait 15 minutes.';
+        }
+        
+        setError(errorMessage);
       }
     } catch (err) {
-      setError('An unexpected error occurred');
+      console.error('Login error:', err);
+      
+      // Provide more specific error messages based on the error
+      if (err.response) {
+        // Server responded with an error
+        const serverError = err.response.data?.error || err.response.data?.message;
+        if (serverError) {
+          setError(serverError);
+        } else if (err.response.status === 401) {
+          setError('Invalid email or password. Please check your credentials.');
+        } else if (err.response.status === 429) {
+          setError('Too many login attempts. Please wait before trying again.');
+        } else if (err.response.status === 500) {
+          setError('Server error. Please try again later or contact support.');
+        } else {
+          setError(`Login failed (${err.response.status}). Please try again.`);
+        }
+      } else if (err.request) {
+        // Request was made but no response received
+        setError('Cannot connect to server. Please check your internet connection and try again.');
+      } else {
+        // Something else happened
+        setError('An unexpected error occurred. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
