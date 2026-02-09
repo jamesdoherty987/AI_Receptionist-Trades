@@ -242,7 +242,6 @@ async def media_handler(ws):
                             
                             # Update the call to redirect to a new TwiML that dials the transfer number
                             # We'll use the existing /twilio/transfer endpoint
-                            from src.utils.config import config
                             from urllib.parse import quote
                             
                             # URL-encode the phone number to handle special characters
