@@ -1,12 +1,12 @@
 # BookedForYou Complete Stripe Setup Guide
 
 This guide covers everything you need to set up Stripe for:
-1. **Your Platform Subscription** - Charging €59/month to your users
+1. **Your Platform Subscription** - Charging €99/month to your users
 2. **Stripe Connect** - Enabling your users (tradespeople) to receive payments from their customers
 
 ---
 
-## Part 1: Platform Subscription Setup (Your €59/Month Revenue)
+## Part 1: Platform Subscription Setup (Your €99/Month Revenue)
 
 ### 1.1 Create a Stripe Account
 
@@ -209,7 +209,7 @@ FRONTEND_URL=https://your-app.com
 
 #### New User Signs Up:
 1. Creates account → 14-day free trial starts
-2. After trial → Pays €59/month subscription
+2. After trial → Pays €99/month subscription
 3. Goes to Settings → Receive Payments → Connects Stripe
 4. Stripe verifies their identity (~5 minutes)
 5. Now ready to receive payments!

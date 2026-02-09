@@ -255,7 +255,7 @@ function SubscriptionManager() {
               disabled={checkoutMutation.isPending}
             >
               <i className="fas fa-credit-card"></i>
-              {checkoutMutation.isPending ? 'Loading...' : 'Subscribe Now - €59/month'}
+              {checkoutMutation.isPending ? 'Loading...' : 'Subscribe Now - €99/month'}
             </button>
           )}
 

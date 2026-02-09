@@ -6,7 +6,7 @@ This guide explains how to set up Stripe for handling subscriptions in BookedFor
 
 BookedForYou offers two subscription options:
 1. **14-Day Free Trial** - Full access to all features, no credit card required
-2. **Pro Plan (€59/month)** - Continued access after trial ends
+2. **Pro Plan (€99/month)** - Continued access after trial ends
 
 ## Stripe Dashboard Setup
 
