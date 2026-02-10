@@ -3,6 +3,14 @@ import axios from 'axios';
 // Use environment variable for API URL, fallback to relative path for local dev
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+// Grace period flag: set by AuthContext after login/signup to prevent
+// the 401 interceptor from wiping auth state before the cross-origin
+// session cookie is fully established.
+let _authGracePeriod = false;
+export function setAuthGracePeriod(active) {
+  _authGracePeriod = active;
+}
+
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -18,10 +26,11 @@ api.interceptors.response.use(
   (error) => {
     // Auto-clear auth state on 401 ONLY for non-auth API calls.
     // Auth endpoints (login, me, etc.) handle their own 401s.
-    // This catches expired sessions on protected endpoints like /api/bookings.
+    // Skip during grace period after login (cross-origin cookie may not be set yet).
     if (
       error.response?.status === 401 &&
-      !error.config?.url?.includes('/api/auth/')
+      !error.config?.url?.includes('/api/auth/') &&
+      !_authGracePeriod
     ) {
       sessionStorage.removeItem('authUser');
       sessionStorage.removeItem('authSubscription');

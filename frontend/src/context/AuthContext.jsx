@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import api from '../services/api';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import api, { setAuthGracePeriod } from '../services/api';
 import { clearSensitiveData } from '../utils/security';
 
 const AuthContext = createContext(null);
@@ -21,6 +21,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
+  // Guard: when true, checkAuth won't clear state even if the server
+  // says "not authenticated" (cross-origin cookie may not be set yet).
+  // Set after login/signup, cleared after a short grace period.
+  const justAuthenticatedRef = useRef(false);
+
   const clearAuth = useCallback(() => {
     setUser(null);
     setSubscription(null);
@@ -29,7 +34,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Verify session with server. Only clears auth if server explicitly
-  // says "not authenticated" — network errors don't log you out.
+  // says "not authenticated" AND we didn't just log in.
   const checkAuth = useCallback(async () => {
     try {
       const response = await api.get('/api/auth/me');
@@ -41,16 +46,19 @@ export function AuthProvider({ children }) {
           sessionStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
         }
       } else {
-        // Server explicitly said not authenticated — clear state
-        clearAuth();
+        // Server said not authenticated — but if we just logged in,
+        // the cross-origin cookie likely hasn't been set yet. Trust
+        // the local state instead of wiping it.
+        if (!justAuthenticatedRef.current) {
+          clearAuth();
+        }
       }
     } catch (error) {
       // Network error or server down — don't wipe auth state.
-      // Only clear if we got a definitive 401 response.
-      if (error.response?.status === 401) {
+      // Only clear if we got a definitive 401 AND we didn't just log in.
+      if (error.response?.status === 401 && !justAuthenticatedRef.current) {
         clearAuth();
       }
-      // Otherwise keep existing sessionStorage state — user stays logged in
     } finally {
       setLoading(false);
       setInitialized(true);
@@ -68,11 +76,20 @@ export function AuthProvider({ children }) {
     try {
       const response = await api.post('/api/auth/login', { email, password });
       if (response.data.success) {
+        // Protect against checkAuth race condition — cross-origin cookie
+        // may not be established yet, so don't let a concurrent checkAuth()
+        // or the 401 interceptor wipe the state we're about to set.
+        justAuthenticatedRef.current = true;
+        setAuthGracePeriod(true);
+        setTimeout(() => {
+          justAuthenticatedRef.current = false;
+          setAuthGracePeriod(false);
+        }, 5000);
+
         const userData = response.data.user;
         setUser(userData);
         sessionStorage.setItem('authUser', JSON.stringify(userData));
 
-        // Use subscription from login response directly — no second API call needed
         if (response.data.subscription) {
           setSubscription(response.data.subscription);
           sessionStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
@@ -102,6 +119,13 @@ export function AuthProvider({ children }) {
     try {
       const response = await api.post('/api/auth/signup', userData);
       if (response.data.success) {
+        justAuthenticatedRef.current = true;
+        setAuthGracePeriod(true);
+        setTimeout(() => {
+          justAuthenticatedRef.current = false;
+          setAuthGracePeriod(false);
+        }, 5000);
+
         const newUser = response.data.user;
         setUser(newUser);
         sessionStorage.setItem('authUser', JSON.stringify(newUser));
