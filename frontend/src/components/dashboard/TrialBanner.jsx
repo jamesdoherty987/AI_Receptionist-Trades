@@ -68,7 +68,7 @@ function TrialBanner() {
           </div>
         </div>
         <Link to="/settings?tab=subscription" className="banner-btn">
-          <i className="fas fa-credit-card"></i> Subscribe - €59/mo
+          <i className="fas fa-credit-card"></i> Subscribe - €99/mo
         </Link>
       </div>
     );

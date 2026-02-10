@@ -146,7 +146,7 @@ function SubscriptionManager() {
           <div className="plan-price">
             {isPro && (
               <>
-                <span className="price">&euro;59</span>
+                <span className="price">&euro;99</span>
                 <span className="period">/month</span>
               </>
             )}
