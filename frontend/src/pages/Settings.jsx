@@ -361,21 +361,21 @@ function Settings() {
               onClick={() => setActiveTab('subscription')}
             >
               <i className="fas fa-credit-card"></i>
-              Subscription & Billing
+              <span className="settings-tab-text">Subscription</span>
             </button>
             <button 
               className={`settings-tab ${activeTab === 'payments' ? 'active' : ''}`}
               onClick={() => setActiveTab('payments')}
             >
               <i className="fab fa-stripe-s"></i>
-              Receive Payments
+              <span className="settings-tab-text">Payments</span>
             </button>
             <button 
               className={`settings-tab ${activeTab === 'business' ? 'active' : ''}`}
               onClick={() => setActiveTab('business')}
             >
               <i className="fas fa-building"></i>
-              Business Settings
+              <span className="settings-tab-text">Business</span>
             </button>
           </div>
 
@@ -673,7 +673,7 @@ function Settings() {
                     placeholder="Upload Your Company Logo"
                   />
                   <small className="form-help" style={{ display: 'block', marginTop: '10px', color: '#666' }}>
-                    Upload your company logo. It will appear in the header and on invoices. Maximum file size: 5MB.
+                    Upload your company logo. It will appear in the header and on invoices. Images are automatically optimized.
                   </small>
                 </div>
               </div>
