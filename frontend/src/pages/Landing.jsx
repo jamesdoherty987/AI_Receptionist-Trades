@@ -249,7 +249,7 @@ function Landing() {
             Leave Answering Your Phone In The Past
           </div>
           <h1>
-            Your AI Receptionist
+            The Receptionist That
             <span className="gradient-text"> Never Sleeps</span>
           </h1>
           <p className="hero-subtitle">
@@ -276,14 +276,14 @@ function Landing() {
             <div className="stat-divider"></div>
             <div className="stat">
               <span className="stat-number">
-                <NumberTicker end={98} suffix="%" />
+                <NumberTicker end={0}/>
               </span>
-              <span className="stat-label">Satisfaction</span>
+              <span className="stat-label">Customers Missed</span>
             </div>
             <div className="stat-divider"></div>
             <div className="stat">
               <span className="stat-number">
-                <NumberTicker end={40} suffix="%" />
+                <NumberTicker end={30} suffix="%" />
               </span>
               <span className="stat-label">More Bookings</span>
             </div>
