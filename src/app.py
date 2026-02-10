@@ -2143,6 +2143,7 @@ def business_settings_api():
         # Twilio phone number assigned from pool (read-only)
         settings = {
             'business_name': company.get('company_name'),
+            'business_type': company.get('trade_type'),  # Trade type from signup
             'business_phone': company.get('phone'),
             'business_email': company.get('email'),
             'business_address': company.get('address'),
@@ -2174,6 +2175,7 @@ def business_settings_api():
         update_data = {}
         field_mapping = {
             'business_name': 'company_name',
+            'business_type': 'trade_type',  # Trade type from signup
             'business_phone': 'phone',
             'business_email': 'email',
             'business_address': 'address',
@@ -3073,7 +3075,8 @@ def send_invoice_api(booking_id):
         job_address = booking_dict.get('address') or booking_dict.get('job_address') or ''
         
         # Get business name from the company record
-        company_business_name = company.get('business_name') or company.get('name') or None if company else None
+        # Note: In the companies table, the business name is stored as 'company_name', not 'business_name'
+        company_business_name = company.get('company_name') or company.get('business_name') or company.get('name') or None if company else None
         
         success = email_service.send_invoice(
             to_email=to_email,
