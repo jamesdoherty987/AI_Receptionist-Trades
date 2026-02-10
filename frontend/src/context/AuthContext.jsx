@@ -29,8 +29,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   const checkAuth = useCallback(async () => {
+    const token = sessionStorage.getItem('authToken');
+    console.log('[AUTH] checkAuth called, token exists:', !!token);
+    
     try {
       const response = await api.get('/api/auth/me');
+      console.log('[AUTH] /api/auth/me response:', response.data.authenticated);
+      
       if (response.data.authenticated) {
         setUser(response.data.user);
         setSubscription(response.data.subscription || null);
@@ -42,9 +47,11 @@ export function AuthProvider({ children }) {
         // Server said not authenticated. The request interceptor already
         // sent the token (if we had one), so if the server still says no,
         // the token is expired/invalid. Clear everything.
+        console.log('[AUTH] Server returned authenticated: false, clearing auth');
         clearAuth();
       }
     } catch (error) {
+      console.log('[AUTH] checkAuth error:', error.response?.status, error.message);
       // Only clear on a definitive 401 response. Network errors or
       // server-down scenarios keep existing state so the user isn't
       // kicked out by a transient failure.

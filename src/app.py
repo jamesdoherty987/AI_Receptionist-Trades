@@ -104,7 +104,11 @@ if public_url:
     if public_url.startswith('https://'):
         allowed_origins.append(public_url.replace('https://', 'http://'))
 
-CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credentials=True)
+CORS(app, resources={r"/api/*": {
+    "origins": allowed_origins,
+    "allow_headers": ["Content-Type", "X-Auth-Token"],
+    "expose_headers": ["X-Auth-Token"],
+}}, supports_credentials=True)
 
 # Configure secure session
 # In production, SECRET_KEY MUST be set — fail fast if missing

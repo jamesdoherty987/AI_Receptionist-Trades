@@ -18,6 +18,10 @@ api.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('authToken');
   if (token) {
     config.headers['X-Auth-Token'] = token;
+    // Debug: log that we're attaching the token (only for auth endpoints)
+    if (config.url?.includes('/api/auth/')) {
+      console.log('[API] Attaching X-Auth-Token to', config.url);
+    }
   }
   return config;
 });
