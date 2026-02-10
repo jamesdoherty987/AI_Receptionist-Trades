@@ -2,6 +2,7 @@
 """
 Email Reminder Service
 Sends appointment reminders via email - works great in Ireland/EU
+Supports Resend API (recommended) with SMTP fallback
 """
 import smtplib
 from datetime import datetime
@@ -9,13 +10,22 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
 
+# Try to import resend
+try:
+    import resend
+    RESEND_AVAILABLE = True
+except ImportError:
+    RESEND_AVAILABLE = False
+    print("[WARNING] Resend package not installed. Install with: pip install resend")
+
 
 class EmailReminderService:
-    """Send email reminders for appointments"""
+    """Send email reminders for appointments - supports Resend API with SMTP fallback"""
     
     def __init__(self, smtp_server: str = None, smtp_port: int = None, 
                  smtp_user: str = None, smtp_password: str = None, 
-                 from_email: str = None):
+                 smtp_from_email: str = None, resend_api_key: str = None,
+                 resend_from_email: str = None):
         """
         Initialize email service
         
@@ -24,23 +34,122 @@ class EmailReminderService:
             smtp_port: SMTP port (usually 587 for TLS)
             smtp_user: SMTP username/email
             smtp_password: SMTP password or app password
-            from_email: Email address to send from
+            smtp_from_email: Email address to send from via SMTP (must match SMTP auth)
+            resend_api_key: Resend API key (recommended over SMTP)
+            resend_from_email: Email address to send from via Resend (must be verified domain)
         """
         from src.utils.config import config
         
-        # Try to get from config/env, fall back to parameters
+        # Try Resend first (recommended - works on all hosts)
+        self.resend_api_key = resend_api_key or getattr(config, 'RESEND_API_KEY', None)
+        self.resend_from_email = resend_from_email or getattr(config, 'RESEND_FROM_EMAIL', None)
+        self.use_resend = bool(self.resend_api_key and RESEND_AVAILABLE)
+        
+        if self.use_resend:
+            resend.api_key = self.resend_api_key
+            print(f"[SUCCESS] Email service initialized with Resend API (from: {self.resend_from_email or 'onboarding@resend.dev'})")
+        
+        # SMTP fallback configuration
         self.smtp_server = smtp_server or getattr(config, 'SMTP_SERVER', None)
         self.smtp_port = smtp_port or getattr(config, 'SMTP_PORT', 587)
         self.smtp_user = smtp_user or getattr(config, 'SMTP_USER', None)
         self.smtp_password = smtp_password or getattr(config, 'SMTP_PASSWORD', None)
-        self.from_email = from_email or getattr(config, 'FROM_EMAIL', None)
+        self.smtp_from_email = smtp_from_email or getattr(config, 'SMTP_FROM_EMAIL', None) or getattr(config, 'FROM_EMAIL', None)
         
-        if not all([self.smtp_server, self.smtp_user, self.smtp_password, self.from_email]):
-            print("[WARNING] Email service not fully configured. Email reminders will not be sent.")
-            self.configured = False
-        else:
+        self.smtp_configured = all([self.smtp_server, self.smtp_user, self.smtp_password, self.smtp_from_email])
+        
+        if self.smtp_configured and not self.use_resend:
+            print(f"[SUCCESS] Email service initialized with SMTP (from: {self.smtp_from_email})")
+        
+        # Service is configured if either Resend or SMTP is available
+        if self.use_resend:
             self.configured = True
-            print("[SUCCESS] Email reminder service initialized")
+        elif self.smtp_configured:
+            self.configured = True
+        else:
+            print("[WARNING] Email service not configured. Set RESEND_API_KEY (recommended) or SMTP settings.")
+            self.configured = False
+        
+        # For backward compatibility, expose a from_email property
+        # Prefers Resend from_email, falls back to SMTP from_email
+        self.from_email = self.resend_from_email or self.smtp_from_email
+    
+    def _send_via_resend(self, to_email: str, subject: str, html_body: str, 
+                         text_body: str, from_name: str = None) -> bool:
+        """Send email using Resend API"""
+        try:
+            from_addr = self.resend_from_email or "onboarding@resend.dev"
+            from_address = f"{from_name} <{from_addr}>" if from_name else from_addr
+            
+            params = {
+                "from": from_address,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_body,
+                "text": text_body,
+            }
+            
+            response = resend.Emails.send(params)
+            print(f"[SUCCESS] Email sent via Resend to {to_email} (ID: {response.get('id', 'unknown')})")
+            return True
+            
+        except Exception as e:
+            print(f"[ERROR] Resend failed: {e}")
+            return False
+    
+    def _send_via_smtp(self, to_email: str, subject: str, html_body: str, 
+                       text_body: str, from_name: str = None) -> bool:
+        """Send email using SMTP (fallback)"""
+        try:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = f'{from_name} <{self.smtp_from_email}>' if from_name else self.smtp_from_email
+            msg['To'] = to_email
+            
+            part1 = MIMEText(text_body, 'plain')
+            part2 = MIMEText(html_body, 'html')
+            msg.attach(part1)
+            msg.attach(part2)
+            
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                server.starttls()
+                server.login(self.smtp_user, self.smtp_password)
+                server.send_message(msg)
+            
+            print(f"[SUCCESS] Email sent via SMTP to {to_email}")
+            return True
+            
+        except Exception as e:
+            print(f"[ERROR] SMTP failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _send_email(self, to_email: str, subject: str, html_body: str, 
+                    text_body: str, from_name: str = None) -> bool:
+        """
+        Send email using best available method (Resend first, then SMTP fallback)
+        """
+        if not self.configured:
+            print("[ERROR] Email service not configured")
+            return False
+        
+        # Try Resend first
+        if self.use_resend:
+            success = self._send_via_resend(to_email, subject, html_body, text_body, from_name)
+            if success:
+                return True
+            # If Resend fails, try SMTP fallback
+            if self.smtp_configured:
+                print("[INFO] Resend failed, trying SMTP fallback...")
+                return self._send_via_smtp(to_email, subject, html_body, text_body, from_name)
+            return False
+        
+        # Use SMTP if Resend not configured
+        if self.smtp_configured:
+            return self._send_via_smtp(to_email, subject, html_body, text_body, from_name)
+        
+        return False
     
     def send_reminder(self, to_email: str, appointment_time: datetime, 
                      customer_name: str, service_type: str = "appointment",
@@ -78,11 +187,7 @@ class EmailReminderService:
             # Format the appointment time
             time_str = appointment_time.strftime('%A, %B %d at %I:%M %p')
             
-            # Create message
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = f'Reminder: Your {service_type.title()} Appointment Tomorrow'
-            msg['From'] = f'{business_name} <{self.from_email}>'
-            msg['To'] = to_email
+            subject = f'Reminder: Your {service_type.title()} Appointment Tomorrow'
             
             # Plain text version
             text_body = f"""
@@ -127,23 +232,10 @@ Best regards,
 </html>
             """.strip()
             
-            # Attach both versions
-            part1 = MIMEText(text_body, 'plain')
-            part2 = MIMEText(html_body, 'html')
-            msg.attach(part1)
-            msg.attach(part2)
-            
-            # Send email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_user, self.smtp_password)
-                server.send_message(msg)
-            
-            print(f"[SUCCESS] Email reminder sent to {to_email}")
-            return True
+            return self._send_email(to_email, subject, html_body, text_body, business_name)
             
         except Exception as e:
-            print(f"[ERROR] Failed to send email: {e}")
+            print(f"[ERROR] Failed to send reminder email: {e}")
             return False
     
     def send_confirmation_reply(self, to_email: str, message: str) -> bool:
@@ -162,21 +254,14 @@ Best regards,
             return False
         
         try:
-            msg = MIMEText(message)
-            msg['Subject'] = 'Appointment Confirmation'
-            msg['From'] = self.from_email
-            msg['To'] = to_email
+            subject = 'Appointment Confirmation'
+            text_body = message
+            html_body = f"<html><body><p>{message}</p></body></html>"
             
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_user, self.smtp_password)
-                server.send_message(msg)
-            
-            print(f"[SUCCESS] Email sent to {to_email}")
-            return True
+            return self._send_email(to_email, subject, html_body, text_body)
             
         except Exception as e:
-            print(f"[ERROR] Failed to send email: {e}")
+            print(f"[ERROR] Failed to send confirmation email: {e}")
             return False
     
     def send_password_reset(self, to_email: str, reset_link: str, business_name: str = 'BookedForYou') -> bool:
@@ -196,10 +281,7 @@ Best regards,
             return False
         
         try:
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = f'Reset Your Password - {business_name}'
-            msg['From'] = f'{business_name} <{self.from_email}>'
-            msg['To'] = to_email
+            subject = f'Reset Your Password - {business_name}'
             
             text_body = f"""
 Hi,
@@ -255,18 +337,7 @@ Best regards,
 </html>
             """.strip()
             
-            part1 = MIMEText(text_body, 'plain')
-            part2 = MIMEText(html_body, 'html')
-            msg.attach(part1)
-            msg.attach(part2)
-            
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_user, self.smtp_password)
-                server.send_message(msg)
-            
-            print(f"[SUCCESS] Password reset email sent to {to_email}")
-            return True
+            return self._send_email(to_email, subject, html_body, text_body, business_name)
             
         except Exception as e:
             print(f"[ERROR] Failed to send password reset email: {e}")
@@ -341,12 +412,6 @@ Best regards,
             if not invoice_number:
                 from datetime import datetime as dt
                 invoice_number = f"INV-{dt.now().strftime('%Y%m%d%H%M%S')}"
-            
-            # Create message
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = f'Invoice #{invoice_number} from {business_name}'
-            msg['From'] = f'{business_name} <{self.from_email}>'
-            msg['To'] = to_email
             
             # Payment link text
             payment_text = ""
@@ -623,20 +688,14 @@ This invoice was generated automatically.'''.strip()
             if add_bank_details or add_revolut_phone:
                 print(f"[INFO] Sending invoice to {to_email} with bank details: {add_bank_details}, revolut: {add_revolut_phone}")
             
-            # Attach both versions
-            part1 = MIMEText(text_body, 'plain')
-            part2 = MIMEText(html_body, 'html')
-            msg.attach(part1)
-            msg.attach(part2)
+            # Send email using unified method (Resend or SMTP)
+            subject = f'Invoice #{invoice_number} from {business_name}'
+            success = self._send_email(to_email, subject, html_body, text_body, business_name)
             
-            # Send email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_user, self.smtp_password)
-                server.send_message(msg)
+            if success:
+                print(f"[SUCCESS] Invoice email sent to {to_email} (Invoice #{invoice_number})")
             
-            print(f"[SUCCESS] Invoice email sent to {to_email} (Invoice #{invoice_number})")
-            return True
+            return success
             
         except Exception as e:
             try:

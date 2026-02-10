@@ -24,7 +24,7 @@ class TestEmailConfiguration(unittest.TestCase):
         with open('.env.example', 'r') as f:
             content = f.read()
         
-        required_vars = ['SMTP_SERVER', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'FROM_EMAIL']
+        required_vars = ['SMTP_SERVER', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM_EMAIL', 'RESEND_API_KEY', 'RESEND_FROM_EMAIL']
         for var in required_vars:
             self.assertIn(var, content, f"{var} should be documented in .env.example")
     
@@ -37,7 +37,9 @@ class TestEmailConfiguration(unittest.TestCase):
         self.assertTrue(hasattr(Config, 'SMTP_PORT'))
         self.assertTrue(hasattr(Config, 'SMTP_USER'))
         self.assertTrue(hasattr(Config, 'SMTP_PASSWORD'))
-        self.assertTrue(hasattr(Config, 'FROM_EMAIL'))
+        self.assertTrue(hasattr(Config, 'SMTP_FROM_EMAIL'))
+        self.assertTrue(hasattr(Config, 'RESEND_API_KEY'))
+        self.assertTrue(hasattr(Config, 'RESEND_FROM_EMAIL'))
 
 
 class TestEmailReminderService(unittest.TestCase):
@@ -48,10 +50,13 @@ class TestEmailReminderService(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             # Clear any cached config
             with patch('src.utils.config.config') as mock_config:
+                mock_config.RESEND_API_KEY = None
+                mock_config.RESEND_FROM_EMAIL = None
                 mock_config.SMTP_SERVER = None
                 mock_config.SMTP_PORT = 587
                 mock_config.SMTP_USER = None
                 mock_config.SMTP_PASSWORD = None
+                mock_config.SMTP_FROM_EMAIL = None
                 mock_config.FROM_EMAIL = None
                 
                 from src.services.email_reminder import EmailReminderService
@@ -59,8 +64,8 @@ class TestEmailReminderService(unittest.TestCase):
                 
                 self.assertFalse(service.configured)
     
-    def test_service_init_with_config(self):
-        """Service should initialize when config is present"""
+    def test_service_init_with_smtp_config(self):
+        """Service should initialize when SMTP config is present"""
         from src.services.email_reminder import EmailReminderService
         
         service = EmailReminderService(
@@ -68,22 +73,43 @@ class TestEmailReminderService(unittest.TestCase):
             smtp_port=587,
             smtp_user='test@test.com',
             smtp_password='password123',
-            from_email='test@test.com'
+            smtp_from_email='test@test.com'
         )
         
         self.assertTrue(service.configured)
+        self.assertTrue(service.smtp_configured)
         self.assertEqual(service.smtp_server, 'smtp.test.com')
         self.assertEqual(service.smtp_port, 587)
+        self.assertEqual(service.smtp_from_email, 'test@test.com')
+    
+    def test_service_init_with_resend_config(self):
+        """Service should initialize when Resend API key is present"""
+        from src.services.email_reminder import EmailReminderService, RESEND_AVAILABLE
+        
+        if not RESEND_AVAILABLE:
+            self.skipTest("Resend package not installed")
+        
+        service = EmailReminderService(
+            resend_api_key='re_test_123456',
+            resend_from_email='invoices@test.com'
+        )
+        
+        self.assertTrue(service.configured)
+        self.assertTrue(service.use_resend)
+        self.assertEqual(service.resend_from_email, 'invoices@test.com')
     
     def test_send_invoice_returns_false_when_not_configured(self):
         """send_invoice should return False when service not configured"""
         from src.services.email_reminder import EmailReminderService
         
         with patch('src.utils.config.config') as mock_config:
+            mock_config.RESEND_API_KEY = None
+            mock_config.RESEND_FROM_EMAIL = None
             mock_config.SMTP_SERVER = None
             mock_config.SMTP_PORT = 587
             mock_config.SMTP_USER = None
             mock_config.SMTP_PASSWORD = None
+            mock_config.SMTP_FROM_EMAIL = None
             mock_config.FROM_EMAIL = None
             
             service = EmailReminderService()
@@ -127,7 +153,7 @@ class TestInvoiceEmailContent(unittest.TestCase):
                         smtp_port=587,
                         smtp_user='test@test.com',
                         smtp_password='password123',
-                        from_email='invoices@platform.com'
+                        smtp_from_email='invoices@platform.com'
                     )
                     
                     result = service.send_invoice(
@@ -175,7 +201,7 @@ class TestInvoiceEmailContent(unittest.TestCase):
                         smtp_port=587,
                         smtp_user='test@test.com',
                         smtp_password='password123',
-                        from_email='invoices@platform.com'
+                        smtp_from_email='invoices@platform.com'
                     )
                     
                     stripe_link = 'https://checkout.stripe.com/pay/cs_test_abc123'
@@ -211,7 +237,7 @@ class TestInvoiceEmailContent(unittest.TestCase):
                         smtp_port=587,
                         smtp_user='test@test.com',
                         smtp_password='password123',
-                        from_email='invoices@platform.com'
+                        smtp_from_email='invoices@platform.com'
                     )
                     
                     bank_details = {

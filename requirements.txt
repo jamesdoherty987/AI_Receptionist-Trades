@@ -39,3 +39,6 @@ dateparser==1.2.0
 
 # Stripe Payment Processing
 stripe==7.0.0
+
+# Email - Resend (transactional email API)
+resend>=2.0.0

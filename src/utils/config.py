@@ -87,11 +87,16 @@ class Config:
     TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
     
     # Email (for appointment reminders - works globally)
+    # Resend API (recommended - works on all hosts including Render)
+    RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+    RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL")  # Must be from verified domain in Resend
+    # SMTP fallback (may be blocked on some hosts)
     SMTP_SERVER = os.getenv("SMTP_SERVER")  # e.g., smtp.gmail.com
     SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
     SMTP_USER = os.getenv("SMTP_USER")
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")  # Use app password for Gmail
-    FROM_EMAIL = os.getenv("FROM_EMAIL")
+    SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL")  # Must match SMTP auth email
+    FROM_EMAIL = os.getenv("FROM_EMAIL")  # Legacy fallback, use SMTP_FROM_EMAIL instead
     REMINDER_METHOD = os.getenv("REMINDER_METHOD", "email")  # "email" or "sms"
     
     # Stripe Payment
