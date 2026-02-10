@@ -1,11 +1,10 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import api, { setAuthGracePeriod } from '../services/api';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import api from '../services/api';
 import { clearSensitiveData } from '../utils/security';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  // Initialize state from sessionStorage immediately to avoid flash
   const [user, setUser] = useState(() => {
     try {
       const cached = sessionStorage.getItem('authUser');
@@ -21,20 +20,14 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
-  // Guard: when true, checkAuth won't clear state even if the server
-  // says "not authenticated" (cross-origin cookie may not be set yet).
-  // Set after login/signup, cleared after a short grace period.
-  const justAuthenticatedRef = useRef(false);
-
   const clearAuth = useCallback(() => {
     setUser(null);
     setSubscription(null);
     sessionStorage.removeItem('authUser');
     sessionStorage.removeItem('authSubscription');
+    sessionStorage.removeItem('authToken');
   }, []);
 
-  // Verify session with server. Only clears auth if server explicitly
-  // says "not authenticated" AND we didn't just log in.
   const checkAuth = useCallback(async () => {
     try {
       const response = await api.get('/api/auth/me');
@@ -46,17 +39,16 @@ export function AuthProvider({ children }) {
           sessionStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
         }
       } else {
-        // Server said not authenticated — but if we just logged in,
-        // the cross-origin cookie likely hasn't been set yet. Trust
-        // the local state instead of wiping it.
-        if (!justAuthenticatedRef.current) {
-          clearAuth();
-        }
+        // Server said not authenticated. The request interceptor already
+        // sent the token (if we had one), so if the server still says no,
+        // the token is expired/invalid. Clear everything.
+        clearAuth();
       }
     } catch (error) {
-      // Network error or server down — don't wipe auth state.
-      // Only clear if we got a definitive 401 AND we didn't just log in.
-      if (error.response?.status === 401 && !justAuthenticatedRef.current) {
+      // Only clear on a definitive 401 response. Network errors or
+      // server-down scenarios keep existing state so the user isn't
+      // kicked out by a transient failure.
+      if (error.response?.status === 401) {
         clearAuth();
       }
     } finally {
@@ -65,7 +57,6 @@ export function AuthProvider({ children }) {
     }
   }, [clearAuth]);
 
-  // Check auth on mount and refresh subscription hourly
   useEffect(() => {
     checkAuth();
     const interval = setInterval(checkAuth, 60 * 60 * 1000);
@@ -76,19 +67,14 @@ export function AuthProvider({ children }) {
     try {
       const response = await api.post('/api/auth/login', { email, password });
       if (response.data.success) {
-        // Protect against checkAuth race condition — cross-origin cookie
-        // may not be established yet, so don't let a concurrent checkAuth()
-        // or the 401 interceptor wipe the state we're about to set.
-        justAuthenticatedRef.current = true;
-        setAuthGracePeriod(true);
-        setTimeout(() => {
-          justAuthenticatedRef.current = false;
-          setAuthGracePeriod(false);
-        }, 5000);
-
         const userData = response.data.user;
         setUser(userData);
         sessionStorage.setItem('authUser', JSON.stringify(userData));
+
+        // Store auth token for cross-origin cookie fallback
+        if (response.data.auth_token) {
+          sessionStorage.setItem('authToken', response.data.auth_token);
+        }
 
         if (response.data.subscription) {
           setSubscription(response.data.subscription);
@@ -119,18 +105,14 @@ export function AuthProvider({ children }) {
     try {
       const response = await api.post('/api/auth/signup', userData);
       if (response.data.success) {
-        justAuthenticatedRef.current = true;
-        setAuthGracePeriod(true);
-        setTimeout(() => {
-          justAuthenticatedRef.current = false;
-          setAuthGracePeriod(false);
-        }, 5000);
-
         const newUser = response.data.user;
         setUser(newUser);
         sessionStorage.setItem('authUser', JSON.stringify(newUser));
 
-        // Build subscription from the signup response data
+        if (response.data.auth_token) {
+          sessionStorage.setItem('authToken', response.data.auth_token);
+        }
+
         if (newUser.subscription_tier) {
           const sub = {
             tier: newUser.subscription_tier,
@@ -161,6 +143,7 @@ export function AuthProvider({ children }) {
       setUser(null);
       setSubscription(null);
       clearSensitiveData();
+      sessionStorage.removeItem('authToken');
     }
   };
 

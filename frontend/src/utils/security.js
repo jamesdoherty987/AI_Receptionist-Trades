@@ -153,6 +153,7 @@ export const clearSensitiveData = () => {
     localStorage.removeItem('authSubscription');
     sessionStorage.removeItem('authUser');
     sessionStorage.removeItem('authSubscription');
+    sessionStorage.removeItem('authToken');
     sessionStorage.clear();
   } catch (error) {
     console.error('Failed to clear sensitive data:', error);

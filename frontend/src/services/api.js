@@ -3,44 +3,48 @@ import axios from 'axios';
 // Use environment variable for API URL, fallback to relative path for local dev
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-// Grace period flag: set by AuthContext after login/signup to prevent
-// the 401 interceptor from wiping auth state before the cross-origin
-// session cookie is fully established.
-let _authGracePeriod = false;
-export function setAuthGracePeriod(active) {
-  _authGracePeriod = active;
-}
-
 const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true, // Important for session cookies
-  timeout: 30000, // 30 second timeout
+  withCredentials: true, // Still send cookies when they work
+  timeout: 30000,
 });
 
-// Response interceptor for global error handling
+// Request interceptor: attach auth token header on every request.
+// This is the reliable fallback when cross-origin cookies are blocked.
+api.interceptors.request.use((config) => {
+  const token = sessionStorage.getItem('authToken');
+  if (token) {
+    config.headers['X-Auth-Token'] = token;
+  }
+  return config;
+});
+
+// Response interceptor: only redirect on 401 for non-auth endpoints
+// and only if we have no local auth state (prevents false logouts).
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Auto-clear auth state on 401 ONLY for non-auth API calls.
-    // Auth endpoints (login, me, etc.) handle their own 401s.
-    // Skip during grace period after login (cross-origin cookie may not be set yet).
     if (
       error.response?.status === 401 &&
-      !error.config?.url?.includes('/api/auth/') &&
-      !_authGracePeriod
+      !error.config?.url?.includes('/api/auth/')
     ) {
-      sessionStorage.removeItem('authUser');
-      sessionStorage.removeItem('authSubscription');
-      // Redirect to login if on a protected page
-      if (window.location.pathname !== '/login' && 
-          window.location.pathname !== '/signup' &&
-          window.location.pathname !== '/' &&
-          window.location.pathname !== '/forgot-password' &&
-          window.location.pathname !== '/reset-password') {
-        window.location.href = '/login';
+      // Only wipe auth if we don't have a token — if we do, the token
+      // itself is expired/invalid and we should force re-login.
+      const hasToken = !!sessionStorage.getItem('authToken');
+      if (hasToken) {
+        sessionStorage.removeItem('authUser');
+        sessionStorage.removeItem('authSubscription');
+        sessionStorage.removeItem('authToken');
+        if (window.location.pathname !== '/login' && 
+            window.location.pathname !== '/signup' &&
+            window.location.pathname !== '/' &&
+            window.location.pathname !== '/forgot-password' &&
+            window.location.pathname !== '/reset-password') {
+          window.location.href = '/login';
+        }
       }
     }
     return Promise.reject(error);

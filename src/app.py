@@ -37,6 +37,7 @@ from flask import Flask, Response, request, jsonify, session, g
 from flask_cors import CORS
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.twiml.messaging_response import MessagingResponse
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from src.utils.config import config
 from src.services.database import get_database
 from src.utils.security import (
@@ -119,6 +120,20 @@ configure_secure_session(app)
 if not os.getenv('SECRET_KEY'):
     print("⚠️ WARNING: SECRET_KEY not set. Sessions will reset on restart.")
 
+# --- Auth token helpers (fallback for cross-origin cookie issues) ---
+_token_serializer = URLSafeTimedSerializer(app.secret_key, salt='auth-token')
+
+def generate_auth_token(company_id: int, email: str) -> str:
+    """Generate a signed auth token encoding company_id and email."""
+    return _token_serializer.dumps({'cid': company_id, 'email': email})
+
+def verify_auth_token(token: str, max_age: int = 86400) -> dict | None:
+    """Verify and decode an auth token. Returns payload or None."""
+    try:
+        return _token_serializer.loads(token, max_age=max_age)
+    except (BadSignature, SignatureExpired):
+        return None
+
 # Security: Add security headers to all responses
 @app.after_request
 def add_security_headers(response):
@@ -156,17 +171,32 @@ def get_client_ip():
 
 
 def login_required(f):
-    """Decorator to require login for API endpoints"""
+    """Decorator to require login for API endpoints.
+    Checks Flask session cookie first, falls back to X-Auth-Token header
+    (needed when cross-origin cookies are blocked by the browser).
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'company_id' not in session:
-            get_security_logger().log_failed_auth(
-                request.path,
-                get_client_ip(),
-                'No session'
-            )
-            return jsonify({"error": "Authentication required"}), 401
-        return f(*args, **kwargs)
+        # 1. Try session cookie (preferred)
+        if 'company_id' in session:
+            return f(*args, **kwargs)
+
+        # 2. Fallback: signed auth token header
+        token = request.headers.get('X-Auth-Token')
+        if token:
+            payload = verify_auth_token(token)
+            if payload:
+                # Populate session from token so downstream code works unchanged
+                session['company_id'] = payload['cid']
+                session['email'] = payload['email']
+                return f(*args, **kwargs)
+
+        get_security_logger().log_failed_auth(
+            request.path,
+            get_client_ip(),
+            'No session or valid token'
+        )
+        return jsonify({"error": "Authentication required"}), 401
     return decorated_function
 
 
@@ -610,10 +640,14 @@ def signup():
         session['company_id'] = company_id
         session['email'] = email
         
+        # Generate auth token as fallback for cross-origin cookie issues
+        auth_token = generate_auth_token(company_id, email)
+        
         company = db.get_company(company_id)
         return jsonify({
             "success": True,
             "message": "Account created successfully. Your 14-day free trial has started!",
+            "auth_token": auth_token,
             "user": {
                 "id": company_id,
                 "company_name": company['company_name'],
@@ -723,6 +757,9 @@ def login():
     session['email'] = company['email']
     session.permanent = True  # Make session permanent (uses PERMANENT_SESSION_LIFETIME)
     
+    # Generate auth token as fallback for cross-origin cookie issues
+    auth_token = generate_auth_token(company['id'], company['email'])
+    
     # Log session creation for debugging
     print(f"[LOGIN] SUCCESS - User {company['id']} ({email}) from {origin} | "
           f"Secure={app.config.get('SESSION_COOKIE_SECURE')}, "
@@ -730,6 +767,7 @@ def login():
     return jsonify({
         "success": True,
         "message": "Logged in successfully",
+        "auth_token": auth_token,
         "user": {
             "id": company['id'],
             "company_name": company['company_name'],
@@ -760,13 +798,24 @@ def get_current_user():
     """Get the currently logged in user"""
     client_ip = get_client_ip()
     
-    # Debug logging for session check
+    # Check session cookie first, then fall back to auth token header
     has_session = 'company_id' in session
-    company_id = session.get('company_id', 'none')
-    print(f"[AUTH_CHECK] Request from {client_ip} - Session exists: {has_session}, Company ID: {company_id}")
+    company_id = session.get('company_id')
     
     if not has_session:
-        print(f"[AUTH_CHECK] No session found - user not authenticated")
+        token = request.headers.get('X-Auth-Token')
+        if token:
+            payload = verify_auth_token(token)
+            if payload:
+                company_id = payload['cid']
+                session['company_id'] = company_id
+                session['email'] = payload['email']
+                has_session = True
+    
+    print(f"[AUTH_CHECK] Request from {client_ip} - Session exists: {has_session}, Company ID: {company_id or 'none'}")
+    
+    if not has_session:
+        print(f"[AUTH_CHECK] No session or token found - user not authenticated")
         return jsonify({"authenticated": False}), 200
     
     db = get_database()
@@ -844,11 +893,9 @@ def get_dashboard_data():
 
 
 @app.route("/api/auth/profile", methods=["PUT"])
+@login_required
 def update_profile():
     """Update company profile"""
-    if 'company_id' not in session:
-        return jsonify({"error": "Authentication required"}), 401
-    
     data = request.json
     db = get_database()
     
@@ -888,12 +935,10 @@ def update_profile():
 
 
 @app.route("/api/auth/change-password", methods=["POST"])
+@login_required
 @rate_limit(max_requests=5, window_seconds=300)  # 5 password changes per 5 minutes
 def change_password():
     """Change password for logged in user"""
-    if 'company_id' not in session:
-        return jsonify({"error": "Authentication required"}), 401
-    
     data = request.json
     current_password = data.get('current_password', '')
     new_password = data.get('new_password', '')
@@ -1260,8 +1305,17 @@ def subscription_required(f):
     """Decorator to require active subscription for API endpoints"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Check session cookie first, fall back to auth token header
         if 'company_id' not in session:
-            return jsonify({"error": "Authentication required"}), 401
+            token = request.headers.get('X-Auth-Token')
+            if token:
+                payload = verify_auth_token(token)
+                if payload:
+                    session['company_id'] = payload['cid']
+                    session['email'] = payload['email']
+            
+            if 'company_id' not in session:
+                return jsonify({"error": "Authentication required"}), 401
         
         db = get_database()
         company = db.get_company(session['company_id'])
