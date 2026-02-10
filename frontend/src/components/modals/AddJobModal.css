@@ -469,16 +469,30 @@
 .add-job-form {
   max-width: 100%;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .add-job-form .form-group {
   max-width: 100%;
+  overflow: hidden;
 }
 
 .add-job-form .form-input,
-.add-job-form .form-textarea {
+.add-job-form .form-textarea,
+.add-job-form input[type="datetime-local"],
+.add-job-form input[type="text"],
+.add-job-form input[type="number"] {
   max-width: 100%;
+  width: 100%;
   box-sizing: border-box;
+}
+
+/* Fix datetime-local input on mobile */
+.add-job-form input[type="datetime-local"] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  min-width: 0;
 }
 
 /* Time slots container responsive */
@@ -523,6 +537,12 @@
 
 /* Responsive form grid */
 @media (max-width: 600px) {
+  /* Fix datetime input width on mobile */
+  .add-job-form input[type="datetime-local"] {
+    font-size: 14px; /* Prevents iOS zoom */
+    padding: 0.625rem;
+  }
+
   .quick-date-buttons {
     flex-wrap: wrap;
   }
@@ -569,5 +589,22 @@
     width: 32px;
     height: 32px;
     font-size: 0.9rem;
+  }
+
+  /* Form grid on mobile */
+  .add-job-form .form-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  /* Form actions on mobile */
+  .add-job-form .form-actions {
+    flex-direction: column-reverse;
+    gap: 0.5rem;
+  }
+
+  .add-job-form .form-actions .btn {
+    width: 100%;
+    justify-content: center;
   }
 }

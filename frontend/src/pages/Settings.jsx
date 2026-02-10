@@ -172,8 +172,16 @@ function Settings() {
 
   const toggleMutation = useMutation({
     mutationFn: (enabled) => toggleAIReceptionist(enabled),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries(['ai-status']);
+      const status = response.data?.enabled ? 'enabled' : 'disabled';
+      setSaveMessage(`AI Receptionist ${status} successfully!`);
+      setTimeout(() => setSaveMessage(''), 3000);
+    },
+    onError: (error) => {
+      const errorMsg = error?.response?.data?.error || 'Failed to toggle AI Receptionist';
+      setSaveMessage(errorMsg);
+      setTimeout(() => setSaveMessage(''), 5000);
     },
   });
 
@@ -416,10 +424,10 @@ function Settings() {
               <span className={`status-badge ${aiStatus?.enabled ? 'active' : 'inactive'}`}>
                 {aiStatus?.enabled ? 'Active' : 'Inactive'}
               </span>
-              {aiStatus?.fallback_number && (
+              {aiStatus?.business_phone && (
                 <span className="fallback-info">
                   <i className="fas fa-phone"></i>
-                  Fallback: {aiStatus.fallback_number}
+                  Fallback: {aiStatus.business_phone}
                 </span>
               )}
             </div>

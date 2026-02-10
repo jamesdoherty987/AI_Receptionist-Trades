@@ -2272,30 +2272,57 @@ def ai_receptionist_toggle_api():
         data = request.json
         enabled = data.get("enabled", True)
         
+        print(f"[AI-TOGGLE] Received request to set ai_enabled={enabled} for company {company_id}")
+        
         # Get current company data
         company = db.get_company(company_id)
         if not company:
+            print(f"[AI-TOGGLE] Company {company_id} not found")
             return jsonify({"error": "Company not found"}), 404
+        
+        print(f"[AI-TOGGLE] Company data: phone={company.get('phone')}, current ai_enabled={company.get('ai_enabled')}")
         
         # Validation: Cannot disable AI without a business phone number
         if not enabled:
             business_phone = company.get('phone')
             
-            if not business_phone:
+            if not business_phone or business_phone.strip() == '':
+                print(f"[AI-TOGGLE] Cannot disable - no business phone configured")
                 return jsonify({
-                    "error": "Cannot disable AI receptionist without a business phone number configured"
+                    "error": "Cannot disable AI receptionist without a business phone number configured. Please add your business phone in settings first."
                 }), 400
         
-        # Update AI status in companies table
-        success = db.update_company(company_id, ai_enabled=1 if enabled else 0)
-        
-        if success:
-            status = "enabled" if enabled else "disabled"
-            return jsonify({
-                "message": f"AI Receptionist {status} successfully",
-                "enabled": enabled
-            })
-        return jsonify({"error": "Failed to update AI receptionist status"}), 500
+        # Update AI status in companies table (use boolean for PostgreSQL)
+        try:
+            success = db.update_company(company_id, ai_enabled=enabled)
+            print(f"[AI-TOGGLE] Update result: success={success}")
+            
+            if success:
+                status = "enabled" if enabled else "disabled"
+                return jsonify({
+                    "message": f"AI Receptionist {status} successfully",
+                    "enabled": enabled
+                })
+            else:
+                # Even if rowcount is 0, the update might have succeeded (same value)
+                # Verify by re-fetching
+                updated_company = db.get_company(company_id)
+                current_status = updated_company.get('ai_enabled', True) if updated_company else None
+                print(f"[AI-TOGGLE] After update, ai_enabled={current_status}")
+                
+                if current_status == enabled or (current_status in [0, False] and not enabled) or (current_status in [1, True] and enabled):
+                    status = "enabled" if enabled else "disabled"
+                    return jsonify({
+                        "message": f"AI Receptionist {status} successfully",
+                        "enabled": enabled
+                    })
+                
+                return jsonify({"error": "Failed to update AI receptionist status"}), 500
+        except Exception as e:
+            print(f"[AI-TOGGLE] Error updating: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": f"Failed to update: {str(e)}"}), 500
 
 
 @app.route("/api/settings/history", methods=["GET"])
