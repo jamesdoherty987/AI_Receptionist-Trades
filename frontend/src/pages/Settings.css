@@ -55,6 +55,67 @@
   border: 1px solid #f59e0b;
 }
 
+/* Setup Suggestion Banner */
+.setup-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid #93c5fd;
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  color: #1e40af;
+}
+
+.setup-suggestion i.fa-lightbulb {
+  color: #f59e0b;
+  font-size: 1rem;
+}
+
+.setup-suggestion span {
+  flex: 1;
+}
+
+.setup-suggestion .btn-dismiss {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.setup-suggestion .btn-dismiss:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.setup-suggestion .btn-dismiss i {
+  font-size: 0.65rem;
+}
+
+@media (max-width: 600px) {
+  .setup-suggestion {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    text-align: left;
+  }
+  
+  .setup-suggestion .btn-dismiss {
+    align-self: flex-end;
+  }
+}
+
 /* Settings Tabs */
 .settings-tabs {
   display: flex;

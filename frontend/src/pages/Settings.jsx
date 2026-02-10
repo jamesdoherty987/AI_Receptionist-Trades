@@ -290,11 +290,61 @@ function Settings() {
           
           {/* Success/Error Message */}
           {saveMessage && (
-            <div className={`settings-message ${saveMessage.includes('cancelled') ? 'warning' : 'success'}`}>
-              <i className={`fas ${saveMessage.includes('cancelled') ? 'fa-exclamation-circle' : 'fa-check-circle'}`}></i>
+            <div className={`settings-message ${saveMessage.includes('cancelled') || saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'warning' : 'success'}`}>
+              <i className={`fas ${saveMessage.includes('cancelled') || saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'fa-exclamation-circle' : 'fa-check-circle'}`}></i>
               {saveMessage}
             </div>
           )}
+
+          {/* Setup Suggestions Banner - show one high-priority suggestion at a time */}
+          {settings && !saveMessage && (() => {
+            // Priority order of suggestions
+            if (!settings.business_name) {
+              return (
+                <div className="setup-suggestion">
+                  <i className="fas fa-lightbulb"></i>
+                  <span>Add your business name in Business Settings to personalize invoices</span>
+                  <button className="btn-dismiss" onClick={() => setActiveTab('business')}>
+                    Go to Settings <i className="fas fa-arrow-right"></i>
+                  </button>
+                </div>
+              );
+            }
+            if (!settings.business_phone) {
+              return (
+                <div className="setup-suggestion">
+                  <i className="fas fa-lightbulb"></i>
+                  <span>Add your business phone number for call forwarding when AI is disabled</span>
+                  <button className="btn-dismiss" onClick={() => setActiveTab('business')}>
+                    Add Phone <i className="fas fa-arrow-right"></i>
+                  </button>
+                </div>
+              );
+            }
+            if (!settings.bank_iban && !settings.revolut_phone) {
+              return (
+                <div className="setup-suggestion">
+                  <i className="fas fa-lightbulb"></i>
+                  <span>Add bank details or Revolut to include payment options on invoices</span>
+                  <button className="btn-dismiss" onClick={() => setActiveTab('payments')}>
+                    Setup Payments <i className="fas fa-arrow-right"></i>
+                  </button>
+                </div>
+              );
+            }
+            if (!settings.twilio_phone_number) {
+              return (
+                <div className="setup-suggestion">
+                  <i className="fas fa-lightbulb"></i>
+                  <span>Configure your phone number to start receiving AI-handled calls</span>
+                  <button className="btn-dismiss" onClick={() => setActiveTab('business')}>
+                    Configure Phone <i className="fas fa-arrow-right"></i>
+                  </button>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           {/* Settings Tabs */}
           <div className="settings-tabs">

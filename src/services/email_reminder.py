@@ -348,7 +348,8 @@ Best regards,
                     stripe_payment_link: str = None, job_address: str = None,
                     invoice_number: str = None, bank_details: dict = None,
                     revolut_phone: str = None, add_bank_details: bool = False, 
-                    add_revolut_phone: bool = False, company_name: str = None) -> bool:
+                    add_revolut_phone: bool = False, company_name: str = None,
+                    company_email: str = None, company_phone: str = None) -> bool:
         """
         Send a professional invoice email with optional Stripe payment link
         
@@ -356,10 +357,13 @@ Best regards,
             to_email: Recipient email address
             service_type: Type of service performed
             charge: Amount to charge
-            appointment_time: Appointment datetime (optional)
+            appointment_time: Appointment datetime for the job (optional)
             stripe_payment_link: Stripe payment URL (optional)
             job_address: Address where service was performed (optional)
             invoice_number: Unique invoice number (optional)
+            company_name: Business name to show on invoice
+            company_email: Business email for contact
+            company_phone: Business phone for contact
             
         Returns:
             True if sent successfully, False otherwise
@@ -372,26 +376,29 @@ Best regards,
             from src.services.database import get_database
             from src.services.settings_manager import get_settings_manager
             from src.utils.config import config
+            from datetime import datetime as dt
             
             business_name = company_name or 'Your Business'
-            business_phone = ''
-            business_email = self.from_email
+            business_phone = company_phone or ''
+            business_email = company_email or ''
             business_website = ''
             business_city = ''
             
             try:
-                # Use SettingsManager to get additional business details
+                # Use SettingsManager to get additional business details if not provided
                 settings_mgr = get_settings_manager()
                 settings = settings_mgr.get_business_settings()
                 if settings:
-                    # Only override business_name from settings if we don't already have one from caller
+                    # Only override if not already provided by caller
                     if not company_name and settings.get('business_name'):
                         business_name = settings.get('business_name')
-                    business_phone = settings.get('phone', '') or settings.get('business_phone', '')
-                    business_email = settings.get('email', self.from_email) or settings.get('business_email', self.from_email)
+                    if not company_phone:
+                        business_phone = settings.get('phone', '') or settings.get('business_phone', '')
+                    if not company_email:
+                        business_email = settings.get('email', '') or settings.get('business_email', '')
                     business_website = settings.get('website', '')
                     business_city = settings.get('city', '')
-                    print(f"[EMAIL] Invoice loaded from database - Business: {business_name}")
+                    print(f"[EMAIL] Invoice loaded from database - Business: {business_name}, Email: {business_email}")
                 else:
                     print("[WARNING] No business settings found in database")
             except Exception as db_error:
@@ -405,12 +412,12 @@ Best regards,
             # Get logo URL from config
             logo_url = getattr(config, 'COMPANY_LOGO_URL', '') or ''
             
-            # Format the date if provided
-            date_str = appointment_time.strftime('%B %d, %Y at %I:%M %p') if appointment_time else 'TBD'
+            # Use current date as invoice date, and show job date separately if provided
+            invoice_date = dt.now().strftime('%B %d, %Y')
+            job_date_str = appointment_time.strftime('%B %d, %Y at %I:%M %p') if appointment_time else None
             
             # Generate invoice number if not provided
             if not invoice_number:
-                from datetime import datetime as dt
                 invoice_number = f"INV-{dt.now().strftime('%Y%m%d%H%M%S')}"
             
             # Payment link text
@@ -420,6 +427,7 @@ Best regards,
             
             # Plain text version - build it step by step to avoid nested f-string issues
             location_line = f'Location: {job_address}\n' if job_address else ''
+            job_date_line = f'Service Date: {job_date_str}\n' if job_date_str else ''
             online_payment = '\n- Online: Click the payment link above' if stripe_payment_link else ''
             
             bank_transfer_section = ''
@@ -441,6 +449,10 @@ REVOLUT:
 Send payment via Revolut to: {revolut_phone}
 Reference: {invoice_number}'''
             
+            # Build contact info
+            contact_phone = f'Phone: {business_phone}\n' if business_phone else ''
+            contact_email = f'Email: {business_email}\n' if business_email else ''
+            
             text_body = f'''{business_name}
 {'='*50}
 
@@ -451,9 +463,9 @@ Thank you for choosing {business_name}!
 INVOICE DETAILS:
 ----------------
 Invoice Number: {invoice_number}
+Invoice Date: {invoice_date}
 Service: {service_type}
-Date: {date_str}
-{location_line}
+{job_date_line}{location_line}
 AMOUNT DUE: EUR {charge:.2f}
 {payment_text}
 
@@ -461,9 +473,7 @@ Payment Methods:{online_payment}
 - Cash or Card on completion{bank_transfer_section}{revolut_section}
 
 If you have any questions about this invoice, please contact us:
-Phone: {business_phone}
-Email: {business_email}
-
+{contact_phone}{contact_email}
 Best regards,
 {business_name}
 {business_city}
@@ -521,6 +531,16 @@ This invoice was generated automatically.'''.strip()
                                 <span style="color: #1e293b; font-weight: 500; font-size: 14px;">{job_address}</span>
                             </td>
                         </tr>''' if job_address else ''
+            
+            # Job date row (service date)
+            job_date_row_html = f'''<tr>
+                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">
+                                <span style="color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Service Date</span>
+                            </td>
+                            <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; text-align: right;">
+                                <span style="color: #1e293b; font-weight: 500; font-size: 15px;">{job_date_str}</span>
+                            </td>
+                        </tr>''' if job_date_str else ''
             
             # Bank transfer section
             if bank_details and bank_details.get('iban'):
@@ -632,12 +652,13 @@ This invoice was generated automatically.'''.strip()
                         </tr>
                         <tr>
                             <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">
-                                <span style="color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Date</span>
+                                <span style="color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Invoice Date</span>
                             </td>
                             <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; text-align: right;">
-                                <span style="color: #1e293b; font-weight: 500; font-size: 15px;">{date_str}</span>
+                                <span style="color: #1e293b; font-weight: 500; font-size: 15px;">{invoice_date}</span>
                             </td>
                         </tr>
+                        {job_date_row_html}
                         {location_row_html}
                     </table>
                     

@@ -3103,9 +3103,11 @@ def send_invoice_api(booking_id):
         # Get job address
         job_address = booking_dict.get('address') or booking_dict.get('job_address') or ''
         
-        # Get business name from the company record
+        # Get business details from the company record
         # Note: In the companies table, the business name is stored as 'company_name', not 'business_name'
         company_business_name = company.get('company_name') or company.get('business_name') or company.get('name') or None if company else None
+        company_email = company.get('email') or None if company else None
+        company_phone = company.get('phone') or None if company else None
         
         success = email_service.send_invoice(
             to_email=to_email,
@@ -3120,7 +3122,9 @@ def send_invoice_api(booking_id):
             revolut_phone=revolut_phone,
             add_bank_details=bool(bank_details and bank_details.get('iban')),
             add_revolut_phone=bool(revolut_phone),
-            company_name=company_business_name
+            company_name=company_business_name,
+            company_email=company_email,
+            company_phone=company_phone
         )
         
         if success:
