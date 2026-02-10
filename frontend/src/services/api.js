@@ -16,10 +16,23 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Auto-clear auth state on 401 (session expired)
-    if (error.response?.status === 401 && !error.config?.url?.includes('/api/auth/')) {
+    // Auto-clear auth state on 401 ONLY for non-auth API calls.
+    // Auth endpoints (login, me, etc.) handle their own 401s.
+    // This catches expired sessions on protected endpoints like /api/bookings.
+    if (
+      error.response?.status === 401 &&
+      !error.config?.url?.includes('/api/auth/')
+    ) {
       sessionStorage.removeItem('authUser');
       sessionStorage.removeItem('authSubscription');
+      // Redirect to login if on a protected page
+      if (window.location.pathname !== '/login' && 
+          window.location.pathname !== '/signup' &&
+          window.location.pathname !== '/' &&
+          window.location.pathname !== '/forgot-password' &&
+          window.location.pathname !== '/reset-password') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

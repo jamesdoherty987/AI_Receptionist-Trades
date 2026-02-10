@@ -56,12 +56,15 @@ function SubscriptionManager() {
       const response = await startFreeTrial();
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries(['subscription-status']);
+      // Refresh auth state to pick up new subscription — but don't
+      // let a cookie failure wipe the session (checkAuth is now resilient)
       checkAuth();
     },
     onError: (error) => {
       console.error('Trial start error:', error);
+      alert(error.response?.data?.error || 'Failed to start trial. Please try again.');
     }
   });
 

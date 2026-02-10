@@ -1,46 +1,37 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { clearSensitiveData } from '../utils/security';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [subscription, setSubscription] = useState(null);
+  // Initialize state from sessionStorage immediately to avoid flash
+  const [user, setUser] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem('authUser');
+      return cached ? JSON.parse(cached) : null;
+    } catch { return null; }
+  });
+  const [subscription, setSubscription] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem('authSubscription');
+      return cached ? JSON.parse(cached) : null;
+    } catch { return null; }
+  });
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
 
-  // Check if user is already logged in on mount
-  useEffect(() => {
-    checkAuth();
-    
-    // Refresh subscription status every hour to keep trial days current
-    const interval = setInterval(() => {
-      checkAuth();
-    }, 60 * 60 * 1000); // Every 1 hour
-    
-    return () => clearInterval(interval);
+  const clearAuth = useCallback(() => {
+    setUser(null);
+    setSubscription(null);
+    sessionStorage.removeItem('authUser');
+    sessionStorage.removeItem('authSubscription');
   }, []);
 
-  const checkAuth = async () => {
+  // Verify session with server. Only clears auth if server explicitly
+  // says "not authenticated" — network errors don't log you out.
+  const checkAuth = useCallback(async () => {
     try {
-      // Check sessionStorage first for instant load (cleared on browser close)
-      const cachedUser = sessionStorage.getItem('authUser');
-      const cachedSubscription = sessionStorage.getItem('authSubscription');
-      if (cachedUser) {
-        try {
-          const parsedUser = JSON.parse(cachedUser);
-          setUser(parsedUser);
-          if (cachedSubscription) {
-            setSubscription(JSON.parse(cachedSubscription));
-          }
-        } catch (e) {
-          sessionStorage.removeItem('authUser');
-          sessionStorage.removeItem('authSubscription');
-        }
-      }
-
-      // Verify with server
       const response = await api.get('/api/auth/me');
       if (response.data.authenticated) {
         setUser(response.data.user);
@@ -50,52 +41,48 @@ export function AuthProvider({ children }) {
           sessionStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
         }
       } else {
-        setUser(null);
-        setSubscription(null);
-        sessionStorage.removeItem('authUser');
-        sessionStorage.removeItem('authSubscription');
+        // Server explicitly said not authenticated — clear state
+        clearAuth();
       }
     } catch (error) {
-      setUser(null);
-      setSubscription(null);
-      sessionStorage.removeItem('authUser');
-      sessionStorage.removeItem('authSubscription');
+      // Network error or server down — don't wipe auth state.
+      // Only clear if we got a definitive 401 response.
+      if (error.response?.status === 401) {
+        clearAuth();
+      }
+      // Otherwise keep existing sessionStorage state — user stays logged in
     } finally {
       setLoading(false);
       setInitialized(true);
     }
-  };
+  }, [clearAuth]);
+
+  // Check auth on mount and refresh subscription hourly
+  useEffect(() => {
+    checkAuth();
+    const interval = setInterval(checkAuth, 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [checkAuth]);
 
   const login = async (email, password) => {
     try {
       const response = await api.post('/api/auth/login', { email, password });
       if (response.data.success) {
-        setUser(response.data.user);
-        sessionStorage.setItem('authUser', JSON.stringify(response.data.user));
-        
-        // Fetch subscription info separately — don't call checkAuth() here
-        // because the session cookie may not be fully established yet,
-        // which would cause checkAuth to clear the user we just set.
-        try {
-          const meResponse = await api.get('/api/auth/me');
-          if (meResponse.data.authenticated && meResponse.data.subscription) {
-            setSubscription(meResponse.data.subscription);
-            sessionStorage.setItem('authSubscription', JSON.stringify(meResponse.data.subscription));
-          }
-        } catch (subError) {
-          // Non-fatal — subscription info will load on next page
-          console.warn('Could not fetch subscription after login:', subError.message);
+        const userData = response.data.user;
+        setUser(userData);
+        sessionStorage.setItem('authUser', JSON.stringify(userData));
+
+        // Use subscription from login response directly — no second API call needed
+        if (response.data.subscription) {
+          setSubscription(response.data.subscription);
+          sessionStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
         }
-        
+
         return { success: true };
       }
       return { success: false, error: response.data.error || 'Login failed' };
     } catch (error) {
-      console.error('Login error:', error);
-      
-      // Extract error message from response
       let errorMessage = 'Login failed. Please try again.';
-      
       if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
       } else if (error.response?.status === 401) {
@@ -107,7 +94,6 @@ export function AuthProvider({ children }) {
       } else if (error.request && !error.response) {
         errorMessage = 'Cannot connect to server. Please check your connection.';
       }
-      
       return { success: false, error: errorMessage };
     }
   };
@@ -116,8 +102,23 @@ export function AuthProvider({ children }) {
     try {
       const response = await api.post('/api/auth/signup', userData);
       if (response.data.success) {
-        setUser(response.data.user);
-        sessionStorage.setItem('authUser', JSON.stringify(response.data.user));
+        const newUser = response.data.user;
+        setUser(newUser);
+        sessionStorage.setItem('authUser', JSON.stringify(newUser));
+
+        // Build subscription from the signup response data
+        if (newUser.subscription_tier) {
+          const sub = {
+            tier: newUser.subscription_tier,
+            status: 'active',
+            is_active: true,
+            trial_end: newUser.trial_end || null,
+            trial_days_remaining: 14,
+          };
+          setSubscription(sub);
+          sessionStorage.setItem('authSubscription', JSON.stringify(sub));
+        }
+
         return { success: true };
       }
       return { success: false, error: response.data.error };
@@ -135,7 +136,6 @@ export function AuthProvider({ children }) {
     } finally {
       setUser(null);
       setSubscription(null);
-      // Clear all sensitive data from storage
       clearSensitiveData();
     }
   };
@@ -171,29 +171,22 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Check if subscription is active (trial or paid)
   // Returns true during loading to prevent false redirects
   const hasActiveSubscription = () => {
-    if (!initialized || loading) return true; // Assume active during loading
+    if (!initialized || loading) return true;
     if (!subscription) return false;
     return subscription.is_active === true;
   };
 
-  // Get subscription tier
   const getSubscriptionTier = () => {
     return subscription?.tier || 'none';
   };
 
-  // Get trial days remaining - compute client-side from trial_end for accuracy
   const getTrialDaysRemaining = () => {
     if (!subscription) return 0;
-    
-    // If server already computed it, use that
     if (subscription.trial_days_remaining !== undefined && subscription.trial_days_remaining !== null) {
       return subscription.trial_days_remaining;
     }
-    
-    // Fallback: compute from trial_end
     if (subscription.trial_end) {
       const now = new Date();
       const end = new Date(subscription.trial_end);
@@ -201,7 +194,6 @@ export function AuthProvider({ children }) {
       if (diffMs <= 0) return 0;
       return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
     }
-    
     return 0;
   };
 
@@ -238,4 +230,3 @@ export function useAuth() {
 }
 
 export default AuthContext;
-

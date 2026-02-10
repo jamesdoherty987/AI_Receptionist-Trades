@@ -740,7 +740,8 @@ def login():
             "logo_url": company['logo_url'],
             "subscription_tier": company['subscription_tier'],
             "twilio_phone_number": company.get('twilio_phone_number')
-        }
+        },
+        "subscription": get_subscription_info(company)
     })
 
 
