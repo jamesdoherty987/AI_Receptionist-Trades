@@ -265,9 +265,9 @@ function AddJobModal({ isOpen, onClose }) {
   return (
     <>
     <Modal isOpen={isOpen} onClose={onClose} title="Add New Job" size="large">
-      <form onSubmit={handleSubmit} className="form">
+      <form onSubmit={handleSubmit} className="form add-job-form">
         <div className="form-group">
-          <label className="form-label">Customer *</label>
+          <label className="form-label">Customer <span className="required">*</span></label>
           <div className="customer-search-container" ref={dropdownRef}>
             {selectedClientName ? (
               <div className="selected-customer">
@@ -361,7 +361,7 @@ function AddJobModal({ isOpen, onClose }) {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Date & Time *</label>
+          <label className="form-label">Date & Time <span className="required">*</span></label>
           <div className="quick-date-buttons">
             <button 
               type="button" 
@@ -448,7 +448,7 @@ function AddJobModal({ isOpen, onClose }) {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Service Type *</label>
+          <label className="form-label">Service Type <span className="required">*</span></label>
           <input
             type="text"
             name="service_type"

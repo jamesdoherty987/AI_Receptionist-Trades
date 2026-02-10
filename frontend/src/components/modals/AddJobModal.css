@@ -360,9 +360,9 @@
 
 .time-slots-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 0.75rem;
-  max-height: 300px;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.5rem;
+  max-height: 200px;
   overflow-y: auto;
   padding: 0.25rem;
 }
@@ -373,14 +373,14 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0.875rem 0.75rem;
+  padding: 0.5rem 0.4rem;
   border: 2px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 8px;
   background: white;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 0.9rem;
-  min-height: 70px;
+  font-size: 0.8rem;
+  min-height: 50px;
 }
 
 .time-slot.available {
@@ -415,25 +415,29 @@
 
 .slot-time {
   font-weight: 600;
-  font-size: 1rem;
-  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.15rem;
 }
 
 .slot-status {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.75rem;
+  gap: 0.25rem;
+  font-size: 0.65rem;
   color: #dc2626;
-  margin-top: 0.25rem;
+  margin-top: 0.15rem;
   text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .slot-check {
   position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  font-size: 0.9rem;
+  top: 0.3rem;
+  right: 0.3rem;
+  font-size: 0.75rem;
 }
 
 .time-slots-empty {
@@ -451,4 +455,119 @@
 .time-slots-empty p {
   margin: 0;
   font-size: 0.9rem;
+}
+
+
+/* Required field asterisk */
+.required {
+  color: #ef4444;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+/* Responsive improvements to prevent horizontal scroll */
+.add-job-form {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.add-job-form .form-group {
+  max-width: 100%;
+}
+
+.add-job-form .form-input,
+.add-job-form .form-textarea {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Time slots container responsive */
+.time-slots-container {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.time-slots-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  gap: 0.5rem;
+}
+
+.time-slots-header h4 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.time-slots-legend {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.7rem;
+}
+
+/* Smaller legend dots */
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+/* Responsive form grid */
+@media (max-width: 600px) {
+  .quick-date-buttons {
+    flex-wrap: wrap;
+  }
+  
+  .quick-date-btn {
+    flex: 1 1 calc(33% - 0.5rem);
+    min-width: 80px;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.8rem;
+  }
+  
+  .time-slots-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 0.4rem;
+  }
+  
+  .time-slot {
+    padding: 0.4rem 0.3rem;
+    min-height: 42px;
+  }
+  
+  .slot-time {
+    font-size: 0.75rem;
+  }
+  
+  .slot-status {
+    font-size: 0.6rem;
+  }
+  
+  .time-slots-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .customer-dropdown {
+    max-height: 250px;
+  }
+  
+  .customer-option {
+    padding: 0.5rem 0.75rem;
+  }
+  
+  .customer-option-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 0.9rem;
+  }
 }
