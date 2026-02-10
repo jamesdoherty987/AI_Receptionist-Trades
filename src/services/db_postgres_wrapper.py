@@ -836,44 +836,6 @@ class PostgreSQLDatabaseWrapper:
         finally:
             cursor.close()
             self.return_connection(conn)
-        try:
-            cursor.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
-            row = cursor.fetchone()
-            if row:
-                return dict(row)
-            return None
-        finally:
-            cursor.close()
-            self.return_connection(conn)
-    
-    def update_company_session(self, company_id: int, session_token: str) -> bool:
-        """Update company session token"""
-        conn = self.get_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        try:
-            cursor.execute("""
-                UPDATE companies 
-                SET session_token = %s, last_login = CURRENT_TIMESTAMP 
-                WHERE id = %s
-            """, (session_token, company_id))
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            cursor.close()
-            self.return_connection(conn)
-    
-    def get_company_by_session(self, session_token: str) -> Optional[Dict]:
-        """Get company by session token"""
-        conn = self.get_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        try:
-            cursor.execute("SELECT * FROM companies WHERE session_token = %s", (session_token,))
-            row = cursor.fetchone()
-            if row:
-                return dict(row)
-            return None
-        finally:
-            self.return_connection(conn)
     
     def get_all_clients(self, company_id: int = None) -> List[Dict]:
         """Get all clients for a specific company"""

@@ -33,7 +33,7 @@ def safe_print(*args, **kwargs):
         except:
             pass  # If even this fails, silently continue
 
-from flask import Flask, Response, request, jsonify, send_from_directory, session, g
+from flask import Flask, Response, request, jsonify, session, g
 from flask_cors import CORS
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.twiml.messaging_response import MessagingResponse
@@ -42,12 +42,27 @@ from src.services.database import get_database
 from src.utils.security import (
     hash_password, verify_password, needs_rehash,
     get_rate_limiter, get_security_logger,
-    sanitize_string, validate_email, validate_id,
+    sanitize_string, validate_email,
     apply_security_headers, configure_secure_session,
-    generate_csrf_token, verify_csrf_token,
-    validate_field_names, ALLOWED_COMPANY_FIELDS
 )
 # Google Calendar disabled - USE_GOOGLE_CALENDAR = False
+
+
+def _validate_password(password: str) -> str | None:
+    """
+    Validate password strength (OWASP recommendations).
+    Returns an error message string if invalid, or None if valid.
+    """
+    if len(password) < 8:
+        return "Password must be at least 8 characters"
+    if len(password) > 128:
+        return "Password is too long"
+    has_upper = any(c.isupper() for c in password)
+    has_lower = any(c.islower() for c in password)
+    has_digit = any(c.isdigit() for c in password)
+    if not (has_upper and has_lower and has_digit):
+        return "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+    return None
 
 # Set up Flask to serve React build or development files
 static_folder = Path(__file__).parent / "static" / "dist"
@@ -304,24 +319,12 @@ def twilio_voice():
     # Find company by their assigned Twilio phone number
     try:
         conn = db.get_connection()
-        if hasattr(db, 'use_postgres') and db.use_postgres:
-            from psycopg2.extras import RealDictCursor
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("SELECT * FROM companies WHERE twilio_phone_number = %s", (to_number,))
-            company = cursor.fetchone()
-            db.return_connection(conn)
-            company = dict(company) if company else None
-        else:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM companies WHERE twilio_phone_number = ?", (to_number,))
-            row = cursor.fetchone()
-            if row:
-                cursor.execute("PRAGMA table_info(companies)")
-                columns = [col[1] for col in cursor.fetchall()]
-                company = dict(zip(columns, row))
-            else:
-                company = None
-            conn.close()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT * FROM companies WHERE twilio_phone_number = %s", (to_number,))
+        company = cursor.fetchone()
+        db.return_connection(conn)
+        company = dict(company) if company else None
     except Exception as e:
         print(f"[WARNING] Error fetching company by phone {to_number}: {e}")
         company = None
@@ -463,7 +466,6 @@ def config_check():
             "permanent_lifetime": str(app.config.get('PERMANENT_SESSION_LIFETIME')),
         },
         "cors_config": {
-            "allowed_origins": allowed_origins,
             "supports_credentials": True
         },
         "urls": {
@@ -487,7 +489,6 @@ def config_check():
         cursor.close()
         db.return_connection(conn)
         config_info["database_connected"] = True
-        config_info["total_users"] = result['count']
     except Exception as e:
         config_info["database_error"] = str(e)
     
@@ -565,19 +566,9 @@ def signup():
     
     # Validate password strength (OWASP recommendations)
     password = data['password']
-    if len(password) < 8:
-        return jsonify({"error": "Password must be at least 8 characters"}), 400
-    if len(password) > 128:
-        return jsonify({"error": "Password is too long"}), 400
-    
-    # Additional password complexity checks
-    has_upper = any(c.isupper() for c in password)
-    has_lower = any(c.islower() for c in password)
-    has_digit = any(c.isdigit() for c in password)
-    if not (has_upper and has_lower and has_digit):
-        return jsonify({
-            "error": "Password must contain at least one uppercase letter, one lowercase letter, and one number"
-        }), 400
+    password_error = _validate_password(password)
+    if password_error:
+        return jsonify({"error": password_error}), 400
     
     # Sanitize input fields
     company_name = sanitize_string(data['company_name'], max_length=200)
@@ -733,20 +724,9 @@ def login():
     session.permanent = True  # Make session permanent (uses PERMANENT_SESSION_LIFETIME)
     
     # Log session creation for debugging
-    print(f"[LOGIN] ========== Login SUCCESS ==========")
-    print(f"[LOGIN] User ID: {company['id']}")
-    print(f"[LOGIN] Email: {email}")
-    print(f"[LOGIN] Session created - Company ID: {session.get('company_id')}")
-    print(f"[LOGIN] Flask ENV: {os.getenv('FLASK_ENV', 'not set')}")
-    print(f"[LOGIN] SECRET_KEY set: {bool(os.getenv('SECRET_KEY'))}")
-    print(f"[LOGIN] Session config:")
-    print(f"[LOGIN]   - Secure: {app.config.get('SESSION_COOKIE_SECURE')}")
-    print(f"[LOGIN]   - SameSite: {app.config.get('SESSION_COOKIE_SAMESITE')}")
-    print(f"[LOGIN]   - HttpOnly: {app.config.get('SESSION_COOKIE_HTTPONLY')}")
-    print(f"[LOGIN]   - Lifetime: {app.config.get('PERMANENT_SESSION_LIFETIME')}")
-    print(f"[LOGIN] Origin allowed: {origin in allowed_origins}")
-    print(f"[LOGIN] =====================================")
-    
+    print(f"[LOGIN] SUCCESS - User {company['id']} ({email}) from {origin} | "
+          f"Secure={app.config.get('SESSION_COOKIE_SECURE')}, "
+          f"SameSite={app.config.get('SESSION_COOKIE_SAMESITE')}")
     return jsonify({
         "success": True,
         "message": "Logged in successfully",
@@ -921,18 +901,9 @@ def change_password():
         return jsonify({"error": "Current and new password are required"}), 400
     
     # Validate new password strength
-    if len(new_password) < 8:
-        return jsonify({"error": "New password must be at least 8 characters"}), 400
-    if len(new_password) > 128:
-        return jsonify({"error": "Password is too long"}), 400
-    
-    has_upper = any(c.isupper() for c in new_password)
-    has_lower = any(c.islower() for c in new_password)
-    has_digit = any(c.isdigit() for c in new_password)
-    if not (has_upper and has_lower and has_digit):
-        return jsonify({
-            "error": "Password must contain at least one uppercase letter, one lowercase letter, and one number"
-        }), 400
+    password_error = _validate_password(new_password)
+    if password_error:
+        return jsonify({"error": password_error}), 400
     
     db = get_database()
     company = db.get_company(session['company_id'])
@@ -1051,18 +1022,9 @@ def reset_password():
         return jsonify({"error": "New password is required"}), 400
     
     # Validate password strength
-    if len(new_password) < 8:
-        return jsonify({"error": "Password must be at least 8 characters"}), 400
-    if len(new_password) > 128:
-        return jsonify({"error": "Password is too long"}), 400
-    
-    has_upper = any(c.isupper() for c in new_password)
-    has_lower = any(c.islower() for c in new_password)
-    has_digit = any(c.isdigit() for c in new_password)
-    if not (has_upper and has_lower and has_digit):
-        return jsonify({
-            "error": "Password must contain at least one uppercase letter, one lowercase letter, and one number"
-        }), 400
+    password_error = _validate_password(new_password)
+    if password_error:
+        return jsonify({"error": password_error}), 400
     
     db = get_database()
     company = db.get_company_by_reset_token(token)
@@ -1219,24 +1181,22 @@ STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
 
 
 def _ensure_payment_columns(db):
-    """Ensure bank/payment columns exist in companies table (idempotent)"""
+    """Ensure bank/payment columns exist in companies table.
+    Note: These columns are created by _run_migrations() at startup.
+    This function is kept as a safety net for edge cases.
+    """
     conn = db.get_connection()
     try:
         cursor = conn.cursor()
-        columns_to_add = {
-            'bank_iban': 'TEXT',
-            'bank_bic': 'TEXT',
-            'bank_name': 'TEXT',
-            'bank_account_holder': 'TEXT',
-            'revolut_phone': 'TEXT',
-        }
-        for col_name, col_type in columns_to_add.items():
+        for col_name, col_type in {
+            'bank_iban': 'TEXT', 'bank_bic': 'TEXT', 'bank_name': 'TEXT',
+            'bank_account_holder': 'TEXT', 'revolut_phone': 'TEXT',
+        }.items():
             try:
                 cursor.execute(f"ALTER TABLE companies ADD COLUMN {col_name} {col_type}")
                 conn.commit()
-                print(f"[SUCCESS] Added missing column {col_name} to companies table")
             except Exception:
-                conn.rollback()  # Column already exists, that's fine
+                conn.rollback()
     finally:
         db.return_connection(conn)
 

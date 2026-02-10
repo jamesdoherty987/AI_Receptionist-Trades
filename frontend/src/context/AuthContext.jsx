@@ -72,8 +72,21 @@ export function AuthProvider({ children }) {
       if (response.data.success) {
         setUser(response.data.user);
         sessionStorage.setItem('authUser', JSON.stringify(response.data.user));
-        // Fetch subscription info after login
-        await checkAuth();
+        
+        // Fetch subscription info separately — don't call checkAuth() here
+        // because the session cookie may not be fully established yet,
+        // which would cause checkAuth to clear the user we just set.
+        try {
+          const meResponse = await api.get('/api/auth/me');
+          if (meResponse.data.authenticated && meResponse.data.subscription) {
+            setSubscription(meResponse.data.subscription);
+            sessionStorage.setItem('authSubscription', JSON.stringify(meResponse.data.subscription));
+          }
+        } catch (subError) {
+          // Non-fatal — subscription info will load on next page
+          console.warn('Could not fetch subscription after login:', subError.message);
+        }
+        
         return { success: true };
       }
       return { success: false, error: response.data.error || 'Login failed' };
