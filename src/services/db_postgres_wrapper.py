@@ -781,13 +781,16 @@ class PostgreSQLDatabaseWrapper:
             cursor.close()
             self.return_connection(conn)
     
-    def get_booking(self, booking_id: int) -> Optional[Dict]:
-        """Get booking by ID"""
+    def get_booking(self, booking_id: int, company_id: int = None) -> Optional[Dict]:
+        """Get booking by ID, optionally filtered by company_id for security"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
-            cursor.execute("SELECT * FROM bookings WHERE id = %s", (booking_id,))
+            if company_id:
+                cursor.execute("SELECT * FROM bookings WHERE id = %s AND company_id = %s", (booking_id, company_id))
+            else:
+                cursor.execute("SELECT * FROM bookings WHERE id = %s", (booking_id,))
             row = cursor.fetchone()
             if row:
                 result = dict(row)
@@ -1195,12 +1198,15 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_client(self, client_id: int) -> Optional[Dict]:
-        """Get client by ID"""
+    def get_client(self, client_id: int, company_id: int = None) -> Optional[Dict]:
+        """Get client by ID, optionally filtered by company_id for security"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("SELECT * FROM clients WHERE id = %s", (client_id,))
+            if company_id:
+                cursor.execute("SELECT * FROM clients WHERE id = %s AND company_id = %s", (client_id, company_id))
+            else:
+                cursor.execute("SELECT * FROM clients WHERE id = %s", (client_id,))
             row = cursor.fetchone()
             
             if row:
@@ -1402,16 +1408,23 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_client_bookings(self, client_id: int) -> List[Dict]:
-        """Get all bookings for a client"""
+    def get_client_bookings(self, client_id: int, company_id: int = None) -> List[Dict]:
+        """Get all bookings for a client, optionally filtered by company_id for security"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("""
-                SELECT * FROM bookings 
-                WHERE client_id = %s 
-                ORDER BY appointment_time DESC
-            """, (client_id,))
+            if company_id:
+                cursor.execute("""
+                    SELECT * FROM bookings 
+                    WHERE client_id = %s AND company_id = %s
+                    ORDER BY appointment_time DESC
+                """, (client_id, company_id))
+            else:
+                cursor.execute("""
+                    SELECT * FROM bookings 
+                    WHERE client_id = %s 
+                    ORDER BY appointment_time DESC
+                """, (client_id,))
             rows = cursor.fetchall()
             
             bookings = []
@@ -1674,12 +1687,15 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_worker(self, worker_id: int) -> Optional[Dict]:
-        """Get worker by ID"""
+    def get_worker(self, worker_id: int, company_id: int = None) -> Optional[Dict]:
+        """Get worker by ID, optionally filtered by company_id for security"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("SELECT * FROM workers WHERE id = %s", (worker_id,))
+            if company_id:
+                cursor.execute("SELECT * FROM workers WHERE id = %s AND company_id = %s", (worker_id, company_id))
+            else:
+                cursor.execute("SELECT * FROM workers WHERE id = %s", (worker_id,))
             row = cursor.fetchone()
             if row:
                 result = dict(row)
@@ -1784,25 +1800,34 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_job_workers(self, booking_id: int) -> List[Dict]:
-        """Get all workers assigned to a specific job"""
+    def get_job_workers(self, booking_id: int, company_id: int = None) -> List[Dict]:
+        """Get all workers assigned to a specific job, optionally filtered by company_id for security"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("""
-                SELECT w.id, w.name, w.phone, w.email, w.trade_specialty, wa.assigned_at
-                FROM worker_assignments wa
-                JOIN workers w ON wa.worker_id = w.id
-                WHERE wa.booking_id = %s
-            """, (booking_id,))
+            if company_id:
+                cursor.execute("""
+                    SELECT w.id, w.name, w.phone, w.email, w.trade_specialty, wa.assigned_at
+                    FROM worker_assignments wa
+                    JOIN workers w ON wa.worker_id = w.id
+                    JOIN bookings b ON wa.booking_id = b.id
+                    WHERE wa.booking_id = %s AND b.company_id = %s
+                """, (booking_id, company_id))
+            else:
+                cursor.execute("""
+                    SELECT w.id, w.name, w.phone, w.email, w.trade_specialty, wa.assigned_at
+                    FROM worker_assignments wa
+                    JOIN workers w ON wa.worker_id = w.id
+                    WHERE wa.booking_id = %s
+                """, (booking_id,))
             
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         finally:
             self.return_connection(conn)
     
-    def get_worker_jobs(self, worker_id: int, include_completed: bool = False) -> List[Dict]:
-        """Get all jobs assigned to a specific worker"""
+    def get_worker_jobs(self, worker_id: int, include_completed: bool = False, company_id: int = None) -> List[Dict]:
+        """Get all jobs assigned to a specific worker, optionally filtered by company_id for security"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
@@ -1815,12 +1840,18 @@ class PostgreSQLDatabaseWrapper:
                 WHERE wa.worker_id = %s
             """
             
+            params = [worker_id]
+            
+            if company_id:
+                query += " AND b.company_id = %s"
+                params.append(company_id)
+            
             if not include_completed:
                 query += " AND b.status != 'completed' AND b.status != 'cancelled'"
             
             query += " ORDER BY b.appointment_time ASC"
             
-            cursor.execute(query, (worker_id,))
+            cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         finally:

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createBooking, getClients } from '../../services/api';
+import { createBooking, getClients, checkAvailability } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import AddClientModal from './AddClientModal';
@@ -25,6 +25,8 @@ function AddJobModal({ isOpen, onClose }) {
   const [selectedClientName, setSelectedClientName] = useState('');
   const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
   const [waitingForNewClient, setWaitingForNewClient] = useState(false);
+  const [selectedDate, setSelectedDate] = useState('');
+  const [showTimeSlots, setShowTimeSlots] = useState(false);
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
   const previousClientsLengthRef = useRef(0);
@@ -47,6 +49,16 @@ function AddJobModal({ isOpen, onClose }) {
       return response.data;
     },
     enabled: isOpen
+  });
+
+  // Fetch availability when a date is selected
+  const { data: availability, isLoading: isLoadingAvailability } = useQuery({
+    queryKey: ['availability', selectedDate],
+    queryFn: async () => {
+      const response = await checkAvailability(selectedDate);
+      return response.data;
+    },
+    enabled: !!selectedDate && isOpen
   });
 
   const filteredClients = useMemo(() => {
@@ -90,6 +102,8 @@ function AddJobModal({ isOpen, onClose }) {
     setSelectedClientName('');
     setShowClientDropdown(false);
     setWaitingForNewClient(false);
+    setSelectedDate('');
+    setShowTimeSlots(false);
   };
 
   const handleSelectClient = (client) => {
@@ -172,14 +186,35 @@ function AddJobModal({ isOpen, onClose }) {
       addToast('Please fill in all required fields', 'warning');
       return;
     }
+
+    // Check if selected time is available
+    if (availability && selectedDate) {
+      const selectedTime = formData.appointment_time.split('T')[1];
+      const slot = availability.slots?.find(s => s.time === selectedTime);
+      if (slot && !slot.available) {
+        addToast(`This time slot is already booked for ${slot.booking.client_name}`, 'error');
+        return;
+      }
+    }
+
     mutation.mutate(formData);
   };
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [name]: value
     });
+
+    // When date changes, extract date and show time slots
+    if (name === 'appointment_time' && value) {
+      const dateOnly = value.split('T')[0];
+      if (dateOnly !== selectedDate) {
+        setSelectedDate(dateOnly);
+        setShowTimeSlots(true);
+      }
+    }
   };
 
   const setQuickDate = (type) => {
@@ -206,9 +241,24 @@ function AddJobModal({ isOpen, onClose }) {
         return;
     }
 
+    setSelectedDate(date);
+    setShowTimeSlots(true);
     setFormData(prev => ({
       ...prev,
       appointment_time: `${date}T${time}`
+    }));
+  };
+
+  const handleTimeSlotClick = (slot) => {
+    if (!slot.available) {
+      addToast(`This slot is already booked for ${slot.booking.client_name}`, 'warning');
+      return;
+    }
+    
+    const dateTime = `${selectedDate}T${slot.time}`;
+    setFormData(prev => ({
+      ...prev,
+      appointment_time: dateTime
     }));
   };
 
@@ -343,6 +393,58 @@ function AddJobModal({ isOpen, onClose }) {
             onChange={handleChange}
             required
           />
+          
+          {/* Time Slots Display */}
+          {showTimeSlots && selectedDate && (
+            <div className="time-slots-container">
+              <div className="time-slots-header">
+                <h4>Available Time Slots</h4>
+                <div className="time-slots-legend">
+                  <span className="legend-item">
+                    <span className="legend-dot available"></span> Available
+                  </span>
+                  <span className="legend-item">
+                    <span className="legend-dot booked"></span> Booked
+                  </span>
+                </div>
+              </div>
+              
+              {isLoadingAvailability ? (
+                <div className="time-slots-loading">
+                  <i className="fas fa-spinner fa-spin"></i> Loading slots...
+                </div>
+              ) : availability?.slots ? (
+                <div className="time-slots-grid">
+                  {availability.slots.map((slot) => {
+                    const isSelected = formData.appointment_time === `${selectedDate}T${slot.time}`;
+                    return (
+                      <button
+                        key={slot.time}
+                        type="button"
+                        className={`time-slot ${slot.available ? 'available' : 'booked'} ${isSelected ? 'selected' : ''}`}
+                        onClick={() => handleTimeSlotClick(slot)}
+                        disabled={!slot.available}
+                        title={slot.available ? 'Click to select' : `Booked: ${slot.booking?.client_name} - ${slot.booking?.service_type}`}
+                      >
+                        <span className="slot-time">{slot.time}</span>
+                        {!slot.available && (
+                          <span className="slot-status">
+                            <i className="fas fa-user"></i> {slot.booking?.client_name}
+                          </span>
+                        )}
+                        {isSelected && <i className="fas fa-check slot-check"></i>}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="time-slots-empty">
+                  <i className="fas fa-calendar-times"></i>
+                  <p>No slots available for this date</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="form-group">

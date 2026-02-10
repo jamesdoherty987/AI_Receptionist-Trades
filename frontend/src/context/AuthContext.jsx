@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { clearSensitiveData } from '../utils/security';
+import { queryClient } from '../queryClient';
 
 const AuthContext = createContext(null);
 
@@ -151,6 +152,8 @@ export function AuthProvider({ children }) {
       setSubscription(null);
       clearSensitiveData();
       sessionStorage.removeItem('authToken');
+      // Clear React Query cache to prevent data leakage between users
+      queryClient.clear();
     }
   };
 

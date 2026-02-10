@@ -73,6 +73,7 @@ export const getBooking = (id) => api.get(`/api/bookings/${id}`);
 export const createBooking = (data) => api.post('/api/bookings', data);
 export const updateBooking = (id, data) => api.put(`/api/bookings/${id}`, data);
 export const deleteBooking = (id) => api.delete(`/api/bookings/${id}`);
+export const checkAvailability = (date) => api.get('/api/bookings/availability', { params: { date } });
 
 // Dashboard - Batch endpoint for better performance
 export const getDashboardData = () => api.get('/api/dashboard');

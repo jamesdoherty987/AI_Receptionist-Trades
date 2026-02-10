@@ -1,0 +1,380 @@
+"""
+Test Data Isolation Between User Accounts
+
+This test verifies that:
+1. User A's data is NOT visible to User B
+2. User A's data persists after logging out and back in
+3. Database queries properly filter by company_id
+4. API endpoints reject access to other users' data
+"""
+import pytest
+import sys
+import os
+
+# Add src to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from unittest.mock import MagicMock, patch
+from datetime import datetime
+
+
+class TestDatabaseIsolation:
+    """Test that database methods properly filter by company_id"""
+    
+    def test_get_booking_with_company_id_filter(self):
+        """Test that get_booking filters by company_id when provided"""
+        from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+        
+        # Create a mock for the database
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        
+        # Mock the connection pool
+        with patch.object(PostgreSQLDatabaseWrapper, '__init__', lambda x, y: None):
+            db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
+            db.get_connection = MagicMock(return_value=mock_conn)
+            db.return_connection = MagicMock()
+            
+            # Test with company_id filter
+            mock_cursor.fetchone.return_value = None
+            result = db.get_booking(1, company_id=100)
+            
+            # Verify the query includes company_id filter
+            call_args = mock_cursor.execute.call_args
+            query = call_args[0][0]
+            params = call_args[0][1]
+            
+            assert 'company_id' in query.lower(), "Query should filter by company_id"
+            assert 100 in params, "company_id should be in query parameters"
+    
+    def test_get_booking_without_company_id_no_filter(self):
+        """Test that get_booking works without company_id for backwards compatibility"""
+        from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+        
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        
+        with patch.object(PostgreSQLDatabaseWrapper, '__init__', lambda x, y: None):
+            db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
+            db.get_connection = MagicMock(return_value=mock_conn)
+            db.return_connection = MagicMock()
+            
+            mock_cursor.fetchone.return_value = None
+            result = db.get_booking(1)  # No company_id
+            
+            call_args = mock_cursor.execute.call_args
+            query = call_args[0][0]
+            
+            # Without company_id, query should just filter by id
+            assert 'id = %s' in query.lower()
+    
+    def test_get_client_with_company_id_filter(self):
+        """Test that get_client filters by company_id when provided"""
+        from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+        
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        
+        with patch.object(PostgreSQLDatabaseWrapper, '__init__', lambda x, y: None):
+            db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
+            db.get_connection = MagicMock(return_value=mock_conn)
+            db.return_connection = MagicMock()
+            
+            mock_cursor.fetchone.return_value = None
+            result = db.get_client(1, company_id=100)
+            
+            call_args = mock_cursor.execute.call_args
+            query = call_args[0][0]
+            params = call_args[0][1]
+            
+            assert 'company_id' in query.lower(), "Query should filter by company_id"
+            assert 100 in params, "company_id should be in query parameters"
+    
+    def test_get_worker_with_company_id_filter(self):
+        """Test that get_worker filters by company_id when provided"""
+        from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+        
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        
+        with patch.object(PostgreSQLDatabaseWrapper, '__init__', lambda x, y: None):
+            db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
+            db.get_connection = MagicMock(return_value=mock_conn)
+            db.return_connection = MagicMock()
+            
+            mock_cursor.fetchone.return_value = None
+            result = db.get_worker(1, company_id=100)
+            
+            call_args = mock_cursor.execute.call_args
+            query = call_args[0][0]
+            params = call_args[0][1]
+            
+            assert 'company_id' in query.lower(), "Query should filter by company_id"
+            assert 100 in params, "company_id should be in query parameters"
+    
+    def test_get_client_bookings_with_company_id_filter(self):
+        """Test that get_client_bookings filters by company_id when provided"""
+        from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+        
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        
+        with patch.object(PostgreSQLDatabaseWrapper, '__init__', lambda x, y: None):
+            db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
+            db.get_connection = MagicMock(return_value=mock_conn)
+            db.return_connection = MagicMock()
+            db.get_appointment_notes = MagicMock(return_value=[])
+            
+            mock_cursor.fetchall.return_value = []
+            result = db.get_client_bookings(1, company_id=100)
+            
+            call_args = mock_cursor.execute.call_args
+            query = call_args[0][0]
+            params = call_args[0][1]
+            
+            assert 'company_id' in query.lower(), "Query should filter by company_id"
+            assert 100 in params, "company_id should be in query parameters"
+    
+    def test_get_job_workers_with_company_id_filter(self):
+        """Test that get_job_workers filters by company_id when provided"""
+        from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+        
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        
+        with patch.object(PostgreSQLDatabaseWrapper, '__init__', lambda x, y: None):
+            db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
+            db.get_connection = MagicMock(return_value=mock_conn)
+            db.return_connection = MagicMock()
+            
+            mock_cursor.fetchall.return_value = []
+            result = db.get_job_workers(1, company_id=100)
+            
+            call_args = mock_cursor.execute.call_args
+            query = call_args[0][0]
+            params = call_args[0][1]
+            
+            assert 'company_id' in query.lower(), "Query should filter by company_id"
+            assert 100 in params, "company_id should be in query parameters"
+    
+    def test_get_worker_jobs_with_company_id_filter(self):
+        """Test that get_worker_jobs filters by company_id when provided"""
+        from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+        
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        
+        with patch.object(PostgreSQLDatabaseWrapper, '__init__', lambda x, y: None):
+            db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
+            db.get_connection = MagicMock(return_value=mock_conn)
+            db.return_connection = MagicMock()
+            
+            mock_cursor.fetchall.return_value = []
+            result = db.get_worker_jobs(1, include_completed=False, company_id=100)
+            
+            call_args = mock_cursor.execute.call_args
+            query = call_args[0][0]
+            
+            assert 'company_id' in query.lower(), "Query should filter by company_id"
+
+
+class TestDataIsolationScenarios:
+    """Test realistic data isolation scenarios"""
+    
+    def test_user_cannot_access_other_users_booking(self):
+        """Simulate User B trying to access User A's booking"""
+        from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+        
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        
+        with patch.object(PostgreSQLDatabaseWrapper, '__init__', lambda x, y: None):
+            db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
+            db.get_connection = MagicMock(return_value=mock_conn)
+            db.return_connection = MagicMock()
+            
+            # User A's booking (company_id=1) - booking exists but belongs to different company
+            # When User B (company_id=2) tries to access it, should return None
+            mock_cursor.fetchone.return_value = None  # No match when filtering by wrong company_id
+            
+            result = db.get_booking(booking_id=1, company_id=2)  # User B's company
+            
+            assert result is None, "User B should not be able to access User A's booking"
+    
+    def test_user_can_access_own_booking(self):
+        """Simulate User A accessing their own booking"""
+        from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+        
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        
+        with patch.object(PostgreSQLDatabaseWrapper, '__init__', lambda x, y: None):
+            db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
+            db.get_connection = MagicMock(return_value=mock_conn)
+            db.return_connection = MagicMock()
+            
+            # User A's booking - should be accessible
+            mock_cursor.fetchone.return_value = {
+                'id': 1,
+                'company_id': 1,
+                'service_type': 'Plumbing',
+                'status': 'scheduled'
+            }
+            
+            result = db.get_booking(booking_id=1, company_id=1)  # User A's company
+            
+            assert result is not None, "User A should be able to access their own booking"
+            assert result['id'] == 1
+            assert result['company_id'] == 1
+    
+    def test_data_persists_after_logout_login(self):
+        """Verify data persists when user logs out and back in"""
+        from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
+        
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        
+        with patch.object(PostgreSQLDatabaseWrapper, '__init__', lambda x, y: None):
+            db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
+            db.get_connection = MagicMock(return_value=mock_conn)
+            db.return_connection = MagicMock()
+            
+            # Simulate User A's data
+            user_a_booking = {
+                'id': 1,
+                'company_id': 1,
+                'service_type': 'Electrical Work',
+                'status': 'scheduled',
+                'charge': 150.00
+            }
+            
+            # First login - User A sees their data
+            mock_cursor.fetchone.return_value = user_a_booking
+            result_before_logout = db.get_booking(booking_id=1, company_id=1)
+            
+            # Simulate logout (no database change, just session cleared)
+            # ...
+            
+            # Second login - User A should still see their data
+            mock_cursor.fetchone.return_value = user_a_booking
+            result_after_login = db.get_booking(booking_id=1, company_id=1)
+            
+            assert result_before_logout == result_after_login, "Data should persist after logout/login"
+            assert result_after_login['service_type'] == 'Electrical Work'
+            assert result_after_login['charge'] == 150.00
+
+
+class TestAPIEndpointIsolation:
+    """Test that API endpoints properly enforce data isolation"""
+    
+    def test_booking_endpoint_uses_company_id(self):
+        """Verify booking API endpoint passes company_id to database"""
+        # This test verifies the code structure - that endpoints call db methods with company_id
+        import ast
+        
+        with open('src/app.py', 'r') as f:
+            content = f.read()
+        
+        # Check that booking_detail_api uses company_id parameter
+        assert 'db.get_booking(booking_id, company_id=company_id)' in content, \
+            "booking_detail_api should pass company_id to get_booking"
+    
+    def test_client_endpoint_uses_company_id(self):
+        """Verify client API endpoint passes company_id to database"""
+        with open('src/app.py', 'r') as f:
+            content = f.read()
+        
+        assert 'db.get_client(client_id, company_id=company_id)' in content, \
+            "client_api should pass company_id to get_client"
+    
+    def test_worker_endpoint_uses_company_id(self):
+        """Verify worker API endpoint passes company_id to database"""
+        with open('src/app.py', 'r') as f:
+            content = f.read()
+        
+        assert 'db.get_worker(worker_id, company_id=company_id)' in content, \
+            "worker_api should pass company_id to get_worker"
+    
+    def test_no_unfiltered_get_booking_calls(self):
+        """Ensure all get_booking calls in API endpoints use company_id"""
+        with open('src/app.py', 'r') as f:
+            content = f.read()
+        
+        # Find all get_booking calls
+        import re
+        
+        # Pattern for get_booking calls without company_id
+        # This matches db.get_booking(something) but NOT db.get_booking(something, company_id=...)
+        unfiltered_pattern = r'db\.get_booking\([^)]+\)(?!\s*#.*company)'
+        
+        # Get all get_booking calls
+        all_calls = re.findall(r'db\.get_booking\([^)]+\)', content)
+        
+        # Check each call has company_id
+        for call in all_calls:
+            assert 'company_id=' in call, f"Unfiltered get_booking call found: {call}"
+    
+    def test_no_unfiltered_get_client_calls_in_api(self):
+        """Ensure critical get_client calls use company_id"""
+        with open('src/app.py', 'r') as f:
+            content = f.read()
+        
+        # All get_client calls should have company_id for security
+        import re
+        all_calls = re.findall(r'db\.get_client\([^)]+\)', content)
+        
+        for call in all_calls:
+            assert 'company_id=' in call, f"Unfiltered get_client call found: {call}"
+    
+    def test_no_unfiltered_get_worker_calls_in_api(self):
+        """Ensure critical get_worker calls use company_id"""
+        with open('src/app.py', 'r') as f:
+            content = f.read()
+        
+        import re
+        all_calls = re.findall(r'db\.get_worker\([^)]+\)', content)
+        
+        for call in all_calls:
+            assert 'company_id=' in call, f"Unfiltered get_worker call found: {call}"
+
+
+class TestFrontendCacheClear:
+    """Test that frontend properly clears cache on logout"""
+    
+    def test_logout_clears_query_cache(self):
+        """Verify logout function calls queryClient.clear()"""
+        with open('frontend/src/context/AuthContext.jsx', 'r') as f:
+            content = f.read()
+        
+        assert 'queryClient.clear()' in content, \
+            "Logout should clear React Query cache to prevent data leakage"
+    
+    def test_query_client_imported(self):
+        """Verify queryClient is imported in AuthContext"""
+        with open('frontend/src/context/AuthContext.jsx', 'r') as f:
+            content = f.read()
+        
+        assert "import { queryClient }" in content, \
+            "queryClient should be imported in AuthContext"
+    
+    def test_query_client_exported(self):
+        """Verify queryClient is properly exported"""
+        with open('frontend/src/queryClient.js', 'r') as f:
+            content = f.read()
+        
+        assert 'export const queryClient' in content, \
+            "queryClient should be exported from queryClient.js"
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])

@@ -2446,13 +2446,11 @@ def client_api(client_id):
     company_id = session.get('company_id')
     
     if request.method == "GET":
-        client = db.get_client(client_id)
-        # Verify client belongs to this company
-        if client and client.get('company_id') and client.get('company_id') != company_id:
-            return jsonify({"error": "Client not found"}), 404
+        # Get client with company_id filter for security
+        client = db.get_client(client_id, company_id=company_id)
         if client:
-            # Get bookings and notes
-            bookings = db.get_client_bookings(client_id)
+            # Get bookings and notes filtered by company_id
+            bookings = db.get_client_bookings(client_id, company_id=company_id)
             notes = db.get_client_notes(client_id)
             client['bookings'] = bookings
             client['notes'] = notes
@@ -2461,8 +2459,8 @@ def client_api(client_id):
     
     elif request.method == "PUT":
         # Verify client belongs to this company before updating
-        client = db.get_client(client_id)
-        if not client or (client.get('company_id') and client.get('company_id') != company_id):
+        client = db.get_client(client_id, company_id=company_id)
+        if not client:
             return jsonify({"error": "Client not found"}), 404
         data = request.json
         db.update_client(client_id, **data)
@@ -2477,8 +2475,8 @@ def add_note_api(client_id):
     company_id = session.get('company_id')
     
     # Verify client belongs to this company
-    client = db.get_client(client_id)
-    if client and client.get('company_id') and client.get('company_id') != company_id:
+    client = db.get_client(client_id, company_id=company_id)
+    if not client:
         return jsonify({"error": "Client not found"}), 404
     
     data = request.json
@@ -2499,8 +2497,8 @@ def appointment_notes_api(booking_id):
     company_id = session.get('company_id')
     
     # Verify booking belongs to this company
-    booking = db.get_booking(booking_id)
-    if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
         return jsonify({"error": "Booking not found"}), 404
     
     if request.method == "GET":
@@ -2508,9 +2506,6 @@ def appointment_notes_api(booking_id):
         return jsonify(notes)
     
     elif request.method == "POST":
-        if not booking:
-            return jsonify({"error": "Booking not found"}), 404
-        
         client_id = booking['client_id']
         
         data = request.json
@@ -2545,12 +2540,11 @@ def appointment_note_api(booking_id, note_id):
     company_id = session.get('company_id')
     
     # Verify booking belongs to this company
-    booking = db.get_booking(booking_id)
-    if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
         return jsonify({"error": "Booking not found"}), 404
     
     # Get client_id for description update
-    booking = db.get_booking(booking_id)
     client_id = booking['client_id'] if booking else None
     
     if request.method == "PUT":
@@ -2650,8 +2644,8 @@ def bookings_api():
                 conflict = conflicting_bookings[0]
                 conflict_time = datetime.fromisoformat(str(conflict['appointment_time']))
                 
-                # Get client name for the conflicting booking
-                conflict_client = db.get_client(conflict['client_id'])
+                # Get client name for the conflicting booking (already filtered by company_id)
+                conflict_client = db.get_client(conflict['client_id'], company_id=company_id)
                 conflict_client_name = conflict_client['name'] if conflict_client else 'Unknown'
                 
                 return jsonify({
@@ -2664,8 +2658,8 @@ def bookings_api():
             # Google Calendar integration disabled (USE_GOOGLE_CALENDAR = False)
             calendar_event_id = None
             
-            # Get client info
-            client = db.get_client(client_id)
+            # Get client info (already verified by company_id)
+            client = db.get_client(client_id, company_id=company_id)
             
             # Use client's most recent booking address if not provided in job data
             # Accept both 'job_address' (from frontend) and 'address' (legacy)
@@ -2735,6 +2729,101 @@ def bookings_api():
             return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/bookings/availability", methods=["GET"])
+@login_required
+def check_availability_api():
+    """Check available time slots for a given date"""
+    db = get_database()
+    company_id = session.get('company_id')
+    
+    # Get date parameter (YYYY-MM-DD format)
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({"error": "Date parameter required (YYYY-MM-DD)"}), 400
+    
+    try:
+        from datetime import datetime, timedelta
+        
+        # Parse the date
+        target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        # Get business hours (default 9 AM to 5 PM if not configured)
+        business_hours = {
+            'start': 9,  # 9 AM
+            'end': 17,   # 5 PM
+            'interval': 60  # 60 minute slots
+        }
+        
+        # Try to get configured business hours
+        try:
+            settings = db.get_business_settings(company_id)
+            if settings and settings.get('business_hours'):
+                hours = settings['business_hours']
+                # Parse business hours if available
+                # Expected format: {"monday": {"start": "09:00", "end": "17:00"}, ...}
+                day_name = target_date.strftime('%A').lower()
+                if day_name in hours and hours[day_name].get('is_open'):
+                    start_time = hours[day_name].get('start', '09:00')
+                    end_time = hours[day_name].get('end', '17:00')
+                    business_hours['start'] = int(start_time.split(':')[0])
+                    business_hours['end'] = int(end_time.split(':')[0])
+        except Exception as e:
+            print(f"[WARNING] Could not load business hours: {e}")
+        
+        # Generate time slots for the day
+        slots = []
+        current_hour = business_hours['start']
+        
+        while current_hour < business_hours['end']:
+            slot_time = datetime.combine(target_date, datetime.min.time().replace(hour=current_hour))
+            
+            # Check if this slot has a booking (within 59 minutes)
+            time_buffer_before = slot_time - timedelta(minutes=59)
+            time_buffer_after = slot_time + timedelta(minutes=59)
+            
+            conflicting_bookings = db.get_conflicting_bookings(
+                start_time=time_buffer_before.strftime('%Y-%m-%d %H:%M:%S'),
+                end_time=time_buffer_after.strftime('%Y-%m-%d %H:%M:%S'),
+                company_id=company_id
+            )
+            
+            is_available = len(conflicting_bookings) == 0
+            
+            # Get booking details if slot is taken
+            booking_info = None
+            if not is_available and conflicting_bookings:
+                conflict = conflicting_bookings[0]
+                client = db.get_client(conflict['client_id'], company_id=company_id)
+                booking_info = {
+                    'client_name': client['name'] if client else 'Unknown',
+                    'service_type': conflict['service_type'],
+                    'time': str(conflict['appointment_time'])
+                }
+            
+            slots.append({
+                'time': slot_time.strftime('%H:%M'),
+                'datetime': slot_time.isoformat(),
+                'available': is_available,
+                'booking': booking_info
+            })
+            
+            current_hour += 1
+        
+        return jsonify({
+            'date': date_str,
+            'slots': slots,
+            'business_hours': business_hours
+        })
+        
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+    except Exception as e:
+        print(f"[ERROR] Error checking availability: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/bookings/<int:booking_id>", methods=["GET", "PUT", "DELETE"])
 @login_required
 def booking_detail_api(booking_id):
@@ -2743,14 +2832,10 @@ def booking_detail_api(booking_id):
     company_id = session.get('company_id')
     
     if request.method == "GET":
-        # Get booking details using database method
-        booking = db.get_booking(booking_id)
+        # Get booking details using database method with company_id filter for security
+        booking = db.get_booking(booking_id, company_id=company_id)
         
         if not booking:
-            return jsonify({"error": "Booking not found"}), 404
-        
-        # Verify booking belongs to this company
-        if booking.get('company_id') and booking.get('company_id') != company_id:
             return jsonify({"error": "Booking not found"}), 404
         
         # Get notes for this booking
@@ -2759,7 +2844,7 @@ def booking_detail_api(booking_id):
         
         # Get client details if client_id exists
         if booking.get('client_id'):
-            client = db.get_client(booking['client_id'])
+            client = db.get_client(booking['client_id'], company_id=company_id)
             if client:
                 booking['client_name'] = client.get('name')
                 booking['customer_name'] = client.get('name')
@@ -2796,8 +2881,8 @@ def booking_detail_api(booking_id):
     
     elif request.method == "PUT":
         # Verify booking belongs to this company before updating
-        booking = db.get_booking(booking_id)
-        if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+        booking = db.get_booking(booking_id, company_id=company_id)
+        if not booking:
             return jsonify({"error": "Booking not found"}), 404
         
         # Update booking
@@ -2827,8 +2912,8 @@ def booking_detail_api(booking_id):
     
     elif request.method == "DELETE":
         # Verify booking belongs to this company before deleting
-        booking = db.get_booking(booking_id)
-        if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+        booking = db.get_booking(booking_id, company_id=company_id)
+        if not booking:
             return jsonify({"error": "Booking not found"}), 404
         
         success = db.delete_booking(booking_id)
@@ -2844,14 +2929,10 @@ def complete_booking_api(booking_id):
     db = get_database()
     company_id = session.get('company_id')
     
-    # Get the booking to find the client
-    booking = db.get_booking(booking_id)
+    # Get the booking to find the client with company_id filter for security
+    booking = db.get_booking(booking_id, company_id=company_id)
     
     if not booking:
-        return jsonify({"error": "Booking not found"}), 404
-    
-    # Verify booking belongs to this company
-    if booking.get('company_id') and booking.get('company_id') != company_id:
         return jsonify({"error": "Booking not found"}), 404
     
     client_id = booking['client_id']
@@ -2867,11 +2948,11 @@ def complete_booking_api(booking_id):
         
         if success:
             # Get the updated client info with new description
-            client = db.get_client(client_id)
+            client = db.get_client(client_id, company_id=company_id)
             return jsonify({
                 "success": True,
                 "message": "Appointment completed and description updated",
-                "description": client.get('description')
+                "description": client.get('description') if client else None
             })
         else:
             return jsonify({
@@ -2914,19 +2995,15 @@ def send_invoice_api(booking_id):
         }), 403
     
     try:
-        # Get the booking details using database method
-        booking = db.get_booking(booking_id)
+        # Get the booking details using database method with company_id filter for security
+        booking = db.get_booking(booking_id, company_id=company_id)
         
         if not booking:
             return jsonify({"error": "Booking not found"}), 404
         
-        # Verify booking belongs to this company
-        if booking.get('company_id') and booking.get('company_id') != company_id:
-            return jsonify({"error": "Booking not found"}), 404
-        
         # Get client details if client_id exists
         if booking.get('client_id'):
-            client = db.get_client(booking['client_id'])
+            client = db.get_client(booking['client_id'], company_id=company_id)
             if client:
                 booking['client_name'] = client.get('name')
                 booking['customer_name'] = client.get('name')
@@ -3271,18 +3348,16 @@ def worker_api(worker_id):
     company_id = session.get('company_id')
     
     if request.method == "GET":
-        worker = db.get_worker(worker_id)
-        # Verify worker belongs to this company
-        if worker and worker.get('company_id') and worker.get('company_id') != company_id:
-            return jsonify({"error": "Worker not found"}), 404
+        # Get worker with company_id filter for security
+        worker = db.get_worker(worker_id, company_id=company_id)
         if worker:
             return jsonify(worker)
         return jsonify({"error": "Worker not found"}), 404
     
     elif request.method == "PUT":
         # Verify worker belongs to this company before updating
-        worker = db.get_worker(worker_id)
-        if not worker or (worker.get('company_id') and worker.get('company_id') != company_id):
+        worker = db.get_worker(worker_id, company_id=company_id)
+        if not worker:
             return jsonify({"error": "Worker not found"}), 404
         
         data = request.json
@@ -3296,8 +3371,8 @@ def worker_api(worker_id):
     
     elif request.method == "DELETE":
         # Verify worker belongs to this company before deleting
-        worker = db.get_worker(worker_id)
-        if not worker or (worker.get('company_id') and worker.get('company_id') != company_id):
+        worker = db.get_worker(worker_id, company_id=company_id)
+        if not worker:
             return jsonify({"error": "Worker not found"}), 404
         
         success = db.delete_worker(worker_id)
@@ -3319,13 +3394,13 @@ def assign_worker_to_job_api(booking_id):
         return jsonify({"error": "worker_id is required"}), 400
     
     # Verify booking belongs to this company
-    booking = db.get_booking(booking_id)
-    if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
         return jsonify({"error": "Booking not found"}), 404
     
     # Verify worker belongs to this company
-    worker = db.get_worker(worker_id)
-    if worker and worker.get('company_id') and worker.get('company_id') != company_id:
+    worker = db.get_worker(worker_id, company_id=company_id)
+    if not worker:
         return jsonify({"error": "Worker not found"}), 404
     
     result = db.assign_worker_to_job(booking_id, worker_id)
@@ -3349,8 +3424,8 @@ def remove_worker_from_job_api(booking_id):
         return jsonify({"error": "worker_id is required"}), 400
     
     # Verify booking belongs to this company
-    booking = db.get_booking(booking_id)
-    if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
         return jsonify({"error": "Booking not found"}), 404
     
     success = db.remove_worker_from_job(booking_id, worker_id)
@@ -3369,11 +3444,11 @@ def get_job_workers_api(booking_id):
     company_id = session.get('company_id')
     
     # Verify booking belongs to this company
-    booking = db.get_booking(booking_id)
-    if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
         return jsonify({"error": "Booking not found"}), 404
     
-    workers = db.get_job_workers(booking_id)
+    workers = db.get_job_workers(booking_id, company_id=company_id)
     return jsonify(workers)
 
 
@@ -3385,12 +3460,12 @@ def get_worker_jobs_api(worker_id):
     company_id = session.get('company_id')
     
     # Verify worker belongs to this company
-    worker = db.get_worker(worker_id)
-    if worker and worker.get('company_id') and worker.get('company_id') != company_id:
+    worker = db.get_worker(worker_id, company_id=company_id)
+    if not worker:
         return jsonify({"error": "Worker not found"}), 404
     
     include_completed = request.args.get('include_completed', 'false').lower() == 'true'
-    jobs = db.get_worker_jobs(worker_id, include_completed)
+    jobs = db.get_worker_jobs(worker_id, include_completed, company_id=company_id)
     
     # Ensure customer_name is set for frontend consistency
     for job in jobs:
@@ -3408,8 +3483,8 @@ def get_worker_schedule_api(worker_id):
     company_id = session.get('company_id')
     
     # Verify worker belongs to this company
-    worker = db.get_worker(worker_id)
-    if worker and worker.get('company_id') and worker.get('company_id') != company_id:
+    worker = db.get_worker(worker_id, company_id=company_id)
+    if not worker:
         return jsonify({"error": "Worker not found"}), 404
     
     start_date = request.args.get('start_date')
@@ -3426,8 +3501,8 @@ def get_worker_hours_this_week_api(worker_id):
     company_id = session.get('company_id')
     
     # Verify worker belongs to this company
-    worker = db.get_worker(worker_id)
-    if worker and worker.get('company_id') and worker.get('company_id') != company_id:
+    worker = db.get_worker(worker_id, company_id=company_id)
+    if not worker:
         return jsonify({"error": "Worker not found"}), 404
     
     hours = db.get_worker_hours_this_week(worker_id)
@@ -3695,10 +3770,10 @@ def get_finances():
         transactions = []
         for booking in bookings:
             if booking.get('charge') and float(booking.get('charge', 0)) > 0:
-                # Get customer name from client
+                # Get customer name from client (bookings already filtered by company_id)
                 customer_name = booking.get('customer_name') or booking.get('client_name')
                 if not customer_name and booking.get('client_id'):
-                    client = db.get_client(booking['client_id'])
+                    client = db.get_client(booking['client_id'], company_id=company_id)
                     if client:
                         customer_name = client.get('name')
                 
