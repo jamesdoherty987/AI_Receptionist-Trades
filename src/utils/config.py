@@ -114,14 +114,87 @@ class Config:
     BUSINESS_DAYS = [0, 1, 2, 3, 4]  # Monday to Friday (closed weekends)
     
     @staticmethod
-    def get_business_hours():
+    def parse_business_hours_string(hours_str: str) -> dict:
+        """Parse business hours from string format like '8 AM - 6 PM Mon-Sat (24/7 emergency available)'"""
+        import re
+        
+        result = {
+            'start': Config.BUSINESS_HOURS_START,
+            'end': Config.BUSINESS_HOURS_END,
+            'days_open': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+        }
+        
+        if not hours_str:
+            return result
+        
+        # Parse time: "8 AM - 6 PM"
+        time_match = re.match(r'(\d+)\s*(AM|PM)\s*-\s*(\d+)\s*(AM|PM)', hours_str, re.IGNORECASE)
+        if time_match:
+            start_hour = int(time_match.group(1))
+            start_period = time_match.group(2).upper()
+            end_hour = int(time_match.group(3))
+            end_period = time_match.group(4).upper()
+            
+            # Convert to 24-hour format
+            if start_period == 'PM' and start_hour != 12:
+                start_hour += 12
+            elif start_period == 'AM' and start_hour == 12:
+                start_hour = 0
+            
+            if end_period == 'PM' and end_hour != 12:
+                end_hour += 12
+            elif end_period == 'AM' and end_hour == 12:
+                end_hour = 0
+            
+            result['start'] = start_hour
+            result['end'] = end_hour
+        
+        # Parse days
+        hours_lower = hours_str.lower()
+        if 'daily' in hours_lower or 'mon-sun' in hours_lower:
+            result['days_open'] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        elif 'mon-sat' in hours_lower:
+            result['days_open'] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        elif 'mon-fri' in hours_lower:
+            result['days_open'] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+        else:
+            # Parse individual days
+            days = []
+            day_patterns = [
+                ('mon', 'Monday'), ('tue', 'Tuesday'), ('wed', 'Wednesday'),
+                ('thu', 'Thursday'), ('fri', 'Friday'), ('sat', 'Saturday'), ('sun', 'Sunday')
+            ]
+            for abbrev, full in day_patterns:
+                if abbrev in hours_lower:
+                    days.append(full)
+            if days:
+                result['days_open'] = days
+        
+        return result
+    
+    @staticmethod
+    def get_business_hours(company_id: int = None):
         """Get business hours from database settings or fallback to env"""
         try:
+            from src.services.database import get_database
+            db = get_database()
+            
+            # Try to get from company's business_hours string first
+            if company_id:
+                company = db.get_company(company_id)
+                if company and company.get('business_hours'):
+                    return Config.parse_business_hours_string(company['business_hours'])
+            
+            # Fallback to business_settings table
             from src.services.settings_manager import get_settings_manager
             settings_mgr = get_settings_manager()
-            settings = settings_mgr.get_business_settings()
+            settings = settings_mgr.get_business_settings(company_id=company_id)
             
             if settings:
+                # Check if there's a business_hours string in settings
+                if settings.get('business_hours'):
+                    return Config.parse_business_hours_string(settings['business_hours'])
+                
                 # Parse days_open if it's a string
                 days_open = settings.get('days_open', [])
                 if isinstance(days_open, str):
@@ -144,10 +217,10 @@ class Config:
         }
     
     @staticmethod
-    def get_business_days_indices():
+    def get_business_days_indices(company_id: int = None):
         """Get business days as weekday indices (0=Monday, 6=Sunday) from database"""
         try:
-            hours = Config.get_business_hours()
+            hours = Config.get_business_hours(company_id=company_id)
             days_open = hours.get('days_open', [])
             day_map = {'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 
                       'Friday': 4, 'Saturday': 5, 'Sunday': 6}

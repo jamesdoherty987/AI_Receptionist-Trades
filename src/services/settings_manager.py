@@ -462,7 +462,36 @@ class SettingsManager:
     
     def get_business_hours(self, company_id: int = None) -> Dict[str, Any]:
         """Get business hours from business settings for a specific company"""
+        from src.utils.config import Config
+        
+        # First try to get from company's business_hours string
+        if company_id:
+            try:
+                from src.services.database import get_database
+                db = get_database()
+                company = db.get_company(company_id)
+                if company and company.get('business_hours'):
+                    parsed = Config.parse_business_hours_string(company['business_hours'])
+                    return {
+                        "start_hour": parsed['start'],
+                        "end_hour": parsed['end'],
+                        "days_open": parsed['days_open']
+                    }
+            except Exception as e:
+                print(f"[WARNING] Could not parse company business hours: {e}")
+        
+        # Fallback to business_settings table
         settings = self.get_business_settings(company_id=company_id)
+        
+        # Check if there's a business_hours string in settings
+        if settings.get('business_hours'):
+            parsed = Config.parse_business_hours_string(settings['business_hours'])
+            return {
+                "start_hour": parsed['start'],
+                "end_hour": parsed['end'],
+                "days_open": parsed['days_open']
+            }
+        
         return {
             "start_hour": settings.get('opening_hours_start', 9),
             "end_hour": settings.get('opening_hours_end', 17),

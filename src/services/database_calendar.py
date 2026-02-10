@@ -61,7 +61,7 @@ class DatabaseCalendarService:
         
         # Get business hours from config
         try:
-            business_hours = config.get_business_hours()
+            business_hours = config.get_business_hours(company_id=self.company_id)
             start_hour = business_hours.get('start', 9)
             end_hour = business_hours.get('end', 17)
         except Exception:

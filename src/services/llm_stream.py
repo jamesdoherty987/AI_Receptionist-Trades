@@ -182,8 +182,8 @@ def load_system_prompt(company_id=None):
     business_info = load_business_info(company_id=company_id)
     services_menu = load_services_menu()
     
-    # Get business hours from database settings (not from services menu)
-    business_hours_data = config.get_business_hours()
+    # Get business hours from database settings (pass company_id for company-specific hours)
+    business_hours_data = config.get_business_hours(company_id=company_id)
     business_hours = {
         'start_hour': business_hours_data['start'],
         'end_hour': business_hours_data['end'],

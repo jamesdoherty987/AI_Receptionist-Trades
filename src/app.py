@@ -2774,32 +2774,81 @@ def check_availability_api():
         
         # Parse the date
         target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        day_name = target_date.strftime('%A').lower()
         
-        # Get business hours (default 9 AM to 5 PM if not configured)
+        # Get business hours from company settings (stored as string like "8 AM - 6 PM Mon-Sat")
         business_hours = {
-            'start': 9,  # 9 AM
-            'end': 17,   # 5 PM
-            'interval': 60  # 60 minute slots
+            'start': 9,  # Default 9 AM
+            'end': 17,   # Default 5 PM
+            'interval': 60,  # 60 minute slots
+            'is_open': True
         }
         
-        # Try to get configured business hours
+        # Try to get configured business hours from company settings
         try:
-            settings = db.get_business_settings(company_id)
-            if settings and settings.get('business_hours'):
-                hours = settings['business_hours']
-                # Parse business hours if available
-                # Expected format: {"monday": {"start": "09:00", "end": "17:00"}, ...}
-                day_name = target_date.strftime('%A').lower()
-                if day_name in hours and hours[day_name].get('is_open'):
-                    start_time = hours[day_name].get('start', '09:00')
-                    end_time = hours[day_name].get('end', '17:00')
-                    business_hours['start'] = int(start_time.split(':')[0])
-                    business_hours['end'] = int(end_time.split(':')[0])
+            company = db.get_company(company_id)
+            if company and company.get('business_hours'):
+                hours_str = company['business_hours']
+                # Parse format: "8 AM - 6 PM Mon-Sat (24/7 emergency available)"
+                import re
+                time_match = re.match(r'(\d+)\s*(AM|PM)\s*-\s*(\d+)\s*(AM|PM)', hours_str, re.IGNORECASE)
+                if time_match:
+                    start_hour = int(time_match.group(1))
+                    start_period = time_match.group(2).upper()
+                    end_hour = int(time_match.group(3))
+                    end_period = time_match.group(4).upper()
+                    
+                    # Convert to 24-hour format
+                    if start_period == 'PM' and start_hour != 12:
+                        start_hour += 12
+                    elif start_period == 'AM' and start_hour == 12:
+                        start_hour = 0
+                    
+                    if end_period == 'PM' and end_hour != 12:
+                        end_hour += 12
+                    elif end_period == 'AM' and end_hour == 12:
+                        end_hour = 0
+                    
+                    business_hours['start'] = start_hour
+                    business_hours['end'] = end_hour
+                
+                # Parse days from the string
+                hours_lower = hours_str.lower()
+                day_map = {
+                    'monday': 'mon', 'tuesday': 'tue', 'wednesday': 'wed',
+                    'thursday': 'thu', 'friday': 'fri', 'saturday': 'sat', 'sunday': 'sun'
+                }
+                day_abbrev = day_map.get(day_name, day_name[:3])
+                
+                # Check if this day is open
+                is_open = True
+                if 'daily' in hours_lower or 'mon-sun' in hours_lower:
+                    is_open = True
+                elif 'mon-sat' in hours_lower:
+                    is_open = day_name != 'sunday'
+                elif 'mon-fri' in hours_lower:
+                    is_open = day_name not in ['saturday', 'sunday']
+                else:
+                    # Check for individual day mentions
+                    is_open = day_abbrev in hours_lower or day_name in hours_lower
+                
+                business_hours['is_open'] = is_open
+                
         except Exception as e:
             print(f"[WARNING] Could not load business hours: {e}")
         
         # Generate time slots for the day
         slots = []
+        
+        # Check if business is open on this day
+        if not business_hours.get('is_open', True):
+            return jsonify({
+                'date': date_str,
+                'slots': [],
+                'business_hours': business_hours,
+                'message': 'Business is closed on this day'
+            })
+        
         current_hour = business_hours['start']
         
         while current_hour < business_hours['end']:

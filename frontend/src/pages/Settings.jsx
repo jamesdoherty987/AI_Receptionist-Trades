@@ -673,7 +673,7 @@ function Settings() {
                     placeholder="Upload Your Company Logo"
                   />
                   <small className="form-help" style={{ display: 'block', marginTop: '10px', color: '#666' }}>
-                    Upload your company logo. It will appear in the header and on invoices. Maximum file size: 2MB.
+                    Upload your company logo. It will appear in the header and on invoices. Maximum file size: 5MB.
                   </small>
                 </div>
               </div>

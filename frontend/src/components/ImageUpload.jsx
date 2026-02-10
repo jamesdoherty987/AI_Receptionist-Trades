@@ -20,9 +20,9 @@ function ImageUpload({ value, onChange, placeholder = "Upload Image" }) {
       return;
     }
 
-    // Validate file size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Image size must be less than 2MB');
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB');
       return;
     }
 
@@ -113,7 +113,7 @@ function ImageUpload({ value, onChange, placeholder = "Upload Image" }) {
           </div>
           <p className="upload-text">{placeholder}</p>
           <p className="upload-hint">Click or drag & drop</p>
-          <p className="upload-hint">Max 2MB • JPG, PNG, GIF</p>
+          <p className="upload-hint">Max 5MB • JPG, PNG, GIF</p>
         </div>
       )}
     </div>
