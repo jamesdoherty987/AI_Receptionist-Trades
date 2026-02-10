@@ -1203,6 +1203,56 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
+    def find_client_by_phone(self, phone: str, company_id: int = None) -> Optional[Dict]:
+        """Find a client by phone number, optionally filtered by company_id"""
+        if not phone:
+            return None
+        
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            # Normalize phone number - remove common formatting
+            normalized_phone = phone.strip()
+            
+            if company_id:
+                cursor.execute("""
+                    SELECT * FROM clients 
+                    WHERE company_id = %s AND phone = %s
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """, (company_id, normalized_phone))
+            else:
+                cursor.execute("""
+                    SELECT * FROM clients 
+                    WHERE phone = %s
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """, (normalized_phone,))
+            
+            row = cursor.fetchone()
+            
+            if row:
+                return {
+                    'id': row['id'],
+                    'company_id': row.get('company_id'),
+                    'name': row['name'],
+                    'phone': row['phone'],
+                    'email': row['email'],
+                    'first_visit': row.get('first_visit'),
+                    'last_visit': row.get('last_visit'),
+                    'total_appointments': row.get('total_appointments', 0),
+                    'created_at': row.get('created_at'),
+                    'updated_at': row.get('updated_at'),
+                    'date_of_birth': row.get('date_of_birth'),
+                    'description': row.get('description')
+                }
+            return None
+        except Exception as e:
+            print(f"[ERROR] Error finding client by phone: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+    
     def get_client(self, client_id: int, company_id: int = None) -> Optional[Dict]:
         """Get client by ID, optionally filtered by company_id for security"""
         conn = self.get_connection()

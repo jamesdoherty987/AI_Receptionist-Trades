@@ -593,6 +593,24 @@ async def media_handler(ws):
             print(f"   Fastest: {min(response_times):.2f}s")
             print(f"   Slowest: {max(response_times):.2f}s")
         
+        # Generate and save call summary to job card
+        if conversation_log and caller_phone:
+            try:
+                from src.services.call_summarizer import add_call_summary_to_booking
+                print(f"\n📝 Generating call summary for job card...")
+                company_id_int = int(company_id) if company_id else None
+                summary_added = await add_call_summary_to_booking(
+                    conversation_log=conversation_log,
+                    caller_phone=caller_phone,
+                    company_id=company_id_int
+                )
+                if summary_added:
+                    print(f"✅ Call summary added to job card")
+                else:
+                    print(f"ℹ️ No job card updated (no booking found or no job content)")
+            except Exception as summary_error:
+                print(f"⚠️ Could not add call summary: {summary_error}")
+        
         print(f"\n{'#'*80}\n\n")
         
         if respond_task and not respond_task.done():
