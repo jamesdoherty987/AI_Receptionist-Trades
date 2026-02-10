@@ -163,9 +163,10 @@ function Settings() {
       setSaveMessage('Settings saved successfully!');
       setTimeout(() => setSaveMessage(''), 3000);
     },
-    onError: () => {
-      setSaveMessage('Error saving settings');
-      setTimeout(() => setSaveMessage(''), 3000);
+    onError: (error) => {
+      const errorMsg = error?.response?.data?.error || 'Error saving settings';
+      setSaveMessage(errorMsg);
+      setTimeout(() => setSaveMessage(''), 5000);
     },
   });
 

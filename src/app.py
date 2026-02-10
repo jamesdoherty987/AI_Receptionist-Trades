@@ -2167,9 +2167,33 @@ def business_settings_api():
     elif request.method == "POST":
         data = request.json
         
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
         # Handle logo upload to R2 if logo_url is base64
         if 'logo_url' in data and data['logo_url'] and data['logo_url'].startswith('data:image/'):
-            data['logo_url'] = upload_base64_image_to_r2(data['logo_url'], company_id, 'logos')
+            try:
+                uploaded_url = upload_base64_image_to_r2(data['logo_url'], company_id, 'logos')
+                if uploaded_url and not uploaded_url.startswith('data:'):
+                    # Successfully uploaded to R2
+                    data['logo_url'] = uploaded_url
+                elif uploaded_url and uploaded_url.startswith('data:'):
+                    # R2 not configured, base64 returned - check size
+                    # Don't store huge base64 strings in database (limit to ~500KB)
+                    if len(uploaded_url) > 500000:
+                        print(f"[WARNING] Logo too large to store in database ({len(uploaded_url)} bytes). Configure R2 storage.")
+                        return jsonify({"error": "Logo file too large. Please use a smaller image or contact support to enable cloud storage."}), 400
+                    data['logo_url'] = uploaded_url
+                else:
+                    # Upload failed or returned empty - don't update logo
+                    print(f"[WARNING] Logo upload failed for company {company_id}, keeping existing logo")
+                    del data['logo_url']
+            except Exception as e:
+                print(f"[ERROR] Logo upload error: {e}")
+                import traceback
+                traceback.print_exc()
+                # Don't fail the whole save, just skip logo update
+                del data['logo_url']
         
         # Map frontend field names to database column names
         update_data = {}
@@ -2205,17 +2229,18 @@ def business_settings_api():
                     print(f"[WARNING] Could not ensure payment columns: {e}")
             
             try:
+                print(f"[SETTINGS] Updating company {company_id} with fields: {list(update_data.keys())}")
                 success = db.update_company(company_id, **update_data)
-                if success:
-                    return jsonify({"message": "Settings updated successfully"})
-                else:
-                    return jsonify({"error": "No changes were saved"}), 500
+                print(f"[SETTINGS] Update result: {success}")
+                # Return success even if no rows changed (data might be identical)
+                return jsonify({"message": "Settings updated successfully"})
             except Exception as e:
                 print(f"[ERROR] Error updating settings: {e}")
                 import traceback
                 traceback.print_exc()
                 return jsonify({"error": f"Failed to save: {str(e)}"}), 500
         
+        print(f"[SETTINGS] No valid fields to update. Received fields: {list(data.keys())}")
         return jsonify({"error": "No valid fields to update"}), 400
 
 
@@ -3064,9 +3089,13 @@ def send_invoice_api(booking_id):
         appointment_time = None
         if booking_dict.get('appointment_time'):
             try:
-                appointment_time = datetime.fromisoformat(booking_dict['appointment_time'].replace('Z', '+00:00'))
-            except:
-                pass
+                apt_time = booking_dict['appointment_time']
+                if isinstance(apt_time, datetime):
+                    appointment_time = apt_time
+                elif isinstance(apt_time, str):
+                    appointment_time = datetime.fromisoformat(apt_time.replace('Z', '+00:00'))
+            except Exception as e:
+                print(f"[WARNING] Could not parse appointment_time: {e}")
         
         # Generate invoice number
         invoice_number = f"INV-{booking_id}-{datetime.now().strftime('%Y%m%d')}"
