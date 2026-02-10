@@ -478,23 +478,35 @@ class PostgreSQLDatabaseWrapper:
         existing_columns = [row['column_name'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()]
         print(f"[INFO] Companies table has {len(existing_columns)} columns")
         
-        # New subscription-related columns to add
+        # New subscription-related columns to add to companies table
+        # This ensures all columns used in the code exist in the database
         migrations = {
+            # Stripe subscription columns
             'stripe_subscription_id': 'TEXT',
             'stripe_connect_account_id': 'TEXT',
             'stripe_connect_status': "TEXT DEFAULT 'not_connected'",
             'stripe_connect_onboarding_complete': 'INTEGER DEFAULT 0',
+            # Trial and subscription dates
             'trial_start': 'TIMESTAMP',
             'trial_end': 'TIMESTAMP',
             'subscription_current_period_end': 'TIMESTAMP',
             'subscription_cancel_at_period_end': 'INTEGER DEFAULT 0',
+            # Bank/payment details for invoices
             'bank_iban': 'TEXT',
             'bank_bic': 'TEXT',
             'bank_name': 'TEXT',
             'bank_account_holder': 'TEXT',
             'revolut_phone': 'TEXT',
+            # AI receptionist context
             'company_context': 'TEXT',
-            'remove_stripe_connect': 'BOOLEAN DEFAULT false'
+            # Feature flags
+            'remove_stripe_connect': 'BOOLEAN DEFAULT false',
+            # Business settings (may have been missed in original schema)
+            'business_hours': "TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)'",
+            'trade_type': 'TEXT',
+            'address': 'TEXT',
+            'logo_url': 'TEXT',
+            'ai_enabled': 'BOOLEAN DEFAULT true',
         }
         
         # Also migrate business_settings table for bank details
@@ -662,14 +674,29 @@ class PostgreSQLDatabaseWrapper:
                               'last_login', 'trial_start', 'trial_end',
                               'subscription_current_period_end', 'subscription_cancel_at_period_end',
                               'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
-                              'revolut_phone', 'company_context', 'remove_stripe_connect']
+                              'revolut_phone', 'company_context', 'remove_stripe_connect',
+                              'twilio_phone_number']
+            
+            # Get actual columns that exist in the database
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'companies'
+            """)
+            existing_columns = {row['column_name'] for row in cursor.fetchall()}
             
             fields = []
             values = []
+            skipped_fields = []
             for key, value in kwargs.items():
                 if key in allowed_fields:
-                    fields.append(f"{key} = %s")
-                    values.append(value)
+                    if key in existing_columns:
+                        fields.append(f"{key} = %s")
+                        values.append(value)
+                    else:
+                        skipped_fields.append(key)
+            
+            if skipped_fields:
+                print(f"[WARNING] Skipped fields not in database: {skipped_fields}")
             
             if fields:
                 values.append(datetime.now())
