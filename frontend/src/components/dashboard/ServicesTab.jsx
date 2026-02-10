@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
 import { 
   getServicesMenu, 
   createService,
@@ -15,6 +17,8 @@ import { formatCurrency } from '../../utils/helpers';
 import './ServicesTab.css';
 
 function ServicesTab() {
+  const { hasActiveSubscription } = useAuth();
+  const isSubscriptionActive = hasActiveSubscription();
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const [editingService, setEditingService] = useState(null);
@@ -175,12 +179,21 @@ function ServicesTab() {
           <h2>Services Menu</h2>
           <p className="services-subtitle">Manage your business services and pricing</p>
         </div>
-        <button 
-          className="btn btn-primary"
-          onClick={() => setShowAddForm(!showAddForm)}
-        >
-          <i className="fas fa-plus"></i> Add Service
-        </button>
+        <div className="services-controls">
+          <button 
+            className="btn btn-primary"
+            onClick={() => setShowAddForm(!showAddForm)}
+            disabled={!isSubscriptionActive}
+            title={!isSubscriptionActive ? 'Subscribe to add services' : ''}
+          >
+            <i className="fas fa-plus"></i> Add Service
+          </button>
+          {!isSubscriptionActive && (
+            <Link to="/settings?tab=subscription" className="btn btn-secondary btn-sm" style={{ marginLeft: '8px' }}>
+              <i className="fas fa-lock"></i> Subscribe
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Add Service Form */}

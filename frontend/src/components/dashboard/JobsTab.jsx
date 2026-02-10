@@ -1,10 +1,14 @@
 import { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { formatDateTime, getStatusBadgeClass } from '../../utils/helpers';
 import AddJobModal from '../modals/AddJobModal';
 import JobDetailModal from '../modals/JobDetailModal';
 import './JobsTab.css';
 
 function JobsTab({ bookings }) {
+  const { hasActiveSubscription } = useAuth();
+  const isSubscriptionActive = hasActiveSubscription();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
@@ -187,9 +191,19 @@ function JobsTab({ bookings }) {
           </div>
         </div>
         
-        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+        <button 
+          className="btn btn-primary" 
+          onClick={() => setShowAddModal(true)}
+          disabled={!isSubscriptionActive}
+          title={!isSubscriptionActive ? 'Subscribe to add jobs' : ''}
+        >
           <i className="fas fa-plus"></i> Add Job
         </button>
+        {!isSubscriptionActive && (
+          <Link to="/settings?tab=subscription" className="btn btn-secondary btn-sm" style={{ marginLeft: '8px' }}>
+            <i className="fas fa-lock"></i> Subscribe
+          </Link>
+        )}
       </div>
 
       {/* Jobs List Grouped by Day */}

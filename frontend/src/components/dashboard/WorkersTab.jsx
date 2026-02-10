@@ -1,11 +1,15 @@
 import { useState, useMemo, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
 import { getWorkerHoursThisWeek } from '../../services/api';
 import AddWorkerModal from '../modals/AddWorkerModal';
 import WorkerDetailModal from '../modals/WorkerDetailModal';
 import './WorkersTab.css';
 
 function WorkersTab({ workers, bookings }) {
+  const { hasActiveSubscription } = useAuth();
+  const isSubscriptionActive = hasActiveSubscription();
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedWorkerId, setSelectedWorkerId] = useState(null);
   const [workersHours, setWorkersHours] = useState({});
@@ -76,9 +80,21 @@ function WorkersTab({ workers, bookings }) {
     <div className="workers-tab">
       <div className="workers-header">
         <h2>Workers Directory</h2>
-        <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>
-          <i className="fas fa-plus"></i> Add Worker
-        </button>
+        <div className="workers-controls">
+          <button 
+            className="btn btn-primary btn-sm" 
+            onClick={() => setShowAddModal(true)}
+            disabled={!isSubscriptionActive}
+            title={!isSubscriptionActive ? 'Subscribe to add workers' : ''}
+          >
+            <i className="fas fa-plus"></i> Add Worker
+          </button>
+          {!isSubscriptionActive && (
+            <Link to="/settings?tab=subscription" className="btn btn-secondary btn-sm" style={{ marginLeft: '8px' }}>
+              <i className="fas fa-lock"></i> Subscribe
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="workers-list">

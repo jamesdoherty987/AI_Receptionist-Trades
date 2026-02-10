@@ -26,8 +26,8 @@ class SettingsManager:
         # The tables will be created automatically
         print("[SUCCESS] Settings tables initialized")
     
-    def get_business_settings(self) -> Dict[str, Any]:
-        """Get current business settings"""
+    def get_business_settings(self, company_id: int = None) -> Dict[str, Any]:
+        """Get current business settings for a specific company"""
         from src.services.database import get_database
         db = get_database()
         
@@ -36,7 +36,11 @@ class SettingsManager:
             
             from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("SELECT * FROM business_settings ORDER BY id DESC LIMIT 1")
+            
+            if company_id:
+                cursor.execute("SELECT * FROM business_settings WHERE company_id = %s ORDER BY id DESC LIMIT 1", (company_id,))
+            else:
+                cursor.execute("SELECT * FROM business_settings ORDER BY id DESC LIMIT 1")
             row = cursor.fetchone()
             db.return_connection(conn)
             
@@ -81,8 +85,8 @@ class SettingsManager:
             print(f"Error getting business settings: {e}")
             return {}
     
-    def update_business_settings(self, settings: Dict[str, Any], user_id: Optional[int] = None) -> bool:
-        """Update business settings"""
+    def update_business_settings(self, settings: Dict[str, Any], company_id: int = None, user_id: Optional[int] = None) -> bool:
+        """Update business settings for a specific company"""
         from src.services.database import get_database
         db = get_database()
         import traceback
@@ -90,7 +94,7 @@ class SettingsManager:
         try:
             sys.stdout.write(f"[SETTINGS_MANAGER] update_business_settings called with: {settings}\n")
             conn = db.get_connection()
-            old_settings = self.get_business_settings()
+            old_settings = self.get_business_settings(company_id=company_id)
             sys.stdout.write(f"[SETTINGS_MANAGER] old_settings: {old_settings}\n")
             field_mapping = {
                 'business_phone': 'phone',
@@ -122,7 +126,7 @@ class SettingsManager:
             update_fields = []
             values = []
             for key, value in settings.items():
-                if key not in ['id', 'created_at', 'updated_at'] and key in valid_columns:
+                if key not in ['id', 'created_at', 'updated_at', 'company_id'] and key in valid_columns:
                     update_fields.append(f"{key} = %s")
                     values.append(value)
             sys.stdout.write(f"[SETTINGS_MANAGER] update_fields: {update_fields}\n")
@@ -133,11 +137,36 @@ class SettingsManager:
                 return False
             values.append(datetime.now().isoformat())
             cursor = conn.cursor()
-            update_query = f"""
-                UPDATE business_settings 
-                SET {', '.join(update_fields)}, updated_at = %s
-                WHERE id = (SELECT MAX(id) FROM business_settings)
-            """
+            
+            if company_id:
+                # Check if settings exist for this company
+                cursor.execute("SELECT id FROM business_settings WHERE company_id = %s", (company_id,))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    values.append(company_id)
+                    update_query = f"""
+                        UPDATE business_settings 
+                        SET {', '.join(update_fields)}, updated_at = %s
+                        WHERE company_id = %s
+                    """
+                else:
+                    # Insert new settings for this company
+                    insert_fields = [f.split(' = ')[0] for f in update_fields]
+                    insert_fields.append('updated_at')
+                    insert_fields.append('company_id')
+                    values.append(company_id)
+                    placeholders = ', '.join(['%s'] * len(values))
+                    update_query = f"""
+                        INSERT INTO business_settings ({', '.join(insert_fields)})
+                        VALUES ({placeholders})
+                    """
+            else:
+                update_query = f"""
+                    UPDATE business_settings 
+                    SET {', '.join(update_fields)}, updated_at = %s
+                    WHERE id = (SELECT MAX(id) FROM business_settings)
+                """
             sys.stdout.write(f"[SETTINGS_MANAGER] update_query: {update_query}\n")
             try:
                 cursor.execute(update_query, values)
@@ -156,8 +185,8 @@ class SettingsManager:
             traceback.print_exc()
             return False
     
-    def get_developer_settings(self) -> Dict[str, Any]:
-        """Get current developer settings"""
+    def get_developer_settings(self, company_id: int = None) -> Dict[str, Any]:
+        """Get current developer settings for a specific company"""
         from src.services.database import get_database
         db = get_database()
         
@@ -166,7 +195,11 @@ class SettingsManager:
             
             from psycopg2.extras import RealDictCursor
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("SELECT * FROM developer_settings ORDER BY id DESC LIMIT 1")
+            
+            if company_id:
+                cursor.execute("SELECT * FROM developer_settings WHERE company_id = %s ORDER BY id DESC LIMIT 1", (company_id,))
+            else:
+                cursor.execute("SELECT * FROM developer_settings ORDER BY id DESC LIMIT 1")
             row = cursor.fetchone()
             db.return_connection(conn)
             
@@ -176,8 +209,8 @@ class SettingsManager:
             print(f"Error getting developer settings: {e}")
             return {}
     
-    def update_developer_settings(self, settings: Dict[str, Any], user_id: Optional[int] = None) -> bool:
-        """Update developer settings"""
+    def update_developer_settings(self, settings: Dict[str, Any], company_id: int = None, user_id: Optional[int] = None) -> bool:
+        """Update developer settings for a specific company"""
         from src.services.database import get_database
         db = get_database()
         
@@ -189,7 +222,7 @@ class SettingsManager:
             update_fields = []
             values = []
             for key, value in settings.items():
-                if key not in ['id', 'created_at', 'updated_at']:
+                if key not in ['id', 'created_at', 'updated_at', 'company_id']:
                     update_fields.append(f"{key} = %s")
                     values.append(value)
             
@@ -199,11 +232,35 @@ class SettingsManager:
             
             values.append(datetime.now().isoformat())
             
-            update_query = f"""
-                UPDATE developer_settings 
-                SET {', '.join(update_fields)}, updated_at = %s
-                WHERE id = (SELECT MAX(id) FROM developer_settings)
-            """
+            if company_id:
+                # Check if settings exist for this company
+                cursor.execute("SELECT id FROM developer_settings WHERE company_id = %s", (company_id,))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    values.append(company_id)
+                    update_query = f"""
+                        UPDATE developer_settings 
+                        SET {', '.join(update_fields)}, updated_at = %s
+                        WHERE company_id = %s
+                    """
+                else:
+                    # Insert new settings for this company
+                    insert_fields = [f.split(' = ')[0] for f in update_fields]
+                    insert_fields.append('updated_at')
+                    insert_fields.append('company_id')
+                    values.append(company_id)
+                    placeholders = ', '.join(['%s'] * len(values))
+                    update_query = f"""
+                        INSERT INTO developer_settings ({', '.join(insert_fields)})
+                        VALUES ({placeholders})
+                    """
+            else:
+                update_query = f"""
+                    UPDATE developer_settings 
+                    SET {', '.join(update_fields)}, updated_at = %s
+                    WHERE id = (SELECT MAX(id) FROM developer_settings)
+                """
             
             cursor.execute(update_query, values)
             conn.commit()
@@ -243,14 +300,14 @@ class SettingsManager:
     
     # ======= Services/Menu Management =======
     
-    def get_services_menu(self) -> Dict[str, Any]:
-        """Get services menu from database"""
+    def get_services_menu(self, company_id: int = None) -> Dict[str, Any]:
+        """Get services menu from database for a specific company"""
         from src.services.database import get_database
         db = get_database()
         
         try:
-            services = db.get_all_services(active_only=True)
-            business_settings = self.get_business_settings()
+            services = db.get_all_services(active_only=True, company_id=company_id)
+            business_settings = self.get_business_settings(company_id=company_id)
             
             # Return format compatible with old JSON structure
             return {
@@ -277,13 +334,13 @@ class SettingsManager:
                 "pricing_notes": {}
             }
     
-    def update_services_menu(self, menu_data: Dict[str, Any]) -> bool:
+    def update_services_menu(self, menu_data: Dict[str, Any], company_id: int = None) -> bool:
         """Update services menu in database (deprecated - use database methods directly)"""
         print("[WARNING] update_services_menu is deprecated - use database.add_service() or database.update_service()")
         return False
     
-    def add_service(self, service: Dict[str, Any]) -> bool:
-        """Add a new service to the database"""
+    def add_service(self, service: Dict[str, Any], company_id: int = None) -> bool:
+        """Add a new service to the database for a specific company"""
         from src.services.database import get_database
         db = get_database()
         
@@ -299,51 +356,52 @@ class SettingsManager:
                 currency=service.get('currency', 'EUR'),
                 active=service.get('active', True),
                 image_url=service.get('image_url'),
-                sort_order=service.get('sort_order', 0)
+                sort_order=service.get('sort_order', 0),
+                company_id=company_id
             )
         except Exception as e:
             print(f"Error adding service: {e}")
             return False
     
-    def update_service(self, service_id: str, service_data: Dict[str, Any]) -> bool:
-        """Update an existing service"""
+    def update_service(self, service_id: str, service_data: Dict[str, Any], company_id: int = None) -> bool:
+        """Update an existing service for a specific company"""
         from src.services.database import get_database
         db = get_database()
         
         try:
-            return db.update_service(service_id, **service_data)
+            return db.update_service(service_id, company_id=company_id, **service_data)
         except Exception as e:
             print(f"Error updating service: {e}")
             return False
     
-    def delete_service(self, service_id: str) -> bool:
-        """Delete a service from the database"""
+    def delete_service(self, service_id: str, company_id: int = None) -> bool:
+        """Delete a service from the database for a specific company"""
         from src.services.database import get_database
         db = get_database()
         
         try:
-            return db.delete_service(service_id)
+            return db.delete_service(service_id, company_id=company_id)
         except Exception as e:
             print(f"Error deleting service: {e}")
             return False
     
-    def update_business_hours(self, hours_data: Dict[str, Any]) -> bool:
-        """Update business hours in business settings"""
-        return self.update_business_settings(hours_data)
+    def update_business_hours(self, hours_data: Dict[str, Any], company_id: int = None) -> bool:
+        """Update business hours in business settings for a specific company"""
+        return self.update_business_settings(hours_data, company_id=company_id)
     
-    def is_ai_receptionist_enabled(self) -> bool:
-        """Check if AI receptionist is enabled"""
+    def is_ai_receptionist_enabled(self, company_id: int = None) -> bool:
+        """Check if AI receptionist is enabled for a specific company"""
         try:
-            settings = self.get_developer_settings()
+            settings = self.get_developer_settings(company_id=company_id)
             return bool(settings.get('ai_receptionist_enabled', 1))
         except Exception as e:
             print(f"Error checking AI receptionist status: {e}")
             return True  # Default to enabled on error
     
-    def set_ai_receptionist_enabled(self, enabled: bool) -> bool:
-        """Enable or disable AI receptionist"""
+    def set_ai_receptionist_enabled(self, enabled: bool, company_id: int = None) -> bool:
+        """Enable or disable AI receptionist for a specific company"""
         try:
-            success = self.update_developer_settings({'ai_receptionist_enabled': 1 if enabled else 0})
+            success = self.update_developer_settings({'ai_receptionist_enabled': 1 if enabled else 0}, company_id=company_id)
             if success:
                 print(f"[SUCCESS] AI Receptionist {'enabled' if enabled else 'disabled'}")
             return success
@@ -351,10 +409,10 @@ class SettingsManager:
             print(f"Error updating AI receptionist status: {e}")
             return False
     
-    def get_fallback_phone_number(self) -> Optional[str]:
+    def get_fallback_phone_number(self, company_id: int = None) -> Optional[str]:
         """Get business phone number for transfers and when AI is disabled"""
         try:
-            settings = self.get_business_settings()
+            settings = self.get_business_settings(company_id=company_id)
             phone = settings.get('phone')
             if phone:
                 # Return phone as-is if it already has country code
@@ -368,43 +426,43 @@ class SettingsManager:
             print(f"Error getting business phone number: {e}")
             return None
     
-    def set_fallback_phone_number(self, phone: str) -> bool:
+    def set_fallback_phone_number(self, phone: str, company_id: int = None) -> bool:
         """Deprecated: Use business phone instead. This method is kept for backwards compatibility."""
         print(f"[WARNING] set_fallback_phone_number is deprecated. Business phone is now used for transfers.")
         print(f"   Update the business phone in business settings instead.")
         return False
     
-    def get_services(self) -> List[Dict[str, Any]]:
-        """Get all services from database"""
+    def get_services(self, company_id: int = None) -> List[Dict[str, Any]]:
+        """Get all services from database for a specific company"""
         from src.services.database import get_database
         db = get_database()
         try:
-            return db.get_all_services(active_only=True)
+            return db.get_all_services(active_only=True, company_id=company_id)
         except Exception as e:
             print(f"Error getting services: {e}")
             return []
     
-    def get_service_by_name(self, name: str) -> Optional[Dict[str, Any]]:
-        """Get service by name from database"""
-        services = self.get_services()
+    def get_service_by_name(self, name: str, company_id: int = None) -> Optional[Dict[str, Any]]:
+        """Get service by name from database for a specific company"""
+        services = self.get_services(company_id=company_id)
         for service in services:
             if service.get('name', '').lower() == name.lower():
                 return service
         return None
     
-    def get_service_by_id(self, service_id: str) -> Optional[Dict[str, Any]]:
-        """Get service by ID from database"""
+    def get_service_by_id(self, service_id: str, company_id: int = None) -> Optional[Dict[str, Any]]:
+        """Get service by ID from database for a specific company"""
         from src.services.database import get_database
         db = get_database()
         try:
-            return db.get_service(service_id)
+            return db.get_service(service_id, company_id=company_id)
         except Exception as e:
             print(f"Error getting service: {e}")
             return None
     
-    def get_business_hours(self) -> Dict[str, Any]:
-        """Get business hours from business settings"""
-        settings = self.get_business_settings()
+    def get_business_hours(self, company_id: int = None) -> Dict[str, Any]:
+        """Get business hours from business settings for a specific company"""
+        settings = self.get_business_settings(company_id=company_id)
         return {
             "start_hour": settings.get('opening_hours_start', 9),
             "end_hour": settings.get('opening_hours_end', 17),

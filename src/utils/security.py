@@ -424,7 +424,7 @@ def get_security_headers() -> Dict[str, str]:
     Returns:
         Dictionary of security headers
     """
-    return {
+    headers = {
         # Prevent clickjacking
         'X-Frame-Options': 'DENY',
         
@@ -442,10 +442,14 @@ def get_security_headers() -> Dict[str, str]:
         
         # Permissions Policy
         'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
-        
-        # HSTS (only enable in production with HTTPS)
-        # 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
     }
+    
+    # Enable HSTS in production
+    is_production = os.getenv('FLASK_ENV') == 'production'
+    if is_production:
+        headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    return headers
 
 
 def apply_security_headers(response):

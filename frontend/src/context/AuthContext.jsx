@@ -24,9 +24,9 @@ export function AuthProvider({ children }) {
 
   const checkAuth = async () => {
     try {
-      // Check localStorage first for instant load
-      const cachedUser = localStorage.getItem('authUser');
-      const cachedSubscription = localStorage.getItem('authSubscription');
+      // Check sessionStorage first for instant load (cleared on browser close)
+      const cachedUser = sessionStorage.getItem('authUser');
+      const cachedSubscription = sessionStorage.getItem('authSubscription');
       if (cachedUser) {
         try {
           const parsedUser = JSON.parse(cachedUser);
@@ -35,8 +35,8 @@ export function AuthProvider({ children }) {
             setSubscription(JSON.parse(cachedSubscription));
           }
         } catch (e) {
-          localStorage.removeItem('authUser');
-          localStorage.removeItem('authSubscription');
+          sessionStorage.removeItem('authUser');
+          sessionStorage.removeItem('authSubscription');
         }
       }
 
@@ -45,21 +45,21 @@ export function AuthProvider({ children }) {
       if (response.data.authenticated) {
         setUser(response.data.user);
         setSubscription(response.data.subscription || null);
-        localStorage.setItem('authUser', JSON.stringify(response.data.user));
+        sessionStorage.setItem('authUser', JSON.stringify(response.data.user));
         if (response.data.subscription) {
-          localStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
+          sessionStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
         }
       } else {
         setUser(null);
         setSubscription(null);
-        localStorage.removeItem('authUser');
-        localStorage.removeItem('authSubscription');
+        sessionStorage.removeItem('authUser');
+        sessionStorage.removeItem('authSubscription');
       }
     } catch (error) {
       setUser(null);
       setSubscription(null);
-      localStorage.removeItem('authUser');
-      localStorage.removeItem('authSubscription');
+      sessionStorage.removeItem('authUser');
+      sessionStorage.removeItem('authSubscription');
     } finally {
       setLoading(false);
       setInitialized(true);
@@ -71,7 +71,7 @@ export function AuthProvider({ children }) {
       const response = await api.post('/api/auth/login', { email, password });
       if (response.data.success) {
         setUser(response.data.user);
-        localStorage.setItem('authUser', JSON.stringify(response.data.user));
+        sessionStorage.setItem('authUser', JSON.stringify(response.data.user));
         // Fetch subscription info after login
         await checkAuth();
         return { success: true };
@@ -104,7 +104,7 @@ export function AuthProvider({ children }) {
       const response = await api.post('/api/auth/signup', userData);
       if (response.data.success) {
         setUser(response.data.user);
-        localStorage.setItem('authUser', JSON.stringify(response.data.user));
+        sessionStorage.setItem('authUser', JSON.stringify(response.data.user));
         return { success: true };
       }
       return { success: false, error: response.data.error };
@@ -121,6 +121,7 @@ export function AuthProvider({ children }) {
       console.error('Logout error:', error.message || error);
     } finally {
       setUser(null);
+      setSubscription(null);
       // Clear all sensitive data from storage
       clearSensitiveData();
     }
@@ -131,7 +132,7 @@ export function AuthProvider({ children }) {
       const response = await api.put('/api/auth/profile', profileData);
       if (response.data.success) {
         setUser(response.data.user);
-        localStorage.setItem('authUser', JSON.stringify(response.data.user));
+        sessionStorage.setItem('authUser', JSON.stringify(response.data.user));
         return { success: true };
       }
       return { success: false, error: response.data.error };

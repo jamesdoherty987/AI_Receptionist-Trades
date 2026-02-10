@@ -92,14 +92,16 @@ async def media_websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
     adapter = WebSocketAdapter(websocket)
+    client_info = f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "unknown"
+    print(f"[WS] Media stream connected from {client_info}")
     try:
         await media_handler(adapter)
     except websockets.ConnectionClosed:
-        print("Twilio WS disconnected (via adapter)")
+        print(f"[WS] Twilio media stream disconnected (clean): {client_info}")
     except WebSocketDisconnect:
-        print("Twilio WS disconnected")
+        print(f"[WS] Twilio media stream disconnected (starlette): {client_info}")
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        print(f"[WS] WebSocket error from {client_info}: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
     finally:

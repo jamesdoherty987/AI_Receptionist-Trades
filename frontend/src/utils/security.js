@@ -147,9 +147,12 @@ export const secureRetrieve = (key) => {
  */
 export const clearSensitiveData = () => {
   try {
-    // Clear authentication data
+    // Clear authentication data from both storage types
     localStorage.removeItem('authUser');
     localStorage.removeItem('authToken');
+    localStorage.removeItem('authSubscription');
+    sessionStorage.removeItem('authUser');
+    sessionStorage.removeItem('authSubscription');
     sessionStorage.clear();
   } catch (error) {
     console.error('Failed to clear sensitive data:', error);

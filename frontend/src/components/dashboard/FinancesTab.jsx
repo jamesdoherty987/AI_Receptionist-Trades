@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDateTime } from '../../utils/helpers';
 import { getFinances, sendInvoice } from '../../services/api';
 import { useToast } from '../Toast';
@@ -7,6 +8,8 @@ import LoadingSpinner from '../LoadingSpinner';
 import './FinancesTab.css';
 
 function FinancesTab() {
+  const { hasActiveSubscription } = useAuth();
+  const isSubscriptionActive = hasActiveSubscription();
   const [filterMode, setFilterMode] = useState('unpaid');
   const [sendingInvoice, setSendingInvoice] = useState(null);
   const { addToast } = useToast();
@@ -248,11 +251,11 @@ function FinancesTab() {
                         <button
                           className="btn-send-invoice"
                           onClick={(e) => handleSendInvoice(transaction, e)}
-                          disabled={isSending}
-                          title="Send invoice email"
+                          disabled={isSending || !isSubscriptionActive}
+                          title={!isSubscriptionActive ? 'Subscribe to send invoices' : 'Send invoice email'}
                         >
-                          <i className={`fas ${isSending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`}></i>
-                          {isSending ? 'Sending...' : 'Send Invoice'}
+                          <i className={`fas ${isSending ? 'fa-spinner fa-spin' : !isSubscriptionActive ? 'fa-lock' : 'fa-paper-plane'}`}></i>
+                          {isSending ? 'Sending...' : !isSubscriptionActive ? 'Subscribe' : 'Send Invoice'}
                         </button>
                       )}
                     </div>

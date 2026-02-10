@@ -87,10 +87,55 @@ class PostgreSQLDatabaseWrapper:
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
+            # Companies/Users table MUST be created first (other tables reference it)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS companies (
+                    id BIGSERIAL PRIMARY KEY,
+                    company_name TEXT NOT NULL,
+                    owner_name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    phone TEXT,
+                    trade_type TEXT,
+                    address TEXT,
+                    logo_url TEXT,
+                    business_hours TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
+                    subscription_tier TEXT DEFAULT 'trial',
+                    subscription_status TEXT DEFAULT 'active',
+                    stripe_customer_id TEXT,
+                    stripe_subscription_id TEXT,
+                    stripe_connect_account_id TEXT,
+                    stripe_connect_status TEXT DEFAULT 'not_connected',
+                    stripe_connect_onboarding_complete INTEGER DEFAULT 0,
+                    trial_start TIMESTAMP,
+                    trial_end TIMESTAMP,
+                    subscription_current_period_end TIMESTAMP,
+                    subscription_cancel_at_period_end INTEGER DEFAULT 0,
+                    is_verified INTEGER DEFAULT 0,
+                    verification_token TEXT,
+                    reset_token TEXT,
+                    reset_token_expires TIMESTAMP,
+                    last_login TIMESTAMP,
+                    -- Twilio phone number assigned from pool
+                    twilio_phone_number TEXT UNIQUE,
+                    -- Legacy fields (no longer used - kept for backwards compatibility)
+                    openai_api_key TEXT,
+                    deepgram_api_key TEXT,
+                    elevenlabs_api_key TEXT,
+                    elevenlabs_voice_id TEXT,
+                    google_calendar_id TEXT,
+                    google_credentials_json TEXT,
+                    ai_enabled BOOLEAN DEFAULT true,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Clients table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS clients (
                     id BIGSERIAL PRIMARY KEY,
+                    company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE,
                     name TEXT NOT NULL,
                     phone TEXT,
                     email TEXT,
@@ -103,7 +148,7 @@ class PostgreSQLDatabaseWrapper:
                     eircode TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(name, phone, email)
+                    UNIQUE(company_id, name, phone, email)
                 )
             """)
             
@@ -111,6 +156,7 @@ class PostgreSQLDatabaseWrapper:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS bookings (
                     id BIGSERIAL PRIMARY KEY,
+                    company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE,
                     client_id BIGINT,
                     calendar_event_id TEXT UNIQUE,
                     appointment_time TIMESTAMP NOT NULL,
@@ -170,6 +216,7 @@ class PostgreSQLDatabaseWrapper:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS workers (
                     id BIGSERIAL PRIMARY KEY,
+                    company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE,
                     name TEXT NOT NULL,
                     phone TEXT,
                     email TEXT,
@@ -177,50 +224,6 @@ class PostgreSQLDatabaseWrapper:
                     status TEXT DEFAULT 'active',
                     image_url TEXT,
                     weekly_hours_expected REAL DEFAULT 40.0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Companies/Users table (includes API configurations per company)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS companies (
-                    id BIGSERIAL PRIMARY KEY,
-                    company_name TEXT NOT NULL,
-                    owner_name TEXT NOT NULL,
-                    email TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    phone TEXT,
-                    trade_type TEXT,
-                    address TEXT,
-                    logo_url TEXT,
-                    business_hours TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
-                    subscription_tier TEXT DEFAULT 'trial',
-                    subscription_status TEXT DEFAULT 'active',
-                    stripe_customer_id TEXT,
-                    stripe_subscription_id TEXT,
-                    stripe_connect_account_id TEXT,
-                    stripe_connect_status TEXT DEFAULT 'not_connected',
-                    stripe_connect_onboarding_complete INTEGER DEFAULT 0,
-                    trial_start TIMESTAMP,
-                    trial_end TIMESTAMP,
-                    subscription_current_period_end TIMESTAMP,
-                    subscription_cancel_at_period_end INTEGER DEFAULT 0,
-                    is_verified INTEGER DEFAULT 0,
-                    verification_token TEXT,
-                    reset_token TEXT,
-                    reset_token_expires TIMESTAMP,
-                    last_login TIMESTAMP,
-                    -- Twilio phone number assigned from pool
-                    twilio_phone_number TEXT UNIQUE,
-                    -- Legacy fields (no longer used - kept for backwards compatibility)
-                    openai_api_key TEXT,
-                    deepgram_api_key TEXT,
-                    elevenlabs_api_key TEXT,
-                    elevenlabs_voice_id TEXT,
-                    google_calendar_id TEXT,
-                    google_credentials_json TEXT,
-                    ai_enabled BOOLEAN DEFAULT true,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -342,6 +345,131 @@ class PostgreSQLDatabaseWrapper:
         """Run database migrations to add new columns if they don't exist"""
         print("[INFO] Running database migrations...")
         
+        # ============================================
+        # CRITICAL: Add company_id to data tables for multi-tenancy
+        # ============================================
+        
+        # Add company_id to clients table
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'clients' AND column_name = 'company_id'
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE clients ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_clients_company_id ON clients(company_id)")
+                print("[SUCCESS] Added company_id column to clients table")
+            except Exception as e:
+                print(f"[WARNING] Could not add company_id to clients: {e}")
+        
+        # Add company_id to bookings table
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'bookings' AND column_name = 'company_id'
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE bookings ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_company_id ON bookings(company_id)")
+                print("[SUCCESS] Added company_id column to bookings table")
+            except Exception as e:
+                print(f"[WARNING] Could not add company_id to bookings: {e}")
+        
+        # Add company_id to workers table
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'workers' AND column_name = 'company_id'
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE workers ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_workers_company_id ON workers(company_id)")
+                print("[SUCCESS] Added company_id column to workers table")
+            except Exception as e:
+                print(f"[WARNING] Could not add company_id to workers: {e}")
+        
+        # Add company_id to notes table
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'notes' AND column_name = 'company_id'
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE notes ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_company_id ON notes(company_id)")
+                print("[SUCCESS] Added company_id column to notes table")
+            except Exception as e:
+                print(f"[WARNING] Could not add company_id to notes: {e}")
+        
+        # Add company_id to appointment_notes table
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'appointment_notes' AND column_name = 'company_id'
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE appointment_notes ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_appointment_notes_company_id ON appointment_notes(company_id)")
+                print("[SUCCESS] Added company_id column to appointment_notes table")
+            except Exception as e:
+                print(f"[WARNING] Could not add company_id to appointment_notes: {e}")
+        
+        # Add company_id to call_logs table
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'call_logs' AND column_name = 'company_id'
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE call_logs ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_call_logs_company_id ON call_logs(company_id)")
+                print("[SUCCESS] Added company_id column to call_logs table")
+            except Exception as e:
+                print(f"[WARNING] Could not add company_id to call_logs: {e}")
+        
+        # Add company_id to services table
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'services' AND column_name = 'company_id'
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE services ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_services_company_id ON services(company_id)")
+                print("[SUCCESS] Added company_id column to services table")
+            except Exception as e:
+                print(f"[WARNING] Could not add company_id to services: {e}")
+        
+        # Add company_id to business_settings table
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'business_settings' AND column_name = 'company_id'
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE business_settings ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_business_settings_company_id ON business_settings(company_id)")
+                print("[SUCCESS] Added company_id column to business_settings table")
+            except Exception as e:
+                print(f"[WARNING] Could not add company_id to business_settings: {e}")
+        
+        # Add company_id to developer_settings table
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'developer_settings' AND column_name = 'company_id'
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE developer_settings ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_developer_settings_company_id ON developer_settings(company_id)")
+                print("[SUCCESS] Added company_id column to developer_settings table")
+            except Exception as e:
+                print(f"[WARNING] Could not add company_id to developer_settings: {e}")
+        
+        # ============================================
+        # End of multi-tenancy migrations
+        # ============================================
+        
         # Check existing columns in companies table
         cursor.execute("""
             SELECT column_name FROM information_schema.columns 
@@ -365,7 +493,8 @@ class PostgreSQLDatabaseWrapper:
             'bank_name': 'TEXT',
             'bank_account_holder': 'TEXT',
             'revolut_phone': 'TEXT',
-            'company_context': 'TEXT'
+            'company_context': 'TEXT',
+            'remove_stripe_connect': 'BOOLEAN DEFAULT false'
         }
         
         # Also migrate business_settings table for bank details
@@ -533,7 +662,7 @@ class PostgreSQLDatabaseWrapper:
                               'last_login', 'trial_start', 'trial_end',
                               'subscription_current_period_end', 'subscription_cancel_at_period_end',
                               'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
-                              'revolut_phone', 'company_context']
+                              'revolut_phone', 'company_context', 'remove_stripe_connect']
             
             fields = []
             values = []
@@ -634,13 +763,15 @@ class PostgreSQLDatabaseWrapper:
             cursor.execute("SELECT * FROM bookings WHERE id = %s", (booking_id,))
             row = cursor.fetchone()
             if row:
-                return dict(row)
+                result = dict(row)
+                result['company_id'] = row.get('company_id')
+                return result
             return None
         finally:
             cursor.close()
             self.return_connection(conn)
     
-    def get_conflicting_bookings(self, start_time: str, end_time: str, exclude_statuses: list = None) -> List[Dict]:
+    def get_conflicting_bookings(self, start_time: str, end_time: str, exclude_statuses: list = None, company_id: int = None) -> List[Dict]:
         """Get bookings that conflict with a time range"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -649,13 +780,21 @@ class PostgreSQLDatabaseWrapper:
             if exclude_statuses is None:
                 exclude_statuses = ['cancelled', 'completed']
             
-            # Use ANY for PostgreSQL array matching
-            cursor.execute("""
-                SELECT id, client_id, appointment_time, service_type
-                FROM bookings
-                WHERE status != ALL(%s)
-                AND appointment_time BETWEEN %s AND %s
-            """, (exclude_statuses, start_time, end_time))
+            if company_id:
+                cursor.execute("""
+                    SELECT id, client_id, appointment_time, service_type
+                    FROM bookings
+                    WHERE status != ALL(%s)
+                    AND appointment_time BETWEEN %s AND %s
+                    AND company_id = %s
+                """, (exclude_statuses, start_time, end_time, company_id))
+            else:
+                cursor.execute("""
+                    SELECT id, client_id, appointment_time, service_type
+                    FROM bookings
+                    WHERE status != ALL(%s)
+                    AND appointment_time BETWEEN %s AND %s
+                """, (exclude_statuses, start_time, end_time))
             
             rows = cursor.fetchall()
             bookings = []
@@ -736,12 +875,15 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_all_clients(self) -> List[Dict]:
-        """Get all clients"""
+    def get_all_clients(self, company_id: int = None) -> List[Dict]:
+        """Get all clients for a specific company"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("SELECT * FROM clients ORDER BY created_at DESC")
+            if company_id:
+                cursor.execute("SELECT * FROM clients WHERE company_id = %s ORDER BY created_at DESC", (company_id,))
+            else:
+                cursor.execute("SELECT * FROM clients ORDER BY created_at DESC")
             rows = cursor.fetchall()
             
             return [{
@@ -762,22 +904,36 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_all_bookings(self) -> List[Dict]:
-        """Get all bookings"""
+    def get_all_bookings(self, company_id: int = None) -> List[Dict]:
+        """Get all bookings for a specific company"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("""
-                SELECT 
-                    b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
-                    b.service_type, b.status, b.phone_number, b.email, b.created_at,
-                    b.charge, b.payment_status, b.payment_method, b.urgency, 
-                    b.address, b.eircode, b.property_type,
-                    c.name as client_name, c.phone as client_phone, c.email as client_email
-                FROM bookings b
-                LEFT JOIN clients c ON b.client_id = c.id
-                ORDER BY b.appointment_time DESC
-            """)
+            if company_id:
+                cursor.execute("""
+                    SELECT 
+                        b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
+                        b.service_type, b.status, b.phone_number, b.email, b.created_at,
+                        b.charge, b.payment_status, b.payment_method, b.urgency, 
+                        b.address, b.eircode, b.property_type,
+                        c.name as client_name, c.phone as client_phone, c.email as client_email
+                    FROM bookings b
+                    LEFT JOIN clients c ON b.client_id = c.id
+                    WHERE b.company_id = %s
+                    ORDER BY b.appointment_time DESC
+                """, (company_id,))
+            else:
+                cursor.execute("""
+                    SELECT 
+                        b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
+                        b.service_type, b.status, b.phone_number, b.email, b.created_at,
+                        b.charge, b.payment_status, b.payment_method, b.urgency, 
+                        b.address, b.eircode, b.property_type,
+                        c.name as client_name, c.phone as client_phone, c.email as client_email
+                    FROM bookings b
+                    LEFT JOIN clients c ON b.client_id = c.id
+                    ORDER BY b.appointment_time DESC
+                """)
             rows = cursor.fetchall()
             
             return [{
@@ -808,12 +964,15 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_all_workers(self) -> List[Dict]:
-        """Get all workers"""
+    def get_all_workers(self, company_id: int = None) -> List[Dict]:
+        """Get all workers for a specific company"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("SELECT * FROM workers ORDER BY name ASC")
+            if company_id:
+                cursor.execute("SELECT * FROM workers WHERE company_id = %s ORDER BY name ASC", (company_id,))
+            else:
+                cursor.execute("SELECT * FROM workers ORDER BY name ASC")
             rows = cursor.fetchall()
             
             return [{
@@ -832,16 +991,16 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
     
     def add_client(self, name: str, phone: str = None, email: str = None, 
-                   date_of_birth: str = None, description: str = None) -> Optional[int]:
+                   date_of_birth: str = None, description: str = None, company_id: int = None) -> Optional[int]:
         """Add a new client"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                INSERT INTO clients (name, phone, email, date_of_birth, description, first_visit)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO clients (name, phone, email, date_of_birth, description, first_visit, company_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, (name, phone, email, date_of_birth, description, datetime.now()))
+            """, (name, phone, email, date_of_birth, description, datetime.now(), company_id))
             
             result = cursor.fetchone()
             client_id = result['id'] if result else None
@@ -851,12 +1010,18 @@ class PostgreSQLDatabaseWrapper:
             # Client already exists or other error
             conn.rollback()
             print(f"Error adding client: {e}")
-            # Try to find existing client
+            # Try to find existing client for this company
             try:
-                cursor.execute("""
-                    SELECT id FROM clients 
-                    WHERE name = %s AND (phone = %s OR email = %s)
-                """, (name, phone, email))
+                if company_id:
+                    cursor.execute("""
+                        SELECT id FROM clients 
+                        WHERE company_id = %s AND name = %s AND (phone = %s OR email = %s)
+                    """, (company_id, name, phone, email))
+                else:
+                    cursor.execute("""
+                        SELECT id FROM clients 
+                        WHERE name = %s AND (phone = %s OR email = %s)
+                    """, (name, phone, email))
                 row = cursor.fetchone()
                 return row['id'] if row else None
             except:
@@ -864,7 +1029,7 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def find_or_create_client(self, name: str, phone: str = None, email: str = None, date_of_birth: str = None) -> int:
+    def find_or_create_client(self, name: str, phone: str = None, email: str = None, date_of_birth: str = None, company_id: int = None) -> int:
         """Find existing client or create new one"""
         if not phone and not email:
             raise ValueError("Client must have either phone number or email address")
@@ -876,9 +1041,14 @@ class PostgreSQLDatabaseWrapper:
             
             # First priority: Try to find by name + DOB if DOB is provided
             if date_of_birth:
-                cursor.execute("""
-                    SELECT id FROM clients WHERE name = %s AND date_of_birth = %s
-                """, (name, date_of_birth))
+                if company_id:
+                    cursor.execute("""
+                        SELECT id FROM clients WHERE company_id = %s AND name = %s AND date_of_birth = %s
+                    """, (company_id, name, date_of_birth))
+                else:
+                    cursor.execute("""
+                        SELECT id FROM clients WHERE name = %s AND date_of_birth = %s
+                    """, (name, date_of_birth))
                 row = cursor.fetchone()
                 if row:
                     print(f"[SUCCESS] Found existing client by name + DOB: {name} (ID: {row['id']})")
@@ -886,24 +1056,34 @@ class PostgreSQLDatabaseWrapper:
                 else:
                     # DOB provided but no match found - create new client
                     print(f"[SUCCESS] Creating NEW client (same name, different DOB): {name} (DOB: {date_of_birth})")
-                    return self.add_client(name, phone, email, date_of_birth)
+                    return self.add_client(name, phone, email, date_of_birth, company_id=company_id)
             
             # No DOB provided - fall back to matching by name + contact info
             if phone:
-                cursor.execute("""
-                    SELECT id FROM clients WHERE name = %s AND phone = %s
-                """, (name, phone))
+                if company_id:
+                    cursor.execute("""
+                        SELECT id FROM clients WHERE company_id = %s AND name = %s AND phone = %s
+                    """, (company_id, name, phone))
+                else:
+                    cursor.execute("""
+                        SELECT id FROM clients WHERE name = %s AND phone = %s
+                    """, (name, phone))
             elif email:
-                cursor.execute("""
-                    SELECT id FROM clients WHERE name = %s AND email = %s
-                """, (name, email))
+                if company_id:
+                    cursor.execute("""
+                        SELECT id FROM clients WHERE company_id = %s AND name = %s AND email = %s
+                    """, (company_id, name, email))
+                else:
+                    cursor.execute("""
+                        SELECT id FROM clients WHERE name = %s AND email = %s
+                    """, (name, email))
             
             row = cursor.fetchone()
             
             if row:
                 return row['id']
             else:
-                return self.add_client(name, phone, email, date_of_birth)
+                return self.add_client(name, phone, email, date_of_birth, company_id=company_id)
         finally:
             self.return_connection(conn)
     
@@ -1037,6 +1217,7 @@ class PostgreSQLDatabaseWrapper:
             if row:
                 return {
                     'id': row['id'],
+                    'company_id': row.get('company_id'),
                     'name': row['name'],
                     'phone': row['phone'],
                     'email': row['email'],
@@ -1102,7 +1283,7 @@ class PostgreSQLDatabaseWrapper:
     def add_booking(self, client_id: int, calendar_event_id: str, appointment_time: str,
                     service_type: str, phone_number: str = None, email: str = None,
                     urgency: str = None, address: str = None, eircode: str = None,
-                    property_type: str = None, charge: float = None) -> Optional[int]:
+                    property_type: str = None, charge: float = None, company_id: int = None) -> Optional[int]:
         """Add a new booking"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -1115,25 +1296,25 @@ class PostgreSQLDatabaseWrapper:
                     phone_number = client.get('phone')
                     email = client.get('email')
             
-            # Insert booking
+            # Insert booking with company_id
             if charge is not None:
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
-                                        eircode, property_type, charge)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        eircode, property_type, charge, company_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
-                      phone_number, email, urgency, address, eircode, property_type, charge))
+                      phone_number, email, urgency, address, eircode, property_type, charge, company_id))
             else:
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
-                                        eircode, property_type)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        eircode, property_type, company_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
-                      phone_number, email, urgency, address, eircode, property_type))
+                      phone_number, email, urgency, address, eircode, property_type, company_id))
             
             result = cursor.fetchone()
             booking_id = result['id'] if result else None
@@ -1381,47 +1562,81 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_financial_stats(self) -> Dict:
-        """Get financial statistics"""
+    def get_financial_stats(self, company_id: int = None) -> Dict:
+        """Get financial statistics for a specific company"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             # Total revenue
-            cursor.execute("""
-                SELECT SUM(charge) FROM bookings 
-                WHERE status != 'cancelled'
-            """)
+            if company_id:
+                cursor.execute("""
+                    SELECT SUM(charge) FROM bookings 
+                    WHERE company_id = %s AND status != 'cancelled'
+                """, (company_id,))
+            else:
+                cursor.execute("""
+                    SELECT SUM(charge) FROM bookings 
+                    WHERE status != 'cancelled'
+                """)
             total_revenue = cursor.fetchone()['sum'] or 0
             
             # Payment breakdown
-            cursor.execute("""
-                SELECT payment_status, SUM(charge)
-                FROM bookings
-                WHERE status != 'cancelled'
-                GROUP BY payment_status
-            """)
+            if company_id:
+                cursor.execute("""
+                    SELECT payment_status, SUM(charge)
+                    FROM bookings
+                    WHERE company_id = %s AND status != 'cancelled'
+                    GROUP BY payment_status
+                """, (company_id,))
+            else:
+                cursor.execute("""
+                    SELECT payment_status, SUM(charge)
+                    FROM bookings
+                    WHERE status != 'cancelled'
+                    GROUP BY payment_status
+                """)
             payment_breakdown = cursor.fetchall()
             
             # Monthly revenue
-            cursor.execute("""
-                SELECT TO_CHAR(appointment_time, 'YYYY-MM') as month,
-                       SUM(charge) as revenue,
-                       COUNT(*) as appointments
-                FROM bookings 
-                WHERE status != 'cancelled'
-                GROUP BY month
-                ORDER BY month DESC
-                LIMIT 12
-            """)
+            if company_id:
+                cursor.execute("""
+                    SELECT TO_CHAR(appointment_time, 'YYYY-MM') as month,
+                           SUM(charge) as revenue,
+                           COUNT(*) as appointments
+                    FROM bookings 
+                    WHERE company_id = %s AND status != 'cancelled'
+                    GROUP BY month
+                    ORDER BY month DESC
+                    LIMIT 12
+                """, (company_id,))
+            else:
+                cursor.execute("""
+                    SELECT TO_CHAR(appointment_time, 'YYYY-MM') as month,
+                           SUM(charge) as revenue,
+                           COUNT(*) as appointments
+                    FROM bookings 
+                    WHERE status != 'cancelled'
+                    GROUP BY month
+                    ORDER BY month DESC
+                    LIMIT 12
+                """)
             monthly_revenue = cursor.fetchall()
             
             # Revenue by payment method
-            cursor.execute("""
-                SELECT payment_method, SUM(charge), COUNT(*)
-                FROM bookings
-                WHERE status != 'cancelled' AND payment_method IS NOT NULL
-                GROUP BY payment_method
-            """)
+            if company_id:
+                cursor.execute("""
+                    SELECT payment_method, SUM(charge), COUNT(*)
+                    FROM bookings
+                    WHERE company_id = %s AND status != 'cancelled' AND payment_method IS NOT NULL
+                    GROUP BY payment_method
+                """, (company_id,))
+            else:
+                cursor.execute("""
+                    SELECT payment_method, SUM(charge), COUNT(*)
+                    FROM bookings
+                    WHERE status != 'cancelled' AND payment_method IS NOT NULL
+                    GROUP BY payment_method
+                """)
             payment_methods = cursor.fetchall()
             
             breakdown_dict = {'paid': 0, 'unpaid': 0}
@@ -1447,16 +1662,17 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
     
     def add_worker(self, name: str, phone: str = None, email: str = None, 
-                   trade_specialty: str = None, image_url: str = None, weekly_hours_expected: float = 40.0) -> int:
+                   trade_specialty: str = None, image_url: str = None, weekly_hours_expected: float = 40.0,
+                   company_id: int = None) -> int:
         """Add a new worker"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                INSERT INTO workers (name, phone, email, trade_specialty, image_url, weekly_hours_expected)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO workers (name, phone, email, trade_specialty, image_url, weekly_hours_expected, company_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, (name, phone, email, trade_specialty, image_url, weekly_hours_expected))
+            """, (name, phone, email, trade_specialty, image_url, weekly_hours_expected, company_id))
             
             result = cursor.fetchone()
             worker_id = result['id'] if result else None
@@ -1476,7 +1692,11 @@ class PostgreSQLDatabaseWrapper:
         try:
             cursor.execute("SELECT * FROM workers WHERE id = %s", (worker_id,))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            if row:
+                result = dict(row)
+                result['company_id'] = row.get('company_id')
+                return result
+            return None
         finally:
             self.return_connection(conn)
     
@@ -1493,7 +1713,7 @@ class PostgreSQLDatabaseWrapper:
             values = []
             for key, value in kwargs.items():
                 db_key = field_mapping.get(key, key)
-                if db_key in ['name', 'phone', 'email', 'trade_specialty', 'status', 'image_url']:
+                if db_key in ['name', 'phone', 'email', 'trade_specialty', 'status', 'image_url', 'weekly_hours_expected']:
                     fields.append(f"{db_key} = %s")
                     values.append(value)
             
@@ -1687,18 +1907,19 @@ class PostgreSQLDatabaseWrapper:
                    description: str = None, duration_minutes: int = 60,
                    price: float = 0, emergency_price: float = None,
                    currency: str = 'EUR', active: bool = True,
-                   image_url: str = None, sort_order: int = 0) -> bool:
-        """Add a new service"""
+                   image_url: str = None, sort_order: int = 0,
+                   company_id: int = None) -> bool:
+        """Add a new service for a specific company"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
             cursor.execute("""
                 INSERT INTO services (id, category, name, description, duration_minutes,
-                                    price, emergency_price, currency, active, image_url, sort_order)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    price, emergency_price, currency, active, image_url, sort_order, company_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (service_id, category, name, description, duration_minutes,
-                  price, emergency_price, currency, 1 if active else 0, image_url, sort_order))
+                  price, emergency_price, currency, 1 if active else 0, image_url, sort_order, company_id))
             
             conn.commit()
             return True
@@ -1709,36 +1930,49 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_all_services(self, active_only: bool = True) -> List[Dict]:
-        """Get all services"""
+    def get_all_services(self, active_only: bool = True, company_id: int = None) -> List[Dict]:
+        """Get all services for a specific company"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
-            if active_only:
-                cursor.execute("SELECT * FROM services WHERE active = 1 ORDER BY sort_order, category, name")
+            if company_id:
+                if active_only:
+                    cursor.execute("SELECT * FROM services WHERE company_id = %s AND active = 1 ORDER BY sort_order, category, name", (company_id,))
+                else:
+                    cursor.execute("SELECT * FROM services WHERE company_id = %s ORDER BY sort_order, category, name", (company_id,))
             else:
-                cursor.execute("SELECT * FROM services ORDER BY sort_order, category, name")
+                if active_only:
+                    cursor.execute("SELECT * FROM services WHERE active = 1 ORDER BY sort_order, category, name")
+                else:
+                    cursor.execute("SELECT * FROM services ORDER BY sort_order, category, name")
             
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
         finally:
             self.return_connection(conn)
     
-    def get_service(self, service_id: str) -> Optional[Dict]:
-        """Get service by ID"""
+    def get_service(self, service_id: str, company_id: int = None) -> Optional[Dict]:
+        """Get service by ID, optionally filtered by company"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
-            cursor.execute("SELECT * FROM services WHERE id = %s", (service_id,))
+            if company_id:
+                cursor.execute("SELECT * FROM services WHERE id = %s AND company_id = %s", (service_id, company_id))
+            else:
+                cursor.execute("SELECT * FROM services WHERE id = %s", (service_id,))
             row = cursor.fetchone()
-            return dict(row) if row else None
+            if row:
+                result = dict(row)
+                result['company_id'] = row.get('company_id')
+                return result
+            return None
         finally:
             self.return_connection(conn)
     
-    def update_service(self, service_id: str, **kwargs) -> bool:
-        """Update service information"""
+    def update_service(self, service_id: str, company_id: int = None, **kwargs) -> bool:
+        """Update service information for a specific company"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
@@ -1759,7 +1993,11 @@ class PostgreSQLDatabaseWrapper:
             if fields:
                 values.append(datetime.now())
                 values.append(service_id)
-                query = f"UPDATE services SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
+                if company_id:
+                    values.append(company_id)
+                    query = f"UPDATE services SET {', '.join(fields)}, updated_at = %s WHERE id = %s AND company_id = %s"
+                else:
+                    query = f"UPDATE services SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
                 cursor.execute(query, values)
                 conn.commit()
                 success = cursor.rowcount > 0
@@ -1774,13 +2012,16 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def delete_service(self, service_id: str) -> bool:
-        """Delete a service"""
+    def delete_service(self, service_id: str, company_id: int = None) -> bool:
+        """Delete a service for a specific company"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute("DELETE FROM services WHERE id = %s", (service_id,))
+            if company_id:
+                cursor.execute("DELETE FROM services WHERE id = %s AND company_id = %s", (service_id, company_id))
+            else:
+                cursor.execute("DELETE FROM services WHERE id = %s", (service_id,))
             rows_affected = cursor.rowcount
             conn.commit()
             return rows_affected > 0

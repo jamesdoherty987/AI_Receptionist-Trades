@@ -59,19 +59,26 @@ app = Flask(__name__,
             static_folder=str(static_folder),
             static_url_path='')
 
-# Configure CORS - allow specific origins for production
-allowed_origins = [
+# Configure CORS - environment-aware origins
+_is_production = os.getenv('FLASK_ENV') == 'production'
+
+_production_origins = [
     "https://www.bookedforyou.info",
     "https://bookedforyou.info",
-    "https://www.bookedforyou.ie",  # Production domain (.ie)
-    "https://bookedforyou.ie",      # Production domain without www
-    "http://localhost:3000",  # Vite dev server
-    "http://localhost:5173",  # Vite dev server (alt port)
-    "http://localhost:5000",  # Flask dev server
+    "https://www.bookedforyou.ie",
+    "https://bookedforyou.ie",
+]
+
+_dev_origins = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:5000",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
-    "http://127.0.0.1:5000"
+    "http://127.0.0.1:5000",
 ]
+
+allowed_origins = _production_origins if _is_production else _production_origins + _dev_origins
 
 # Add ngrok URLs from environment if present
 public_url = os.getenv('PUBLIC_URL')
@@ -84,15 +91,18 @@ if public_url:
 CORS(app, resources={r"/api/*": {"origins": allowed_origins}}, supports_credentials=True)
 
 # Configure secure session
+# In production, SECRET_KEY MUST be set — fail fast if missing
+if os.getenv('FLASK_ENV') == 'production' and not os.getenv('SECRET_KEY'):
+    raise RuntimeError(
+        "FATAL: SECRET_KEY environment variable is required in production. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
+
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 configure_secure_session(app)
 
-# Warn if SECRET_KEY is not explicitly set (critical for production)
 if not os.getenv('SECRET_KEY'):
-    print("⚠️ WARNING: SECRET_KEY environment variable is not set!")
-    print("   Sessions will be invalidated on server restart.")
-    print("   Generate a key: python -c 'import secrets; print(secrets.token_hex(32))'")
-    print("   Then set it in your production environment variables.")
+    print("⚠️ WARNING: SECRET_KEY not set. Sessions will reset on restart.")
 
 # Security: Add security headers to all responses
 @app.after_request
@@ -172,9 +182,14 @@ def rate_limit(max_requests: int = 60, window_seconds: int = 60):
 # IMAGE UPLOAD HELPER (R2 STORAGE)
 # ============================================
 
+# Maximum upload size: 5MB
+MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
+ALLOWED_IMAGE_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
+
+
 def upload_base64_image_to_r2(base64_data: str, company_id: int, file_type: str = 'images') -> str:
     """
-    Upload a base64 image to R2 storage
+    Upload a base64 image to R2 storage with size and type validation.
     
     Args:
         base64_data: Base64 encoded image data (e.g., 'data:image/png;base64,...')
@@ -184,7 +199,6 @@ def upload_base64_image_to_r2(base64_data: str, company_id: int, file_type: str 
     Returns:
         R2 public URL if successful, or original base64 if R2 fails/not configured
     """
-    # Skip if not base64 data
     if not base64_data or not base64_data.startswith('data:image/'):
         return base64_data or ''
     
@@ -194,24 +208,29 @@ def upload_base64_image_to_r2(base64_data: str, company_id: int, file_type: str 
         import io
         from datetime import datetime
         
-        # Only proceed if R2 is configured
         if not is_r2_enabled():
             print("⚠️ R2 not configured, image will be stored as base64 in database")
             return base64_data
         
-        # Extract base64 data and content type
+        # Extract and validate content type
         header, encoded = base64_data.split(',', 1)
         content_type = header.split(';')[0].split(':')[1]
-        extension = content_type.split('/')[-1]
         
-        # Decode base64
+        if content_type not in ALLOWED_IMAGE_TYPES:
+            print(f"[WARNING] Rejected upload: unsupported type {content_type}")
+            return ''
+        
+        extension = content_type.split('/')[-1]
         image_data = base64.b64decode(encoded)
         
-        # Generate unique filename with company separation
+        # Enforce size limit
+        if len(image_data) > MAX_IMAGE_SIZE_BYTES:
+            print(f"[WARNING] Rejected upload: {len(image_data)} bytes exceeds {MAX_IMAGE_SIZE_BYTES} limit")
+            return ''
+        
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"{file_type}_{timestamp}_{secrets.token_hex(4)}.{extension}"
         
-        # Upload to R2 with company-specific folder
         public_url = upload_company_file(
             company_id=company_id,
             file_data=io.BytesIO(image_data),
@@ -423,6 +442,7 @@ def health():
 
 
 @app.route("/api/config-check", methods=["GET"])
+@login_required
 def config_check():
     """
     Diagnostic endpoint to check production configuration
@@ -668,16 +688,10 @@ def login():
         security_logger.log_login_attempt(email, client_ip, False)
         print(f"[LOGIN] FAILED - User not found: {email}")
         
-        error_response = {
+        return jsonify({
             "error": "Invalid email or password",
             "code": "INVALID_CREDENTIALS"
-        }
-        
-        # Add helpful details in development
-        if os.getenv('FLASK_ENV') != 'production':
-            error_response["debug"] = "No user found with this email address"
-        
-        return jsonify(error_response), 401
+        }), 401
     
     if not verify_password(password, company['password_hash']):
         # Record failed attempt
@@ -694,16 +708,10 @@ def login():
                 "help": "Please wait 15 minutes before trying again."
             }), 429
         
-        error_response = {
+        return jsonify({
             "error": "Invalid email or password",
             "code": "INVALID_CREDENTIALS"
-        }
-        
-        # Add helpful details in development
-        if os.getenv('FLASK_ENV') != 'production':
-            error_response["debug"] = "Password does not match"
-        
-        return jsonify(error_response), 401
+        }), 401
     
     # Successful login - clear failed attempts
     rate_limiter.clear_failed_logins(email)
@@ -821,11 +829,12 @@ def get_dashboard_data():
     """
     try:
         db = get_database()
+        company_id = session.get('company_id')
         
-        # Get all data in parallel operations (within same DB connection context)
-        bookings = db.get_all_bookings()
-        clients = db.get_all_clients()
-        workers = db.get_all_workers()
+        # Get all data filtered by company_id
+        bookings = db.get_all_bookings(company_id=company_id)
+        clients = db.get_all_clients(company_id=company_id)
+        workers = db.get_all_workers(company_id=company_id)
         
         # Calculate finances
         total_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings if b.get('status') == 'completed')
@@ -946,6 +955,8 @@ def change_password():
             get_client_ip()
         )
         return jsonify({"success": True, "message": "Password changed successfully"})
+    
+    return jsonify({"error": "Failed to change password"}), 500
 
 
 # ============================================
@@ -2071,25 +2082,29 @@ def index():
 # Legacy redirects for backwards compatibility
 @app.route("/dashboard")
 def dashboard_redirect():
-    return redirect("/", code=302)
+    frontend_url = os.getenv('FRONTEND_URL', '/')
+    return redirect(frontend_url, code=302)
 
 
 @app.route("/settings")
 def settings_page():
-    """Redirect to React app"""
-    return redirect("/settings", code=302)
+    """Redirect to frontend app"""
+    frontend_url = os.getenv('FRONTEND_URL', '/')
+    return redirect(f"{frontend_url}/settings", code=302)
 
 
 @app.route("/settings/menu")
 def settings_menu_page():
-    """Redirect to React app"""
-    return redirect("/settings/menu", code=302)
+    """Redirect to frontend app"""
+    frontend_url = os.getenv('FRONTEND_URL', '/')
+    return redirect(f"{frontend_url}/settings/menu", code=302)
 
 
 @app.route("/settings/developer")
 def developer_settings_page():
-    """Redirect to React app"""
-    return redirect("/settings/developer", code=302)
+    """Redirect to frontend app"""
+    frontend_url = os.getenv('FRONTEND_URL', '/')
+    return redirect(f"{frontend_url}/settings/developer", code=302)
 
 
 @app.route("/api/settings/business", methods=["GET", "POST"])
@@ -2254,14 +2269,15 @@ def services_menu_api():
     """Get or update services menu"""
     from src.services.settings_manager import get_settings_manager
     settings_mgr = get_settings_manager()
+    company_id = session.get('company_id')
     
     if request.method == "GET":
-        menu = settings_mgr.get_services_menu()
+        menu = settings_mgr.get_services_menu(company_id=company_id)
         return jsonify(menu)
     
     elif request.method == "POST":
         data = request.json
-        success = settings_mgr.update_services_menu(data)
+        success = settings_mgr.update_services_menu(data, company_id=company_id)
         if success:
             return jsonify({"message": "Services menu updated successfully"})
         return jsonify({"error": "Failed to update services menu"}), 500
@@ -2273,15 +2289,25 @@ def add_service_api():
     """Add a new service"""
     from src.services.settings_manager import get_settings_manager
     settings_mgr = get_settings_manager()
+    company_id = session.get('company_id')
+    
+    # Check subscription for creating services
+    db = get_database()
+    company = db.get_company(company_id)
+    subscription_info = get_subscription_info(company)
+    if not subscription_info['is_active']:
+        return jsonify({
+            "error": "Active subscription required to create services",
+            "subscription_status": "inactive"
+        }), 403
     
     data = request.json
     
     # Upload image to R2 if it's base64
     if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
-        company_id = session.get('company_id', 0)
         data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'services')
     
-    success = settings_mgr.add_service(data)
+    success = settings_mgr.add_service(data, company_id=company_id)
     if success:
         return jsonify({"message": "Service added successfully"})
     return jsonify({"error": "Failed to add service"}), 500
@@ -2293,22 +2319,22 @@ def manage_service_api(service_id):
     """Update or delete a service"""
     from src.services.settings_manager import get_settings_manager
     settings_mgr = get_settings_manager()
+    company_id = session.get('company_id')
     
     if request.method == "PUT":
         data = request.json
         
         # Upload image to R2 if it's base64
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
-            company_id = session.get('company_id', 0)
             data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'services')
         
-        success = settings_mgr.update_service(service_id, data)
+        success = settings_mgr.update_service(service_id, data, company_id=company_id)
         if success:
             return jsonify({"message": "Service updated successfully"})
         return jsonify({"error": "Service not found"}), 404
     
     elif request.method == "DELETE":
-        success = settings_mgr.delete_service(service_id)
+        success = settings_mgr.delete_service(service_id, company_id=company_id)
         if success:
             return jsonify({"message": "Service deleted successfully"})
         return jsonify({"error": "Service not found"}), 404
@@ -2320,14 +2346,15 @@ def business_hours_api():
     """Get or update business hours"""
     from src.services.settings_manager import get_settings_manager
     settings_mgr = get_settings_manager()
+    company_id = session.get('company_id')
     
     if request.method == "GET":
-        menu = settings_mgr.get_services_menu()
+        menu = settings_mgr.get_services_menu(company_id=company_id)
         return jsonify(menu.get('business_hours', {}))
     
     elif request.method == "POST":
         data = request.json
-        success = settings_mgr.update_business_hours(data)
+        success = settings_mgr.update_business_hours(data, company_id=company_id)
         if success:
             return jsonify({"message": "Business hours updated successfully"})
         return jsonify({"error": "Failed to update business hours"}), 500
@@ -2335,20 +2362,32 @@ def business_hours_api():
 
 @app.route("/api/clients", methods=["GET", "POST"])
 @login_required
+@rate_limit(max_requests=30, window_seconds=60)
 def clients_api():
     """Get all clients or create a new client"""
     db = get_database()
+    company_id = session.get('company_id')
     
     if request.method == "GET":
-        clients = db.get_all_clients()
+        clients = db.get_all_clients(company_id=company_id)
         return jsonify(clients)
     
     elif request.method == "POST":
+        # Check subscription for creating clients
+        company = db.get_company(company_id)
+        subscription_info = get_subscription_info(company)
+        if not subscription_info['is_active']:
+            return jsonify({
+                "error": "Active subscription required to create clients",
+                "subscription_status": "inactive"
+            }), 403
+        
         data = request.json
         client_id = db.add_client(
             name=data['name'],
             phone=data.get('phone'),
-            email=data.get('email')
+            email=data.get('email'),
+            company_id=company_id
         )
         return jsonify({"id": client_id, "message": "Client created"}), 201
 
@@ -2358,9 +2397,13 @@ def clients_api():
 def client_api(client_id):
     """Get or update a specific client"""
     db = get_database()
+    company_id = session.get('company_id')
     
     if request.method == "GET":
         client = db.get_client(client_id)
+        # Verify client belongs to this company
+        if client and client.get('company_id') and client.get('company_id') != company_id:
+            return jsonify({"error": "Client not found"}), 404
         if client:
             # Get bookings and notes
             bookings = db.get_client_bookings(client_id)
@@ -2371,6 +2414,10 @@ def client_api(client_id):
         return jsonify({"error": "Client not found"}), 404
     
     elif request.method == "PUT":
+        # Verify client belongs to this company before updating
+        client = db.get_client(client_id)
+        if not client or (client.get('company_id') and client.get('company_id') != company_id):
+            return jsonify({"error": "Client not found"}), 404
         data = request.json
         db.update_client(client_id, **data)
         return jsonify({"message": "Client updated"})
@@ -2381,6 +2428,13 @@ def client_api(client_id):
 def add_note_api(client_id):
     """Add a note to a client"""
     db = get_database()
+    company_id = session.get('company_id')
+    
+    # Verify client belongs to this company
+    client = db.get_client(client_id)
+    if client and client.get('company_id') and client.get('company_id') != company_id:
+        return jsonify({"error": "Client not found"}), 404
+    
     data = request.json
     
     note_id = db.add_note(
@@ -2396,15 +2450,18 @@ def add_note_api(client_id):
 def appointment_notes_api(booking_id):
     """Get or add notes for a specific appointment"""
     db = get_database()
+    company_id = session.get('company_id')
+    
+    # Verify booking belongs to this company
+    booking = db.get_booking(booking_id)
+    if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+        return jsonify({"error": "Booking not found"}), 404
     
     if request.method == "GET":
         notes = db.get_appointment_notes(booking_id)
         return jsonify(notes)
     
     elif request.method == "POST":
-        # Get booking to find client_id for description update
-        booking = db.get_booking(booking_id)
-        
         if not booking:
             return jsonify({"error": "Booking not found"}), 404
         
@@ -2439,6 +2496,12 @@ def appointment_notes_api(booking_id):
 def appointment_note_api(booking_id, note_id):
     """Update or delete a specific appointment note"""
     db = get_database()
+    company_id = session.get('company_id')
+    
+    # Verify booking belongs to this company
+    booking = db.get_booking(booking_id)
+    if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+        return jsonify({"error": "Booking not found"}), 404
     
     # Get client_id for description update
     booking = db.get_booking(booking_id)
@@ -2488,15 +2551,26 @@ def appointment_note_api(booking_id, note_id):
 
 @app.route("/api/bookings", methods=["GET", "POST"])
 @login_required
+@rate_limit(max_requests=30, window_seconds=60)
 def bookings_api():
     """Get all bookings or create a new booking"""
     db = get_database()
+    company_id = session.get('company_id')
     
     if request.method == "GET":
-        bookings = db.get_all_bookings()
+        bookings = db.get_all_bookings(company_id=company_id)
         return jsonify(bookings)
     
     elif request.method == "POST":
+        # Check subscription for creating bookings
+        company = db.get_company(company_id)
+        subscription_info = get_subscription_info(company)
+        if not subscription_info['is_active']:
+            return jsonify({
+                "error": "Active subscription required to create bookings",
+                "subscription_status": "inactive"
+            }), 403
+        
         data = request.json
         
         # Required fields
@@ -2522,7 +2596,8 @@ def bookings_api():
             
             conflicting_bookings = db.get_conflicting_bookings(
                 start_time=time_buffer_before.strftime('%Y-%m-%d %H:%M:%S'),
-                end_time=time_buffer_after.strftime('%Y-%m-%d %H:%M:%S')
+                end_time=time_buffer_after.strftime('%Y-%m-%d %H:%M:%S'),
+                company_id=company_id
             )
             
             if conflicting_bookings:
@@ -2582,7 +2657,8 @@ def bookings_api():
                 address=job_address,
                 eircode=job_eircode,
                 property_type=job_property_type,
-                charge=job_charge
+                charge=job_charge,
+                company_id=company_id
             )
             
             # Add initial note if provided
@@ -2613,17 +2689,22 @@ def bookings_api():
             return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/bookings/<int:booking_id>", methods=["GET", "PUT"])
+@app.route("/api/bookings/<int:booking_id>", methods=["GET", "PUT", "DELETE"])
 @login_required
 def booking_detail_api(booking_id):
-    """Get or update a specific booking"""
+    """Get, update or delete a specific booking"""
     db = get_database()
+    company_id = session.get('company_id')
     
     if request.method == "GET":
         # Get booking details using database method
         booking = db.get_booking(booking_id)
         
         if not booking:
+            return jsonify({"error": "Booking not found"}), 404
+        
+        # Verify booking belongs to this company
+        if booking.get('company_id') and booking.get('company_id') != company_id:
             return jsonify({"error": "Booking not found"}), 404
         
         # Get notes for this booking
@@ -2668,6 +2749,11 @@ def booking_detail_api(booking_id):
         return jsonify(response_booking)
     
     elif request.method == "PUT":
+        # Verify booking belongs to this company before updating
+        booking = db.get_booking(booking_id)
+        if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+            return jsonify({"error": "Booking not found"}), 404
+        
         # Update booking
         data = request.json
         
@@ -2692,6 +2778,17 @@ def booking_detail_api(booking_id):
         if success:
             return jsonify({"success": True})
         return jsonify({"error": "Failed to update booking"}), 400
+    
+    elif request.method == "DELETE":
+        # Verify booking belongs to this company before deleting
+        booking = db.get_booking(booking_id)
+        if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+            return jsonify({"error": "Booking not found"}), 404
+        
+        success = db.delete_booking(booking_id)
+        if success:
+            return jsonify({"success": True, "message": "Booking deleted"})
+        return jsonify({"error": "Failed to delete booking"}), 400
 
 
 @app.route("/api/bookings/<int:booking_id>/complete", methods=["POST"])
@@ -2699,11 +2796,16 @@ def booking_detail_api(booking_id):
 def complete_booking_api(booking_id):
     """Mark appointment as complete and update client description using AI"""
     db = get_database()
+    company_id = session.get('company_id')
     
     # Get the booking to find the client
     booking = db.get_booking(booking_id)
     
     if not booking:
+        return jsonify({"error": "Booking not found"}), 404
+    
+    # Verify booking belongs to this company
+    if booking.get('company_id') and booking.get('company_id') != company_id:
         return jsonify({"error": "Booking not found"}), 404
     
     client_id = booking['client_id']
@@ -2745,12 +2847,26 @@ def complete_booking_api(booking_id):
 def send_invoice_api(booking_id):
     """Send invoice email for a booking with Stripe payment link"""
     db = get_database()
+    company_id = session.get('company_id')
+    
+    # Check subscription for sending invoices
+    company = db.get_company(company_id)
+    subscription_info = get_subscription_info(company)
+    if not subscription_info['is_active']:
+        return jsonify({
+            "error": "Active subscription required to send invoices",
+            "subscription_status": "inactive"
+        }), 403
     
     try:
         # Get the booking details using database method
         booking = db.get_booking(booking_id)
         
         if not booking:
+            return jsonify({"error": "Booking not found"}), 404
+        
+        # Verify booking belongs to this company
+        if booking.get('company_id') and booking.get('company_id') != company_id:
             return jsonify({"error": "Booking not found"}), 404
         
         # Get client details if client_id exists
@@ -2974,6 +3090,7 @@ def send_invoice_api(booking_id):
 
 
 @app.route("/api/appointments/auto-complete", methods=["POST"])
+@login_required
 def auto_complete_appointments():
     """Manually trigger auto-completion of overdue appointments"""
     try:
@@ -2997,7 +3114,8 @@ def auto_complete_appointments():
 def financial_stats_api():
     """Get financial statistics"""
     db = get_database()
-    stats = db.get_financial_stats()
+    company_id = session.get('company_id')
+    stats = db.get_financial_stats(company_id=company_id)
     return jsonify(stats)
 
 
@@ -3006,10 +3124,11 @@ def financial_stats_api():
 def stats_api():
     """Get dashboard statistics"""
     db = get_database()
+    company_id = session.get('company_id')
     # Google Calendar disabled (USE_GOOGLE_CALENDAR = False)
     
-    clients = db.get_all_clients()
-    bookings = db.get_all_bookings()
+    clients = db.get_all_clients(company_id=company_id)
+    bookings = db.get_all_bookings(company_id=company_id)
     upcoming = []  # Calendar disabled
     
     stats = {
@@ -3041,21 +3160,31 @@ def config_api():
 
 @app.route("/api/workers", methods=["GET", "POST"])
 @login_required
+@rate_limit(max_requests=30, window_seconds=60)
 def workers_api():
     """Get all workers or create a new worker"""
     db = get_database()
+    company_id = session.get('company_id')
     
     if request.method == "GET":
-        workers = db.get_all_workers()
+        workers = db.get_all_workers(company_id=company_id)
         return jsonify(workers)
     
     elif request.method == "POST":
+        # Check subscription for creating workers
+        company = db.get_company(company_id)
+        subscription_info = get_subscription_info(company)
+        if not subscription_info['is_active']:
+            return jsonify({
+                "error": "Active subscription required to create workers",
+                "subscription_status": "inactive"
+            }), 403
+        
         data = request.json
         
         # Upload image to R2 if it's base64
         image_url = data.get('image_url', '')
         if image_url and image_url.startswith('data:image/'):
-            company_id = session.get('company_id', 0)
             image_url = upload_base64_image_to_r2(image_url, company_id, 'workers')
         
         worker_id = db.add_worker(
@@ -3064,7 +3193,8 @@ def workers_api():
             email=data.get('email'),
             trade_specialty=data.get('trade_specialty'),
             image_url=image_url,
-            weekly_hours_expected=data.get('weekly_hours_expected', 40.0)
+            weekly_hours_expected=data.get('weekly_hours_expected', 40.0),
+            company_id=company_id
         )
         return jsonify({"id": worker_id, "message": "Worker added"}), 201
 
@@ -3074,25 +3204,38 @@ def workers_api():
 def worker_api(worker_id):
     """Get, update or delete a specific worker"""
     db = get_database()
+    company_id = session.get('company_id')
     
     if request.method == "GET":
         worker = db.get_worker(worker_id)
+        # Verify worker belongs to this company
+        if worker and worker.get('company_id') and worker.get('company_id') != company_id:
+            return jsonify({"error": "Worker not found"}), 404
         if worker:
             return jsonify(worker)
         return jsonify({"error": "Worker not found"}), 404
     
     elif request.method == "PUT":
+        # Verify worker belongs to this company before updating
+        worker = db.get_worker(worker_id)
+        if not worker or (worker.get('company_id') and worker.get('company_id') != company_id):
+            return jsonify({"error": "Worker not found"}), 404
+        
         data = request.json
         
         # Upload image to R2 if it's base64
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
-            company_id = session.get('company_id', 0)
             data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'workers')
         
         db.update_worker(worker_id, **data)
         return jsonify({"message": "Worker updated"})
     
     elif request.method == "DELETE":
+        # Verify worker belongs to this company before deleting
+        worker = db.get_worker(worker_id)
+        if not worker or (worker.get('company_id') and worker.get('company_id') != company_id):
+            return jsonify({"error": "Worker not found"}), 404
+        
         success = db.delete_worker(worker_id)
         if success:
             return jsonify({"message": "Worker deleted"})
@@ -3104,11 +3247,22 @@ def worker_api(worker_id):
 def assign_worker_to_job_api(booking_id):
     """Assign a worker to a job"""
     db = get_database()
+    company_id = session.get('company_id')
     data = request.json
     worker_id = data.get('worker_id')
     
     if not worker_id:
         return jsonify({"error": "worker_id is required"}), 400
+    
+    # Verify booking belongs to this company
+    booking = db.get_booking(booking_id)
+    if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+        return jsonify({"error": "Booking not found"}), 404
+    
+    # Verify worker belongs to this company
+    worker = db.get_worker(worker_id)
+    if worker and worker.get('company_id') and worker.get('company_id') != company_id:
+        return jsonify({"error": "Worker not found"}), 404
     
     result = db.assign_worker_to_job(booking_id, worker_id)
     
@@ -3123,11 +3277,17 @@ def assign_worker_to_job_api(booking_id):
 def remove_worker_from_job_api(booking_id):
     """Remove a worker from a job"""
     db = get_database()
+    company_id = session.get('company_id')
     data = request.json
     worker_id = data.get('worker_id')
     
     if not worker_id:
         return jsonify({"error": "worker_id is required"}), 400
+    
+    # Verify booking belongs to this company
+    booking = db.get_booking(booking_id)
+    if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+        return jsonify({"error": "Booking not found"}), 404
     
     success = db.remove_worker_from_job(booking_id, worker_id)
     
@@ -3142,6 +3302,13 @@ def remove_worker_from_job_api(booking_id):
 def get_job_workers_api(booking_id):
     """Get all workers assigned to a job"""
     db = get_database()
+    company_id = session.get('company_id')
+    
+    # Verify booking belongs to this company
+    booking = db.get_booking(booking_id)
+    if booking and booking.get('company_id') and booking.get('company_id') != company_id:
+        return jsonify({"error": "Booking not found"}), 404
+    
     workers = db.get_job_workers(booking_id)
     return jsonify(workers)
 
@@ -3151,6 +3318,13 @@ def get_job_workers_api(booking_id):
 def get_worker_jobs_api(worker_id):
     """Get all jobs assigned to a worker"""
     db = get_database()
+    company_id = session.get('company_id')
+    
+    # Verify worker belongs to this company
+    worker = db.get_worker(worker_id)
+    if worker and worker.get('company_id') and worker.get('company_id') != company_id:
+        return jsonify({"error": "Worker not found"}), 404
+    
     include_completed = request.args.get('include_completed', 'false').lower() == 'true'
     jobs = db.get_worker_jobs(worker_id, include_completed)
     
@@ -3167,6 +3341,13 @@ def get_worker_jobs_api(worker_id):
 def get_worker_schedule_api(worker_id):
     """Get worker's schedule"""
     db = get_database()
+    company_id = session.get('company_id')
+    
+    # Verify worker belongs to this company
+    worker = db.get_worker(worker_id)
+    if worker and worker.get('company_id') and worker.get('company_id') != company_id:
+        return jsonify({"error": "Worker not found"}), 404
+    
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     schedule = db.get_worker_schedule(worker_id, start_date, end_date)
@@ -3178,6 +3359,13 @@ def get_worker_schedule_api(worker_id):
 def get_worker_hours_this_week_api(worker_id):
     """Get hours worked by worker this week"""
     db = get_database()
+    company_id = session.get('company_id')
+    
+    # Verify worker belongs to this company
+    worker = db.get_worker(worker_id)
+    if worker and worker.get('company_id') and worker.get('company_id') != company_id:
+        return jsonify({"error": "Worker not found"}), 404
+    
     hours = db.get_worker_hours_this_week(worker_id)
     return jsonify({"hours_worked": hours})
 
@@ -3302,8 +3490,12 @@ This is an automated message. Please reply to this email if you need assistance.
 
 
 @app.route("/api/tests/run", methods=["POST"])
+@login_required
 def run_tests():
-    """Run test suite"""
+    """Run test suite (development only)"""
+    if os.getenv('FLASK_ENV') == 'production':
+        return jsonify({"error": "Not available in production"}), 403
+    
     import subprocess
     data = request.json
     test_type = data.get('test_type', 'all')
@@ -3341,6 +3533,7 @@ def run_tests():
 
 
 @app.route("/api/chat", methods=["POST"])
+@rate_limit(max_requests=20, window_seconds=60)
 def chat():
     """Chat with the AI receptionist"""
     import asyncio
@@ -3423,7 +3616,8 @@ def get_finances():
     """Get financial overview and stats"""
     try:
         db = get_database()
-        bookings = db.get_all_bookings()
+        company_id = session.get('company_id')
+        bookings = db.get_all_bookings(company_id=company_id)
         
         # Calculate revenue metrics
         paid_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings 

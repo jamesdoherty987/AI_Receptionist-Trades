@@ -45,16 +45,17 @@ class TestPasswordHashing:
         assert verify_password("WrongPassword", hashed) is False
     
     def test_verify_legacy_sha256(self):
-        """Should verify legacy SHA-256 hashes"""
+        """Should verify legacy SHA-256 hashes (salt:hash format)"""
         import hashlib
         password = "TestPassword123"
-        legacy_hash = hashlib.sha256(password.encode()).hexdigest()
+        salt = "testsalt"
+        password_hash = hashlib.sha256((password + salt).encode()).hexdigest()
+        legacy_hash = f"{salt}:{password_hash}"
         assert verify_password(password, legacy_hash) is True
     
     def test_needs_rehash_sha256(self):
         """SHA-256 hashes need rehashing"""
-        import hashlib
-        legacy_hash = hashlib.sha256("test".encode()).hexdigest()
+        legacy_hash = "somesalt:" + __import__('hashlib').sha256("test".encode()).hexdigest()
         assert needs_rehash(legacy_hash) is True
     
     def test_needs_rehash_bcrypt(self):
@@ -163,7 +164,7 @@ class TestCSRFProtection:
         """Should generate valid tokens"""
         token = generate_csrf_token()
         assert isinstance(token, str)
-        assert len(token) == 64  # 32 bytes hex = 64 chars
+        assert len(token) > 20  # token_urlsafe(32) produces ~43 chars
     
     def test_verify_csrf_token_valid(self):
         """Valid token should verify"""

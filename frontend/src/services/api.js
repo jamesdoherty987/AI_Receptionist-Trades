@@ -9,7 +9,21 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: true, // Important for session cookies
+  timeout: 30000, // 30 second timeout
 });
+
+// Response interceptor for global error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Auto-clear auth state on 401 (session expired)
+    if (error.response?.status === 401 && !error.config?.url?.includes('/api/auth/')) {
+      sessionStorage.removeItem('authUser');
+      sessionStorage.removeItem('authSubscription');
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Authentication
 export const login = (email, password) => api.post('/api/auth/login', { email, password });
