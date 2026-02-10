@@ -182,14 +182,15 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # 1. Try session cookie (preferred)
-        if 'company_id' in session:
+        company_id = session.get('company_id')
+        if company_id and isinstance(company_id, int):
             return f(*args, **kwargs)
 
         # 2. Fallback: signed auth token header
         token = request.headers.get('X-Auth-Token')
         if token:
             payload = verify_auth_token(token)
-            if payload:
+            if payload and payload.get('cid'):
                 # Populate session from token so downstream code works unchanged
                 session['company_id'] = payload['cid']
                 session['email'] = payload['email']

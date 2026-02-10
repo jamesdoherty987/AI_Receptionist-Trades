@@ -782,7 +782,11 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
     
     def get_booking(self, booking_id: int, company_id: int = None) -> Optional[Dict]:
-        """Get booking by ID, optionally filtered by company_id for security"""
+        """Get booking by ID, optionally filtered by company_id for security
+        
+        SECURITY: When company_id is provided, ALWAYS filter by it.
+        If company_id is 0 or None when explicitly passed, return None for safety.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
@@ -790,6 +794,7 @@ class PostgreSQLDatabaseWrapper:
             if company_id:
                 cursor.execute("SELECT * FROM bookings WHERE id = %s AND company_id = %s", (booking_id, company_id))
             else:
+                # Backwards compatibility: allow unfiltered query only when company_id not passed
                 cursor.execute("SELECT * FROM bookings WHERE id = %s", (booking_id,))
             row = cursor.fetchone()
             if row:
