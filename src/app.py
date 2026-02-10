@@ -2868,6 +2868,15 @@ def send_invoice_api(booking_id):
     db = get_database()
     company_id = session.get('company_id')
     
+    # Check if email service is configured
+    from src.services.email_reminder import get_email_service
+    email_service = get_email_service()
+    if not email_service.configured:
+        return jsonify({
+            "error": "Email service not configured. Please contact support.",
+            "details": "SMTP settings are missing from server configuration."
+        }), 503
+    
     # Check subscription for sending invoices
     company = db.get_company(company_id)
     subscription_info = get_subscription_info(company)
@@ -3049,8 +3058,6 @@ def send_invoice_api(booking_id):
                 }
             revolut_phone = revolut_phone_val if revolut_phone_val else None
         
-        email_service = get_email_service()
-        
         # Parse appointment time
         appointment_time = None
         if booking_dict.get('appointment_time'):
@@ -3099,13 +3106,15 @@ def send_invoice_api(booking_id):
                 "has_payment_link": stripe_payment_link is not None
             })
         else:
-            return jsonify({"error": "Failed to send invoice email"}), 500
+            return jsonify({
+                "error": "Failed to send invoice email. Please check the customer's email address and try again."
+            }), 500
             
     except Exception as e:
         safe_print(f"[ERROR] Error sending invoice: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"An error occurred while sending the invoice: {str(e)}"}), 500
 
 
 @app.route("/api/appointments/auto-complete", methods=["POST"])
