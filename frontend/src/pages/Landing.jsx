@@ -381,6 +381,66 @@ function Landing() {
         </div>
       </section>
 
+      {/* Comparison Table Section */}
+      <section className="comparison-section">
+        <div className="section-container">
+          <div className="section-header">
+            <span className="section-badge">Why Switch?</span>
+            <h2>Real Receptionist vs <span className="gradient-text">AI Receptionist</span></h2>
+            <p>See why businesses are making the switch to AI-powered call handling.</p>
+          </div>
+          <div className="comparison-table-wrapper">
+            <table className="comparison-table">
+              <thead>
+                <tr>
+                  <th>Feature</th>
+                  <th>
+                    <i className="fas fa-user"></i>
+                    Real Receptionist
+                  </th>
+                  <th className="highlight-col">
+                    <i className="fas fa-robot"></i>
+                    AI Receptionist
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Availability</td>
+                  <td>9-5, weekdays only</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> 24/7, 365 days</td>
+                </tr>
+                <tr>
+                  <td>Monthly Cost</td>
+                  <td>€2,500 - €3,500+</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> €99/month</td>
+                </tr>
+                <tr>
+                  <td>Sick Days / Holidays</td>
+                  <td>20+ days/year</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> Never</td>
+                </tr>
+                <tr>
+                  <td>Handles Multiple Calls</td>
+                  <td>One at a time</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> Unlimited</td>
+                </tr>
+                <tr>
+                  <td>Instant Booking</td>
+                  <td>Manual process</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> Automatic</td>
+                </tr>
+                <tr>
+                  <td>Training Required</td>
+                  <td>Weeks of training</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> Ready instantly</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       {/* Testimonials Section with Marquee */}
       {showReviews && (
         <section id="testimonials" className="testimonials">

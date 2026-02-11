@@ -766,13 +766,17 @@ class PostgreSQLDatabaseWrapper:
     
     # Booking Methods
     
-    def get_booking_by_calendar_event_id(self, calendar_event_id: str) -> Optional[Dict]:
-        """Get booking by calendar event ID"""
+    def get_booking_by_calendar_event_id(self, calendar_event_id: str, company_id: int = None) -> Optional[Dict]:
+        """Get booking by calendar event ID, optionally filtered by company_id for security"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
-            cursor.execute("SELECT * FROM bookings WHERE calendar_event_id = %s", (calendar_event_id,))
+            # CRITICAL: Filter by company_id when provided for multi-tenant data isolation
+            if company_id:
+                cursor.execute("SELECT * FROM bookings WHERE calendar_event_id = %s AND company_id = %s", (calendar_event_id, company_id))
+            else:
+                cursor.execute("SELECT * FROM bookings WHERE calendar_event_id = %s", (calendar_event_id,))
             row = cursor.fetchone()
             if row:
                 return dict(row)
@@ -1178,17 +1182,22 @@ class PostgreSQLDatabaseWrapper:
             cursor.close()
             self.return_connection(conn)
     
-    def get_clients_by_name(self, name: str) -> List[Dict]:
-        """Get all clients with a given name (case-insensitive)"""
+    def get_clients_by_name(self, name: str, company_id: int = None) -> List[Dict]:
+        """Get all clients with a given name (case-insensitive), filtered by company_id for data isolation"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             name = name.lower().strip()
-            cursor.execute("SELECT * FROM clients WHERE name = %s", (name,))
+            # CRITICAL: Filter by company_id for proper multi-tenant data isolation
+            if company_id:
+                cursor.execute("SELECT * FROM clients WHERE company_id = %s AND name = %s", (company_id, name))
+            else:
+                cursor.execute("SELECT * FROM clients WHERE name = %s", (name,))
             rows = cursor.fetchall()
             
             return [{
                 'id': row['id'],
+                'company_id': row.get('company_id'),
                 'name': row['name'],
                 'phone': row['phone'],
                 'email': row['email'],
@@ -1387,11 +1396,21 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def update_booking(self, booking_id: int, **kwargs) -> bool:
-        """Update booking information"""
+    def update_booking(self, booking_id: int, company_id: int = None, **kwargs) -> bool:
+        """Update booking information
+        
+        SECURITY: When company_id is provided, only update if booking belongs to that company.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
+            # SECURITY: Verify booking belongs to company if company_id provided
+            if company_id:
+                cursor.execute("SELECT id FROM bookings WHERE id = %s AND company_id = %s", (booking_id, company_id))
+                if not cursor.fetchone():
+                    print(f"[SECURITY] Booking {booking_id} does not belong to company {company_id}")
+                    return False
+            
             field_mapping = {
                 'estimated_charge': 'charge',
                 'job_address': 'address',
@@ -1442,11 +1461,21 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def delete_booking(self, booking_id: int) -> bool:
-        """Delete a booking completely from the database"""
+    def delete_booking(self, booking_id: int, company_id: int = None) -> bool:
+        """Delete a booking completely from the database
+        
+        SECURITY: When company_id is provided, only delete if booking belongs to that company.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
+            # SECURITY: Verify booking belongs to company if company_id provided
+            if company_id:
+                cursor.execute("SELECT id FROM bookings WHERE id = %s AND company_id = %s", (booking_id, company_id))
+                if not cursor.fetchone():
+                    print(f"[SECURITY] Booking {booking_id} does not belong to company {company_id} - delete blocked")
+                    return False
+            
             # Delete associated appointment notes first (foreign key constraint)
             cursor.execute("DELETE FROM appointment_notes WHERE booking_id = %s", (booking_id,))
             # Delete the booking

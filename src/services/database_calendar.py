@@ -59,7 +59,7 @@ class DatabaseCalendarService:
         day_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
         
-        # Get business hours from config
+        # Get business hours from config - MUST use company_id for correct hours
         try:
             business_hours = config.get_business_hours(company_id=self.company_id)
             start_hour = business_hours.get('start', 9)
@@ -74,8 +74,8 @@ class DatabaseCalendarService:
         # Don't return past time slots
         now = datetime.now()
         
-        # Get existing bookings for this day
-        all_bookings = self.db.get_all_bookings()
+        # Get existing bookings for this day - MUST filter by company_id for data isolation
+        all_bookings = self.db.get_all_bookings(company_id=self.company_id)
         day_bookings = []
         for booking in all_bookings:
             if booking.get('status') in ['cancelled', 'completed']:
@@ -134,8 +134,8 @@ class DatabaseCalendarService:
         
         slot_end = start_time + timedelta(minutes=duration_minutes)
         
-        # Get all non-cancelled bookings
-        all_bookings = self.db.get_all_bookings()
+        # Get all non-cancelled bookings - MUST filter by company_id for data isolation
+        all_bookings = self.db.get_all_bookings(company_id=self.company_id)
         
         for booking in all_bookings:
             if booking.get('status') in ['cancelled', 'completed']:
@@ -187,7 +187,8 @@ class DatabaseCalendarService:
         Returns:
             Booking dict if found, None otherwise
         """
-        all_bookings = self.db.get_all_bookings()
+        # MUST filter by company_id for data isolation
+        all_bookings = self.db.get_all_bookings(company_id=self.company_id)
         
         for booking in all_bookings:
             if booking.get('status') in ['cancelled', 'completed']:
@@ -258,8 +259,8 @@ class DatabaseCalendarService:
             )
             
             if success:
-                # Return updated booking
-                bookings = self.db.get_all_bookings()
+                # Return updated booking - MUST filter by company_id for data isolation
+                bookings = self.db.get_all_bookings(company_id=self.company_id)
                 for booking in bookings:
                     if booking.get('id') == booking_id:
                         return {
@@ -273,25 +274,20 @@ class DatabaseCalendarService:
             return None
 
 
-# Singleton instance (will be initialized per company in production)
-_calendar_service: Optional[DatabaseCalendarService] = None
-
-
 def get_database_calendar_service(company_id: int = 1) -> DatabaseCalendarService:
     """
-    Get or create database calendar service instance
+    Get database calendar service instance for a specific company
+    
+    NOTE: This creates a new instance each time to ensure proper multi-tenant isolation.
+    Each company must have their own calendar service with their own company_id.
     
     Args:
         company_id: Company ID for multi-tenant isolation
     
     Returns:
-        DatabaseCalendarService instance
+        DatabaseCalendarService instance for the specified company
     """
-    global _calendar_service
-    
-    if _calendar_service is None:
-        from src.services.database import get_database
-        db = get_database()
-        _calendar_service = DatabaseCalendarService(db, company_id)
-    
-    return _calendar_service
+    from src.services.database import get_database
+    db = get_database()
+    # Always create a new instance with the correct company_id for proper isolation
+    return DatabaseCalendarService(db, company_id)

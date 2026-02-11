@@ -313,7 +313,7 @@ async def add_call_summary_to_booking(
                     'emergency': 'Emergency',
                     'urgent': 'Same-Day'
                 }
-                db.update_booking(booking_id, urgency=urgency_map.get(urgency, 'Scheduled'))
+                db.update_booking(booking_id, company_id=company_id, urgency=urgency_map.get(urgency, 'Scheduled'))
                 print(f"[INFO] Updated booking urgency to {urgency_map.get(urgency)}")
             
             return True

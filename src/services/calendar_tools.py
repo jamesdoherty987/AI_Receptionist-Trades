@@ -369,7 +369,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     Args:
         tool_name: Name of the tool to execute
         arguments: Dictionary of arguments for the tool
-        services: Dictionary containing service instances (google_calendar, db, etc.)
+        services: Dictionary containing service instances (google_calendar, db, company_id, etc.)
     
     Returns:
         Dictionary with success status and result data
@@ -380,6 +380,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     
     google_calendar = services.get('google_calendar')
     db = services.get('db') or services.get('database')  # Support both keys
+    # CRITICAL: Extract company_id for proper multi-tenant data isolation
+    company_id = services.get('company_id')
     
     # Calendar should always be available (database or Google)
     if not google_calendar and tool_name in ['check_availability', 'book_appointment', 'reschedule_appointment', 'cancel_appointment', 'book_job', 'cancel_job', 'reschedule_job']:
@@ -558,12 +560,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Check database for existing customer
             if db:
                 try:
-                    # Try by name, phone, or email
-                    clients = db.get_clients_by_name(customer_name.lower())
+                    # Try by name, phone, or email - MUST filter by company_id for data isolation
+                    clients = db.get_clients_by_name(customer_name.lower(), company_id=company_id)
                     if len(clients) == 1:
                         client = clients[0]
-                        # Get most recent booking to find last used address
-                        bookings = db.get_client_bookings(client['id'])
+                        # Get most recent booking to find last used address - filter by company_id
+                        bookings = db.get_client_bookings(client['id'], company_id=company_id)
                         last_address = None
                         if bookings:
                             # Get most recent booking with an address
@@ -612,8 +614,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         }
                     else:
                         # FUZZY MATCH: Try phonetically similar names (for ASR errors)
+                        # MUST filter by company_id for data isolation
                         from difflib import SequenceMatcher
-                        all_clients = db.get_all_clients()
+                        all_clients = db.get_all_clients(company_id=company_id)
                         
                         for potential_client in all_clients:
                             # Check name similarity (75%+ match)
@@ -623,8 +626,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             
                             if similarity >= 0.75:  # 75% similar = likely match
                                 print(f"[SUCCESS] Fuzzy match: '{customer_name}' -> '{potential_client['name']}' (similarity: {similarity:.2%})")
-                                # Get most recent booking address
-                                bookings = db.get_client_bookings(potential_client['id'])
+                                # Get most recent booking address - filter by company_id
+                                bookings = db.get_client_bookings(potential_client['id'], company_id=company_id)
                                 last_address = None
                                 if bookings:
                                     for booking in bookings:
@@ -717,9 +720,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "needs_clarification": "datetime"
                 }
             
-            # Validate business hours
+            # Validate business hours - MUST pass company_id for correct company-specific hours
             from src.utils.config import Config
-            business_hours = Config.get_business_hours()
+            business_hours = Config.get_business_hours(company_id=company_id)
             requested_hour = parsed_time.hour
             start_hour = business_hours.get('start', 9)
             end_hour = business_hours.get('end', 17)
@@ -771,22 +774,24 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Save to database
             if db:
                 try:
-                    # Find or create client
+                    # Find or create client - MUST pass company_id for data isolation
                     client_id = db.find_or_create_client(
                         name=customer_name,
                         phone=phone,
                         email=email,
-                        date_of_birth=None
+                        date_of_birth=None,
+                        company_id=company_id
                     )
                     
-                    # Add booking
+                    # Add booking - MUST pass company_id for data isolation
                     booking_id = db.add_booking(
                         client_id=client_id,
                         calendar_event_id=event.get('id'),
                         appointment_time=parsed_time,
                         service_type=reason,
                         phone_number=phone,
-                        email=email
+                        email=email,
+                        company_id=company_id
                     )
                     
                     # Add note
@@ -799,7 +804,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     except Exception:
                         pass
                     
-                    print(f"[SUCCESS] Booking saved to database (ID: {booking_id})")
+                    print(f"[SUCCESS] Booking saved to database (ID: {booking_id}, company_id: {company_id})")
                 except Exception as e:
                     print(f"[ERROR] Database save failed: {e}")
             
@@ -887,14 +892,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             success = google_calendar.cancel_appointment(event_id)
             
             if success:
-                # Delete from database
+                # Delete from database - MUST filter by company_id for data isolation
                 if db:
                     try:
-                        bookings = db.get_all_bookings()
+                        bookings = db.get_all_bookings(company_id=company_id)
                         for booking in bookings:
                             if booking.get('calendar_event_id') == event_id:
-                                db.delete_booking(booking['id'])
-                                print(f"[SUCCESS] Deleted booking from database (ID: {booking['id']})")
+                                db.delete_booking(booking['id'], company_id=company_id)
+                                print(f"[SUCCESS] Deleted booking from database (ID: {booking['id']}, company_id: {company_id})")
                                 break
                     except Exception as e:
                         print(f"[ERROR] Failed to delete booking from database: {e}")
@@ -1003,12 +1008,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             updated_event = google_calendar.reschedule_appointment(event_id, new_time)
             
             if updated_event:
-                # Update database
+                # Update database - MUST filter by company_id for data isolation
                 if db:
                     try:
-                        bookings = db.get_all_bookings()
-                        print(f"[SEARCH] Looking for booking with calendar_event_id: {event_id}")
-                        print(f"[INFO] Total bookings in database: {len(bookings)}")
+                        bookings = db.get_all_bookings(company_id=company_id)
+                        print(f"[SEARCH] Looking for booking with calendar_event_id: {event_id} (company_id: {company_id})")
+                        print(f"[INFO] Total bookings for company: {len(bookings)}")
                         
                         found = False
                         for booking in bookings:
@@ -1016,8 +1021,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             if booking_event_id:
                                 print(f"   Checking booking {booking['id']}: calendar_event_id = {booking_event_id}")
                                 if booking_event_id == event_id:
-                                    # Update booking with new appointment time
-                                    success = db.update_booking(booking['id'], appointment_time=new_time.strftime('%Y-%m-%d %H:%M:%S'))
+                                    # Update booking with new appointment time - pass company_id for security
+                                    success = db.update_booking(booking['id'], company_id=company_id, appointment_time=new_time.strftime('%Y-%m-%d %H:%M:%S'))
                                     if success:
                                         print(f"[SUCCESS] Updated booking in database (ID: {booking['id']}) to {new_time.strftime('%Y-%m-%d %H:%M:%S')}")
                                     else:
@@ -1143,9 +1148,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "needs_clarification": "datetime"
                 }
             
-            # Validate business hours
+            # Validate business hours - MUST pass company_id for correct company-specific hours
             from src.utils.config import Config
-            business_hours = Config.get_business_hours()
+            business_hours = Config.get_business_hours(company_id=company_id)
             requested_hour = parsed_time.hour
             start_hour = business_hours.get('start', 9)
             end_hour = business_hours.get('end', 17)
@@ -1197,12 +1202,13 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Save to database with trades-specific fields
             if db:
                 try:
-                    # Find or create client
+                    # Find or create client - MUST pass company_id for data isolation
                     client_id = db.find_or_create_client(
                         name=customer_name,
                         phone=phone,
                         email=email,
-                        date_of_birth=None
+                        date_of_birth=None,
+                        company_id=company_id
                     )
                     
                     # Get the correct price from services menu
@@ -1210,6 +1216,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     print(f"[PRICING] Calculated charge for '{job_description}' ({urgency_level}): EUR{job_charge}")
                     
                     # Add booking with validated address information and correct charge
+                    # MUST pass company_id for data isolation
                     booking_id = db.add_booking(
                         client_id=client_id,
                         calendar_event_id=event.get('id'),
@@ -1221,7 +1228,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         address=validated_address,
                         eircode=extracted_eircode,  # Use extracted eircode if available
                         property_type=property_type,
-                        charge=job_charge
+                        charge=job_charge,
+                        company_id=company_id
                     )
                     
                     # Add note with job details
@@ -1238,7 +1246,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     except Exception:
                         pass
                     
-                    print(f"[SUCCESS] Job booking saved to database (ID: {booking_id})")
+                    print(f"[SUCCESS] Job booking saved to database (ID: {booking_id}, company_id: {company_id})")
                 except Exception as e:
                     print(f"[ERROR] Database save failed: {e}")
             

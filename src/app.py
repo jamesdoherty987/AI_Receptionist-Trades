@@ -2014,8 +2014,14 @@ def stripe_connect_webhook():
             if booking_id:
                 try:
                     booking_id = int(booking_id)
-                    db.update_booking(booking_id, payment_status='paid', status='completed')
-                    print(f"[SUCCESS] Booking {booking_id} marked as paid via Stripe Connect checkout")
+                    # SECURITY NOTE: This is a webhook from Stripe - we get booking first to extract company_id
+                    # The booking_id comes from trusted Stripe metadata set during payment link creation
+                    booking = db.get_booking(booking_id)  # company_id extracted from booking itself
+                    if booking:
+                        db.update_booking(booking_id, company_id=booking.get('company_id'), payment_status='paid', status='completed')
+                        print(f"[SUCCESS] Booking {booking_id} marked as paid via Stripe Connect checkout")
+                    else:
+                        print(f"[WARNING] Booking {booking_id} not found for checkout session")
                 except Exception as e:
                     print(f"[WARNING] Error updating booking {booking_id}: {e}")
         
@@ -2025,8 +2031,14 @@ def stripe_connect_webhook():
             if booking_id:
                 try:
                     booking_id = int(booking_id)
-                    db.update_booking(booking_id, payment_status='paid', status='completed')
-                    print(f"[SUCCESS] Booking {booking_id} marked as paid via payment intent")
+                    # SECURITY NOTE: This is a webhook from Stripe - we get booking first to extract company_id
+                    # The booking_id comes from trusted Stripe metadata set during payment link creation
+                    booking = db.get_booking(booking_id)  # company_id extracted from booking itself
+                    if booking:
+                        db.update_booking(booking_id, company_id=booking.get('company_id'), payment_status='paid', status='completed')
+                        print(f"[SUCCESS] Booking {booking_id} marked as paid via payment intent")
+                    else:
+                        print(f"[WARNING] Booking {booking_id} not found for payment intent")
                 except Exception as e:
                     print(f"[WARNING] Error updating booking {booking_id}: {e}")
     
@@ -2972,7 +2984,7 @@ def booking_detail_api(booking_id):
         if 'job_address' in data:
             data['address'] = data.pop('job_address')
         
-        success = db.update_booking(booking_id, **data)
+        success = db.update_booking(booking_id, company_id=company_id, **data)
         
         # Update notes if provided
         if notes is not None:
@@ -2993,7 +3005,7 @@ def booking_detail_api(booking_id):
         if not booking:
             return jsonify({"error": "Booking not found"}), 404
         
-        success = db.delete_booking(booking_id)
+        success = db.delete_booking(booking_id, company_id=company_id)
         if success:
             return jsonify({"success": True, "message": "Booking deleted"})
         return jsonify({"error": "Failed to delete booking"}), 400
@@ -3015,8 +3027,8 @@ def complete_booking_api(booking_id):
     client_id = booking['client_id']
     current_status = booking['status']
     
-    # Update booking status to completed
-    db.update_booking(booking_id, status='completed')
+    # Update booking status to completed - pass company_id for security
+    db.update_booking(booking_id, company_id=company_id, status='completed')
     
     # Generate/update client description using AI based on all appointments and notes
     try:
@@ -3284,7 +3296,7 @@ def send_invoice_api(booking_id):
         if success:
             # Update payment status to 'invoiced' so we know an invoice was sent
             try:
-                db.update_booking(booking_id, payment_status='invoiced')
+                db.update_booking(booking_id, company_id=company_id, payment_status='invoiced')
             except Exception:
                 pass  # Non-critical, don't fail the response
             

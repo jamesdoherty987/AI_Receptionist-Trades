@@ -590,6 +590,102 @@
   opacity: 0.3;
 }
 
+/* Comparison Table Section */
+.comparison-section {
+  background: #ffffff;
+}
+
+.comparison-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.comparison-table {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  border-collapse: collapse;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.comparison-table th,
+.comparison-table td {
+  padding: 1rem 1.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.comparison-table thead th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.comparison-table thead th i {
+  margin-right: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.comparison-table thead th.highlight-col {
+  background: var(--gradient-subtle);
+  color: var(--accent-blue);
+}
+
+.comparison-table thead th.highlight-col i {
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.comparison-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.comparison-table tbody td {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.comparison-table tbody td:first-child {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.comparison-table tbody td.highlight-col {
+  background: rgba(14, 165, 233, 0.03);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.comparison-table tbody td.highlight-col i {
+  color: var(--accent-green);
+  margin-right: 0.5rem;
+}
+
+.comparison-table tbody tr:hover {
+  background: var(--bg-secondary);
+}
+
+.comparison-table tbody tr:hover td.highlight-col {
+  background: rgba(14, 165, 233, 0.08);
+}
+
+@media (max-width: 768px) {
+  .comparison-table th,
+  .comparison-table td {
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .comparison-table thead th {
+    font-size: 0.9rem;
+  }
+}
+
 /* Testimonials with Marquee */
 .testimonials {
   background: #ffffff;
