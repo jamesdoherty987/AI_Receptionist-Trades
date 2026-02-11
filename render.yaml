@@ -5,12 +5,10 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     pythonVersion: 3.12.7
-    startCommand: uvicorn src.server:app --host 0.0.0.0 --port 5000 --workers 2 --timeout-keep-alive 30 --proxy-headers
+    startCommand: uvicorn src.server:app --host 0.0.0.0 --port $PORT --workers 2 --timeout-keep-alive 30 --proxy-headers
     envVars:
       - key: FLASK_ENV
         value: production
-      - key: PORT
-        value: 5000
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
