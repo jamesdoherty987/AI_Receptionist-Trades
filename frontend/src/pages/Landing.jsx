@@ -87,6 +87,7 @@ function Landing() {
   // Feature flags - set to false to hide sections
   const showReviews = false;
   const showPricing = true;
+  const showWatchDemo = false;
 
   const reviews = [
     {
@@ -261,10 +262,12 @@ function Landing() {
               <i className="fas fa-rocket"></i>
               Start Free Trial
             </Link>
-            <a href="#demo" className="btn-hero-secondary">
-              <i className="fas fa-play-circle"></i>
-              Watch Demo
-            </a>
+            {showWatchDemo && (
+              <a href="#demo" className="btn-hero-secondary">
+                <i className="fas fa-play-circle"></i>
+                Watch Demo
+              </a>
+            )}
           </div>
           <div className="hero-stats">
             <div className="stat">
