@@ -46,6 +46,8 @@ function Settings() {
       window.history.replaceState({}, '', '/settings');
       // Refresh auth to get updated subscription info
       checkAuth();
+      // Also invalidate subscription-status query to ensure SubscriptionManager refreshes
+      queryClient.invalidateQueries(['subscription-status']);
       setTimeout(() => setSaveMessage(''), 5000);
     } else if (subscriptionStatus === 'cancelled') {
       setSaveMessage('Checkout was cancelled. You can try again when ready.');
@@ -57,7 +59,7 @@ function Settings() {
       setActiveTab('subscription');
       window.history.replaceState({}, '', '/settings');
     }
-  }, [searchParams, checkAuth]);
+  }, [searchParams, checkAuth, queryClient]);
   
   // Business hours breakdown state
   const [hoursConfig, setHoursConfig] = useState({

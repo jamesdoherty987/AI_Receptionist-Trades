@@ -1581,6 +1581,7 @@ def stripe_webhook():
                 import stripe
                 sub = stripe.Subscription.retrieve(subscription_id)
                 
+                # Clear trial fields when upgrading to pro to ensure clean state
                 db.update_company(
                     company_id,
                     subscription_tier='pro',
@@ -1588,7 +1589,9 @@ def stripe_webhook():
                     stripe_customer_id=customer_id,
                     stripe_subscription_id=subscription_id,
                     subscription_current_period_end=datetime.fromtimestamp(sub.current_period_end),
-                    subscription_cancel_at_period_end=0
+                    subscription_cancel_at_period_end=0,
+                    trial_start=None,
+                    trial_end=None
                 )
                 print(f"[SUCCESS] Subscription activated for company {company_id}")
         
