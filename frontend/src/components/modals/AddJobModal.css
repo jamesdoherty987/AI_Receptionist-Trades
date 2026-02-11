@@ -79,8 +79,8 @@
   background: white;
   border: 2px solid #e5e7eb;
   border-radius: 12px;
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.2);
-  z-index: 1000;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.3);
+  z-index: 9999;
   max-height: 320px;
   overflow-y: auto;
 }
@@ -607,4 +607,42 @@
     width: 100%;
     justify-content: center;
   }
+}
+
+
+/* Worker availability indicators */
+.worker-conflict-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  color: #dc2626;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.worker-conflict-warning i {
+  color: #ef4444;
+}
+
+.worker-available-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 1px solid #6ee7b7;
+  border-radius: 8px;
+  color: #047857;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.worker-available-badge i {
+  color: #10b981;
 }

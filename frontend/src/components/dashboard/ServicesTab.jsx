@@ -225,7 +225,7 @@ function ServicesTab() {
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="price">Price (€)</label>
+                <label htmlFor="price">Typical Price (€)</label>
                 <input
                   type="number"
                   id="price"
@@ -237,7 +237,7 @@ function ServicesTab() {
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="duration">Duration (mins)</label>
+                <label htmlFor="duration">Usual Duration (mins)</label>
                 <input
                   type="number"
                   id="duration"
@@ -357,7 +357,6 @@ function ServicesTab() {
                     <div className="service-details">
                       {service.price && (
                         <span className="service-price">
-                          <i className="fas fa-euro-sign"></i>
                           {formatCurrency(service.price)}
                         </span>
                       )}
