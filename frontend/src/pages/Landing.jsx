@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import Tilt from 'react-parallax-tilt';
 import DarkVeil from '../components/DarkVeil';
 import './Landing.css';
 
@@ -81,8 +82,33 @@ function ReviewCard({ name, company, image, text, rating }) {
   );
 }
 
+// Animated Feature Card with hover effects
+function FeatureCard({ icon, title, description, index }) {
+  return (
+    <div 
+      className="feature-card"
+      style={{ animationDelay: `${index * 0.1}s` }}
+    >
+      <div className="feature-icon">
+        <i className={icon}></i>
+      </div>
+      <h3>{title}</h3>
+      <p>{description}</p>
+    </div>
+  );
+}
+
 function Landing() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile for disabling tilt effects
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Feature flags - set to false to hide sections
   const showReviews = false;
@@ -209,6 +235,13 @@ function Landing() {
 
   return (
     <div className="landing">
+      {/* Floating background elements */}
+      <div className="floating-elements">
+        <div className="floating-shape shape-1"></div>
+        <div className="floating-shape shape-2"></div>
+        <div className="floating-shape shape-3"></div>
+      </div>
+
       {/* Navigation - Light Theme */}
       <nav className="landing-nav">
         <div className="nav-container">
@@ -293,40 +326,62 @@ function Landing() {
           </div>
         </div>
         <div className="hero-visual">
-          <div className="phone-mockup">
-            <div className="phone-notch"></div>
-            <div className="phone-screen">
-              <div className="call-ui">
-                <div className="caller-avatar">
-                  <i className="fas fa-user"></i>
-                </div>
-                <div className="caller-info">
-                  <span className="caller-name">Incoming Call</span>
-                  <span className="caller-number">+353 86 XXX XXXX</span>
-                </div>
-                <div className="ai-badge">
-                  <span className="ai-pulse"></span>
-                  <i className="fas fa-robot"></i> AI Answering
-                </div>
-                <div className="call-wave">
-                  <span></span><span></span><span></span><span></span><span></span>
+          {isMobile ? (
+            <div className="phone-mockup">
+              <div className="phone-notch"></div>
+              <div className="phone-screen">
+                <div className="call-ui">
+                  <div className="caller-avatar">
+                    <i className="fas fa-user"></i>
+                  </div>
+                  <div className="caller-info">
+                    <span className="caller-name">Incoming Call</span>
+                    <span className="caller-number">+353 86 XXX XXXX</span>
+                  </div>
+                  <div className="ai-badge">
+                    <span className="ai-pulse"></span>
+                    <i className="fas fa-robot"></i> AI Answering
+                  </div>
+                  <div className="call-wave">
+                    <span></span><span></span><span></span><span></span><span></span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Logos Section */}
-      <section className="logos-section">
-        <div className="section-container">
-          <p className="logos-title">Integrates with tools you already use</p>
-          <div className="logos-grid">
-            <div className="logo-item"><i className="fab fa-google"></i> Google Calendar</div>
-            <div className="logo-item"><i className="fas fa-phone-alt"></i> Twilio</div>
-            <div className="logo-item"><i className="fab fa-stripe-s"></i> Stripe</div>
-            <div className="logo-item"><i className="fas fa-brain"></i> OpenAI</div>
-          </div>
+          ) : (
+            <Tilt
+              className="phone-tilt-wrapper"
+              tiltMaxAngleX={15}
+              tiltMaxAngleY={15}
+              perspective={1000}
+              scale={1.02}
+              transitionSpeed={2000}
+              gyroscope={false}
+              glareEnable={false}
+            >
+              <div className="phone-mockup">
+                <div className="phone-notch"></div>
+                <div className="phone-screen">
+                  <div className="call-ui">
+                    <div className="caller-avatar">
+                      <i className="fas fa-user"></i>
+                    </div>
+                    <div className="caller-info">
+                      <span className="caller-name">Incoming Call</span>
+                      <span className="caller-number">+353 86 XXX XXXX</span>
+                    </div>
+                    <div className="ai-badge">
+                      <span className="ai-pulse"></span>
+                      <i className="fas fa-robot"></i> AI Answering
+                    </div>
+                    <div className="call-wave">
+                      <span></span><span></span><span></span><span></span><span></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Tilt>
+          )}
         </div>
       </section>
 
@@ -340,16 +395,13 @@ function Landing() {
           </div>
           <div className="features-grid">
             {features.map((feature, index) => (
-              <div 
-                key={index} 
-                className="feature-card"
-              >
-                <div className="feature-icon">
-                  <i className={feature.icon}></i>
-                </div>
-                <h3>{feature.title}</h3>
-                <p>{feature.description}</p>
-              </div>
+              <FeatureCard 
+                key={index}
+                icon={feature.icon}
+                title={feature.title}
+                description={feature.description}
+                index={index}
+              />
             ))}
           </div>
         </div>
@@ -380,6 +432,66 @@ function Landing() {
               <h3>Start Growing</h3>
               <p>Watch your bookings increase as you never miss another call.</p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Comparison Table Section */}
+      <section className="comparison-section">
+        <div className="section-container">
+          <div className="section-header">
+            <span className="section-badge">Why Switch?</span>
+            <h2>Real Receptionist vs <span className="gradient-text">AI Receptionist</span></h2>
+            <p>See why businesses are making the switch to AI-powered call handling.</p>
+          </div>
+          <div className="comparison-table-wrapper">
+            <table className="comparison-table">
+              <thead>
+                <tr>
+                  <th>Feature</th>
+                  <th>
+                    <i className="fas fa-user"></i>
+                    Real Receptionist
+                  </th>
+                  <th className="highlight-col">
+                    <i className="fas fa-robot"></i>
+                    AI Receptionist
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Availability</td>
+                  <td>9-5, weekdays only</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> 24/7, 365 days</td>
+                </tr>
+                <tr>
+                  <td>Monthly Cost</td>
+                  <td>€2,500 - €3,500+</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> €99/month</td>
+                </tr>
+                <tr>
+                  <td>Sick Days / Holidays</td>
+                  <td>20+ days/year</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> Never</td>
+                </tr>
+                <tr>
+                  <td>Handles Multiple Calls</td>
+                  <td>One at a time</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> Unlimited</td>
+                </tr>
+                <tr>
+                  <td>Instant Booking</td>
+                  <td>Manual process</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> Automatic</td>
+                </tr>
+                <tr>
+                  <td>Training Required</td>
+                  <td>Weeks of training</td>
+                  <td className="highlight-col"><i className="fas fa-check"></i> Ready instantly</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </section>

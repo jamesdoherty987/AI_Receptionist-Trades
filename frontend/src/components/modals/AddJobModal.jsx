@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createBooking, getClients, checkAvailability } from '../../services/api';
+import { createBooking, getClients, checkAvailability, getServicesMenu, getWorkers, checkWorkerAvailability } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import AddClientModal from './AddClientModal';
@@ -9,6 +9,7 @@ import './AddJobModal.css';
 function AddJobModal({ isOpen, onClose }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
+  
   const [formData, setFormData] = useState({
     client_id: '',
     appointment_time: '',
@@ -17,68 +18,82 @@ function AddJobModal({ isOpen, onClose }) {
     eircode: '',
     property_type: '',
     estimated_charge: '',
-    notes: ''
+    duration_minutes: '',
+    notes: '',
+    worker_id: ''
   });
-  const [clientSearch, setClientSearch] = useState('');
+  
   const [selectedQuickDate, setSelectedQuickDate] = useState('');
-  const [showClientDropdown, setShowClientDropdown] = useState(false);
-  const [selectedClientName, setSelectedClientName] = useState('');
-  const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
-  const [waitingForNewClient, setWaitingForNewClient] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
   const [showTimeSlots, setShowTimeSlots] = useState(false);
-  const dropdownRef = useRef(null);
-  const inputRef = useRef(null);
-  const previousClientsLengthRef = useRef(0);
+  const [selectedService, setSelectedService] = useState(null);
+  const [selectedWorker, setSelectedWorker] = useState(null);
+  const [workerAvailability, setWorkerAvailability] = useState(null);
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [isAddClientModalOpen, setIsAddClientModalOpen] = useState(false);
+  const customerPickerRef = useRef(null);
 
-  // Close dropdown when clicking outside
+  // Reset form when modal closes
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowClientDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    if (!isOpen) {
+      resetForm();
+    }
+  }, [isOpen]);
 
   const { data: clients } = useQuery({
     queryKey: ['clients'],
-    queryFn: async () => {
-      const response = await getClients();
-      return response.data;
-    },
+    queryFn: async () => (await getClients()).data,
     enabled: isOpen
   });
 
-  // Fetch availability when a date is selected
-  const { data: availability, isLoading: isLoadingAvailability } = useQuery({
-    queryKey: ['availability', selectedDate],
-    queryFn: async () => {
-      const response = await checkAvailability(selectedDate);
-      return response.data;
-    },
-    enabled: !!selectedDate && isOpen
+  const { data: servicesMenu } = useQuery({
+    queryKey: ['services-menu'],
+    queryFn: async () => (await getServicesMenu()).data,
+    enabled: isOpen
   });
 
-  const filteredClients = useMemo(() => {
+  const { data: workers } = useQuery({
+    queryKey: ['workers'],
+    queryFn: async () => (await getWorkers()).data,
+    enabled: isOpen
+  });
+
+  const { data: availability, isLoading: isLoadingAvailability } = useQuery({
+    queryKey: ['availability', selectedDate, formData.service_type, formData.worker_id],
+    queryFn: async () => (await checkAvailability(selectedDate, formData.service_type, formData.worker_id || null)).data,
+    enabled: !!selectedDate && !!formData.service_type && isOpen
+  });
+
+  const filteredCustomers = useMemo(() => {
     if (!clients) return [];
-    if (!clientSearch.trim()) return clients;
-    
-    const term = clientSearch.toLowerCase();
-    return clients.filter(client =>
-      client.name?.toLowerCase().includes(term) ||
-      client.phone?.includes(clientSearch) ||
-      client.email?.toLowerCase().includes(term)
+    if (!customerSearch.trim()) return clients;
+    const term = customerSearch.toLowerCase();
+    return clients.filter(c =>
+      c.name?.toLowerCase().includes(term) ||
+      c.phone?.includes(customerSearch) ||
+      c.email?.toLowerCase().includes(term)
     );
-  }, [clients, clientSearch]);
+  }, [clients, customerSearch]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (customerPickerRef.current && !customerPickerRef.current.contains(e.target)) {
+        setCustomerPickerOpen(false);
+      }
+    };
+    if (customerPickerOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [customerPickerOpen]);
 
   const mutation = useMutation({
     mutationFn: createBooking,
     onSuccess: () => {
       queryClient.invalidateQueries(['bookings']);
       onClose();
-      resetForm();
       addToast('Job created successfully!', 'success');
     },
     onError: (error) => {
@@ -87,132 +102,79 @@ function AddJobModal({ isOpen, onClose }) {
   });
 
   const resetForm = () => {
-    setFormData({
-      client_id: '',
-      appointment_time: '',
-      service_type: '',
-      job_address: '',
-      eircode: '',
-      property_type: '',
-      estimated_charge: '',
-      notes: ''
-    });
-    setClientSearch('');
+    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', duration_minutes: '', notes: '', worker_id: '' });
     setSelectedQuickDate('');
-    setSelectedClientName('');
-    setShowClientDropdown(false);
-    setWaitingForNewClient(false);
     setSelectedDate('');
     setShowTimeSlots(false);
+    setSelectedService(null);
+    setSelectedWorker(null);
+    setWorkerAvailability(null);
+    setCustomerPickerOpen(false);
+    setCustomerSearch('');
+    setSelectedCustomer(null);
   };
 
-  const handleSelectClient = (client) => {
-    setFormData(prev => ({ ...prev, client_id: client.id }));
-    setSelectedClientName(client.name);
-    setClientSearch('');
-    setShowClientDropdown(false);
+  const handleSelectCustomer = (customer) => {
+    setSelectedCustomer(customer);
+    setFormData(prev => ({ ...prev, client_id: customer.id }));
+    setCustomerPickerOpen(false);
+    setCustomerSearch('');
   };
 
-  const handleClientSearchFocus = () => {
-    setShowClientDropdown(true);
-  };
-
-  const handleClientSearchChange = (e) => {
-    setClientSearch(e.target.value);
-    setShowClientDropdown(true);
-    // If user is typing, clear the selection unless they've selected
-    if (!e.target.value && !formData.client_id) {
-      setSelectedClientName('');
-    }
-  };
-
-  const clearClientSelection = () => {
+  const handleClearCustomer = () => {
+    setSelectedCustomer(null);
     setFormData(prev => ({ ...prev, client_id: '' }));
-    setSelectedClientName('');
-    setClientSearch('');
-    inputRef.current?.focus();
   };
 
-  const handleOpenAddClientModal = () => {
-    setShowClientDropdown(false);
-    setWaitingForNewClient(true);
-    setIsAddClientModalOpen(true);
+  const handleServiceSelect = (service) => {
+    setSelectedService(service);
+    const newDuration = service.duration_minutes || 60;
+    setFormData(prev => ({ ...prev, service_type: service.name, estimated_charge: service.price || '', duration_minutes: newDuration }));
+    if (formData.worker_id && formData.appointment_time) {
+      checkWorkerAvailabilityForJob(formData.worker_id, formData.appointment_time, newDuration);
+    }
   };
 
-  const handleCloseAddClientModal = () => {
-    setIsAddClientModalOpen(false);
-    // Refetch clients to get the newly added customer
-    queryClient.invalidateQueries(['clients']);
-  };
-
-  // Track previous clients length to detect new additions
-  useEffect(() => {
-    if (clients) {
-      previousClientsLengthRef.current = clients.length;
-    }
-  }, [clients]);
-
-  // When a new client is added, auto-select them
-  useEffect(() => {
-    if (waitingForNewClient && clients && clients.length > previousClientsLengthRef.current) {
-      // A new client was added - select the most recent one
-      const sortedClients = [...clients].sort((a, b) => {
-        // Assuming clients have an id or created_at field
-        // Most recent will have the highest id
-        return (b.id || 0) - (a.id || 0);
-      });
-      const newestClient = sortedClients[0];
-      
-      if (newestClient) {
-        handleSelectClient(newestClient);
-        addToast(`Customer "${newestClient.name}" selected`, 'success');
-      }
-      
-      setWaitingForNewClient(false);
-      previousClientsLengthRef.current = clients.length;
-    }
-  }, [clients, waitingForNewClient, addToast]);
-
-  // Reset form when modal is closed
-  useEffect(() => {
-    if (!isOpen) {
-      setWaitingForNewClient(false);
-    }
-  }, [isOpen]);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!formData.client_id || !formData.appointment_time || !formData.service_type) {
-      addToast('Please fill in all required fields', 'warning');
+  const handleWorkerSelect = async (workerId) => {
+    if (!workerId) {
+      setSelectedWorker(null);
+      setFormData(prev => ({ ...prev, worker_id: '' }));
+      setWorkerAvailability(null);
       return;
     }
-
-    // Check if selected time is available
-    if (availability && selectedDate) {
-      const selectedTime = formData.appointment_time.split('T')[1];
-      const slot = availability.slots?.find(s => s.time === selectedTime);
-      if (slot && !slot.available) {
-        addToast(`This time slot is already booked for ${slot.booking.client_name}`, 'error');
-        return;
-      }
+    const worker = workers?.find(w => w.id === parseInt(workerId));
+    setSelectedWorker(worker || null);
+    setFormData(prev => ({ ...prev, worker_id: workerId }));
+    if (formData.appointment_time) {
+      await checkWorkerAvailabilityForJob(workerId, formData.appointment_time, formData.duration_minutes || 60);
     }
+  };
 
-    mutation.mutate(formData);
+  const checkWorkerAvailabilityForJob = async (workerId, appointmentTime, duration) => {
+    if (!workerId || !appointmentTime) { 
+      setWorkerAvailability(null); 
+      return; 
+    }
+    try {
+      const response = await checkWorkerAvailability(workerId, appointmentTime, duration || 60);
+      setWorkerAvailability(response.data);
+    } catch (error) {
+      console.error('Error checking worker availability:', error);
+      setWorkerAvailability(null);
+    }
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value
-    });
-
-    // When date changes, extract date and show time slots
+    setFormData(prev => ({ ...prev, [name]: value }));
     if (name === 'appointment_time' && value) {
       const dateOnly = value.split('T')[0];
-      if (dateOnly !== selectedDate) {
-        setSelectedDate(dateOnly);
-        setShowTimeSlots(true);
+      if (dateOnly !== selectedDate) { 
+        setSelectedDate(dateOnly); 
+      }
+      setShowTimeSlots(true);
+      if (formData.worker_id) {
+        checkWorkerAvailabilityForJob(formData.worker_id, value, formData.duration_minutes || 60);
       }
     }
   };
@@ -220,332 +182,296 @@ function AddJobModal({ isOpen, onClose }) {
   const setQuickDate = (type) => {
     setSelectedQuickDate(type);
     const now = new Date();
-    let date, time;
-
-    switch (type) {
-      case 'today':
-        date = now.toISOString().split('T')[0];
-        time = '09:00';
-        break;
-      case 'tomorrow':
-        now.setDate(now.getDate() + 1);
-        date = now.toISOString().split('T')[0];
-        time = '09:00';
-        break;
-      case 'nextWeek':
-        now.setDate(now.getDate() + 7);
-        date = now.toISOString().split('T')[0];
-        time = '09:00';
-        break;
-      default:
-        return;
-    }
-
+    if (type === 'tomorrow') now.setDate(now.getDate() + 1);
+    else if (type === 'nextWeek') now.setDate(now.getDate() + 7);
+    const date = now.toISOString().split('T')[0];
+    const dateTime = `${date}T09:00`;
     setSelectedDate(date);
     setShowTimeSlots(true);
-    setFormData(prev => ({
-      ...prev,
-      appointment_time: `${date}T${time}`
-    }));
+    setFormData(prev => ({ ...prev, appointment_time: dateTime }));
+    if (formData.worker_id) {
+      checkWorkerAvailabilityForJob(formData.worker_id, dateTime, formData.duration_minutes || 60);
+    }
   };
 
   const handleTimeSlotClick = (slot) => {
-    if (!slot.available) {
-      addToast(`This slot is already booked for ${slot.booking.client_name}`, 'warning');
-      return;
+    if (!slot.available) { 
+      addToast(`Slot booked${slot.booking?.client_name ? ` for ${slot.booking.client_name}` : ''}`, 'warning'); 
+      return; 
     }
-    
     const dateTime = `${selectedDate}T${slot.time}`;
-    setFormData(prev => ({
-      ...prev,
-      appointment_time: dateTime
-    }));
+    setFormData(prev => ({ ...prev, appointment_time: dateTime }));
+    if (formData.worker_id) {
+      checkWorkerAvailabilityForJob(formData.worker_id, dateTime, formData.duration_minutes || 60);
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.client_id || !formData.appointment_time || !formData.service_type) { 
+      addToast('Please fill in all required fields', 'warning'); 
+      return; 
+    }
+    if (workerAvailability && !workerAvailability.available) { 
+      addToast(`Worker not available: ${workerAvailability.message}`, 'error'); 
+      return; 
+    }
+    mutation.mutate(formData);
+  };
+
+  const handleOpenAddClient = () => { 
+    setCustomerPickerOpen(false); 
+    setIsAddClientModalOpen(true); 
+  };
+  
+  const handleCloseAddClient = () => { 
+    setIsAddClientModalOpen(false); 
+    queryClient.invalidateQueries(['clients']); 
   };
 
   return (
     <>
-    <Modal isOpen={isOpen} onClose={onClose} title="Add New Job" size="large">
-      <form onSubmit={handleSubmit} className="form add-job-form">
-        <div className="form-group">
-          <label className="form-label">Customer <span className="required">*</span></label>
-          <div className="customer-search-container" ref={dropdownRef}>
-            {selectedClientName ? (
-              <div className="selected-customer">
-                <div className="selected-customer-info">
-                  <i className="fas fa-user-check"></i>
-                  <span className="selected-name">{selectedClientName}</span>
-                </div>
-                <button 
-                  type="button" 
-                  className="clear-selection-btn"
-                  onClick={clearClientSelection}
-                >
-                  <i className="fas fa-times"></i>
-                </button>
-              </div>
-            ) : (
-              <div className="customer-search-input-wrapper">
-                <i className="fas fa-search search-icon"></i>
-                <input
-                  ref={inputRef}
-                  type="text"
-                  className="form-input customer-search-input"
-                  placeholder="Search by name, phone, or email..."
-                  value={clientSearch}
-                  onChange={handleClientSearchChange}
-                  onFocus={handleClientSearchFocus}
-                  autoComplete="off"
-                />
-              </div>
-            )}
-            
-            {showClientDropdown && !selectedClientName && (
-              <div className="customer-dropdown">
-                {filteredClients.length === 0 ? (
-                  <div className="dropdown-empty">
-                    <i className="fas fa-user-slash"></i>
-                    <p>No customers found</p>
-                    <small>Try a different search term or add a new customer</small>
-                    <button 
-                      type="button"
-                      className="btn-add-customer-inline"
-                      onClick={handleOpenAddClientModal}
-                    >
-                      <i className="fas fa-user-plus"></i> Add New Customer
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <ul className="customer-list">
-                      {filteredClients.slice(0, 8).map(client => (
-                        <li 
-                          key={client.id}
-                          className="customer-option"
-                          onClick={() => handleSelectClient(client)}
-                        >
-                          <div className="customer-option-avatar">
-                            {client.name?.charAt(0).toUpperCase() || '?'}
-                          </div>
-                          <div className="customer-option-details">
-                            <span className="customer-option-name">{client.name}</span>
-                            <span className="customer-option-contact">
-                              {client.phone && <span><i className="fas fa-phone"></i> {client.phone}</span>}
-                              {client.email && <span><i className="fas fa-envelope"></i> {client.email}</span>}
-                            </span>
-                          </div>
-                        </li>
-                      ))}
-                      {filteredClients.length > 8 && (
-                        <li className="dropdown-more">
-                          +{filteredClients.length - 8} more results
-                        </li>
-                      )}
-                    </ul>
-                    <div className="dropdown-footer">
-                      <button 
-                        type="button"
-                        className="btn-add-customer-footer"
-                        onClick={handleOpenAddClientModal}
-                      >
-                        <i className="fas fa-user-plus"></i> Add New Customer
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-          <small className="form-hint">
-            <i className="fas fa-info-circle"></i> Type to search or select from the list
-          </small>
-        </div>
-
-        <div className="form-group">
-          <label className="form-label">Date & Time <span className="required">*</span></label>
-          <div className="quick-date-buttons">
-            <button 
-              type="button" 
-              className={`quick-date-btn ${selectedQuickDate === 'today' ? 'active' : ''}`}
-              onClick={() => setQuickDate('today')}
-            >
-              Today
-            </button>
-            <button 
-              type="button" 
-              className={`quick-date-btn ${selectedQuickDate === 'tomorrow' ? 'active' : ''}`}
-              onClick={() => setQuickDate('tomorrow')}
-            >
-              Tomorrow
-            </button>
-            <button 
-              type="button" 
-              className={`quick-date-btn ${selectedQuickDate === 'nextWeek' ? 'active' : ''}`}
-              onClick={() => setQuickDate('nextWeek')}
-            >
-              Next Week
-            </button>
-          </div>
-          <input
-            type="datetime-local"
-            name="appointment_time"
-            className="form-input"
-            value={formData.appointment_time}
-            onChange={handleChange}
-            required
-          />
+      <Modal isOpen={isOpen} onClose={onClose} title="Add New Job" size="large">
+        <form onSubmit={handleSubmit} className="form add-job-form">
           
-          {/* Time Slots Display */}
-          {showTimeSlots && selectedDate && (
-            <div className="time-slots-container">
-              <div className="time-slots-header">
-                <h4>Available Time Slots</h4>
-                <div className="time-slots-legend">
-                  <span className="legend-item">
-                    <span className="legend-dot available"></span> Available
-                  </span>
-                  <span className="legend-item">
-                    <span className="legend-dot booked"></span> Booked
-                  </span>
-                </div>
-              </div>
-              
-              {isLoadingAvailability ? (
-                <div className="time-slots-loading">
-                  <i className="fas fa-spinner fa-spin"></i> Loading slots...
-                </div>
-              ) : availability?.slots ? (
-                <div className="time-slots-grid">
-                  {availability.slots.map((slot) => {
-                    const isSelected = formData.appointment_time === `${selectedDate}T${slot.time}`;
-                    return (
-                      <button
-                        key={slot.time}
-                        type="button"
-                        className={`time-slot ${slot.available ? 'available' : 'booked'} ${isSelected ? 'selected' : ''}`}
-                        onClick={() => handleTimeSlotClick(slot)}
-                        disabled={!slot.available}
-                        title={slot.available ? 'Click to select' : `Booked: ${slot.booking?.client_name} - ${slot.booking?.service_type}`}
-                      >
-                        <span className="slot-time">{slot.time}</span>
-                        {!slot.available && (
-                          <span className="slot-status">
-                            <i className="fas fa-user"></i> {slot.booking?.client_name}
-                          </span>
-                        )}
-                        {isSelected && <i className="fas fa-check slot-check"></i>}
-                      </button>
-                    );
-                  })}
+          {/* Customer Selection */}
+          <div className="form-group">
+            <label className="form-label">Customer <span className="required">*</span></label>
+            <div className="customer-picker" ref={customerPickerRef}>
+              {selectedCustomer ? (
+                <div className="customer-selected">
+                  <div className="customer-selected-info">
+                    <div className="customer-selected-avatar">{selectedCustomer.name?.charAt(0).toUpperCase() || '?'}</div>
+                    <div className="customer-selected-details">
+                      <span className="customer-selected-name">{selectedCustomer.name}</span>
+                      <span className="customer-selected-meta">{selectedCustomer.phone || selectedCustomer.email || 'No contact'}</span>
+                    </div>
+                  </div>
+                  <button type="button" className="customer-clear-btn" onClick={handleClearCustomer}>
+                    <i className="fas fa-times"></i>
+                  </button>
                 </div>
               ) : (
-                <div className="time-slots-empty">
-                  <i className="fas fa-calendar-times"></i>
-                  <p>No slots available for this date</p>
+                <button type="button" className="customer-picker-trigger" onClick={() => setCustomerPickerOpen(!customerPickerOpen)}>
+                  <i className="fas fa-user"></i>
+                  <span>Select a customer...</span>
+                  <i className={`fas fa-chevron-${customerPickerOpen ? 'up' : 'down'}`}></i>
+                </button>
+              )}
+              {customerPickerOpen && (
+                <div className="customer-picker-dropdown">
+                  <div className="customer-picker-search">
+                    <i className="fas fa-search"></i>
+                    <input 
+                      type="text" 
+                      placeholder="Search customers..." 
+                      value={customerSearch} 
+                      onChange={(e) => setCustomerSearch(e.target.value)} 
+                      autoFocus 
+                    />
+                  </div>
+                  <div className="customer-picker-list">
+                    {filteredCustomers.length === 0 ? (
+                      <div className="customer-picker-empty"><p>No customers found</p></div>
+                    ) : (
+                      filteredCustomers.slice(0, 10).map(customer => (
+                        <div key={customer.id} className="customer-picker-item" onClick={() => handleSelectCustomer(customer)}>
+                          <div className="customer-picker-avatar">{customer.name?.charAt(0).toUpperCase() || '?'}</div>
+                          <div className="customer-picker-info">
+                            <span className="customer-picker-name">{customer.name}</span>
+                            <span className="customer-picker-contact">{customer.phone || customer.email || 'No contact'}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="customer-picker-footer">
+                    <button type="button" className="customer-add-btn" onClick={handleOpenAddClient}>
+                      <i className="fas fa-plus"></i> Add New Customer
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
 
-        <div className="form-group">
-          <label className="form-label">Service Type <span className="required">*</span></label>
-          <input
-            type="text"
-            name="service_type"
-            className="form-input"
-            value={formData.service_type}
-            onChange={handleChange}
-            placeholder="e.g., Plumbing repair, Electrical work"
-            required
-          />
-        </div>
-
-        <div className="form-grid">
+          {/* Service Type */}
           <div className="form-group">
-            <label className="form-label">Property Type</label>
-            <input
-              type="text"
-              name="property_type"
-              className="form-input"
-              value={formData.property_type}
-              onChange={handleChange}
-              placeholder="e.g., House, Apartment"
+            <label className="form-label">Service Type <span className="required">*</span></label>
+            {servicesMenu?.services?.length > 0 ? (
+              <>
+                <select 
+                  name="service_type" 
+                  className="form-input" 
+                  value={formData.service_type} 
+                  onChange={(e) => { 
+                    const s = servicesMenu.services.find(x => x.name === e.target.value); 
+                    if (s) {
+                      handleServiceSelect(s);
+                    } else {
+                      setFormData(prev => ({ ...prev, service_type: e.target.value })); 
+                      setSelectedService(null);
+                    }
+                  }} 
+                  required
+                >
+                  <option value="">Select a service...</option>
+                  {servicesMenu.services.map(s => (
+                    <option key={s.id} value={s.name}>
+                      {s.name} {s.duration_minutes ? `(${s.duration_minutes} mins)` : ''} {s.price ? `- €${s.price}` : ''}
+                    </option>
+                  ))}
+                </select>
+                {selectedService && (
+                  <div className="service-badge">
+                    <span><i className="fas fa-clock"></i> {selectedService.duration_minutes || 60} mins</span>
+                    {selectedService.price && <span><i className="fas fa-euro-sign"></i> €{selectedService.price}</span>}
+                  </div>
+                )}
+              </>
+            ) : (
+              <input 
+                type="text" 
+                name="service_type" 
+                className="form-input" 
+                value={formData.service_type} 
+                onChange={handleChange} 
+                placeholder="e.g., Plumbing repair" 
+                required 
+              />
+            )}
+          </div>
+
+          {/* Worker Assignment */}
+          <div className="form-group">
+            <label className="form-label">Assign Worker</label>
+            <select 
+              name="worker_id" 
+              className="form-input" 
+              value={formData.worker_id} 
+              onChange={(e) => handleWorkerSelect(e.target.value)}
+            >
+              <option value="">No worker (check all availability)</option>
+              {workers?.map(w => (
+                <option key={w.id} value={w.id}>
+                  {w.name} {w.trade_specialty && `(${w.trade_specialty})`}
+                </option>
+              ))}
+            </select>
+            {selectedWorker && (
+              <div className="worker-selected-info">
+                <i className="fas fa-hard-hat"></i> Showing availability for <strong>{selectedWorker.name}</strong>
+              </div>
+            )}
+          </div>
+
+          {/* Date & Time */}
+          <div className="form-group">
+            <label className="form-label">Date & Time <span className="required">*</span></label>
+            <div className="quick-date-buttons">
+              <button type="button" className={`quick-date-btn ${selectedQuickDate === 'today' ? 'active' : ''}`} onClick={() => setQuickDate('today')}>Today</button>
+              <button type="button" className={`quick-date-btn ${selectedQuickDate === 'tomorrow' ? 'active' : ''}`} onClick={() => setQuickDate('tomorrow')}>Tomorrow</button>
+              <button type="button" className={`quick-date-btn ${selectedQuickDate === 'nextWeek' ? 'active' : ''}`} onClick={() => setQuickDate('nextWeek')}>Next Week</button>
+            </div>
+            <input 
+              type="datetime-local" 
+              name="appointment_time" 
+              className="form-input" 
+              value={formData.appointment_time} 
+              onChange={handleChange} 
+              required 
             />
+            
+            {/* Time Slots */}
+            {showTimeSlots && selectedDate && formData.service_type && (
+              <div className="time-slots-container">
+                <div className="time-slots-header">
+                  <h4>{selectedWorker ? `${selectedWorker.name}'s Available Slots` : 'Available Slots'}</h4>
+                </div>
+                {isLoadingAvailability ? (
+                  <div className="time-slots-loading"><i className="fas fa-spinner fa-spin"></i> Loading...</div>
+                ) : availability?.slots?.length > 0 ? (
+                  <div className="time-slots-grid">
+                    {availability.slots.map(slot => (
+                      <button 
+                        key={slot.time} 
+                        type="button" 
+                        className={`time-slot ${slot.available ? 'available' : 'booked'} ${formData.appointment_time === `${selectedDate}T${slot.time}` ? 'selected' : ''}`} 
+                        onClick={() => handleTimeSlotClick(slot)} 
+                        disabled={!slot.available}
+                      >
+                        {slot.time}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="time-slots-empty">No slots available for this day</div>
+                )}
+              </div>
+            )}
+            
+            {/* Prompt to select service */}
+            {showTimeSlots && selectedDate && !formData.service_type && (
+              <div className="time-slots-prompt">
+                <i className="fas fa-info-circle"></i> Select a service first to see available slots
+              </div>
+            )}
+            
+            {/* Worker availability status */}
+            {workerAvailability && formData.worker_id && formData.appointment_time && (
+              workerAvailability.available ? (
+                <div className="worker-available-badge">
+                  <i className="fas fa-check-circle"></i> {selectedWorker?.name} is available at this time
+                </div>
+              ) : (
+                <div className="worker-conflict-warning">
+                  <i className="fas fa-exclamation-triangle"></i> {workerAvailability.message}
+                </div>
+              )
+            )}
+          </div>
+
+          {/* Additional Fields */}
+          <div className="form-grid">
+            <div className="form-group">
+              <label className="form-label">Duration (mins)</label>
+              <input type="number" name="duration_minutes" className="form-input" value={formData.duration_minutes} onChange={handleChange} placeholder="60" min="15" step="15" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Property Type</label>
+              <input type="text" name="property_type" className="form-input" value={formData.property_type} onChange={handleChange} placeholder="e.g., House" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Eircode</label>
+              <input type="text" name="eircode" className="form-input" value={formData.eircode} onChange={handleChange} />
+            </div>
           </div>
 
           <div className="form-group">
-            <label className="form-label">Eircode</label>
-            <input
-              type="text"
-              name="eircode"
-              className="form-input"
-              value={formData.eircode}
-              onChange={handleChange}
-            />
+            <label className="form-label">Job Address</label>
+            <textarea name="job_address" className="form-textarea" value={formData.job_address} onChange={handleChange} rows="2" placeholder="If different from customer's address" />
           </div>
-        </div>
+          
+          <div className="form-group">
+            <label className="form-label">Estimated Charge (€)</label>
+            <input type="number" name="estimated_charge" className="form-input" value={formData.estimated_charge} onChange={handleChange} step="0.01" min="0" placeholder="0.00" />
+          </div>
+          
+          <div className="form-group">
+            <label className="form-label">Notes</label>
+            <textarea name="notes" className="form-textarea" value={formData.notes} onChange={handleChange} rows="3" placeholder="Additional details" />
+          </div>
 
-        <div className="form-group">
-          <label className="form-label">Job Address</label>
-          <textarea
-            name="job_address"
-            className="form-textarea"
-            value={formData.job_address}
-            onChange={handleChange}
-            rows="2"
-            placeholder="If different from customer's address"
-          />
-        </div>
-
-        <div className="form-group">
-          <label className="form-label">Estimated Charge (€)</label>
-          <input
-            type="number"
-            name="estimated_charge"
-            className="form-input"
-            value={formData.estimated_charge}
-            onChange={handleChange}
-            step="0.01"
-            min="0"
-            placeholder="0.00"
-          />
-        </div>
-
-        <div className="form-group">
-          <label className="form-label">Notes</label>
-          <textarea
-            name="notes"
-            className="form-textarea"
-            value={formData.notes}
-            onChange={handleChange}
-            rows="3"
-            placeholder="Additional details about the job"
-          />
-        </div>
-
-        <div className="form-actions">
-          <button 
-            type="button" 
-            className="btn btn-secondary"
-            onClick={onClose}
-            disabled={mutation.isPending}
-          >
-            Cancel
-          </button>
-          <button 
-            type="submit" 
-            className="btn btn-primary"
-            disabled={mutation.isPending}
-          >
-            {mutation.isPending ? 'Creating...' : 'Create Job'}
-          </button>
-        </div>
-      </form>
-    </Modal>
-    <AddClientModal 
-      isOpen={isAddClientModalOpen}
-      onClose={handleCloseAddClientModal}
-    />
+          <div className="form-actions">
+            <button type="button" className="btn btn-secondary" onClick={onClose} disabled={mutation.isPending}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={mutation.isPending}>
+              {mutation.isPending ? 'Creating...' : 'Create Job'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+      
+      <AddClientModal isOpen={isAddClientModalOpen} onClose={handleCloseAddClient} />
     </>
   );
 }

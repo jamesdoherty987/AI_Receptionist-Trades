@@ -319,6 +319,28 @@
   font-size: 0.95rem;
 }
 
+.assign-box .force-assign-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #dc3545;
+  padding: 0.5rem;
+  background: #fff5f5;
+  border-radius: 4px;
+  border: 1px solid #f5c6cb;
+}
+
+.assign-box .force-assign-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.assign-box .force-assign-label span {
+  flex: 1;
+}
+
 .assign-buttons {
   display: flex;
   gap: 0.5rem;

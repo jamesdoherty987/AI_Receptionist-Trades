@@ -42,8 +42,8 @@ class PostgreSQLDatabaseWrapper:
         
         # Use ThreadedConnectionPool for thread-safety with gevent workers
         self.connection_pool = psycopg2_pool.ThreadedConnectionPool(
-            minconn=1,  # Keep 1 connection warm
-            maxconn=10,  # Conservative limit for free tier
+            minconn=2,  # Keep connections warm for each worker
+            maxconn=10,  # Reasonable for Starter tier
             dsn=dsn
         )
         self.use_postgres = True  # Flag for compatibility
@@ -160,6 +160,7 @@ class PostgreSQLDatabaseWrapper:
                     client_id BIGINT,
                     calendar_event_id TEXT UNIQUE,
                     appointment_time TIMESTAMP NOT NULL,
+                    duration_minutes INTEGER DEFAULT 60,
                     service_type TEXT,
                     status TEXT DEFAULT 'scheduled',
                     urgency TEXT DEFAULT 'scheduled',
@@ -297,6 +298,8 @@ class PostgreSQLDatabaseWrapper:
                     calendar_id TEXT,
                     working_hours JSONB,
                     logo_url TEXT,
+                    buffer_time_minutes INTEGER DEFAULT 15,
+                    default_duration_minutes INTEGER DEFAULT 60,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -374,6 +377,18 @@ class PostgreSQLDatabaseWrapper:
                 print("[SUCCESS] Added company_id column to bookings table")
             except Exception as e:
                 print(f"[WARNING] Could not add company_id to bookings: {e}")
+        
+        # Add duration_minutes to bookings table for service duration tracking
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'bookings' AND column_name = 'duration_minutes'
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE bookings ADD COLUMN duration_minutes INTEGER DEFAULT 60")
+                print("[SUCCESS] Added duration_minutes column to bookings table")
+            except Exception as e:
+                print(f"[WARNING] Could not add duration_minutes to bookings: {e}")
         
         # Add company_id to workers table
         cursor.execute("""
@@ -542,6 +557,8 @@ class PostgreSQLDatabaseWrapper:
             'appointment_duration': 'INTEGER DEFAULT 60',
             'max_booking_days_ahead': 'INTEGER DEFAULT 30',
             'allow_weekend_booking': 'INTEGER DEFAULT 1',
+            'buffer_time_minutes': 'INTEGER DEFAULT 15',
+            'default_duration_minutes': 'INTEGER DEFAULT 60',
         }
         
         for col_name, col_type in bs_migrations.items():
@@ -559,6 +576,48 @@ class PostgreSQLDatabaseWrapper:
                     print(f"[SUCCESS] Added {column_name} column to companies table")
                 except Exception as e:
                     print(f"[WARNING] Could not add {column_name} column: {e}")
+        
+        # ============================================
+        # Ensure all companies have a General Service
+        # ============================================
+        try:
+            # Get all companies
+            cursor.execute("SELECT id FROM companies")
+            companies = cursor.fetchall()
+            
+            for company_row in companies:
+                company_id = company_row['id'] if isinstance(company_row, dict) else company_row[0]
+                
+                # Check if this company has a General service
+                cursor.execute("""
+                    SELECT id FROM services 
+                    WHERE company_id = %s AND (LOWER(name) LIKE '%%general%%' OR LOWER(category) = 'general')
+                """, (company_id,))
+                
+                if not cursor.fetchone():
+                    # Create General service for this company
+                    try:
+                        cursor.execute("""
+                            INSERT INTO services (id, category, name, description, duration_minutes, 
+                                                price, currency, active, sort_order, company_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (
+                            f"general_{company_id}",
+                            "General",
+                            "General Service",
+                            "Default service for general jobs and appointments that don't match a specific service category",
+                            60,
+                            0,
+                            'EUR',
+                            1,
+                            9999,
+                            company_id
+                        ))
+                        print(f"[SUCCESS] Created General Service for company {company_id}")
+                    except Exception as e:
+                        print(f"[WARNING] Could not create General Service for company {company_id}: {e}")
+        except Exception as e:
+            print(f"[WARNING] Could not run General Service migration: {e}")
     
     def _convert_query(self, query: str) -> str:
         """Convert ? placeholders to %s for parameterized queries"""
@@ -615,6 +674,28 @@ class PostgreSQLDatabaseWrapper:
             result = cursor.fetchone()
             company_id = result['id'] if result else None
             conn.commit()
+            
+            # Create default "General" service for the new company
+            if company_id:
+                try:
+                    self.add_service(
+                        service_id=f"general_{company_id}",
+                        category="General",
+                        name="General Service",
+                        description="Default service for general jobs and appointments that don't match a specific service category",
+                        duration_minutes=60,
+                        price=0,
+                        emergency_price=None,
+                        currency='EUR',
+                        active=True,
+                        image_url=None,
+                        sort_order=9999,  # Put at the end
+                        company_id=company_id
+                    )
+                    print(f"[SUCCESS] Created default 'General Service' for company {company_id}")
+                except Exception as e:
+                    print(f"[WARNING] Could not create default service for company {company_id}: {e}")
+            
             return company_id
         except Exception as e:
             # Email already exists or other error
@@ -766,13 +847,17 @@ class PostgreSQLDatabaseWrapper:
     
     # Booking Methods
     
-    def get_booking_by_calendar_event_id(self, calendar_event_id: str) -> Optional[Dict]:
-        """Get booking by calendar event ID"""
+    def get_booking_by_calendar_event_id(self, calendar_event_id: str, company_id: int = None) -> Optional[Dict]:
+        """Get booking by calendar event ID, optionally filtered by company_id for security"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
-            cursor.execute("SELECT * FROM bookings WHERE calendar_event_id = %s", (calendar_event_id,))
+            # CRITICAL: Filter by company_id when provided for multi-tenant data isolation
+            if company_id:
+                cursor.execute("SELECT * FROM bookings WHERE calendar_event_id = %s AND company_id = %s", (calendar_event_id, company_id))
+            else:
+                cursor.execute("SELECT * FROM bookings WHERE calendar_event_id = %s", (calendar_event_id,))
             row = cursor.fetchone()
             if row:
                 return dict(row)
@@ -902,7 +987,7 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
     
     def get_all_bookings(self, company_id: int = None) -> List[Dict]:
-        """Get all bookings for a specific company"""
+        """Get all bookings for a specific company, including assigned worker IDs"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
@@ -912,11 +997,18 @@ class PostgreSQLDatabaseWrapper:
                         b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
                         b.service_type, b.status, b.phone_number, b.email, b.created_at,
                         b.charge, b.payment_status, b.payment_method, b.urgency, 
-                        b.address, b.eircode, b.property_type,
-                        c.name as client_name, c.phone as client_phone, c.email as client_email
+                        b.address, b.eircode, b.property_type, b.duration_minutes,
+                        c.name as client_name, c.phone as client_phone, c.email as client_email,
+                        ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
                     LEFT JOIN clients c ON b.client_id = c.id
+                    LEFT JOIN worker_assignments wa ON b.id = wa.booking_id
                     WHERE b.company_id = %s
+                    GROUP BY b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
+                             b.service_type, b.status, b.phone_number, b.email, b.created_at,
+                             b.charge, b.payment_status, b.payment_method, b.urgency, 
+                             b.address, b.eircode, b.property_type, b.duration_minutes,
+                             c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """, (company_id,))
             else:
@@ -925,10 +1017,17 @@ class PostgreSQLDatabaseWrapper:
                         b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
                         b.service_type, b.status, b.phone_number, b.email, b.created_at,
                         b.charge, b.payment_status, b.payment_method, b.urgency, 
-                        b.address, b.eircode, b.property_type,
-                        c.name as client_name, c.phone as client_phone, c.email as client_email
+                        b.address, b.eircode, b.property_type, b.duration_minutes,
+                        c.name as client_name, c.phone as client_phone, c.email as client_email,
+                        ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
                     LEFT JOIN clients c ON b.client_id = c.id
+                    LEFT JOIN worker_assignments wa ON b.id = wa.booking_id
+                    GROUP BY b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
+                             b.service_type, b.status, b.phone_number, b.email, b.created_at,
+                             b.charge, b.payment_status, b.payment_method, b.urgency, 
+                             b.address, b.eircode, b.property_type, b.duration_minutes,
+                             c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """)
             rows = cursor.fetchall()
@@ -956,7 +1055,9 @@ class PostgreSQLDatabaseWrapper:
                 'property_type': row['property_type'],
                 'customer_name': row['client_name'],
                 'client_name': row['client_name'],  # Alias for compatibility
-                'notes': ''  # Will be fetched separately if needed
+                'notes': '',  # Will be fetched separately if needed
+                'duration_minutes': row['duration_minutes'],
+                'assigned_worker_ids': row['assigned_worker_ids'] or []  # List of assigned worker IDs
             } for row in rows]
         finally:
             self.return_connection(conn)
@@ -1178,17 +1279,22 @@ class PostgreSQLDatabaseWrapper:
             cursor.close()
             self.return_connection(conn)
     
-    def get_clients_by_name(self, name: str) -> List[Dict]:
-        """Get all clients with a given name (case-insensitive)"""
+    def get_clients_by_name(self, name: str, company_id: int = None) -> List[Dict]:
+        """Get all clients with a given name (case-insensitive), filtered by company_id for data isolation"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             name = name.lower().strip()
-            cursor.execute("SELECT * FROM clients WHERE name = %s", (name,))
+            # CRITICAL: Filter by company_id for proper multi-tenant data isolation
+            if company_id:
+                cursor.execute("SELECT * FROM clients WHERE company_id = %s AND name = %s", (company_id, name))
+            else:
+                cursor.execute("SELECT * FROM clients WHERE name = %s", (name,))
             rows = cursor.fetchall()
             
             return [{
                 'id': row['id'],
+                'company_id': row.get('company_id'),
                 'name': row['name'],
                 'phone': row['phone'],
                 'email': row['email'],
@@ -1333,7 +1439,8 @@ class PostgreSQLDatabaseWrapper:
     def add_booking(self, client_id: int, calendar_event_id: str, appointment_time: str,
                     service_type: str, phone_number: str = None, email: str = None,
                     urgency: str = None, address: str = None, eircode: str = None,
-                    property_type: str = None, charge: float = None, company_id: int = None) -> Optional[int]:
+                    property_type: str = None, charge: float = None, company_id: int = None,
+                    duration_minutes: int = 60) -> Optional[int]:
         """Add a new booking"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -1346,25 +1453,25 @@ class PostgreSQLDatabaseWrapper:
                     phone_number = client.get('phone')
                     email = client.get('email')
             
-            # Insert booking with company_id
+            # Insert booking with company_id and duration_minutes
             if charge is not None:
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
-                                        eircode, property_type, charge, company_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        eircode, property_type, charge, company_id, duration_minutes)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
-                      phone_number, email, urgency, address, eircode, property_type, charge, company_id))
+                      phone_number, email, urgency, address, eircode, property_type, charge, company_id, duration_minutes))
             else:
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
-                                        eircode, property_type, company_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        eircode, property_type, company_id, duration_minutes)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
-                      phone_number, email, urgency, address, eircode, property_type, company_id))
+                      phone_number, email, urgency, address, eircode, property_type, company_id, duration_minutes))
             
             result = cursor.fetchone()
             booking_id = result['id'] if result else None
@@ -1387,11 +1494,21 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def update_booking(self, booking_id: int, **kwargs) -> bool:
-        """Update booking information"""
+    def update_booking(self, booking_id: int, company_id: int = None, **kwargs) -> bool:
+        """Update booking information
+        
+        SECURITY: When company_id is provided, only update if booking belongs to that company.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
+            # SECURITY: Verify booking belongs to company if company_id provided
+            if company_id:
+                cursor.execute("SELECT id FROM bookings WHERE id = %s AND company_id = %s", (booking_id, company_id))
+                if not cursor.fetchone():
+                    print(f"[SECURITY] Booking {booking_id} does not belong to company {company_id}")
+                    return False
+            
             field_mapping = {
                 'estimated_charge': 'charge',
                 'job_address': 'address',
@@ -1413,7 +1530,8 @@ class PostgreSQLDatabaseWrapper:
                 
                 if db_field in ['calendar_event_id', 'appointment_time', 'service_type', 
                           'status', 'phone_number', 'email', 'charge', 'payment_status', 
-                          'payment_method', 'urgency', 'address', 'eircode', 'property_type']:
+                          'payment_method', 'urgency', 'address', 'eircode', 'property_type',
+                          'duration_minutes']:
                     fields.append(f"{db_field} = %s")
                     values.append(value)
             
@@ -1442,11 +1560,21 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def delete_booking(self, booking_id: int) -> bool:
-        """Delete a booking completely from the database"""
+    def delete_booking(self, booking_id: int, company_id: int = None) -> bool:
+        """Delete a booking completely from the database
+        
+        SECURITY: When company_id is provided, only delete if booking belongs to that company.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
+            # SECURITY: Verify booking belongs to company if company_id provided
+            if company_id:
+                cursor.execute("SELECT id FROM bookings WHERE id = %s AND company_id = %s", (booking_id, company_id))
+                if not cursor.fetchone():
+                    print(f"[SECURITY] Booking {booking_id} does not belong to company {company_id} - delete blocked")
+                    return False
+            
             # Delete associated appointment notes first (foreign key constraint)
             cursor.execute("DELETE FROM appointment_notes WHERE booking_id = %s", (booking_id,))
             # Delete the booking
@@ -1974,6 +2102,202 @@ class PostgreSQLDatabaseWrapper:
             hours_worked = job_count * 2.0
             
             return hours_worked
+        finally:
+            self.return_connection(conn)
+    
+    def check_worker_availability(self, worker_id: int, appointment_time, duration_minutes: int = 60, 
+                                   exclude_booking_id: int = None, company_id: int = None) -> Dict:
+        """
+        Check if a worker is available at a specific time.
+        
+        Args:
+            worker_id: The worker to check
+            appointment_time: The appointment start time (datetime or string)
+            duration_minutes: Duration of the appointment in minutes
+            exclude_booking_id: Booking ID to exclude from conflict check (for reassignments)
+            company_id: Company ID for data isolation
+            
+        Returns:
+            Dict with 'available' (bool), 'conflicts' (list of conflicting jobs), 'message' (str)
+        """
+        from datetime import timedelta
+        
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            # Parse appointment time if string
+            if isinstance(appointment_time, str):
+                try:
+                    appointment_time = datetime.fromisoformat(appointment_time.replace('Z', '+00:00'))
+                except ValueError:
+                    appointment_time = datetime.strptime(appointment_time, '%Y-%m-%d %H:%M:%S')
+            
+            # Make timezone-naive for comparison
+            if hasattr(appointment_time, 'tzinfo') and appointment_time.tzinfo is not None:
+                appointment_time = appointment_time.replace(tzinfo=None)
+            
+            # Calculate appointment end time with buffer
+            buffer_minutes = 15  # Buffer between jobs
+            appointment_end = appointment_time + timedelta(minutes=duration_minutes + buffer_minutes)
+            
+            # Get all active jobs assigned to this worker
+            query = """
+                SELECT b.id, b.appointment_time, b.duration_minutes, b.service_type,
+                       c.name as client_name, b.address
+                FROM worker_assignments wa
+                JOIN bookings b ON wa.booking_id = b.id
+                LEFT JOIN clients c ON b.client_id = c.id
+                WHERE wa.worker_id = %s
+                AND b.status NOT IN ('completed', 'cancelled')
+            """
+            params = [worker_id]
+            
+            if company_id:
+                query += " AND b.company_id = %s"
+                params.append(company_id)
+            
+            if exclude_booking_id:
+                query += " AND b.id != %s"
+                params.append(exclude_booking_id)
+            
+            cursor.execute(query, tuple(params))
+            existing_jobs = cursor.fetchall()
+            
+            conflicts = []
+            for job in existing_jobs:
+                job_time = job['appointment_time']
+                if isinstance(job_time, str):
+                    try:
+                        job_time = datetime.fromisoformat(job_time.replace('Z', '+00:00'))
+                    except ValueError:
+                        job_time = datetime.strptime(job_time, '%Y-%m-%d %H:%M:%S')
+                
+                if hasattr(job_time, 'tzinfo') and job_time.tzinfo is not None:
+                    job_time = job_time.replace(tzinfo=None)
+                
+                job_duration = job.get('duration_minutes') or 60
+                job_end = job_time + timedelta(minutes=job_duration + buffer_minutes)
+                
+                # Check for overlap
+                if appointment_time < job_end and appointment_end > job_time:
+                    conflicts.append({
+                        'booking_id': job['id'],
+                        'time': job_time.strftime('%Y-%m-%d %H:%M'),
+                        'service': job.get('service_type', 'Unknown'),
+                        'client': job.get('client_name', 'Unknown'),
+                        'address': job.get('address', '')
+                    })
+            
+            if conflicts:
+                conflict_times = ', '.join([c['time'] for c in conflicts])
+                return {
+                    'available': False,
+                    'conflicts': conflicts,
+                    'message': f"Worker has conflicting job(s) at: {conflict_times}"
+                }
+            
+            return {
+                'available': True,
+                'conflicts': [],
+                'message': "Worker is available"
+            }
+            
+        except Exception as e:
+            print(f"Error checking worker availability: {e}")
+            # Return unavailable on error to prevent accidental double-booking
+            return {
+                'available': False,
+                'conflicts': [],
+                'message': f"Could not verify availability: {str(e)}. Please try again."
+            }
+        finally:
+            self.return_connection(conn)
+    
+    def find_available_workers_for_slot(self, appointment_time, duration_minutes: int = 60,
+                                        company_id: int = None, trade_specialty: str = None) -> Optional[List[Dict]]:
+        """
+        Find all workers who are available at a specific time slot.
+        
+        Args:
+            appointment_time: The appointment start time (datetime or string)
+            duration_minutes: Duration of the appointment in minutes
+            company_id: Company ID for data isolation (required)
+            trade_specialty: Optional filter by worker's trade specialty
+            
+        Returns:
+            List of available worker dicts. Returns None on error (distinct from empty list).
+        """
+        if not company_id:
+            return []
+        
+        try:
+            # Get all workers for this company
+            all_workers = self.get_all_workers(company_id=company_id)
+            
+            if not all_workers:
+                return []
+            
+            available_workers = []
+            
+            for worker in all_workers:
+                # Skip inactive workers
+                if worker.get('status') == 'inactive':
+                    continue
+                
+                # Filter by trade specialty if specified
+                if trade_specialty:
+                    worker_specialty = (worker.get('trade_specialty') or '').lower()
+                    if trade_specialty.lower() not in worker_specialty and worker_specialty not in trade_specialty.lower():
+                        continue
+                
+                # Check availability
+                availability = self.check_worker_availability(
+                    worker_id=worker['id'],
+                    appointment_time=appointment_time,
+                    duration_minutes=duration_minutes,
+                    company_id=company_id
+                )
+                
+                if availability['available']:
+                    available_workers.append({
+                        'id': worker['id'],
+                        'name': worker['name'],
+                        'phone': worker.get('phone'),
+                        'email': worker.get('email'),
+                        'trade_specialty': worker.get('trade_specialty')
+                    })
+            
+            return available_workers
+        except Exception as e:
+            print(f"Error finding available workers: {e}")
+            # Return None on error to distinguish from "no workers available" (empty list)
+            return None
+    
+    def has_workers(self, company_id: int) -> bool:
+        """
+        Check if a company has any workers configured.
+        
+        Args:
+            company_id: Company ID to check
+            
+        Returns:
+            True if company has at least one worker, False otherwise
+        """
+        if not company_id:
+            return False
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT COUNT(*) FROM workers WHERE company_id = %s AND status != 'inactive'",
+                (company_id,)
+            )
+            result = cursor.fetchone()
+            return result[0] > 0 if result else False
+        except Exception as e:
+            print(f"Error checking if company has workers: {e}")
+            return False
         finally:
             self.return_connection(conn)
     

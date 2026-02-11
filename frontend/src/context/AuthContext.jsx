@@ -75,6 +75,10 @@ export function AuthProvider({ children }) {
     try {
       const response = await api.post('/api/auth/login', { email, password });
       if (response.data.success) {
+        // CRITICAL: Clear React Query cache BEFORE setting new user
+        // This prevents data leakage from previous user sessions
+        queryClient.clear();
+        
         const userData = response.data.user;
         setUser(userData);
         sessionStorage.setItem('authUser', JSON.stringify(userData));
@@ -113,6 +117,10 @@ export function AuthProvider({ children }) {
     try {
       const response = await api.post('/api/auth/signup', userData);
       if (response.data.success) {
+        // CRITICAL: Clear React Query cache BEFORE setting new user
+        // This prevents data leakage from any previous sessions
+        queryClient.clear();
+        
         const newUser = response.data.user;
         setUser(newUser);
         sessionStorage.setItem('authUser', JSON.stringify(newUser));

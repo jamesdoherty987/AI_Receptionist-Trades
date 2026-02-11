@@ -7,6 +7,7 @@ import {
   assignWorkerToJob,
   removeWorkerFromJob,
   getJobWorkers,
+  getAvailableWorkersForJob,
   sendInvoice
 } from '../../services/api';
 import Modal from './Modal';
@@ -18,6 +19,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const [showAssignWorker, setShowAssignWorker] = useState(false);
+  const [forceAssign, setForceAssign] = useState(false);
   const [selectedWorkerId, setSelectedWorkerId] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState({});
@@ -44,13 +46,26 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
     cacheTime: 5 * 60 * 1000 // 5 minutes
   });
 
+  // Fetch workers with availability status for this job
+  const { data: workersAvailability } = useQuery({
+    queryKey: ['available-workers', jobId],
+    queryFn: async () => {
+      const response = await getAvailableWorkersForJob(jobId);
+      return response.data;
+    },
+    enabled: showAssignWorker && !!jobId,
+    staleTime: 30 * 1000,
+    cacheTime: 5 * 60 * 1000
+  });
+
+  // Fallback to all workers if availability check not available
   const { data: allWorkers } = useQuery({
     queryKey: ['workers'],
     queryFn: async () => {
       const response = await getWorkers();
       return response.data;
     },
-    enabled: showAssignWorker,
+    enabled: showAssignWorker && !workersAvailability,
     staleTime: 60 * 1000, // 1 minute
     cacheTime: 10 * 60 * 1000 // 10 minutes
   });
@@ -131,7 +146,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
   });
 
   const assignMutation = useMutation({
-    mutationFn: ({ jobId, workerId }) => assignWorkerToJob(jobId, { worker_id: workerId }),
+    mutationFn: ({ jobId, workerId, force }) => assignWorkerToJob(jobId, { worker_id: workerId, force }),
     onMutate: async ({ workerId }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries(['job-workers', jobId]);
@@ -139,9 +154,12 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       // Snapshot previous value
       const previousWorkers = queryClient.getQueryData(['job-workers', jobId]);
       
-      // Find the worker being assigned
+      // Find the worker being assigned from availability data or all workers
+      const availabilityData = queryClient.getQueryData(['available-workers', jobId]);
       const allWorkersData = queryClient.getQueryData(['workers']);
-      const workerToAdd = allWorkersData?.find(w => w.id === workerId);
+      const workerToAdd = availabilityData?.available?.find(w => w.id === workerId) 
+        || availabilityData?.busy?.find(w => w.id === workerId)
+        || allWorkersData?.find(w => w.id === workerId);
       
       // Optimistically add worker
       if (workerToAdd) {
@@ -150,19 +168,37 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       
       return { previousWorkers };
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries(['job-workers', jobId]);
+      queryClient.invalidateQueries(['available-workers', jobId]);
       queryClient.invalidateQueries(['bookings']);
       setShowAssignWorker(false);
       setSelectedWorkerId('');
-      addToast('Worker assigned successfully!', 'success');
+      setForceAssign(false);
+      if (response.data?.warning) {
+        addToast(response.data.warning, 'warning');
+      } else {
+        addToast('Worker assigned successfully!', 'success');
+      }
     },
     onError: (error, variables, context) => {
       // Rollback on error
       if (context?.previousWorkers) {
         queryClient.setQueryData(['job-workers', jobId], context.previousWorkers);
       }
-      addToast('Failed to assign worker', 'error');
+      
+      // Check if it's a conflict error
+      const errorData = error.response?.data;
+      if (error.response?.status === 409 && errorData?.can_force) {
+        // Show conflict warning with option to force
+        const conflictMsg = errorData.conflicts?.map(c => 
+          `${c.time} - ${c.service}`
+        ).join(', ');
+        addToast(`Worker has conflicts: ${conflictMsg}. Check "Force assign" to override.`, 'warning');
+        setForceAssign(false);
+      } else {
+        addToast(errorData?.error || 'Failed to assign worker', 'error');
+      }
     }
   });
 
@@ -225,7 +261,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       addToast('Please select a worker', 'warning');
       return;
     }
-    assignMutation.mutate({ jobId, workerId: selectedWorkerId });
+    assignMutation.mutate({ jobId, workerId: selectedWorkerId, force: forceAssign });
   };
 
   const handleEditChange = (e) => {
@@ -281,9 +317,28 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
 
   if (!job) return null;
 
-  const availableWorkers = allWorkers?.filter(
-    w => !assignedWorkers?.some(aw => aw.id === w.id)
-  ) || [];
+  // Get workers not already assigned, with availability info
+  const getUnassignedWorkers = () => {
+    const assignedIds = new Set(assignedWorkers?.map(w => w.id) || []);
+    
+    if (workersAvailability) {
+      // Use availability data - combine available and busy, mark availability
+      const available = (workersAvailability.available || [])
+        .filter(w => !assignedIds.has(w.id))
+        .map(w => ({ ...w, isAvailable: true }));
+      const busy = (workersAvailability.busy || [])
+        .filter(w => !assignedIds.has(w.id))
+        .map(w => ({ ...w, isAvailable: false }));
+      return [...available, ...busy];
+    }
+    
+    // Fallback to all workers without availability info
+    return (allWorkers || [])
+      .filter(w => !assignedIds.has(w.id))
+      .map(w => ({ ...w, isAvailable: true }));
+  };
+  
+  const unassignedWorkers = getUnassignedWorkers();
 
   const getDirectionsUrl = () => {
     const address = job.job_address || job.address;
@@ -500,7 +555,14 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                   <div className="info-row">
                     <div className="info-cell">
                       <span className="info-label">Date & Time</span>
-                      <span className="info-value">{formatDateTime(job.appointment_time)}</span>
+                      <span className="info-value">
+                        {formatDateTime(job.appointment_time)}
+                        {job.duration_minutes && (
+                          <span style={{ marginLeft: '8px', color: '#666', fontSize: '0.9em' }}>
+                            ({job.duration_minutes} mins)
+                          </span>
+                        )}
+                      </span>
                     </div>
                     <div className="info-cell">
                       <span className="info-label">Service</span>
@@ -670,17 +732,38 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                   <select 
                     className="form-select"
                     value={selectedWorkerId}
-                    onChange={(e) => setSelectedWorkerId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedWorkerId(e.target.value);
+                      setForceAssign(false); // Reset force when changing worker
+                    }}
                   >
                     <option value="">Select a worker...</option>
-                    {availableWorkers.map(worker => (
-                      <option key={worker.id} value={worker.id}>
-                        {worker.name} {worker.specialty && `(${worker.specialty})`}
+                    {unassignedWorkers.map(worker => (
+                      <option 
+                        key={worker.id} 
+                        value={worker.id}
+                        style={{ color: worker.isAvailable ? 'inherit' : '#dc3545' }}
+                      >
+                        {worker.name} {worker.trade_specialty && `(${worker.trade_specialty})`}
+                        {!worker.isAvailable && ' ⚠️ Busy'}
                       </option>
                     ))}
                   </select>
+                  {selectedWorkerId && !unassignedWorkers.find(w => w.id == selectedWorkerId)?.isAvailable && (
+                    <label className="force-assign-label">
+                      <input 
+                        type="checkbox" 
+                        checked={forceAssign} 
+                        onChange={(e) => setForceAssign(e.target.checked)}
+                      />
+                      <span>Force assign (worker has conflicting jobs)</span>
+                    </label>
+                  )}
                   <div className="assign-buttons">
-                    <button className="btn btn-sm btn-secondary" onClick={() => setShowAssignWorker(false)}>
+                    <button className="btn btn-sm btn-secondary" onClick={() => {
+                      setShowAssignWorker(false);
+                      setForceAssign(false);
+                    }}>
                       Cancel
                     </button>
                     <button 
@@ -712,7 +795,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                       </div>
                       <div className="worker-item-info">
                         <span className="worker-name">{worker.name}</span>
-                        {worker.specialty && <span className="worker-specialty">{worker.specialty}</span>}
+                        {worker.trade_specialty && <span className="worker-specialty">{worker.trade_specialty}</span>}
                       </div>
                       <button
                         className="btn-remove"

@@ -25,7 +25,7 @@ function SubscriptionManager() {
     },
     refetchOnMount: true,
     refetchOnWindowFocus: true,
-    staleTime: 5 * 60 * 1000, // Consider data stale after 5 minutes
+    staleTime: 0, // Always refetch when invalidated to ensure fresh data after payment
     cacheTime: 10 * 60 * 1000 // Keep in cache for 10 minutes
   });
 
@@ -112,8 +112,8 @@ function SubscriptionManager() {
   const isTrial = subscription.tier === 'trial';
   const isPro = subscription.tier === 'pro';
   const isNone = subscription.tier === 'none' || (!subscription.tier && !isActive);
-  // Expired: trial that ran out, or explicitly expired tier
-  const isExpired = !isActive && (isTrial || subscription.tier === 'expired' || isNone);
+  // Expired: trial that ran out, or explicitly expired tier (but NOT pro users)
+  const isExpired = !isActive && !isPro && (isTrial || subscription.tier === 'expired' || isNone);
   const cancelAtPeriodEnd = subscription.cancel_at_period_end;
 
   const formatDate = (dateString) => {
@@ -133,16 +133,16 @@ function SubscriptionManager() {
           <div className="plan-info">
             <span className={`plan-badge ${isPro ? 'pro' : isTrial && isActive ? 'trial' : isNone ? 'none' : 'expired'}`}>
               {isPro && 'Pro Plan'}
-              {isTrial && isActive && 'Free Trial'}
-              {isTrial && !isActive && 'Trial Expired'}
-              {isNone && 'No Plan'}
+              {isTrial && isActive && !isPro && 'Free Trial'}
+              {isTrial && !isActive && !isPro && 'Trial Expired'}
+              {isNone && !isPro && 'No Plan'}
               {!isPro && !isTrial && !isNone && 'Expired'}
             </span>
             <h3>
               {isPro && 'BookedForYou Pro'}
-              {isTrial && isActive && 'Free Trial'}
-              {isTrial && !isActive && 'Trial Expired'}
-              {isNone && 'Get Started with BookedForYou'}
+              {isTrial && isActive && !isPro && 'Free Trial'}
+              {isTrial && !isActive && !isPro && 'Trial Expired'}
+              {isNone && !isPro && 'Get Started with BookedForYou'}
               {!isPro && !isTrial && !isNone && 'Subscription Expired'}
             </h3>
           </div>
@@ -153,17 +153,18 @@ function SubscriptionManager() {
                 <span className="period">/month</span>
               </>
             )}
-            {isTrial && isActive && (
+            {isTrial && isActive && !isPro && (
               <span className="price free">Free</span>
             )}
-            {(isNone || (isExpired && !isPro)) && (
+            {!isPro && (isNone || isExpired) && (
               <span className="price inactive-price">&euro;0</span>
             )}
           </div>
         </div>
 
         <div className="subscription-status">
-          {isTrial && isActive && (
+          {/* Only show trial info for actual trial users, never for pro */}
+          {isTrial && isActive && !isPro && (
             <div className="trial-info">
               <i className="fas fa-clock"></i>
               <div>
@@ -193,7 +194,8 @@ function SubscriptionManager() {
             </div>
           )}
           
-          {isTrial && !isActive && (
+          {/* Only show trial expired for non-pro users */}
+          {isTrial && !isActive && !isPro && (
             <div className="expired-info">
               <i className="fas fa-times-circle"></i>
               <div>
@@ -203,6 +205,7 @@ function SubscriptionManager() {
             </div>
           )}
           
+          {/* Generic expired for non-pro, non-trial users */}
           {!isPro && !isTrial && !isNone && !isActive && (
             <div className="expired-info">
               <i className="fas fa-times-circle"></i>
@@ -238,8 +241,8 @@ function SubscriptionManager() {
         </div>
 
         <div className="subscription-actions">
-          {/* Show Start Trial for users with no plan (never tried before) */}
-          {isNone && (
+          {/* Show Start Trial only for users with no plan (never tried before) - never for pro users */}
+          {isNone && !isPro && (
             <button
               className="btn btn-success btn-subscribe"
               onClick={() => trialMutation.mutate()}
@@ -250,8 +253,8 @@ function SubscriptionManager() {
             </button>
           )}
 
-          {/* Show Subscribe button for trial (active or expired) or no-plan users */}
-          {(!isPro || !isActive) && (
+          {/* Show Subscribe button for trial (active or expired) or no-plan users - but not for active pro users */}
+          {!isPro && (
             <button
               className="btn btn-primary btn-subscribe"
               onClick={() => checkoutMutation.mutate()}

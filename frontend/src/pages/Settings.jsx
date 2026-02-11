@@ -44,8 +44,21 @@ function Settings() {
       setActiveTab('subscription');
       // Clear the URL parameter
       window.history.replaceState({}, '', '/settings');
-      // Refresh auth to get updated subscription info
-      checkAuth();
+      
+      // Poll for subscription update (webhook may take a moment to process)
+      // This ensures the UI updates even if there's a slight delay
+      const pollSubscription = async (attempts = 0) => {
+        await checkAuth();
+        queryClient.invalidateQueries(['subscription-status']);
+        
+        // Check if subscription is now pro, if not retry up to 5 times
+        const authSub = JSON.parse(sessionStorage.getItem('authSubscription') || '{}');
+        if (authSub.tier !== 'pro' && attempts < 5) {
+          setTimeout(() => pollSubscription(attempts + 1), 1500);
+        }
+      };
+      pollSubscription();
+      
       setTimeout(() => setSaveMessage(''), 5000);
     } else if (subscriptionStatus === 'cancelled') {
       setSaveMessage('Checkout was cancelled. You can try again when ready.');
@@ -57,7 +70,7 @@ function Settings() {
       setActiveTab('subscription');
       window.history.replaceState({}, '', '/settings');
     }
-  }, [searchParams, checkAuth]);
+  }, [searchParams, checkAuth, queryClient]);
   
   // Business hours breakdown state
   const [hoursConfig, setHoursConfig] = useState({
@@ -305,8 +318,8 @@ function Settings() {
           )}
 
           {/* Setup Suggestions Banner - show one high-priority suggestion at a time */}
-          {settings && !saveMessage && (() => {
-            // Priority order of suggestions
+          {settings && (() => {
+            // Priority order of suggestions - always show when conditions are met
             if (!settings.business_name) {
               return (
                 <div className="setup-suggestion">
@@ -587,6 +600,65 @@ function Settings() {
                       value={formData.business_address || ''}
                       onChange={handleChange}
                     />
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-section">
+                <h3>
+                  <i className="fas fa-calendar-alt" style={{ marginRight: '8px', color: '#4a90d9' }}></i>
+                  Scheduling Settings
+                </h3>
+                <p className="section-description">
+                  Configure how appointments are scheduled. Buffer time adds travel/preparation time between jobs.
+                </p>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label htmlFor="buffer_time_minutes">Buffer Time Between Jobs (mins)</label>
+                    <select
+                      id="buffer_time_minutes"
+                      name="buffer_time_minutes"
+                      value={formData.buffer_time_minutes || 15}
+                      onChange={handleChange}
+                      className="form-select"
+                    >
+                      <option value="0">No buffer</option>
+                      <option value="5">5 minutes</option>
+                      <option value="10">10 minutes</option>
+                      <option value="15">15 minutes</option>
+                      <option value="20">20 minutes</option>
+                      <option value="30">30 minutes</option>
+                      <option value="45">45 minutes</option>
+                      <option value="60">1 hour</option>
+                    </select>
+                    <small className="form-help">
+                      Time added between appointments for travel, preparation, or cleanup.
+                    </small>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="default_duration_minutes">Default Job Duration (mins)</label>
+                    <select
+                      id="default_duration_minutes"
+                      name="default_duration_minutes"
+                      value={formData.default_duration_minutes || 60}
+                      onChange={handleChange}
+                      className="form-select"
+                    >
+                      <option value="15">15 minutes</option>
+                      <option value="30">30 minutes</option>
+                      <option value="45">45 minutes</option>
+                      <option value="60">1 hour</option>
+                      <option value="90">1.5 hours</option>
+                      <option value="120">2 hours</option>
+                      <option value="180">3 hours</option>
+                      <option value="240">4 hours</option>
+                      <option value="300">5 hours</option>
+                      <option value="360">6 hours</option>
+                      <option value="480">8 hours</option>
+                    </select>
+                    <small className="form-help">
+                      Default duration when a service doesn't have a specific duration set.
+                    </small>
                   </div>
                 </div>
               </div>

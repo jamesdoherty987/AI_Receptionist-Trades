@@ -2,15 +2,16 @@ services:
   - type: web
     name: ai-receptionist-backend
     runtime: python
-    plan: free
+    plan: starter  # Paid plan - no sleep, better performance
     buildCommand: pip install -r requirements.txt
     pythonVersion: 3.12.7
-    startCommand: uvicorn src.server:app --host 0.0.0.0 --port 5000 --workers 2 --timeout-keep-alive 30 --proxy-headers
+    startCommand: uvicorn src.server:app --host 0.0.0.0 --port $PORT --workers 2 --timeout-keep-alive 120 --proxy-headers --limit-concurrency 100 --backlog 1024
+    healthCheckPath: /health
+    autoDeploy: true
+    # Paid tier benefits: no cold starts, persistent connections, more memory
     envVars:
       - key: FLASK_ENV
         value: production
-      - key: PORT
-        value: 5000
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
@@ -66,6 +67,6 @@ services:
 
 databases:
   - name: ai-receptionist-db
-    plan: free
+    plan: starter  # Paid plan - more connections, better performance, daily backups
     databaseName: ai_receptionist
     user: ai_receptionist_user

@@ -380,10 +380,11 @@ def reset_appointment_state():
         "client_info": None
     }
 
-def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_email: str = None) -> dict:
+def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_email: str = None, company_id: int = None) -> dict:
     """
     Check if caller exists in database by name (case-insensitive).
     Can filter by phone or email for better matching.
+    MUST pass company_id for proper multi-tenant data isolation.
     Returns dict with client info or indication of new customer.
     """
     # Safety check: ensure caller_name is not None
@@ -400,11 +401,11 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
     # Normalize name for case-insensitive search
     normalized_name = caller_name.lower().strip()
     
-    # Get all clients with matching names
-    matching_clients = db.get_clients_by_name(normalized_name)
+    # Get all clients with matching names - MUST filter by company_id for data isolation
+    matching_clients = db.get_clients_by_name(normalized_name, company_id=company_id)
     
     if len(matching_clients) == 0:
-        print(f"[CLIENT] New customer: {caller_name}")
+        print(f"[CLIENT] New customer: {caller_name} (company_id: {company_id})")
         return {
             "status": "new",
             "message": f"Welcome! I'll get you set up in our system.",
@@ -412,7 +413,7 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
         }
     elif len(matching_clients) == 1:
         client = matching_clients[0]
-        print(f"[CLIENT] Returning customer found by name: {client['name']} (ID: {client['id']})")
+        print(f"[CLIENT] Returning customer found by name: {client['name']} (ID: {client['id']}, company_id: {company_id})")
         # Include description in the message if available
         description_text = f"\n\nCustomer History: {client['description']}" if client.get('description') else ""
         return {
@@ -422,7 +423,7 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
         }
     else:
         # Multiple clients with same name - try to filter by phone or email
-        print(f"[CLIENT] Multiple customers found with name: {caller_name} ({len(matching_clients)} matches)")
+        print(f"[CLIENT] Multiple customers found with name: {caller_name} ({len(matching_clients)} matches, company_id: {company_id})")
         
         # Try to narrow down by phone number if provided
         if caller_phone:
@@ -2351,16 +2352,21 @@ When customer wants to reschedule:
         if calendar is None:
             try:
                 from src.services.database_calendar import get_database_calendar_service
-                calendar = get_database_calendar_service(company_id=1)  # TODO: Use actual company_id from context
-                print("[INFO] Using Database Calendar (multi-tenant ready)")
+                # Use actual company_id from context for proper multi-tenant isolation
+                calendar_company_id = int(company_id) if company_id else None
+                calendar = get_database_calendar_service(company_id=calendar_company_id)
+                print(f"[INFO] Using Database Calendar (company_id={calendar_company_id})")
             except Exception as e:
                 print(f"[ERROR] Could not load database calendar: {e}")
         
         db = get_database()
+        # Include company_id in services for proper data isolation
+        company_id_int = int(company_id) if company_id else None
         services = {
             'google_calendar': calendar,
             'calendar': calendar,  # Alias for clarity
-            'db': db
+            'db': db,
+            'company_id': company_id_int  # CRITICAL: Pass company_id for data isolation
         }
         
         # Execute each tool call and collect results
@@ -2558,13 +2564,18 @@ When customer wants to reschedule:
         messages.append({"role": "assistant", "content": fallback_response})
 
 
-async def process_appointment_with_calendar(intent: AppointmentIntent, details: dict) -> bool:
+async def process_appointment_with_calendar(intent: AppointmentIntent, details: dict, company_id: int = None) -> bool:
     """
     Process appointment actions with Google Calendar
+    
+    NOTE: This is a LEGACY function. The main booking flow now uses the tool-based system
+    in stream_llm() which properly passes company_id. This function is kept for backwards
+    compatibility but should not be used for new bookings.
     
     Args:
         intent: The appointment intent
         details: Appointment details dictionary
+        company_id: Company ID for multi-tenant data isolation (REQUIRED for proper isolation)
         
     Returns:
         True if booking was successful, False otherwise
@@ -2638,16 +2649,18 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
                     email = details.get('email')
                     
                     # Find or create client using phone/email (trades business doesn't use DOB)
+                    # CRITICAL: Pass company_id for proper multi-tenant data isolation
                     try:
                         client_id = db.find_or_create_client(
                             name=customer_name,
                             phone=phone_number if phone_number else None,
                             email=email,
-                            date_of_birth=None  # DOB not collected for trades
+                            date_of_birth=None,  # DOB not collected for trades
+                            company_id=company_id
                         )
                         
                         # Get the client info to ensure we have contact details
-                        client = db.get_client(client_id)
+                        client = db.get_client(client_id, company_id=company_id)
                         if client:
                             phone_number = client.get('phone') or phone_number
                             email = client.get('email') or email
@@ -2658,7 +2671,8 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
                             name=customer_name,
                             phone="unknown",
                             email=None,
-                            date_of_birth=None
+                            date_of_birth=None,
+                            company_id=company_id
                         )
                         phone_number = "unknown"
                         email = None
@@ -2670,6 +2684,7 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
                     eircode = details.get('eircode')
                     property_type = details.get('property_type')
                     
+                    # CRITICAL: Pass company_id for proper multi-tenant data isolation
                     booking_id = db.add_booking(
                         client_id=client_id,
                         calendar_event_id=event.get('id'),
@@ -2680,7 +2695,8 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
                         urgency=urgency,
                         address=address,
                         eircode=eircode,
-                        property_type=property_type
+                        property_type=property_type,
+                        company_id=company_id
                     )
                     
                     # Add initial appointment note with booking details
@@ -2741,17 +2757,19 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
                 success = calendar.cancel_appointment(event_id)
                 
                 if success:
-                    # DELETE booking from database completely
+                    # DELETE booking from database completely - MUST filter by company_id for data isolation
                     try:
                         from src.services.database import get_database
                         db = get_database()
                         # Find the booking by calendar event ID and DELETE it
-                        bookings = db.get_all_bookings()
+                        # Get company_id from services dict if available
+                        current_company_id = services.get('company_id') if 'services' in dir() else None
+                        bookings = db.get_all_bookings(company_id=current_company_id)
                         for booking in bookings:
                             if booking.get('calendar_event_id') == event_id:
                                 # Delete booking completely from database
-                                db.delete_booking(booking['id'])
-                                print(f"✅ DELETED booking from database (ID: {booking['id']})")
+                                db.delete_booking(booking['id'], company_id=current_company_id)
+                                print(f"✅ DELETED booking from database (ID: {booking['id']}, company_id: {current_company_id})")
                                 break
                     except Exception as e:
                         print(f"⚠️ Failed to delete booking from database: {e}")
@@ -2852,16 +2870,16 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
                     try:
                         from src.services.database import get_database
                         db = get_database()
-                        # Find booking by calendar_event_id using database method
-                        booking = db.get_booking_by_calendar_event_id(event_id)
+                        # Find booking by calendar_event_id using database method - filter by company_id for data isolation
+                        booking = db.get_booking_by_calendar_event_id(event_id, company_id=company_id)
                         
                         if booking:
                             booking_id = booking['id']
-                            # Update the appointment time in database
-                            db.update_booking(booking_id, appointment_time=new_time)
-                            print(f"✅ Updated database for booking ID {booking_id}")
+                            # Update the appointment time in database - pass company_id for security
+                            db.update_booking(booking_id, company_id=company_id, appointment_time=new_time)
+                            print(f"✅ Updated database for booking ID {booking_id} (company_id: {company_id})")
                         else:
-                            print(f"⚠️ No database booking found for event {event_id}")
+                            print(f"⚠️ No database booking found for event {event_id} (company_id: {company_id})")
                     except Exception as db_error:
                         print(f"⚠️ Failed to update database: {db_error}")
                     

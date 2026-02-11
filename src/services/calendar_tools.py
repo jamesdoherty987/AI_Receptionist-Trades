@@ -6,6 +6,11 @@ ARCHITECTURE: Hybrid Approach
 - CALLBACKS: Booking/cancellation/rescheduling - uses existing verification flow
 """
 
+import logging
+
+# Set up logger for this module
+logger = logging.getLogger(__name__)
+
 # Import address validation utilities
 from src.utils.address_validator import (
     AddressValidator, 
@@ -259,103 +264,560 @@ CALENDAR_TOOLS = [
 ]
 
 
-def get_service_price(job_description: str, urgency: str = 'scheduled') -> float:
+class ServiceMatcher:
+    """
+    Intelligent service matching using multiple strategies.
+    
+    Scalable approach that works with any services without hardcoded values:
+    1. Exact/substring matching (fastest)
+    2. Fuzzy string matching using difflib (handles typos)
+    3. Token-based TF-IDF style scoring (semantic similarity)
+    4. N-gram matching (catches partial word matches)
+    
+    Falls back to "General Service" when confidence is low.
+    """
+    
+    # Common English stop words to ignore in matching
+    # NOTE: Do NOT add domain-specific words here (paint, electrical, pipe, etc.)
+    # Only add truly generic words that don't help distinguish services
+    STOP_WORDS = frozenset([
+        'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+        'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+        'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare',
+        'ought', 'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by',
+        'from', 'as', 'into', 'through', 'during', 'before', 'after', 'above',
+        'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here',
+        'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few', 'more',
+        'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own',
+        'same', 'so', 'than', 'too', 'very', 'just', 'and', 'but', 'if', 'or',
+        'because', 'until', 'while', 'although', 'though', 'after', 'before',
+        'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you',
+        'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself',
+        'she', 'her', 'hers', 'herself', 'it', 'its', 'itself', 'they', 'them',
+        'their', 'theirs', 'themselves', 'what', 'which', 'who', 'whom', 'this',
+        'that', 'these', 'those', 'am', 'been', 'being', 'got', 'get', 'getting',
+        # Generic job/service words that don't help with matching
+        'work', 'works', 'working', 'job', 'jobs', 'service', 'services',
+        'help', 'helps', 'helping', 'needed', 'needs', 'want', 'wants',
+        'like', 'please', 'thanks', 'thank', 'done', 'complete', 'completed'
+    ])
+    
+    # Minimum confidence threshold for a match (0-100)
+    MATCH_THRESHOLD = 35
+    
+    @classmethod
+    def tokenize(cls, text: str) -> list:
+        """
+        Tokenize text into meaningful words, removing stop words.
+        
+        Args:
+            text: Input text to tokenize
+            
+        Returns:
+            List of meaningful tokens
+        """
+        import re
+        if not text:
+            return []
+        
+        # Convert to lowercase and extract words (3+ chars)
+        words = re.findall(r'\b[a-z]{3,}\b', text.lower())
+        
+        # Remove stop words
+        return [w for w in words if w not in cls.STOP_WORDS]
+    
+    @classmethod
+    def get_ngrams(cls, text: str, n: int = 3) -> set:
+        """
+        Generate character n-grams from text for fuzzy matching.
+        
+        Args:
+            text: Input text
+            n: N-gram size (default 3 for trigrams)
+            
+        Returns:
+            Set of n-grams
+        """
+        text = text.lower().replace(' ', '')
+        if len(text) < n:
+            return {text}
+        return {text[i:i+n] for i in range(len(text) - n + 1)}
+    
+    @classmethod
+    def ngram_similarity(cls, text1: str, text2: str, n: int = 3) -> float:
+        """
+        Calculate n-gram similarity between two strings.
+        
+        Args:
+            text1: First string
+            text2: Second string
+            n: N-gram size
+            
+        Returns:
+            Similarity score (0-1)
+        """
+        ngrams1 = cls.get_ngrams(text1, n)
+        ngrams2 = cls.get_ngrams(text2, n)
+        
+        if not ngrams1 or not ngrams2:
+            return 0.0
+        
+        intersection = len(ngrams1 & ngrams2)
+        union = len(ngrams1 | ngrams2)
+        
+        return intersection / union if union > 0 else 0.0
+    
+    @classmethod
+    def fuzzy_match_score(cls, text1: str, text2: str) -> float:
+        """
+        Calculate fuzzy match score using multiple methods.
+        
+        Args:
+            text1: First string
+            text2: Second string
+            
+        Returns:
+            Combined similarity score (0-1)
+        """
+        from difflib import SequenceMatcher
+        
+        if not text1 or not text2:
+            return 0.0
+        
+        text1_lower = text1.lower()
+        text2_lower = text2.lower()
+        
+        # Method 1: Sequence matcher (handles insertions, deletions, substitutions)
+        seq_score = SequenceMatcher(None, text1_lower, text2_lower).ratio()
+        
+        # Method 2: N-gram similarity (handles partial matches)
+        ngram_score = cls.ngram_similarity(text1_lower, text2_lower)
+        
+        # Combine scores (weighted average)
+        return (seq_score * 0.6) + (ngram_score * 0.4)
+    
+    @classmethod
+    def token_overlap_score(cls, tokens1: list, tokens2: list) -> float:
+        """
+        Calculate token overlap score with TF-IDF style weighting.
+        
+        Longer/rarer words get higher weight.
+        
+        Args:
+            tokens1: First token list
+            tokens2: Second token list
+            
+        Returns:
+            Weighted overlap score (0-1)
+        """
+        if not tokens1 or not tokens2:
+            return 0.0
+        
+        set1 = set(tokens1)
+        set2 = set(tokens2)
+        
+        # Find matching tokens
+        matches = set1 & set2
+        
+        if not matches:
+            return 0.0
+        
+        # Weight by token length (longer words are more specific)
+        weighted_match_score = sum(len(t) for t in matches)
+        max_possible = sum(len(t) for t in set1 | set2)
+        
+        return weighted_match_score / max_possible if max_possible > 0 else 0.0
+    
+    @classmethod
+    def calculate_match_score(cls, job_description: str, service: dict) -> tuple:
+        """
+        Calculate comprehensive match score between job description and service.
+        
+        Prioritizes service NAME matches over description matches.
+        
+        Args:
+            job_description: The job description from customer
+            service: Service dict with name, description, category
+            
+        Returns:
+            Tuple of (score 0-100, match_details dict)
+        """
+        service_name = (service.get('name') or '').strip()
+        service_desc = (service.get('description') or '').strip()
+        service_category = (service.get('category') or '').strip()
+        
+        job_lower = job_description.lower().strip()
+        name_lower = service_name.lower()
+        desc_lower = service_desc.lower()
+        
+        # Tokenize job description
+        job_tokens = cls.tokenize(job_description)
+        
+        # Tokenize service name ONLY (prioritize name matches)
+        name_tokens = cls.tokenize(service_name)
+        
+        # Tokenize description separately
+        desc_tokens = cls.tokenize(service_desc)
+        
+        # Tokenize full service text (name + description + category)
+        service_text = f"{service_name} {service_desc} {service_category}"
+        service_tokens = cls.tokenize(service_text)
+        
+        score = 0
+        match_type = "none"
+        
+        # Strategy 1: Exact match (100 points)
+        if job_lower == name_lower:
+            return (100, {"type": "exact", "matched": service_name})
+        
+        # Strategy 2: Substring match (85-95 points)
+        if name_lower in job_lower:
+            score = 95
+            match_type = "name_in_job"
+        elif job_lower in name_lower:
+            score = 90
+            match_type = "job_in_name"
+        elif len(name_lower) > 4 and any(name_lower in job_lower.replace(' ', '') for _ in [1]):
+            # Check without spaces (e.g., "pipe repair" matches "piperepair")
+            score = 85
+            match_type = "substring_nospace"
+        
+        if score >= 85:
+            return (score, {"type": match_type, "matched": service_name})
+        
+        # Strategy 3: NAME token overlap (up to 85 points) - PRIORITIZED
+        name_token_score = cls.token_overlap_score(job_tokens, name_tokens)
+        if name_token_score > 0:
+            # Scale to 0-85 range (higher than description matches)
+            name_token_points = int(name_token_score * 85)
+            if name_token_points > score:
+                score = name_token_points
+                match_type = "name_token_overlap"
+        
+        # Strategy 4: Fuzzy name match (up to 80 points)
+        fuzzy_name_score = cls.fuzzy_match_score(job_description, service_name)
+        if fuzzy_name_score > 0.5:  # Only consider if reasonably similar
+            fuzzy_points = int(fuzzy_name_score * 80)
+            if fuzzy_points > score:
+                score = fuzzy_points
+                match_type = "fuzzy_name"
+        
+        # Strategy 5: Description keyword match (up to 75 points)
+        # Check if job description words appear in service description
+        # This helps differentiate similar services (Interior vs Exterior Painting)
+        desc_token_score = cls.token_overlap_score(job_tokens, desc_tokens)
+        if desc_token_score > 0:
+            desc_token_points = int(desc_token_score * 75)
+            if desc_token_points > score:
+                score = desc_token_points
+                match_type = "desc_token_overlap"
+        
+        # Strategy 6: Full token overlap including description (up to 70 points)
+        token_score = cls.token_overlap_score(job_tokens, service_tokens)
+        if token_score > 0:
+            # Scale to 0-70 range (lower than name-only matches)
+            token_points = int(token_score * 70)
+            if token_points > score:
+                score = token_points
+                match_type = "token_overlap"
+        
+        # Strategy 7: Fuzzy description match (up to 55 points)
+        if service_desc:
+            fuzzy_desc_score = cls.fuzzy_match_score(job_description, service_desc)
+            if fuzzy_desc_score > 0.4:
+                fuzzy_desc_points = int(fuzzy_desc_score * 55)
+                if fuzzy_desc_points > score:
+                    score = fuzzy_desc_points
+                    match_type = "fuzzy_description"
+        
+        # Strategy 8: Category match bonus (+10 points)
+        if service_category and service_category.lower() in job_lower:
+            score = min(100, score + 10)
+            match_type = f"{match_type}+category"
+        
+        # Strategy 9: Individual word fuzzy match against NAME ONLY (catches typos)
+        # Only match against service name tokens, not description
+        if score < cls.MATCH_THRESHOLD:
+            for job_word in job_tokens:
+                if len(job_word) >= 4:  # Only check meaningful words
+                    for name_word in name_tokens:
+                        if len(name_word) >= 4:
+                            word_similarity = cls.fuzzy_match_score(job_word, name_word)
+                            # Lower threshold (0.6) to catch word variations like paint/painting
+                            if word_similarity > 0.6:
+                                word_score = int(word_similarity * 60)
+                                if word_score > score:
+                                    score = word_score
+                                    match_type = f"name_word_match:{job_word}~{name_word}"
+        
+        # Strategy 10: Stem matching - check if job word is prefix of name word or vice versa
+        # This catches paint->painting, electric->electrical, etc.
+        if score < cls.MATCH_THRESHOLD:
+            for job_word in job_tokens:
+                if len(job_word) >= 4:
+                    for name_word in name_tokens:
+                        if len(name_word) >= 4:
+                            # Check if one is prefix of the other (stem match)
+                            if name_word.startswith(job_word) or job_word.startswith(name_word):
+                                stem_score = 50  # Good match for stem
+                                if stem_score > score:
+                                    score = stem_score
+                                    match_type = f"stem_match:{job_word}~{name_word}"
+        
+        # Strategy 11: Description keyword bonus when name matches are tied
+        # If we have a name match, check description for differentiating keywords
+        # Also check for stem/plural matches (fence/fences, wall/walls)
+        if score >= cls.MATCH_THRESHOLD and desc_tokens:
+            desc_overlap = set(job_tokens) & set(desc_tokens)
+            
+            # Also check for stem matches in description
+            for job_word in job_tokens:
+                if len(job_word) >= 4:
+                    for desc_word in desc_tokens:
+                        if len(desc_word) >= 4:
+                            # Check if one is prefix of the other (stem/plural match)
+                            if desc_word.startswith(job_word) or job_word.startswith(desc_word):
+                                desc_overlap.add(job_word)
+            
+            if desc_overlap:
+                # Add bonus for description keyword matches
+                bonus = min(15, len(desc_overlap) * 5)
+                score = min(100, score + bonus)
+                match_type = f"{match_type}+desc_bonus"
+        
+        return (score, {"type": match_type, "matched": service_name, "tokens_matched": len(set(job_tokens) & set(service_tokens))})
+    
+    @classmethod
+    def match(cls, job_description: str, services: list, default_duration: int = 60) -> dict:
+        """
+        Match a job description to the best service.
+        
+        Args:
+            job_description: Description of the job from customer
+            services: List of service dicts from database
+            default_duration: Default duration if no match found
+            
+        Returns:
+            Dict with matched service info
+        """
+        if not job_description or not job_description.strip():
+            return cls._create_general_fallback(services, default_duration, "empty_description")
+        
+        best_match = None
+        best_score = 0
+        best_details = {}
+        general_service = None
+        
+        for service in services:
+            service_name = (service.get('name') or '').lower()
+            service_category = (service.get('category') or '').lower()
+            
+            # Track General service for fallback
+            if 'general' in service_name or service_category == 'general':
+                general_service = service
+                continue  # Don't match against General service directly
+            
+            score, details = cls.calculate_match_score(job_description, service)
+            
+            if score > best_score:
+                best_score = score
+                best_match = service
+                best_details = details
+        
+        # Check if match meets threshold
+        if best_match and best_score >= cls.MATCH_THRESHOLD:
+            matched_name = best_match.get('name', 'Unknown')
+            logger.debug(f"Service match: '{job_description}' -> '{matched_name}' (score: {best_score}, type: {best_details.get('type', 'unknown')})")
+            return {
+                'service': best_match,
+                'score': best_score,
+                'matched_name': matched_name,
+                'match_details': best_details,
+                'is_general': False
+            }
+        
+        # Fall back to General service
+        return cls._create_general_fallback(
+            services, 
+            default_duration, 
+            f"low_score:{best_score}" if best_match else "no_services",
+            general_service
+        )
+    
+    @classmethod
+    def _create_general_fallback(cls, services: list, default_duration: int, reason: str, general_service: dict = None) -> dict:
+        """Create a General service fallback response."""
+        
+        # Use existing General service if available
+        if general_service:
+            logger.debug(f"Using General Service (reason: {reason})")
+            return {
+                'service': general_service,
+                'score': 0,
+                'matched_name': general_service.get('name', 'General Service'),
+                'match_details': {'type': 'fallback', 'reason': reason},
+                'is_general': True
+            }
+        
+        # Find General service in list
+        for service in services:
+            service_name = (service.get('name') or '').lower()
+            service_category = (service.get('category') or '').lower()
+            if 'general' in service_name or service_category == 'general':
+                logger.debug(f"Using General Service (reason: {reason})")
+                return {
+                    'service': service,
+                    'score': 0,
+                    'matched_name': service.get('name', 'General Service'),
+                    'match_details': {'type': 'fallback', 'reason': reason},
+                    'is_general': True
+                }
+        
+        # Create virtual General service
+        logger.debug(f"Creating virtual General Service (reason: {reason})")
+        return {
+            'service': {
+                'id': 'general_default',
+                'name': 'General Service',
+                'category': 'General',
+                'description': 'Default service',
+                'duration_minutes': default_duration,
+                'price': 0,
+                'emergency_price': None
+            },
+            'score': 0,
+            'matched_name': 'General Service (default)',
+            'match_details': {'type': 'virtual_fallback', 'reason': reason},
+            'is_general': True
+        }
+
+
+def match_service(job_description: str, company_id: int = None) -> dict:
+    """
+    Match a job description to a service from the services menu.
+    
+    Uses intelligent multi-strategy matching that works with any services.
+    Falls back to "General Service" if no good match is found.
+    
+    Args:
+        job_description: Description of the job (e.g., 'leaking pipe', 'power outage')
+        company_id: Company ID for multi-tenant isolation
+    
+    Returns:
+        Dict with matched service info:
+        {
+            'service': The matched service dict (or General service),
+            'score': Match score (0-100),
+            'matched_name': Name of matched service,
+            'is_general': True if fell back to General service
+        }
+    """
+    from src.services.settings_manager import get_settings_manager
+    
+    try:
+        # Load services from database
+        settings_mgr = get_settings_manager()
+        services = settings_mgr.get_services(company_id=company_id)
+        default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
+        
+        # Use the ServiceMatcher class for intelligent matching
+        return ServiceMatcher.match(job_description, services, default_duration)
+        
+    except Exception as e:
+        logger.warning(f"Error matching service: {e}")
+        return {
+            'service': {
+                'id': 'general_default',
+                'name': 'General Service',
+                'category': 'General',
+                'description': 'Default service',
+                'duration_minutes': 60,
+                'price': 0,
+                'emergency_price': None
+            },
+            'score': 0,
+            'matched_name': 'General Service (error fallback)',
+            'match_details': {'type': 'error', 'error': str(e)},
+            'is_general': True
+        }
+
+
+def get_service_price(job_description: str, urgency: str = 'scheduled', company_id: int = None) -> float:
     """
     Get the price for a service from the services menu based on job description and urgency.
     
-    Uses simple term-based semantic matching against service names and descriptions.
+    Uses the unified match_service function for consistent matching.
     
     Args:
         job_description: Description of the job (e.g., 'exterior painting', 'leak repairs')
         urgency: Urgency level ('emergency', 'same-day', 'scheduled', 'quote')
+        company_id: Company ID for multi-tenant isolation
     
     Returns:
-        Price in EUR, or 50.0 as default if not found
+        Price in EUR, or 0 as default if not found
     """
     try:
-        import re
-        from src.services.settings_manager import get_settings_manager
+        match_result = match_service(job_description, company_id=company_id)
+        service = match_result['service']
         
-        # Load services from database
-        settings_mgr = get_settings_manager()
-        services = settings_mgr.get_services()
-        
-        # Normalize job description for matching
-        job_lower = job_description.lower().strip()
-        
-        # Extract meaningful terms from job description (words > 3 chars)
-        job_terms = set(re.findall(r'\b\w{3,}\b', job_lower))
-        
-        best_match = None
-        best_score = 0
-        matched_service_name = None
-        
-        # Score each service based on term overlap
-        for service in services:
-            service_name = (service.get('name') or '').lower()
-            service_desc = (service.get('description') or '').lower()
-            service_category = (service.get('category') or '').lower()
-            
-            # Extract all text for matching
-            service_full_text = f"{service_name} {service_desc} {service_category}"
-            service_terms = set(re.findall(r'\b\w{3,}\b', service_full_text))
-            
-            # Calculate overlap score
-            matching_terms = job_terms.intersection(service_terms)
-            term_match_count = len(matching_terms)
-            
-            score = 0
-            
-            # Exact name match is best
-            if job_lower == service_name:
-                score = 100
-            # Substring match in name
-            elif service_name in job_lower:
-                score = 95
-            # Job description in service name
-            elif job_lower in service_name:
-                score = 90
-            # Multiple term matches
-            elif term_match_count >= 2:
-                score = 80 + (term_match_count * 3)
-            # Single term match
-            elif term_match_count == 1:
-                score = 50
-            # Description contains key words
-            elif any(word in service_desc for word in job_lower.split() if len(word) > 4):
-                score = 40
-            
-            # Bonus for category match
-            if service_category in job_lower:
-                score += 15
-            
-            # Update best match
-            if score > best_score:
-                best_score = score
-                best_match = service
-                matched_service_name = service_name
-        
-        # Use match if score is good enough (threshold: 40)
-        if best_match and best_score >= 40:
-            # Use emergency price if urgency is emergency and available
-            if urgency == 'emergency' and best_match.get('emergency_price'):
-                price = float(best_match['emergency_price'])
-                print(f"[PRICING] Matched '{job_description}' to '{matched_service_name}' (score: {best_score}) - EMERGENCY PRICE: EUR{price}")
-                return price
-            else:
-                price = float(best_match['price'])
-                print(f"[PRICING] Matched '{job_description}' to '{matched_service_name}' (score: {best_score}) - Standard price: EUR{price}")
-                return price
-        
-        # Default fallback
-        print(f"[WARNING] No service price found for '{job_description}' (best match score: {best_score}), using default EUR50")
-        return 50.0
+        # Use emergency price if urgency is emergency and available
+        if urgency == 'emergency' and service.get('emergency_price'):
+            price = float(service['emergency_price'])
+            logger.debug(f"Pricing: '{job_description}' -> '{match_result['matched_name']}' - EMERGENCY: EUR{price}")
+            return price
+        else:
+            price = float(service.get('price', 0))
+            logger.debug(f"Pricing: '{job_description}' -> '{match_result['matched_name']}' - Standard: EUR{price}")
+            return price
         
     except Exception as e:
-        print(f"[WARNING] Error loading service price: {e}, using default EUR50")
-        import traceback
-        traceback.print_exc()
-        return 50.0
+        logger.warning(f"Error loading service price: {e}, using default EUR0")
+        return 0
+
+
+def get_service_duration(job_description: str, company_id: int = None) -> int:
+    """
+    Get the duration for a service from the services menu based on job description.
+    
+    Uses the unified match_service function for consistent matching.
+    
+    Args:
+        job_description: Description of the job (e.g., 'exterior painting', 'leak repairs')
+        company_id: Company ID for multi-tenant isolation
+    
+    Returns:
+        Duration in minutes, or default duration if not found
+    """
+    try:
+        from src.services.settings_manager import get_settings_manager
+        settings_mgr = get_settings_manager()
+        default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
+        
+        match_result = match_service(job_description, company_id=company_id)
+        service = match_result['service']
+        
+        duration = service.get('duration_minutes', default_duration)
+        logger.debug(f"Duration: '{job_description}' -> '{match_result['matched_name']}' - {duration} mins")
+        return duration
+        
+    except Exception as e:
+        logger.warning(f"Error loading service duration: {e}, using default 60 mins")
+        return 60
+
+
+def get_matched_service_name(job_description: str, company_id: int = None) -> str:
+    """
+    Get the matched service name for a job description.
+    
+    Args:
+        job_description: Description of the job
+        company_id: Company ID for multi-tenant isolation
+    
+    Returns:
+        Name of the matched service
+    """
+    match_result = match_service(job_description, company_id=company_id)
+    return match_result['matched_name']
 
 
 def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
@@ -369,7 +831,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     Args:
         tool_name: Name of the tool to execute
         arguments: Dictionary of arguments for the tool
-        services: Dictionary containing service instances (google_calendar, db, etc.)
+        services: Dictionary containing service instances (google_calendar, db, company_id, etc.)
     
     Returns:
         Dictionary with success status and result data
@@ -380,6 +842,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     
     google_calendar = services.get('google_calendar')
     db = services.get('db') or services.get('database')  # Support both keys
+    # CRITICAL: Extract company_id for proper multi-tenant data isolation
+    company_id = services.get('company_id')
     
     # Calendar should always be available (database or Google)
     if not google_calendar and tool_name in ['check_availability', 'book_appointment', 'reschedule_appointment', 'cancel_appointment', 'book_job', 'cancel_job', 'reschedule_job']:
@@ -394,6 +858,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             end_date_str = arguments.get('end_date', start_date_str)
             service_type = arguments.get('service_type', 'general')
             
+            # Get service duration for the requested service type
+            service_duration = get_service_duration(service_type, company_id=company_id)
+            logger.debug(f"Availability: Checking availability for service '{service_type}' with duration {service_duration} mins")
+            
             # Special handling for "this week" - today through Friday
             if start_date_str and 'this week' in start_date_str.lower():
                 today = datetime.now()
@@ -405,7 +873,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 
                 start_date = today.replace(hour=9, minute=0, second=0, microsecond=0)
                 end_date = this_friday.replace(hour=17, minute=0, second=0, microsecond=0)
-                print(f"[INFO] 'this week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
+                logger.info(f" 'this week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
             # Special handling for "next week" - expand to Monday-Friday
             elif start_date_str and 'next week' in start_date_str.lower():
                 today = datetime.now()
@@ -418,7 +886,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 
                 start_date = next_monday.replace(hour=9, minute=0, second=0, microsecond=0)
                 end_date = next_friday.replace(hour=17, minute=0, second=0, microsecond=0)
-                print(f"[INFO] 'next week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
+                logger.info(f" 'next week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
             else:
                 # Parse dates normally - allow_past=True because we're checking a date range
                 # get_available_slots_for_day will filter out past time slots
@@ -437,7 +905,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             current_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
             end_search = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
             
-            print(f"[SEARCH] Checking availability from {current_date.strftime('%Y-%m-%d')} to {end_search.strftime('%Y-%m-%d')}")
+            logger.debug(f"Search: Checking availability from {current_date.strftime('%Y-%m-%d')} to {end_search.strftime('%Y-%m-%d')}")
             
             # Get dynamic business days
             try:
@@ -445,25 +913,47 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             except:
                 business_days = config.BUSINESS_DAYS
             
+            # Check if company has workers - if so, we need to filter by worker availability
+            has_workers = db.has_workers(company_id) if db else False
+            if has_workers:
+                logger.debug(f"Worker check: Company has workers, will filter slots by worker availability")
+            
             # Check all days in range (no early exit - we want full picture)
             while current_date <= end_search:
                 # Only check business days (configured in config.BUSINESS_DAYS)
                 if current_date.weekday() in business_days:
-                    print(f"   [CHECK] Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
+                    logger.debug(f"[CHECK] Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
                     try:
-                        day_slots = google_calendar.get_available_slots_for_day(current_date)
+                        day_slots = google_calendar.get_available_slots_for_day(current_date, service_duration=service_duration)
                     except Exception as e:
-                        print(f"   [WARNING] Connection error checking {current_date.strftime('%A, %B %d')}: {e}")
+                        logger.debug(f"[WARNING] Connection error checking {current_date.strftime('%A, %B %d')}: {e}")
                         # Re-raise so retry logic in google_calendar handles it
                         raise
+                    
+                    # If company has workers, filter slots to only those where a worker is available
+                    if day_slots and has_workers and db:
+                        worker_available_slots = []
+                        for slot in day_slots:
+                            available_workers = db.find_available_workers_for_slot(
+                                appointment_time=slot,
+                                duration_minutes=service_duration,
+                                company_id=company_id
+                            )
+                            # None means error - include slot (fail open for availability check)
+                            # Empty list means no workers - exclude slot
+                            if available_workers is None or len(available_workers) > 0:
+                                worker_available_slots.append(slot)
+                        day_slots = worker_available_slots
+                        logger.debug(f"   After worker filter: {len(day_slots)} slots with available workers")
+                    
                     if day_slots:
                         day_key = current_date.strftime('%Y-%m-%d')
                         slots_by_day[day_key] = day_slots
-                        print(f"      Found {len(day_slots)} slots")
+                        logger.debug(f"   Found {len(day_slots)} slots")
                     else:
-                        print(f"      No slots available")
+                        logger.debug(f"   No slots available")
                 else:
-                    print(f"   [SKIP] Skipping {current_date.strftime('%A, %B %d')} (weekend)")
+                    logger.debug(f"[SKIP] Skipping {current_date.strftime('%A, %B %d')} (weekend)")
                 current_date += timedelta(days=1)
             
             if not slots_by_day:
@@ -558,12 +1048,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Check database for existing customer
             if db:
                 try:
-                    # Try by name, phone, or email
-                    clients = db.get_clients_by_name(customer_name.lower())
+                    # Try by name, phone, or email - MUST filter by company_id for data isolation
+                    clients = db.get_clients_by_name(customer_name.lower(), company_id=company_id)
                     if len(clients) == 1:
                         client = clients[0]
-                        # Get most recent booking to find last used address
-                        bookings = db.get_client_bookings(client['id'])
+                        # Get most recent booking to find last used address - filter by company_id
+                        bookings = db.get_client_bookings(client['id'], company_id=company_id)
                         last_address = None
                         if bookings:
                             # Get most recent booking with an address
@@ -612,8 +1102,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         }
                     else:
                         # FUZZY MATCH: Try phonetically similar names (for ASR errors)
+                        # MUST filter by company_id for data isolation
                         from difflib import SequenceMatcher
-                        all_clients = db.get_all_clients()
+                        all_clients = db.get_all_clients(company_id=company_id)
                         
                         for potential_client in all_clients:
                             # Check name similarity (75%+ match)
@@ -622,9 +1113,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 potential_client['name'].lower()).ratio()
                             
                             if similarity >= 0.75:  # 75% similar = likely match
-                                print(f"[SUCCESS] Fuzzy match: '{customer_name}' -> '{potential_client['name']}' (similarity: {similarity:.2%})")
-                                # Get most recent booking address
-                                bookings = db.get_client_bookings(potential_client['id'])
+                                logger.info(f" Fuzzy match: '{customer_name}' -> '{potential_client['name']}' (similarity: {similarity:.2%})")
+                                # Get most recent booking address - filter by company_id
+                                bookings = db.get_client_bookings(potential_client['id'], company_id=company_id)
                                 last_address = None
                                 if bookings:
                                     for booking in bookings:
@@ -663,7 +1154,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             "message": f"No existing customer found for {customer_name}. This is a new customer."
                         }
                 except Exception as e:
-                    print(f"[ERROR] Error looking up customer: {e}")
+                    logger.error(f" Error looking up customer: {e}")
                     return {
                         "success": False,
                         "error": f"Database error: {str(e)}"
@@ -717,9 +1208,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "needs_clarification": "datetime"
                 }
             
-            # Validate business hours
+            # Validate business hours - MUST pass company_id for correct company-specific hours
             from src.utils.config import Config
-            business_hours = Config.get_business_hours()
+            business_hours = Config.get_business_hours(company_id=company_id)
             requested_hour = parsed_time.hour
             start_hour = business_hours.get('start', 9)
             end_hour = business_hours.get('end', 17)
@@ -744,21 +1235,27 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "needs_clarification": "datetime"
                 }
             
-            # Check if slot is available
-            is_available = google_calendar.check_availability(parsed_time, duration_minutes=60)
+            # Get service duration based on reason/service type
+            match_result = match_service(reason, company_id=company_id)
+            matched_service_name = match_result['matched_name']
+            appointment_duration = match_result['service'].get('duration_minutes', 60)
+            logger.debug(f"Duration: Appointment duration for '{reason}' -> '{matched_service_name}': {appointment_duration} mins")
+            
+            # Check if slot is available with the correct duration
+            is_available = google_calendar.check_availability(parsed_time, duration_minutes=appointment_duration)
             if not is_available:
                 return {
                     "success": False,
-                    "error": f"That time slot is already booked. Please check availability and suggest another time."
+                    "error": f"That time slot is already booked or doesn't have enough time for this appointment ({appointment_duration} mins). Please check availability and suggest another time."
                 }
             
-            # Create calendar event
-            summary = f"{reason.title()} - {customer_name}"
+            # Create calendar event with correct duration
+            summary = f"{matched_service_name} - {customer_name}"
             event = google_calendar.book_appointment(
                 summary=summary,
                 start_time=parsed_time,
-                duration_minutes=60,
-                description=f"Booked via AI receptionist\nCustomer: {customer_name}\nReason: {reason}\nPhone: {phone}\nEmail: {email}",
+                duration_minutes=appointment_duration,
+                description=f"Booked via AI receptionist\nCustomer: {customer_name}\nService: {matched_service_name}\nCustomer Request: {reason}\nPhone: {phone}\nEmail: {email}\nDuration: {appointment_duration} mins",
                 phone_number=phone
             )
             
@@ -771,26 +1268,29 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Save to database
             if db:
                 try:
-                    # Find or create client
+                    # Find or create client - MUST pass company_id for data isolation
                     client_id = db.find_or_create_client(
                         name=customer_name,
                         phone=phone,
                         email=email,
-                        date_of_birth=None
+                        date_of_birth=None,
+                        company_id=company_id
                     )
                     
-                    # Add booking
+                    # Add booking - MUST pass company_id for data isolation
                     booking_id = db.add_booking(
                         client_id=client_id,
                         calendar_event_id=event.get('id'),
                         appointment_time=parsed_time,
-                        service_type=reason,
+                        service_type=matched_service_name,
                         phone_number=phone,
-                        email=email
+                        email=email,
+                        company_id=company_id,
+                        duration_minutes=appointment_duration
                     )
                     
-                    # Add note
-                    db.add_appointment_note(booking_id, f"Booked via AI receptionist. Reason: {reason}", created_by="system")
+                    # Add note with original customer request
+                    db.add_appointment_note(booking_id, f"Booked via AI receptionist.\nService: {matched_service_name}\nCustomer Request: {reason}\nDuration: {appointment_duration} mins", created_by="system")
                     
                     # Update client description
                     try:
@@ -799,16 +1299,18 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     except Exception:
                         pass
                     
-                    print(f"[SUCCESS] Booking saved to database (ID: {booking_id})")
+                    logger.info(f" Booking saved to database (ID: {booking_id}, company_id: {company_id}, duration: {appointment_duration} mins)")
                 except Exception as e:
-                    print(f"[ERROR] Database save failed: {e}")
+                    logger.error(f" Database save failed: {e}")
             
             return {
                 "success": True,
-                "message": f"Appointment booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')}",
+                "message": f"Appointment booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({appointment_duration} mins)",
                 "appointment_details": {
                     "customer": customer_name,
                     "time": parsed_time.strftime('%A, %B %d at %I:%M %p'),
+                    "duration_minutes": appointment_duration,
+                    "service": matched_service_name,
                     "reason": reason,
                     "phone": phone,
                     "email": email
@@ -887,17 +1389,17 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             success = google_calendar.cancel_appointment(event_id)
             
             if success:
-                # Delete from database
+                # Delete from database - MUST filter by company_id for data isolation
                 if db:
                     try:
-                        bookings = db.get_all_bookings()
+                        bookings = db.get_all_bookings(company_id=company_id)
                         for booking in bookings:
                             if booking.get('calendar_event_id') == event_id:
-                                db.delete_booking(booking['id'])
-                                print(f"[SUCCESS] Deleted booking from database (ID: {booking['id']})")
+                                db.delete_booking(booking['id'], company_id=company_id)
+                                logger.info(f" Deleted booking from database (ID: {booking['id']}, company_id: {company_id})")
                                 break
                     except Exception as e:
-                        print(f"[ERROR] Failed to delete booking from database: {e}")
+                        logger.error(f" Failed to delete booking from database: {e}")
                 
                 return {
                     "success": True,
@@ -977,16 +1479,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "error": f"Could not parse new date/time: {new_datetime}"
                 }
             
-            # Check if new time is available
-            is_available = google_calendar.check_availability(new_time, duration_minutes=60)
-            if not is_available:
-                return {
-                    "success": False,
-                    "error": f"That time slot is already booked. Please suggest another available time.",
-                    "new_time_unavailable": True
-                }
-            
-            # Find the current appointment
+            # Find the current appointment first to get its duration
             event = google_calendar.find_appointment_by_details(
                 customer_name=customer_name,
                 appointment_time=current_time
@@ -998,44 +1491,66 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "error": f"No appointment found for {customer_name} at {current_time.strftime('%B %d at %I:%M %p')}"
                 }
             
-            # Reschedule the appointment
+            # Get the booking's duration from database
+            booking_duration = 60  # Default
             event_id = event.get('id')
+            if db:
+                try:
+                    bookings = db.get_all_bookings(company_id=company_id)
+                    for booking in bookings:
+                        if booking.get('calendar_event_id') == event_id:
+                            booking_duration = booking.get('duration_minutes', 60)
+                            logger.debug(f"Duration: Found booking duration: {booking_duration} mins")
+                            break
+                except Exception as e:
+                    logger.warning(f" Could not get booking duration: {e}")
+            
+            # Check if new time is available with the correct duration
+            is_available = google_calendar.check_availability(new_time, duration_minutes=booking_duration)
+            if not is_available:
+                return {
+                    "success": False,
+                    "error": f"That time slot is already booked or doesn't have enough time ({booking_duration} mins). Please suggest another available time.",
+                    "new_time_unavailable": True
+                }
+            
+            # Reschedule the appointment
             updated_event = google_calendar.reschedule_appointment(event_id, new_time)
             
             if updated_event:
-                # Update database
+                # Update database - MUST filter by company_id for data isolation
                 if db:
                     try:
-                        bookings = db.get_all_bookings()
-                        print(f"[SEARCH] Looking for booking with calendar_event_id: {event_id}")
-                        print(f"[INFO] Total bookings in database: {len(bookings)}")
+                        bookings = db.get_all_bookings(company_id=company_id)
+                        logger.debug(f"Search: Looking for booking with calendar_event_id: {event_id} (company_id: {company_id})")
+                        logger.info(f" Total bookings for company: {len(bookings)}")
                         
                         found = False
                         for booking in bookings:
                             booking_event_id = booking.get('calendar_event_id')
                             if booking_event_id:
-                                print(f"   Checking booking {booking['id']}: calendar_event_id = {booking_event_id}")
+                                logger.debug(f"Checking booking {booking['id']}: calendar_event_id = {booking_event_id}")
                                 if booking_event_id == event_id:
-                                    # Update booking with new appointment time
-                                    success = db.update_booking(booking['id'], appointment_time=new_time.strftime('%Y-%m-%d %H:%M:%S'))
+                                    # Update booking with new appointment time - pass company_id for security
+                                    success = db.update_booking(booking['id'], company_id=company_id, appointment_time=new_time.strftime('%Y-%m-%d %H:%M:%S'))
                                     if success:
-                                        print(f"[SUCCESS] Updated booking in database (ID: {booking['id']}) to {new_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                                        logger.info(f" Updated booking in database (ID: {booking['id']}) to {new_time.strftime('%Y-%m-%d %H:%M:%S')}")
                                     else:
-                                        print(f"[WARNING] Database update returned False for booking {booking['id']}")
+                                        logger.warning(f" Database update returned False for booking {booking['id']}")
                                     found = True
                                     break
                         
                         if not found:
-                            print(f"[WARNING] No booking found with calendar_event_id matching: {event_id}")
-                            print(f"   Customer: {customer_name}")
-                            print(f"   Looking for bookings with similar names...")
+                            logger.warning(f" No booking found with calendar_event_id matching: {event_id}")
+                            logger.debug(f"Customer: {customer_name}")
+                            logger.debug(f"Looking for bookings with similar names...")
                             for booking in bookings:
                                 client_name = booking.get('client_name', '').lower()
                                 if customer_name.lower() in client_name or client_name in customer_name.lower():
-                                    print(f"   Found potential match: Booking {booking['id']} for {booking.get('client_name')} at {booking.get('appointment_time')}")
-                                    print(f"      calendar_event_id: {booking.get('calendar_event_id')}")
+                                    logger.debug(f"Found potential match: Booking {booking['id']} for {booking.get('client_name')} at {booking.get('appointment_time')}")
+                                    logger.debug(f"   calendar_event_id: {booking.get('calendar_event_id')}")
                     except Exception as e:
-                        print(f"[ERROR] Failed to update booking in database: {e}")
+                        logger.error(f" Failed to update booking in database: {e}")
                         import traceback
                         traceback.print_exc()
                 
@@ -1104,11 +1619,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Extract and normalize eircode if present
             extracted_eircode = address_data.get('eircode')
             if extracted_eircode:
-                print(f"[INFO] Extracted eircode from address: {extracted_eircode}")
+                logger.info(f" Extracted eircode from address: {extracted_eircode}")
             
             # Use validated and potentially enhanced address
             validated_address = address_data['full_address']
-            print(f"[INFO] Address validation result: {address_data['type']} - {validated_address}")
+            logger.info(f" Address validation result: {address_data['type']} - {validated_address}")
             
             if not job_description:
                 return {
@@ -1143,9 +1658,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "needs_clarification": "datetime"
                 }
             
-            # Validate business hours
+            # Validate business hours - MUST pass company_id for correct company-specific hours
             from src.utils.config import Config
-            business_hours = Config.get_business_hours()
+            business_hours = Config.get_business_hours(company_id=company_id)
             requested_hour = parsed_time.hour
             start_hour = business_hours.get('start', 9)
             end_hour = business_hours.get('end', 17)
@@ -1170,21 +1685,56 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "needs_clarification": "datetime"
                 }
             
-            # Check if slot is available
-            is_available = google_calendar.check_availability(parsed_time, duration_minutes=60)
+            # Check if slot is available - use service duration
+            # Get matched service info for duration, price, and service name
+            match_result = match_service(job_description, company_id=company_id)
+            matched_service = match_result['service']
+            matched_service_name = match_result['matched_name']
+            service_duration = matched_service.get('duration_minutes', 60)
+            logger.debug(f"Service match: '{job_description}' -> '{matched_service_name}' (duration: {service_duration} mins)")
+            
+            # ALWAYS check calendar availability first (prevents double-booking)
+            is_available = google_calendar.check_availability(parsed_time, duration_minutes=service_duration)
             if not is_available:
                 return {
                     "success": False,
-                    "error": f"That time slot is already booked. Please check availability and suggest another time."
+                    "error": f"That time slot is already booked or doesn't have enough time for this service ({service_duration} mins). Please check availability and suggest another time."
                 }
+            
+            # Check if company has workers configured
+            has_workers = db.has_workers(company_id) if db else False
+            assigned_worker = None
+            
+            if has_workers:
+                # Find available workers for this time slot
+                available_workers = db.find_available_workers_for_slot(
+                    appointment_time=parsed_time,
+                    duration_minutes=service_duration,
+                    company_id=company_id
+                )
+                
+                if available_workers is None:
+                    # Database error - log warning but proceed without worker assignment
+                    # Better to book without worker than fail the booking entirely
+                    logger.warning(f"Worker lookup failed due to database error - proceeding without worker assignment")
+                elif len(available_workers) == 0:
+                    # No workers available at this time (not an error, just busy)
+                    return {
+                        "success": False,
+                        "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time when a worker is free."
+                    }
+                else:
+                    # Select the first available worker (could be enhanced to pick by specialty)
+                    assigned_worker = available_workers[0]
+                    logger.debug(f"Worker: Auto-assigning worker '{assigned_worker['name']}' (ID: {assigned_worker['id']})")
             
             # Create calendar event with trades details
             summary = f"{urgency_level.upper()}: {job_description[:50]} - {customer_name}"
             event = google_calendar.book_appointment(
                 summary=summary,
                 start_time=parsed_time,
-                duration_minutes=60,
-                description=f"Booked via AI receptionist\n\nCustomer: {customer_name}\nPhone: {phone}\nEmail: {email}\n\nJob Address: {validated_address}\nJob Description: {job_description}\nUrgency: {urgency_level}\nProperty Type: {property_type}",
+                duration_minutes=service_duration,
+                description=f"Booked via AI receptionist\n\nCustomer: {customer_name}\nPhone: {phone}\nEmail: {email}\n\nJob Address: {validated_address}\nJob Description: {job_description}\nMatched Service: {matched_service_name}\nUrgency: {urgency_level}\nProperty Type: {property_type}\nDuration: {service_duration} mins",
                 phone_number=phone
             )
             
@@ -1197,39 +1747,57 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Save to database with trades-specific fields
             if db:
                 try:
-                    # Find or create client
+                    # Find or create client - MUST pass company_id for data isolation
                     client_id = db.find_or_create_client(
                         name=customer_name,
                         phone=phone,
                         email=email,
-                        date_of_birth=None
+                        date_of_birth=None,
+                        company_id=company_id
                     )
                     
-                    # Get the correct price from services menu
-                    job_charge = get_service_price(job_description, urgency_level)
-                    print(f"[PRICING] Calculated charge for '{job_description}' ({urgency_level}): EUR{job_charge}")
+                    # Get the correct price from matched service
+                    if urgency_level == 'emergency' and matched_service.get('emergency_price'):
+                        job_charge = float(matched_service['emergency_price'])
+                    else:
+                        job_charge = float(matched_service.get('price', 0))
+                    logger.debug(f"Pricing: Charge for '{job_description}' ({urgency_level}): EUR{job_charge}")
                     
-                    # Add booking with validated address information and correct charge
+                    # Add booking with validated address information, correct charge, and duration
+                    # MUST pass company_id for data isolation
                     booking_id = db.add_booking(
                         client_id=client_id,
                         calendar_event_id=event.get('id'),
                         appointment_time=parsed_time,
-                        service_type=f"{urgency_level}: {job_description}",
+                        service_type=matched_service_name,
                         phone_number=phone,
                         email=email,
                         urgency=urgency_level,
                         address=validated_address,
                         eircode=extracted_eircode,  # Use extracted eircode if available
                         property_type=property_type,
-                        charge=job_charge
+                        charge=job_charge,
+                        company_id=company_id,
+                        duration_minutes=service_duration
                     )
                     
-                    # Add note with job details
+                    # Add note with job details including matched service and original description
                     db.add_appointment_note(
                         booking_id, 
-                        f"Booked via AI receptionist\n\nJob Address: {validated_address}\nJob Description: {job_description}\nUrgency: {urgency_level}\nProperty Type: {property_type}", 
+                        f"Booked via AI receptionist\n\nJob Address: {validated_address}\nCustomer Description: {job_description}\nMatched Service: {matched_service_name}\nUrgency: {urgency_level}\nProperty Type: {property_type}\nDuration: {service_duration} mins", 
                         created_by="system"
                     )
+                    
+                    # Auto-assign worker if one was selected
+                    if assigned_worker:
+                        try:
+                            assignment_result = db.assign_worker_to_job(booking_id, assigned_worker['id'])
+                            if assignment_result.get('success'):
+                                logger.info(f" Worker '{assigned_worker['name']}' (ID: {assigned_worker['id']}) assigned to booking {booking_id}")
+                            else:
+                                logger.warning(f" Failed to assign worker: {assignment_result.get('error')}")
+                        except Exception as worker_err:
+                            logger.warning(f" Could not assign worker: {worker_err}")
                     
                     # Update client description
                     try:
@@ -1238,23 +1806,30 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     except Exception:
                         pass
                     
-                    print(f"[SUCCESS] Job booking saved to database (ID: {booking_id})")
+                    logger.info(f" Job booking saved to database (ID: {booking_id}, company_id: {company_id})")
                 except Exception as e:
-                    print(f"[ERROR] Database save failed: {e}")
+                    logger.error(f" Database save failed: {e}")
+            
+            # Build response message
+            worker_msg = f" Assigned to {assigned_worker['name']}." if assigned_worker else ""
             
             return {
                 "success": True,
-                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')}. {urgency_level.title()} job at {validated_address}.",
+                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({service_duration} mins). {urgency_level.title()} job at {validated_address}.{worker_msg}",
                 "appointment_details": {
                     "customer": customer_name,
                     "time": parsed_time.strftime('%A, %B %d at %I:%M %p'),
+                    "duration_minutes": service_duration,
+                    "matched_service": matched_service_name,
                     "job_address": validated_address,
                     "job_description": job_description,
                     "urgency": urgency_level,
                     "phone": phone,
                     "email": email,
                     "property_type": property_type,
-                    "eircode": extracted_eircode
+                    "eircode": extracted_eircode,
+                    "assigned_worker": assigned_worker['name'] if assigned_worker else None,
+                    "assigned_worker_id": assigned_worker['id'] if assigned_worker else None
                 }
             }
         
@@ -1282,8 +1857,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "message": "I'm sorry, but I don't have a number to transfer you to right now. Is there anything else I can help you with?"
                 }
             
-            print(f"[TRANSFER] TRANSFER REQUEST: {reason}")
-            print(f"[TRANSFER] Transferring to business phone: {transfer_number}")
+            logger.info(f"Transfer: TRANSFER REQUEST: {reason}")
+            logger.info(f"Transfer: Transferring to business phone: {transfer_number}")
             
             return {
                 "success": True,
@@ -1300,7 +1875,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             }
     
     except Exception as e:
-        print(f"[ERROR] Error executing tool {tool_name}: {e}")
+        logger.error(f" Error executing tool {tool_name}: {e}")
         import traceback
         traceback.print_exc()
         return {

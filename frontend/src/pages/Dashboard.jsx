@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Header from '../components/Header';
 import Tabs from '../components/Tabs';
@@ -14,6 +15,11 @@ import { getDashboardData } from '../services/api';
 import './Dashboard.css';
 
 function Dashboard() {
+  // Scroll to top when dashboard loads
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   // Use single batched API call instead of 4 separate requests
   const { data: dashboardData, isLoading } = useQuery({
     queryKey: ['dashboard'],

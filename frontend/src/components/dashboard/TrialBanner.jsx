@@ -11,6 +11,11 @@ function TrialBanner() {
   const daysRemaining = getTrialDaysRemaining();
   const isActive = subscription.is_active;
   
+  // Pro users never see trial banners - they have a paid subscription
+  if (tier === 'pro') {
+    return null;
+  }
+  
   // No subscription at all
   if (!isActive && (tier === 'none' || !tier)) {
     return (
@@ -74,7 +79,7 @@ function TrialBanner() {
     );
   }
   
-  // Pro user or anything else - no banner needed
+  // Anything else - no banner needed
   return null;
 }
 

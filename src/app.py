@@ -305,26 +305,45 @@ def upload_base64_image_to_r2(base64_data: str, company_id: int, file_type: str 
 _scheduler_started = False
 
 def start_scheduler_once():
-    """Start the auto-complete scheduler only once per worker"""
+    """Start the auto-complete scheduler only once across all workers.
+    Uses a simple file lock to ensure only one worker starts the scheduler.
+    """
     global _scheduler_started
     if _scheduler_started:
         return
     _scheduler_started = True
     
-    # Only start scheduler if this is the main worker (worker 0) or in development
-    worker_id = os.getenv('GUNICORN_WORKER_ID', os.getenv('WORKER_ID', '0'))
-    is_main_worker = worker_id in ('0', '', None)
+    # Use file-based locking to ensure only one worker starts the scheduler
+    # This works with uvicorn, gunicorn, and any multi-worker setup
+    import tempfile
+    import fcntl
     
-    if not is_main_worker:
-        return
+    lock_file = os.path.join(tempfile.gettempdir(), 'bookedforyou_scheduler.lock')
     
-    print("\\n🚀 Starting appointment auto-complete scheduler...")
     try:
-        from src.services.appointment_auto_complete import start_auto_complete_scheduler
-        start_auto_complete_scheduler(interval_minutes=60)  # Check every hour
-        print("✅ Auto-complete scheduler started successfully\\n")
-    except Exception as e:
-        print(f"[WARNING] Warning: Could not start auto-complete scheduler: {e}\\n")
+        # Try to acquire exclusive lock (non-blocking)
+        lock_fd = open(lock_file, 'w')
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        
+        # We got the lock - this worker starts the scheduler
+        print("\\n🚀 Starting appointment auto-complete scheduler (this worker)...")
+        try:
+            from src.services.appointment_auto_complete import start_auto_complete_scheduler
+            start_auto_complete_scheduler(interval_minutes=60)  # Check every hour
+            print("✅ Auto-complete scheduler started successfully\\n")
+        except Exception as e:
+            print(f"[WARNING] Could not start auto-complete scheduler: {e}\\n")
+        
+        # Keep lock file open to maintain the lock
+        # Don't close lock_fd - we want to keep the lock for the lifetime of this worker
+        
+    except (IOError, OSError):
+        # Another worker already has the lock - that's fine
+        print("[INFO] Scheduler already running in another worker\\n")
+        try:
+            lock_fd.close()
+        except:
+            pass
 
 
 # Initialize scheduler on first request (lazy init)
@@ -1581,6 +1600,7 @@ def stripe_webhook():
                 import stripe
                 sub = stripe.Subscription.retrieve(subscription_id)
                 
+                # Clear trial fields when upgrading to pro to ensure clean state
                 db.update_company(
                     company_id,
                     subscription_tier='pro',
@@ -1588,7 +1608,9 @@ def stripe_webhook():
                     stripe_customer_id=customer_id,
                     stripe_subscription_id=subscription_id,
                     subscription_current_period_end=datetime.fromtimestamp(sub.current_period_end),
-                    subscription_cancel_at_period_end=0
+                    subscription_cancel_at_period_end=0,
+                    trial_start=None,
+                    trial_end=None
                 )
                 print(f"[SUCCESS] Subscription activated for company {company_id}")
         
@@ -2014,8 +2036,14 @@ def stripe_connect_webhook():
             if booking_id:
                 try:
                     booking_id = int(booking_id)
-                    db.update_booking(booking_id, payment_status='paid', status='completed')
-                    print(f"[SUCCESS] Booking {booking_id} marked as paid via Stripe Connect checkout")
+                    # SECURITY NOTE: This is a webhook from Stripe - we get booking first to extract company_id
+                    # The booking_id comes from trusted Stripe metadata set during payment link creation
+                    booking = db.get_booking(booking_id)  # company_id extracted from booking itself
+                    if booking:
+                        db.update_booking(booking_id, company_id=booking.get('company_id'), payment_status='paid', status='completed')
+                        print(f"[SUCCESS] Booking {booking_id} marked as paid via Stripe Connect checkout")
+                    else:
+                        print(f"[WARNING] Booking {booking_id} not found for checkout session")
                 except Exception as e:
                     print(f"[WARNING] Error updating booking {booking_id}: {e}")
         
@@ -2025,8 +2053,14 @@ def stripe_connect_webhook():
             if booking_id:
                 try:
                     booking_id = int(booking_id)
-                    db.update_booking(booking_id, payment_status='paid', status='completed')
-                    print(f"[SUCCESS] Booking {booking_id} marked as paid via payment intent")
+                    # SECURITY NOTE: This is a webhook from Stripe - we get booking first to extract company_id
+                    # The booking_id comes from trusted Stripe metadata set during payment link creation
+                    booking = db.get_booking(booking_id)  # company_id extracted from booking itself
+                    if booking:
+                        db.update_booking(booking_id, company_id=booking.get('company_id'), payment_status='paid', status='completed')
+                        print(f"[SUCCESS] Booking {booking_id} marked as paid via payment intent")
+                    else:
+                        print(f"[WARNING] Booking {booking_id} not found for payment intent")
                 except Exception as e:
                     print(f"[WARNING] Error updating booking {booking_id}: {e}")
     
@@ -2377,11 +2411,42 @@ def add_service_api():
     
     data = request.json
     
-    # Upload image to R2 if it's base64
-    if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
-        data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'services')
+    # Validate required field: name
+    name = data.get('name', '').strip() if data.get('name') else ''
+    if not name:
+        return jsonify({"error": "Service name is required"}), 400
     
-    success = settings_mgr.add_service(data, company_id=company_id)
+    # Sanitize and validate optional fields
+    try:
+        price = float(data.get('price', 0)) if data.get('price') else 0
+        if price < 0:
+            price = 0
+    except (ValueError, TypeError):
+        price = 0
+    
+    try:
+        duration = int(data.get('duration_minutes', 60)) if data.get('duration_minutes') else 60
+        if duration < 1:
+            duration = 60
+    except (ValueError, TypeError):
+        duration = 60
+    
+    # Upload image to R2 if it's base64
+    image_url = data.get('image_url', '')
+    if image_url and image_url.startswith('data:image/'):
+        image_url = upload_base64_image_to_r2(image_url, company_id, 'services')
+    
+    # Build sanitized service data
+    sanitized_data = {
+        'name': name,
+        'price': price,
+        'duration_minutes': duration,
+        'image_url': image_url if image_url else None,
+        'category': data.get('category', 'General'),
+        'description': data.get('description', '').strip() if data.get('description') else None
+    }
+    
+    success = settings_mgr.add_service(sanitized_data, company_id=company_id)
     if success:
         return jsonify({"message": "Service added successfully"})
     return jsonify({"error": "Failed to add service"}), 500
@@ -2398,9 +2463,34 @@ def manage_service_api(service_id):
     if request.method == "PUT":
         data = request.json
         
+        # Validate name if provided
+        if 'name' in data:
+            name = data.get('name', '').strip() if data.get('name') else ''
+            if not name:
+                return jsonify({"error": "Service name is required"}), 400
+            data['name'] = name
+        
+        # Sanitize price if provided
+        if 'price' in data:
+            try:
+                price = float(data.get('price', 0)) if data.get('price') else 0
+                data['price'] = price if price >= 0 else 0
+            except (ValueError, TypeError):
+                data['price'] = 0
+        
+        # Sanitize duration if provided
+        if 'duration_minutes' in data:
+            try:
+                duration = int(data.get('duration_minutes', 60)) if data.get('duration_minutes') else 60
+                data['duration_minutes'] = duration if duration > 0 else 60
+            except (ValueError, TypeError):
+                data['duration_minutes'] = 60
+        
         # Upload image to R2 if it's base64
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
             data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'services')
+        elif 'image_url' in data and not data['image_url']:
+            data['image_url'] = None
         
         success = settings_mgr.update_service(service_id, data, company_id=company_id)
         if success:
@@ -2457,10 +2547,20 @@ def clients_api():
             }), 403
         
         data = request.json
+        
+        # Validate required field: name
+        name = data.get('name', '').strip() if data.get('name') else ''
+        if not name:
+            return jsonify({"error": "Customer name is required"}), 400
+        
+        # Sanitize optional fields - convert empty strings to None
+        phone = data.get('phone', '').strip() if data.get('phone') else None
+        email = data.get('email', '').strip() if data.get('email') else None
+        
         client_id = db.add_client(
-            name=data['name'],
-            phone=data.get('phone'),
-            email=data.get('email'),
+            name=name,
+            phone=phone if phone else None,
+            email=email if email else None,
             company_id=company_id
         )
         return jsonify({"id": client_id, "message": "Client created"}), 201
@@ -2490,8 +2590,28 @@ def client_api(client_id):
         client = db.get_client(client_id, company_id=company_id)
         if not client:
             return jsonify({"error": "Client not found"}), 404
+        
         data = request.json
-        db.update_client(client_id, **data)
+        
+        # Sanitize fields
+        sanitized_data = {}
+        for key, value in data.items():
+            if isinstance(value, str):
+                value = value.strip()
+                # Name is required, don't allow empty
+                if key == 'name':
+                    if not value:
+                        return jsonify({"error": "Customer name is required"}), 400
+                    sanitized_data[key] = value
+                # Optional fields - convert empty to None
+                elif key in ['phone', 'email', 'notes', 'address']:
+                    sanitized_data[key] = value if value else None
+                else:
+                    sanitized_data[key] = value
+            else:
+                sanitized_data[key] = value
+        
+        db.update_client(client_id, **sanitized_data)
         return jsonify({"message": "Client updated"})
 
 
@@ -2641,13 +2761,17 @@ def bookings_api():
         
         data = request.json
         
-        # Required fields
+        # Required fields - validate they exist and are not empty
         client_id = data.get('client_id')
         appointment_time = data.get('appointment_time')
-        service_type = data.get('service_type')
+        service_type = data.get('service_type', '').strip() if data.get('service_type') else ''
         
-        if not all([client_id, appointment_time, service_type]):
-            return jsonify({"error": "Missing required fields: client_id, appointment_time, service_type"}), 400
+        if not client_id:
+            return jsonify({"error": "Customer is required"}), 400
+        if not appointment_time:
+            return jsonify({"error": "Date & Time is required"}), 400
+        if not service_type:
+            return jsonify({"error": "Service type is required"}), 400
         
         try:
             # Parse appointment time
@@ -2657,10 +2781,26 @@ def bookings_api():
             else:
                 appointment_dt = appointment_time
             
-            # Check for time conflicts (same time or overlapping within 1 hour)
-            # Check for bookings within 1 hour of the requested time
-            time_buffer_before = appointment_dt - timedelta(minutes=59)
-            time_buffer_after = appointment_dt + timedelta(minutes=59)
+            # Get service duration and buffer time
+            from src.services.settings_manager import get_settings_manager
+            settings_mgr = get_settings_manager()
+            
+            # Get duration from request or look up from service
+            duration_minutes = data.get('duration_minutes')
+            if not duration_minutes:
+                # Try to get duration from service type
+                service = settings_mgr.get_service_by_name(service_type, company_id=company_id)
+                if service and service.get('duration_minutes'):
+                    duration_minutes = service['duration_minutes']
+                else:
+                    duration_minutes = settings_mgr.get_default_duration_minutes(company_id=company_id)
+            
+            buffer_time = settings_mgr.get_buffer_time_minutes(company_id=company_id)
+            total_duration = duration_minutes + buffer_time
+            
+            # Check for time conflicts using actual duration + buffer
+            time_buffer_before = appointment_dt - timedelta(minutes=total_duration - 1)
+            time_buffer_after = appointment_dt + timedelta(minutes=total_duration - 1)
             
             conflicting_bookings = db.get_conflicting_bookings(
                 start_time=time_buffer_before.strftime('%Y-%m-%d %H:%M:%S'),
@@ -2688,12 +2828,18 @@ def bookings_api():
             
             # Get client info (already verified by company_id)
             client = db.get_client(client_id, company_id=company_id)
+            if not client:
+                return jsonify({"error": "Customer not found"}), 404
             
-            # Use client's most recent booking address if not provided in job data
-            # Accept both 'job_address' (from frontend) and 'address' (legacy)
-            job_address = data.get('job_address') or data.get('address')
-            job_eircode = data.get('eircode')
-            job_property_type = data.get('property_type')
+            # Sanitize optional fields - convert empty strings to None
+            job_address = (data.get('job_address') or data.get('address') or '').strip()
+            job_address = job_address if job_address else None
+            
+            job_eircode = (data.get('eircode') or '').strip()
+            job_eircode = job_eircode if job_eircode else None
+            
+            job_property_type = (data.get('property_type') or '').strip()
+            job_property_type = job_property_type if job_property_type else None
             
             # If address not provided, try to get from client's previous bookings
             if not job_address or not job_eircode or not job_property_type:
@@ -2713,7 +2859,17 @@ def bookings_api():
                         print(f"[INFO] Using property type from previous booking: {job_property_type}")
             
             # Create booking - accept both 'charge' and 'estimated_charge' from frontend
+            # Sanitize charge value
             job_charge = data.get('charge') or data.get('estimated_charge')
+            if job_charge:
+                try:
+                    job_charge = float(job_charge)
+                    if job_charge < 0:
+                        job_charge = None
+                except (ValueError, TypeError):
+                    job_charge = None
+            else:
+                job_charge = None
             
             booking_id = db.add_booking(
                 client_id=client_id,
@@ -2726,7 +2882,8 @@ def bookings_api():
                 eircode=job_eircode,
                 property_type=job_property_type,
                 charge=job_charge,
-                company_id=company_id
+                company_id=company_id,
+                duration_minutes=duration_minutes
             )
             
             # Add initial note if provided
@@ -2736,6 +2893,21 @@ def bookings_api():
                     note=data['notes'],
                     created_by="user"
                 )
+            
+            # Assign worker if provided
+            worker_id = data.get('worker_id')
+            if worker_id:
+                try:
+                    worker_id = int(worker_id)
+                    # Verify worker belongs to this company
+                    worker = db.get_worker(worker_id, company_id=company_id)
+                    if worker:
+                        db.assign_worker_to_job(booking_id, worker_id)
+                        print(f"[INFO] Worker {worker_id} assigned to booking {booking_id}")
+                except (ValueError, TypeError) as e:
+                    print(f"[WARNING] Invalid worker_id: {worker_id}")
+                except Exception as e:
+                    print(f"[WARNING] Could not assign worker: {e}")
             
             # Update client description
             try:
@@ -2760,28 +2932,53 @@ def bookings_api():
 @app.route("/api/bookings/availability", methods=["GET"])
 @login_required
 def check_availability_api():
-    """Check available time slots for a given date"""
+    """Check available time slots for a given date, optionally filtered by worker"""
     db = get_database()
     company_id = session.get('company_id')
     
-    # Get date parameter (YYYY-MM-DD format)
+    # Get parameters
     date_str = request.args.get('date')
+    service_type = request.args.get('service_type')  # Optional: to get service-specific duration
+    worker_id = request.args.get('worker_id')  # Optional: filter by worker availability
+    
     if not date_str:
         return jsonify({"error": "Date parameter required (YYYY-MM-DD)"}), 400
     
+    # Convert worker_id to int if provided
+    if worker_id:
+        try:
+            worker_id = int(worker_id)
+        except (ValueError, TypeError):
+            worker_id = None
+    
     try:
         from datetime import datetime, timedelta
+        from src.services.settings_manager import get_settings_manager
         
         # Parse the date
         target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         day_name = target_date.strftime('%A').lower()
         
+        # Get settings manager for duration and buffer time
+        settings_mgr = get_settings_manager()
+        buffer_time = settings_mgr.get_buffer_time_minutes(company_id=company_id)
+        default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
+        
+        # Get service-specific duration if service_type provided
+        slot_duration = default_duration
+        if service_type:
+            service = settings_mgr.get_service_by_name(service_type, company_id=company_id)
+            if service and service.get('duration_minutes'):
+                slot_duration = service['duration_minutes']
+        
         # Get business hours from company settings (stored as string like "8 AM - 6 PM Mon-Sat")
         business_hours = {
             'start': 9,  # Default 9 AM
             'end': 17,   # Default 5 PM
-            'interval': 60,  # 60 minute slots
-            'is_open': True
+            'interval': 30,  # 30 minute slot intervals for more granular booking
+            'is_open': True,
+            'buffer_time': buffer_time,
+            'default_duration': default_duration
         }
         
         # Try to get configured business hours from company settings
@@ -2849,42 +3046,87 @@ def check_availability_api():
                 'message': 'Business is closed on this day'
             })
         
-        current_hour = business_hours['start']
+        # Get all bookings for this day to check conflicts
+        day_start = datetime.combine(target_date, datetime.min.time())
+        day_end = day_start + timedelta(days=1)
         
-        while current_hour < business_hours['end']:
-            slot_time = datetime.combine(target_date, datetime.min.time().replace(hour=current_hour))
+        all_bookings = db.get_all_bookings(company_id=company_id)
+        day_bookings = []
+        for booking in all_bookings:
+            if booking.get('status') in ['cancelled', 'completed']:
+                continue
             
-            # Check if this slot has a booking (within 59 minutes)
-            time_buffer_before = slot_time - timedelta(minutes=59)
-            time_buffer_after = slot_time + timedelta(minutes=59)
+            # If worker_id is specified, only check bookings for that worker
+            if worker_id:
+                booking_worker_id = booking.get('worker_id')
+                if booking_worker_id and int(booking_worker_id) != worker_id:
+                    continue  # Skip bookings for other workers
             
-            conflicting_bookings = db.get_conflicting_bookings(
-                start_time=time_buffer_before.strftime('%Y-%m-%d %H:%M:%S'),
-                end_time=time_buffer_after.strftime('%Y-%m-%d %H:%M:%S'),
-                company_id=company_id
-            )
+            appt_time = booking.get('appointment_time')
+            if isinstance(appt_time, str):
+                appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00').replace('+00:00', ''))
+            if appt_time and day_start <= appt_time < day_end:
+                booking_duration = booking.get('duration_minutes', default_duration)
+                day_bookings.append({
+                    'start': appt_time,
+                    'end': appt_time + timedelta(minutes=booking_duration + buffer_time),
+                    'duration': booking_duration,
+                    'booking': booking
+                })
+        
+        current_hour = business_hours['start']
+        current_minute = 0
+        end_hour = business_hours['end']
+        
+        while current_hour < end_hour or (current_hour == end_hour and current_minute == 0):
+            slot_time = datetime.combine(target_date, datetime.min.time().replace(hour=current_hour, minute=current_minute))
             
-            is_available = len(conflicting_bookings) == 0
+            # Calculate slot end time including buffer
+            slot_end = slot_time + timedelta(minutes=slot_duration + buffer_time)
             
-            # Get booking details if slot is taken
+            # Don't show slots that would extend past business hours
+            business_end = datetime.combine(target_date, datetime.min.time().replace(hour=end_hour))
+            if slot_end > business_end + timedelta(minutes=buffer_time):
+                current_minute += 30
+                if current_minute >= 60:
+                    current_minute = 0
+                    current_hour += 1
+                continue
+            
+            # Check for conflicts with existing bookings
+            is_available = True
             booking_info = None
-            if not is_available and conflicting_bookings:
-                conflict = conflicting_bookings[0]
-                client = db.get_client(conflict['client_id'], company_id=company_id)
-                booking_info = {
-                    'client_name': client['name'] if client else 'Unknown',
-                    'service_type': conflict['service_type'],
-                    'time': str(conflict['appointment_time'])
-                }
+            
+            for booking_data in day_bookings:
+                booking_start = booking_data['start']
+                booking_end = booking_data['end']
+                
+                # Check for overlap
+                if slot_time < booking_end and slot_end > booking_start:
+                    is_available = False
+                    conflict = booking_data['booking']
+                    client = db.get_client(conflict['client_id'], company_id=company_id)
+                    booking_info = {
+                        'client_name': client['name'] if client else 'Unknown',
+                        'service_type': conflict['service_type'],
+                        'time': str(conflict['appointment_time']),
+                        'duration_minutes': booking_data['duration']
+                    }
+                    break
             
             slots.append({
                 'time': slot_time.strftime('%H:%M'),
                 'datetime': slot_time.isoformat(),
                 'available': is_available,
-                'booking': booking_info
+                'booking': booking_info,
+                'slot_duration': slot_duration
             })
             
-            current_hour += 1
+            # Move to next slot (30 minute intervals)
+            current_minute += 30
+            if current_minute >= 60:
+                current_minute = 0
+                current_hour += 1
         
         return jsonify({
             'date': date_str,
@@ -2972,15 +3214,38 @@ def booking_detail_api(booking_id):
         if 'job_address' in data:
             data['address'] = data.pop('job_address')
         
-        success = db.update_booking(booking_id, **data)
+        # Sanitize fields - convert empty strings to None for optional fields
+        sanitized_data = {}
+        for key, value in data.items():
+            if isinstance(value, str):
+                value = value.strip()
+                # For optional text fields, convert empty to None
+                if key in ['address', 'eircode', 'property_type', 'phone_number', 'email', 'phone']:
+                    sanitized_data[key] = value if value else None
+                else:
+                    sanitized_data[key] = value
+            elif key in ['charge', 'estimated_charge']:
+                # Sanitize charge values
+                if value is not None and value != '':
+                    try:
+                        sanitized_data[key] = float(value) if float(value) >= 0 else None
+                    except (ValueError, TypeError):
+                        sanitized_data[key] = None
+                else:
+                    sanitized_data[key] = None
+            else:
+                sanitized_data[key] = value
+        
+        success = db.update_booking(booking_id, company_id=company_id, **sanitized_data)
         
         # Update notes if provided
         if notes is not None:
             # Clear existing notes and add the new note
             db.delete_appointment_notes_by_booking(booking_id)
             
-            if notes.strip():
-                db.add_appointment_note(booking_id, notes, created_by="user")
+            notes_text = notes.strip() if isinstance(notes, str) else ''
+            if notes_text:
+                db.add_appointment_note(booking_id, notes_text, created_by="user")
             success = True
         
         if success:
@@ -2993,7 +3258,7 @@ def booking_detail_api(booking_id):
         if not booking:
             return jsonify({"error": "Booking not found"}), 404
         
-        success = db.delete_booking(booking_id)
+        success = db.delete_booking(booking_id, company_id=company_id)
         if success:
             return jsonify({"success": True, "message": "Booking deleted"})
         return jsonify({"error": "Failed to delete booking"}), 400
@@ -3015,8 +3280,8 @@ def complete_booking_api(booking_id):
     client_id = booking['client_id']
     current_status = booking['status']
     
-    # Update booking status to completed
-    db.update_booking(booking_id, status='completed')
+    # Update booking status to completed - pass company_id for security
+    db.update_booking(booking_id, company_id=company_id, status='completed')
     
     # Generate/update client description using AI based on all appointments and notes
     try:
@@ -3284,7 +3549,7 @@ def send_invoice_api(booking_id):
         if success:
             # Update payment status to 'invoiced' so we know an invoice was sent
             try:
-                db.update_booking(booking_id, payment_status='invoiced')
+                db.update_booking(booking_id, company_id=company_id, payment_status='invoiced')
             except Exception:
                 pass  # Non-critical, don't fail the response
             
@@ -3400,18 +3665,39 @@ def workers_api():
         
         data = request.json
         
+        # Validate required field: name
+        name = data.get('name', '').strip() if data.get('name') else ''
+        if not name:
+            return jsonify({"error": "Worker name is required"}), 400
+        
+        # Sanitize optional fields - convert empty strings to None
+        phone = data.get('phone', '').strip() if data.get('phone') else None
+        email = data.get('email', '').strip() if data.get('email') else None
+        trade_specialty = data.get('trade_specialty', '').strip() if data.get('trade_specialty') else None
+        # Also check 'specialty' as frontend might send that
+        if not trade_specialty:
+            trade_specialty = data.get('specialty', '').strip() if data.get('specialty') else None
+        
         # Upload image to R2 if it's base64
         image_url = data.get('image_url', '')
         if image_url and image_url.startswith('data:image/'):
             image_url = upload_base64_image_to_r2(image_url, company_id, 'workers')
         
+        # Handle weekly_hours_expected - default to 40.0 if not provided or invalid
+        try:
+            weekly_hours = float(data.get('weekly_hours_expected', 40.0))
+            if weekly_hours < 0 or weekly_hours > 168:
+                weekly_hours = 40.0
+        except (ValueError, TypeError):
+            weekly_hours = 40.0
+        
         worker_id = db.add_worker(
-            name=data['name'],
-            phone=data.get('phone'),
-            email=data.get('email'),
-            trade_specialty=data.get('trade_specialty'),
-            image_url=image_url,
-            weekly_hours_expected=data.get('weekly_hours_expected', 40.0),
+            name=name,
+            phone=phone if phone else None,
+            email=email if email else None,
+            trade_specialty=trade_specialty if trade_specialty else None,
+            image_url=image_url if image_url else None,
+            weekly_hours_expected=weekly_hours,
             company_id=company_id
         )
         return jsonify({"id": worker_id, "message": "Worker added"}), 201
@@ -3443,7 +3729,34 @@ def worker_api(worker_id):
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
             data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'workers')
         
-        db.update_worker(worker_id, **data)
+        # Sanitize fields
+        sanitized_data = {}
+        for key, value in data.items():
+            if isinstance(value, str):
+                value = value.strip()
+                # Name is required, don't allow empty
+                if key == 'name':
+                    if not value:
+                        return jsonify({"error": "Worker name is required"}), 400
+                    sanitized_data[key] = value
+                # Optional fields - convert empty to None
+                elif key in ['phone', 'email', 'trade_specialty', 'specialty', 'image_url']:
+                    sanitized_data[key] = value if value else None
+                else:
+                    sanitized_data[key] = value
+            elif key == 'weekly_hours_expected':
+                # Validate weekly hours
+                try:
+                    hours = float(value) if value is not None else 40.0
+                    if hours < 0 or hours > 168:
+                        hours = 40.0
+                    sanitized_data[key] = hours
+                except (ValueError, TypeError):
+                    sanitized_data[key] = 40.0
+            else:
+                sanitized_data[key] = value
+        
+        db.update_worker(worker_id, **sanitized_data)
         return jsonify({"message": "Worker updated"})
     
     elif request.method == "DELETE":
@@ -3461,14 +3774,21 @@ def worker_api(worker_id):
 @app.route("/api/bookings/<int:booking_id>/assign-worker", methods=["POST"])
 @login_required
 def assign_worker_to_job_api(booking_id):
-    """Assign a worker to a job"""
+    """Assign a worker to a job with availability checking"""
     db = get_database()
     company_id = session.get('company_id')
     data = request.json
     worker_id = data.get('worker_id')
+    force_assign = data.get('force', False)  # Allow forcing assignment even with conflicts
     
     if not worker_id:
         return jsonify({"error": "worker_id is required"}), 400
+    
+    # Convert worker_id to int (may come as string from frontend)
+    try:
+        worker_id = int(worker_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid worker_id"}), 400
     
     # Verify booking belongs to this company
     booking = db.get_booking(booking_id, company_id=company_id)
@@ -3480,9 +3800,32 @@ def assign_worker_to_job_api(booking_id):
     if not worker:
         return jsonify({"error": "Worker not found"}), 404
     
+    # Check worker availability at the booking time
+    appointment_time = booking.get('appointment_time')
+    duration_minutes = booking.get('duration_minutes') or 60
+    
+    availability = db.check_worker_availability(
+        worker_id=worker_id,
+        appointment_time=appointment_time,
+        duration_minutes=duration_minutes,
+        company_id=company_id
+    )
+    
+    if not availability['available'] and not force_assign:
+        return jsonify({
+            "success": False,
+            "error": "Worker is not available at this time",
+            "conflicts": availability['conflicts'],
+            "message": availability['message'],
+            "can_force": True  # Allow UI to offer force option
+        }), 409  # Conflict status code
+    
     result = db.assign_worker_to_job(booking_id, worker_id)
     
     if result['success']:
+        # Include warning if forced despite conflicts
+        if not availability['available']:
+            result['warning'] = f"Worker assigned despite conflicts: {availability['message']}"
         return jsonify(result), 201
     else:
         return jsonify(result), 400
@@ -3499,6 +3842,12 @@ def remove_worker_from_job_api(booking_id):
     
     if not worker_id:
         return jsonify({"error": "worker_id is required"}), 400
+    
+    # Convert worker_id to int (may come as string from frontend)
+    try:
+        worker_id = int(worker_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid worker_id"}), 400
     
     # Verify booking belongs to this company
     booking = db.get_booking(booking_id, company_id=company_id)
@@ -3584,6 +3933,89 @@ def get_worker_hours_this_week_api(worker_id):
     
     hours = db.get_worker_hours_this_week(worker_id)
     return jsonify({"hours_worked": hours})
+
+
+@app.route("/api/workers/<int:worker_id>/availability", methods=["GET"])
+@login_required
+def check_worker_availability_api(worker_id):
+    """Check if a worker is available at a specific time"""
+    db = get_database()
+    company_id = session.get('company_id')
+    
+    # Verify worker belongs to this company
+    worker = db.get_worker(worker_id, company_id=company_id)
+    if not worker:
+        return jsonify({"error": "Worker not found"}), 404
+    
+    appointment_time = request.args.get('appointment_time')
+    duration_minutes = request.args.get('duration_minutes', 60, type=int)
+    exclude_booking_id = request.args.get('exclude_booking_id', type=int)
+    
+    if not appointment_time:
+        return jsonify({"error": "appointment_time is required"}), 400
+    
+    availability = db.check_worker_availability(
+        worker_id=worker_id,
+        appointment_time=appointment_time,
+        duration_minutes=duration_minutes,
+        exclude_booking_id=exclude_booking_id,
+        company_id=company_id
+    )
+    
+    return jsonify(availability)
+
+
+@app.route("/api/bookings/<int:booking_id>/available-workers", methods=["GET"])
+@login_required
+def get_available_workers_for_job_api(booking_id):
+    """Get all workers who are available for a specific job"""
+    db = get_database()
+    company_id = session.get('company_id')
+    
+    # Verify booking belongs to this company
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
+        return jsonify({"error": "Booking not found"}), 404
+    
+    appointment_time = booking.get('appointment_time')
+    duration_minutes = booking.get('duration_minutes', 60)
+    
+    # Get all workers for this company
+    all_workers = db.get_all_workers(company_id=company_id)
+    
+    # Check availability for each worker
+    available_workers = []
+    busy_workers = []
+    
+    for worker in all_workers:
+        availability = db.check_worker_availability(
+            worker_id=worker['id'],
+            appointment_time=appointment_time,
+            duration_minutes=duration_minutes,
+            exclude_booking_id=booking_id,  # Exclude this booking from conflict check
+            company_id=company_id
+        )
+        
+        worker_info = {
+            'id': worker['id'],
+            'name': worker['name'],
+            'phone': worker.get('phone'),
+            'trade_specialty': worker.get('trade_specialty'),
+            'available': availability['available'],
+            'conflicts': availability.get('conflicts', [])
+        }
+        
+        if availability['available']:
+            available_workers.append(worker_info)
+        else:
+            busy_workers.append(worker_info)
+    
+    return jsonify({
+        'available': available_workers,
+        'busy': busy_workers,
+        'booking_time': appointment_time,
+        'duration_minutes': duration_minutes
+    })
 
 
 @app.route("/api/email/send", methods=["POST"])

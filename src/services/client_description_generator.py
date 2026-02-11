@@ -29,7 +29,7 @@ def format_date_short(date_str: str) -> str:
         return str(date_str)
 
 
-def generate_client_description_from_notes(client_id: int, use_ai: bool = True) -> Optional[str]:
+def generate_client_description_from_notes(client_id: int, use_ai: bool = True, company_id: int = None) -> Optional[str]:
     """
     Generate a client description using AI based on appointment notes and history
     
@@ -39,6 +39,7 @@ def generate_client_description_from_notes(client_id: int, use_ai: bool = True) 
     Args:
         client_id: The ID of the client
         use_ai: Whether to use AI generation (True) or template-based (False)
+        company_id: Optional company ID for multi-tenant data isolation
         
     Returns:
         Generated description string or None if no bookings
@@ -46,13 +47,13 @@ def generate_client_description_from_notes(client_id: int, use_ai: bool = True) 
     from src.services.database import get_database
     db = get_database()
     
-    # Get client info
-    client = db.get_client(client_id)
+    # Get client info - filter by company_id for data isolation
+    client = db.get_client(client_id, company_id=company_id)
     if not client:
         return None
     
-    # Get booking history with notes
-    bookings = db.get_client_bookings(client_id)
+    # Get booking history with notes - filter by company_id for data isolation
+    bookings = db.get_client_bookings(client_id, company_id=company_id)
     
     if not bookings or len(bookings) == 0:
         return None
@@ -207,7 +208,7 @@ def _generate_template_description(client: Dict, bookings: List[Dict]) -> str:
 
 
 # Keep the old function for backward compatibility
-def generate_client_description(client_id: int) -> Optional[str]:
+def generate_client_description(client_id: int, company_id: int = None) -> Optional[str]:
     """
     Generate an AI-style description for a client based on their booking history
     
@@ -216,29 +217,31 @@ def generate_client_description(client_id: int) -> Optional[str]:
     
     Args:
         client_id: The ID of the client
+        company_id: Optional company ID for multi-tenant data isolation
         
     Returns:
         Generated description string or None if no bookings
     """
-    return generate_client_description_from_notes(client_id, use_ai=True)
+    return generate_client_description_from_notes(client_id, use_ai=True, company_id=company_id)
 
 
-def update_client_description(client_id: int) -> bool:
+def update_client_description(client_id: int, company_id: int = None) -> bool:
     """
     Generate and update a client's description using AI
     
     Args:
         client_id: The ID of the client
+        company_id: Optional company ID for multi-tenant data isolation
         
     Returns:
         True if successful, False otherwise
     """
     try:
         print(f"\\n{'='*60}")
-        print(f"🤖 Starting description update for client {client_id}")
+        print(f"🤖 Starting description update for client {client_id}" + (f" (company_id: {company_id})" if company_id else ""))
         print(f"{'='*60}")
         
-        description = generate_client_description(client_id)
+        description = generate_client_description(client_id, company_id=company_id)
         if description:
             print(f"✅ Generated description ({len(description)} chars)")
             print(f"📝 Preview: {description[:100]}...")
@@ -261,22 +264,26 @@ def update_client_description(client_id: int) -> bool:
         return False
 
 
-def update_all_client_descriptions() -> int:
+def update_all_client_descriptions(company_id: int = None) -> int:
     """
     Update descriptions for all clients who have bookings
+    
+    Args:
+        company_id: Optional company ID to filter clients (for multi-tenant isolation)
     
     Returns:
         Number of descriptions updated
     """
     from src.services.database import get_database
     db = get_database()
-    all_clients = db.get_all_clients()
+    # MUST filter by company_id for proper multi-tenant data isolation
+    all_clients = db.get_all_clients(company_id=company_id)
     
     updated_count = 0
     for client in all_clients:
         if update_client_description(client['id']):
             updated_count += 1
     
-    print(f"\n✅ Updated {updated_count} client descriptions")
+    print(f"\n✅ Updated {updated_count} client descriptions" + (f" for company {company_id}" if company_id else ""))
     return updated_count
 

@@ -16,12 +16,13 @@
 .modal-container {
   background: white;
   border-radius: 16px;
-  max-height: 85vh;
+  max-height: calc(100vh - 5rem);
   display: flex;
   flex-direction: column;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   width: 100%;
   position: relative;
+  margin-top: 0;
 }
 
 .modal-small {
@@ -44,20 +45,23 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.5rem;
+  padding: 1rem 1.25rem;
   border-bottom: 2px solid var(--border-color);
   flex-shrink: 0;
   background: white;
-  position: relative;
-  z-index: 1;
+  position: sticky;
+  top: 0;
+  z-index: 10;
   border-radius: 16px 16px 0 0;
+  min-height: 56px;
 }
 
 .modal-title {
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+  padding-right: 1rem;
 }
 
 .modal-close {
@@ -74,6 +78,7 @@
   justify-content: center;
   transition: all 0.2s ease;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .modal-close:hover {
@@ -82,29 +87,33 @@
 }
 
 .modal-content {
-  padding: 1.5rem 2rem;
+  padding: 1.25rem 1.5rem;
   overflow-y: auto;
   flex: 1;
 }
 
 @media (max-width: 768px) {
   .modal-overlay {
-    padding: 1rem 0.75rem;
+    padding: 3.5rem 0.5rem 0.5rem 0.5rem;
     align-items: flex-start;
   }
 
   .modal-container {
-    max-height: 90vh;
+    max-height: calc(100vh - 4rem);
     border-radius: 12px;
-    max-width: calc(100vw - 1.5rem);
+    max-width: calc(100vw - 1rem);
+    margin-top: 0;
   }
   
   .modal-header {
-    padding: 0.875rem 1rem;
+    padding: 0.75rem 1rem;
+    min-height: 48px;
+    border-radius: 12px 12px 0 0;
   }
   
   .modal-title {
-    font-size: 1.1rem;
+    font-size: 1rem;
+    padding-right: 0.75rem;
   }
   
   .modal-close {
@@ -121,26 +130,35 @@
   .modal-medium,
   .modal-large,
   .modal-xlarge {
-    max-width: calc(100vw - 1.5rem);
+    max-width: calc(100vw - 1rem);
   }
 }
 
 @media (max-width: 480px) {
   .modal-overlay {
-    padding: 0.5rem;
+    padding: 3rem 0.25rem 0.25rem 0.25rem;
   }
 
   .modal-container {
-    max-width: calc(100vw - 1rem);
+    max-width: calc(100vw - 0.5rem);
+    max-height: calc(100vh - 3.5rem);
     border-radius: 10px;
   }
 
   .modal-header {
-    padding: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    min-height: 44px;
+    border-radius: 10px 10px 0 0;
   }
 
   .modal-title {
-    font-size: 1rem;
+    font-size: 0.95rem;
+  }
+
+  .modal-close {
+    width: 30px;
+    height: 30px;
+    font-size: 1.1rem;
   }
 
   .modal-content {
