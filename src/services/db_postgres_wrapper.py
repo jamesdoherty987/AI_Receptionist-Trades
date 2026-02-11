@@ -42,8 +42,8 @@ class PostgreSQLDatabaseWrapper:
         
         # Use ThreadedConnectionPool for thread-safety with gevent workers
         self.connection_pool = psycopg2_pool.ThreadedConnectionPool(
-            minconn=1,  # Keep 1 connection warm
-            maxconn=10,  # Conservative limit for free tier
+            minconn=2,  # Keep connections warm for each worker
+            maxconn=10,  # Reasonable for Starter tier
             dsn=dsn
         )
         self.use_postgres = True  # Flag for compatibility

@@ -57,7 +57,7 @@ def get_database():
                     wrapper._pool_lock = threading.Lock()
                     from psycopg2 import pool as psycopg2_pool
                     wrapper.connection_pool = psycopg2_pool.ThreadedConnectionPool(
-                        minconn=1, maxconn=10, dsn=db_url
+                        minconn=2, maxconn=10, dsn=db_url
                     )
                     wrapper.use_postgres = True
                     _db = wrapper

@@ -305,26 +305,45 @@ def upload_base64_image_to_r2(base64_data: str, company_id: int, file_type: str 
 _scheduler_started = False
 
 def start_scheduler_once():
-    """Start the auto-complete scheduler only once per worker"""
+    """Start the auto-complete scheduler only once across all workers.
+    Uses a simple file lock to ensure only one worker starts the scheduler.
+    """
     global _scheduler_started
     if _scheduler_started:
         return
     _scheduler_started = True
     
-    # Only start scheduler if this is the main worker (worker 0) or in development
-    worker_id = os.getenv('GUNICORN_WORKER_ID', os.getenv('WORKER_ID', '0'))
-    is_main_worker = worker_id in ('0', '', None)
+    # Use file-based locking to ensure only one worker starts the scheduler
+    # This works with uvicorn, gunicorn, and any multi-worker setup
+    import tempfile
+    import fcntl
     
-    if not is_main_worker:
-        return
+    lock_file = os.path.join(tempfile.gettempdir(), 'bookedforyou_scheduler.lock')
     
-    print("\\n🚀 Starting appointment auto-complete scheduler...")
     try:
-        from src.services.appointment_auto_complete import start_auto_complete_scheduler
-        start_auto_complete_scheduler(interval_minutes=60)  # Check every hour
-        print("✅ Auto-complete scheduler started successfully\\n")
-    except Exception as e:
-        print(f"[WARNING] Warning: Could not start auto-complete scheduler: {e}\\n")
+        # Try to acquire exclusive lock (non-blocking)
+        lock_fd = open(lock_file, 'w')
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        
+        # We got the lock - this worker starts the scheduler
+        print("\\n🚀 Starting appointment auto-complete scheduler (this worker)...")
+        try:
+            from src.services.appointment_auto_complete import start_auto_complete_scheduler
+            start_auto_complete_scheduler(interval_minutes=60)  # Check every hour
+            print("✅ Auto-complete scheduler started successfully\\n")
+        except Exception as e:
+            print(f"[WARNING] Could not start auto-complete scheduler: {e}\\n")
+        
+        # Keep lock file open to maintain the lock
+        # Don't close lock_fd - we want to keep the lock for the lifetime of this worker
+        
+    except (IOError, OSError):
+        # Another worker already has the lock - that's fine
+        print("[INFO] Scheduler already running in another worker\\n")
+        try:
+            lock_fd.close()
+        except:
+            pass
 
 
 # Initialize scheduler on first request (lazy init)
@@ -2913,16 +2932,24 @@ def bookings_api():
 @app.route("/api/bookings/availability", methods=["GET"])
 @login_required
 def check_availability_api():
-    """Check available time slots for a given date"""
+    """Check available time slots for a given date, optionally filtered by worker"""
     db = get_database()
     company_id = session.get('company_id')
     
-    # Get date parameter (YYYY-MM-DD format)
+    # Get parameters
     date_str = request.args.get('date')
     service_type = request.args.get('service_type')  # Optional: to get service-specific duration
+    worker_id = request.args.get('worker_id')  # Optional: filter by worker availability
     
     if not date_str:
         return jsonify({"error": "Date parameter required (YYYY-MM-DD)"}), 400
+    
+    # Convert worker_id to int if provided
+    if worker_id:
+        try:
+            worker_id = int(worker_id)
+        except (ValueError, TypeError):
+            worker_id = None
     
     try:
         from datetime import datetime, timedelta
@@ -3028,6 +3055,13 @@ def check_availability_api():
         for booking in all_bookings:
             if booking.get('status') in ['cancelled', 'completed']:
                 continue
+            
+            # If worker_id is specified, only check bookings for that worker
+            if worker_id:
+                booking_worker_id = booking.get('worker_id')
+                if booking_worker_id and int(booking_worker_id) != worker_id:
+                    continue  # Skip bookings for other workers
+            
             appt_time = booking.get('appointment_time')
             if isinstance(appt_time, str):
                 appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00').replace('+00:00', ''))

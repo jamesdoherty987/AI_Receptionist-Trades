@@ -44,10 +44,21 @@ function Settings() {
       setActiveTab('subscription');
       // Clear the URL parameter
       window.history.replaceState({}, '', '/settings');
-      // Refresh auth to get updated subscription info
-      checkAuth();
-      // Also invalidate subscription-status query to ensure SubscriptionManager refreshes
-      queryClient.invalidateQueries(['subscription-status']);
+      
+      // Poll for subscription update (webhook may take a moment to process)
+      // This ensures the UI updates even if there's a slight delay
+      const pollSubscription = async (attempts = 0) => {
+        await checkAuth();
+        queryClient.invalidateQueries(['subscription-status']);
+        
+        // Check if subscription is now pro, if not retry up to 5 times
+        const authSub = JSON.parse(sessionStorage.getItem('authSubscription') || '{}');
+        if (authSub.tier !== 'pro' && attempts < 5) {
+          setTimeout(() => pollSubscription(attempts + 1), 1500);
+        }
+      };
+      pollSubscription();
+      
       setTimeout(() => setSaveMessage(''), 5000);
     } else if (subscriptionStatus === 'cancelled') {
       setSaveMessage('Checkout was cancelled. You can try again when ready.');

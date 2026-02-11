@@ -73,7 +73,7 @@ export const getBooking = (id) => api.get(`/api/bookings/${id}`);
 export const createBooking = (data) => api.post('/api/bookings', data);
 export const updateBooking = (id, data) => api.put(`/api/bookings/${id}`, data);
 export const deleteBooking = (id) => api.delete(`/api/bookings/${id}`);
-export const checkAvailability = (date, serviceType) => api.get('/api/bookings/availability', { params: { date, service_type: serviceType } });
+export const checkAvailability = (date, serviceType, workerId = null) => api.get('/api/bookings/availability', { params: { date, service_type: serviceType, worker_id: workerId } });
 
 // Dashboard - Batch endpoint for better performance
 export const getDashboardData = () => api.get('/api/dashboard');
