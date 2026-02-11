@@ -5,7 +5,8 @@ services:
     plan: free
     buildCommand: pip install -r requirements.txt
     pythonVersion: 3.12.7
-    startCommand: uvicorn src.server:app --host 0.0.0.0 --port $PORT --workers 2 --timeout-keep-alive 30 --proxy-headers
+    startCommand: uvicorn src.server:app --host 0.0.0.0 --port $PORT --workers 1 --timeout-keep-alive 30 --proxy-headers
+    healthCheckPath: /health
     envVars:
       - key: FLASK_ENV
         value: production
