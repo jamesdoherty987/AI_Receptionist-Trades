@@ -592,6 +592,65 @@ function Settings() {
               </div>
 
               <div className="form-section">
+                <h3>
+                  <i className="fas fa-calendar-alt" style={{ marginRight: '8px', color: '#4a90d9' }}></i>
+                  Scheduling Settings
+                </h3>
+                <p className="section-description">
+                  Configure how appointments are scheduled. Buffer time adds travel/preparation time between jobs.
+                </p>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label htmlFor="buffer_time_minutes">Buffer Time Between Jobs (mins)</label>
+                    <select
+                      id="buffer_time_minutes"
+                      name="buffer_time_minutes"
+                      value={formData.buffer_time_minutes || 15}
+                      onChange={handleChange}
+                      className="form-select"
+                    >
+                      <option value="0">No buffer</option>
+                      <option value="5">5 minutes</option>
+                      <option value="10">10 minutes</option>
+                      <option value="15">15 minutes</option>
+                      <option value="20">20 minutes</option>
+                      <option value="30">30 minutes</option>
+                      <option value="45">45 minutes</option>
+                      <option value="60">1 hour</option>
+                    </select>
+                    <small className="form-help">
+                      Time added between appointments for travel, preparation, or cleanup.
+                    </small>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="default_duration_minutes">Default Job Duration (mins)</label>
+                    <select
+                      id="default_duration_minutes"
+                      name="default_duration_minutes"
+                      value={formData.default_duration_minutes || 60}
+                      onChange={handleChange}
+                      className="form-select"
+                    >
+                      <option value="15">15 minutes</option>
+                      <option value="30">30 minutes</option>
+                      <option value="45">45 minutes</option>
+                      <option value="60">1 hour</option>
+                      <option value="90">1.5 hours</option>
+                      <option value="120">2 hours</option>
+                      <option value="180">3 hours</option>
+                      <option value="240">4 hours</option>
+                      <option value="300">5 hours</option>
+                      <option value="360">6 hours</option>
+                      <option value="480">8 hours</option>
+                    </select>
+                    <small className="form-help">
+                      Default duration when a service doesn't have a specific duration set.
+                    </small>
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-section">
                 <h3>Phone Configuration</h3>
                 <p className="section-description">
                   Your assigned phone number for receiving calls. {!formData.twilio_phone_number ? 'Click the button below to select your number.' : 'This number is permanently assigned to your account.'}

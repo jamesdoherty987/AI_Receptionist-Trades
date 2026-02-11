@@ -73,7 +73,7 @@ export const getBooking = (id) => api.get(`/api/bookings/${id}`);
 export const createBooking = (data) => api.post('/api/bookings', data);
 export const updateBooking = (id, data) => api.put(`/api/bookings/${id}`, data);
 export const deleteBooking = (id) => api.delete(`/api/bookings/${id}`);
-export const checkAvailability = (date) => api.get('/api/bookings/availability', { params: { date } });
+export const checkAvailability = (date, serviceType) => api.get('/api/bookings/availability', { params: { date, service_type: serviceType } });
 
 // Dashboard - Batch endpoint for better performance
 export const getDashboardData = () => api.get('/api/dashboard');
@@ -116,11 +116,14 @@ export const deleteWorker = (id) => api.delete(`/api/workers/${id}`);
 export const getWorkerJobs = (id) => api.get(`/api/workers/${id}/jobs`);
 export const getWorkerSchedule = (id) => api.get(`/api/workers/${id}/schedule`);
 export const getWorkerHoursThisWeek = (id) => api.get(`/api/workers/${id}/hours-this-week`);
+export const checkWorkerAvailability = (id, appointmentTime, durationMinutes) => 
+  api.get(`/api/workers/${id}/availability`, { params: { appointment_time: appointmentTime, duration_minutes: durationMinutes } });
 
 // Job-Worker Assignment
 export const assignWorkerToJob = (jobId, data) => api.post(`/api/bookings/${jobId}/assign-worker`, data);
 export const removeWorkerFromJob = (jobId, data) => api.post(`/api/bookings/${jobId}/remove-worker`, data);
 export const getJobWorkers = (jobId) => api.get(`/api/bookings/${jobId}/workers`);
+export const getAvailableWorkersForJob = (jobId) => api.get(`/api/bookings/${jobId}/available-workers`);
 
 // Finances
 export const getFinances = () => api.get('/api/finances');

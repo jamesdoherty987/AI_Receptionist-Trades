@@ -2669,10 +2669,26 @@ def bookings_api():
             else:
                 appointment_dt = appointment_time
             
-            # Check for time conflicts (same time or overlapping within 1 hour)
-            # Check for bookings within 1 hour of the requested time
-            time_buffer_before = appointment_dt - timedelta(minutes=59)
-            time_buffer_after = appointment_dt + timedelta(minutes=59)
+            # Get service duration and buffer time
+            from src.services.settings_manager import get_settings_manager
+            settings_mgr = get_settings_manager()
+            
+            # Get duration from request or look up from service
+            duration_minutes = data.get('duration_minutes')
+            if not duration_minutes:
+                # Try to get duration from service type
+                service = settings_mgr.get_service_by_name(service_type, company_id=company_id)
+                if service and service.get('duration_minutes'):
+                    duration_minutes = service['duration_minutes']
+                else:
+                    duration_minutes = settings_mgr.get_default_duration_minutes(company_id=company_id)
+            
+            buffer_time = settings_mgr.get_buffer_time_minutes(company_id=company_id)
+            total_duration = duration_minutes + buffer_time
+            
+            # Check for time conflicts using actual duration + buffer
+            time_buffer_before = appointment_dt - timedelta(minutes=total_duration - 1)
+            time_buffer_after = appointment_dt + timedelta(minutes=total_duration - 1)
             
             conflicting_bookings = db.get_conflicting_bookings(
                 start_time=time_buffer_before.strftime('%Y-%m-%d %H:%M:%S'),
@@ -2738,7 +2754,8 @@ def bookings_api():
                 eircode=job_eircode,
                 property_type=job_property_type,
                 charge=job_charge,
-                company_id=company_id
+                company_id=company_id,
+                duration_minutes=duration_minutes
             )
             
             # Add initial note if provided
@@ -2778,22 +2795,39 @@ def check_availability_api():
     
     # Get date parameter (YYYY-MM-DD format)
     date_str = request.args.get('date')
+    service_type = request.args.get('service_type')  # Optional: to get service-specific duration
+    
     if not date_str:
         return jsonify({"error": "Date parameter required (YYYY-MM-DD)"}), 400
     
     try:
         from datetime import datetime, timedelta
+        from src.services.settings_manager import get_settings_manager
         
         # Parse the date
         target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         day_name = target_date.strftime('%A').lower()
         
+        # Get settings manager for duration and buffer time
+        settings_mgr = get_settings_manager()
+        buffer_time = settings_mgr.get_buffer_time_minutes(company_id=company_id)
+        default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
+        
+        # Get service-specific duration if service_type provided
+        slot_duration = default_duration
+        if service_type:
+            service = settings_mgr.get_service_by_name(service_type, company_id=company_id)
+            if service and service.get('duration_minutes'):
+                slot_duration = service['duration_minutes']
+        
         # Get business hours from company settings (stored as string like "8 AM - 6 PM Mon-Sat")
         business_hours = {
             'start': 9,  # Default 9 AM
             'end': 17,   # Default 5 PM
-            'interval': 60,  # 60 minute slots
-            'is_open': True
+            'interval': 30,  # 30 minute slot intervals for more granular booking
+            'is_open': True,
+            'buffer_time': buffer_time,
+            'default_duration': default_duration
         }
         
         # Try to get configured business hours from company settings
@@ -2861,42 +2895,80 @@ def check_availability_api():
                 'message': 'Business is closed on this day'
             })
         
-        current_hour = business_hours['start']
+        # Get all bookings for this day to check conflicts
+        day_start = datetime.combine(target_date, datetime.min.time())
+        day_end = day_start + timedelta(days=1)
         
-        while current_hour < business_hours['end']:
-            slot_time = datetime.combine(target_date, datetime.min.time().replace(hour=current_hour))
+        all_bookings = db.get_all_bookings(company_id=company_id)
+        day_bookings = []
+        for booking in all_bookings:
+            if booking.get('status') in ['cancelled', 'completed']:
+                continue
+            appt_time = booking.get('appointment_time')
+            if isinstance(appt_time, str):
+                appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00').replace('+00:00', ''))
+            if appt_time and day_start <= appt_time < day_end:
+                booking_duration = booking.get('duration_minutes', default_duration)
+                day_bookings.append({
+                    'start': appt_time,
+                    'end': appt_time + timedelta(minutes=booking_duration + buffer_time),
+                    'duration': booking_duration,
+                    'booking': booking
+                })
+        
+        current_hour = business_hours['start']
+        current_minute = 0
+        end_hour = business_hours['end']
+        
+        while current_hour < end_hour or (current_hour == end_hour and current_minute == 0):
+            slot_time = datetime.combine(target_date, datetime.min.time().replace(hour=current_hour, minute=current_minute))
             
-            # Check if this slot has a booking (within 59 minutes)
-            time_buffer_before = slot_time - timedelta(minutes=59)
-            time_buffer_after = slot_time + timedelta(minutes=59)
+            # Calculate slot end time including buffer
+            slot_end = slot_time + timedelta(minutes=slot_duration + buffer_time)
             
-            conflicting_bookings = db.get_conflicting_bookings(
-                start_time=time_buffer_before.strftime('%Y-%m-%d %H:%M:%S'),
-                end_time=time_buffer_after.strftime('%Y-%m-%d %H:%M:%S'),
-                company_id=company_id
-            )
+            # Don't show slots that would extend past business hours
+            business_end = datetime.combine(target_date, datetime.min.time().replace(hour=end_hour))
+            if slot_end > business_end + timedelta(minutes=buffer_time):
+                current_minute += 30
+                if current_minute >= 60:
+                    current_minute = 0
+                    current_hour += 1
+                continue
             
-            is_available = len(conflicting_bookings) == 0
-            
-            # Get booking details if slot is taken
+            # Check for conflicts with existing bookings
+            is_available = True
             booking_info = None
-            if not is_available and conflicting_bookings:
-                conflict = conflicting_bookings[0]
-                client = db.get_client(conflict['client_id'], company_id=company_id)
-                booking_info = {
-                    'client_name': client['name'] if client else 'Unknown',
-                    'service_type': conflict['service_type'],
-                    'time': str(conflict['appointment_time'])
-                }
+            
+            for booking_data in day_bookings:
+                booking_start = booking_data['start']
+                booking_end = booking_data['end']
+                
+                # Check for overlap
+                if slot_time < booking_end and slot_end > booking_start:
+                    is_available = False
+                    conflict = booking_data['booking']
+                    client = db.get_client(conflict['client_id'], company_id=company_id)
+                    booking_info = {
+                        'client_name': client['name'] if client else 'Unknown',
+                        'service_type': conflict['service_type'],
+                        'time': str(conflict['appointment_time']),
+                        'duration_minutes': booking_data['duration']
+                    }
+                    break
             
             slots.append({
                 'time': slot_time.strftime('%H:%M'),
                 'datetime': slot_time.isoformat(),
                 'available': is_available,
-                'booking': booking_info
+                'booking': booking_info,
+                'slot_duration': slot_duration
             })
             
-            current_hour += 1
+            # Move to next slot (30 minute intervals)
+            current_minute += 30
+            if current_minute >= 60:
+                current_minute = 0
+                current_hour += 1
         
         return jsonify({
             'date': date_str,
@@ -3473,14 +3545,21 @@ def worker_api(worker_id):
 @app.route("/api/bookings/<int:booking_id>/assign-worker", methods=["POST"])
 @login_required
 def assign_worker_to_job_api(booking_id):
-    """Assign a worker to a job"""
+    """Assign a worker to a job with availability checking"""
     db = get_database()
     company_id = session.get('company_id')
     data = request.json
     worker_id = data.get('worker_id')
+    force_assign = data.get('force', False)  # Allow forcing assignment even with conflicts
     
     if not worker_id:
         return jsonify({"error": "worker_id is required"}), 400
+    
+    # Convert worker_id to int (may come as string from frontend)
+    try:
+        worker_id = int(worker_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid worker_id"}), 400
     
     # Verify booking belongs to this company
     booking = db.get_booking(booking_id, company_id=company_id)
@@ -3492,9 +3571,32 @@ def assign_worker_to_job_api(booking_id):
     if not worker:
         return jsonify({"error": "Worker not found"}), 404
     
+    # Check worker availability at the booking time
+    appointment_time = booking.get('appointment_time')
+    duration_minutes = booking.get('duration_minutes') or 60
+    
+    availability = db.check_worker_availability(
+        worker_id=worker_id,
+        appointment_time=appointment_time,
+        duration_minutes=duration_minutes,
+        company_id=company_id
+    )
+    
+    if not availability['available'] and not force_assign:
+        return jsonify({
+            "success": False,
+            "error": "Worker is not available at this time",
+            "conflicts": availability['conflicts'],
+            "message": availability['message'],
+            "can_force": True  # Allow UI to offer force option
+        }), 409  # Conflict status code
+    
     result = db.assign_worker_to_job(booking_id, worker_id)
     
     if result['success']:
+        # Include warning if forced despite conflicts
+        if not availability['available']:
+            result['warning'] = f"Worker assigned despite conflicts: {availability['message']}"
         return jsonify(result), 201
     else:
         return jsonify(result), 400
@@ -3511,6 +3613,12 @@ def remove_worker_from_job_api(booking_id):
     
     if not worker_id:
         return jsonify({"error": "worker_id is required"}), 400
+    
+    # Convert worker_id to int (may come as string from frontend)
+    try:
+        worker_id = int(worker_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid worker_id"}), 400
     
     # Verify booking belongs to this company
     booking = db.get_booking(booking_id, company_id=company_id)
@@ -3596,6 +3704,89 @@ def get_worker_hours_this_week_api(worker_id):
     
     hours = db.get_worker_hours_this_week(worker_id)
     return jsonify({"hours_worked": hours})
+
+
+@app.route("/api/workers/<int:worker_id>/availability", methods=["GET"])
+@login_required
+def check_worker_availability_api(worker_id):
+    """Check if a worker is available at a specific time"""
+    db = get_database()
+    company_id = session.get('company_id')
+    
+    # Verify worker belongs to this company
+    worker = db.get_worker(worker_id, company_id=company_id)
+    if not worker:
+        return jsonify({"error": "Worker not found"}), 404
+    
+    appointment_time = request.args.get('appointment_time')
+    duration_minutes = request.args.get('duration_minutes', 60, type=int)
+    exclude_booking_id = request.args.get('exclude_booking_id', type=int)
+    
+    if not appointment_time:
+        return jsonify({"error": "appointment_time is required"}), 400
+    
+    availability = db.check_worker_availability(
+        worker_id=worker_id,
+        appointment_time=appointment_time,
+        duration_minutes=duration_minutes,
+        exclude_booking_id=exclude_booking_id,
+        company_id=company_id
+    )
+    
+    return jsonify(availability)
+
+
+@app.route("/api/bookings/<int:booking_id>/available-workers", methods=["GET"])
+@login_required
+def get_available_workers_for_job_api(booking_id):
+    """Get all workers who are available for a specific job"""
+    db = get_database()
+    company_id = session.get('company_id')
+    
+    # Verify booking belongs to this company
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
+        return jsonify({"error": "Booking not found"}), 404
+    
+    appointment_time = booking.get('appointment_time')
+    duration_minutes = booking.get('duration_minutes', 60)
+    
+    # Get all workers for this company
+    all_workers = db.get_all_workers(company_id=company_id)
+    
+    # Check availability for each worker
+    available_workers = []
+    busy_workers = []
+    
+    for worker in all_workers:
+        availability = db.check_worker_availability(
+            worker_id=worker['id'],
+            appointment_time=appointment_time,
+            duration_minutes=duration_minutes,
+            exclude_booking_id=booking_id,  # Exclude this booking from conflict check
+            company_id=company_id
+        )
+        
+        worker_info = {
+            'id': worker['id'],
+            'name': worker['name'],
+            'phone': worker.get('phone'),
+            'trade_specialty': worker.get('trade_specialty'),
+            'available': availability['available'],
+            'conflicts': availability.get('conflicts', [])
+        }
+        
+        if availability['available']:
+            available_workers.append(worker_info)
+        else:
+            busy_workers.append(worker_info)
+    
+    return jsonify({
+        'available': available_workers,
+        'busy': busy_workers,
+        'booking_time': appointment_time,
+        'duration_minutes': duration_minutes
+    })
 
 
 @app.route("/api/email/send", methods=["POST"])

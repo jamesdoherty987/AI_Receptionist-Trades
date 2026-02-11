@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createBooking, getClients, checkAvailability } from '../../services/api';
+import { createBooking, getClients, checkAvailability, getServicesMenu } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import AddClientModal from './AddClientModal';
@@ -17,6 +17,7 @@ function AddJobModal({ isOpen, onClose }) {
     eircode: '',
     property_type: '',
     estimated_charge: '',
+    duration_minutes: '',
     notes: ''
   });
   const [clientSearch, setClientSearch] = useState('');
@@ -27,6 +28,7 @@ function AddJobModal({ isOpen, onClose }) {
   const [waitingForNewClient, setWaitingForNewClient] = useState(false);
   const [selectedDate, setSelectedDate] = useState('');
   const [showTimeSlots, setShowTimeSlots] = useState(false);
+  const [selectedService, setSelectedService] = useState(null);
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
   const previousClientsLengthRef = useRef(0);
@@ -51,11 +53,21 @@ function AddJobModal({ isOpen, onClose }) {
     enabled: isOpen
   });
 
+  // Fetch services menu for service selection
+  const { data: servicesMenu } = useQuery({
+    queryKey: ['services-menu'],
+    queryFn: async () => {
+      const response = await getServicesMenu();
+      return response.data;
+    },
+    enabled: isOpen
+  });
+
   // Fetch availability when a date is selected
   const { data: availability, isLoading: isLoadingAvailability } = useQuery({
-    queryKey: ['availability', selectedDate],
+    queryKey: ['availability', selectedDate, formData.service_type],
     queryFn: async () => {
-      const response = await checkAvailability(selectedDate);
+      const response = await checkAvailability(selectedDate, formData.service_type);
       return response.data;
     },
     enabled: !!selectedDate && isOpen
@@ -95,6 +107,7 @@ function AddJobModal({ isOpen, onClose }) {
       eircode: '',
       property_type: '',
       estimated_charge: '',
+      duration_minutes: '',
       notes: ''
     });
     setClientSearch('');
@@ -104,6 +117,18 @@ function AddJobModal({ isOpen, onClose }) {
     setWaitingForNewClient(false);
     setSelectedDate('');
     setShowTimeSlots(false);
+    setSelectedService(null);
+  };
+
+  // Handle service selection
+  const handleServiceSelect = (service) => {
+    setSelectedService(service);
+    setFormData(prev => ({
+      ...prev,
+      service_type: service.name,
+      estimated_charge: service.price || '',
+      duration_minutes: service.duration_minutes || 60
+    }));
   };
 
   const handleSelectClient = (client) => {
@@ -449,18 +474,76 @@ function AddJobModal({ isOpen, onClose }) {
 
         <div className="form-group">
           <label className="form-label">Service Type <span className="required">*</span></label>
-          <input
-            type="text"
-            name="service_type"
-            className="form-input"
-            value={formData.service_type}
-            onChange={handleChange}
-            placeholder="e.g., Plumbing repair, Electrical work"
-            required
-          />
+          {servicesMenu?.services?.length > 0 ? (
+            <>
+              <select
+                name="service_type"
+                className="form-input"
+                value={formData.service_type}
+                onChange={(e) => {
+                  const service = servicesMenu.services.find(s => s.name === e.target.value);
+                  if (service) {
+                    handleServiceSelect(service);
+                  } else {
+                    setFormData(prev => ({ ...prev, service_type: e.target.value }));
+                    setSelectedService(null);
+                  }
+                }}
+                required
+              >
+                <option value="">Select a service...</option>
+                {servicesMenu.services.map(service => (
+                  <option key={service.id} value={service.name}>
+                    {service.name} {service.duration_minutes ? `(${service.duration_minutes} mins)` : ''} {service.price ? `- €${service.price}` : ''}
+                  </option>
+                ))}
+                <option value="__custom__">Other (custom service)</option>
+              </select>
+              {formData.service_type === '__custom__' && (
+                <input
+                  type="text"
+                  name="custom_service"
+                  className="form-input"
+                  style={{ marginTop: '8px' }}
+                  placeholder="Enter custom service type..."
+                  onChange={(e) => setFormData(prev => ({ ...prev, service_type: e.target.value }))}
+                />
+              )}
+              {selectedService && (
+                <div className="service-info-display" style={{ marginTop: '8px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px', fontSize: '0.9em' }}>
+                  <span><i className="fas fa-clock"></i> Duration: {selectedService.duration_minutes || 60} mins</span>
+                  {selectedService.price && <span style={{ marginLeft: '16px' }}><i className="fas fa-euro-sign"></i> Price: €{selectedService.price}</span>}
+                </div>
+              )}
+            </>
+          ) : (
+            <input
+              type="text"
+              name="service_type"
+              className="form-input"
+              value={formData.service_type}
+              onChange={handleChange}
+              placeholder="e.g., Plumbing repair, Electrical work"
+              required
+            />
+          )}
         </div>
 
         <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label">Duration (mins)</label>
+            <input
+              type="number"
+              name="duration_minutes"
+              className="form-input"
+              value={formData.duration_minutes}
+              onChange={handleChange}
+              placeholder="60"
+              min="15"
+              step="15"
+            />
+            <small className="form-hint">Override service duration if needed</small>
+          </div>
           <div className="form-group">
             <label className="form-label">Property Type</label>
             <input

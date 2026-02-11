@@ -41,11 +41,14 @@ function WorkersTab({ workers, bookings }) {
     const today = now.toDateString();
     
     return workers.map(worker => {
-      // Find jobs assigned to this worker for today
-      const workerJobsToday = bookings.filter(job => {
+      // Find jobs assigned to this worker for today using assigned_worker_ids array
+      const workerJobsToday = (bookings || []).filter(job => {
+        if (!job || !job.appointment_time) return false;
         const jobDate = new Date(job.appointment_time);
         const isToday = jobDate.toDateString() === today;
-        const isAssigned = job.worker_id === worker.id || job.assigned_worker_id === worker.id;
+        // Check if worker is in the assigned_worker_ids array (handle both number and string IDs)
+        const assignedIds = job.assigned_worker_ids || [];
+        const isAssigned = assignedIds.includes(worker.id) || assignedIds.includes(String(worker.id));
         const isActive = job.status !== 'completed' && job.status !== 'cancelled';
         return isToday && isAssigned && isActive;
       });
@@ -54,8 +57,10 @@ function WorkersTab({ workers, bookings }) {
       const currentJob = workerJobsToday.find(job => {
         const jobTime = new Date(job.appointment_time);
         const diffMinutes = (now - jobTime) / (1000 * 60);
-        // Consider busy if job started within last 2 hours
-        return diffMinutes >= -30 && diffMinutes <= 120;
+        // Use job duration if available, otherwise default to 2 hours
+        const jobDuration = job.duration_minutes || 120;
+        // Consider busy if job started within last 30 mins before or during job duration
+        return diffMinutes >= -30 && diffMinutes <= jobDuration;
       });
 
       // Count jobs today

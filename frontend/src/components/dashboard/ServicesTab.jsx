@@ -151,12 +151,22 @@ function ServicesTab() {
   const handleAddService = (e) => {
     e.preventDefault();
     if (newService.name.trim()) {
-      createMutation.mutate(newService);
+      // Convert duration to duration_minutes for backend
+      const serviceData = {
+        ...newService,
+        duration_minutes: parseInt(newService.duration) || 60
+      };
+      createMutation.mutate(serviceData);
     }
   };
 
   const handleUpdateService = (service) => {
-    updateMutation.mutate({ id: service.id, data: service });
+    // Convert duration to duration_minutes for backend
+    const serviceData = {
+      ...service,
+      duration_minutes: parseInt(service.duration) || service.duration_minutes || 60
+    };
+    updateMutation.mutate({ id: service.id, data: serviceData });
   };
 
   const handleDeleteService = (id) => {
@@ -305,8 +315,8 @@ function ServicesTab() {
                     <input
                       type="number"
                       className="form-input"
-                      value={editingService.duration || ''}
-                      onChange={(e) => setEditingService({...editingService, duration: e.target.value})}
+                      value={editingService.duration_minutes || editingService.duration || ''}
+                      onChange={(e) => setEditingService({...editingService, duration_minutes: e.target.value, duration: e.target.value})}
                       placeholder="Duration (mins)"
                     />
                   </div>
@@ -351,10 +361,10 @@ function ServicesTab() {
                           {formatCurrency(service.price)}
                         </span>
                       )}
-                      {service.duration && (
+                      {(service.duration_minutes || service.duration) && (
                         <span className="service-duration">
                           <i className="fas fa-clock"></i>
-                          {service.duration} mins
+                          {service.duration_minutes || service.duration} mins
                         </span>
                       )}
                     </div>

@@ -45,12 +45,13 @@ class DatabaseCalendarService:
                 return None
         return _make_naive(appt_time)
     
-    def get_available_slots_for_day(self, date: datetime) -> List[datetime]:
+    def get_available_slots_for_day(self, date: datetime, service_duration: int = None) -> List[datetime]:
         """
         Get available time slots for a specific day
         
         Args:
             date: Date to check (time will be normalized to start of day)
+            service_duration: Duration of the service in minutes (optional, uses default if not provided)
             
         Returns:
             List of available datetime slots
@@ -68,8 +69,18 @@ class DatabaseCalendarService:
             start_hour = getattr(config, 'BUSINESS_HOURS_START', 9)
             end_hour = getattr(config, 'BUSINESS_HOURS_END', 17)
         
-        # Get slot duration from config (default 60 minutes)
-        slot_duration = getattr(config, 'APPOINTMENT_SLOT_DURATION', 60)
+        # Get buffer time from settings
+        try:
+            from src.services.settings_manager import get_settings_manager
+            settings_mgr = get_settings_manager()
+            buffer_time = settings_mgr.get_buffer_time_minutes(company_id=self.company_id)
+            default_duration = settings_mgr.get_default_duration_minutes(company_id=self.company_id)
+        except Exception:
+            buffer_time = 15
+            default_duration = 60
+        
+        # Use provided duration or default
+        slot_duration = service_duration if service_duration else default_duration
         
         # Don't return past time slots
         now = datetime.now()
@@ -83,7 +94,13 @@ class DatabaseCalendarService:
             
             appt_time = self._parse_booking_time(booking.get('appointment_time'))
             if appt_time and day_start <= appt_time < day_end:
-                day_bookings.append(appt_time)
+                # Get the booking's duration (use stored duration or default)
+                booking_duration = booking.get('duration_minutes', default_duration)
+                day_bookings.append({
+                    'start': appt_time,
+                    'duration': booking_duration,
+                    'end': appt_time + timedelta(minutes=booking_duration + buffer_time)
+                })
         
         # Generate all possible slots for the day
         available_slots = []
@@ -93,35 +110,43 @@ class DatabaseCalendarService:
         while current_slot < end_time:
             # Skip past time slots
             if current_slot <= now:
-                current_slot += timedelta(minutes=slot_duration)
+                current_slot += timedelta(minutes=30)  # Check every 30 minutes
+                continue
+            
+            # Check if this slot would fit (service duration + buffer)
+            slot_end = current_slot + timedelta(minutes=slot_duration + buffer_time)
+            
+            # Don't allow booking that extends past business hours
+            if slot_end > end_time + timedelta(minutes=buffer_time):
+                current_slot += timedelta(minutes=30)
                 continue
             
             # Check if slot conflicts with existing booking
-            slot_end = current_slot + timedelta(minutes=slot_duration)
             is_available = True
             
-            for booking_time in day_bookings:
-                booking_end = booking_time + timedelta(minutes=slot_duration)
+            for booking in day_bookings:
+                booking_start = booking['start']
+                booking_end = booking['end']
                 
-                # Check for overlap
-                if (current_slot < booking_end and slot_end > booking_time):
+                # Check for overlap (including buffer time)
+                if (current_slot < booking_end and slot_end > booking_start):
                     is_available = False
                     break
             
             if is_available:
                 available_slots.append(current_slot)
             
-            current_slot += timedelta(minutes=slot_duration)
+            current_slot += timedelta(minutes=30)  # Check every 30 minutes for more granular slots
         
         return available_slots
     
-    def check_availability(self, start_time: datetime, duration_minutes: int = 60) -> bool:
+    def check_availability(self, start_time: datetime, duration_minutes: int = None) -> bool:
         """
         Check if a specific time slot is available
         
         Args:
             start_time: Start time of the slot
-            duration_minutes: Duration of the appointment
+            duration_minutes: Duration of the appointment (optional, uses default if not provided)
             
         Returns:
             True if available, False if booked
@@ -132,7 +157,22 @@ class DatabaseCalendarService:
         if start_time <= datetime.now():
             return False
         
-        slot_end = start_time + timedelta(minutes=duration_minutes)
+        # Get buffer time and default duration from settings
+        try:
+            from src.services.settings_manager import get_settings_manager
+            settings_mgr = get_settings_manager()
+            buffer_time = settings_mgr.get_buffer_time_minutes(company_id=self.company_id)
+            default_duration = settings_mgr.get_default_duration_minutes(company_id=self.company_id)
+        except Exception:
+            buffer_time = 15
+            default_duration = 60
+        
+        # Use provided duration or default
+        if duration_minutes is None:
+            duration_minutes = default_duration
+        
+        # Calculate slot end including buffer time
+        slot_end = start_time + timedelta(minutes=duration_minutes + buffer_time)
         
         # Get all non-cancelled bookings - MUST filter by company_id for data isolation
         all_bookings = self.db.get_all_bookings(company_id=self.company_id)
@@ -145,16 +185,18 @@ class DatabaseCalendarService:
             if not appt_time:
                 continue
             
-            booking_end = appt_time + timedelta(minutes=duration_minutes)
+            # Get the booking's duration (use stored duration or default)
+            booking_duration = booking.get('duration_minutes', default_duration)
+            booking_end = appt_time + timedelta(minutes=booking_duration + buffer_time)
             
-            # Check for overlap
+            # Check for overlap (including buffer time)
             if (start_time < booking_end and slot_end > appt_time):
                 return False  # Conflict found
         
         return True  # No conflicts
     
     def book_appointment(self, summary: str, start_time: datetime, 
-                        duration_minutes: int = 60, description: str = "",
+                        duration_minutes: int = None, description: str = "",
                         location: str = "", phone_number: str = "") -> Optional[Dict]:
         """
         Book an appointment (database only - no Google Calendar)
@@ -162,9 +204,26 @@ class DatabaseCalendarService:
         This is a placeholder for compatibility. The actual booking
         is done via add_booking() which handles database insertion.
         
+        Args:
+            summary: Event summary/title
+            start_time: Start time of the appointment
+            duration_minutes: Duration in minutes (optional, uses default if not provided)
+            description: Event description
+            location: Event location
+            phone_number: Customer phone number
+        
         Returns:
             Dict with booking confirmation (compatible with Google Calendar format)
         """
+        # Get default duration if not provided
+        if duration_minutes is None:
+            try:
+                from src.services.settings_manager import get_settings_manager
+                settings_mgr = get_settings_manager()
+                duration_minutes = settings_mgr.get_default_duration_minutes(company_id=self.company_id)
+            except Exception:
+                duration_minutes = 60
+        
         # Generate a fake "event" dict for compatibility
         return {
             'id': f"db_{int(start_time.timestamp())}",
@@ -172,6 +231,7 @@ class DatabaseCalendarService:
             'description': description,
             'start': {'dateTime': start_time.isoformat()},
             'end': {'dateTime': (start_time + timedelta(minutes=duration_minutes)).isoformat()},
+            'duration_minutes': duration_minutes,
             'htmlLink': '#'  # Placeholder
         }
     

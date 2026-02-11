@@ -224,6 +224,11 @@ function CalendarTab() {
                       hour: '2-digit',
                       minute: '2-digit'
                     })}
+                    {event.duration_minutes && (
+                      <span className="event-duration" style={{ fontSize: '0.75em', color: '#666', display: 'block' }}>
+                        {event.duration_minutes} mins
+                      </span>
+                    )}
                   </div>
                   <div className="event-info">
                     <div className="event-header">

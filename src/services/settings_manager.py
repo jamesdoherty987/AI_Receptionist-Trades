@@ -121,7 +121,7 @@ class SettingsManager:
                 'reminder_hours_before', 'auto_confirm_bookings', 'fallback_phone_number',
                 'logo_url', 'business_hours',
                 'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
-                'revolut_phone'
+                'revolut_phone', 'buffer_time_minutes', 'default_duration_minutes'
             ]
             update_fields = []
             values = []
@@ -497,6 +497,44 @@ class SettingsManager:
             "end_hour": settings.get('opening_hours_end', 17),
             "days_open": settings.get('days_open', ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
         }
+    
+    def get_buffer_time_minutes(self, company_id: int = None) -> int:
+        """Get buffer time in minutes between appointments for a specific company"""
+        settings = self.get_business_settings(company_id=company_id)
+        return settings.get('buffer_time_minutes', 15)
+    
+    def get_default_duration_minutes(self, company_id: int = None) -> int:
+        """Get default appointment duration in minutes for a specific company"""
+        settings = self.get_business_settings(company_id=company_id)
+        return settings.get('default_duration_minutes', 60)
+    
+    def get_service_duration(self, service_name: str, company_id: int = None) -> int:
+        """Get duration for a specific service by name, with fallback to default"""
+        service = self.get_service_by_name(service_name, company_id=company_id)
+        if service and service.get('duration_minutes'):
+            return service['duration_minutes']
+        return self.get_default_duration_minutes(company_id=company_id)
+    
+    def get_total_booking_duration(self, service_name: str = None, service_duration: int = None, company_id: int = None) -> int:
+        """Get total duration for a booking including buffer time
+        
+        Args:
+            service_name: Name of the service (optional, used to look up duration)
+            service_duration: Explicit duration in minutes (optional, overrides service lookup)
+            company_id: Company ID for multi-tenant isolation
+            
+        Returns:
+            Total duration in minutes (service duration + buffer time)
+        """
+        if service_duration is not None:
+            duration = service_duration
+        elif service_name:
+            duration = self.get_service_duration(service_name, company_id=company_id)
+        else:
+            duration = self.get_default_duration_minutes(company_id=company_id)
+        
+        buffer_time = self.get_buffer_time_minutes(company_id=company_id)
+        return duration + buffer_time
 
 
 # Singleton instance
