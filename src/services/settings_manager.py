@@ -369,7 +369,9 @@ class SettingsManager:
         db = get_database()
         
         try:
-            return db.update_service(service_id, company_id=company_id, **service_data)
+            # Remove company_id from service_data if present to avoid duplicate keyword argument
+            clean_data = {k: v for k, v in service_data.items() if k != 'company_id'}
+            return db.update_service(service_id, company_id=company_id, **clean_data)
         except Exception as e:
             print(f"Error updating service: {e}")
             return False

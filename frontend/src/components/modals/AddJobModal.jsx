@@ -76,14 +76,14 @@ function AddJobModal({ isOpen, onClose }) {
     enabled: isOpen
   });
 
-  // Fetch availability when a date is selected
+  // Fetch availability when a date AND service are selected
   const { data: availability, isLoading: isLoadingAvailability } = useQuery({
-    queryKey: ['availability', selectedDate, formData.service_type],
+    queryKey: ['availability', selectedDate, formData.service_type, formData.duration_minutes],
     queryFn: async () => {
       const response = await checkAvailability(selectedDate, formData.service_type);
       return response.data;
     },
-    enabled: !!selectedDate && isOpen
+    enabled: !!selectedDate && !!formData.service_type && isOpen
   });
 
   const filteredClients = useMemo(() => {
@@ -136,7 +136,7 @@ function AddJobModal({ isOpen, onClose }) {
     setWorkerAvailability(null);
   };
 
-  // Handle service selection
+  // Handle service selection - auto-populate estimated charge
   const handleServiceSelect = (service) => {
     setSelectedService(service);
     setFormData(prev => ({
@@ -231,8 +231,6 @@ function AddJobModal({ isOpen, onClose }) {
     if (waitingForNewClient && clients && clients.length > previousClientsLengthRef.current) {
       // A new client was added - select the most recent one
       const sortedClients = [...clients].sort((a, b) => {
-        // Assuming clients have an id or created_at field
-        // Most recent will have the highest id
         return (b.id || 0) - (a.id || 0);
       });
       const newestClient = sortedClients[0];
@@ -355,7 +353,8 @@ function AddJobModal({ isOpen, onClose }) {
     <>
     <Modal isOpen={isOpen} onClose={onClose} title="Add New Job" size="large">
       <form onSubmit={handleSubmit} className="form add-job-form">
-        <div className="form-group">
+        {/* Customer Selection */}
+        <div className="form-group customer-form-group">
           <label className="form-label">Customer <span className="required">*</span></label>
           <div className="customer-search-container" ref={dropdownRef}>
             {selectedClientName ? (
@@ -449,39 +448,71 @@ function AddJobModal({ isOpen, onClose }) {
           </small>
         </div>
 
-        {/* Worker Assignment - placed early to check availability before selecting time */}
+        {/* Service Type - MOVED BEFORE DATE/TIME */}
         <div className="form-group">
-          <label className="form-label">Assign Worker (optional)</label>
-          <select
-            name="worker_id"
-            className="form-input"
-            value={formData.worker_id}
-            onChange={(e) => handleWorkerSelect(e.target.value)}
-          >
-            <option value="">Select a worker...</option>
-            {workers?.map(worker => (
-              <option key={worker.id} value={worker.id}>
-                {worker.name} {worker.trade_specialty && `(${worker.trade_specialty})`}
-              </option>
-            ))}
-          </select>
-          {workerAvailability && !workerAvailability.available && (
-            <div className="worker-conflict-warning">
-              <i className="fas fa-exclamation-triangle"></i>
-              <span>{workerAvailability.message}</span>
-            </div>
-          )}
-          {workerAvailability && workerAvailability.available && formData.worker_id && (
-            <div className="worker-available-badge">
-              <i className="fas fa-check-circle"></i>
-              <span>{selectedWorkerName} is available at this time</span>
-            </div>
+          <label className="form-label">Service Type <span className="required">*</span></label>
+          {servicesMenu?.services?.length > 0 ? (
+            <>
+              <select
+                name="service_type"
+                className="form-input form-select"
+                value={formData.service_type}
+                onChange={(e) => {
+                  const service = servicesMenu.services.find(s => s.name === e.target.value);
+                  if (service) {
+                    handleServiceSelect(service);
+                  } else if (e.target.value === '__custom__') {
+                    setFormData(prev => ({ ...prev, service_type: '' }));
+                    setSelectedService(null);
+                  } else {
+                    setFormData(prev => ({ ...prev, service_type: e.target.value }));
+                    setSelectedService(null);
+                  }
+                }}
+                required
+              >
+                <option value="">Select a service...</option>
+                {servicesMenu.services.map(service => (
+                  <option key={service.id} value={service.name}>
+                    {service.name} {service.duration_minutes ? `(${service.duration_minutes} mins)` : ''} {service.price ? `- €${service.price}` : ''}
+                  </option>
+                ))}
+                <option value="__custom__">Other (custom service)</option>
+              </select>
+              {formData.service_type === '' && (
+                <input
+                  type="text"
+                  name="custom_service"
+                  className="form-input"
+                  style={{ marginTop: '8px' }}
+                  placeholder="Enter custom service type..."
+                  onChange={(e) => setFormData(prev => ({ ...prev, service_type: e.target.value }))}
+                />
+              )}
+              {selectedService && (
+                <div className="service-info-badge">
+                  <span><i className="fas fa-clock"></i> {selectedService.duration_minutes || 60} mins</span>
+                  {selectedService.price && <span><i className="fas fa-euro-sign"></i> €{selectedService.price}</span>}
+                </div>
+              )}
+            </>
+          ) : (
+            <input
+              type="text"
+              name="service_type"
+              className="form-input"
+              value={formData.service_type}
+              onChange={handleChange}
+              placeholder="e.g., Plumbing repair, Electrical work"
+              required
+            />
           )}
           <small className="form-hint">
-            <i className="fas fa-info-circle"></i> Select a worker to check their availability for the chosen time
+            <i className="fas fa-info-circle"></i> Select a service first to see available time slots based on duration
           </small>
         </div>
 
+        {/* Date & Time - NOW AFTER SERVICE */}
         <div className="form-group">
           <label className="form-label">Date & Time <span className="required">*</span></label>
           <div className="quick-date-buttons">
@@ -516,8 +547,8 @@ function AddJobModal({ isOpen, onClose }) {
             required
           />
           
-          {/* Time Slots Display */}
-          {showTimeSlots && selectedDate && (
+          {/* Time Slots Display - only show if service is selected */}
+          {showTimeSlots && selectedDate && formData.service_type && (
             <div className="time-slots-container">
               <div className="time-slots-header">
                 <h4>Available Time Slots</h4>
@@ -567,62 +598,43 @@ function AddJobModal({ isOpen, onClose }) {
               )}
             </div>
           )}
+          
+          {/* Prompt to select service first */}
+          {showTimeSlots && selectedDate && !formData.service_type && (
+            <div className="time-slots-prompt">
+              <i className="fas fa-info-circle"></i>
+              <span>Please select a service first to see available time slots</span>
+            </div>
+          )}
         </div>
 
+        {/* Worker Assignment */}
         <div className="form-group">
-          <label className="form-label">Service Type <span className="required">*</span></label>
-          {servicesMenu?.services?.length > 0 ? (
-            <>
-              <select
-                name="service_type"
-                className="form-input"
-                value={formData.service_type}
-                onChange={(e) => {
-                  const service = servicesMenu.services.find(s => s.name === e.target.value);
-                  if (service) {
-                    handleServiceSelect(service);
-                  } else {
-                    setFormData(prev => ({ ...prev, service_type: e.target.value }));
-                    setSelectedService(null);
-                  }
-                }}
-                required
-              >
-                <option value="">Select a service...</option>
-                {servicesMenu.services.map(service => (
-                  <option key={service.id} value={service.name}>
-                    {service.name} {service.duration_minutes ? `(${service.duration_minutes} mins)` : ''} {service.price ? `- €${service.price}` : ''}
-                  </option>
-                ))}
-                <option value="__custom__">Other (custom service)</option>
-              </select>
-              {formData.service_type === '__custom__' && (
-                <input
-                  type="text"
-                  name="custom_service"
-                  className="form-input"
-                  style={{ marginTop: '8px' }}
-                  placeholder="Enter custom service type..."
-                  onChange={(e) => setFormData(prev => ({ ...prev, service_type: e.target.value }))}
-                />
-              )}
-              {selectedService && (
-                <div className="service-info-display" style={{ marginTop: '8px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '4px', fontSize: '0.9em' }}>
-                  <span><i className="fas fa-clock"></i> Duration: {selectedService.duration_minutes || 60} mins</span>
-                  {selectedService.price && <span style={{ marginLeft: '16px' }}><i className="fas fa-euro-sign"></i> Price: €{selectedService.price}</span>}
-                </div>
-              )}
-            </>
-          ) : (
-            <input
-              type="text"
-              name="service_type"
-              className="form-input"
-              value={formData.service_type}
-              onChange={handleChange}
-              placeholder="e.g., Plumbing repair, Electrical work"
-              required
-            />
+          <label className="form-label">Assign Worker (optional)</label>
+          <select
+            name="worker_id"
+            className="form-input form-select"
+            value={formData.worker_id}
+            onChange={(e) => handleWorkerSelect(e.target.value)}
+          >
+            <option value="">Select a worker...</option>
+            {workers?.map(worker => (
+              <option key={worker.id} value={worker.id}>
+                {worker.name} {worker.trade_specialty && `(${worker.trade_specialty})`}
+              </option>
+            ))}
+          </select>
+          {workerAvailability && !workerAvailability.available && (
+            <div className="worker-conflict-warning">
+              <i className="fas fa-exclamation-triangle"></i>
+              <span>{workerAvailability.message}</span>
+            </div>
+          )}
+          {workerAvailability && workerAvailability.available && formData.worker_id && (
+            <div className="worker-available-badge">
+              <i className="fas fa-check-circle"></i>
+              <span>{selectedWorkerName} is available at this time</span>
+            </div>
           )}
         </div>
 
@@ -689,6 +701,9 @@ function AddJobModal({ isOpen, onClose }) {
             min="0"
             placeholder="0.00"
           />
+          <small className="form-hint">
+            {selectedService?.price ? 'Auto-filled from service price. You can adjust if needed.' : 'Enter the estimated cost for this job'}
+          </small>
         </div>
 
         <div className="form-group">

@@ -307,8 +307,8 @@ function Settings() {
           )}
 
           {/* Setup Suggestions Banner - show one high-priority suggestion at a time */}
-          {settings && !saveMessage && (() => {
-            // Priority order of suggestions
+          {settings && (() => {
+            // Priority order of suggestions - always show when conditions are met
             if (!settings.business_name) {
               return (
                 <div className="setup-suggestion">
