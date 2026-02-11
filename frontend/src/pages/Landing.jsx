@@ -1,7 +1,96 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import Tilt from 'react-parallax-tilt';
+import Lottie from 'lottie-react';
 import DarkVeil from '../components/DarkVeil';
 import './Landing.css';
+
+// Lottie animation data - Phone ringing animation
+const phoneRingingAnimation = {
+  v: "5.5.7",
+  fr: 30,
+  ip: 0,
+  op: 60,
+  w: 100,
+  h: 100,
+  nm: "Phone",
+  ddd: 0,
+  assets: [],
+  layers: [{
+    ddd: 0,
+    ind: 1,
+    ty: 4,
+    nm: "Phone",
+    sr: 1,
+    ks: {
+      o: { a: 0, k: 100 },
+      r: { a: 1, k: [{ t: 0, s: [-5], h: 0 }, { t: 15, s: [5], h: 0 }, { t: 30, s: [-5], h: 0 }, { t: 45, s: [5], h: 0 }, { t: 60, s: [-5] }] },
+      p: { a: 0, k: [50, 50, 0] },
+      a: { a: 0, k: [0, 0, 0] },
+      s: { a: 1, k: [{ t: 0, s: [100, 100, 100] }, { t: 30, s: [105, 105, 100] }, { t: 60, s: [100, 100, 100] }] }
+    },
+    shapes: [{
+      ty: "gr",
+      it: [{
+        ty: "rc",
+        d: 1,
+        s: { a: 0, k: [30, 50] },
+        p: { a: 0, k: [0, 0] },
+        r: { a: 0, k: 8 }
+      }, {
+        ty: "fl",
+        c: { a: 0, k: [0.055, 0.647, 0.914, 1] },
+        o: { a: 0, k: 100 }
+      }]
+    }]
+  }]
+};
+
+// Calendar animation
+const calendarAnimation = {
+  v: "5.5.7",
+  fr: 30,
+  ip: 0,
+  op: 60,
+  w: 100,
+  h: 100,
+  nm: "Calendar",
+  ddd: 0,
+  assets: [],
+  layers: [{
+    ddd: 0,
+    ind: 1,
+    ty: 4,
+    nm: "Check",
+    sr: 1,
+    ks: {
+      o: { a: 1, k: [{ t: 0, s: [0] }, { t: 20, s: [100] }, { t: 40, s: [100] }, { t: 60, s: [0] }] },
+      r: { a: 0, k: 0 },
+      p: { a: 0, k: [50, 55, 0] },
+      a: { a: 0, k: [0, 0, 0] },
+      s: { a: 1, k: [{ t: 0, s: [0, 0, 100] }, { t: 20, s: [100, 100, 100] }, { t: 40, s: [100, 100, 100] }, { t: 60, s: [0, 0, 100] }] }
+    },
+    shapes: [{
+      ty: "gr",
+      it: [{
+        ty: "sr",
+        sy: 1,
+        d: 1,
+        pt: { a: 0, k: 5 },
+        p: { a: 0, k: [0, 0] },
+        r: { a: 0, k: 0 },
+        ir: { a: 0, k: 8 },
+        is: { a: 0, k: 0 },
+        or: { a: 0, k: 15 },
+        os: { a: 0, k: 0 }
+      }, {
+        ty: "fl",
+        c: { a: 0, k: [0.063, 0.725, 0.506, 1] },
+        o: { a: 0, k: 100 }
+      }]
+    }]
+  }]
+};
 
 // Animated counter component with intersection observer
 function NumberTicker({ end, duration = 2000, suffix = '' }) {
@@ -81,6 +170,35 @@ function ReviewCard({ name, company, image, text, rating }) {
   );
 }
 
+// Animated Feature Card with hover effects
+function FeatureCard({ icon, title, description, lottieData, index }) {
+  const [isHovered, setIsHovered] = useState(false);
+  
+  return (
+    <div 
+      className="feature-card"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{ animationDelay: `${index * 0.1}s` }}
+    >
+      <div className="feature-icon">
+        {lottieData ? (
+          <Lottie 
+            animationData={lottieData} 
+            loop={isHovered}
+            autoplay={isHovered}
+            style={{ width: 40, height: 40 }}
+          />
+        ) : (
+          <i className={icon}></i>
+        )}
+      </div>
+      <h3>{title}</h3>
+      <p>{description}</p>
+    </div>
+  );
+}
+
 function Landing() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -140,32 +258,38 @@ function Landing() {
     {
       icon: "fas fa-phone-volume",
       title: "24/7 AI Receptionist",
-      description: "Never miss a call again. Our AI answers professionally, day or night, capturing every lead."
+      description: "Never miss a call again. Our AI answers professionally, day or night, capturing every lead.",
+      lottieData: phoneRingingAnimation
     },
     {
       icon: "fas fa-calendar-check",
       title: "Smart Scheduling",
-      description: "Automatic appointment booking synced with your calendar. No double bookings, no hassle."
+      description: "Automatic appointment booking synced with your calendar. No double bookings, no hassle.",
+      lottieData: calendarAnimation
     },
     {
       icon: "fas fa-users",
       title: "Customer Management",
-      description: "Keep track of all your clients, their job history, and preferences in one place."
+      description: "Keep track of all your clients, their job history, and preferences in one place.",
+      lottieData: null
     },
     {
       icon: "fas fa-chart-line",
       title: "Financial Tracking",
-      description: "Monitor revenue, track payments, and send invoices directly from the dashboard."
+      description: "Monitor revenue, track payments, and send invoices directly from the dashboard.",
+      lottieData: null
     },
     {
       icon: "fas fa-hard-hat",
       title: "Worker Management",
-      description: "Assign jobs to your team, track their schedules, and prevent conflicts."
+      description: "Assign jobs to your team, track their schedules, and prevent conflicts.",
+      lottieData: null
     },
     {
       icon: "fas fa-comments",
       title: "AI Chat Support",
-      description: "Let customers chat with your AI assistant for quotes and information anytime."
+      description: "Let customers chat with your AI assistant for quotes and information anytime.",
+      lottieData: null
     }
   ];
 
@@ -208,6 +332,13 @@ function Landing() {
 
   return (
     <div className="landing">
+      {/* Floating background elements */}
+      <div className="floating-elements">
+        <div className="floating-shape shape-1"></div>
+        <div className="floating-shape shape-2"></div>
+        <div className="floating-shape shape-3"></div>
+      </div>
+
       {/* Navigation - Light Theme */}
       <nav className="landing-nav">
         <div className="nav-container">
@@ -290,40 +421,42 @@ function Landing() {
           </div>
         </div>
         <div className="hero-visual">
-          <div className="phone-mockup">
-            <div className="phone-notch"></div>
-            <div className="phone-screen">
-              <div className="call-ui">
-                <div className="caller-avatar">
-                  <i className="fas fa-user"></i>
-                </div>
-                <div className="caller-info">
-                  <span className="caller-name">Incoming Call</span>
-                  <span className="caller-number">+353 86 XXX XXXX</span>
-                </div>
-                <div className="ai-badge">
-                  <span className="ai-pulse"></span>
-                  <i className="fas fa-robot"></i> AI Answering
-                </div>
-                <div className="call-wave">
-                  <span></span><span></span><span></span><span></span><span></span>
+          <Tilt
+            className="phone-tilt-wrapper"
+            tiltMaxAngleX={15}
+            tiltMaxAngleY={15}
+            perspective={1000}
+            scale={1.02}
+            transitionSpeed={2000}
+            gyroscope={true}
+            glareEnable={true}
+            glareMaxOpacity={0.2}
+            glareColor="#ffffff"
+            glarePosition="all"
+            glareBorderRadius="40px"
+          >
+            <div className="phone-mockup">
+              <div className="phone-notch"></div>
+              <div className="phone-screen">
+                <div className="call-ui">
+                  <div className="caller-avatar">
+                    <i className="fas fa-user"></i>
+                  </div>
+                  <div className="caller-info">
+                    <span className="caller-name">Incoming Call</span>
+                    <span className="caller-number">+353 86 XXX XXXX</span>
+                  </div>
+                  <div className="ai-badge">
+                    <span className="ai-pulse"></span>
+                    <i className="fas fa-robot"></i> AI Answering
+                  </div>
+                  <div className="call-wave">
+                    <span></span><span></span><span></span><span></span><span></span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Logos Section */}
-      <section className="logos-section">
-        <div className="section-container">
-          <p className="logos-title">Integrates with tools you already use</p>
-          <div className="logos-grid">
-            <div className="logo-item"><i className="fab fa-google"></i> Google Calendar</div>
-            <div className="logo-item"><i className="fas fa-phone-alt"></i> Twilio</div>
-            <div className="logo-item"><i className="fab fa-stripe-s"></i> Stripe</div>
-            <div className="logo-item"><i className="fas fa-brain"></i> OpenAI</div>
-          </div>
+          </Tilt>
         </div>
       </section>
 
@@ -337,16 +470,14 @@ function Landing() {
           </div>
           <div className="features-grid">
             {features.map((feature, index) => (
-              <div 
-                key={index} 
-                className="feature-card"
-              >
-                <div className="feature-icon">
-                  <i className={feature.icon}></i>
-                </div>
-                <h3>{feature.title}</h3>
-                <p>{feature.description}</p>
-              </div>
+              <FeatureCard 
+                key={index}
+                icon={feature.icon}
+                title={feature.title}
+                description={feature.description}
+                lottieData={feature.lottieData}
+                index={index}
+              />
             ))}
           </div>
         </div>

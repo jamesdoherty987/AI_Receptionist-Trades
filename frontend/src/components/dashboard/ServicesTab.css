@@ -151,7 +151,7 @@
   font-size: 1.1rem;
   font-weight: 700;
   margin: 0 0 0.75rem 0;
-  color: var(--text-primary);
+  color: #1f2937;
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
@@ -168,7 +168,7 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.875rem;
-  color: var(--text-secondary);
+  color: #4b5563;
   font-weight: 500;
 }
 
@@ -364,6 +364,7 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    color: #1f2937;
   }
 
   .service-details {
@@ -376,6 +377,7 @@
     font-size: 0.7rem;
     gap: 0.25rem;
     white-space: nowrap;
+    color: #4b5563;
   }
 
   .service-price i,
