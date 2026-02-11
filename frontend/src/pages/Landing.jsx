@@ -172,21 +172,17 @@ function ReviewCard({ name, company, image, text, rating }) {
 
 // Animated Feature Card with hover effects
 function FeatureCard({ icon, title, description, lottieData, index }) {
-  const [isHovered, setIsHovered] = useState(false);
-  
   return (
     <div 
       className="feature-card"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       style={{ animationDelay: `${index * 0.1}s` }}
     >
       <div className="feature-icon">
         {lottieData ? (
           <Lottie 
             animationData={lottieData} 
-            loop={isHovered}
-            autoplay={isHovered}
+            loop={true}
+            autoplay={true}
             style={{ width: 40, height: 40 }}
           />
         ) : (
@@ -429,11 +425,7 @@ function Landing() {
             scale={1.02}
             transitionSpeed={2000}
             gyroscope={true}
-            glareEnable={true}
-            glareMaxOpacity={0.2}
-            glareColor="#ffffff"
-            glarePosition="all"
-            glareBorderRadius="40px"
+            glareEnable={false}
           >
             <div className="phone-mockup">
               <div className="phone-notch"></div>
