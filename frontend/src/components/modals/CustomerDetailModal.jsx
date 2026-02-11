@@ -115,6 +115,11 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
   };
 
   const handleEditSave = () => {
+    // Validate required field
+    if (!editData.name || !editData.name.trim()) {
+      addToast('Customer name is required', 'warning');
+      return;
+    }
     updateMutation.mutate(editData);
   };
 

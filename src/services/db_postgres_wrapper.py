@@ -2213,6 +2213,94 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
+    def find_available_workers_for_slot(self, appointment_time, duration_minutes: int = 60,
+                                        company_id: int = None, trade_specialty: str = None) -> Optional[List[Dict]]:
+        """
+        Find all workers who are available at a specific time slot.
+        
+        Args:
+            appointment_time: The appointment start time (datetime or string)
+            duration_minutes: Duration of the appointment in minutes
+            company_id: Company ID for data isolation (required)
+            trade_specialty: Optional filter by worker's trade specialty
+            
+        Returns:
+            List of available worker dicts. Returns None on error (distinct from empty list).
+        """
+        if not company_id:
+            return []
+        
+        try:
+            # Get all workers for this company
+            all_workers = self.get_all_workers(company_id=company_id)
+            
+            if not all_workers:
+                return []
+            
+            available_workers = []
+            
+            for worker in all_workers:
+                # Skip inactive workers
+                if worker.get('status') == 'inactive':
+                    continue
+                
+                # Filter by trade specialty if specified
+                if trade_specialty:
+                    worker_specialty = (worker.get('trade_specialty') or '').lower()
+                    if trade_specialty.lower() not in worker_specialty and worker_specialty not in trade_specialty.lower():
+                        continue
+                
+                # Check availability
+                availability = self.check_worker_availability(
+                    worker_id=worker['id'],
+                    appointment_time=appointment_time,
+                    duration_minutes=duration_minutes,
+                    company_id=company_id
+                )
+                
+                if availability['available']:
+                    available_workers.append({
+                        'id': worker['id'],
+                        'name': worker['name'],
+                        'phone': worker.get('phone'),
+                        'email': worker.get('email'),
+                        'trade_specialty': worker.get('trade_specialty')
+                    })
+            
+            return available_workers
+        except Exception as e:
+            print(f"Error finding available workers: {e}")
+            # Return None on error to distinguish from "no workers available" (empty list)
+            return None
+    
+    def has_workers(self, company_id: int) -> bool:
+        """
+        Check if a company has any workers configured.
+        
+        Args:
+            company_id: Company ID to check
+            
+        Returns:
+            True if company has at least one worker, False otherwise
+        """
+        if not company_id:
+            return False
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT COUNT(*) FROM workers WHERE company_id = %s AND status != 'inactive'",
+                (company_id,)
+            )
+            result = cursor.fetchone()
+            return result[0] > 0 if result else False
+        except Exception as e:
+            print(f"Error checking if company has workers: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+    
     # Service management methods
     def add_service(self, service_id: str, category: str, name: str, 
                    description: str = None, duration_minutes: int = 60,

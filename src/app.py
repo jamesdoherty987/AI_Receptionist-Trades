@@ -2389,11 +2389,42 @@ def add_service_api():
     
     data = request.json
     
-    # Upload image to R2 if it's base64
-    if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
-        data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'services')
+    # Validate required field: name
+    name = data.get('name', '').strip() if data.get('name') else ''
+    if not name:
+        return jsonify({"error": "Service name is required"}), 400
     
-    success = settings_mgr.add_service(data, company_id=company_id)
+    # Sanitize and validate optional fields
+    try:
+        price = float(data.get('price', 0)) if data.get('price') else 0
+        if price < 0:
+            price = 0
+    except (ValueError, TypeError):
+        price = 0
+    
+    try:
+        duration = int(data.get('duration_minutes', 60)) if data.get('duration_minutes') else 60
+        if duration < 1:
+            duration = 60
+    except (ValueError, TypeError):
+        duration = 60
+    
+    # Upload image to R2 if it's base64
+    image_url = data.get('image_url', '')
+    if image_url and image_url.startswith('data:image/'):
+        image_url = upload_base64_image_to_r2(image_url, company_id, 'services')
+    
+    # Build sanitized service data
+    sanitized_data = {
+        'name': name,
+        'price': price,
+        'duration_minutes': duration,
+        'image_url': image_url if image_url else None,
+        'category': data.get('category', 'General'),
+        'description': data.get('description', '').strip() if data.get('description') else None
+    }
+    
+    success = settings_mgr.add_service(sanitized_data, company_id=company_id)
     if success:
         return jsonify({"message": "Service added successfully"})
     return jsonify({"error": "Failed to add service"}), 500
@@ -2410,9 +2441,34 @@ def manage_service_api(service_id):
     if request.method == "PUT":
         data = request.json
         
+        # Validate name if provided
+        if 'name' in data:
+            name = data.get('name', '').strip() if data.get('name') else ''
+            if not name:
+                return jsonify({"error": "Service name is required"}), 400
+            data['name'] = name
+        
+        # Sanitize price if provided
+        if 'price' in data:
+            try:
+                price = float(data.get('price', 0)) if data.get('price') else 0
+                data['price'] = price if price >= 0 else 0
+            except (ValueError, TypeError):
+                data['price'] = 0
+        
+        # Sanitize duration if provided
+        if 'duration_minutes' in data:
+            try:
+                duration = int(data.get('duration_minutes', 60)) if data.get('duration_minutes') else 60
+                data['duration_minutes'] = duration if duration > 0 else 60
+            except (ValueError, TypeError):
+                data['duration_minutes'] = 60
+        
         # Upload image to R2 if it's base64
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
             data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'services')
+        elif 'image_url' in data and not data['image_url']:
+            data['image_url'] = None
         
         success = settings_mgr.update_service(service_id, data, company_id=company_id)
         if success:
@@ -2469,10 +2525,20 @@ def clients_api():
             }), 403
         
         data = request.json
+        
+        # Validate required field: name
+        name = data.get('name', '').strip() if data.get('name') else ''
+        if not name:
+            return jsonify({"error": "Customer name is required"}), 400
+        
+        # Sanitize optional fields - convert empty strings to None
+        phone = data.get('phone', '').strip() if data.get('phone') else None
+        email = data.get('email', '').strip() if data.get('email') else None
+        
         client_id = db.add_client(
-            name=data['name'],
-            phone=data.get('phone'),
-            email=data.get('email'),
+            name=name,
+            phone=phone if phone else None,
+            email=email if email else None,
             company_id=company_id
         )
         return jsonify({"id": client_id, "message": "Client created"}), 201
@@ -2502,8 +2568,28 @@ def client_api(client_id):
         client = db.get_client(client_id, company_id=company_id)
         if not client:
             return jsonify({"error": "Client not found"}), 404
+        
         data = request.json
-        db.update_client(client_id, **data)
+        
+        # Sanitize fields
+        sanitized_data = {}
+        for key, value in data.items():
+            if isinstance(value, str):
+                value = value.strip()
+                # Name is required, don't allow empty
+                if key == 'name':
+                    if not value:
+                        return jsonify({"error": "Customer name is required"}), 400
+                    sanitized_data[key] = value
+                # Optional fields - convert empty to None
+                elif key in ['phone', 'email', 'notes', 'address']:
+                    sanitized_data[key] = value if value else None
+                else:
+                    sanitized_data[key] = value
+            else:
+                sanitized_data[key] = value
+        
+        db.update_client(client_id, **sanitized_data)
         return jsonify({"message": "Client updated"})
 
 
@@ -2653,13 +2739,17 @@ def bookings_api():
         
         data = request.json
         
-        # Required fields
+        # Required fields - validate they exist and are not empty
         client_id = data.get('client_id')
         appointment_time = data.get('appointment_time')
-        service_type = data.get('service_type')
+        service_type = data.get('service_type', '').strip() if data.get('service_type') else ''
         
-        if not all([client_id, appointment_time, service_type]):
-            return jsonify({"error": "Missing required fields: client_id, appointment_time, service_type"}), 400
+        if not client_id:
+            return jsonify({"error": "Customer is required"}), 400
+        if not appointment_time:
+            return jsonify({"error": "Date & Time is required"}), 400
+        if not service_type:
+            return jsonify({"error": "Service type is required"}), 400
         
         try:
             # Parse appointment time
@@ -2716,12 +2806,18 @@ def bookings_api():
             
             # Get client info (already verified by company_id)
             client = db.get_client(client_id, company_id=company_id)
+            if not client:
+                return jsonify({"error": "Customer not found"}), 404
             
-            # Use client's most recent booking address if not provided in job data
-            # Accept both 'job_address' (from frontend) and 'address' (legacy)
-            job_address = data.get('job_address') or data.get('address')
-            job_eircode = data.get('eircode')
-            job_property_type = data.get('property_type')
+            # Sanitize optional fields - convert empty strings to None
+            job_address = (data.get('job_address') or data.get('address') or '').strip()
+            job_address = job_address if job_address else None
+            
+            job_eircode = (data.get('eircode') or '').strip()
+            job_eircode = job_eircode if job_eircode else None
+            
+            job_property_type = (data.get('property_type') or '').strip()
+            job_property_type = job_property_type if job_property_type else None
             
             # If address not provided, try to get from client's previous bookings
             if not job_address or not job_eircode or not job_property_type:
@@ -2741,7 +2837,17 @@ def bookings_api():
                         print(f"[INFO] Using property type from previous booking: {job_property_type}")
             
             # Create booking - accept both 'charge' and 'estimated_charge' from frontend
+            # Sanitize charge value
             job_charge = data.get('charge') or data.get('estimated_charge')
+            if job_charge:
+                try:
+                    job_charge = float(job_charge)
+                    if job_charge < 0:
+                        job_charge = None
+                except (ValueError, TypeError):
+                    job_charge = None
+            else:
+                job_charge = None
             
             booking_id = db.add_booking(
                 client_id=client_id,
@@ -3071,15 +3177,38 @@ def booking_detail_api(booking_id):
         if 'job_address' in data:
             data['address'] = data.pop('job_address')
         
-        success = db.update_booking(booking_id, company_id=company_id, **data)
+        # Sanitize fields - convert empty strings to None for optional fields
+        sanitized_data = {}
+        for key, value in data.items():
+            if isinstance(value, str):
+                value = value.strip()
+                # For optional text fields, convert empty to None
+                if key in ['address', 'eircode', 'property_type', 'phone_number', 'email', 'phone']:
+                    sanitized_data[key] = value if value else None
+                else:
+                    sanitized_data[key] = value
+            elif key in ['charge', 'estimated_charge']:
+                # Sanitize charge values
+                if value is not None and value != '':
+                    try:
+                        sanitized_data[key] = float(value) if float(value) >= 0 else None
+                    except (ValueError, TypeError):
+                        sanitized_data[key] = None
+                else:
+                    sanitized_data[key] = None
+            else:
+                sanitized_data[key] = value
+        
+        success = db.update_booking(booking_id, company_id=company_id, **sanitized_data)
         
         # Update notes if provided
         if notes is not None:
             # Clear existing notes and add the new note
             db.delete_appointment_notes_by_booking(booking_id)
             
-            if notes.strip():
-                db.add_appointment_note(booking_id, notes, created_by="user")
+            notes_text = notes.strip() if isinstance(notes, str) else ''
+            if notes_text:
+                db.add_appointment_note(booking_id, notes_text, created_by="user")
             success = True
         
         if success:
@@ -3499,18 +3628,39 @@ def workers_api():
         
         data = request.json
         
+        # Validate required field: name
+        name = data.get('name', '').strip() if data.get('name') else ''
+        if not name:
+            return jsonify({"error": "Worker name is required"}), 400
+        
+        # Sanitize optional fields - convert empty strings to None
+        phone = data.get('phone', '').strip() if data.get('phone') else None
+        email = data.get('email', '').strip() if data.get('email') else None
+        trade_specialty = data.get('trade_specialty', '').strip() if data.get('trade_specialty') else None
+        # Also check 'specialty' as frontend might send that
+        if not trade_specialty:
+            trade_specialty = data.get('specialty', '').strip() if data.get('specialty') else None
+        
         # Upload image to R2 if it's base64
         image_url = data.get('image_url', '')
         if image_url and image_url.startswith('data:image/'):
             image_url = upload_base64_image_to_r2(image_url, company_id, 'workers')
         
+        # Handle weekly_hours_expected - default to 40.0 if not provided or invalid
+        try:
+            weekly_hours = float(data.get('weekly_hours_expected', 40.0))
+            if weekly_hours < 0 or weekly_hours > 168:
+                weekly_hours = 40.0
+        except (ValueError, TypeError):
+            weekly_hours = 40.0
+        
         worker_id = db.add_worker(
-            name=data['name'],
-            phone=data.get('phone'),
-            email=data.get('email'),
-            trade_specialty=data.get('trade_specialty'),
-            image_url=image_url,
-            weekly_hours_expected=data.get('weekly_hours_expected', 40.0),
+            name=name,
+            phone=phone if phone else None,
+            email=email if email else None,
+            trade_specialty=trade_specialty if trade_specialty else None,
+            image_url=image_url if image_url else None,
+            weekly_hours_expected=weekly_hours,
             company_id=company_id
         )
         return jsonify({"id": worker_id, "message": "Worker added"}), 201
@@ -3542,7 +3692,34 @@ def worker_api(worker_id):
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
             data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'workers')
         
-        db.update_worker(worker_id, **data)
+        # Sanitize fields
+        sanitized_data = {}
+        for key, value in data.items():
+            if isinstance(value, str):
+                value = value.strip()
+                # Name is required, don't allow empty
+                if key == 'name':
+                    if not value:
+                        return jsonify({"error": "Worker name is required"}), 400
+                    sanitized_data[key] = value
+                # Optional fields - convert empty to None
+                elif key in ['phone', 'email', 'trade_specialty', 'specialty', 'image_url']:
+                    sanitized_data[key] = value if value else None
+                else:
+                    sanitized_data[key] = value
+            elif key == 'weekly_hours_expected':
+                # Validate weekly hours
+                try:
+                    hours = float(value) if value is not None else 40.0
+                    if hours < 0 or hours > 168:
+                        hours = 40.0
+                    sanitized_data[key] = hours
+                except (ValueError, TypeError):
+                    sanitized_data[key] = 40.0
+            else:
+                sanitized_data[key] = value
+        
+        db.update_worker(worker_id, **sanitized_data)
         return jsonify({"message": "Worker updated"})
     
     elif request.method == "DELETE":

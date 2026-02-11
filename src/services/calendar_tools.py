@@ -913,6 +913,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             except:
                 business_days = config.BUSINESS_DAYS
             
+            # Check if company has workers - if so, we need to filter by worker availability
+            has_workers = db.has_workers(company_id) if db else False
+            if has_workers:
+                logger.debug(f"Worker check: Company has workers, will filter slots by worker availability")
+            
             # Check all days in range (no early exit - we want full picture)
             while current_date <= end_search:
                 # Only check business days (configured in config.BUSINESS_DAYS)
@@ -924,6 +929,23 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         logger.debug(f"[WARNING] Connection error checking {current_date.strftime('%A, %B %d')}: {e}")
                         # Re-raise so retry logic in google_calendar handles it
                         raise
+                    
+                    # If company has workers, filter slots to only those where a worker is available
+                    if day_slots and has_workers and db:
+                        worker_available_slots = []
+                        for slot in day_slots:
+                            available_workers = db.find_available_workers_for_slot(
+                                appointment_time=slot,
+                                duration_minutes=service_duration,
+                                company_id=company_id
+                            )
+                            # None means error - include slot (fail open for availability check)
+                            # Empty list means no workers - exclude slot
+                            if available_workers is None or len(available_workers) > 0:
+                                worker_available_slots.append(slot)
+                        day_slots = worker_available_slots
+                        logger.debug(f"   After worker filter: {len(day_slots)} slots with available workers")
+                    
                     if day_slots:
                         day_key = current_date.strftime('%Y-%m-%d')
                         slots_by_day[day_key] = day_slots
@@ -1671,12 +1693,40 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             service_duration = matched_service.get('duration_minutes', 60)
             logger.debug(f"Service match: '{job_description}' -> '{matched_service_name}' (duration: {service_duration} mins)")
             
+            # ALWAYS check calendar availability first (prevents double-booking)
             is_available = google_calendar.check_availability(parsed_time, duration_minutes=service_duration)
             if not is_available:
                 return {
                     "success": False,
                     "error": f"That time slot is already booked or doesn't have enough time for this service ({service_duration} mins). Please check availability and suggest another time."
                 }
+            
+            # Check if company has workers configured
+            has_workers = db.has_workers(company_id) if db else False
+            assigned_worker = None
+            
+            if has_workers:
+                # Find available workers for this time slot
+                available_workers = db.find_available_workers_for_slot(
+                    appointment_time=parsed_time,
+                    duration_minutes=service_duration,
+                    company_id=company_id
+                )
+                
+                if available_workers is None:
+                    # Database error - log warning but proceed without worker assignment
+                    # Better to book without worker than fail the booking entirely
+                    logger.warning(f"Worker lookup failed due to database error - proceeding without worker assignment")
+                elif len(available_workers) == 0:
+                    # No workers available at this time (not an error, just busy)
+                    return {
+                        "success": False,
+                        "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time when a worker is free."
+                    }
+                else:
+                    # Select the first available worker (could be enhanced to pick by specialty)
+                    assigned_worker = available_workers[0]
+                    logger.debug(f"Worker: Auto-assigning worker '{assigned_worker['name']}' (ID: {assigned_worker['id']})")
             
             # Create calendar event with trades details
             summary = f"{urgency_level.upper()}: {job_description[:50]} - {customer_name}"
@@ -1738,6 +1788,17 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         created_by="system"
                     )
                     
+                    # Auto-assign worker if one was selected
+                    if assigned_worker:
+                        try:
+                            assignment_result = db.assign_worker_to_job(booking_id, assigned_worker['id'])
+                            if assignment_result.get('success'):
+                                logger.info(f" Worker '{assigned_worker['name']}' (ID: {assigned_worker['id']}) assigned to booking {booking_id}")
+                            else:
+                                logger.warning(f" Failed to assign worker: {assignment_result.get('error')}")
+                        except Exception as worker_err:
+                            logger.warning(f" Could not assign worker: {worker_err}")
+                    
                     # Update client description
                     try:
                         from src.services.client_description_generator import update_client_description
@@ -1749,9 +1810,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 except Exception as e:
                     logger.error(f" Database save failed: {e}")
             
+            # Build response message
+            worker_msg = f" Assigned to {assigned_worker['name']}." if assigned_worker else ""
+            
             return {
                 "success": True,
-                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({service_duration} mins). {urgency_level.title()} job at {validated_address}.",
+                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({service_duration} mins). {urgency_level.title()} job at {validated_address}.{worker_msg}",
                 "appointment_details": {
                     "customer": customer_name,
                     "time": parsed_time.strftime('%A, %B %d at %I:%M %p'),
@@ -1763,7 +1827,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "phone": phone,
                     "email": email,
                     "property_type": property_type,
-                    "eircode": extracted_eircode
+                    "eircode": extracted_eircode,
+                    "assigned_worker": assigned_worker['name'] if assigned_worker else None,
+                    "assigned_worker_id": assigned_worker['id'] if assigned_worker else None
                 }
             }
         
