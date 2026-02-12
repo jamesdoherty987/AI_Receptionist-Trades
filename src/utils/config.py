@@ -71,6 +71,9 @@ class Config:
     MIN_TOKENS_BEFORE_INTERRUPT = int(os.getenv("MIN_TOKENS_BEFORE_INTERRUPT", 8))
     TTS_TIMEOUT = float(os.getenv("TTS_TIMEOUT", 20.0))
     
+    # Media Handler - LLM Processing (filler speech filtering)
+    LLM_PROCESSING_TIMEOUT = float(os.getenv("LLM_PROCESSING_TIMEOUT", 8.0))  # Max time to filter filler speech
+    
     # TTS Chunk Sizes
     MIN_TTS_CHUNK_CHARS = int(os.getenv("MIN_TTS_CHUNK_CHARS", 20))
     MAX_TTS_CHUNK_CHARS = int(os.getenv("MAX_TTS_CHUNK_CHARS", 120))

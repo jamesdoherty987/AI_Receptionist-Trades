@@ -72,6 +72,11 @@ async def media_handler(ws):
     respond_task: asyncio.Task | None = None
     tts_started_at = 0.0
     tts_ended_at = 0.0
+    
+    # --- LLM processing state (prevents "hello?" confusion) ---
+    llm_processing = False  # True while waiting for LLM response
+    llm_started_at = 0.0    # When LLM processing started
+    queued_speech = []      # Speech detected during LLM processing
 
     # --- Speech segmentation with sentence-level detection ---
     in_speech = False
@@ -97,6 +102,18 @@ async def media_handler(ws):
     DUPLICATE_WINDOW = config.DUPLICATE_WINDOW
     MIN_SPEECH_DURATION = config.MIN_SPEECH_DURATION
     COMPLETION_WAIT = config.COMPLETION_WAIT
+    
+    # LLM processing timeout - ignore filler speech during this window
+    LLM_PROCESSING_TIMEOUT = config.LLM_PROCESSING_TIMEOUT
+    # Only filter phrases that are clearly "checking if anyone is there" type filler
+    # Don't filter yes/no/okay as those could be legitimate responses
+    FILLER_PHRASES = {
+        "hello", "hi", "hey",
+        "are you there", "you there", "anyone there", 
+        "hello?", "hi?", "hey?",
+        "um", "uh", "hmm", "hm",
+        "can you hear me", "you hear me",
+    }
 
     bargein_since = 0.0
 
@@ -120,10 +137,10 @@ async def media_handler(ws):
             text_stream: Async iterator of text tokens
             label: Label for logging
         """
-        nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at
+        nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at, llm_processing, queued_speech
 
         async def run():
-            nonlocal speaking, tts_started_at, tts_ended_at, call_sid, conversation_log
+            nonlocal speaking, tts_started_at, tts_ended_at, call_sid, conversation_log, llm_processing, queued_speech, conversation
             speaking = True
             interrupt = False
             tts_started_at = asyncio.get_event_loop().time()
@@ -283,9 +300,26 @@ async def media_handler(ws):
                 duration = tts_ended_at - tts_started_at
                 speaking = False
                 interrupt = False  # Reset interrupt flag
+                llm_processing = False  # LLM response complete
+                
+                # Process any queued speech that came in during LLM processing
+                if queued_speech:
+                    combined_queued = " ".join(queued_speech)
+                    print(f"📬 Processing queued speech after TTS: '{combined_queued}'")
+                    # Add to conversation so it's included in context for next response
+                    if len(combined_queued.split()) >= 2:  # At least 2 words
+                        conversation.append({"role": "user", "content": combined_queued})
+                        conversation_log.append({
+                            "role": "user",
+                            "content": combined_queued,
+                            "timestamp": asyncio.get_event_loop().time()
+                        })
+                        print(f"📬 Added queued speech to conversation")
+                    queued_speech.clear()
+                
                 # Signal end immediately so user can speak
                 print(f"🛑 TTS end ({label}) - duration: {duration:.2f}s")
-                print(f"👂 Ready to receive audio again (speaking={speaking})")
+                print(f"👂 Ready to receive audio again (speaking={speaking}, llm_processing={llm_processing})")
                 # Small delay to ensure audio actually finished playing
                 await asyncio.sleep(0.1)
 
@@ -494,6 +528,40 @@ async def media_handler(ws):
                                         is_duplicate = True
                                 
                                 if not is_duplicate:
+                                    # Safety timeout: if llm_processing has been true for too long, reset it
+                                    if llm_processing and (now - llm_started_at) > LLM_PROCESSING_TIMEOUT:
+                                        print(f"⚠️ LLM processing timeout ({LLM_PROCESSING_TIMEOUT}s) - resetting flag")
+                                        llm_processing = False
+                                    
+                                    # Check if we're currently waiting for LLM and this is just filler
+                                    text_lower = text.lower().strip().rstrip('?.,!')
+                                    is_filler = text_lower in FILLER_PHRASES or (len(text.split()) <= 2 and any(f in text_lower for f in ['hello', 'there', 'hi']))
+                                    
+                                    if llm_processing and is_filler:
+                                        # Ignore filler phrases while LLM is thinking
+                                        print(f"🤫 Ignoring filler during LLM processing: '{text}'")
+                                        in_speech = False
+                                        silence_since = 0.0
+                                        pending_text = ""
+                                        last_interim = ""
+                                        asr.text = ""
+                                        asr.interim_text = ""
+                                        asr.reset_final_flag()
+                                        continue
+                                    
+                                    # If LLM is processing and this is substantial speech, queue it
+                                    if llm_processing and not is_filler:
+                                        print(f"📝 Queuing speech during LLM processing: '{text}'")
+                                        queued_speech.append(text)
+                                        in_speech = False
+                                        silence_since = 0.0
+                                        pending_text = ""
+                                        last_interim = ""
+                                        asr.text = ""
+                                        asr.interim_text = ""
+                                        asr.reset_final_flag()
+                                        continue
+                                    
                                     # Log the user speech
                                     conversation_log.append({
                                         "role": "user",
@@ -530,46 +598,33 @@ async def media_handler(ws):
                                     conversation.append({"role": "user", "content": text})
                                     
                                     print(f"🔊 Starting LLM response (conversation length: {len(conversation)})")
+                                    # Set LLM processing state to filter filler speech
+                                    # This flag is cleared in start_tts finally block when TTS completes
+                                    llm_processing = True
+                                    llm_started_at = now
+                                    queued_speech.clear()  # Clear any old queued speech (use .clear() to keep same list reference)
+                                    
                                     # Stream LLM with appointment detection, phone number, and company context
                                     try:
+                                        # Note: start_tts creates a background task and returns immediately
+                                        # The llm_processing flag is cleared in the TTS finally block
                                         await start_tts(
                                             stream_llm(conversation, process_appointment_with_calendar, caller_phone=caller_phone, company_id=company_id),
                                             label="respond"
                                         )
-                                        print(f"✅ Response complete, continuing to listen...")
-                                        
-                                        # Ensure we're ready to listen again with proper reset
-                                        await asyncio.sleep(0.1)  # Small delay for cleanup
-                                        speaking = False
-                                        interrupt = False
-                                        in_speech = False
-                                        silence_since = 0.0
-                                        bargein_since = 0.0
-                                        pending_text = ""
-                                        last_interim = ""
-                                        
-                                        # Clear any remaining audio buffer
-                                        await clear_twilio_audio()
+                                        # Code here runs immediately after task creation, not after TTS completes
+                                        # State cleanup happens in TTS finally block
                                         
                                     except Exception as e:
-                                        print(f"❌ Error during response: {e}")
+                                        print(f"❌ Error starting response: {e}")
                                         import traceback
                                         traceback.print_exc()
                                         
-                                        # Complete reset on error to prevent stuck states
+                                        # Reset on error to prevent stuck states
+                                        llm_processing = False
+                                        queued_speech.clear()
                                         speaking = False
                                         interrupt = False
-                                        in_speech = False
-                                        silence_since = 0.0
-                                        bargein_since = 0.0
-                                        pending_text = ""
-                                        last_interim = ""
-                                        
-                                        # Clear audio and ASR state
-                                        await clear_twilio_audio()
-                                        asr.text = ""
-                                        asr.interim_text = ""
-                                        asr.reset_final_flag()
                                 else:
                                     # Duplicate detected, just reset
                                     in_speech = False
