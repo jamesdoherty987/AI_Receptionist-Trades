@@ -33,7 +33,7 @@ class DeepgramASR:
             "&profanity_filter=false"  # Don't filter in case addresses contain unexpected words
             "&redact=false"  # Don't redact anything for addresses
             "&numerals=true"  # Better number handling for addresses
-            "&language=en-IE"  # Irish English for better name/place recognition
+            "&language=en"  # General English (en-IE not supported by nova-2-phonecall)
             "&diarize=false"  # Single speaker, no need for diarization
             "&utterances=true"  # Better utterance detection
             "&utt_split=0.8"  # Slightly longer pause before splitting utterances
