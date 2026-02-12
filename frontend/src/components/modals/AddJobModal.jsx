@@ -92,7 +92,8 @@ function AddJobModal({ isOpen, onClose }) {
   const mutation = useMutation({
     mutationFn: createBooking,
     onSuccess: () => {
-      queryClient.invalidateQueries(['bookings']);
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
       onClose();
       addToast('Job created successfully!', 'success');
     },
@@ -226,7 +227,7 @@ function AddJobModal({ isOpen, onClose }) {
   
   const handleCloseAddClient = () => { 
     setIsAddClientModalOpen(false); 
-    queryClient.invalidateQueries(['clients']); 
+    queryClient.invalidateQueries({ queryKey: ['clients'] }); 
   };
 
   return (

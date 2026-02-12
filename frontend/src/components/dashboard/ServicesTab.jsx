@@ -45,7 +45,7 @@ function ServicesTab() {
     mutationFn: createService,
     onMutate: async (newServiceData) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries(['services-menu']);
+      await queryClient.cancelQueries({ queryKey: ['services-menu'] });
       
       // Snapshot previous value
       const previousMenu = queryClient.getQueryData(['services-menu']);
@@ -70,7 +70,7 @@ function ServicesTab() {
       return { previousMenu };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['services-menu']);
+      queryClient.invalidateQueries({ queryKey: ['services-menu'] });
       addToast('Service added successfully!', 'success');
     },
     onError: (error, variables, context) => {
@@ -88,7 +88,7 @@ function ServicesTab() {
     mutationFn: ({ id, data }) => updateService(id, data),
     onMutate: async ({ id, data }) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries(['services-menu']);
+      await queryClient.cancelQueries({ queryKey: ['services-menu'] });
       
       // Snapshot previous value
       const previousMenu = queryClient.getQueryData(['services-menu']);
@@ -106,7 +106,7 @@ function ServicesTab() {
       return { previousMenu };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['services-menu']);
+      queryClient.invalidateQueries({ queryKey: ['services-menu'] });
       addToast('Service updated successfully!', 'success');
     },
     onError: (error, variables, context) => {
@@ -122,7 +122,7 @@ function ServicesTab() {
     mutationFn: deleteService,
     onMutate: async (serviceId) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries(['services-menu']);
+      await queryClient.cancelQueries({ queryKey: ['services-menu'] });
       
       // Snapshot previous value
       const previousMenu = queryClient.getQueryData(['services-menu']);
@@ -136,7 +136,7 @@ function ServicesTab() {
       return { previousMenu };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['services-menu']);
+      queryClient.invalidateQueries({ queryKey: ['services-menu'] });
       addToast('Service deleted', 'success');
     },
     onError: (error, variables, context) => {

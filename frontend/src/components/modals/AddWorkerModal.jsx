@@ -20,7 +20,8 @@ function AddWorkerModal({ isOpen, onClose }) {
   const mutation = useMutation({
     mutationFn: createWorker,
     onSuccess: () => {
-      queryClient.invalidateQueries(['workers']);
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['workers'] });
       onClose();
       setFormData({ name: '', phone: '', email: '', specialty: '', image_url: '', weekly_hours_expected: 40.0 });
       addToast('Worker added successfully!', 'success');

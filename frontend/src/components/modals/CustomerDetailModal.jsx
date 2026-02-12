@@ -44,8 +44,8 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
   const updateMutation = useMutation({
     mutationFn: (data) => updateClient(clientId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['client', clientId]);
-      queryClient.invalidateQueries(['clients']);
+      queryClient.invalidateQueries({ queryKey: ['client', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setIsEditing(false);
       addToast('Customer updated successfully!', 'success');
     },
@@ -58,7 +58,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
     mutationFn: (note) => addClientNote(clientId, note),
     onMutate: async (note) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries(['client', clientId]);
+      await queryClient.cancelQueries({ queryKey: ['client', clientId] });
       
       // Snapshot previous value
       const previousClient = queryClient.getQueryData(['client', clientId]);
@@ -86,8 +86,8 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       return { previousClient };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['client', clientId]);
-      queryClient.invalidateQueries(['clients']);
+      queryClient.invalidateQueries({ queryKey: ['client', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast('Note added!', 'success');
     },
     onError: (error, variables, context) => {

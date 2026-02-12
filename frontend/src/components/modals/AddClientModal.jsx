@@ -11,16 +11,15 @@ function AddClientModal({ isOpen, onClose }) {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
-    email: '',
     notes: ''
   });
 
   const mutation = useMutation({
     mutationFn: createClient,
     onSuccess: () => {
-      queryClient.invalidateQueries(['clients']);
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       onClose();
-      setFormData({ name: '', phone: '', email: '', notes: '' });
+      setFormData({ name: '', phone: '', notes: '' });
       addToast('Customer added successfully!', 'success');
     },
     onError: (error) => {
@@ -68,17 +67,6 @@ function AddClientModal({ isOpen, onClose }) {
             value={formData.phone}
             onChange={handleChange}
             placeholder="+353..."
-          />
-        </div>
-
-        <div className="form-group">
-          <label className="form-label">Email</label>
-          <input
-            type="email"
-            name="email"
-            className="form-input"
-            value={formData.email}
-            onChange={handleChange}
           />
         </div>
 

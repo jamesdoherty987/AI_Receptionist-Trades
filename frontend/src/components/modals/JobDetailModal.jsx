@@ -120,8 +120,8 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
   const editMutation = useMutation({
     mutationFn: (data) => updateBooking(jobId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['booking', jobId]);
-      queryClient.invalidateQueries(['bookings']);
+      queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setIsEditing(false);
       addToast('Job updated successfully!', 'success');
     },
@@ -134,7 +134,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
     mutationFn: ({ id, status }) => updateBooking(id, { status }),
     onMutate: async ({ status }) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries(['booking', jobId]);
+      await queryClient.cancelQueries({ queryKey: ['booking', jobId] });
       
       // Snapshot previous value
       const previousJob = queryClient.getQueryData(['booking', jobId]);
@@ -149,8 +149,8 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       return { previousJob };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['booking', jobId]);
-      queryClient.invalidateQueries(['bookings']);
+      queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast('Status updated successfully!', 'success');
     },
     onError: (error, variables, context) => {
@@ -166,7 +166,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
     mutationFn: ({ jobId, workerId, force }) => assignWorkerToJob(jobId, { worker_id: workerId, force }),
     onMutate: async ({ workerId }) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries(['job-workers', jobId]);
+      await queryClient.cancelQueries({ queryKey: ['job-workers', jobId] });
       
       // Snapshot previous value
       const previousWorkers = queryClient.getQueryData(['job-workers', jobId]);
@@ -186,9 +186,9 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       return { previousWorkers };
     },
     onSuccess: (response) => {
-      queryClient.invalidateQueries(['job-workers', jobId]);
-      queryClient.invalidateQueries(['available-workers', jobId]);
-      queryClient.invalidateQueries(['bookings']);
+      queryClient.invalidateQueries({ queryKey: ['job-workers', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['available-workers', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setShowAssignWorker(false);
       setSelectedWorkerId('');
       setForceAssign(false);
@@ -223,7 +223,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
     mutationFn: ({ jobId, workerId }) => removeWorkerFromJob(jobId, { worker_id: workerId }),
     onMutate: async ({ workerId }) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries(['job-workers', jobId]);
+      await queryClient.cancelQueries({ queryKey: ['job-workers', jobId] });
       
       // Snapshot previous value
       const previousWorkers = queryClient.getQueryData(['job-workers', jobId]);
@@ -236,8 +236,8 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       return { previousWorkers };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['job-workers', jobId]);
-      queryClient.invalidateQueries(['bookings']);
+      queryClient.invalidateQueries({ queryKey: ['job-workers', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast('Worker removed', 'success');
     },
     onError: (error, variables, context) => {

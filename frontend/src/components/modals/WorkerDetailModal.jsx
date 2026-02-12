@@ -52,7 +52,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     mutationFn: (data) => updateWorker(workerId, data),
     onMutate: async (updatedData) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries(['worker', workerId]);
+      await queryClient.cancelQueries({ queryKey: ['worker', workerId] });
       
       // Snapshot previous value
       const previousWorker = queryClient.getQueryData(['worker', workerId]);
@@ -66,8 +66,8 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
       return { previousWorker };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['worker', workerId]);
-      queryClient.invalidateQueries(['workers']);
+      queryClient.invalidateQueries({ queryKey: ['worker', workerId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setIsEditing(false);
       addToast('Worker updated successfully!', 'success');
     },
@@ -83,7 +83,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
   const deleteMutation = useMutation({
     mutationFn: () => deleteWorker(workerId),
     onSuccess: () => {
-      queryClient.invalidateQueries(['workers']);
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       onClose();
       addToast('Worker deleted', 'success');
     },
