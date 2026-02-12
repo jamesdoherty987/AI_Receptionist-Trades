@@ -39,7 +39,7 @@ import dateparser
 
 # Configuration constants
 MAX_CONVERSATION_HISTORY = 6  # Maximum number of message pairs to keep in context
-APPOINTMENT_BUFFER_MINUTES = 60  # Minutes to add as buffer when checking availability
+DEFAULT_APPOINTMENT_DURATION_MINUTES = 60  # Default duration for AI phone bookings
 CONFIRMATION_THRESHOLD = 0.7  # Confidence threshold for confirmation detection
 SKIP_APPOINTMENT_DETECTION = True  # Skip ALL appointment detection - LLM handles it with tools
 
@@ -451,10 +451,10 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
                     "clients": [client]
                 }
         
-        # Still multiple matches - ask for phone or email to narrow down
+        # Still multiple matches - ask for phone to narrow down
         return {
             "status": "multiple",
-            "message": f"I have {len(matching_clients)} customers with that name. Can I get your phone number or email to confirm which {caller_name.split()[0]} you are?",
+            "message": f"I have {len(matching_clients)} customers with that name. Can I get your phone number to confirm which {caller_name.split()[0]} you are?",
             "clients": matching_clients,
             "needs_contact": True
         }
@@ -2600,7 +2600,7 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
             
             # STEP 1: Check availability first
             print("🔍 Checking calendar availability...")
-            is_available = calendar.check_availability(requested_time, duration_minutes=APPOINTMENT_BUFFER_MINUTES)
+            is_available = calendar.check_availability(requested_time, duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES)
             
             if not is_available:
                 print("\n" + "="*60)
@@ -2634,7 +2634,7 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
             event = calendar.book_appointment(
                 summary=summary,
                 start_time=requested_time,
-                duration_minutes=APPOINTMENT_BUFFER_MINUTES,
+                duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES,
                 description=f"Booked via AI receptionist\nCustomer: {customer_name}\nReason: {details.get('service_type', 'General appointment')}\nDetails: {details.get('raw_text', 'N/A')}",
                 phone_number=phone_number
             )
@@ -2847,7 +2847,7 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
             
             # Check if new time is available
             print(f"🔍 Checking if new time {new_time.strftime('%B %d at %I:%M %p')} is available...")
-            is_available = calendar.check_availability(new_time, duration_minutes=APPOINTMENT_BUFFER_MINUTES)
+            is_available = calendar.check_availability(new_time, duration_minutes=DEFAULT_APPOINTMENT_DURATION_MINUTES)
             
             if not is_available:
                 print(f"❌ New time slot is already busy")

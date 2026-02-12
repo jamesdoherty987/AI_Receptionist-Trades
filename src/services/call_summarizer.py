@@ -30,7 +30,7 @@ CALL_SUMMARY_FUNCTION = {
         "properties": {
             "job_description": {
                 "type": "string",
-                "description": "Detailed description of the job/service requested. Include specific issues, symptoms, or problems mentioned. Be thorough but exclude greetings and small talk."
+                "description": "Write a comprehensive, well-structured description of the job/service requested. Include: (1) The main problem or service needed, (2) Specific symptoms, issues, or observations the customer mentioned, (3) When the problem started or was first noticed, (4) What the customer has already tried if anything, (5) Any relevant context about the situation. Write in clear, professional prose - not bullet points. Be thorough and descriptive while excluding greetings and small talk."
             },
             "urgency_level": {
                 "type": "string",
@@ -105,9 +105,9 @@ def summarize_call(conversation_log: List[Dict[str, Any]], caller_phone: str = N
     try:
         client = get_openai_client()
         
-        system_prompt = """You are an expert at extracting job-relevant information from phone call transcripts for a trades/service business.
+        system_prompt = """You are an expert at extracting job-relevant information from phone call transcripts for a trades/service business. Your summaries help technicians arrive prepared and understand the full context of each job.
 
-Your task is to identify and extract ONLY the details that are relevant to the job or service being requested.
+Your task is to create DETAILED, DESCRIPTIVE summaries that paint a complete picture of the customer's situation.
 
 EXCLUDE from your summary:
 - Greetings and pleasantries ("Hi", "How are you", "Thanks for calling")
@@ -115,15 +115,20 @@ EXCLUDE from your summary:
 - Generic confirmations ("Yes", "Okay", "Sure")
 - The receptionist's responses (focus on what the CUSTOMER said about their needs)
 
-INCLUDE in your summary:
-- What problem or service they need
-- How urgent it is and why
-- Where in the property the issue is
-- Any special circumstances or requirements
-- Their availability or scheduling preferences
-- Any relevant history or context about the issue
+INCLUDE in your summary (write in flowing, professional prose):
+- The primary problem or service requested - describe it fully
+- Specific symptoms, sounds, smells, or observations the customer mentioned
+- Timeline: when did the issue start? How long has it been going on?
+- Severity: how bad is it? Is it getting worse?
+- What the customer has already tried or ruled out
+- Any theories the customer has about the cause
+- Impact on the customer (e.g., "can't use the kitchen", "water damage spreading")
+- Related issues that might be connected
+- Any measurements, model numbers, or specific details mentioned
 
-Be concise but thorough. If the call doesn't contain any real job information (e.g., wrong number, just checking hours, no actual service request), set has_job_content to false."""
+Write the job_description as a detailed narrative paragraph (2-4 sentences minimum) that gives the technician everything they need to understand the situation before arriving. Avoid vague descriptions like "plumbing issue" - instead write "Customer reports a persistent leak under the kitchen sink that started three days ago after they noticed water pooling on the cabinet floor. The leak appears to be coming from the P-trap connection and has been getting progressively worse."
+
+If the call doesn't contain any real job information (e.g., wrong number, just checking hours, no actual service request), set has_job_content to false."""
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -169,48 +174,51 @@ def format_summary_for_note(summary: Dict[str, Any]) -> str:
     if not summary:
         return ""
     
-    lines = ["📞 Call Summary:"]
+    lines = ["📞 Call Summary"]
+    lines.append("─" * 30)
     
-    # Job description is the main content
+    # Job description is the main content - give it prominence
     if summary.get('job_description'):
         lines.append(f"\n{summary['job_description']}")
     
-    # Add urgency if not normal
+    # Add urgency section if not normal
     urgency = summary.get('urgency_level', 'normal')
     if urgency != 'normal':
+        lines.append("")
         urgency_display = {
-            'emergency': '🚨 EMERGENCY',
-            'urgent': '⚠️ Urgent',
-            'flexible': '📅 Flexible timing'
+            'emergency': '🚨 EMERGENCY - Immediate attention required',
+            'urgent': '⚠️ URGENT - Needs attention within 24-48 hours',
+            'flexible': '📅 Flexible - Customer has no time pressure'
         }.get(urgency, urgency.title())
-        lines.append(f"\nUrgency: {urgency_display}")
+        lines.append(f"Priority: {urgency_display}")
         
         if summary.get('urgency_notes'):
-            lines.append(f"  - {summary['urgency_notes']}")
+            lines.append(f"  → {summary['urgency_notes']}")
     
-    # Location details
+    # Build details section if any details exist
+    details = []
+    
     if summary.get('location_details'):
-        lines.append(f"\nLocation: {summary['location_details']}")
+        details.append(f"📍 Location: {summary['location_details']}")
     
-    # Property info
     if summary.get('property_info'):
-        lines.append(f"Property: {summary['property_info']}")
+        details.append(f"🏠 Property: {summary['property_info']}")
     
-    # Access instructions
     if summary.get('access_instructions'):
-        lines.append(f"\nAccess: {summary['access_instructions']}")
+        details.append(f"🔑 Access: {summary['access_instructions']}")
     
-    # Special requirements
     if summary.get('special_requirements'):
-        lines.append(f"\nNotes: {summary['special_requirements']}")
+        details.append(f"⚡ Special Notes: {summary['special_requirements']}")
     
-    # Previous work
     if summary.get('previous_work'):
-        lines.append(f"\nHistory: {summary['previous_work']}")
+        details.append(f"📋 History: {summary['previous_work']}")
     
-    # Customer availability
     if summary.get('customer_availability'):
-        lines.append(f"\nAvailability: {summary['customer_availability']}")
+        details.append(f"🕐 Availability: {summary['customer_availability']}")
+    
+    if details:
+        lines.append("")
+        lines.extend(details)
     
     return "\n".join(lines)
 

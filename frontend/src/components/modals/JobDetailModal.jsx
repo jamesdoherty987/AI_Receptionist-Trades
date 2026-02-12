@@ -8,7 +8,8 @@ import {
   removeWorkerFromJob,
   getJobWorkers,
   getAvailableWorkersForJob,
-  sendInvoice
+  sendInvoice,
+  getInvoiceConfig
 } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
@@ -33,6 +34,18 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
     enabled: isOpen && !!jobId,
     staleTime: 30 * 1000, // 30 seconds
     cacheTime: 5 * 60 * 1000 // 5 minutes
+  });
+
+  // Check invoice configuration
+  const { data: invoiceConfig } = useQuery({
+    queryKey: ['invoice-config'],
+    queryFn: async () => {
+      const response = await getInvoiceConfig();
+      return response.data;
+    },
+    enabled: isOpen,
+    staleTime: 60 * 1000, // 1 minute
+    cacheTime: 5 * 60 * 1000
   });
 
   const { data: assignedWorkers } = useQuery({
@@ -88,6 +101,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
         job_address: job.job_address || job.address || '',
         eircode: job.eircode || '',
         estimated_charge: job.estimated_charge || job.charge || '',
+        duration_minutes: job.duration_minutes || '60',
         notes: job.notes || ''
       });
     }
@@ -249,6 +263,23 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       addToast('Cannot send invoice: No charge amount set', 'warning');
       return;
     }
+    
+    // Check if invoice service is configured
+    if (invoiceConfig && !invoiceConfig.can_send_invoice) {
+      const warnings = invoiceConfig.warnings || [];
+      if (warnings.length > 0) {
+        addToast(warnings[0], 'error');
+      } else {
+        addToast('Invoice service is not configured. Please check your settings.', 'error');
+      }
+      return;
+    }
+    
+    // Warn if no payment methods configured (but still allow sending)
+    if (invoiceConfig && !invoiceConfig.payment_methods?.any_configured) {
+      addToast('Warning: No payment methods configured. Invoice will be sent without payment link.', 'warning');
+    }
+    
     invoiceMutation.mutate(jobId);
   };
 
@@ -298,6 +329,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
         job_address: job.job_address || job.address || '',
         eircode: job.eircode || '',
         estimated_charge: job.estimated_charge || job.charge || '',
+        duration_minutes: job.duration_minutes || '60',
         notes: job.notes || ''
       });
     }
@@ -388,12 +420,15 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                 </button>
                 {(job.estimated_charge || job.charge) && (
                   <button 
-                    className="btn btn-invoice"
+                    className={`btn btn-invoice ${invoiceConfig && !invoiceConfig.can_send_invoice ? 'btn-disabled' : ''}`}
                     onClick={handleSendInvoice}
-                    disabled={invoiceMutation.isPending}
+                    disabled={invoiceMutation.isPending || (invoiceConfig && !invoiceConfig.can_send_invoice)}
+                    title={invoiceConfig && !invoiceConfig.can_send_invoice 
+                      ? (invoiceConfig.warnings?.[0] || 'Invoice service not configured') 
+                      : `Send invoice via ${invoiceConfig?.service_name || 'email'}`}
                   >
                     <i className={`fas ${invoiceMutation.isPending ? 'fa-spinner fa-spin' : 'fa-file-invoice-dollar'}`}></i>
-                    {invoiceMutation.isPending ? 'Sending...' : 'Send Invoice'}
+                    {invoiceMutation.isPending ? 'Sending...' : `Send Invoice${invoiceConfig?.delivery_method === 'sms' ? ' (SMS)' : ''}`}
                   </button>
                 )}
                 {getDirectionsUrl() && (
@@ -524,19 +559,26 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                     </div>
                   </div>
                   <div className="edit-row">
-                    <div className="edit-field full-width">
-                      <label className="edit-label">Job Address</label>
-                      <input
-                        type="text"
-                        name="job_address"
+                    <div className="edit-field">
+                      <label className="edit-label">Duration</label>
+                      <select
+                        name="duration_minutes"
                         className="edit-input"
-                        value={editFormData.job_address}
+                        value={editFormData.duration_minutes}
                         onChange={handleEditChange}
-                        placeholder="Job location address"
-                      />
+                      >
+                        <option value="30">30 mins</option>
+                        <option value="60">1 hour</option>
+                        <option value="90">1.5 hours</option>
+                        <option value="120">2 hours</option>
+                        <option value="150">2.5 hours</option>
+                        <option value="180">3 hours</option>
+                        <option value="240">4 hours</option>
+                        <option value="300">5 hours</option>
+                        <option value="360">6 hours</option>
+                        <option value="480">8 hours</option>
+                      </select>
                     </div>
-                  </div>
-                  <div className="edit-row">
                     <div className="edit-field">
                       <label className="edit-label">Eircode</label>
                       <input
@@ -546,6 +588,19 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                         value={editFormData.eircode}
                         onChange={handleEditChange}
                         placeholder="e.g., D01 X2Y3"
+                      />
+                    </div>
+                  </div>
+                  <div className="edit-row">
+                    <div className="edit-field full-width">
+                      <label className="edit-label">Job Address</label>
+                      <input
+                        type="text"
+                        name="job_address"
+                        className="edit-input"
+                        value={editFormData.job_address}
+                        onChange={handleEditChange}
+                        placeholder="Job location address"
                       />
                     </div>
                   </div>

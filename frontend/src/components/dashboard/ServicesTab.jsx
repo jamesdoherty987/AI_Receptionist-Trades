@@ -237,15 +237,25 @@ function ServicesTab() {
                 />
               </div>
               <div className="form-group">
-                <label htmlFor="duration">Usual Duration (mins)</label>
-                <input
-                  type="number"
+                <label htmlFor="duration">Usual Duration</label>
+                <select
                   id="duration"
                   className="form-input"
                   value={newService.duration}
                   onChange={(e) => setNewService({...newService, duration: e.target.value})}
-                  placeholder="60"
-                />
+                >
+                  <option value="">Select duration...</option>
+                  <option value="30">30 mins</option>
+                  <option value="60">1 hour</option>
+                  <option value="90">1.5 hours</option>
+                  <option value="120">2 hours</option>
+                  <option value="150">2.5 hours</option>
+                  <option value="180">3 hours</option>
+                  <option value="240">4 hours</option>
+                  <option value="300">5 hours</option>
+                  <option value="360">6 hours</option>
+                  <option value="480">8 hours</option>
+                </select>
               </div>
             </div>
             <div className="form-group">
@@ -312,13 +322,22 @@ function ServicesTab() {
                       placeholder="Price (€)"
                       step="0.01"
                     />
-                    <input
-                      type="number"
+                    <select
                       className="form-input"
-                      value={editingService.duration_minutes || editingService.duration || ''}
+                      value={editingService.duration_minutes || editingService.duration || '60'}
                       onChange={(e) => setEditingService({...editingService, duration_minutes: e.target.value, duration: e.target.value})}
-                      placeholder="Duration (mins)"
-                    />
+                    >
+                      <option value="30">30 mins</option>
+                      <option value="60">1 hour</option>
+                      <option value="90">1.5 hours</option>
+                      <option value="120">2 hours</option>
+                      <option value="150">2.5 hours</option>
+                      <option value="180">3 hours</option>
+                      <option value="240">4 hours</option>
+                      <option value="300">5 hours</option>
+                      <option value="360">6 hours</option>
+                      <option value="480">8 hours</option>
+                    </select>
                   </div>
                   <div className="edit-form-row">
                     <ImageUpload

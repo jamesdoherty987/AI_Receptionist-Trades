@@ -435,7 +435,23 @@ function AddJobModal({ isOpen, onClose }) {
           <div className="form-grid">
             <div className="form-group">
               <label className="form-label">Duration (mins)</label>
-              <input type="number" name="duration_minutes" className="form-input" value={formData.duration_minutes} onChange={handleChange} placeholder="60" min="15" step="15" />
+              <select 
+                name="duration_minutes" 
+                className="form-input" 
+                value={formData.duration_minutes} 
+                onChange={handleChange}
+              >
+                <option value="30">30 mins</option>
+                <option value="60">1 hour</option>
+                <option value="90">1.5 hours</option>
+                <option value="120">2 hours</option>
+                <option value="150">2.5 hours</option>
+                <option value="180">3 hours</option>
+                <option value="240">4 hours</option>
+                <option value="300">5 hours</option>
+                <option value="360">6 hours</option>
+                <option value="480">8 hours</option>
+              </select>
             </div>
             <div className="form-group">
               <label className="form-label">Property Type</label>

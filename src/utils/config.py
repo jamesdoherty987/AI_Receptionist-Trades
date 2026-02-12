@@ -84,7 +84,8 @@ class Config:
     # Twilio (for SMS reminders - check regional availability)
     TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
     TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-    TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+    TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")  # For voice calls
+    TWILIO_SMS_NUMBER = os.getenv("TWILIO_SMS_NUMBER")  # For SMS (can be different from voice number)
     
     # Email (for appointment reminders - works globally)
     # Resend API (recommended - works on all hosts including Render)
@@ -98,6 +99,10 @@ class Config:
     SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL")  # Must match SMTP auth email
     FROM_EMAIL = os.getenv("FROM_EMAIL")  # Legacy fallback, use SMTP_FROM_EMAIL instead
     REMINDER_METHOD = os.getenv("REMINDER_METHOD", "email")  # "email" or "sms"
+    
+    # Invoice delivery method: "email" or "sms"
+    # When set to "sms", invoices are sent via SMS and email is not required from callers
+    INVOICE_DELIVERY_METHOD = os.getenv("INVOICE_DELIVERY_METHOD", "email")
     
     # Stripe Payment
     STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")

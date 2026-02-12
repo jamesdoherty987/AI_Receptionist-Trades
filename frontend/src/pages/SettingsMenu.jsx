@@ -150,12 +150,22 @@ function SettingsMenu() {
                   value={newService.price}
                   onChange={(e) => setNewService({ ...newService, price: e.target.value })}
                 />
-                <input
-                  type="text"
-                  placeholder="Duration (e.g., 1 hour)"
+                <select
                   value={newService.duration}
                   onChange={(e) => setNewService({ ...newService, duration: e.target.value })}
-                />
+                >
+                  <option value="">Duration...</option>
+                  <option value="30">30 mins</option>
+                  <option value="60">1 hour</option>
+                  <option value="90">1.5 hours</option>
+                  <option value="120">2 hours</option>
+                  <option value="150">2.5 hours</option>
+                  <option value="180">3 hours</option>
+                  <option value="240">4 hours</option>
+                  <option value="300">5 hours</option>
+                  <option value="360">6 hours</option>
+                  <option value="480">8 hours</option>
+                </select>
                 <button type="submit" className="btn btn-primary" disabled={createMutation.isPending}>
                   <i className="fas fa-plus"></i>
                   Add Service
@@ -188,11 +198,21 @@ function SettingsMenu() {
                           value={editingService.price}
                           onChange={(e) => setEditingService({ ...editingService, price: e.target.value })}
                         />
-                        <input
-                          type="text"
-                          value={editingService.duration}
-                          onChange={(e) => setEditingService({ ...editingService, duration: e.target.value })}
-                        />
+                        <select
+                          value={editingService.duration || editingService.duration_minutes || '60'}
+                          onChange={(e) => setEditingService({ ...editingService, duration: e.target.value, duration_minutes: e.target.value })}
+                        >
+                          <option value="30">30 mins</option>
+                          <option value="60">1 hour</option>
+                          <option value="90">1.5 hours</option>
+                          <option value="120">2 hours</option>
+                          <option value="150">2.5 hours</option>
+                          <option value="180">3 hours</option>
+                          <option value="240">4 hours</option>
+                          <option value="300">5 hours</option>
+                          <option value="360">6 hours</option>
+                          <option value="480">8 hours</option>
+                        </select>
                         <div className="service-actions">
                           <button 
                             className="btn btn-success btn-sm"

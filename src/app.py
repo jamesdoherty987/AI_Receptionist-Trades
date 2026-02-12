@@ -2781,7 +2781,7 @@ def bookings_api():
             else:
                 appointment_dt = appointment_time
             
-            # Get service duration and buffer time
+            # Get service duration
             from src.services.settings_manager import get_settings_manager
             settings_mgr = get_settings_manager()
             
@@ -2795,12 +2795,9 @@ def bookings_api():
                 else:
                     duration_minutes = settings_mgr.get_default_duration_minutes(company_id=company_id)
             
-            buffer_time = settings_mgr.get_buffer_time_minutes(company_id=company_id)
-            total_duration = duration_minutes + buffer_time
-            
-            # Check for time conflicts using actual duration + buffer
-            time_buffer_before = appointment_dt - timedelta(minutes=total_duration - 1)
-            time_buffer_after = appointment_dt + timedelta(minutes=total_duration - 1)
+            # Check for time conflicts using actual duration (no buffer)
+            time_buffer_before = appointment_dt - timedelta(minutes=duration_minutes - 1)
+            time_buffer_after = appointment_dt + timedelta(minutes=duration_minutes - 1)
             
             conflicting_bookings = db.get_conflicting_bookings(
                 start_time=time_buffer_before.strftime('%Y-%m-%d %H:%M:%S'),
@@ -2959,9 +2956,8 @@ def check_availability_api():
         target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
         day_name = target_date.strftime('%A').lower()
         
-        # Get settings manager for duration and buffer time
+        # Get settings manager for duration
         settings_mgr = get_settings_manager()
-        buffer_time = settings_mgr.get_buffer_time_minutes(company_id=company_id)
         default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
         
         # Get service-specific duration if service_type provided
@@ -2975,9 +2971,8 @@ def check_availability_api():
         business_hours = {
             'start': 9,  # Default 9 AM
             'end': 17,   # Default 5 PM
-            'interval': 30,  # 30 minute slot intervals for more granular booking
+            'interval': 30,  # 30 minute slot intervals
             'is_open': True,
-            'buffer_time': buffer_time,
             'default_duration': default_duration
         }
         
@@ -3069,7 +3064,7 @@ def check_availability_api():
                 booking_duration = booking.get('duration_minutes', default_duration)
                 day_bookings.append({
                     'start': appt_time,
-                    'end': appt_time + timedelta(minutes=booking_duration + buffer_time),
+                    'end': appt_time + timedelta(minutes=booking_duration),
                     'duration': booking_duration,
                     'booking': booking
                 })
@@ -3081,12 +3076,12 @@ def check_availability_api():
         while current_hour < end_hour or (current_hour == end_hour and current_minute == 0):
             slot_time = datetime.combine(target_date, datetime.min.time().replace(hour=current_hour, minute=current_minute))
             
-            # Calculate slot end time including buffer
-            slot_end = slot_time + timedelta(minutes=slot_duration + buffer_time)
+            # Calculate slot end time (no buffer)
+            slot_end = slot_time + timedelta(minutes=slot_duration)
             
             # Don't show slots that would extend past business hours
             business_end = datetime.combine(target_date, datetime.min.time().replace(hour=end_hour))
-            if slot_end > business_end + timedelta(minutes=buffer_time):
+            if slot_end > business_end:
                 current_minute += 30
                 if current_minute >= 60:
                     current_minute = 0
@@ -3311,20 +3306,69 @@ def complete_booking_api(booking_id):
         }), 500
 
 
+@app.route("/api/invoice-config", methods=["GET"])
+@login_required
+def get_invoice_config():
+    """Get invoice configuration status - invoices are always sent via SMS"""
+    db = get_database()
+    company_id = session.get('company_id')
+    company = db.get_company(company_id)
+    
+    # Invoices are always sent via SMS now
+    invoice_delivery_method = 'sms'
+    
+    # Check if Twilio SMS is configured
+    from src.services.sms_reminder import get_sms_service
+    sms_service = get_sms_service()
+    service_configured = sms_service.client is not None
+    service_name = "SMS (Twilio)"
+    
+    # Check payment methods configured
+    has_stripe = bool(company.get('stripe_connect_account_id')) if company else False
+    has_bank = bool(company.get('bank_iban')) if company else False
+    has_revolut = bool(company.get('revolut_phone')) if company else False
+    has_any_payment = has_stripe or has_bank or has_revolut
+    
+    # Determine if invoicing is fully ready
+    can_send_invoice = service_configured
+    
+    # Build warning messages
+    warnings = []
+    if not service_configured:
+        warnings.append("Twilio SMS is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.")
+    
+    if not has_any_payment:
+        warnings.append("No payment methods configured. Add Stripe, bank details, or Revolut in Settings > Payment Setup.")
+    
+    return jsonify({
+        "delivery_method": invoice_delivery_method,
+        "service_name": service_name,
+        "service_configured": service_configured,
+        "can_send_invoice": can_send_invoice,
+        "payment_methods": {
+            "stripe": has_stripe,
+            "bank_transfer": has_bank,
+            "revolut": has_revolut,
+            "any_configured": has_any_payment
+        },
+        "warnings": warnings
+    })
+
+
 @app.route("/api/bookings/<int:booking_id>/send-invoice", methods=["POST"])
 @login_required
 def send_invoice_api(booking_id):
-    """Send invoice email for a booking with Stripe payment link"""
+    """Send invoice via SMS"""
     db = get_database()
     company_id = session.get('company_id')
     
-    # Check if email service is configured
-    from src.services.email_reminder import get_email_service
-    email_service = get_email_service()
-    if not email_service.configured:
+    # Always use SMS for invoices
+    from src.services.sms_reminder import get_sms_service
+    sms_service = get_sms_service()
+    if not sms_service.client:
         return jsonify({
-            "error": "Email service not configured. Please contact support.",
-            "details": "SMTP settings are missing from server configuration."
+            "error": "SMS service not configured. Please configure Twilio settings.",
+            "details": "Twilio credentials are missing from server configuration."
         }), 503
     
     # Check subscription for sending invoices
@@ -3384,11 +3428,10 @@ def send_invoice_api(booking_id):
         
         safe_print(f"[INVOICE] Invoice: Using charge amount EUR{booking_dict['charge']} from database for booking {booking_id}")
         
-        # Use customer's actual email
-        to_email = booking_dict['email']
-        
-        if not to_email:
-            return jsonify({"error": "Customer email not found. Please add an email address to the customer profile."}), 400
+        # Validate required fields - phone is required for SMS
+        to_phone = booking_dict['phone']
+        if not to_phone:
+            return jsonify({"error": "Customer phone number not found. Please add a phone number to the customer profile."}), 400
         
         if not booking_dict['client_name']:
             return jsonify({"error": "Customer name not found"}), 400
@@ -3403,8 +3446,6 @@ def send_invoice_api(booking_id):
         safe_print(f"[INVOICE] Invoice: Final charge amount = EUR{charge_amount}")
         
         # Generate Stripe payment link
-        from src.utils.config import config
-        from src.services.email_reminder import get_email_service
         from datetime import datetime
         stripe_payment_link = None
         
@@ -3413,6 +3454,7 @@ def send_invoice_api(booking_id):
         connected_account_id = company.get('stripe_connect_account_id') if company else None
         
         # Try to create Stripe payment link if configured
+        from src.utils.config import config
         stripe_secret_key = getattr(config, 'STRIPE_SECRET_KEY', None)
         
         # Debug: Check if key is loaded
@@ -3424,10 +3466,9 @@ def send_invoice_api(booking_id):
             if stripe_secret_key:
                 print(f"[STRIPE] Stripe key loaded from env: {stripe_secret_key[:12]}...{stripe_secret_key[-4:]}")
             else:
-                print("[ERROR] STRIPE_SECRET_KEY not found in config or environment!")
+                print("[INFO] STRIPE_SECRET_KEY not found - invoice will be sent without payment link")
         
         # Only create Stripe payment link if the user has their own Connect account
-        # We never charge to the platform account - payments go directly to the user
         if stripe_secret_key and connected_account_id:
             try:
                 import stripe
@@ -3471,7 +3512,7 @@ def send_invoice_api(booking_id):
                 
                 checkout_session = stripe.checkout.Session.create(
                     **checkout_params,
-                    stripe_account=connected_account_id  # Payment goes to user's account
+                    stripe_account=connected_account_id
                 )
                 
                 stripe_payment_link = checkout_session.url
@@ -3480,11 +3521,8 @@ def send_invoice_api(booking_id):
                 print(f"[WARNING] Could not create Stripe payment link: {stripe_error}")
                 import traceback
                 traceback.print_exc()
-                # Continue without Stripe link - invoice will still be sent
         elif not connected_account_id:
             print("ℹ️ No Stripe Connect account - invoice will be sent without payment link")
-        else:
-            print("ℹ️ Stripe not configured - sending invoice without payment link")
         
         # Get bank details for bank transfer option on invoice
         bank_details = None
@@ -3523,27 +3561,21 @@ def send_invoice_api(booking_id):
         job_address = booking_dict.get('address') or booking_dict.get('job_address') or ''
         
         # Get business details from the company record
-        # Note: In the companies table, the business name is stored as 'company_name', not 'business_name'
         company_business_name = company.get('company_name') or company.get('business_name') or company.get('name') or None if company else None
-        company_email = company.get('email') or None if company else None
-        company_phone = company.get('phone') or None if company else None
         
-        success = email_service.send_invoice(
-            to_email=to_email,
+        # Send via SMS
+        success = sms_service.send_invoice(
+            to_number=to_phone,
             customer_name=booking_dict['client_name'],
             service_type=booking_dict.get('service_type') or 'Service',
             charge=charge_amount,
-            appointment_time=appointment_time,
+            invoice_number=invoice_number,
             stripe_payment_link=stripe_payment_link,
             job_address=job_address,
-            invoice_number=invoice_number,
-            bank_details=bank_details,
-            revolut_phone=revolut_phone,
-            add_bank_details=bool(bank_details and bank_details.get('iban')),
-            add_revolut_phone=bool(revolut_phone),
+            appointment_time=appointment_time,
             company_name=company_business_name,
-            company_email=company_email,
-            company_phone=company_phone
+            bank_details=bank_details,
+            revolut_phone=revolut_phone
         )
         
         if success:
@@ -3555,14 +3587,15 @@ def send_invoice_api(booking_id):
             
             return jsonify({
                 "success": True,
-                "message": f"Invoice sent to {to_email}",
-                "sent_to": to_email,
+                "message": f"Invoice sent via SMS to {to_phone}",
+                "sent_to": to_phone,
+                "delivery_method": "sms",
                 "invoice_number": invoice_number,
                 "has_payment_link": stripe_payment_link is not None
             })
         else:
             return jsonify({
-                "error": "Failed to send invoice email. Please check the customer's email address and try again."
+                "error": "Failed to send invoice SMS. Please check the customer's phone number and try again."
             }), 500
             
     except Exception as e:

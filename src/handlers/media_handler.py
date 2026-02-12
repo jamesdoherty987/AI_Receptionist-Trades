@@ -334,6 +334,31 @@ async def media_handler(ws):
                 print("📱 Caller phone:", caller_phone if caller_phone else "Not available")
                 print("🏢 Company ID:", company_id if company_id else "Not available")
 
+                # Format phone number for display (e.g., +353851234567 -> 085 123 4567)
+                formatted_phone = caller_phone
+                if caller_phone:
+                    if caller_phone.startswith('+353'):
+                        # Irish number: +353851234567 -> 085 123 4567
+                        local_num = '0' + caller_phone[4:]
+                        if len(local_num) == 10:
+                            formatted_phone = f"{local_num[:3]} {local_num[3:6]} {local_num[6:]}"
+                    elif len(caller_phone) == 10 and caller_phone.startswith('0'):
+                        formatted_phone = f"{caller_phone[:3]} {caller_phone[3:6]} {caller_phone[6:]}"
+                
+                # Build phone number instruction - always use caller's number first
+                if caller_phone:
+                    phone_instruction = (
+                        f"PHONE NUMBER: The caller's phone number is {formatted_phone}. "
+                        f"When you need their phone number, ask: 'Is {formatted_phone} the best number to reach you?' "
+                        "If they say YES, use that number - DO NOT ask again. "
+                        "If they say NO, ask: 'What number would you prefer?' and read it back to confirm."
+                    )
+                else:
+                    phone_instruction = (
+                        "PHONE NUMBER: Could not detect caller's number. "
+                        "Ask: 'What's the best phone number to reach you?' and read it back digit by digit."
+                    )
+
                 # Inform the LLM that greeting has already been sent to avoid re-introduction
                 conversation.append({
                     "role": "system",
@@ -342,8 +367,8 @@ async def media_handler(ws):
                         "Do NOT reintroduce the business or say 'thanks for calling'. Keep replies short. "
                         "If they ask to book, respond briefly: 'Sure, no problem! What day and time works best for you?'. "
                         "ALWAYS spell back their name letter-by-letter and wait for confirmation before proceeding. "
-                        "For phone calls, first ask: 'Is the phone number you're calling from the one you want to use for this appointment?'; "
-                        "if yes, continue; if no, ask for the preferred number.]"
+                        f"{phone_instruction} "
+                        "EMAIL: Do NOT ask for email address - it is not required.]"
                     )
                 })
                 

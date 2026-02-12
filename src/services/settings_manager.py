@@ -518,7 +518,7 @@ class SettingsManager:
         return self.get_default_duration_minutes(company_id=company_id)
     
     def get_total_booking_duration(self, service_name: str = None, service_duration: int = None, company_id: int = None) -> int:
-        """Get total duration for a booking including buffer time
+        """Get total duration for a booking (no buffer time)
         
         Args:
             service_name: Name of the service (optional, used to look up duration)
@@ -526,7 +526,7 @@ class SettingsManager:
             company_id: Company ID for multi-tenant isolation
             
         Returns:
-            Total duration in minutes (service duration + buffer time)
+            Total duration in minutes (service duration only, no buffer)
         """
         if service_duration is not None:
             duration = service_duration
@@ -535,8 +535,7 @@ class SettingsManager:
         else:
             duration = self.get_default_duration_minutes(company_id=company_id)
         
-        buffer_time = self.get_buffer_time_minutes(company_id=company_id)
-        return duration + buffer_time
+        return duration
 
 
 # Singleton instance

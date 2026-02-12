@@ -155,7 +155,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "book_job",
-            "description": "Book a new trade job/appointment for a customer. CRITICAL: You MUST have a SPECIFIC date and time before calling this (e.g., 'tomorrow at 2pm', 'Monday at 9am'). DO NOT call this with vague times like 'within 2 hours', 'as soon as possible', or 'ASAP'. For emergency requests, check availability first and suggest the next available time slot. Required info: customer name, phone, email (both mandatory), job address, job description, SPECIFIC datetime, and urgency level.",
+            "description": "Book a new trade job/appointment for a customer. CRITICAL: You MUST have a SPECIFIC date and time before calling this (e.g., 'tomorrow at 2pm', 'Monday at 9am'). DO NOT call this with vague times like 'within 2 hours', 'as soon as possible', or 'ASAP'. For emergency requests, check availability first and suggest the next available time slot. Required info: customer name, phone (mandatory), job address, job description, SPECIFIC datetime, and urgency level. Email is NOT required.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -165,11 +165,11 @@ CALENDAR_TOOLS = [
                     },
                     "phone": {
                         "type": "string",
-                        "description": "Customer's phone number (MANDATORY)"
+                        "description": "Customer's phone number (MANDATORY) - use the caller's number unless they provide a different one"
                     },
                     "email": {
                         "type": "string",
-                        "description": "Customer's email address (MANDATORY)"
+                        "description": "Customer's email address (OPTIONAL - do not ask for this)"
                     },
                     "job_address": {
                         "type": "string",
@@ -194,7 +194,7 @@ CALENDAR_TOOLS = [
                         "description": "Type of property: 'residential' for homes, 'commercial' for businesses"
                     }
                 },
-                "required": ["customer_name", "phone", "email", "job_address", "job_description", "appointment_datetime", "urgency_level"]
+                "required": ["customer_name", "phone", "job_address", "job_description", "appointment_datetime", "urgency_level"]
             }
         }
     },
@@ -1589,12 +1589,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "needs_clarification": "phone"
                 }
             
-            if not email:
-                return {
-                    "success": False,
-                    "error": "Email address is MANDATORY. Please ask the customer for their email address.",
-                    "needs_clarification": "email"
-                }
+            # Check if email is required based on invoice delivery method
+            # Email is no longer required - invoices sent via SMS
+            # Keep the field optional for backwards compatibility
             
             if not job_address:
                 return {

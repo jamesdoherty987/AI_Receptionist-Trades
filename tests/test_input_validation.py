@@ -280,16 +280,16 @@ class TestServiceDurationAndBuffer:
         with open('src/app.py', 'r') as f:
             content = f.read()
         
-        assert "duration_minutes" in content and "total_duration" in content, \
+        assert "duration_minutes" in content and "slot_duration" in content, \
             "Availability check should use service duration"
     
-    def test_booking_creation_uses_duration_and_buffer(self):
-        """Booking creation should use duration + buffer for conflict check"""
+    def test_booking_creation_uses_duration(self):
+        """Booking creation should use duration for conflict check"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
-        assert "buffer_time" in content and "total_duration" in content, \
-            "Booking creation should use duration + buffer"
+        assert "duration_minutes" in content, \
+            "Booking creation should use duration"
 
 
 class TestServiceMatcher:

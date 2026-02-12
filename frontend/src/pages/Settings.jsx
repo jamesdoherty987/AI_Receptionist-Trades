@@ -610,31 +610,9 @@ function Settings() {
                   Scheduling Settings
                 </h3>
                 <p className="section-description">
-                  Configure how appointments are scheduled. Buffer time adds travel/preparation time between jobs.
+                  Configure how appointments are scheduled.
                 </p>
                 <div className="form-grid">
-                  <div className="form-group">
-                    <label htmlFor="buffer_time_minutes">Buffer Time Between Jobs (mins)</label>
-                    <select
-                      id="buffer_time_minutes"
-                      name="buffer_time_minutes"
-                      value={formData.buffer_time_minutes || 15}
-                      onChange={handleChange}
-                      className="form-select"
-                    >
-                      <option value="0">No buffer</option>
-                      <option value="5">5 minutes</option>
-                      <option value="10">10 minutes</option>
-                      <option value="15">15 minutes</option>
-                      <option value="20">20 minutes</option>
-                      <option value="30">30 minutes</option>
-                      <option value="45">45 minutes</option>
-                      <option value="60">1 hour</option>
-                    </select>
-                    <small className="form-help">
-                      Time added between appointments for travel, preparation, or cleanup.
-                    </small>
-                  </div>
                   <div className="form-group">
                     <label htmlFor="default_duration_minutes">Default Job Duration (mins)</label>
                     <select
@@ -644,12 +622,11 @@ function Settings() {
                       onChange={handleChange}
                       className="form-select"
                     >
-                      <option value="15">15 minutes</option>
                       <option value="30">30 minutes</option>
-                      <option value="45">45 minutes</option>
                       <option value="60">1 hour</option>
                       <option value="90">1.5 hours</option>
                       <option value="120">2 hours</option>
+                      <option value="150">2.5 hours</option>
                       <option value="180">3 hours</option>
                       <option value="240">4 hours</option>
                       <option value="300">5 hours</option>

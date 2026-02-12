@@ -73,10 +73,8 @@ class DatabaseCalendarService:
         try:
             from src.services.settings_manager import get_settings_manager
             settings_mgr = get_settings_manager()
-            buffer_time = settings_mgr.get_buffer_time_minutes(company_id=self.company_id)
             default_duration = settings_mgr.get_default_duration_minutes(company_id=self.company_id)
         except Exception:
-            buffer_time = 15
             default_duration = 60
         
         # Use provided duration or default
@@ -99,7 +97,7 @@ class DatabaseCalendarService:
                 day_bookings.append({
                     'start': appt_time,
                     'duration': booking_duration,
-                    'end': appt_time + timedelta(minutes=booking_duration + buffer_time)
+                    'end': appt_time + timedelta(minutes=booking_duration)
                 })
         
         # Generate all possible slots for the day
@@ -113,11 +111,11 @@ class DatabaseCalendarService:
                 current_slot += timedelta(minutes=30)  # Check every 30 minutes
                 continue
             
-            # Check if this slot would fit (service duration + buffer)
-            slot_end = current_slot + timedelta(minutes=slot_duration + buffer_time)
+            # Check if this slot would fit (service duration only, no buffer)
+            slot_end = current_slot + timedelta(minutes=slot_duration)
             
             # Don't allow booking that extends past business hours
-            if slot_end > end_time + timedelta(minutes=buffer_time):
+            if slot_end > end_time:
                 current_slot += timedelta(minutes=30)
                 continue
             
@@ -128,7 +126,7 @@ class DatabaseCalendarService:
                 booking_start = booking['start']
                 booking_end = booking['end']
                 
-                # Check for overlap (including buffer time)
+                # Check for overlap
                 if (current_slot < booking_end and slot_end > booking_start):
                     is_available = False
                     break
@@ -157,22 +155,20 @@ class DatabaseCalendarService:
         if start_time <= datetime.now():
             return False
         
-        # Get buffer time and default duration from settings
+        # Get default duration from settings
         try:
             from src.services.settings_manager import get_settings_manager
             settings_mgr = get_settings_manager()
-            buffer_time = settings_mgr.get_buffer_time_minutes(company_id=self.company_id)
             default_duration = settings_mgr.get_default_duration_minutes(company_id=self.company_id)
         except Exception:
-            buffer_time = 15
             default_duration = 60
         
         # Use provided duration or default
         if duration_minutes is None:
             duration_minutes = default_duration
         
-        # Calculate slot end including buffer time
-        slot_end = start_time + timedelta(minutes=duration_minutes + buffer_time)
+        # Calculate slot end (no buffer)
+        slot_end = start_time + timedelta(minutes=duration_minutes)
         
         # Get all non-cancelled bookings - MUST filter by company_id for data isolation
         all_bookings = self.db.get_all_bookings(company_id=self.company_id)
@@ -187,9 +183,9 @@ class DatabaseCalendarService:
             
             # Get the booking's duration (use stored duration or default)
             booking_duration = booking.get('duration_minutes', default_duration)
-            booking_end = appt_time + timedelta(minutes=booking_duration + buffer_time)
+            booking_end = appt_time + timedelta(minutes=booking_duration)
             
-            # Check for overlap (including buffer time)
+            # Check for overlap
             if (start_time < booking_end and slot_end > appt_time):
                 return False  # Conflict found
         

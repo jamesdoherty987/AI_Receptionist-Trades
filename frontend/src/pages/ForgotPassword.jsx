@@ -17,6 +17,7 @@ function ForgotPassword() {
       setError('Too many attempts. Please wait a moment.');
       return;
     }
+
     
     if (!validateEmail(email)) {
       setError('Please enter a valid email address');
