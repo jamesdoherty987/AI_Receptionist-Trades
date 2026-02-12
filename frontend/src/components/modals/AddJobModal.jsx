@@ -1,5 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import { createBooking, getClients, checkAvailability, getServicesMenu, getWorkers, checkWorkerAvailability } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
@@ -9,6 +11,8 @@ import './AddJobModal.css';
 function AddJobModal({ isOpen, onClose }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
+  const { hasActiveSubscription } = useAuth();
+  const isSubscriptionActive = hasActiveSubscription();
   
   const [formData, setFormData] = useState({
     client_id: '',
@@ -233,6 +237,18 @@ function AddJobModal({ isOpen, onClose }) {
   return (
     <>
       <Modal isOpen={isOpen} onClose={onClose} title="Add New Job" size="large">
+        {!isSubscriptionActive ? (
+          <div className="subscription-required-message">
+            <div className="subscription-required-content">
+              <i className="fas fa-lock"></i>
+              <h3>Subscription Required</h3>
+              <p>Your trial has expired. Subscribe to continue adding jobs.</p>
+              <Link to="/settings?tab=subscription" className="btn btn-primary" onClick={onClose}>
+                <i className="fas fa-credit-card"></i> Subscribe Now
+              </Link>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="form add-job-form">
           
           {/* Customer Selection */}
@@ -486,6 +502,7 @@ function AddJobModal({ isOpen, onClose }) {
             </button>
           </div>
         </form>
+        )}
       </Modal>
       
       <AddClientModal isOpen={isAddClientModalOpen} onClose={handleCloseAddClient} />

@@ -1281,18 +1281,26 @@ def get_subscription_info(company: dict) -> dict:
     current_period_end = company.get('subscription_current_period_end')
     cancel_at_period_end = bool(company.get('subscription_cancel_at_period_end', 0))
     
-    # Parse dates if they're strings
+    # Parse dates if they're strings and ensure they're timezone-naive for comparison
     if isinstance(trial_end, str):
         try:
-            trial_end = datetime.fromisoformat(trial_end.replace('Z', '+00:00'))
+            parsed = datetime.fromisoformat(trial_end.replace('Z', '+00:00'))
+            # Convert to naive datetime for comparison with datetime.now()
+            trial_end = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
         except:
             trial_end = None
+    elif trial_end and hasattr(trial_end, 'tzinfo') and trial_end.tzinfo:
+        # If it's already a datetime with timezone, make it naive
+        trial_end = trial_end.replace(tzinfo=None)
     
     if isinstance(current_period_end, str):
         try:
-            current_period_end = datetime.fromisoformat(current_period_end.replace('Z', '+00:00'))
+            parsed = datetime.fromisoformat(current_period_end.replace('Z', '+00:00'))
+            current_period_end = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
         except:
             current_period_end = None
+    elif current_period_end and hasattr(current_period_end, 'tzinfo') and current_period_end.tzinfo:
+        current_period_end = current_period_end.replace(tzinfo=None)
     
     # Calculate trial days remaining (round up to include partial days)
     trial_days_remaining = 0
@@ -1308,9 +1316,10 @@ def get_subscription_info(company: dict) -> dict:
     # Determine if subscription is active (can use the app)
     is_active = False
     if subscription_tier == 'trial':
-        is_active = trial_end and trial_end > now
+        is_active = bool(trial_end and trial_end > now)
     elif subscription_tier == 'pro':
-        is_active = subscription_status == 'active'
+        # Pro is active if status is active, trialing, or past_due (grace period)
+        is_active = subscription_status in ('active', 'trialing', 'past_due')
     
     return {
         'tier': subscription_tier,
@@ -1588,14 +1597,37 @@ def stripe_webhook():
     data = result['data']
     db = get_database()
     
+    def get_company_id_from_event(event_data, db_instance):
+        """Helper to get company_id from event data with fallbacks"""
+        # Try metadata first
+        company_id = int(event_data.get('metadata', {}).get('company_id', 0))
+        if company_id:
+            return company_id
+        
+        # Try to find by stripe_customer_id
+        customer_id = event_data.get('customer')
+        if customer_id:
+            company = db_instance.get_company_by_stripe_customer_id(customer_id)
+            if company:
+                return company['id']
+        
+        # Try to find by stripe_subscription_id (for subscription events)
+        subscription_id = event_data.get('id') or event_data.get('subscription')
+        if subscription_id:
+            company = db_instance.get_company_by_stripe_subscription_id(subscription_id)
+            if company:
+                return company['id']
+        
+        return 0
+    
     try:
         if event_type == 'checkout.session.completed':
             # Subscription checkout completed
-            company_id = int(data.get('metadata', {}).get('company_id', 0))
+            company_id = get_company_id_from_event(data, db)
             customer_id = data.get('customer')
             subscription_id = data.get('subscription')
             
-            if company_id:
+            if company_id and subscription_id:
                 # Get subscription details
                 import stripe
                 sub = stripe.Subscription.retrieve(subscription_id)
@@ -1613,6 +1645,8 @@ def stripe_webhook():
                     trial_end=None
                 )
                 print(f"[SUCCESS] Subscription activated for company {company_id}")
+            else:
+                print(f"[WARNING] checkout.session.completed: Could not find company_id (metadata: {data.get('metadata')}, customer: {customer_id})")
         
         elif event_type == 'customer.subscription.updated':
             # Subscription updated (e.g., renewed, cancelled)
@@ -1621,9 +1655,8 @@ def stripe_webhook():
             cancel_at_period_end = data.get('cancel_at_period_end', False)
             current_period_end = data.get('current_period_end')
             
-            # Find company by subscription ID
-            # We need to search by stripe_subscription_id
-            company_id = int(data.get('metadata', {}).get('company_id', 0))
+            # Find company by multiple methods
+            company_id = get_company_id_from_event(data, db)
             
             if company_id:
                 update_data = {
@@ -1634,12 +1667,18 @@ def stripe_webhook():
                 if current_period_end:
                     update_data['subscription_current_period_end'] = datetime.fromtimestamp(current_period_end)
                 
+                # If subscription is active, ensure tier is pro
+                if status == 'active':
+                    update_data['subscription_tier'] = 'pro'
+                
                 db.update_company(company_id, **update_data)
                 print(f"[SUCCESS] Subscription updated for company {company_id}: {status}")
+            else:
+                print(f"[WARNING] customer.subscription.updated: Could not find company_id (subscription: {subscription_id})")
         
         elif event_type == 'customer.subscription.deleted':
             # Subscription cancelled/expired
-            company_id = int(data.get('metadata', {}).get('company_id', 0))
+            company_id = get_company_id_from_event(data, db)
             
             if company_id:
                 db.update_company(
@@ -1649,11 +1688,48 @@ def stripe_webhook():
                     stripe_subscription_id=None
                 )
                 print(f"[WARNING] Subscription cancelled for company {company_id}")
+            else:
+                print(f"[WARNING] customer.subscription.deleted: Could not find company_id")
+        
+        elif event_type == 'invoice.payment_succeeded':
+            # Payment succeeded - this fires on renewals
+            customer_id = data.get('customer')
+            subscription_id = data.get('subscription')
+            
+            if subscription_id:
+                # Find company
+                company = db.get_company_by_stripe_subscription_id(subscription_id)
+                if not company and customer_id:
+                    company = db.get_company_by_stripe_customer_id(customer_id)
+                
+                if company:
+                    # Update subscription status to active and ensure tier is pro
+                    import stripe
+                    sub = stripe.Subscription.retrieve(subscription_id)
+                    
+                    db.update_company(
+                        company['id'],
+                        subscription_tier='pro',
+                        subscription_status='active',
+                        subscription_current_period_end=datetime.fromtimestamp(sub.current_period_end),
+                        subscription_cancel_at_period_end=0
+                    )
+                    print(f"[SUCCESS] Payment succeeded, subscription renewed for company {company['id']}")
         
         elif event_type == 'invoice.payment_failed':
             # Payment failed
             customer_id = data.get('customer')
-            company_id = int(data.get('subscription_details', {}).get('metadata', {}).get('company_id', 0))
+            subscription_id = data.get('subscription')
+            
+            company_id = 0
+            if subscription_id:
+                company = db.get_company_by_stripe_subscription_id(subscription_id)
+                if company:
+                    company_id = company['id']
+            if not company_id and customer_id:
+                company = db.get_company_by_stripe_customer_id(customer_id)
+                if company:
+                    company_id = company['id']
             
             if company_id:
                 db.update_company(company_id, subscription_status='past_due')
@@ -1661,6 +1737,8 @@ def stripe_webhook():
     
     except Exception as e:
         print(f"[ERROR] Error processing webhook {event_type}: {e}")
+        import traceback
+        traceback.print_exc()
         # Still return 200 to acknowledge receipt
     
     return jsonify({"received": True})

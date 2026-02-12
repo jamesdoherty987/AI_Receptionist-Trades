@@ -142,14 +142,18 @@ def create_checkout_session(
                 'quantity': 1
             }]
         
+        # Always include subscription_data with metadata for webhook handling
+        subscription_data = {
+            'metadata': {
+                'company_id': str(company_id)
+            }
+        }
+        
         # Add trial period if requested
         if with_trial:
-            session_params['subscription_data'] = {
-                'trial_period_days': TRIAL_DAYS,
-                'metadata': {
-                    'company_id': str(company_id)
-                }
-            }
+            subscription_data['trial_period_days'] = TRIAL_DAYS
+        
+        session_params['subscription_data'] = subscription_data
         
         session = stripe.checkout.Session.create(**session_params)
         

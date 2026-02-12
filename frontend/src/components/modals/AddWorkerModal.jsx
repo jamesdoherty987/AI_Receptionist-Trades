@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
 import { createWorker } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
@@ -8,6 +10,8 @@ import ImageUpload from '../ImageUpload';
 function AddWorkerModal({ isOpen, onClose }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
+  const { hasActiveSubscription } = useAuth();
+  const isSubscriptionActive = hasActiveSubscription();
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -49,6 +53,18 @@ function AddWorkerModal({ isOpen, onClose }) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add New Worker">
+      {!isSubscriptionActive ? (
+        <div className="subscription-required-message" style={{ padding: '3rem 2rem', textAlign: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+            <i className="fas fa-lock" style={{ fontSize: '3rem', color: '#f59e0b' }}></i>
+            <h3 style={{ margin: 0, fontSize: '1.25rem', color: '#1f2937' }}>Subscription Required</h3>
+            <p style={{ margin: 0, color: '#6b7280', maxWidth: '300px' }}>Your trial has expired. Subscribe to continue adding workers.</p>
+            <Link to="/settings?tab=subscription" className="btn btn-primary" onClick={onClose}>
+              <i className="fas fa-credit-card"></i> Subscribe Now
+            </Link>
+          </div>
+        </div>
+      ) : (
       <form onSubmit={handleSubmit} className="form">
         <div className="form-group">
           <label className="form-label">Name *</label>
@@ -139,6 +155,7 @@ function AddWorkerModal({ isOpen, onClose }) {
           </button>
         </div>
       </form>
+      )}
     </Modal>
   );
 }

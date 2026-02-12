@@ -720,6 +720,34 @@ class PostgreSQLDatabaseWrapper:
             cursor.close()
             self.return_connection(conn)
     
+    def get_company_by_stripe_customer_id(self, stripe_customer_id: str) -> Optional[Dict]:
+        """Get company by Stripe customer ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("SELECT * FROM companies WHERE stripe_customer_id = %s", (stripe_customer_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+        finally:
+            cursor.close()
+            self.return_connection(conn)
+    
+    def get_company_by_stripe_subscription_id(self, stripe_subscription_id: str) -> Optional[Dict]:
+        """Get company by Stripe subscription ID"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("SELECT * FROM companies WHERE stripe_subscription_id = %s", (stripe_subscription_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+        finally:
+            cursor.close()
+            self.return_connection(conn)
+    
     def get_company_by_id(self, company_id: int) -> Optional[Dict]:
         """Get company by ID"""
         conn = self.get_connection()

@@ -51,10 +51,15 @@ function Settings() {
         await checkAuth();
         queryClient.invalidateQueries(['subscription-status']);
         
-        // Check if subscription is now pro, if not retry up to 5 times
+        // Check if subscription is now pro, if not retry up to 10 times over 15 seconds
         const authSub = JSON.parse(sessionStorage.getItem('authSubscription') || '{}');
-        if (authSub.tier !== 'pro' && attempts < 5) {
-          setTimeout(() => pollSubscription(attempts + 1), 1500);
+        if (authSub.tier !== 'pro' && attempts < 10) {
+          // Exponential backoff: 1s, 1.5s, 2s, 2.5s, etc.
+          const delay = 1000 + (attempts * 500);
+          setTimeout(() => pollSubscription(attempts + 1), delay);
+        } else if (authSub.tier === 'pro') {
+          // Successfully updated - refresh the subscription manager
+          queryClient.invalidateQueries(['subscription-status']);
         }
       };
       pollSubscription();

@@ -72,7 +72,7 @@ Webhooks let Stripe notify your app about subscription events.
    - `customer.subscription.created`
    - `customer.subscription.updated`
    - `customer.subscription.deleted`
-   - `invoice.paid`
+   - `invoice.payment_succeeded`
    - `invoice.payment_failed`
 5. Click **Add endpoint**
 6. **Copy the Signing secret** (starts with `whsec_`)

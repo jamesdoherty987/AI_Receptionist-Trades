@@ -83,6 +83,7 @@ Webhooks notify your app when subscription events occur (payments, cancellations
    - `checkout.session.completed`
    - `customer.subscription.updated`
    - `customer.subscription.deleted`
+   - `invoice.payment_succeeded`
    - `invoice.payment_failed`
 4. After creating, click on the endpoint and reveal the **Signing secret**
 5. Add to your production environment:
