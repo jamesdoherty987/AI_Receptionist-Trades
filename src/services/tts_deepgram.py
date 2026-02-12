@@ -30,7 +30,8 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
         interrupt_fn: Function to check if interrupted
     """
     # Use faster model and optimized settings for speed
-    uri = f"wss://api.deepgram.com/v1/speak?model=aura-luna-en&encoding={config.AUDIO_ENCODING}&sample_rate={config.AUDIO_SAMPLE_RATE}&container=none&filler_words=false&smart_format=true"
+    # aura-luna-en is a natural female voice optimized for conversational use
+    uri = f"wss://api.deepgram.com/v1/speak?model=aura-luna-en&encoding={config.AUDIO_ENCODING}&sample_rate={config.AUDIO_SAMPLE_RATE}&container=none"
 
     MAX_TTS_SECONDS = 30.0  # Increased to prevent cutting off longer responses
 

@@ -36,10 +36,14 @@ class Config:
     DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
     
     # Models
-    CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o-mini")
+    CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o-mini")  # Fast and cost-effective for real-time
     TTS_MODEL = os.getenv("TTS_MODEL", "gpt-4o-mini-tts")
     TTS_VOICE = os.getenv("TTS_VOICE", "alloy")
     TTS_PROVIDER = os.getenv("TTS_PROVIDER", "deepgram")  # elevenlabs or deepgram
+    
+    # LLM Performance Settings
+    LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", 0.3))  # Lower = more consistent responses
+    LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", 150))  # Keep responses concise for phone
     
     # VAD Settings
     VAD_END_SILENCE_MS = int(os.getenv("VAD_END_SILENCE_MS", 900))

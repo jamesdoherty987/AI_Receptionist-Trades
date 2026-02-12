@@ -33,11 +33,15 @@ class DeepgramASR:
             "&profanity_filter=false"  # Don't filter in case addresses contain unexpected words
             "&redact=false"  # Don't redact anything for addresses
             "&numerals=true"  # Better number handling for addresses
-            "&search=address,location,postcode,eircode",  # Hint for address-related content
+            "&language=en-IE"  # Irish English for better name/place recognition
+            "&diarize=false"  # Single speaker, no need for diarization
+            "&utterances=true"  # Better utterance detection
+            "&utt_split=0.8"  # Slightly longer pause before splitting utterances
+            "&endpointing=300",  # Faster end-of-speech detection (300ms)
             extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
-            open_timeout=8,   # Faster connection
-            close_timeout=3,  # Faster close
-            ping_interval=15, # More frequent pings
+            open_timeout=5,   # Faster connection timeout
+            close_timeout=2,  # Faster close
+            ping_interval=20, # Keep connection alive
             ping_timeout=10,  # Shorter timeout
         )
         self._recv_task = asyncio.create_task(self._recv())
