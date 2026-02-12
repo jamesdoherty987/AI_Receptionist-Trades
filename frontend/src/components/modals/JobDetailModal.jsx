@@ -12,6 +12,7 @@ import {
   getInvoiceConfig
 } from '../../services/api';
 import Modal from './Modal';
+import InvoiceConfirmModal from './InvoiceConfirmModal';
 import { useToast } from '../Toast';
 import { formatDateTime, getStatusBadgeClass, formatCurrency, formatPhone } from '../../utils/helpers';
 import './JobDetailModal.css';
@@ -24,6 +25,8 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
   const [selectedWorkerId, setSelectedWorkerId] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState({});
+  const [showInvoiceConfirm, setShowInvoiceConfirm] = useState(false);
+  const [invoiceData, setInvoiceData] = useState(null);
 
   const { data: job, isLoading } = useQuery({
     queryKey: ['booking', jobId],
@@ -247,10 +250,12 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
   });
 
   const invoiceMutation = useMutation({
-    mutationFn: (jobId) => sendInvoice(jobId),
+    mutationFn: ({ jobId, invoiceData }) => sendInvoice(jobId, invoiceData),
     onSuccess: (response) => {
       const data = response.data;
       addToast(`Invoice sent to ${data.sent_to}!`, 'success');
+      setShowInvoiceConfirm(false);
+      setInvoiceData(null);
     },
     onError: (error) => {
       const message = error.response?.data?.error || 'Failed to send invoice';
@@ -275,12 +280,14 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
       return;
     }
     
-    // Warn if no payment methods configured (but still allow sending)
-    if (invoiceConfig && !invoiceConfig.payment_methods?.any_configured) {
-      addToast('Warning: No payment methods configured. Invoice will be sent without payment link.', 'warning');
-    }
-    
-    invoiceMutation.mutate(jobId);
+    // Open confirmation modal instead of sending directly
+    setShowInvoiceConfirm(true);
+  };
+
+  const handleConfirmInvoice = (editedData) => {
+    // Update the job with edited data first if needed, then send invoice
+    setInvoiceData(editedData);
+    invoiceMutation.mutate({ jobId, invoiceData: editedData });
   };
 
   const handleStatusChange = (newStatus) => {
@@ -868,6 +875,16 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
           </div>
         </div>
       </div>
+
+      {/* Invoice Confirmation Modal */}
+      <InvoiceConfirmModal
+        isOpen={showInvoiceConfirm}
+        onClose={() => setShowInvoiceConfirm(false)}
+        onConfirm={handleConfirmInvoice}
+        job={job}
+        invoiceConfig={invoiceConfig}
+        isPending={invoiceMutation.isPending}
+      />
     </Modal>
   );
 }

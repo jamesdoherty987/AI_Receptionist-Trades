@@ -3362,6 +3362,9 @@ def send_invoice_api(booking_id):
     db = get_database()
     company_id = session.get('company_id')
     
+    # Get optional invoice data overrides from request body
+    request_data = request.get_json() or {}
+    
     # Always use SMS for invoices
     from src.services.sms_reminder import get_sms_service
     sms_service = get_sms_service()
@@ -3426,7 +3429,25 @@ def send_invoice_api(booking_id):
             'client_name': booking.get('client_name') or booking.get('customer_name')
         }
         
-        safe_print(f"[INVOICE] Invoice: Using charge amount EUR{booking_dict['charge']} from database for booking {booking_id}")
+        # Apply overrides from request data (from confirmation modal)
+        if request_data.get('customer_name'):
+            booking_dict['customer_name'] = request_data['customer_name']
+            booking_dict['client_name'] = request_data['customer_name']
+        if request_data.get('phone'):
+            booking_dict['phone'] = request_data['phone']
+            booking_dict['phone_number'] = request_data['phone']
+        if request_data.get('service_type'):
+            booking_dict['service_type'] = request_data['service_type']
+        if request_data.get('charge'):
+            booking_dict['charge'] = float(request_data['charge'])
+            booking_dict['estimated_charge'] = float(request_data['charge'])
+        if request_data.get('job_address'):
+            booking_dict['address'] = request_data['job_address']
+            booking_dict['job_address'] = request_data['job_address']
+        if request_data.get('eircode'):
+            booking_dict['eircode'] = request_data['eircode']
+        
+        safe_print(f"[INVOICE] Invoice: Using charge amount EUR{booking_dict['charge']} for booking {booking_id}")
         
         # Validate required fields - phone is required for SMS
         to_phone = booking_dict['phone']
@@ -3557,8 +3578,11 @@ def send_invoice_api(booking_id):
         # Generate invoice number
         invoice_number = f"INV-{booking_id}-{datetime.now().strftime('%Y%m%d')}"
         
-        # Get job address
+        # Get job address (include eircode if available)
         job_address = booking_dict.get('address') or booking_dict.get('job_address') or ''
+        eircode = booking_dict.get('eircode') or ''
+        if eircode and eircode not in job_address:
+            job_address = f"{job_address} ({eircode})" if job_address else eircode
         
         # Get business details from the company record
         company_business_name = company.get('company_name') or company.get('business_name') or company.get('name') or None if company else None

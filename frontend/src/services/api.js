@@ -130,7 +130,8 @@ export const getFinances = () => api.get('/api/finances');
 export const getFinanceStats = () => api.get('/api/finances/stats');
 
 // Invoices
-export const sendInvoice = (bookingId) => api.post(`/api/bookings/${bookingId}/send-invoice`);
+export const sendInvoice = (bookingId, invoiceData = null) => 
+  api.post(`/api/bookings/${bookingId}/send-invoice`, invoiceData || {});
 export const getInvoiceConfig = () => api.get('/api/invoice-config');
 
 // Calendar

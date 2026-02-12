@@ -349,9 +349,9 @@ async def media_handler(ws):
                 if caller_phone:
                     phone_instruction = (
                         f"PHONE NUMBER: The caller's phone number is {formatted_phone}. "
-                        f"When you need their phone number, ask: 'Is {formatted_phone} the best number to reach you?' "
+                        f"When you need their phone number, say: 'I have your number as {formatted_phone}. Is that the best number to reach you?' "
                         "If they say YES, use that number - DO NOT ask again. "
-                        "If they say NO, ask: 'What number would you prefer?' and read it back to confirm."
+                        "If they say NO, ask: 'What number would you prefer?' and read it back digit by digit to confirm."
                     )
                 else:
                     phone_instruction = (
@@ -368,7 +368,8 @@ async def media_handler(ws):
                         "If they ask to book, respond briefly: 'Sure, no problem! What day and time works best for you?'. "
                         "ALWAYS spell back their name letter-by-letter and wait for confirmation before proceeding. "
                         f"{phone_instruction} "
-                        "EMAIL: Do NOT ask for email address - it is not required.]"
+                        "ADDRESS: Prefer eircode - ask 'Do you know your eircode?' first. If not, get full address. ALWAYS read back addresses and eircodes to confirm. "
+                        "CRITICAL: Say things ONCE only - never repeat booking confirmations, goodbyes, or 'thanks for calling'. After confirming a booking, just ask 'Anything else?' once.]"
                     )
                 })
                 

@@ -33,7 +33,7 @@ RESCHEDULE_MESSAGES = {
     
     "name_mismatch": "[SYSTEM: The user's response suggests they may be referring to a recent appointment or providing context. Use your conversation history to understand their intent. If they're clearly confirming this is their appointment (e.g., 'the one I just booked', 'that appointment'), treat it as confirmation. Otherwise, politely ask for the customer name to locate the correct appointment.]",
     
-    "success": lambda new_time: f"[SYSTEM: Tell the user: 'Perfect! I've moved you to {new_time}. Looking forward to seeing you then!']",
+    "success": lambda new_time: f"[SYSTEM: SUCCESS! Rescheduled to {new_time}. Say EXACTLY: 'Perfect, I've moved you to {new_time}. Anything else?' Then STOP - do not repeat.]",
     
     "failed": "[SYSTEM: Could NOT reschedule the appointment. Either the appointment wasn't found or the new time slot is busy. Ask them for the original appointment date/time and suggest alternative times.]",
     

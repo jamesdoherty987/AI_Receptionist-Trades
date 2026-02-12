@@ -344,15 +344,17 @@ def remove_repetition(text: str) -> str:
 _appointment_state = {
     "active_booking": False,
     "initial_request": None,  # Track user's original request (e.g., "book job")
-    "customer_name": None,  # Renamed from customer_name for trades
+    "customer_name": None,
     "datetime": None,
     "service_type": None,
-    "job_address": None,  # Address where work will be performed
+    "job_address": None,  # Address or eircode where work will be performed
     "job_description": None,  # What needs doing
     "urgency_level": None,  # Emergency/Same-Day/Scheduled/Quote
     "property_type": None,  # Residential/Commercial
     "gathering_started": False,
     "already_booked": False,  # Track if we've already completed a booking
+    "phone_number": None,
+    "phone_confirmed": False,
     "caller_identified": False,  # Track if we've identified the caller
     "client_info": None  # Store client info from database
 }
@@ -363,7 +365,7 @@ def reset_appointment_state():
     _appointment_state = {
         "active_booking": False,
         "initial_request": None,
-        "customer_name": None,  # Renamed from customer_name
+        "customer_name": None,
         "datetime": None,
         "service_type": None,
         "job_address": None,
@@ -374,8 +376,6 @@ def reset_appointment_state():
         "already_booked": False,
         "phone_number": None,
         "phone_confirmed": False,
-        "email_address": None,
-        "email_confirmed": False,
         "caller_identified": False,
         "client_info": None
     }
@@ -1928,7 +1928,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             # Booking succeeded - mark temporarily to prevent duplicate in same message
                             _appointment_state["already_booked"] = True
                             requested_time = parse_datetime(appointment_details["datetime"])
-                            system_message = f"[SYSTEM: SUCCESS! Appointment has been booked to the calendar for {appointment_details['customer_name']} on {requested_time.strftime('%B %d at %I:%M %p')} for {appointment_details.get('service_type', 'general appointment')}. Tell the user they're all set and you're looking forward to seeing them. DO NOT ask for confirmation - the booking is already complete.]"
+                            system_message = f"[SYSTEM: SUCCESS! Booking confirmed for {appointment_details['customer_name']} on {requested_time.strftime('%A, %B %d at %I:%M %p')}. Say EXACTLY: 'Perfect, you're all booked for {requested_time.strftime('%A at %I:%M %p')}. Anything else I can help with?' Then STOP - do not repeat the confirmation.]"
                             messages.append({"role": "system", "content": system_message})
                             # Reset flag to allow additional bookings after this one is complete
                             _appointment_state["already_booked"] = False
@@ -1979,7 +1979,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             _appointment_state.pop("cancel_final_asked", None)
                             print(f"🧹 Cleared appointment state and cancel flow after cancellation")
                             
-                            system_message = f"[SYSTEM: SUCCESS! Appointment has been cancelled for {appointment_details.get('customer_name', 'the customer')}. Tell them it's been cancelled and they can book again anytime. Keep it brief.]"
+                            system_message = f"[SYSTEM: SUCCESS! Appointment cancelled for {appointment_details.get('customer_name', 'the customer')}. Say EXACTLY: 'That's cancelled for you. Anything else I can help with?' Then STOP - do not repeat.]"
                             messages.append({"role": "system", "content": system_message})
                         else:
                             # Cancellation failed (not found)
@@ -2515,12 +2515,12 @@ When customer wants to reschedule:
                             fallback = result_content.get("message", "I've checked that for you. What time would work best?")
                     except:
                         fallback = "I've checked that for you. What time would work best?"
-                elif tool_name == "book_appointment":
-                    fallback = "Your appointment has been booked. You'll receive a confirmation shortly."
-                elif tool_name == "cancel_appointment":
-                    fallback = "Your appointment has been cancelled. Is there anything else I can help you with?"
-                elif tool_name == "reschedule_appointment":
-                    fallback = "Your appointment has been rescheduled. You'll receive an updated confirmation."
+                elif tool_name in ["book_appointment", "book_job"]:
+                    fallback = "You're all booked! Anything else I can help with?"
+                elif tool_name in ["cancel_appointment", "cancel_job"]:
+                    fallback = "That's cancelled for you. Anything else?"
+                elif tool_name in ["reschedule_appointment", "reschedule_job"]:
+                    fallback = "I've moved that for you. Anything else?"
                 elif tool_name == "transfer_to_human":
                     fallback = "Let me transfer you now. Please hold."
                 else:

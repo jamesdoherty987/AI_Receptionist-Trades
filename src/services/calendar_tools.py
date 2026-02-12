@@ -51,7 +51,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "lookup_customer",
-            "description": "Look up existing customer information by name, phone, or email. Use this EARLY to check if customer exists in system. Call this right after getting their name and contact info to see if they're a returning customer.",
+            "description": "Look up existing customer information by name or phone. Use this EARLY to check if customer exists in system. Call this right after getting their name to see if they're a returning customer.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -61,11 +61,7 @@ CALENDAR_TOOLS = [
                     },
                     "phone": {
                         "type": "string",
-                        "description": "Customer's phone number (optional)"
-                    },
-                    "email": {
-                        "type": "string",
-                        "description": "Customer's email address (optional)"
+                        "description": "Customer's phone number (optional - use caller's number if available)"
                     }
                 },
                 "required": ["customer_name"]
@@ -76,7 +72,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "book_appointment",
-            "description": "Book a new appointment for a customer. CRITICAL: You MUST have a SPECIFIC date and time before calling this (e.g., 'tomorrow at 2pm', 'Monday at 9am'). DO NOT call this with vague times like 'within 2 hours', 'as soon as possible', or 'ASAP'. For urgent requests, suggest the next available time slot using check_availability first. Required info: name, phone, email, SPECIFIC appointment datetime, and reason.",
+            "description": "Book a new appointment for a customer. CRITICAL: You MUST have a SPECIFIC date and time before calling this (e.g., 'tomorrow at 2pm', 'Monday at 9am'). DO NOT call this with vague times like 'within 2 hours', 'as soon as possible', or 'ASAP'. For urgent requests, suggest the next available time slot using check_availability first. Required info: name, phone, SPECIFIC appointment datetime, and reason.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -84,13 +80,9 @@ CALENDAR_TOOLS = [
                         "type": "string",
                         "description": "Customer's full name"
                     },
-                    "email": {
-                        "type": "string",
-                        "description": "Customer's email address"
-                    },
                     "phone": {
                         "type": "string",
-                        "description": "Customer's phone number"
+                        "description": "Customer's phone number (MANDATORY) - use the caller's number unless they provide a different one"
                     },
                     "appointment_datetime": {
                         "type": "string",
@@ -155,7 +147,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "book_job",
-            "description": "Book a new trade job/appointment for a customer. CRITICAL: You MUST have a SPECIFIC date and time before calling this (e.g., 'tomorrow at 2pm', 'Monday at 9am'). DO NOT call this with vague times like 'within 2 hours', 'as soon as possible', or 'ASAP'. For emergency requests, check availability first and suggest the next available time slot. Required info: customer name, phone (mandatory), job address, job description, SPECIFIC datetime, and urgency level. Email is NOT required.",
+            "description": "Book a new trade job/appointment for a customer. CRITICAL: You MUST have a SPECIFIC date and time before calling this (e.g., 'tomorrow at 2pm', 'Monday at 9am'). DO NOT call this with vague times like 'within 2 hours', 'as soon as possible', or 'ASAP'. For emergency requests, check availability first and suggest the next available time slot. Required info: customer name, phone (mandatory), job address or eircode, job description, SPECIFIC datetime, and urgency level.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -167,13 +159,9 @@ CALENDAR_TOOLS = [
                         "type": "string",
                         "description": "Customer's phone number (MANDATORY) - use the caller's number unless they provide a different one"
                     },
-                    "email": {
-                        "type": "string",
-                        "description": "Customer's email address (OPTIONAL - do not ask for this)"
-                    },
                     "job_address": {
                         "type": "string",
-                        "description": "Full address where the job will be performed (e.g., '32 Silvergrove, Ballybeg, Ennis, Clare')"
+                        "description": "Job location - can be eircode (preferred, e.g., 'V94 ABC1') or full address (e.g., '32 Silvergrove, Ballybeg, Ennis, Clare'). Always confirm by reading back."
                     },
                     "job_description": {
                         "type": "string",
@@ -647,9 +635,17 @@ class ServiceMatcher:
     @classmethod
     def _create_general_fallback(cls, services: list, default_duration: int, reason: str, general_service: dict = None) -> dict:
         """Create a General service fallback response."""
+        from src.utils.config import config
+        
+        # Get default charge from config
+        default_charge = getattr(config, 'DEFAULT_APPOINTMENT_CHARGE', 50.0)
         
         # Use existing General service if available
         if general_service:
+            # Ensure General service has a price (use default if not set)
+            if not general_service.get('price') or general_service.get('price') == 0:
+                general_service = dict(general_service)  # Make a copy
+                general_service['price'] = default_charge
             logger.debug(f"Using General Service (reason: {reason})")
             return {
                 'service': general_service,
@@ -664,6 +660,10 @@ class ServiceMatcher:
             service_name = (service.get('name') or '').lower()
             service_category = (service.get('category') or '').lower()
             if 'general' in service_name or service_category == 'general':
+                # Ensure it has a price
+                if not service.get('price') or service.get('price') == 0:
+                    service = dict(service)  # Make a copy
+                    service['price'] = default_charge
                 logger.debug(f"Using General Service (reason: {reason})")
                 return {
                     'service': service,
@@ -673,7 +673,7 @@ class ServiceMatcher:
                     'is_general': True
                 }
         
-        # Create virtual General service
+        # Create virtual General service with default charge
         logger.debug(f"Creating virtual General Service (reason: {reason})")
         return {
             'service': {
@@ -682,8 +682,8 @@ class ServiceMatcher:
                 'category': 'General',
                 'description': 'Default service',
                 'duration_minutes': default_duration,
-                'price': 0,
-                'emergency_price': None
+                'price': default_charge,
+                'emergency_price': default_charge * 1.5  # 50% more for emergency
             },
             'score': 0,
             'matched_name': 'General Service (default)',
@@ -725,6 +725,8 @@ def match_service(job_description: str, company_id: int = None) -> dict:
         
     except Exception as e:
         logger.warning(f"Error matching service: {e}")
+        from src.utils.config import config
+        default_charge = getattr(config, 'DEFAULT_APPOINTMENT_CHARGE', 50.0)
         return {
             'service': {
                 'id': 'general_default',
@@ -732,8 +734,8 @@ def match_service(job_description: str, company_id: int = None) -> dict:
                 'category': 'General',
                 'description': 'Default service',
                 'duration_minutes': 60,
-                'price': 0,
-                'emergency_price': None
+                'price': default_charge,
+                'emergency_price': default_charge * 1.5
             },
             'score': 0,
             'matched_name': 'General Service (error fallback)',
