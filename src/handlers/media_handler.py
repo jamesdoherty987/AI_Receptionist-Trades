@@ -634,6 +634,14 @@ async def media_handler(ws):
                                     
                                     conversation.append({"role": "user", "content": text})
                                     
+                                    # Trim conversation history to prevent context overflow
+                                    # Keep system message (first) + last N message pairs
+                                    MAX_HISTORY = 12  # Keep last 12 messages (6 turns)
+                                    if len(conversation) > MAX_HISTORY + 1:  # +1 for system message
+                                        # Keep first message (system) and last MAX_HISTORY messages
+                                        conversation[:] = [conversation[0]] + conversation[-(MAX_HISTORY):]
+                                        print(f"📝 Trimmed conversation to {len(conversation)} messages")
+                                    
                                     print(f"🔊 Starting LLM response (conversation length: {len(conversation)})")
                                     # Set LLM processing state to filter filler speech
                                     # This flag is cleared in start_tts finally block when TTS completes
