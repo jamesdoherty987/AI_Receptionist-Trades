@@ -514,6 +514,8 @@ class PostgreSQLDatabaseWrapper:
             'revolut_phone': 'TEXT',
             # AI receptionist context
             'company_context': 'TEXT',
+            # Coverage area for AI receptionist
+            'coverage_area': 'TEXT',
             # Feature flags
             'remove_stripe_connect': 'BOOLEAN DEFAULT false',
             # Business settings (may have been missed in original schema)
@@ -783,7 +785,7 @@ class PostgreSQLDatabaseWrapper:
                               'last_login', 'trial_start', 'trial_end',
                               'subscription_current_period_end', 'subscription_cancel_at_period_end',
                               'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
-                              'revolut_phone', 'company_context', 'remove_stripe_connect',
+                              'revolut_phone', 'company_context', 'coverage_area', 'remove_stripe_connect',
                               'twilio_phone_number']
             
             # Get actual columns that exist in the database

@@ -97,11 +97,12 @@ def load_business_info(company_id=None):
             
             return {
                 'business_name': business_name,
-                'business_hours': company.get('business_hours') or '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
+                'business_hours': company.get('business_hours') or '8 AM - 6 PM Mon-Sat',
                 'phone': company.get('phone') or 'Not configured',
                 'email': company.get('email') or 'Not configured',
                 'address': company.get('address') or 'Not configured',
-                'company_context': company.get('company_context') or ''
+                'company_context': company.get('company_context') or '',
+                'coverage_area': company.get('coverage_area') or ''
             }
     except Exception as e:
         print(f"[WARNING] Could not load business info from database (company_id={company_id}): {e}")
@@ -109,10 +110,11 @@ def load_business_info(company_id=None):
     # Fallback to generic info
     return {
         'business_name': 'Your Business',
-        'business_hours': '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
+        'business_hours': '8 AM - 6 PM Mon-Sat',
         'phone': 'Not configured',
         'email': 'Not configured',
-        'address': 'Not configured'
+        'address': 'Not configured',
+        'coverage_area': ''
     }
 
 
@@ -215,18 +217,22 @@ def load_system_prompt(company_id=None):
         hours_str = f"{business_hours.get('start_hour', 9)}:00 to {business_hours.get('end_hour', 17)}:00"
         days_str = ', '.join(business_hours.get('days_open', ['Monday-Friday']))
         
+        # Get coverage area from business info
+        coverage_area = business_info.get('coverage_area', '').strip()
+        coverage_line = f"COVERAGE AREA: {coverage_area}" if coverage_area else ""
+        
         # Add business info section at the end of prompt
         business_context = f"""
 
 ###############################################################################
-## BUSINESS INFORMATION (Auto-loaded from config files)
+## BUSINESS INFORMATION (Auto-loaded from database)
 ###############################################################################
 
 BUSINESS: {business_info.get('business_name', 'Your Business')}
 TYPE: {business_info.get('business_type', 'Multi-Trade Services Company')}
 OWNER: {business_info.get('staff', {}).get('business_owner', 'James')}
 
-LOCATION: {business_info.get('location', {}).get('service_area', 'Limerick and surrounding counties')}
+{coverage_line}
 
 BUSINESS HOURS: {hours_str}
 DAYS OPEN: {days_str}
@@ -243,7 +249,6 @@ PRICING NOTES:
 
 POLICIES:
 - Cancellation notice: {services_menu.get('service_policies', {}).get('cancellation_notice', '2 hours')}
-- Emergency response: {services_menu.get('service_policies', {}).get('emergency_response_hours', '2 hours')} hours
 - Warranty: {services_menu.get('service_policies', {}).get('warranty_months', 12)} months
 
 IMPORTANT: Use this information to answer customer questions accurately. Quote prices from the services list above.
@@ -349,7 +354,7 @@ _appointment_state = {
     "service_type": None,
     "job_address": None,  # Address or eircode where work will be performed
     "job_description": None,  # What needs doing
-    "urgency_level": None,  # Emergency/Same-Day/Scheduled/Quote
+    "urgency_level": None,  # Same-Day/Scheduled/Quote (no emergency)
     "property_type": None,  # Residential/Commercial
     "gathering_started": False,
     "already_booked": False,  # Track if we've already completed a booking
@@ -2095,6 +2100,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     
     # PRE-CHECK: Detect if user message likely requires a tool call
     # If so, speak acknowledgment IMMEDIATELY before calling OpenAI (to avoid OpenAI latency)
+    # IMPORTANT: Filler messages run in PARALLEL with tool execution - TTS speaks while work happens
     user_message = messages[-1]["content"].lower() if messages and messages[-1].get("role") == "user" else ""
     likely_needs_tool = False
     checking_msg = None
@@ -2104,43 +2110,63 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     if any(phrase in user_message for phrase in transfer_phrases):
         likely_needs_tool = True
         checking_msg = random.choice([
-            "No problem, one moment please.",
-            "Sure, let me transfer you now.",
-            "Of course, transferring you now."
+            "No problem, let me transfer you now.",
+            "Sure, transferring you now.",
+            "Of course, I'll connect you now."
         ])
         print(f"   🚀 PRE-CHECK: Transfer request detected")
+    
+    # Detect booking confirmation (user confirming details before booking)
+    # This catches "yes", "that's correct", "book it", "sounds good" after a confirmation prompt
+    booking_confirm_phrases = ["yes", "yeah", "yep", "correct", "that's right", "book it", "sounds good", "perfect", "go ahead", "please book", "book that"]
+    # Check if previous assistant message was a booking confirmation prompt
+    prev_assistant_msg = ""
+    for msg in reversed(messages[:-1]):
+        if msg.get("role") == "assistant":
+            prev_assistant_msg = msg.get("content", "").lower()
+            break
+    is_booking_confirmation = ("let me confirm" in prev_assistant_msg or "all correct" in prev_assistant_msg or "is that correct" in prev_assistant_msg) and any(phrase in user_message for phrase in booking_confirm_phrases)
+    
+    if not likely_needs_tool and is_booking_confirmation:
+        likely_needs_tool = True
+        checking_msg = random.choice([
+            "Let me book that for you now.",
+            "Booking that for you now.",
+            "Grand, getting that booked for you."
+        ])
+        print(f"   🚀 PRE-CHECK: Booking confirmation detected")
     
     # Detect availability/schedule checking
     availability_phrases = ["available", "availability", "what times", "when are you", "when can", "any slots", "free", "open"]
     if not likely_needs_tool and any(phrase in user_message for phrase in availability_phrases):
         likely_needs_tool = True
         checking_msg = random.choice([
-            "Let me check that for you.",
-            "One moment, let me see what's available.",
-            "Let me look that up for you."
+            "Let me check what's available.",
+            "Let me see what times we have.",
+            "One moment, checking availability."
         ])
         print(f"   🚀 PRE-CHECK: Availability check detected")
     
     # Detect cancellation requests
     cancel_phrases = ["cancel", "cancelling", "canceling"]
-    cancel_context = ["appointment", "booking", "scheduled"]
+    cancel_context = ["appointment", "booking", "scheduled", "job"]
     if not likely_needs_tool and any(phrase in user_message for phrase in cancel_phrases) and any(ctx in user_message for ctx in cancel_context):
         likely_needs_tool = True
         checking_msg = random.choice([
-            "No problem, let me pull that up.",
-            "Sure, one moment please.",
-            "Let me find that appointment."
+            "Let me find that appointment.",
+            "Let me pull that up for you.",
+            "One moment, finding that booking."
         ])
         print(f"   🚀 PRE-CHECK: Cancellation request detected")
     
     # Detect reschedule requests
-    reschedule_phrases = ["reschedule", "change my appointment", "move my appointment", "different time"]
+    reschedule_phrases = ["reschedule", "change my appointment", "move my appointment", "different time", "move it to"]
     if not likely_needs_tool and any(phrase in user_message for phrase in reschedule_phrases):
         likely_needs_tool = True
         checking_msg = random.choice([
-            "No problem, let me check availability.",
-            "Sure, let me see what times are available.",
-            "Let me look that up for you."
+            "Let me check what times are available.",
+            "Let me see what we can do.",
+            "One moment, checking availability."
         ])
         print(f"   🚀 PRE-CHECK: Reschedule request detected")
     
@@ -2149,11 +2175,24 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     if not likely_needs_tool and any(phrase in user_message for phrase in lookup_phrases):
         likely_needs_tool = True
         checking_msg = random.choice([
-            "Let me check that for you.",
-            "One moment, let me pull that up.",
-            "Let me look that up."
+            "Let me find that for you.",
+            "One moment, pulling that up.",
+            "Let me check your appointment."
         ])
         print(f"   🚀 PRE-CHECK: Appointment lookup detected")
+    
+    # Detect customer lookup (after getting name)
+    # This catches when user explicitly provides their name
+    # Be careful not to match common phrases like "I'm having a problem"
+    name_intro_patterns = ["my name is ", "the name is ", "name's "]
+    if not likely_needs_tool and any(phrase in user_message for phrase in name_intro_patterns):
+        likely_needs_tool = True
+        checking_msg = random.choice([
+            "Let me look you up.",
+            "One moment, checking our records.",
+            "Let me see if we have you on file."
+        ])
+        print(f"   🚀 PRE-CHECK: Customer lookup detected")
     
     if likely_needs_tool and checking_msg:
         print(f"   🗣️ Speaking BEFORE OpenAI call: '{checking_msg}'")
@@ -2252,13 +2291,60 @@ When customer wants to reschedule:
                 # IMMEDIATELY yield the split marker on the FIRST tool call detection
                 # (only if we didn't already yield it in pre-check)
                 if not has_yielded_split_marker:
-                    checking_phrases = [
-                        "Let me check that for you.",
-                        "One moment please.",
-                        "Let me look that up."
-                    ]
+                    # Try to get tool name for context-aware filler
+                    tool_name_hint = ""
+                    for tc_delta in delta.tool_calls:
+                        if tc_delta.function and tc_delta.function.name:
+                            tool_name_hint = tc_delta.function.name
+                            break
+                    
+                    # Context-aware filler messages based on tool being called
+                    if tool_name_hint in ["book_job", "book_appointment"]:
+                        checking_phrases = [
+                            "Let me book that for you now.",
+                            "Booking that for you.",
+                            "Getting that booked for you."
+                        ]
+                    elif tool_name_hint in ["cancel_job", "cancel_appointment"]:
+                        checking_phrases = [
+                            "Let me cancel that for you.",
+                            "Cancelling that now.",
+                            "Let me take care of that."
+                        ]
+                    elif tool_name_hint in ["reschedule_job", "reschedule_appointment"]:
+                        checking_phrases = [
+                            "Let me reschedule that for you.",
+                            "Rescheduling that now.",
+                            "Let me move that for you."
+                        ]
+                    elif tool_name_hint == "check_availability":
+                        checking_phrases = [
+                            "Let me check what's available.",
+                            "Checking availability now.",
+                            "Let me see what times we have."
+                        ]
+                    elif tool_name_hint == "lookup_customer":
+                        checking_phrases = [
+                            "Let me look you up.",
+                            "Checking our records.",
+                            "One moment, finding your details."
+                        ]
+                    elif tool_name_hint == "transfer_to_human":
+                        checking_phrases = [
+                            "Transferring you now.",
+                            "Connecting you now.",
+                            "Let me get someone for you."
+                        ]
+                    else:
+                        # Generic fallback
+                        checking_phrases = [
+                            "One moment please.",
+                            "Let me take care of that.",
+                            "Working on that now."
+                        ]
+                    
                     checking_msg = random.choice(checking_phrases)
-                    print(f"   🗣️ IMMEDIATE: First tool call detected - yielding split marker with: '{checking_msg}'")
+                    print(f"   🗣️ IMMEDIATE: First tool call detected ({tool_name_hint or 'unknown'}) - yielding split marker with: '{checking_msg}'")
                     yield f"<<<SPLIT_TTS:{checking_msg}>>>"
                     has_yielded_split_marker = True
                 
@@ -2431,7 +2517,7 @@ When customer wants to reschedule:
             # Add a system message to ensure LLM provides a complete response WITHOUT repeating the checking message
             messages.append({
                 "role": "system",
-                "content": "[SYSTEM INSTRUCTION: You ALREADY told the customer 'let me check that for you' before executing the tool. The tool has now COMPLETED and returned results. DO NOT say 'let me check', 'one moment', 'checking', 'I've checked', or any similar phrases. The customer is waiting for the actual answer, not another acknowledgment. Immediately provide the actual results in your first words. For example: Start with 'I have [times] available' or 'Your appointment is confirmed for' or 'I found your appointment', NOT 'let me check' or 'I've looked that up'. Get straight to the point.]"
+                "content": "[CRITICAL INSTRUCTION: You ALREADY told the customer 'let me check that for you'. The tool has COMPLETED. You MUST NOW provide the actual results - DO NOT go silent, DO NOT say 'let me check' again. The customer is waiting for your answer. Start immediately with the results: 'I have [times] available' or 'Great to hear from you again!' or 'Your appointment is confirmed' or 'I found your appointment'. NEVER leave the customer waiting in silence.]"
             })
             
             follow_up_stream = client.chat.completions.create(
@@ -2515,6 +2601,20 @@ When customer wants to reschedule:
                             fallback = result_content.get("message", "I've checked that for you. What time would work best?")
                     except:
                         fallback = "I've checked that for you. What time would work best?"
+                elif tool_name == "lookup_customer":
+                    # Parse the lookup result to provide appropriate response
+                    try:
+                        result_content = json.loads(tool_results[0]["content"])
+                        if result_content.get("success"):
+                            if result_content.get("is_returning"):
+                                customer_name = result_content.get("customer_name", "")
+                                fallback = f"Great to hear from you again, {customer_name}! What can I help you with today?"
+                            else:
+                                fallback = "Welcome! I'll get you set up in our system. What can I help you with today?"
+                        else:
+                            fallback = "I couldn't find that name in our system. Let me set you up as a new customer. What can I help you with?"
+                    except:
+                        fallback = "Thanks for that. What can I help you with today?"
                 elif tool_name in ["book_appointment", "book_job"]:
                     fallback = "You're all booked! Anything else I can help with?"
                 elif tool_name in ["cancel_appointment", "cancel_job"]:

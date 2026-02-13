@@ -366,15 +366,17 @@ function ServicesTab() {
                 <>
                   <div className="service-icon">
                     {service.image_url ? (
-                      <img src={service.image_url} alt={service.name} className="service-icon-img" />
+                      <img src={service.image_url} alt={service.name || 'Service'} className="service-icon-img" />
                     ) : (
                       <i className="fas fa-wrench"></i>
                     )}
                   </div>
                   <div className="service-info">
-                    <h3>{service.name}</h3>
+                    {service.name && (
+                      <h3 className="service-name">{service.name}</h3>
+                    )}
                     <div className="service-details">
-                      {service.price && (
+                      {service.price > 0 && (
                         <span className="service-price">
                           {formatCurrency(service.price)}
                         </span>

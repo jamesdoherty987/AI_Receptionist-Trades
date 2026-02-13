@@ -2262,7 +2262,7 @@ def business_settings_api():
             'business_address': company.get('address'),
             'logo_url': company.get('logo_url'),
             'country_code': '+353',  # Default, could be added to schema if needed
-            'business_hours': company.get('business_hours') or '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
+            'business_hours': company.get('business_hours') or '8 AM - 6 PM Mon-Sat',
             'twilio_phone_number': company.get('twilio_phone_number'),  # Read-only, assigned from pool
             'ai_enabled': company.get('ai_enabled', True),
             # Bank details for invoice bank transfer option
@@ -2274,6 +2274,8 @@ def business_settings_api():
             'revolut_phone': company.get('revolut_phone', ''),
             # Company context for AI receptionist
             'company_context': company.get('company_context', ''),
+            # Coverage area for AI receptionist
+            'coverage_area': company.get('coverage_area', ''),
         }
         return jsonify(settings)
     
@@ -2325,6 +2327,7 @@ def business_settings_api():
             'bank_account_holder': 'bank_account_holder',
             'revolut_phone': 'revolut_phone',
             'company_context': 'company_context',
+            'coverage_area': 'coverage_area',
         }
         
         for frontend_field, db_field in field_mapping.items():

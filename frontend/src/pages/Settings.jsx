@@ -691,19 +691,33 @@ function Settings() {
                 </h3>
                 <p className="section-description">
                   Give your AI receptionist context about your business. This information helps it answer customer questions 
-                  more accurately -- things like where to park, your company history, specific policies, areas you serve, 
+                  more accurately -- things like where to park, your company history, specific policies, 
                   certifications, or any other details callers might ask about.
                 </p>
                 <div className="form-grid">
                   <div className="form-group full-width">
-                    <label htmlFor="company_context">Company Context &amp; Details</label>
+                    <label htmlFor="coverage_area">Coverage Area / Service Area</label>
+                    <input
+                      type="text"
+                      id="coverage_area"
+                      name="coverage_area"
+                      value={formData.coverage_area || ''}
+                      onChange={handleChange}
+                      placeholder="e.g., Limerick and surrounding counties, Dublin city and suburbs, Nationwide"
+                    />
+                    <small className="form-help">
+                      Where do you provide services? The AI will use this to answer questions about your service area.
+                    </small>
+                  </div>
+                  <div className="form-group full-width">
+                    <label htmlFor="company_context">Additional Company Context &amp; Details</label>
                     <textarea
                       id="company_context"
                       name="company_context"
                       value={formData.company_context || ''}
                       onChange={handleChange}
                       rows={8}
-                      placeholder={"Example:\n- Free parking available in the car park behind the building\n- We've been in business since 2005, family-run company\n- We serve all of Co. Clare, Limerick, and Galway\n- All our technicians are fully insured and certified\n- We offer a 12-month warranty on all work\n- Emergency callouts available 24/7 - extra charges apply after hours\n- Please have the area clear before our team arrives"}
+                      placeholder={"Example:\n- Free parking available in the car park behind the building\n- We've been in business since 2005, family-run company\n- All our technicians are fully insured and certified\n- We offer a 12-month warranty on all work\n- Please have the area clear before our team arrives"}
                       style={{ 
                         minHeight: '180px', 
                         resize: 'vertical',

@@ -34,8 +34,8 @@ CALL_SUMMARY_FUNCTION = {
             },
             "urgency_level": {
                 "type": "string",
-                "enum": ["emergency", "urgent", "normal", "flexible"],
-                "description": "How urgent is this job? Emergency = immediate danger/flooding/no heat. Urgent = needs attention within 24-48 hours. Normal = standard scheduling. Flexible = customer has no time pressure."
+                "enum": ["urgent", "normal", "flexible"],
+                "description": "How urgent is this job? Urgent = needs attention within 24-48 hours. Normal = standard scheduling. Flexible = customer has no time pressure."
             },
             "urgency_notes": {
                 "type": "string",
@@ -186,7 +186,6 @@ def format_summary_for_note(summary: Dict[str, Any]) -> str:
     if urgency != 'normal':
         lines.append("")
         urgency_display = {
-            'emergency': '🚨 EMERGENCY - Immediate attention required',
             'urgent': '⚠️ URGENT - Needs attention within 24-48 hours',
             'flexible': '📅 Flexible - Customer has no time pressure'
         }.get(urgency, urgency.title())
@@ -314,15 +313,11 @@ async def add_call_summary_to_booking(
         if note_id:
             print(f"[SUCCESS] Added call summary to booking {booking_id}")
             
-            # Also update urgency if it was detected as emergency or urgent
+            # Also update urgency if it was detected as urgent
             urgency = summary.get('urgency_level')
-            if urgency in ['emergency', 'urgent']:
-                urgency_map = {
-                    'emergency': 'Emergency',
-                    'urgent': 'Same-Day'
-                }
-                db.update_booking(booking_id, company_id=company_id, urgency=urgency_map.get(urgency, 'Scheduled'))
-                print(f"[INFO] Updated booking urgency to {urgency_map.get(urgency)}")
+            if urgency == 'urgent':
+                db.update_booking(booking_id, company_id=company_id, urgency='Same-Day')
+                print(f"[INFO] Updated booking urgency to Same-Day")
             
             return True
         

@@ -147,11 +147,12 @@
   min-width: 0;
 }
 
-.service-info h3 {
+.service-info h3,
+.service-info .service-name {
   font-size: 1.1rem;
   font-weight: 700;
   margin: 0 0 0.75rem 0;
-  color: #1f2937;
+  color: #1f2937 !important;
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
@@ -358,13 +359,14 @@
     overflow: hidden;
   }
 
-  .service-info h3 {
+  .service-info h3,
+  .service-info .service-name {
     font-size: 0.875rem;
     margin-bottom: 0.25rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: #1f2937;
+    color: #1f2937 !important;
   }
 
   .service-details {

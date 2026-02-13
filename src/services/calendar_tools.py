@@ -147,7 +147,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "book_job",
-            "description": "Book a new trade job/appointment for a customer. CRITICAL: You MUST have a SPECIFIC date and time before calling this (e.g., 'tomorrow at 2pm', 'Monday at 9am'). DO NOT call this with vague times like 'within 2 hours', 'as soon as possible', or 'ASAP'. For emergency requests, check availability first and suggest the next available time slot. Required info: customer name, phone (mandatory), job address or eircode, job description, SPECIFIC datetime, and urgency level.",
+            "description": "Book a new trade job/appointment for a customer. CRITICAL: You MUST have a SPECIFIC date and time before calling this (e.g., 'tomorrow at 2pm', 'Monday at 9am'). DO NOT call this with vague times like 'within 2 hours', 'as soon as possible', or 'ASAP'. Required info: customer name, phone (mandatory), job address or eircode, job description, SPECIFIC datetime, and urgency level.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -173,8 +173,8 @@ CALENDAR_TOOLS = [
                     },
                     "urgency_level": {
                         "type": "string",
-                        "enum": ["emergency", "same-day", "scheduled", "quote"],
-                        "description": "Urgency level: 'emergency' for immediate issues (burst pipes, gas leak), 'same-day' for urgent but not critical, 'scheduled' for planned work, 'quote' for estimate visits"
+                        "enum": ["same-day", "scheduled", "quote"],
+                        "description": "Urgency level: 'same-day' for jobs needed today, 'scheduled' for planned work on a future date, 'quote' for estimate visits"
                     },
                     "property_type": {
                         "type": "string",
@@ -692,16 +692,143 @@ class ServiceMatcher:
         }
 
 
-def match_service(job_description: str, company_id: int = None) -> dict:
+class AIServiceMatcher:
+    """
+    AI-powered service matching using OpenAI for complex descriptions.
+    
+    Use this when:
+    - Fuzzy matching returns low confidence (General Service fallback)
+    - Customer asks for price/duration information
+    
+    Performance: ~200-400ms per call (only used as fallback)
+    """
+    
+    # Simple in-memory cache for repeated queries (cleared on restart)
+    _cache = {}
+    _cache_max_size = 100
+    
+    @classmethod
+    def _get_cache_key(cls, job_description: str, services: list) -> str:
+        """Generate cache key from job description and service names"""
+        service_names = tuple(sorted(s.get('name', '') for s in services))
+        return f"{job_description.lower().strip()}:{hash(service_names)}"
+    
+    @classmethod
+    def match(cls, job_description: str, services: list, default_duration: int = 60) -> dict:
+        """
+        Match a job description to the best service using AI.
+        
+        Args:
+            job_description: Description of the job from customer
+            services: List of service dicts from database
+            default_duration: Default duration if no match found
+            
+        Returns:
+            Dict with matched service info
+        """
+        if not job_description or not job_description.strip():
+            return ServiceMatcher._create_general_fallback(services, default_duration, "empty_description")
+        
+        if not services:
+            return ServiceMatcher._create_general_fallback(services, default_duration, "no_services")
+        
+        # Filter out General Service from matching candidates
+        matching_services = [s for s in services if 'general' not in (s.get('name') or '').lower()]
+        if not matching_services:
+            return ServiceMatcher._create_general_fallback(services, default_duration, "only_general_service")
+        
+        # Check cache first
+        cache_key = cls._get_cache_key(job_description, matching_services)
+        if cache_key in cls._cache:
+            logger.debug(f"AI match cache hit for: '{job_description[:50]}...'")
+            return cls._cache[cache_key]
+        
+        try:
+            from openai import OpenAI
+            from src.utils.config import config
+            import json
+            
+            client = OpenAI(api_key=config.OPENAI_API_KEY, timeout=5.0)  # 5 second timeout
+            
+            # Build compact service list for the prompt
+            service_list = []
+            for i, svc in enumerate(matching_services):
+                name = svc.get('name', 'Unknown')
+                desc = svc.get('description', '')
+                # Keep descriptions short to reduce tokens
+                if desc and len(desc) > 50:
+                    desc = desc[:50] + '...'
+                service_list.append(f"{i+1}. {name}" + (f" ({desc})" if desc else ""))
+            
+            services_text = "\n".join(service_list)
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Match customer problem to service. Return JSON: {\"idx\":<1-based index or 0 if no match>,\"conf\":<0-100>}"
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Problem: {job_description[:200]}\n\nServices:\n{services_text}"
+                    }
+                ],
+                temperature=0,
+                max_tokens=50  # Minimal tokens for speed
+            )
+            
+            result_text = response.choices[0].message.content.strip()
+            
+            # Parse JSON response - handle markdown code blocks
+            if '```' in result_text:
+                result_text = result_text.split('```')[1].replace('json', '').strip()
+            
+            result = json.loads(result_text)
+            service_index = result.get('idx', result.get('service_index', 0))
+            confidence = result.get('conf', result.get('confidence', 0))
+            
+            # Valid match found
+            if service_index > 0 and service_index <= len(matching_services) and confidence >= 40:
+                matched_service = matching_services[service_index - 1]
+                logger.info(f"AI match: '{job_description[:30]}...' -> '{matched_service.get('name')}' ({confidence}%)")
+                
+                match_result = {
+                    'service': matched_service,
+                    'score': confidence,
+                    'matched_name': matched_service.get('name', 'Unknown'),
+                    'match_details': {'type': 'ai_match'},
+                    'is_general': False
+                }
+                
+                # Cache the result (with size limit)
+                if len(cls._cache) >= cls._cache_max_size:
+                    cls._cache.pop(next(iter(cls._cache)))  # Remove oldest
+                cls._cache[cache_key] = match_result
+                
+                return match_result
+            
+            # No good match
+            logger.debug(f"AI match: No match for '{job_description[:30]}...' (conf: {confidence})")
+            return ServiceMatcher._create_general_fallback(services, default_duration, f"ai_low_conf:{confidence}")
+            
+        except Exception as e:
+            logger.warning(f"AI matching failed: {e}")
+            return ServiceMatcher._create_general_fallback(services, default_duration, f"ai_error")
+
+
+def match_service(job_description: str, company_id: int = None, use_ai_fallback: bool = True) -> dict:
     """
     Match a job description to a service from the services menu.
     
     Uses intelligent multi-strategy matching that works with any services.
+    Falls back to AI matching if fuzzy match confidence is low.
     Falls back to "General Service" if no good match is found.
     
     Args:
         job_description: Description of the job (e.g., 'leaking pipe', 'power outage')
         company_id: Company ID for multi-tenant isolation
+        use_ai_fallback: Whether to use AI matching when fuzzy match is low confidence (default True)
     
     Returns:
         Dict with matched service info:
@@ -720,8 +847,23 @@ def match_service(job_description: str, company_id: int = None) -> dict:
         services = settings_mgr.get_services(company_id=company_id)
         default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
         
-        # Use the ServiceMatcher class for intelligent matching
-        return ServiceMatcher.match(job_description, services, default_duration)
+        # First try fast fuzzy matching
+        result = ServiceMatcher.match(job_description, services, default_duration)
+        
+        # If fuzzy match has low confidence and we have multiple services, try AI matching
+        # AI threshold: score < 50 means fuzzy match isn't confident
+        if use_ai_fallback and result.get('is_general', False) and len(services) > 1:
+            logger.debug(f"Fuzzy match returned General Service (score: {result.get('score', 0)}) - trying AI matching")
+            try:
+                ai_result = AIServiceMatcher.match(job_description, services, default_duration)
+                # Only use AI result if it found a specific service (not General)
+                if not ai_result.get('is_general', True):
+                    logger.info(f"AI match improved result: '{job_description}' -> '{ai_result['matched_name']}' (confidence: {ai_result.get('score', 0)})")
+                    return ai_result
+            except Exception as ai_error:
+                logger.warning(f"AI matching failed, using fuzzy result: {ai_error}")
+        
+        return result
         
     except Exception as e:
         logger.warning(f"Error matching service: {e}")
@@ -775,6 +917,74 @@ def get_service_price(job_description: str, urgency: str = 'scheduled', company_
     except Exception as e:
         logger.warning(f"Error loading service price: {e}, using default EUR0")
         return 0
+
+
+def match_service_with_ai(job_description: str, company_id: int = None, use_ai: bool = True) -> dict:
+    """
+    Match a job description to a service, optionally using AI for better accuracy.
+    
+    Use this when:
+    - Customer asks about price or duration
+    - Call ends and we need accurate service categorization
+    - Fuzzy matching returns low confidence
+    
+    Args:
+        job_description: Description of the job
+        company_id: Company ID for multi-tenant isolation
+        use_ai: Whether to use AI matching (default True)
+    
+    Returns:
+        Dict with matched service info
+    """
+    from src.services.settings_manager import get_settings_manager
+    
+    try:
+        settings_mgr = get_settings_manager()
+        services = settings_mgr.get_services(company_id=company_id)
+        default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
+        
+        if use_ai and len(services) > 1:
+            # Use AI matching for better accuracy
+            return AIServiceMatcher.match(job_description, services, default_duration)
+        else:
+            # Use fast fuzzy matching
+            return ServiceMatcher.match(job_description, services, default_duration)
+            
+    except Exception as e:
+        logger.warning(f"Error in AI service matching: {e}")
+        return match_service(job_description, company_id=company_id)
+
+
+def get_service_info_with_ai(job_description: str, company_id: int = None) -> dict:
+    """
+    Get comprehensive service info using AI matching.
+    
+    Use this when customer asks about price, duration, or service details.
+    Returns price, duration, and service name in one call.
+    
+    Args:
+        job_description: Description of the job
+        company_id: Company ID for multi-tenant isolation
+    
+    Returns:
+        Dict with service info: {
+            'service_name': str,
+            'price': float,
+            'duration_minutes': int,
+            'is_general': bool,
+            'confidence': int
+        }
+    """
+    match_result = match_service_with_ai(job_description, company_id=company_id, use_ai=True)
+    service = match_result['service']
+    
+    return {
+        'service_name': match_result['matched_name'],
+        'price': float(service.get('price', 0)),
+        'duration_minutes': int(service.get('duration_minutes', 60)),
+        'is_general': match_result.get('is_general', False),
+        'confidence': match_result.get('score', 0)
+    }
 
 
 def get_service_duration(job_description: str, company_id: int = None) -> int:
@@ -1192,11 +1402,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 }
             
             # Check for vague time requests
-            vague_time_phrases = ["within", "asap", "as soon as possible", "urgently", "emergency", "quickly", "soon"]
+            vague_time_phrases = ["within", "asap", "as soon as possible", "urgently", "quickly", "soon"]
             if any(phrase in appointment_datetime.lower() for phrase in vague_time_phrases):
                 return {
                     "success": False,
-                    "error": f"The time '{appointment_datetime}' is not specific enough. For urgent requests, please check availability and suggest the next available time slot to the customer.",
+                    "error": f"The time '{appointment_datetime}' is not specific enough. Please check availability and suggest the next available time slot to the customer.",
                     "needs_clarification": "datetime",
                     "is_urgent": True
                 }
@@ -1639,11 +1849,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 }
             
             # Check for vague time requests
-            vague_time_phrases = ["within", "asap", "as soon as possible", "urgently", "emergency", "quickly", "soon", "right away", "immediately"]
+            vague_time_phrases = ["within", "asap", "as soon as possible", "urgently", "quickly", "soon", "right away", "immediately"]
             if any(phrase in appointment_datetime.lower() for phrase in vague_time_phrases):
                 return {
                     "success": False,
-                    "error": f"The time '{appointment_datetime}' is not specific enough. Even for emergencies, you must provide a SPECIFIC time. Please check availability using check_availability and suggest the next available time slot to the customer (e.g., 'We can have someone there at 2pm today').",
+                    "error": f"The time '{appointment_datetime}' is not specific enough. You must provide a SPECIFIC time. Please check availability using check_availability and suggest the next available time slot to the customer (e.g., 'I have 2pm available today').",
                     "needs_clarification": "datetime",
                     "is_urgent": True
                 }

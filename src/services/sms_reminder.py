@@ -3,10 +3,50 @@ SMS Reminder Service using Twilio
 Sends appointment reminders 24 hours before scheduled time
 """
 import os
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
+
+
+def normalize_phone_number(phone: str, default_country_code: str = "+353") -> str:
+    """
+    Normalize a phone number to include country code.
+    Defaults to Ireland (+353) if no country code is present.
+    
+    Args:
+        phone: The phone number to normalize
+        default_country_code: Country code to add if missing (default: +353 for Ireland)
+        
+    Returns:
+        Normalized phone number with country code
+    """
+    if not phone:
+        return phone
+    
+    # Remove all whitespace, dashes, parentheses
+    cleaned = re.sub(r'[\s\-\(\)]+', '', phone.strip())
+    
+    # Already has a + prefix - assume it has country code
+    if cleaned.startswith('+'):
+        return cleaned
+    
+    # Starts with 00 (international format) - convert to +
+    if cleaned.startswith('00'):
+        return '+' + cleaned[2:]
+    
+    # Starts with 353 (Ireland code without + or 00) - just add +
+    if cleaned.startswith('353'):
+        return '+' + cleaned
+    
+    # Irish numbers starting with 0 (local format like 0852635954)
+    # Remove leading 0 and add +353
+    if cleaned.startswith('0'):
+        return default_country_code + cleaned[1:]
+    
+    # No leading 0 or + - assume it needs the country code
+    return default_country_code + cleaned
 
 
 class SMSReminderService:
@@ -53,6 +93,9 @@ class SMSReminderService:
             print("❌ SMS service not configured")
             return False
         
+        # Normalize phone number to include country code (default: Ireland +353)
+        to_number = normalize_phone_number(to_number)
+        
         try:
             # Format the appointment time nicely
             time_str = appointment_time.strftime('%B %d at %I:%M %p')
@@ -97,6 +140,9 @@ class SMSReminderService:
             print("❌ SMS service not configured")
             return False
         
+        # Normalize phone number to include country code (default: Ireland +353)
+        to_number = normalize_phone_number(to_number)
+        
         try:
             msg = self.client.messages.create(
                 body=message,
@@ -138,6 +184,9 @@ class SMSReminderService:
         if not self.client:
             print("❌ SMS service not configured")
             return False
+        
+        # Normalize phone number to include country code (default: Ireland +353)
+        to_number = normalize_phone_number(to_number)
         
         try:
             from src.services.settings_manager import get_settings_manager

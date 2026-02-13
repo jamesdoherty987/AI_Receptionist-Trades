@@ -153,47 +153,73 @@ async def media_handler(ws):
                 MIN_TOKENS_BEFORE_INTERRUPT = config.MIN_TOKENS_BEFORE_INTERRUPT
                 needs_continuation = False  # Track if we need a second TTS session
                 
-                async def simple_stream():
-                    nonlocal token_count, speaking, transfer_number, full_text, needs_continuation
+                # First TTS session - will speak either the full response OR just the checking message
+                print(f"   🗣️ Starting first TTS session...")
+                
+                # Buffer for pre-fetched tokens during parallel execution
+                prefetch_buffer = []
+                prefetch_done = asyncio.Event()
+                prefetch_task = None
+                
+                async def prefetch_remaining():
+                    """Pre-fetch remaining tokens while TTS speaks the filler"""
+                    nonlocal transfer_number
+                    try:
+                        async for token in text_stream:
+                            if token.startswith("<<<TRANSFER:"):
+                                transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
+                                print(f"📞 TRANSFER MARKER DETECTED (prefetch): {transfer_number}")
+                                continue
+                            if token.startswith("<<<") and token.endswith(">>>"):
+                                continue
+                            prefetch_buffer.append(token)
+                    except Exception as e:
+                        print(f"⚠️ Prefetch error: {e}")
+                    finally:
+                        prefetch_done.set()
+                        print(f"   ⚡ Prefetch complete: {len(prefetch_buffer)} tokens buffered")
+                
+                async def simple_stream_with_prefetch():
+                    nonlocal token_count, speaking, transfer_number, full_text, needs_continuation, prefetch_task
                     
                     async for token in text_stream:
                         # Check for SPLIT_TTS marker - this means we need to speak something NOW
-                        # then continue in a separate TTS session for the rest
+                        # while continuing to process the LLM stream in PARALLEL
                         if token.startswith("<<<SPLIT_TTS:"):
                             # Extract the message to speak immediately
                             split_msg = token.replace("<<<SPLIT_TTS:", "").replace(">>>", "").strip()
                             print(f"🔀 SPLIT_TTS MARKER DETECTED: '{split_msg}'")
-                            # Yield this message so it gets spoken now in its own TTS session
+                            # Yield this message so it gets spoken now
                             yield split_msg
                             full_text += split_msg + " "
-                            # Mark that we need to continue with a second TTS session after this
                             needs_continuation = True
-                            # Break here so this TTS session completes with just the checking message
+                            
+                            # START PARALLEL PREFETCH - LLM/tool work happens while TTS speaks
+                            print(f"   ⚡ Starting parallel prefetch while TTS speaks...")
+                            prefetch_task = asyncio.create_task(prefetch_remaining())
+                            
+                            # Break to let TTS speak the filler
                             break
                         
                         # Check for transfer marker
                         if token.startswith("<<<TRANSFER:"):
-                            # Extract phone number from marker
                             transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
                             print(f"📞 TRANSFER MARKER DETECTED: {transfer_number}")
-                            continue  # Don't send this to TTS
+                            continue
                         
                         # Skip other control markers
                         if token.startswith("<<<") and token.endswith(">>>"):
                             continue
                         
                         token_count += 1
-                        full_text += token  # Accumulate for logging
+                        full_text += token
                         yield token
-                        # After minimum tokens are sent, allow listening
                         if token_count == MIN_TOKENS_BEFORE_INTERRUPT:
                             speaking = False
                             print(f"✅ Ready to listen (text streaming)")
                 
-                # First TTS session - will speak either the full response OR just the checking message
-                print(f"   🗣️ Starting first TTS session...")
                 await asyncio.wait_for(
-                    stream_tts(simple_stream(), ws, stream_sid, lambda: interrupt),
+                    stream_tts(simple_stream_with_prefetch(), ws, stream_sid, lambda: interrupt),
                     timeout=config.TTS_TIMEOUT
                 )
                 print(f"   ✅ First TTS session complete")
@@ -203,20 +229,18 @@ async def media_handler(ws):
                     print(f"   🔄 Starting second TTS session for remaining content...")
                     token_count = 0  # Reset for second session
                     
+                    # Wait for prefetch to complete (should be done or nearly done by now)
+                    if prefetch_task:
+                        try:
+                            await asyncio.wait_for(prefetch_done.wait(), timeout=15.0)
+                            print(f"   ⚡ Prefetch ready: {len(prefetch_buffer)} tokens available")
+                        except asyncio.TimeoutError:
+                            print(f"   ⚠️ Prefetch timeout - continuing with available tokens")
+                    
                     async def continuation_stream():
                         nonlocal token_count, speaking, transfer_number, full_text
-                        # Continue consuming from the same text_stream generator where we left off
-                        async for token in text_stream:
-                            # Check for transfer marker
-                            if token.startswith("<<<TRANSFER:"):
-                                transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
-                                print(f"📞 TRANSFER MARKER DETECTED: {transfer_number}")
-                                continue
-                            
-                            # Skip control markers
-                            if token.startswith("<<<") and token.endswith(">>>"):
-                                continue
-                            
+                        # First yield all pre-fetched tokens (these were gathered in parallel)
+                        for token in prefetch_buffer:
                             token_count += 1
                             full_text += token
                             yield token
@@ -224,7 +248,7 @@ async def media_handler(ws):
                                 speaking = False
                                 print(f"✅ Ready to listen (continuation)")
                     
-                    # Second TTS session with the actual results
+                    # Second TTS session with the actual results (from prefetch buffer)
                     await asyncio.wait_for(
                         stream_tts(continuation_stream(), ws, stream_sid, lambda: interrupt),
                         timeout=config.TTS_TIMEOUT
@@ -296,6 +320,15 @@ async def media_handler(ws):
                 import traceback
                 traceback.print_exc()
             finally:
+                # Cancel prefetch task if still running (cleanup on interrupt/error)
+                if prefetch_task and not prefetch_task.done():
+                    prefetch_task.cancel()
+                    try:
+                        await prefetch_task
+                    except asyncio.CancelledError:
+                        pass
+                    print(f"   🧹 Prefetch task cleaned up")
+                
                 tts_ended_at = asyncio.get_event_loop().time()
                 duration = tts_ended_at - tts_started_at
                 speaking = False

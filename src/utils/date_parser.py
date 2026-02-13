@@ -106,13 +106,33 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
     try:
         client = get_openai_client()
         
+        # Get current day of week for better context
+        current_day_name = now.strftime('%A')
+        
         # Use AI to parse the date/time with structured output
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": f"You are an expert at parsing natural language date and time references. Today is {now.strftime('%A, %B %d, %Y')}. Current time is {now.strftime('%I:%M %p')}. CRITICAL: When user mentions a weekday name (Monday, Tuesday, etc.), ALWAYS use the 'day_of_week' field, NOT 'relative_days'. Use 'relative_days' ONLY for 'today', 'tomorrow', 'day after tomorrow'."
+                    "content": f"""You are an expert at parsing natural language date and time references.
+
+CURRENT DATE/TIME:
+- Today is {current_day_name}, {now.strftime('%B %d, %Y')}
+- Current time is {now.strftime('%I:%M %p')}
+
+CRITICAL RULES FOR WEEKDAY NAMES:
+- When user says a weekday name (Monday, Tuesday, etc.), ALWAYS use the 'day_of_week' field
+- Do NOT use 'relative_days' for weekday names
+- Use 'relative_days' ONLY for: 'today' (0), 'tomorrow' (1), 'day after tomorrow' (2)
+
+EXAMPLES:
+- "Monday at 2pm" → day_of_week: "monday", hour: 14
+- "next Friday" → day_of_week: "friday", hour: null (ask for time)
+- "tomorrow at 9am" → relative_days: 1, hour: 9
+- "today at 3pm" → relative_days: 0, hour: 15
+
+Remember: Today is {current_day_name}. If user says "{current_day_name}", that means TODAY (relative_days: 0)."""
                 },
                 {
                     "role": "user",
@@ -298,245 +318,3 @@ def _fallback_parse_datetime(text: str) -> datetime:
     
     print(f"[WARNING] Fallback parser couldn't parse '{text}' - returning None")
     return None
-    """
-    Parse natural language date/time into datetime object
-    Handles various formats and phrasings
-    
-    Args:
-        text: Natural language time reference
-        
-    Returns:
-        Parsed datetime object, or None if no time specified (to prompt user)
-    """
-    if not text:
-        # No text provided - return None to prompt for date and time
-        print(f"[WARNING] Empty text provided - returning None to prompt for date and time")
-        return None
-    
-    text = text.lower().strip()
-    now = datetime.now()
-    
-    # Replace common word variations to standardize
-    replacements = {
-        'twelve': '12', 'eleven': '11', 'ten': '10', 'nine': '9', 'eight': '8',
-        'seven': '7', 'six': '6', 'five': '5', 'four': '4', 'three': '3',
-        'two': '2', 'one': '1',
-        'noon': '12 pm', 'midnight': '12 am',
-        'morning': '9 am', 'afternoon': '2 pm', 'evening': '6 pm',
-        'a.m.': 'am', 'p.m.': 'pm',
-        'o\'clock': '', 'oclock': ''
-    }
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-    
-    # Try to parse specific month/day - prepare month_names dictionary first
-    month_names = {
-        'january': 1, 'jan': 1,
-        'february': 2, 'feb': 2,
-        'march': 3, 'mar': 3,
-        'april': 4, 'apr': 4,
-        'may': 5,
-        'june': 6, 'jun': 6,
-        'july': 7, 'jul': 7,
-        'august': 8, 'aug': 8,
-        'september': 9, 'sep': 9, 'sept': 9,
-        'october': 10, 'oct': 10,
-        'november': 11, 'nov': 11,
-        'december': 12, 'dec': 12
-    }
-    
-    # Fuzzy match month names FIRST to handle typos (e.g., "janary" -> "january")
-    # This must happen before date-only pattern matching
-    words = text.split()
-    for i, word in enumerate(words):
-        word_clean = word.lower().strip(',.!?')
-        if word_clean not in month_names and len(word_clean) >= 3:
-            # Try fuzzy matching
-            matches = get_close_matches(word_clean, month_names.keys(), n=1, cutoff=0.7)
-            if matches:
-                # Replace the typo with the correct month name
-                print(f"[FIX] Fuzzy match: '{word_clean}' -> '{matches[0]}'")
-                text = text.replace(word, matches[0])
-    
-    # Extract time - handle multiple formats
-    # Patterns: "12 pm", "12:30pm", "12:30 pm", "at 2pm", "2 in the afternoon"
-    time_match = re.search(r'(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)', text)
-    hour = None  # No default - if no time specified, we'll detect it
-    minute = 0
-    has_specific_time = False  # Track if user provided a specific time
-    
-    if time_match:
-        hour = int(time_match.group(1))
-        minute = int(time_match.group(2)) if time_match.group(2) else 0
-        am_pm = time_match.group(3)
-        has_specific_time = True
-        
-        # Fix: Handle 12 PM and 12 AM correctly
-        if am_pm == 'pm':
-            if hour != 12:  # Only add 12 if it's not already 12
-                hour += 12
-        elif am_pm == 'am':
-            if hour == 12:  # 12 AM is midnight (hour 0)
-                hour = 0
-    else:
-        # Try to match time without AM/PM (e.g., "tomorrow at 12", "at 3")
-        time_match_no_ampm = re.search(r'(?:at\s+)?(\d{1,2})(?::(\d{2}))?\b', text)
-        if time_match_no_ampm:
-            hour = int(time_match_no_ampm.group(1))
-            minute = int(time_match_no_ampm.group(2)) if time_match_no_ampm.group(2) else 0
-            has_specific_time = True
-            
-            # Default to PM for business hours (9-5), AM for early morning
-            if hour >= 1 and hour <= 7:
-                # 1-7 without AM/PM likely means PM (1pm-7pm)
-                hour += 12
-            elif hour >= 8 and hour <= 11:
-                # 8-11 could be AM or PM, default to AM for business hours
-                pass  # Keep as AM
-            elif hour == 12:
-                # 12 without AM/PM defaults to 12 PM (noon)
-                pass  # Keep as 12
-            
-            print(f"[SEARCH] Parsed time without AM/PM: {time_match_no_ampm.group(0)} -> {hour}:{minute:02d} (24-hour)")
-    
-    # Validate hour is in correct range
-    if hour is not None and (hour < 0 or hour > 23):
-        print(f"[WARNING] Invalid hour value: {hour} - returning None to prompt for valid time")
-        return None
-    
-    # If no specific time was provided, return None so system asks for time
-    if hour is None and not has_specific_time:
-        # Check if this is just a date without time (e.g., "3rd january", "december 25", "jan 5")
-        # If user only gave date, we should ask for time instead of defaulting
-        date_only_patterns = [
-            r'^\d{1,2}(?:st|nd|rd|th)?\s+(?:of\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)',
-            r'^(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}',
-            r'^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+\d{1,2}',  # Added abbreviated months
-            r'^\d{1,2}/\d{1,2}',
-            r'^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$',
-            r'^(next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$',  # next monday, next friday, etc.
-            r'^(tomorrow|today|next week)$'
-        ]
-        for pattern in date_only_patterns:
-            if re.search(pattern, text):
-                print(f"[WARNING] Date provided without time: '{text}' - returning None to prompt for time")
-                return None
-        # No time provided - always ask for it
-        print(f"[WARNING] No time specified in '{text}' - returning None to prompt for time")
-        return None
-    
-    # Check if text contains a birth year (year < current_year - 18)
-    # If so, this is likely a DOB, not an appointment date - skip parsing
-    year_match = re.search(r'\b(19\d{2}|200[0-7])\b', text)
-    if year_match:
-        potential_birth_year = int(year_match.group(1))
-        if potential_birth_year < now.year - 18:
-            # This looks like a date of birth, not an appointment
-            # Return tomorrow at 2pm as default to avoid confusion
-            print(f"[WARNING] Detected birth year {potential_birth_year} in date parsing - returning default appointment time")
-            return datetime.now().replace(hour=14, minute=0, second=0, microsecond=0) + timedelta(days=1)
-    
-    # Match patterns like "December 25", "Dec 25th", "25th of December"
-    date_match = re.search(r'(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2})', text)
-    if not date_match:
-        # Try reverse format: "25th of December"
-        date_match = re.search(r'(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)', text)
-        if date_match:
-            day = int(date_match.group(1))
-            month_name = date_match.group(2)
-            month = month_names[month_name]
-            year = now.year
-            
-            # CRITICAL: If no time specified, return None to prompt user
-            if hour is None:
-                print(f"[WARNING] Date provided ('{text}') without time - returning None to prompt for time")
-                return None
-            
-            # If the date is in the past this year, assume next year
-            try_date = datetime(year, month, day, hour, minute, 0, 0)
-            if try_date < now:
-                year += 1
-            
-            result = datetime(year, month, day, hour, minute, 0, 0)
-        else:
-            result = None
-    else:
-        month_name = date_match.group(1)
-        day = int(date_match.group(2))
-        month = month_names[month_name]
-        year = now.year
-        
-        # CRITICAL: If no time specified, return None to prompt user
-        if hour is None:
-            print(f"[WARNING] Date provided ('{text}') without time - returning None to prompt for time")
-            return None
-        
-        # If the date is in the past this year, assume next year
-        try_date = datetime(year, month, day, hour, minute, 0, 0)
-        if try_date < now:
-            year += 1
-        
-        result = datetime(year, month, day, hour, minute, 0, 0)
-    
-    # If no specific date found, use relative terms
-    if result is None:
-        # For relative terms without time, we should also ask for time
-        if hour is None:
-            print(f"[WARNING] Relative date without time: '{text}' - returning None to prompt for time")
-            return None
-        result = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        
-        # Check for 'day after tomorrow' BEFORE checking 'tomorrow'
-        if 'day after tomorrow' in text or 'dayafter tomorrow' in text:
-            result += timedelta(days=2)
-            print(f"[DATE] Parsed 'day after tomorrow': {result}")
-        elif 'tomorrow' in text:
-            result += timedelta(days=1)
-        elif 'today' in text:
-            pass  # already today
-        elif 'next week' in text:
-            result += timedelta(days=7)
-        elif 'monday' in text:
-            days_ahead = (0 - result.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7  # next monday, not today
-            result += timedelta(days=days_ahead)
-        elif 'tuesday' in text:
-            days_ahead = (1 - result.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7
-            result += timedelta(days=days_ahead)
-        elif 'wednesday' in text:
-            days_ahead = (2 - result.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7
-            result += timedelta(days=days_ahead)
-        elif 'thursday' in text:
-            days_ahead = (3 - result.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7
-            result += timedelta(days=days_ahead)
-        elif 'friday' in text:
-            days_ahead = (4 - result.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7
-            result += timedelta(days=days_ahead)
-        elif 'saturday' in text:
-            days_ahead = (5 - result.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7
-            result += timedelta(days=days_ahead)
-        elif 'sunday' in text:
-            days_ahead = (6 - result.weekday()) % 7
-            if days_ahead == 0:
-                days_ahead = 7
-            result += timedelta(days=days_ahead)
-        else:
-            # Default to tomorrow if no date specified
-            result += timedelta(days=1)
-        
-        # Make sure it's in the future
-        if result <= now:
-            result += timedelta(days=1)
-    
-    return result
