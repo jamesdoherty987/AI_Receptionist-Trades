@@ -11,7 +11,7 @@ import websockets
 from src.utils.audio_utils import ulaw_energy
 from src.utils.config import config
 from src.services.asr_deepgram import DeepgramASR
-from src.services.llm_stream import stream_llm, process_appointment_with_calendar
+from src.services.llm_stream import stream_llm, process_appointment_with_calendar, reset_appointment_state
 
 # Import TTS based on provider setting
 TTS_PROVIDER = config.TTS_PROVIDER if hasattr(config, 'TTS_PROVIDER') else 'deepgram'
@@ -47,6 +47,10 @@ async def media_handler(ws):
         ws: WebSocket connection from Twilio
     """
     print("✅ Twilio WS client connected:", ws.remote_address)
+    
+    # CRITICAL: Reset appointment state at the start of each call
+    # This prevents state from previous calls bleeding into new calls
+    reset_appointment_state()
 
     asr = DeepgramASR()
     try:

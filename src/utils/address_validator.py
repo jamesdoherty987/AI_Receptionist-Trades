@@ -137,15 +137,13 @@ class AddressValidator:
             'suggestions': []
         }
         
-        # Check if it's just an eircode
+        # Check if it's just an eircode - EIRCODE IS ENOUGH, no need for full address
         if self.is_postcode(cleaned_input) and self.validate_eircode(cleaned_input):
             result.update({
                 'type': 'eircode',
                 'eircode': self.normalize_eircode(cleaned_input),
-                'needs_clarification': True,
-                'suggestions': [
-                    f"I have your eircode as {self.normalize_eircode(cleaned_input)}. Could you also give me the street address?"
-                ]
+                'needs_clarification': False,  # Eircode is sufficient - don't ask for more
+                'suggestions': []  # No suggestions needed - eircode uniquely identifies location
             })
         
         # Check if it's a legacy postcode
@@ -161,10 +159,8 @@ class AddressValidator:
         # Check if it's a full address
         elif len(cleaned_input.split()) >= 3:  # At least 3 words suggest full address
             result['type'] = 'full'
-            
-            # Still ask for eircode if not present
-            if not result['eircode']:
-                result['suggestions'].append("Do you have the eircode for that address?")
+            # Full address is sufficient - don't ask for eircode
+            # The prompt says "eircode OR address (not both)"
         
         # Partial address
         else:
@@ -198,7 +194,8 @@ class AddressValidator:
             else:
                 return f"So that's {full_addr}?"
         elif address_data['type'] == 'eircode':
-            return f"I have eircode {eircode} - could you also give me the street address?"
+            # Eircode is enough - just confirm it, don't ask for more
+            return f"So that's eircode {eircode}?"
         elif address_data['type'] == 'postcode':
             return f"I have {full_addr} - could you give me the full street address as well?"
         else:
@@ -208,12 +205,8 @@ class AddressValidator:
         """Get suggestions for improving address data"""
         suggestions = []
         
-        if not address_data.get('county'):
-            suggestions.append("What county is that in?")
-        
-        if not address_data.get('eircode') and address_data['type'] != 'eircode':
-            suggestions.append("Do you have the eircode for that address?")
-        
+        # Only ask for more info if address is partial or just a postcode
+        # Don't ask for eircode if we have a full address - one or the other is enough
         if address_data['type'] in ['partial', 'postcode']:
             suggestions.append("Could you give me the full street address?")
         

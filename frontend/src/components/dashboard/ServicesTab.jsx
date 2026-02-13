@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
@@ -6,9 +6,7 @@ import {
   getServicesMenu, 
   createService,
   updateService,
-  deleteService,
-  getBusinessHours,
-  updateBusinessHours
+  deleteService
 } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
@@ -16,16 +14,26 @@ import ImageUpload from '../ImageUpload';
 import { formatCurrency } from '../../utils/helpers';
 import './ServicesTab.css';
 
+const DURATION_OPTIONS = [
+  { value: 30, label: '30 mins' },
+  { value: 60, label: '1 hour' },
+  { value: 90, label: '1.5 hours' },
+  { value: 120, label: '2 hours' },
+  { value: 180, label: '3 hours' },
+  { value: 240, label: '4 hours' },
+  { value: 480, label: '8 hours' },
+];
+
 function ServicesTab() {
   const { hasActiveSubscription } = useAuth();
   const isSubscriptionActive = hasActiveSubscription();
   const queryClient = useQueryClient();
   const { addToast } = useToast();
-  const [editingService, setEditingService] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newService, setNewService] = useState({ name: '', price: '', duration: '', image_url: '' });
+  const [formData, setFormData] = useState({ name: '', price: '', duration: '60', image_url: '' });
 
-  const { data: menu, isLoading: loadingMenu } = useQuery({
+  const { data: menu, isLoading } = useQuery({
     queryKey: ['services-menu'],
     queryFn: async () => {
       const response = await getServicesMenu();
@@ -33,149 +41,71 @@ function ServicesTab() {
     },
   });
 
-  const { data: hours, isLoading: loadingHours } = useQuery({
-    queryKey: ['business-hours'],
-    queryFn: async () => {
-      const response = await getBusinessHours();
-      return response.data;
-    },
-  });
-
   const createMutation = useMutation({
     mutationFn: createService,
-    onMutate: async (newServiceData) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['services-menu'] });
-      
-      // Snapshot previous value
-      const previousMenu = queryClient.getQueryData(['services-menu']);
-      
-      // Optimistically add new service with temporary ID
-      const tempService = {
-        ...newServiceData,
-        id: `temp-${Date.now()}`,
-        price: parseFloat(newServiceData.price) || 0,
-        duration: parseInt(newServiceData.duration) || 0
-      };
-      
-      queryClient.setQueryData(['services-menu'], (old) => ({
-        ...old,
-        services: [...(old?.services || []), tempService]
-      }));
-      
-      // Clear form immediately
-      setNewService({ name: '', price: '', duration: '', image_url: '' });
-      setShowAddForm(false);
-      
-      return { previousMenu };
-    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['services-menu'] });
-      addToast('Service added successfully!', 'success');
+      addToast('Service added!', 'success');
+      setShowAddForm(false);
+      setFormData({ name: '', price: '', duration: '60', image_url: '' });
     },
-    onError: (error, variables, context) => {
-      // Rollback on error
-      if (context?.previousMenu) {
-        queryClient.setQueryData(['services-menu'], context.previousMenu);
-      }
-      setShowAddForm(true);
-      setNewService(variables);
-      addToast('Failed to add service', 'error');
-    }
+    onError: () => addToast('Failed to add service', 'error'),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => updateService(id, data),
-    onMutate: async ({ id, data }) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['services-menu'] });
-      
-      // Snapshot previous value
-      const previousMenu = queryClient.getQueryData(['services-menu']);
-      
-      // Optimistically update
-      queryClient.setQueryData(['services-menu'], (old) => ({
-        ...old,
-        services: old?.services?.map(s => 
-          s.id === id ? { ...s, ...data } : s
-        ) || []
-      }));
-      
-      setEditingService(null);
-      
-      return { previousMenu };
-    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['services-menu'] });
-      addToast('Service updated successfully!', 'success');
+      addToast('Service updated!', 'success');
+      setEditingId(null);
     },
-    onError: (error, variables, context) => {
-      // Rollback on error
-      if (context?.previousMenu) {
-        queryClient.setQueryData(['services-menu'], context.previousMenu);
-      }
-      addToast('Failed to update service', 'error');
-    }
+    onError: () => addToast('Failed to update service', 'error'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteService,
-    onMutate: async (serviceId) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['services-menu'] });
-      
-      // Snapshot previous value
-      const previousMenu = queryClient.getQueryData(['services-menu']);
-      
-      // Optimistically remove service
-      queryClient.setQueryData(['services-menu'], (old) => ({
-        ...old,
-        services: old?.services?.filter(s => s.id !== serviceId) || []
-      }));
-      
-      return { previousMenu };
-    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['services-menu'] });
       addToast('Service deleted', 'success');
     },
-    onError: (error, variables, context) => {
-      // Rollback on error
-      if (context?.previousMenu) {
-        queryClient.setQueryData(['services-menu'], context.previousMenu);
-      }
-      addToast('Failed to delete service', 'error');
-    }
+    onError: () => addToast('Failed to delete service', 'error'),
   });
 
-  const handleAddService = (e) => {
+
+  const handleSubmit = (e) => {
     e.preventDefault();
-    if (newService.name.trim()) {
-      // Convert duration to duration_minutes for backend
-      const serviceData = {
-        ...newService,
-        duration_minutes: parseInt(newService.duration) || 60
-      };
-      createMutation.mutate(serviceData);
-    }
+    if (!formData.name.trim()) return;
+    createMutation.mutate({
+      name: formData.name,
+      price: parseFloat(formData.price) || 0,
+      duration_minutes: parseInt(formData.duration) || 60,
+      image_url: formData.image_url,
+    });
   };
 
-  const handleUpdateService = (service) => {
-    // Convert duration to duration_minutes for backend
-    const serviceData = {
-      ...service,
-      duration_minutes: parseInt(service.duration) || service.duration_minutes || 60
-    };
-    updateMutation.mutate({ id: service.id, data: serviceData });
+  const handleUpdate = (service) => {
+    updateMutation.mutate({
+      id: service.id,
+      data: {
+        name: service.name,
+        price: parseFloat(service.price) || 0,
+        duration_minutes: parseInt(service.duration_minutes) || 60,
+        image_url: service.image_url,
+      },
+    });
   };
 
-  const handleDeleteService = (id) => {
-    if (window.confirm('Are you sure you want to delete this service?')) {
+  const handleDelete = (id) => {
+    if (window.confirm('Delete this service?')) {
       deleteMutation.mutate(id);
     }
   };
 
-  if (loadingMenu) {
+  const startEdit = (service) => {
+    setEditingId(service.id);
+  };
+
+  if (isLoading) {
     return <LoadingSpinner message="Loading services..." />;
   }
 
@@ -183,234 +113,210 @@ function ServicesTab() {
 
   return (
     <div className="services-tab">
-      {/* Header */}
       <div className="services-header">
         <div>
-          <h2>Services Menu</h2>
-          <p className="services-subtitle">Manage your business services and pricing</p>
+          <h2>Services</h2>
+          <p className="services-subtitle">Manage your services and pricing</p>
         </div>
         <div className="services-controls">
           <button 
             className="btn btn-primary"
             onClick={() => setShowAddForm(!showAddForm)}
             disabled={!isSubscriptionActive}
-            title={!isSubscriptionActive ? 'Subscribe to add services' : ''}
           >
             <i className="fas fa-plus"></i> Add Service
           </button>
           {!isSubscriptionActive && (
-            <Link to="/settings?tab=subscription" className="btn btn-secondary btn-sm" style={{ marginLeft: '8px' }}>
+            <Link to="/settings?tab=subscription" className="btn btn-secondary btn-sm">
               <i className="fas fa-lock"></i> Subscribe
             </Link>
           )}
         </div>
       </div>
 
-      {/* Add Service Form */}
       {showAddForm && (
-        <div className="service-form-card">
-          <h3>Add New Service</h3>
-          <form onSubmit={handleAddService} className="service-form">
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="name">Service Name *</label>
-                <input
-                  type="text"
-                  id="name"
-                  className="form-input"
-                  value={newService.name}
-                  onChange={(e) => setNewService({...newService, name: e.target.value})}
-                  placeholder="e.g., Emergency Plumbing"
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="price">Typical Price (€)</label>
-                <input
-                  type="number"
-                  id="price"
-                  className="form-input"
-                  value={newService.price}
-                  onChange={(e) => setNewService({...newService, price: e.target.value})}
-                  placeholder="0.00"
-                  step="0.01"
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="duration">Usual Duration</label>
-                <select
-                  id="duration"
-                  className="form-input"
-                  value={newService.duration}
-                  onChange={(e) => setNewService({...newService, duration: e.target.value})}
-                >
-                  <option value="">Select duration...</option>
-                  <option value="30">30 mins</option>
-                  <option value="60">1 hour</option>
-                  <option value="90">1.5 hours</option>
-                  <option value="120">2 hours</option>
-                  <option value="150">2.5 hours</option>
-                  <option value="180">3 hours</option>
-                  <option value="240">4 hours</option>
-                  <option value="300">5 hours</option>
-                  <option value="360">6 hours</option>
-                  <option value="480">8 hours</option>
-                </select>
-              </div>
-            </div>
-            <div className="form-group">
-              <label htmlFor="image_url">Service Image (optional)</label>
-              <ImageUpload
-                value={newService.image_url}
-                onChange={(value) => setNewService({...newService, image_url: value})}
-                placeholder="Upload Service Image"
+        <form className="service-form-card" onSubmit={handleSubmit}>
+          <h3>New Service</h3>
+          <div className="form-grid">
+            <div className="form-group form-group-wide">
+              <label>Service Name *</label>
+              <input
+                type="text"
+                className="form-input"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g., Emergency Plumbing"
+                required
               />
             </div>
-            <div className="form-actions">
-              <button 
-                type="button" 
-                className="btn btn-secondary"
-                onClick={() => {
-                  setShowAddForm(false);
-                  setNewService({ name: '', price: '', duration: '', image_url: '' });
-                }}
-              >
-                Cancel
-              </button>
-              <button 
-                type="submit" 
-                className="btn btn-primary"
-                disabled={createMutation.isPending}
-              >
-                {createMutation.isPending ? 'Adding...' : 'Add Service'}
-              </button>
+            <div className="form-group">
+              <label>Price (€)</label>
+              <input
+                type="number"
+                className="form-input"
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                placeholder="0.00"
+                step="0.01"
+                min="0"
+              />
             </div>
-          </form>
-        </div>
-      )}
-
-      {/* Services List */}
-      <div className="services-grid">
-        {services.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon">🔧</div>
-            <p>No services added yet</p>
-            <button className="btn btn-primary" onClick={() => setShowAddForm(true)}>
-              <i className="fas fa-plus"></i> Add Your First Service
+            <div className="form-group">
+              <label>Duration</label>
+              <select
+                className="form-input"
+                value={formData.duration}
+                onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+              >
+                {DURATION_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Image (optional)</label>
+            <ImageUpload
+              value={formData.image_url}
+              onChange={(value) => setFormData({ ...formData, image_url: value })}
+              placeholder="Upload Image"
+            />
+          </div>
+          <div className="form-actions">
+            <button type="button" className="btn btn-secondary" onClick={() => setShowAddForm(false)}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Adding...' : 'Add Service'}
             </button>
           </div>
+        </form>
+      )}
+
+      {services.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">🔧</div>
+          <p>No services yet</p>
+          <button 
+            className="btn btn-primary" 
+            onClick={() => setShowAddForm(true)}
+            disabled={!isSubscriptionActive}
+          >
+            Add Your First Service
+          </button>
+        </div>
+      ) : (
+        <div className="services-list">
+          {services.map((service) => (
+            <ServiceCard
+              key={service.id}
+              service={service}
+              isEditing={editingId === service.id}
+              onEdit={() => startEdit(service)}
+              onSave={handleUpdate}
+              onCancel={() => setEditingId(null)}
+              onDelete={() => handleDelete(service.id)}
+              isPending={updateMutation.isPending || deleteMutation.isPending}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, isPending }) {
+  const [editData, setEditData] = useState(service);
+
+  // Reset edit data when editing starts
+  useEffect(() => {
+    if (isEditing) {
+      setEditData(service);
+    }
+  }, [isEditing, service]);
+
+  const handleSave = () => {
+    if (!editData.name?.trim()) return;
+    onSave(editData);
+  };
+
+  if (isEditing) {
+    return (
+      <div className="service-card editing">
+        <div className="edit-form">
+          <input
+            type="text"
+            className="form-input"
+            value={editData.name || ''}
+            onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+            placeholder="Service Name"
+          />
+          <div className="edit-row">
+            <input
+              type="number"
+              className="form-input"
+              value={editData.price || ''}
+              onChange={(e) => setEditData({ ...editData, price: e.target.value })}
+              placeholder="Price"
+              step="0.01"
+              min="0"
+            />
+            <select
+              className="form-input"
+              value={editData.duration_minutes || 60}
+              onChange={(e) => setEditData({ ...editData, duration_minutes: parseInt(e.target.value) })}
+            >
+              {DURATION_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <ImageUpload
+            value={editData.image_url || ''}
+            onChange={(value) => setEditData({ ...editData, image_url: value })}
+            placeholder="Upload Image"
+          />
+          <div className="edit-actions">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={onCancel}>Cancel</button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={handleSave} disabled={isPending || !editData.name?.trim()}>
+              {isPending ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="service-card">
+      <div className="service-image">
+        {service.image_url ? (
+          <img src={service.image_url} alt={service.name} />
         ) : (
-          services.map((service) => (
-            <div key={service.id} className="service-card">
-              {editingService?.id === service.id ? (
-                <div className="service-edit-form">
-                  <div className="edit-form-row">
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={editingService.name}
-                      onChange={(e) => setEditingService({...editingService, name: e.target.value})}
-                      placeholder="Service Name"
-                    />
-                  </div>
-                  <div className="edit-form-row two-cols">
-                    <input
-                      type="number"
-                      className="form-input"
-                      value={editingService.price || ''}
-                      onChange={(e) => setEditingService({...editingService, price: e.target.value})}
-                      placeholder="Price (€)"
-                      step="0.01"
-                    />
-                    <select
-                      className="form-input"
-                      value={editingService.duration_minutes || editingService.duration || '60'}
-                      onChange={(e) => setEditingService({...editingService, duration_minutes: e.target.value, duration: e.target.value})}
-                    >
-                      <option value="30">30 mins</option>
-                      <option value="60">1 hour</option>
-                      <option value="90">1.5 hours</option>
-                      <option value="120">2 hours</option>
-                      <option value="150">2.5 hours</option>
-                      <option value="180">3 hours</option>
-                      <option value="240">4 hours</option>
-                      <option value="300">5 hours</option>
-                      <option value="360">6 hours</option>
-                      <option value="480">8 hours</option>
-                    </select>
-                  </div>
-                  <div className="edit-form-row">
-                    <ImageUpload
-                      value={editingService.image_url || ''}
-                      onChange={(value) => setEditingService({...editingService, image_url: value})}
-                      placeholder="Upload Service Image"
-                    />
-                  </div>
-                  <div className="service-edit-actions">
-                    <button 
-                      className="btn btn-sm btn-secondary"
-                      onClick={() => setEditingService(null)}
-                    >
-                      Cancel
-                    </button>
-                    <button 
-                      className="btn btn-sm btn-primary"
-                      onClick={() => handleUpdateService(editingService)}
-                      disabled={updateMutation.isPending}
-                    >
-                      {updateMutation.isPending ? 'Saving...' : 'Save'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="service-icon">
-                    {service.image_url ? (
-                      <img src={service.image_url} alt={service.name || 'Service'} className="service-icon-img" />
-                    ) : (
-                      <i className="fas fa-wrench"></i>
-                    )}
-                  </div>
-                  <div className="service-info">
-                    {service.name && (
-                      <h3 className="service-name">{service.name}</h3>
-                    )}
-                    <div className="service-details">
-                      {service.price > 0 && (
-                        <span className="service-price">
-                          {formatCurrency(service.price)}
-                        </span>
-                      )}
-                      {(service.duration_minutes || service.duration) && (
-                        <span className="service-duration">
-                          <i className="fas fa-clock"></i>
-                          {service.duration_minutes || service.duration} mins
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="service-actions">
-                    <button
-                      className="btn-icon"
-                      onClick={() => setEditingService(service)}
-                      title="Edit service"
-                    >
-                      <i className="fas fa-edit"></i>
-                    </button>
-                    <button
-                      className="btn-icon btn-icon-danger"
-                      onClick={() => handleDeleteService(service.id)}
-                      title="Delete service"
-                      disabled={deleteMutation.isPending}
-                    >
-                      <i className="fas fa-trash"></i>
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          ))
+          <i className="fas fa-wrench"></i>
         )}
+      </div>
+      <div className="service-content">
+        <h3 className="service-title">{service.name || 'Unnamed Service'}</h3>
+        <div className="service-meta">
+          {service.price > 0 && (
+            <span className="meta-item price">{formatCurrency(service.price)}</span>
+          )}
+          {(service.duration_minutes || service.duration) && (
+            <span className="meta-item duration">
+              <i className="fas fa-clock"></i> {service.duration_minutes || service.duration} mins
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="service-actions">
+        <button type="button" className="btn-icon" onClick={onEdit} title="Edit" aria-label="Edit service">
+          <i className="fas fa-edit"></i>
+        </button>
+        <button type="button" className="btn-icon danger" onClick={onDelete} title="Delete" aria-label="Delete service" disabled={isPending}>
+          <i className="fas fa-trash"></i>
+        </button>
       </div>
     </div>
   );

@@ -2101,11 +2101,21 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     # PRE-CHECK: Detect if user message likely requires a tool call
     # If so, speak acknowledgment IMMEDIATELY before calling OpenAI (to avoid OpenAI latency)
     # IMPORTANT: Filler messages run in PARALLEL with tool execution - TTS speaks while work happens
+    # NOTE: Use GENERIC fillers that work for any action - avoid action-specific phrases that could be wrong
     user_message = messages[-1]["content"].lower() if messages and messages[-1].get("role") == "user" else ""
     likely_needs_tool = False
     checking_msg = None
     
-    # Detect transfer/human requests
+    # Generic filler phrases that work for ANY action - can't be wrong
+    generic_fillers = [
+        "One moment.",
+        "Let me check that for you.",
+        "Bear with me one second.",
+        "Just a moment.",
+        "Let me have a look.",
+    ]
+    
+    # Detect transfer/human requests - these need specific messaging
     transfer_phrases = ["transfer", "speak to a", "talk to a", "speak with", "talk with", "real person", "actual person", "someone else", "a human", "the manager", "the owner"]
     if any(phrase in user_message for phrase in transfer_phrases):
         likely_needs_tool = True
@@ -2117,9 +2127,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         print(f"   🚀 PRE-CHECK: Transfer request detected")
     
     # Detect booking confirmation (user confirming details before booking)
-    # This catches "yes", "that's correct", "book it", "sounds good" after a confirmation prompt
     booking_confirm_phrases = ["yes", "yeah", "yep", "correct", "that's right", "book it", "sounds good", "perfect", "go ahead", "please book", "book that"]
-    # Check if previous assistant message was a booking confirmation prompt
     prev_assistant_msg = ""
     for msg in reversed(messages[:-1]):
         if msg.get("role") == "assistant":
@@ -2129,22 +2137,15 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     
     if not likely_needs_tool and is_booking_confirmation:
         likely_needs_tool = True
-        checking_msg = random.choice([
-            "Let me book that for you now.",
-            "Booking that for you now.",
-            "Grand, getting that booked for you."
-        ])
+        # Use generic filler - the follow-up will confirm what was done
+        checking_msg = random.choice(generic_fillers)
         print(f"   🚀 PRE-CHECK: Booking confirmation detected")
     
     # Detect availability/schedule checking
     availability_phrases = ["available", "availability", "what times", "when are you", "when can", "any slots", "free", "open"]
     if not likely_needs_tool and any(phrase in user_message for phrase in availability_phrases):
         likely_needs_tool = True
-        checking_msg = random.choice([
-            "Let me check what's available.",
-            "Let me see what times we have.",
-            "One moment, checking availability."
-        ])
+        checking_msg = random.choice(generic_fillers)
         print(f"   🚀 PRE-CHECK: Availability check detected")
     
     # Detect cancellation requests
@@ -2152,46 +2153,28 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     cancel_context = ["appointment", "booking", "scheduled", "job"]
     if not likely_needs_tool and any(phrase in user_message for phrase in cancel_phrases) and any(ctx in user_message for ctx in cancel_context):
         likely_needs_tool = True
-        checking_msg = random.choice([
-            "Let me find that appointment.",
-            "Let me pull that up for you.",
-            "One moment, finding that booking."
-        ])
+        checking_msg = random.choice(generic_fillers)
         print(f"   🚀 PRE-CHECK: Cancellation request detected")
     
     # Detect reschedule requests
     reschedule_phrases = ["reschedule", "change my appointment", "move my appointment", "different time", "move it to"]
     if not likely_needs_tool and any(phrase in user_message for phrase in reschedule_phrases):
         likely_needs_tool = True
-        checking_msg = random.choice([
-            "Let me check what times are available.",
-            "Let me see what we can do.",
-            "One moment, checking availability."
-        ])
+        checking_msg = random.choice(generic_fillers)
         print(f"   🚀 PRE-CHECK: Reschedule request detected")
     
     # Detect lookup/verification requests (when asking about existing appointments)
     lookup_phrases = ["my appointment", "do i have", "what time is my", "when is my"]
     if not likely_needs_tool and any(phrase in user_message for phrase in lookup_phrases):
         likely_needs_tool = True
-        checking_msg = random.choice([
-            "Let me find that for you.",
-            "One moment, pulling that up.",
-            "Let me check your appointment."
-        ])
+        checking_msg = random.choice(generic_fillers)
         print(f"   🚀 PRE-CHECK: Appointment lookup detected")
     
     # Detect customer lookup (after getting name)
-    # This catches when user explicitly provides their name
-    # Be careful not to match common phrases like "I'm having a problem"
     name_intro_patterns = ["my name is ", "the name is ", "name's "]
     if not likely_needs_tool and any(phrase in user_message for phrase in name_intro_patterns):
         likely_needs_tool = True
-        checking_msg = random.choice([
-            "Let me look you up.",
-            "One moment, checking our records.",
-            "Let me see if we have you on file."
-        ])
+        checking_msg = random.choice(generic_fillers)
         print(f"   🚀 PRE-CHECK: Customer lookup detected")
     
     if likely_needs_tool and checking_msg:
@@ -2298,50 +2281,26 @@ When customer wants to reschedule:
                             tool_name_hint = tc_delta.function.name
                             break
                     
-                    # Context-aware filler messages based on tool being called
-                    if tool_name_hint in ["book_job", "book_appointment"]:
-                        checking_phrases = [
-                            "Let me book that for you now.",
-                            "Booking that for you.",
-                            "Getting that booked for you."
-                        ]
-                    elif tool_name_hint in ["cancel_job", "cancel_appointment"]:
-                        checking_phrases = [
-                            "Let me cancel that for you.",
-                            "Cancelling that now.",
-                            "Let me take care of that."
-                        ]
-                    elif tool_name_hint in ["reschedule_job", "reschedule_appointment"]:
-                        checking_phrases = [
-                            "Let me reschedule that for you.",
-                            "Rescheduling that now.",
-                            "Let me move that for you."
-                        ]
-                    elif tool_name_hint == "check_availability":
-                        checking_phrases = [
-                            "Let me check what's available.",
-                            "Checking availability now.",
-                            "Let me see what times we have."
-                        ]
-                    elif tool_name_hint == "lookup_customer":
-                        checking_phrases = [
-                            "Let me look you up.",
-                            "Checking our records.",
-                            "One moment, finding your details."
-                        ]
-                    elif tool_name_hint == "transfer_to_human":
+                    # Generic filler messages - avoid action-specific phrases that could be wrong
+                    # The follow-up response will confirm what was actually done
+                    generic_fillers = [
+                        "One moment.",
+                        "Let me check that for you.",
+                        "Bear with me one second.",
+                        "Just a moment.",
+                        "Let me have a look.",
+                    ]
+                    
+                    # Only use specific messaging for transfers (user explicitly asked)
+                    if tool_name_hint == "transfer_to_human":
                         checking_phrases = [
                             "Transferring you now.",
                             "Connecting you now.",
                             "Let me get someone for you."
                         ]
                     else:
-                        # Generic fallback
-                        checking_phrases = [
-                            "One moment please.",
-                            "Let me take care of that.",
-                            "Working on that now."
-                        ]
+                        # Use generic fillers for everything else
+                        checking_phrases = generic_fillers
                     
                     checking_msg = random.choice(checking_phrases)
                     print(f"   🗣️ IMMEDIATE: First tool call detected ({tool_name_hint or 'unknown'}) - yielding split marker with: '{checking_msg}'")
