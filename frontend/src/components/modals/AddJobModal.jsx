@@ -6,6 +6,7 @@ import { createBooking, getClients, checkAvailability, getServicesMenu, getWorke
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import AddClientModal from './AddClientModal';
+import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
 import './AddJobModal.css';
 
 function AddJobModal({ isOpen, onClose }) {
@@ -22,7 +23,7 @@ function AddJobModal({ isOpen, onClose }) {
     eircode: '',
     property_type: '',
     estimated_charge: '',
-    duration_minutes: '',
+    duration_minutes: 60,
     notes: '',
     worker_id: ''
   });
@@ -107,7 +108,7 @@ function AddJobModal({ isOpen, onClose }) {
   });
 
   const resetForm = () => {
-    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', duration_minutes: '', notes: '', worker_id: '' });
+    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', duration_minutes: 60, notes: '', worker_id: '' });
     setSelectedQuickDate('');
     setSelectedDate('');
     setShowTimeSlots(false);
@@ -335,13 +336,13 @@ function AddJobModal({ isOpen, onClose }) {
                   <option value="">Select a service...</option>
                   {servicesMenu.services.map(s => (
                     <option key={s.id} value={s.name}>
-                      {s.name} {s.duration_minutes ? `(${s.duration_minutes} mins)` : ''} {s.price ? `- €${s.price}` : ''}
+                      {s.name} {s.duration_minutes ? `(${formatDuration(s.duration_minutes)})` : ''} {s.price ? `- €${s.price}` : ''}
                     </option>
                   ))}
                 </select>
                 {selectedService && (
                   <div className="service-badge">
-                    <span><i className="fas fa-clock"></i> {selectedService.duration_minutes || 60} mins</span>
+                    <span><i className="fas fa-clock"></i> {formatDuration(selectedService.duration_minutes || 60)}</span>
                     {selectedService.price && <span><i className="fas fa-euro-sign"></i> €{selectedService.price}</span>}
                   </div>
                 )}
@@ -451,23 +452,20 @@ function AddJobModal({ isOpen, onClose }) {
           {/* Additional Fields */}
           <div className="form-grid">
             <div className="form-group">
-              <label className="form-label">Duration (mins)</label>
+              <label className="form-label">Duration</label>
               <select 
                 name="duration_minutes" 
                 className="form-input" 
-                value={formData.duration_minutes} 
+                value={formData.duration_minutes || 60} 
                 onChange={handleChange}
               >
-                <option value="30">30 mins</option>
-                <option value="60">1 hour</option>
-                <option value="90">1.5 hours</option>
-                <option value="120">2 hours</option>
-                <option value="150">2.5 hours</option>
-                <option value="180">3 hours</option>
-                <option value="240">4 hours</option>
-                <option value="300">5 hours</option>
-                <option value="360">6 hours</option>
-                <option value="480">8 hours</option>
+                {Object.entries(DURATION_OPTIONS_GROUPED).map(([group, options]) => (
+                  <optgroup key={group} label={group}>
+                    {options.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             </div>
             <div className="form-group">

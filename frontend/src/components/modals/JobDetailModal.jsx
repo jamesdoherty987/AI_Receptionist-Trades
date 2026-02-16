@@ -15,6 +15,7 @@ import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
 import { useToast } from '../Toast';
 import { formatDateTime, getStatusBadgeClass, formatCurrency, formatPhone } from '../../utils/helpers';
+import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
 import './JobDetailModal.css';
 
 function JobDetailModal({ isOpen, onClose, jobId }) {
@@ -104,7 +105,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
         job_address: job.job_address || job.address || '',
         eircode: job.eircode || '',
         estimated_charge: job.estimated_charge || job.charge || '',
-        duration_minutes: job.duration_minutes || '60',
+        duration_minutes: job.duration_minutes || 60,
         notes: job.notes || ''
       });
     }
@@ -336,7 +337,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
         job_address: job.job_address || job.address || '',
         eircode: job.eircode || '',
         estimated_charge: job.estimated_charge || job.charge || '',
-        duration_minutes: job.duration_minutes || '60',
+        duration_minutes: job.duration_minutes || 60,
         notes: job.notes || ''
       });
     }
@@ -571,19 +572,16 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                       <select
                         name="duration_minutes"
                         className="edit-input"
-                        value={editFormData.duration_minutes}
+                        value={editFormData.duration_minutes || 60}
                         onChange={handleEditChange}
                       >
-                        <option value="30">30 mins</option>
-                        <option value="60">1 hour</option>
-                        <option value="90">1.5 hours</option>
-                        <option value="120">2 hours</option>
-                        <option value="150">2.5 hours</option>
-                        <option value="180">3 hours</option>
-                        <option value="240">4 hours</option>
-                        <option value="300">5 hours</option>
-                        <option value="360">6 hours</option>
-                        <option value="480">8 hours</option>
+                        {Object.entries(DURATION_OPTIONS_GROUPED).map(([group, options]) => (
+                          <optgroup key={group} label={group}>
+                            {options.map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </optgroup>
+                        ))}
                       </select>
                     </div>
                     <div className="edit-field">
@@ -621,7 +619,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                         {formatDateTime(job.appointment_time)}
                         {job.duration_minutes && (
                           <span style={{ marginLeft: '8px', color: '#666', fontSize: '0.9em' }}>
-                            ({job.duration_minutes} mins)
+                            ({formatDuration(job.duration_minutes)})
                           </span>
                         )}
                       </span>

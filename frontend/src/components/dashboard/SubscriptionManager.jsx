@@ -8,7 +8,8 @@ import {
   cancelSubscription,
   reactivateSubscription,
   startFreeTrial,
-  getInvoices
+  getInvoices,
+  syncSubscription
 } from '../../services/api';
 import './SubscriptionManager.css';
 
@@ -17,16 +18,16 @@ function SubscriptionManager() {
   const queryClient = useQueryClient();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
-  const { data: subscriptionData, isLoading } = useQuery({
+  const { data: subscriptionData, isLoading, refetch } = useQuery({
     queryKey: ['subscription-status'],
     queryFn: async () => {
       const response = await getSubscriptionStatus();
       return response.data.subscription;
     },
-    refetchOnMount: true,
+    refetchOnMount: 'always',
     refetchOnWindowFocus: true,
-    staleTime: 0, // Always refetch when invalidated to ensure fresh data after payment
-    cacheTime: 10 * 60 * 1000 // Keep in cache for 10 minutes
+    staleTime: 0,
+    cacheTime: 10 * 60 * 1000
   });
 
   const { data: invoicesData } = useQuery({
@@ -48,6 +49,9 @@ function SubscriptionManager() {
       if (data.checkout_url) {
         window.location.href = data.checkout_url;
       }
+    },
+    onError: (error) => {
+      alert(error.response?.data?.error || 'Failed to start checkout. Please try again.');
     }
   });
 
@@ -56,14 +60,11 @@ function SubscriptionManager() {
       const response = await startFreeTrial();
       return response.data;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries(['subscription-status']);
-      // Refresh auth state to pick up new subscription — but don't
-      // let a cookie failure wipe the session (checkAuth is now resilient)
       checkAuth();
     },
     onError: (error) => {
-      console.error('Trial start error:', error);
       alert(error.response?.data?.error || 'Failed to start trial. Please try again.');
     }
   });
@@ -78,6 +79,9 @@ function SubscriptionManager() {
       if (data.portal_url) {
         window.location.href = data.portal_url;
       }
+    },
+    onError: (error) => {
+      alert(error.response?.data?.error || 'Failed to open billing portal. Please try again.');
     }
   });
 
@@ -87,6 +91,10 @@ function SubscriptionManager() {
       queryClient.invalidateQueries(['subscription-status']);
       checkAuth();
       setShowCancelConfirm(false);
+    },
+    onError: (error) => {
+      alert(error.response?.data?.error || 'Failed to cancel subscription. Please try again.');
+      setShowCancelConfirm(false);
     }
   });
 
@@ -95,6 +103,9 @@ function SubscriptionManager() {
     onSuccess: () => {
       queryClient.invalidateQueries(['subscription-status']);
       checkAuth();
+    },
+    onError: (error) => {
+      alert(error.response?.data?.error || 'Failed to reactivate subscription. Please try again.');
     }
   });
 
@@ -106,6 +117,18 @@ function SubscriptionManager() {
       </div>
     );
   }
+
+  const handleRefresh = async () => {
+    try {
+      // First try to sync from Stripe (in case webhook was delayed)
+      await syncSubscription();
+    } catch (error) {
+      // Sync may fail if no Stripe customer yet - that's okay
+    }
+    // Then refresh auth and query
+    await checkAuth();
+    refetch();
+  };
 
   const subscription = subscriptionData || {};
   const isActive = subscription.is_active;
@@ -131,13 +154,22 @@ function SubscriptionManager() {
       <div className={`subscription-card ${isActive ? 'active' : 'inactive'}`}>
         <div className="subscription-header">
           <div className="plan-info">
-            <span className={`plan-badge ${isPro ? 'pro' : isTrial && isActive ? 'trial' : isNone ? 'none' : 'expired'}`}>
-              {isPro && 'Pro Plan'}
-              {isTrial && isActive && !isPro && 'Free Trial'}
-              {isTrial && !isActive && !isPro && 'Trial Expired'}
-              {isNone && !isPro && 'No Plan'}
-              {!isPro && !isTrial && !isNone && 'Expired'}
-            </span>
+            <div className="plan-title-row">
+              <span className={`plan-badge ${isPro ? 'pro' : isTrial && isActive ? 'trial' : isNone ? 'none' : 'expired'}`}>
+                {isPro && 'Pro Plan'}
+                {isTrial && isActive && !isPro && 'Free Trial'}
+                {isTrial && !isActive && !isPro && 'Trial Expired'}
+                {isNone && !isPro && 'No Plan'}
+                {!isPro && !isTrial && !isNone && 'Expired'}
+              </span>
+              <button 
+                className="btn-refresh" 
+                onClick={handleRefresh}
+                title="Refresh subscription status"
+              >
+                <i className="fas fa-sync-alt"></i>
+              </button>
+            </div>
             <h3>
               {isPro && 'BookedForYou Pro'}
               {isTrial && isActive && !isPro && 'Free Trial'}
@@ -267,7 +299,7 @@ function SubscriptionManager() {
 
           {/* Show billing portal for pro users */}
           {isPro && !cancelAtPeriodEnd && (
-            <>
+            <div className="pro-actions">
               <button
                 className="btn btn-secondary"
                 onClick={() => portalMutation.mutate()}
@@ -277,13 +309,12 @@ function SubscriptionManager() {
                 {portalMutation.isPending ? 'Loading...' : 'Manage Billing'}
               </button>
               <button
-                className="btn btn-danger btn-outline"
+                className="btn-cancel-link"
                 onClick={() => setShowCancelConfirm(true)}
               >
-                <i className="fas fa-times"></i>
-                Cancel Subscription
+                Cancel subscription
               </button>
-            </>
+            </div>
           )}
 
           {/* Show reactivate button if cancelling */}

@@ -19,6 +19,7 @@ from src.utils.address_validator import (
     is_address_incomplete,
     get_address_completion_prompt
 )
+from src.utils.duration_utils import format_duration
 
 CALENDAR_TOOLS = [
     {
@@ -1517,11 +1518,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             return {
                 "success": True,
-                "message": f"Appointment booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({appointment_duration} mins)",
+                "message": f"Appointment booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({format_duration(appointment_duration)})",
                 "appointment_details": {
                     "customer": customer_name,
                     "time": parsed_time.strftime('%A, %B %d at %I:%M %p'),
                     "duration_minutes": appointment_duration,
+                    "duration_display": format_duration(appointment_duration),
                     "service": matched_service_name,
                     "reason": reason,
                     "phone": phone,
@@ -2024,11 +2026,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             return {
                 "success": True,
-                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({service_duration} mins). {urgency_level.title()} job at {validated_address}.{worker_msg}",
+                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({format_duration(service_duration)}). {urgency_level.title()} job at {validated_address}.{worker_msg}",
                 "appointment_details": {
                     "customer": customer_name,
                     "time": parsed_time.strftime('%A, %B %d at %I:%M %p'),
                     "duration_minutes": service_duration,
+                    "duration_display": format_duration(service_duration),
                     "matched_service": matched_service_name,
                     "job_address": validated_address,
                     "job_description": job_description,

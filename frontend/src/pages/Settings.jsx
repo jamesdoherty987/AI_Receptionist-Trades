@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -14,18 +14,24 @@ import {
   getBusinessSettings, 
   updateBusinessSettings,
   getAIReceptionistStatus,
-  toggleAIReceptionist
+  toggleAIReceptionist,
+  syncSubscription,
+  deleteAccount
 } from '../services/api';
 import './Settings.css';
 
 function Settings() {
   const queryClient = useQueryClient();
-  const { checkAuth } = useAuth();
+  const navigate = useNavigate();
+  const { checkAuth, logout } = useAuth();
   const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({});
   const [saveMessage, setSaveMessage] = useState('');
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [activeTab, setActiveTab] = useState('business');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   // Flag to hide Stripe Connect component
   const hideStripeConnect = REMOVE_STRIPE_CONNECT;
   
@@ -33,6 +39,8 @@ function Settings() {
   useEffect(() => {
     const subscriptionStatus = searchParams.get('subscription');
     const tabParam = searchParams.get('tab');
+    let pollTimeoutId = null;
+    let isCancelled = false;
     
     if (tabParam === 'subscription') {
       setActiveTab('subscription');
@@ -46,25 +54,56 @@ function Settings() {
       window.history.replaceState({}, '', '/settings');
       
       // Poll for subscription update (webhook may take a moment to process)
-      // This ensures the UI updates even if there's a slight delay
       const pollSubscription = async (attempts = 0) => {
+        if (isCancelled) return;
+        
+        try {
+          // Try to sync from Stripe directly (bypasses webhook delay)
+          const syncResponse = await syncSubscription();
+          
+          if (syncResponse.data.subscription?.tier === 'pro') {
+            // Refresh auth state and query cache
+            await checkAuth();
+            queryClient.invalidateQueries(['subscription-status']);
+            return; // Success - stop polling
+          }
+        } catch (error) {
+          // Sync may fail - continue polling
+        }
+        
+        if (isCancelled) return;
+        
+        // Also refresh auth state
         await checkAuth();
         queryClient.invalidateQueries(['subscription-status']);
         
-        // Check if subscription is now pro, if not retry up to 10 times over 15 seconds
+        // Wait a moment for the query to refetch
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        if (isCancelled) return;
+        
+        // Get fresh subscription data from the query cache
+        const cachedData = queryClient.getQueryData(['subscription-status']);
         const authSub = JSON.parse(sessionStorage.getItem('authSubscription') || '{}');
-        if (authSub.tier !== 'pro' && attempts < 10) {
-          // Exponential backoff: 1s, 1.5s, 2s, 2.5s, etc.
+        
+        // Check if subscription is now pro from either source
+        const isPro = cachedData?.tier === 'pro' || authSub.tier === 'pro';
+        
+        if (!isPro && attempts < 15) {
+          // Exponential backoff: 1s, 1.5s, 2s, 2.5s, etc. up to 15 attempts (~30s total)
           const delay = 1000 + (attempts * 500);
-          setTimeout(() => pollSubscription(attempts + 1), delay);
-        } else if (authSub.tier === 'pro') {
-          // Successfully updated - refresh the subscription manager
+          pollTimeoutId = setTimeout(() => pollSubscription(attempts + 1), delay);
+        } else if (isPro) {
+          // Final refresh to ensure everything is in sync
           queryClient.invalidateQueries(['subscription-status']);
+          await checkAuth();
+        } else {
+          setSaveMessage('Payment received! Your subscription is being activated. Please click the refresh button if the status doesn\'t update shortly.');
         }
       };
       pollSubscription();
       
-      setTimeout(() => setSaveMessage(''), 5000);
+      setTimeout(() => setSaveMessage(''), 8000);
     } else if (subscriptionStatus === 'cancelled') {
       setSaveMessage('Checkout was cancelled. You can try again when ready.');
       setActiveTab('subscription');
@@ -75,6 +114,14 @@ function Settings() {
       setActiveTab('subscription');
       window.history.replaceState({}, '', '/settings');
     }
+    
+    // Cleanup function to cancel polling on unmount
+    return () => {
+      isCancelled = true;
+      if (pollTimeoutId) {
+        clearTimeout(pollTimeoutId);
+      }
+    };
   }, [searchParams, checkAuth, queryClient]);
   
   // Business hours breakdown state
@@ -203,6 +250,28 @@ function Settings() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (confirmation) => deleteAccount(confirmation),
+    onSuccess: () => {
+      // Clear all auth state and redirect to home
+      logout();
+      navigate('/');
+    },
+    onError: (error) => {
+      const errorMsg = error?.response?.data?.error || 'Failed to delete account';
+      setDeleteError(errorMsg);
+    },
+  });
+
+  const handleDeleteAccount = () => {
+    setDeleteError('');
+    if (deleteConfirmation.toLowerCase() !== 'delete account') {
+      setDeleteError("Please type 'delete account' to confirm");
+      return;
+    }
+    deleteMutation.mutate(deleteConfirmation);
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -265,7 +334,7 @@ function Settings() {
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const updatedData = {
       ...formData,
       business_hours: formatBusinessHours()
@@ -322,55 +391,102 @@ function Settings() {
             </div>
           )}
 
-          {/* Setup Suggestions Banner - show one high-priority suggestion at a time */}
-          {settings && (() => {
-            // Priority order of suggestions - always show when conditions are met
-            if (!settings.business_name) {
-              return (
-                <div className="setup-suggestion">
-                  <i className="fas fa-lightbulb"></i>
-                  <span>Add your business name in Business Settings to personalize invoices</span>
-                  <button className="btn-dismiss" onClick={() => setActiveTab('business')}>
-                    Go to Settings <i className="fas fa-arrow-right"></i>
-                  </button>
+          {/* Setup Progress Card - show when setup is incomplete */}
+          {settings && (
+            !settings.business_name || 
+            !settings.business_phone || 
+            !settings.twilio_phone_number
+          ) && (
+            <div className="setup-progress-card">
+              <div className="setup-progress-header">
+                <div className="setup-progress-title">
+                  <i className="fas fa-rocket"></i>
+                  <div>
+                    <h3>Complete Your Setup</h3>
+                    <p>A few quick steps to get your AI receptionist running</p>
+                  </div>
                 </div>
-              );
-            }
-            if (!settings.business_phone) {
-              return (
-                <div className="setup-suggestion">
-                  <i className="fas fa-lightbulb"></i>
-                  <span>Add your business phone number for call forwarding when AI is disabled</span>
-                  <button className="btn-dismiss" onClick={() => setActiveTab('business')}>
-                    Add Phone <i className="fas fa-arrow-right"></i>
-                  </button>
+                <div className="setup-progress-count">
+                  {[
+                    settings.business_name,
+                    settings.business_phone,
+                    settings.twilio_phone_number
+                  ].filter(Boolean).length}/3 complete
                 </div>
-              );
-            }
-            if (!settings.bank_iban && !settings.revolut_phone) {
-              return (
-                <div className="setup-suggestion">
-                  <i className="fas fa-lightbulb"></i>
-                  <span>Add bank details or Revolut to include payment options on invoices</span>
-                  <button className="btn-dismiss" onClick={() => setActiveTab('payments')}>
-                    Setup Payments <i className="fas fa-arrow-right"></i>
-                  </button>
+              </div>
+              <div className="setup-checklist">
+                <div className={`setup-item ${settings.business_name ? 'complete' : ''}`}>
+                  <div className="setup-item-icon">
+                    {settings.business_name ? (
+                      <i className="fas fa-check-circle"></i>
+                    ) : (
+                      <i className="far fa-circle"></i>
+                    )}
+                  </div>
+                  <div className="setup-item-content">
+                    <span className="setup-item-title">Business name</span>
+                    {!settings.business_name && (
+                      <button 
+                        className="setup-item-action"
+                        onClick={() => {
+                          setActiveTab('business');
+                          document.getElementById('business_name')?.focus();
+                        }}
+                      >
+                        Add now
+                      </button>
+                    )}
+                  </div>
                 </div>
-              );
-            }
-            if (!settings.twilio_phone_number) {
-              return (
-                <div className="setup-suggestion">
-                  <i className="fas fa-lightbulb"></i>
-                  <span>Configure your phone number to start receiving AI-handled calls</span>
-                  <button className="btn-dismiss" onClick={() => setActiveTab('business')}>
-                    Configure Phone <i className="fas fa-arrow-right"></i>
-                  </button>
+                <div className={`setup-item ${settings.business_phone ? 'complete' : ''}`}>
+                  <div className="setup-item-icon">
+                    {settings.business_phone ? (
+                      <i className="fas fa-check-circle"></i>
+                    ) : (
+                      <i className="far fa-circle"></i>
+                    )}
+                  </div>
+                  <div className="setup-item-content">
+                    <span className="setup-item-title">Your phone number</span>
+                    {!settings.business_phone && (
+                      <button 
+                        className="setup-item-action"
+                        onClick={() => {
+                          setActiveTab('business');
+                          document.getElementById('business_phone')?.focus();
+                        }}
+                      >
+                        Add now
+                      </button>
+                    )}
+                  </div>
                 </div>
-              );
-            }
-            return null;
-          })()}
+                <div className={`setup-item ${settings.twilio_phone_number ? 'complete' : ''}`}>
+                  <div className="setup-item-icon">
+                    {settings.twilio_phone_number ? (
+                      <i className="fas fa-check-circle"></i>
+                    ) : (
+                      <i className="far fa-circle"></i>
+                    )}
+                  </div>
+                  <div className="setup-item-content">
+                    <span className="setup-item-title">AI phone number</span>
+                    {!settings.twilio_phone_number && (
+                      <button 
+                        className="setup-item-action"
+                        onClick={() => {
+                          setActiveTab('business');
+                          setShowPhoneModal(true);
+                        }}
+                      >
+                        Configure
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Settings Tabs */}
           <div className="settings-tabs">
@@ -610,42 +726,6 @@ function Settings() {
               </div>
 
               <div className="form-section">
-                <h3>
-                  <i className="fas fa-calendar-alt" style={{ marginRight: '8px', color: '#4a90d9' }}></i>
-                  Scheduling Settings
-                </h3>
-                <p className="section-description">
-                  Configure how appointments are scheduled.
-                </p>
-                <div className="form-grid">
-                  <div className="form-group">
-                    <label htmlFor="default_duration_minutes">Default Job Duration (mins)</label>
-                    <select
-                      id="default_duration_minutes"
-                      name="default_duration_minutes"
-                      value={formData.default_duration_minutes || 60}
-                      onChange={handleChange}
-                      className="form-select"
-                    >
-                      <option value="30">30 minutes</option>
-                      <option value="60">1 hour</option>
-                      <option value="90">1.5 hours</option>
-                      <option value="120">2 hours</option>
-                      <option value="150">2.5 hours</option>
-                      <option value="180">3 hours</option>
-                      <option value="240">4 hours</option>
-                      <option value="300">5 hours</option>
-                      <option value="360">6 hours</option>
-                      <option value="480">8 hours</option>
-                    </select>
-                    <small className="form-help">
-                      Default duration when a service doesn't have a specific duration set.
-                    </small>
-                  </div>
-                </div>
-              </div>
-
-              <div className="form-section">
                 <h3>Phone Configuration</h3>
                 <p className="section-description">
                   Your assigned phone number for receiving calls. {!formData.twilio_phone_number ? 'Click the button below to select your number.' : 'This number is permanently assigned to your account.'}
@@ -747,18 +827,39 @@ function Settings() {
               </div>
 
               {/* Fallback settings section removed - business phone is now used for everything */}
-
-              <div className="form-actions">
-                <button 
-                  type="submit" 
-                  className="btn btn-primary"
-                  disabled={saveMutation.isPending}
-                >
-                  <i className="fas fa-save"></i>
-                  {saveMutation.isPending ? 'Saving...' : 'Save Settings'}
-                </button>
-              </div>
             </form>
+          </div>
+
+          {/* Danger Zone - Delete Account */}
+          <div className="settings-card danger-zone">
+            <h3>
+              <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px', color: '#dc2626' }}></i>
+              Danger Zone
+            </h3>
+            <p className="section-description">
+              Permanently delete your account and all associated data. This action cannot be undone.
+            </p>
+            <button 
+              type="button"
+              className="btn btn-danger"
+              onClick={() => setShowDeleteModal(true)}
+            >
+              <i className="fas fa-trash-alt"></i>
+              Delete Account
+            </button>
+          </div>
+          
+          {/* Floating Save Button */}
+          <div className="floating-save-container">
+            <button 
+              type="button"
+              className="btn btn-primary floating-save-btn"
+              disabled={saveMutation.isPending}
+              onClick={handleSubmit}
+            >
+              <i className="fas fa-save"></i>
+              {saveMutation.isPending ? 'Saving...' : 'Save Settings'}
+            </button>
           </div>
             </>
           )}
@@ -772,6 +873,90 @@ function Settings() {
         onSuccess={handlePhoneConfigSuccess}
         allowSkip={false}
       />
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="modal-overlay" onClick={() => {
+          setShowDeleteModal(false);
+          setDeleteConfirmation('');
+          setDeleteError('');
+        }}>
+          <div className="modal-content delete-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>
+                <i className="fas fa-exclamation-triangle" style={{ color: '#dc2626', marginRight: '10px' }}></i>
+                Delete Account
+              </h2>
+              <button className="modal-close" onClick={() => {
+                setShowDeleteModal(false);
+                setDeleteConfirmation('');
+                setDeleteError('');
+              }}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="delete-warning">
+                <p><strong>This action is permanent and cannot be undone.</strong></p>
+                <p>Deleting your account will remove:</p>
+                <ul>
+                  <li>All your business information</li>
+                  <li>All customers and their data</li>
+                  <li>All jobs and bookings</li>
+                  <li>All workers</li>
+                  <li>All services</li>
+                  <li>Your subscription (if active)</li>
+                </ul>
+              </div>
+              <div className="delete-confirm-input">
+                <label>Type <strong>delete account</strong> to confirm:</label>
+                <input
+                  type="text"
+                  value={deleteConfirmation}
+                  onChange={(e) => setDeleteConfirmation(e.target.value)}
+                  placeholder="delete account"
+                  autoComplete="off"
+                />
+              </div>
+              {deleteError && (
+                <div className="delete-error">
+                  <i className="fas fa-exclamation-circle"></i>
+                  {deleteError}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmation('');
+                  setDeleteError('');
+                }}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn btn-danger"
+                onClick={handleDeleteAccount}
+                disabled={deleteMutation.isPending || deleteConfirmation.toLowerCase() !== 'delete account'}
+              >
+                {deleteMutation.isPending ? (
+                  <>
+                    <i className="fas fa-spinner fa-spin"></i>
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <i className="fas fa-trash-alt"></i>
+                    Delete My Account
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

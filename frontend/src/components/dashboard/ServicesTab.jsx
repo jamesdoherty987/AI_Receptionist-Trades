@@ -12,17 +12,8 @@ import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
 import ImageUpload from '../ImageUpload';
 import { formatCurrency } from '../../utils/helpers';
+import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
 import './ServicesTab.css';
-
-const DURATION_OPTIONS = [
-  { value: 30, label: '30 mins' },
-  { value: 60, label: '1 hour' },
-  { value: 90, label: '1.5 hours' },
-  { value: 120, label: '2 hours' },
-  { value: 180, label: '3 hours' },
-  { value: 240, label: '4 hours' },
-  { value: 480, label: '8 hours' },
-];
 
 function ServicesTab() {
   const { hasActiveSubscription } = useAuth();
@@ -168,8 +159,12 @@ function ServicesTab() {
                 value={formData.duration}
                 onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
               >
-                {DURATION_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                {Object.entries(DURATION_OPTIONS_GROUPED).map(([group, options]) => (
+                  <optgroup key={group} label={group}>
+                    {options.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -267,8 +262,12 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               value={editData.duration_minutes || 60}
               onChange={(e) => setEditData({ ...editData, duration_minutes: parseInt(e.target.value) })}
             >
-              {DURATION_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              {Object.entries(DURATION_OPTIONS_GROUPED).map(([group, options]) => (
+                <optgroup key={group} label={group}>
+                  {options.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
@@ -305,7 +304,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           )}
           {(service.duration_minutes || service.duration) && (
             <span className="meta-item duration">
-              <i className="fas fa-clock"></i> {service.duration_minutes || service.duration} mins
+              <i className="fas fa-clock"></i> {formatDuration(service.duration_minutes || service.duration)}
             </span>
           )}
         </div>

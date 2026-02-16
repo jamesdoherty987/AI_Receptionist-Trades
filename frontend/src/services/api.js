@@ -66,6 +66,8 @@ export const changePassword = (currentPassword, newPassword) =>
 export const forgotPassword = (email) => api.post('/api/auth/forgot-password', { email });
 export const resetPassword = (token, newPassword) => 
   api.post('/api/auth/reset-password', { token, new_password: newPassword });
+export const deleteAccount = (confirmation) => 
+  api.post('/api/auth/delete-account', { confirmation });
 
 // Bookings / Jobs
 export const getBookings = () => api.get('/api/bookings');
@@ -151,6 +153,7 @@ export const cancelSubscription = () => api.post('/api/subscription/cancel');
 export const reactivateSubscription = () => api.post('/api/subscription/reactivate');
 export const startFreeTrial = () => api.post('/api/subscription/start-trial');
 export const getInvoices = () => api.get('/api/subscription/invoices');
+export const syncSubscription = () => api.post('/api/subscription/sync');
 
 // Stripe Connect (Payment Setup for receiving payments)
 export const getConnectStatus = () => api.get('/api/connect/status');

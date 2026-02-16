@@ -817,6 +817,62 @@ def logout():
     return jsonify({"success": True, "message": "Logged out successfully"})
 
 
+@app.route("/api/auth/delete-account", methods=["POST"])
+@login_required
+@rate_limit(max_requests=3, window_seconds=300)  # 3 attempts per 5 minutes
+def delete_account():
+    """
+    Permanently delete the user's account and all associated data.
+    Requires confirmation text to prevent accidental deletion.
+    """
+    data = request.json or {}
+    confirmation = data.get('confirmation', '').strip().lower()
+    
+    if confirmation != 'delete account':
+        return jsonify({
+            "error": "Please type 'delete account' to confirm deletion"
+        }), 400
+    
+    company_id = session.get('company_id')
+    email = session.get('email', 'unknown')
+    
+    db = get_database()
+    company = db.get_company(company_id)
+    
+    if not company:
+        return jsonify({"error": "Account not found"}), 404
+    
+    # Cancel any active Stripe subscription before deleting
+    stripe_subscription_id = company.get('stripe_subscription_id')
+    if stripe_subscription_id:
+        try:
+            stripe.Subscription.cancel(stripe_subscription_id)
+            print(f"[DELETE_ACCOUNT] Cancelled Stripe subscription {stripe_subscription_id}")
+        except Exception as e:
+            print(f"[WARNING] Could not cancel Stripe subscription: {e}")
+    
+    # Note: We don't delete the Stripe Connect account as it may have pending payouts
+    # The account will remain but won't be linked to any company
+    stripe_connect_id = company.get('stripe_connect_account_id')
+    if stripe_connect_id:
+        print(f"[DELETE_ACCOUNT] Stripe Connect account {stripe_connect_id} will be orphaned (not deleted)")
+    
+    # Delete the company and all associated data
+    success = db.delete_company(company_id)
+    
+    if success:
+        print(f"[DELETE_ACCOUNT] Successfully deleted account {company_id} ({email})")
+        session.clear()
+        return jsonify({
+            "success": True,
+            "message": "Your account has been permanently deleted"
+        })
+    else:
+        return jsonify({
+            "error": "Failed to delete account. Please contact support."
+        }), 500
+
+
 @app.route("/api/auth/me", methods=["GET"])
 def get_current_user():
     """Get the currently logged in user"""
@@ -1407,24 +1463,20 @@ def create_checkout():
     # Get base URL for redirects
     base_url = data.get('base_url', os.getenv('FRONTEND_URL', 'http://localhost:3000'))
     
-    # Determine if this is a trial signup (new) or upgrade (existing/expired trial)
-    subscription_info = get_subscription_info(company)
-    with_trial = subscription_info['tier'] == 'trial' and subscription_info['is_active']
-    
-    # If trial is expired or never had trial, no trial period on checkout
-    if subscription_info['tier'] == 'trial' and not subscription_info['is_active']:
-        with_trial = False
-    
     result = create_checkout_session(
         company_id=company['id'],
         email=company['email'],
         company_name=company['company_name'],
         success_url=f"{base_url}/settings?subscription=success",
         cancel_url=f"{base_url}/settings?subscription=cancelled",
-        with_trial=False  # Trial is separate, checkout is for immediate subscription
+        with_trial=False  # Trial is handled separately via start-trial endpoint
     )
     
     if result:
+        # Save the Stripe customer ID immediately so sync can work even before webhook
+        if result.get('customer_id') and not company.get('stripe_customer_id'):
+            db.update_company(company['id'], stripe_customer_id=result['customer_id'])
+        
         return jsonify({
             "success": True,
             "checkout_url": result['url'],
@@ -1436,6 +1488,7 @@ def create_checkout():
 
 @app.route("/api/subscription/start-trial", methods=["POST"])
 @login_required
+@rate_limit(max_requests=5, window_seconds=300)
 def start_trial():
     """Start or restart a 14-day free trial"""
     db = get_database()
@@ -1447,7 +1500,10 @@ def start_trial():
     # Check if already on active trial or pro
     subscription_info = get_subscription_info(company)
     if subscription_info['is_active'] and subscription_info['tier'] == 'pro':
-        return jsonify({"error": "You already have an active subscription"}), 400
+        return jsonify({"error": "You already have an active Pro subscription"}), 400
+    
+    if subscription_info['is_active'] and subscription_info['tier'] == 'trial':
+        return jsonify({"error": "You already have an active trial"}), 400
     
     # Start 14-day trial
     from datetime import timedelta
@@ -1473,6 +1529,7 @@ def start_trial():
 
 @app.route("/api/subscription/billing-portal", methods=["POST"])
 @login_required
+@rate_limit(max_requests=10, window_seconds=60)
 def billing_portal():
     """Create a Stripe billing portal session"""
     db = get_database()
@@ -1501,6 +1558,7 @@ def billing_portal():
 
 @app.route("/api/subscription/cancel", methods=["POST"])
 @login_required
+@rate_limit(max_requests=5, window_seconds=300)
 def cancel_subscription_endpoint():
     """Cancel subscription at end of billing period"""
     db = get_database()
@@ -1529,6 +1587,7 @@ def cancel_subscription_endpoint():
 
 @app.route("/api/subscription/reactivate", methods=["POST"])
 @login_required
+@rate_limit(max_requests=5, window_seconds=300)
 def reactivate_subscription_endpoint():
     """Reactivate a subscription that was set to cancel"""
     db = get_database()
@@ -1575,6 +1634,111 @@ def get_invoices():
         "success": True,
         "invoices": invoices
     })
+
+
+@app.route("/api/subscription/sync", methods=["POST"])
+@login_required
+@rate_limit(max_requests=10, window_seconds=60)
+def sync_subscription():
+    """
+    Manually sync subscription status from Stripe.
+    Useful if webhook was delayed or missed.
+    """
+    db = get_database()
+    company = db.get_company(session['company_id'])
+    
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    
+    customer_id = company.get('stripe_customer_id')
+    subscription_id = company.get('stripe_subscription_id')
+    
+    if not customer_id:
+        return jsonify({
+            "success": True,
+            "message": "No Stripe customer found - nothing to sync",
+            "subscription": get_subscription_info(company)
+        })
+    
+    try:
+        import stripe
+        
+        # Get the latest subscription from Stripe
+        if subscription_id:
+            try:
+                sub = stripe.Subscription.retrieve(subscription_id)
+            except stripe.error.InvalidRequestError:
+                # Subscription ID is invalid or deleted, try to find by customer
+                subscription_id = None
+        
+        if not subscription_id:
+            # Try to find active subscription by customer
+            # First try active subscriptions
+            subs = stripe.Subscription.list(customer=customer_id, status='active', limit=1)
+            if not subs.data:
+                # Try trialing subscriptions
+                subs = stripe.Subscription.list(customer=customer_id, status='trialing', limit=1)
+            if not subs.data:
+                # Try past_due subscriptions (grace period)
+                subs = stripe.Subscription.list(customer=customer_id, status='past_due', limit=1)
+            if not subs.data:
+                # Try all subscriptions as last resort
+                subs = stripe.Subscription.list(customer=customer_id, limit=1)
+            
+            if subs.data:
+                sub = subs.data[0]
+                subscription_id = sub.id
+            else:
+                return jsonify({
+                    "success": True,
+                    "message": "No subscription found in Stripe",
+                    "subscription": get_subscription_info(company)
+                })
+        
+        # Update database based on Stripe subscription status
+        status = sub.status
+        is_active = status in ('active', 'trialing', 'past_due')
+        
+        update_data = {
+            'stripe_subscription_id': subscription_id,
+            'subscription_status': status,
+            'subscription_cancel_at_period_end': 1 if sub.cancel_at_period_end else 0,
+        }
+        
+        if sub.current_period_end:
+            update_data['subscription_current_period_end'] = datetime.fromtimestamp(sub.current_period_end)
+        
+        # If subscription is active, set tier to pro and clear trial
+        if is_active and status != 'trialing':
+            update_data['subscription_tier'] = 'pro'
+            update_data['trial_start'] = None
+            update_data['trial_end'] = None
+        elif status == 'trialing' and sub.trial_end:
+            update_data['subscription_tier'] = 'trial'
+            update_data['trial_end'] = datetime.fromtimestamp(sub.trial_end)
+        elif status in ('canceled', 'unpaid', 'incomplete_expired'):
+            update_data['subscription_tier'] = 'expired'
+        
+        db.update_company(company['id'], **update_data)
+        
+        # Get updated subscription info
+        updated_company = db.get_company(company['id'])
+        subscription_info = get_subscription_info(updated_company)
+        
+        print(f"[SUCCESS] Synced subscription for company {company['id']}: {status} -> tier={subscription_info['tier']}")
+        
+        return jsonify({
+            "success": True,
+            "message": f"Subscription synced from Stripe: {status}",
+            "subscription": subscription_info
+        })
+        
+    except stripe.error.StripeError as e:
+        print(f"[ERROR] Stripe error syncing subscription: {e}")
+        return jsonify({"error": f"Failed to sync from Stripe: {str(e)}"}), 500
+    except Exception as e:
+        print(f"[ERROR] Error syncing subscription: {e}")
+        return jsonify({"error": "Failed to sync subscription"}), 500
 
 
 @app.route("/stripe/webhook", methods=["POST"])
@@ -1627,10 +1791,14 @@ def stripe_webhook():
             customer_id = data.get('customer')
             subscription_id = data.get('subscription')
             
+            print(f"[WEBHOOK] checkout.session.completed - company_id: {company_id}, customer_id: {customer_id}, subscription_id: {subscription_id}")
+            
             if company_id and subscription_id:
                 # Get subscription details
                 import stripe
                 sub = stripe.Subscription.retrieve(subscription_id)
+                
+                print(f"[WEBHOOK] Subscription status from Stripe: {sub.status}, current_period_end: {sub.current_period_end}")
                 
                 # Clear trial fields when upgrading to pro to ensure clean state
                 db.update_company(
@@ -1644,7 +1812,7 @@ def stripe_webhook():
                     trial_start=None,
                     trial_end=None
                 )
-                print(f"[SUCCESS] Subscription activated for company {company_id}")
+                print(f"[SUCCESS] Subscription activated for company {company_id} - tier set to 'pro', trial fields cleared")
             else:
                 print(f"[WARNING] checkout.session.completed: Could not find company_id (metadata: {data.get('metadata')}, customer: {customer_id})")
         
@@ -4406,10 +4574,11 @@ def get_finances():
         bookings = db.get_all_bookings(company_id=company_id)
         
         # Calculate revenue metrics
+        # A job is considered paid if: status is 'completed' or 'paid', OR payment_status is 'paid'
         paid_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings 
-                          if b.get('status') == 'completed' or b.get('payment_status') == 'paid')
+                          if b.get('status') in ['completed', 'paid'] or b.get('payment_status') == 'paid')
         unpaid_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings 
-                            if b.get('status') not in ['completed', 'cancelled'] 
+                            if b.get('status') not in ['completed', 'paid', 'cancelled'] 
                             and b.get('payment_status') != 'paid')
         total_revenue = paid_revenue + unpaid_revenue
         
@@ -4436,12 +4605,13 @@ def get_finances():
                     'payment_method': booking.get('payment_method')
                 })
         
-        # Group by month for chart
+        # Group by month for chart (only count paid jobs)
         from collections import defaultdict
         from datetime import datetime
         monthly = defaultdict(float)
         for booking in bookings:
-            if (booking.get('status') == 'completed' or booking.get('payment_status') == 'paid') and booking.get('appointment_time'):
+            is_paid = booking.get('status') in ['completed', 'paid'] or booking.get('payment_status') == 'paid'
+            if is_paid and booking.get('appointment_time'):
                 try:
                     date = datetime.fromisoformat(booking['appointment_time'].replace('Z', '+00:00'))
                     month_key = date.strftime('%b %Y')  # e.g., "Jan 2024"

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import PhoneConfigModal from '../components/modals/PhoneConfigModal';
 import { validateEmail, validatePassword, sanitizeString } from '../utils/security';
 import './Auth.css';
 
@@ -20,7 +19,7 @@ function Signup() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [passwordFocus, setPasswordFocus] = useState(false);
 
   const tradeTypes = [
     'Plumbing',
@@ -35,6 +34,19 @@ function Signup() {
     'Masonry',
     'Other'
   ];
+
+  // Password strength indicators
+  const getPasswordStrength = () => {
+    const pwd = formData.password;
+    return {
+      length: pwd.length >= 8,
+      uppercase: /[A-Z]/.test(pwd),
+      lowercase: /[a-z]/.test(pwd),
+      number: /\d/.test(pwd)
+    };
+  };
+
+  const passwordStrength = getPasswordStrength();
 
   const handleChange = (e) => {
     setFormData({
@@ -115,8 +127,8 @@ function Signup() {
       });
 
       if (result.success) {
-        // Show phone configuration modal after successful signup
-        setShowPhoneModal(true);
+        // Navigate directly to dashboard - onboarding wizard will appear there
+        navigate('/dashboard');
       } else {
         setError(result.error || 'Registration failed');
       }
@@ -125,11 +137,6 @@ function Signup() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handlePhoneConfigComplete = () => {
-    // Navigate to dashboard after phone is configured or skipped
-    navigate('/dashboard');
   };
 
   return (
@@ -183,15 +190,17 @@ function Signup() {
             {step === 1 && (
               <>
                 <div className="form-group">
-                  <label htmlFor="company_name">Company Name</label>
+                  <label htmlFor="company_name">Business Name</label>
                   <input
                     type="text"
                     id="company_name"
                     name="company_name"
-                    placeholder="Your business name"
+                    placeholder="e.g., Smith's Plumbing"
                     value={formData.company_name}
                     onChange={handleChange}
                     required
+                    autoFocus
+                    autoComplete="organization"
                   />
                 </div>
 
@@ -201,15 +210,16 @@ function Signup() {
                     type="text"
                     id="owner_name"
                     name="owner_name"
-                    placeholder="Full name"
+                    placeholder="e.g., John Smith"
                     value={formData.owner_name}
                     onChange={handleChange}
                     required
+                    autoComplete="name"
                   />
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="trade_type">Your Trade</label>
+                  <label htmlFor="trade_type">What type of business?</label>
                   <select
                     id="trade_type"
                     name="trade_type"
@@ -225,15 +235,17 @@ function Signup() {
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="phone">Phone Number (Optional)</label>
+                  <label htmlFor="phone">Your Phone Number <span className="optional-label">(optional)</span></label>
                   <input
                     type="tel"
                     id="phone"
                     name="phone"
-                    placeholder="+353 86 XXX XXXX"
+                    placeholder="e.g., 085 123 4567"
                     value={formData.phone}
                     onChange={handleChange}
+                    autoComplete="tel"
                   />
+                  <small className="form-hint">We'll use this for call forwarding when AI is disabled</small>
                 </div>
 
                 <button type="button" className="auth-submit" onClick={handleNext}>
@@ -255,6 +267,7 @@ function Signup() {
                     value={formData.email}
                     onChange={handleChange}
                     required
+                    autoComplete="email"
                   />
                 </div>
 
@@ -264,11 +277,35 @@ function Signup() {
                     type="password"
                     id="password"
                     name="password"
-                    placeholder="Min. 8 characters"
+                    placeholder="Create a strong password"
                     value={formData.password}
                     onChange={handleChange}
+                    onFocus={() => setPasswordFocus(true)}
+                    onBlur={() => setPasswordFocus(false)}
                     required
+                    autoComplete="new-password"
                   />
+                  {/* Password strength indicators */}
+                  {(passwordFocus || formData.password) && (
+                    <div className="password-requirements">
+                      <p className={passwordStrength.length ? 'met' : ''}>
+                        <i className={`fas ${passwordStrength.length ? 'fa-check' : 'fa-circle'}`}></i>
+                        At least 8 characters
+                      </p>
+                      <p className={passwordStrength.uppercase ? 'met' : ''}>
+                        <i className={`fas ${passwordStrength.uppercase ? 'fa-check' : 'fa-circle'}`}></i>
+                        One uppercase letter
+                      </p>
+                      <p className={passwordStrength.lowercase ? 'met' : ''}>
+                        <i className={`fas ${passwordStrength.lowercase ? 'fa-check' : 'fa-circle'}`}></i>
+                        One lowercase letter
+                      </p>
+                      <p className={passwordStrength.number ? 'met' : ''}>
+                        <i className={`fas ${passwordStrength.number ? 'fa-check' : 'fa-circle'}`}></i>
+                        One number
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -281,7 +318,18 @@ function Signup() {
                     value={formData.confirm_password}
                     onChange={handleChange}
                     required
+                    autoComplete="new-password"
                   />
+                  {formData.confirm_password && formData.password !== formData.confirm_password && (
+                    <small className="password-mismatch">
+                      <i className="fas fa-exclamation-circle"></i> Passwords don't match
+                    </small>
+                  )}
+                  {formData.confirm_password && formData.password === formData.confirm_password && (
+                    <small className="password-match">
+                      <i className="fas fa-check-circle"></i> Passwords match
+                    </small>
+                  )}
                 </div>
 
                 <div className="form-buttons">
@@ -320,14 +368,6 @@ function Signup() {
           <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>
         </p>
       </div>
-
-      {/* Phone Configuration Modal */}
-      <PhoneConfigModal
-        isOpen={showPhoneModal}
-        onClose={handlePhoneConfigComplete}
-        onSuccess={handlePhoneConfigComplete}
-        allowSkip={true}
-      />
     </div>
   );
 }

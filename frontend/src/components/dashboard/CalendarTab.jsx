@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getBookings } from '../../services/api';
 import { getStatusBadgeClass } from '../../utils/helpers';
+import { formatDuration } from '../../utils/durationOptions';
 import LoadingSpinner from '../LoadingSpinner';
 import JobDetailModal from '../modals/JobDetailModal';
 import './CalendarTab.css';
@@ -226,7 +227,7 @@ function CalendarTab() {
                     })}
                     {event.duration_minutes && (
                       <span className="event-duration" style={{ fontSize: '0.75em', color: '#666', display: 'block' }}>
-                        {event.duration_minutes} mins
+                        {formatDuration(event.duration_minutes)}
                       </span>
                     )}
                   </div>

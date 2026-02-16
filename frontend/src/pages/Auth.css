@@ -182,6 +182,19 @@
   color: var(--text-secondary);
 }
 
+.optional-label {
+  font-weight: 400;
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
 /* Clean Input Styling - No Icons */
 .auth-form input,
 .auth-form select {
@@ -408,6 +421,7 @@
   background: var(--bg-secondary);
   border-radius: 10px;
   border: 1px solid var(--border-color);
+  margin-top: 0.5rem;
 }
 
 .password-requirements p {
@@ -426,6 +440,24 @@
 
 .password-requirements p i {
   font-size: 0.7rem;
+}
+
+/* Password Match Indicators */
+.password-mismatch,
+.password-match {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  margin-top: 0.4rem;
+}
+
+.password-mismatch {
+  color: #ef4444;
+}
+
+.password-match {
+  color: #10b981;
 }
 
 /* Free Trial Banner */

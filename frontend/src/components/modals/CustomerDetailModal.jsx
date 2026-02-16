@@ -21,7 +21,8 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
     },
     enabled: isOpen && !!clientId,
     staleTime: 30 * 1000, // 30 seconds
-    cacheTime: 5 * 60 * 1000 // 5 minutes
+    gcTime: 5 * 60 * 1000, // 5 minutes (renamed from cacheTime in v5)
+    placeholderData: (previousData) => previousData, // Keep previous data while refetching
   });
 
   const { data: allBookings } = useQuery({
@@ -32,7 +33,8 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
     },
     enabled: isOpen && !!clientId,
     staleTime: 60 * 1000, // 1 minute
-    cacheTime: 10 * 60 * 1000 // 10 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    placeholderData: (previousData) => previousData,
   });
 
   const clientBookings = allBookings?.filter(
@@ -43,13 +45,34 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
 
   const updateMutation = useMutation({
     mutationFn: (data) => updateClient(clientId, data),
+    onMutate: async (data) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['client', clientId] });
+      
+      // Snapshot previous value
+      const previousClient = queryClient.getQueryData(['client', clientId]);
+      
+      // Optimistically update
+      if (previousClient) {
+        queryClient.setQueryData(['client', clientId], {
+          ...previousClient,
+          ...data
+        });
+      }
+      
+      return { previousClient };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['client', clientId] });
+      queryClient.refetchQueries({ queryKey: ['client', clientId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setIsEditing(false);
       addToast('Customer updated successfully!', 'success');
     },
-    onError: (error) => {
+    onError: (error, variables, context) => {
+      // Rollback on error
+      if (context?.previousClient) {
+        queryClient.setQueryData(['client', clientId], context.previousClient);
+      }
       addToast('Error updating customer: ' + (error.response?.data?.error || error.message), 'error');
     }
   });
@@ -63,22 +86,20 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       // Snapshot previous value
       const previousClient = queryClient.getQueryData(['client', clientId]);
       
-      // Optimistically update with new note appended
-      queryClient.setQueryData(['client', clientId], (old) => {
-        if (!old) return old;
-        
-        const currentNotes = old.notes || '';
+      // Only do optimistic update if we have existing data
+      if (previousClient) {
+        const currentNotes = previousClient.notes || '';
         const timestamp = new Date().toLocaleString();
         const newNoteWithTimestamp = `[${timestamp}] ${note}`;
         const updatedNotes = currentNotes 
           ? `${currentNotes}\n\n${newNoteWithTimestamp}`
           : newNoteWithTimestamp;
         
-        return {
-          ...old,
+        queryClient.setQueryData(['client', clientId], {
+          ...previousClient,
           notes: updatedNotes
-        };
-      });
+        });
+      }
       
       // Clear input immediately
       setNewNote('');
@@ -86,7 +107,8 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       return { previousClient };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['client', clientId] });
+      // Refetch to get server data, but don't invalidate to avoid undefined state
+      queryClient.refetchQueries({ queryKey: ['client', clientId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast('Note added!', 'success');
     },

@@ -14,6 +14,10 @@ function PhoneConfigModal({ isOpen, onClose, onSuccess, allowSkip = false }) {
 
   useEffect(() => {
     if (isOpen) {
+      // Reset state when modal opens
+      setSelectedNumber('');
+      setError('');
+      setSuccessMessage('');
       fetchAvailableNumbers();
     }
   }, [isOpen]);
@@ -84,15 +88,13 @@ function PhoneConfigModal({ isOpen, onClose, onSuccess, allowSkip = false }) {
 
   return (
     <>
-      <div className="modal-overlay" onClick={allowSkip ? handleSkip : null}>
+      <div className="modal-overlay" onClick={onClose}>
         <div className="modal-container modal-medium phone-config-modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">
             <h2 className="modal-title"><i className="fas fa-phone"></i> Configure Phone Calls</h2>
-            {allowSkip && (
-              <button className="modal-close" onClick={handleSkip}>
-                <i className="fas fa-times"></i>
-              </button>
-            )}
+            <button className="modal-close" onClick={onClose}>
+              <i className="fas fa-times"></i>
+            </button>
           </div>
 
           <div className="modal-content">

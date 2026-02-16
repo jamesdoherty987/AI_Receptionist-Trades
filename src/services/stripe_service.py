@@ -157,10 +157,11 @@ def create_checkout_session(
         
         session = stripe.checkout.Session.create(**session_params)
         
-        print(f"[SUCCESS] Created checkout session: {session.id}")
+        print(f"[SUCCESS] Created checkout session: {session.id} for customer: {customer_id}")
         return {
             'session_id': session.id,
-            'url': session.url
+            'url': session.url,
+            'customer_id': customer_id
         }
         
     except stripe.error.StripeError as e:

@@ -875,6 +875,58 @@ class PostgreSQLDatabaseWrapper:
             cursor.close()
             self.return_connection(conn)
     
+    def delete_company(self, company_id: int) -> bool:
+        """
+        Delete a company and all associated data.
+        This is a destructive operation that removes:
+        - All bookings and job_workers assignments
+        - All clients
+        - All workers
+        - All services
+        - The company record itself
+        
+        Note: Tables with ON DELETE CASCADE (notes, appointment_notes, call_logs, 
+        business_settings, developer_settings) are automatically deleted.
+        
+        Returns True if successful, False otherwise.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Delete in order to respect foreign key constraints
+            # 1. Delete job_workers assignments (references bookings and workers)
+            cursor.execute("DELETE FROM job_workers WHERE booking_id IN (SELECT id FROM bookings WHERE company_id = %s)", (company_id,))
+            
+            # 2. Delete bookings
+            cursor.execute("DELETE FROM bookings WHERE company_id = %s", (company_id,))
+            
+            # 3. Delete workers
+            cursor.execute("DELETE FROM workers WHERE company_id = %s", (company_id,))
+            
+            # 4. Delete clients
+            cursor.execute("DELETE FROM clients WHERE company_id = %s", (company_id,))
+            
+            # 5. Delete services
+            cursor.execute("DELETE FROM services WHERE company_id = %s", (company_id,))
+            
+            # 6. Release the phone number back to the pool (set assigned_to_company_id to NULL)
+            cursor.execute("UPDATE twilio_phone_numbers SET assigned_to_company_id = NULL, status = 'available' WHERE assigned_to_company_id = %s", (company_id,))
+            
+            # 7. Finally, delete the company (cascades to notes, appointment_notes, call_logs, settings)
+            cursor.execute("DELETE FROM companies WHERE id = %s", (company_id,))
+            
+            conn.commit()
+            print(f"[SUCCESS] Deleted company {company_id} and all associated data")
+            return True
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Failed to delete company {company_id}: {e}")
+            return False
+        finally:
+            cursor.close()
+            self.return_connection(conn)
+    
     # Booking Methods
     
     def get_booking_by_calendar_event_id(self, calendar_event_id: str, company_id: int = None) -> Optional[Dict]:

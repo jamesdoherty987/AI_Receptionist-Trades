@@ -49,6 +49,32 @@
   color: #1f2937;
 }
 
+.plan-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-refresh {
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+}
+
+.btn-refresh:hover {
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.btn-refresh:active {
+  transform: rotate(180deg);
+}
+
 .plan-badge {
   display: inline-block;
   padding: 0.25rem 0.75rem;
@@ -222,6 +248,33 @@
 .subscription-actions .btn {
   flex: 1;
   min-width: 140px;
+}
+
+.pro-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.pro-actions .btn {
+  width: 100%;
+}
+
+.btn-cancel-link {
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  text-decoration: underline;
+  transition: color 0.2s;
+}
+
+.btn-cancel-link:hover {
+  color: #dc2626;
 }
 
 .btn-subscribe {
