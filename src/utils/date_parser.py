@@ -139,18 +139,20 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
                     "content": f"Parse this date/time reference: {text}"
                 }
             ],
-            functions=[DATETIME_PARSE_FUNCTION],
-            function_call={"name": "parse_datetime"}
+            tools=[{"type": "function", "function": DATETIME_PARSE_FUNCTION}],
+            tool_choice={"type": "function", "function": {"name": "parse_datetime"}},
+            temperature=0.1,
+            max_tokens=200
         )
         
         # Extract the parsed data
-        function_call = response.choices[0].message.function_call
-        if not function_call:
-            print(f"[WARNING] No function call returned from AI - falling back to None")
+        tool_calls = response.choices[0].message.tool_calls
+        if not tool_calls or len(tool_calls) == 0:
+            print(f"[WARNING] No tool call returned from AI - falling back to None")
             return None
         
         import json
-        parsed = json.loads(function_call.arguments)
+        parsed = json.loads(tool_calls[0].function.arguments)
         
         print(f"[AI] AI parsed '{text}': {parsed}")
         
@@ -180,8 +182,25 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
             }
             target_day = days_map[day_name]
             days_ahead = (target_day - now.weekday()) % 7
+            
+            # If today is the requested day and we have a time that's still in the future, use today
+            # Otherwise, use next occurrence
             if days_ahead == 0:
-                days_ahead = 7  # Next occurrence, not today
+                # Check if the requested time is still in the future today
+                if hour is not None:
+                    requested_time_today = now.replace(hour=hour, minute=minute or 0, second=0, microsecond=0)
+                    if requested_time_today > now:
+                        # Time is still in the future today - use today
+                        days_ahead = 0
+                        print(f"[DATE] Day of week: {day_name} is TODAY and time {hour}:{minute or 0} is still in the future")
+                    else:
+                        # Time has passed today - use next week
+                        days_ahead = 7
+                        print(f"[DATE] Day of week: {day_name} is TODAY but time {hour}:{minute or 0} has passed - using next week")
+                else:
+                    # No time specified - default to next occurrence to be safe
+                    days_ahead = 7
+                    print(f"[DATE] Day of week: {day_name} is TODAY but no time specified - using next week")
             
             # If no time specified, use default or return None
             if hour is None:

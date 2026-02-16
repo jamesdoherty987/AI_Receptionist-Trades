@@ -92,6 +92,26 @@ def is_confirmation_response(text: str) -> bool:
     try:
         client = get_openai_client()
         
+        detect_confirmation_function = {
+            "name": "detect_confirmation",
+            "description": "Detect if text is a confirmation or agreement",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "is_confirmation": {
+                        "type": "boolean",
+                        "description": "True if the response is confirming/agreeing"
+                    },
+                    "confidence": {
+                        "type": "string",
+                        "enum": ["high", "medium", "low"],
+                        "description": "Confidence level"
+                    }
+                },
+                "required": ["is_confirmation"]
+            }
+        }
+        
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -104,29 +124,10 @@ def is_confirmation_response(text: str) -> bool:
                     "content": f"Is this a confirmation/agreement? '{text}'"
                 }
             ],
-            tools=[{
-                "type": "function",
-                "function": {
-                    "name": "detect_confirmation",
-                    "description": "Detect if text is a confirmation or agreement",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "is_confirmation": {
-                                "type": "boolean",
-                                "description": "True if the response is confirming/agreeing"
-                            },
-                            "confidence": {
-                                "type": "string",
-                                "enum": ["high", "medium", "low"],
-                                "description": "Confidence level"
-                            }
-                        },
-                        "required": ["is_confirmation"]
-                    }
-                }
-            }],
-            tool_choice={"type": "function", "function": {"name": "detect_confirmation"}}
+            tools=[{"type": "function", "function": detect_confirmation_function}],
+            tool_choice={"type": "function", "function": {"name": "detect_confirmation"}},
+            temperature=0.1,
+            max_tokens=50
         )
         
         tool_calls = response.choices[0].message.tool_calls

@@ -81,6 +81,13 @@ async def media_handler(ws):
     llm_processing = False  # True while waiting for LLM response
     llm_started_at = 0.0    # When LLM processing started
     queued_speech = []      # Speech detected during LLM processing
+    
+    # --- Interruption tracking (prevents confusion loops) ---
+    interrupt_count = 0           # Track consecutive interruptions
+    last_interrupt_time = 0.0     # When last interrupt happened
+    interrupted_text = ""         # What the AI was saying when interrupted
+    INTERRUPT_COOLDOWN = 1.5      # Seconds to wait after interrupt before allowing another
+    MAX_CONSECUTIVE_INTERRUPTS = 3  # After this many, pause and let caller speak fully
 
     # --- Speech segmentation with sentence-level detection ---
     in_speech = False
@@ -169,7 +176,9 @@ async def media_handler(ws):
                     """Pre-fetch remaining tokens while TTS speaks the filler"""
                     nonlocal transfer_number
                     try:
+                        token_received = False
                         async for token in text_stream:
+                            token_received = True
                             if token.startswith("<<<TRANSFER:"):
                                 transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
                                 print(f"📞 TRANSFER MARKER DETECTED (prefetch): {transfer_number}")
@@ -177,8 +186,15 @@ async def media_handler(ws):
                             if token.startswith("<<<") and token.endswith(">>>"):
                                 continue
                             prefetch_buffer.append(token)
+                        
+                        # If we received no tokens at all, log a warning
+                        if not token_received:
+                            print(f"   ⚠️ Prefetch received NO tokens from stream!")
+                            
                     except Exception as e:
                         print(f"⚠️ Prefetch error: {e}")
+                        import traceback
+                        traceback.print_exc()
                     finally:
                         prefetch_done.set()
                         print(f"   ⚡ Prefetch complete: {len(prefetch_buffer)} tokens buffered")
@@ -240,6 +256,12 @@ async def media_handler(ws):
                             print(f"   ⚡ Prefetch ready: {len(prefetch_buffer)} tokens available")
                         except asyncio.TimeoutError:
                             print(f"   ⚠️ Prefetch timeout - continuing with available tokens")
+                    
+                    # CRITICAL: If prefetch buffer is empty, add a fallback response
+                    # This prevents the AI from going silent after "let me check"
+                    if not prefetch_buffer:
+                        print(f"   ⚠️ EMPTY PREFETCH BUFFER - adding fallback to prevent silence!")
+                        prefetch_buffer.append("I've checked that for you. What would you like to do?")
                     
                     async def continuation_stream():
                         nonlocal token_count, speaking, transfer_number, full_text
@@ -434,13 +456,17 @@ async def media_handler(ws):
                 conversation.append({
                     "role": "system",
                     "content": (
-                        "[SYSTEM: Initial greeting has ALREADY been delivered to the caller. "
+                        "[SYSTEM: Initial greeting has ALREADY been delivered: 'Hi, thank you for calling. How can I help you today?' "
+                        "The caller has ALREADY been asked how you can help - DO NOT ask 'how can I help' or 'what can I help with' again. "
                         "Do NOT reintroduce the business or say 'thanks for calling'. Keep replies short. "
+                        "NEVER REPEAT QUESTIONS - if you've asked something, don't ask it again. "
+                        "If they describe their issue, acknowledge it and ask for their NAME (only ask once). "
+                        "CRITICAL - NAME SPELLING: After they give their name, you MUST spell it back letter-by-letter: "
+                        "'Just to confirm, that's J-O-H-N S-M-I-T-H, is that right?' Wait for YES before calling lookup_customer. "
                         "If they ask to book, respond briefly: 'Sure, no problem! What day and time works best for you?'. "
-                        "ALWAYS spell back their name letter-by-letter and wait for confirmation before proceeding. "
                         f"{phone_instruction} "
                         "ADDRESS: Prefer eircode - ask 'Do you know your eircode?' first. If not, get full address. ALWAYS read back addresses and eircodes to confirm. "
-                        "CRITICAL: Say things ONCE only - never repeat booking confirmations, goodbyes, or 'thanks for calling'. After confirming a booking, just ask 'Anything else?' once.]"
+                        "CRITICAL: Say things ONCE only - never repeat questions, booking confirmations, goodbyes, or 'thanks for calling'. After confirming a booking, just ask 'Anything else?' once.]"
                     )
                 })
                 
@@ -473,20 +499,34 @@ async def media_handler(ws):
                     # Don't allow interruption in critical first moments
                     if (now - tts_started_at) <= NO_BARGEIN_WINDOW:
                         continue
+                    
+                    # Cooldown: don't allow rapid consecutive interruptions
+                    if last_interrupt_time > 0 and (now - last_interrupt_time) < INTERRUPT_COOLDOWN:
+                        continue
+                    
+                    # If too many consecutive interrupts, require longer sustained speech
+                    required_hold = BARGEIN_HOLD
+                    if interrupt_count >= MAX_CONSECUTIVE_INTERRUPTS:
+                        required_hold = BARGEIN_HOLD * 2  # Double the hold time required
 
                     # Require sustained high energy for interruption
                     if energy > INTERRUPT_ENERGY:
                         if bargein_since == 0.0:
                             bargein_since = now
-                        elif (now - bargein_since) >= BARGEIN_HOLD:
+                        elif (now - bargein_since) >= required_hold:
                             # Additional check: ensure this isn't just noise
                             await asr.feed(audio)
                             interim_check = asr.get_interim()
                             # Require substantial speech (at least 5 characters or a recognizable word)
                             words = interim_check.strip().split()
-                            if len(words) >= 1 and len(interim_check.strip()) >= 3:
+                            min_words_for_interrupt = 2 if interrupt_count >= MAX_CONSECUTIVE_INTERRUPTS else 1
+                            if len(words) >= min_words_for_interrupt and len(interim_check.strip()) >= 3:
+                                # Track what we were saying when interrupted
+                                interrupted_text = last_committed if last_committed else ""
                                 interrupt = True
-                                print(f"✋ legitimate interrupt triggered: '{interim_check}'")
+                                interrupt_count += 1
+                                last_interrupt_time = now
+                                print(f"✋ legitimate interrupt triggered: '{interim_check}' (interrupt #{interrupt_count})")
                                 await clear_twilio_audio()
                                 if respond_task and not respond_task.done():
                                     respond_task.cancel()
@@ -557,12 +597,18 @@ async def media_handler(ws):
                                 is_duplicate = False
                                 
                                 if (now - last_response_time) < DUPLICATE_WINDOW:
+                                    # Exact match
                                     if norm_text(text) == norm_text(last_committed):
                                         is_duplicate = True
-                                    elif norm_text(last_committed) and norm_text(text).startswith(norm_text(last_committed)):
+                                        print(f"🔄 Duplicate detected (exact match): '{text}'")
+                                    # New text is just the old text with more words (continuation)
+                                    elif norm_text(last_committed) and len(norm_text(last_committed)) > 5 and norm_text(text).startswith(norm_text(last_committed)):
                                         is_duplicate = True
-                                    elif norm_text(text) and norm_text(last_committed).startswith(norm_text(text)):
+                                        print(f"🔄 Duplicate detected (continuation): '{text}' starts with '{last_committed}'")
+                                    # Old text is just the new text with more words (shouldn't happen but safety check)
+                                    elif norm_text(text) and len(norm_text(text)) > 5 and norm_text(last_committed).startswith(norm_text(text)):
                                         is_duplicate = True
+                                        print(f"🔄 Duplicate detected (subset): '{text}' is subset of '{last_committed}'")
                                 
                                 if not is_duplicate:
                                     # Safety timeout: if llm_processing has been true for too long, reset it
@@ -581,9 +627,7 @@ async def media_handler(ws):
                                         silence_since = 0.0
                                         pending_text = ""
                                         last_interim = ""
-                                        asr.text = ""
-                                        asr.interim_text = ""
-                                        asr.reset_final_flag()
+                                        asr.clear_all()
                                         continue
                                     
                                     # If LLM is processing and this is substantial speech, queue it
@@ -594,10 +638,22 @@ async def media_handler(ws):
                                         silence_since = 0.0
                                         pending_text = ""
                                         last_interim = ""
-                                        asr.text = ""
-                                        asr.interim_text = ""
-                                        asr.reset_final_flag()
+                                        asr.clear_all()
                                         continue
+                                    
+                                    # If there have been multiple interruptions, add context for the AI
+                                    # Check BEFORE resetting the counter
+                                    if interrupt_count >= 2:
+                                        conversation.append({
+                                            "role": "system", 
+                                            "content": f"[SYSTEM: The caller has interrupted {interrupt_count} times. They may be trying to say something important. Listen carefully, keep your response SHORT (1 sentence max), and pause to let them finish speaking. Don't repeat yourself.]"
+                                        })
+                                        print(f"⚠️ Added interruption context to conversation (count: {interrupt_count})")
+                                    
+                                    # Successful turn completion - reset interrupt counter AFTER adding context
+                                    if interrupt_count > 0:
+                                        print(f"✅ Successful turn - resetting interrupt counter (was {interrupt_count})")
+                                        interrupt_count = 0
                                     
                                     # Log the user speech
                                     conversation_log.append({
@@ -626,9 +682,7 @@ async def media_handler(ws):
                                     last_response_time = now
                                     
                                     # Clear ASR state
-                                    asr.text = ""
-                                    asr.interim_text = ""
-                                    asr.reset_final_flag()
+                                    asr.clear_all()
                                     
                                     print(f"👤 USER: {text}")
                                     

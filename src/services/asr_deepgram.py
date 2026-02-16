@@ -68,8 +68,13 @@ class DeepgramASR:
                 if alt and alt[0].get("transcript"):
                     transcript = alt[0]["transcript"]
                     if is_final:
-                        self.text = transcript
-                        self.is_final = True
+                        # Only update if different from current text (prevent duplicates)
+                        if transcript.strip() and transcript.strip() != self.text.strip():
+                            self.text = transcript
+                            self.is_final = True
+                        elif transcript.strip() == self.text.strip():
+                            # Same text, just mark as final without re-setting
+                            self.is_final = True
                     else:
                         self.interim_text = transcript
         except websockets.exceptions.ConnectionClosed:
@@ -98,6 +103,12 @@ class DeepgramASR:
     
     def reset_final_flag(self):
         """Reset the final flag for next transcription"""
+        self.is_final = False
+
+    def clear_all(self):
+        """Fully clear all transcription state"""
+        self.text = ""
+        self.interim_text = ""
         self.is_final = False
 
     async def close(self):

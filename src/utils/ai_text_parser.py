@@ -112,15 +112,17 @@ def extract_time_window_ai(text: str) -> Tuple[Optional[int], Optional[int]]:
                     "content": f"Extract the time window or preference from: {text}"
                 }
             ],
-            functions=[TIME_WINDOW_FUNCTION],
-            function_call={"name": "extract_time_window"}
+            tools=[{"type": "function", "function": TIME_WINDOW_FUNCTION}],
+            tool_choice={"type": "function", "function": {"name": "extract_time_window"}},
+            temperature=0.1,
+            max_tokens=100
         )
         
-        function_call = response.choices[0].message.function_call
-        if not function_call:
+        tool_calls = response.choices[0].message.tool_calls
+        if not tool_calls or len(tool_calls) == 0:
             return (None, None)
         
-        parsed = json.loads(function_call.arguments)
+        parsed = json.loads(tool_calls[0].function.arguments)
         
         if not parsed.get("has_time_window"):
             return (None, None)
@@ -179,15 +181,17 @@ def extract_name_ai(text: str) -> Optional[Dict[str, Any]]:
                     "content": f"Extract the name from: {text}"
                 }
             ],
-            functions=[NAME_EXTRACTION_FUNCTION],
-            function_call={"name": "extract_name"}
+            tools=[{"type": "function", "function": NAME_EXTRACTION_FUNCTION}],
+            tool_choice={"type": "function", "function": {"name": "extract_name"}},
+            temperature=0.1,
+            max_tokens=100
         )
         
-        function_call = response.choices[0].message.function_call
-        if not function_call:
+        tool_calls = response.choices[0].message.tool_calls
+        if not tool_calls or len(tool_calls) == 0:
             return None
         
-        parsed = json.loads(function_call.arguments)
+        parsed = json.loads(tool_calls[0].function.arguments)
         
         if not parsed.get("has_name"):
             return None
@@ -222,6 +226,25 @@ def detect_birth_year(text: str) -> Optional[int]:
     try:
         client = get_openai_client()
         
+        birth_year_function = {
+            "name": "detect_birth_year",
+            "description": "Detect if text contains a birth year",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "has_birth_year": {
+                        "type": "boolean",
+                        "description": "Whether text contains a birth year (before 2007)"
+                    },
+                    "year": {
+                        "type": "integer",
+                        "description": "The birth year if found"
+                    }
+                },
+                "required": ["has_birth_year"]
+            }
+        }
+        
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -234,32 +257,17 @@ def detect_birth_year(text: str) -> Optional[int]:
                     "content": f"Does this contain a birth year? {text}"
                 }
             ],
-            functions=[{
-                "name": "detect_birth_year",
-                "description": "Detect if text contains a birth year",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "has_birth_year": {
-                            "type": "boolean",
-                            "description": "Whether text contains a birth year (before 2007)"
-                        },
-                        "year": {
-                            "type": "integer",
-                            "description": "The birth year if found"
-                        }
-                    },
-                    "required": ["has_birth_year"]
-                }
-            }],
-            function_call={"name": "detect_birth_year"}
+            tools=[{"type": "function", "function": birth_year_function}],
+            tool_choice={"type": "function", "function": {"name": "detect_birth_year"}},
+            temperature=0.1,
+            max_tokens=50
         )
         
-        function_call = response.choices[0].message.function_call
-        if not function_call:
+        tool_calls = response.choices[0].message.tool_calls
+        if not tool_calls or len(tool_calls) == 0:
             return None
         
-        parsed = json.loads(function_call.arguments)
+        parsed = json.loads(tool_calls[0].function.arguments)
         
         if parsed.get("has_birth_year"):
             year = parsed.get("year")
@@ -306,39 +314,43 @@ def is_affirmative_response(text: str, context: str = None) -> bool:
         if context:
             system_prompt += f" Context: They are responding to a question about {context}."
         
+        classify_function = {
+            "name": "classify_response",
+            "description": "Classify if user is confirming/agreeing or not",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "is_affirmative": {
+                        "type": "boolean",
+                        "description": "True if confirming/agreeing/saying yes, False if denying/disagreeing/saying no or unclear"
+                    },
+                    "confidence": {
+                        "type": "string",
+                        "enum": ["high", "medium", "low"],
+                        "description": "Confidence level of the classification"
+                    }
+                },
+                "required": ["is_affirmative", "confidence"]
+            }
+        }
+        
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Is this message confirming/agreeing? Message: '{text}'"}
             ],
-            functions=[{
-                "name": "classify_response",
-                "description": "Classify if user is confirming/agreeing or not",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "is_affirmative": {
-                            "type": "boolean",
-                            "description": "True if confirming/agreeing/saying yes, False if denying/disagreeing/saying no or unclear"
-                        },
-                        "confidence": {
-                            "type": "string",
-                            "enum": ["high", "medium", "low"],
-                            "description": "Confidence level of the classification"
-                        }
-                    },
-                    "required": ["is_affirmative", "confidence"]
-                }
-            }],
-            function_call={"name": "classify_response"}
+            tools=[{"type": "function", "function": classify_function}],
+            tool_choice={"type": "function", "function": {"name": "classify_response"}},
+            temperature=0.1,
+            max_tokens=50
         )
         
-        function_call = response.choices[0].message.function_call
-        if not function_call:
+        tool_calls = response.choices[0].message.tool_calls
+        if not tool_calls or len(tool_calls) == 0:
             return False
         
-        parsed = json.loads(function_call.arguments)
+        parsed = json.loads(tool_calls[0].function.arguments)
         is_affirmative = parsed.get("is_affirmative", False)
         confidence = parsed.get("confidence", "low")
         

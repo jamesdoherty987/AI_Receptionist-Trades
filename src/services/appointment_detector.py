@@ -33,14 +33,33 @@ class AppointmentIntent(Enum):
 # OpenAI function definition for intent classification
 INTENT_FUNCTION = {
     "name": "classify_appointment_intent",
-    "description": "Classify the user's intent related to medical appointments and extract all relevant details from the conversation",
+    "description": "Classify the user's intent related to appointments and extract all relevant details from the conversation",
     "parameters": {
         "type": "object",
         "properties": {
             "intent": {
                 "type": "string",
                 "enum": ["book", "reschedule", "cancel", "query", "none"],
-                "description": "The primary intent of the user. Use 'book' if they want to schedule a new appointment. Use 'query' if asking about available times/slots or existing appointments, especially if they ask questions like 'is there anything later?', 'what times are available?', 'do you have anything else?', 'what about after X?'. If the message contains BOTH acceptance and a question about alternatives (e.g., 'I like 2pm but is there anything later?'), classify as 'query' because they're asking for more options. Use 'cancel' to remove an appointment, 'reschedule' to change an appointment time. Use 'none' if: 1) No appointment-related intent, 2) Just confirmation words like 'yes', 'no', 'correct', 'that\'s right' without any appointment action, 3) Providing requested information like name or date of birth."
+                "description": """The primary intent of the user. CRITICAL RULES:
+
+1. Use 'reschedule' ONLY if the user EXPLICITLY says words like 'reschedule', 'change my appointment', 'move my appointment', 'different time for my existing appointment'. Do NOT classify as reschedule if:
+   - User just confirmed a booking and says 'great', 'thanks', 'perfect', 'sounds good'
+   - User is acknowledging information without requesting a change
+   - User mentions a time in the context of a NEW booking (not changing an existing one)
+   - User says 'yes' or 'no' to a question
+
+2. Use 'book' if they want to schedule a NEW appointment.
+
+3. Use 'query' if asking about available times/slots or existing appointments, especially questions like 'is there anything later?', 'what times are available?', 'do you have anything else?', 'what about after X?'. If the message contains BOTH acceptance and a question about alternatives (e.g., 'I like 2pm but is there anything later?'), classify as 'query'.
+
+4. Use 'cancel' ONLY if user explicitly wants to REMOVE/DELETE an existing appointment.
+
+5. Use 'none' if:
+   - No appointment-related intent
+   - Just confirmation words like 'yes', 'no', 'correct', 'that's right', 'great', 'thanks', 'perfect' without any appointment action
+   - Providing requested information like name, phone, address
+   - Acknowledging or thanking after a booking is confirmed
+   - Saying goodbye or ending the conversation"""
             },
             "confidence": {
                 "type": "string",
@@ -90,7 +109,21 @@ class AppointmentDetector:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are an expert at classifying user intents for a medical receptionist AI. Analyze the user's message and classify their appointment-related intent."
+                        "content": """You are an expert at classifying user intents for a receptionist AI. Analyze the user's message and classify their appointment-related intent.
+
+CRITICAL: Be very careful about 'reschedule' classification. Only use 'reschedule' if the user EXPLICITLY mentions wanting to change/move an EXISTING appointment. 
+
+Common phrases that are NOT reschedule requests:
+- "great", "thanks", "perfect", "sounds good" (acknowledgments)
+- "yes", "no", "correct" (confirmations)
+- Mentioning a time when booking a NEW appointment
+- Asking about availability (this is 'query')
+
+Only classify as 'reschedule' for phrases like:
+- "I need to reschedule"
+- "Can I change my appointment"
+- "Move my appointment to..."
+- "I can't make that time, can we change it" (referring to an existing booking)"""
                     },
                     {
                         "role": "user",
@@ -132,11 +165,13 @@ class AppointmentDetector:
         """Fallback keyword-based detection if OpenAI fails"""
         text_lower = text.lower()
         
+        # Check for explicit reschedule keywords - must be very specific
+        reschedule_phrases = ["reschedule", "change my appointment", "move my appointment", "change the appointment"]
+        if any(phrase in text_lower for phrase in reschedule_phrases):
+            return AppointmentIntent.RESCHEDULE
+        
         if any(word in text_lower for word in ["cancel", "delete", "remove"]):
             return AppointmentIntent.CANCEL
-        
-        if any(word in text_lower for word in ["reschedule", "change", "move"]):
-            return AppointmentIntent.RESCHEDULE
         
         if any(word in text_lower for word in ["when is", "what time", "do i have", "check"]):
             return AppointmentIntent.QUERY
@@ -168,10 +203,27 @@ class AppointmentDetector:
             
             # Build messages with full context if available
             if conversation_history:
+                # Check if there was a recent booking confirmation in the conversation
+                recent_booking = False
+                for msg in reversed(conversation_history[-4:]):  # Check last 4 messages
+                    content = msg.get("content", "").lower()
+                    if any(phrase in content for phrase in ["you're all booked", "booking confirmed", "you're all set", "that's booked"]):
+                        recent_booking = True
+                        break
+                
+                booking_context = ""
+                if recent_booking:
+                    booking_context = " IMPORTANT: A booking was just confirmed in this conversation. If the user says 'great', 'thanks', 'perfect', or similar acknowledgments, classify as 'none' - they are NOT asking to reschedule."
+                
                 messages = [
                     {
                         "role": "system",
-                        "content": f"You are an expert at classifying user intents for a medical receptionist AI. {date_context} Analyze the ENTIRE conversation to understand what the user wants and extract appointment-related information. Consider all messages to determine the intent and details. CRITICAL: When user says 'day after tomorrow', 'tomorrow', or similar relative dates, extract them EXACTLY as they said them - do NOT convert to specific dates."
+                        "content": f"""You are an expert at classifying user intents for a receptionist AI. {date_context} Analyze the ENTIRE conversation to understand what the user wants and extract appointment-related information.{booking_context}
+
+CRITICAL RULES:
+1. When user says 'day after tomorrow', 'tomorrow', or similar relative dates, extract them EXACTLY as they said them - do NOT convert to specific dates.
+2. Only classify as 'reschedule' if the user EXPLICITLY says they want to change/move an EXISTING appointment. Phrases like 'great', 'thanks', 'perfect', 'sounds good' after a booking are NOT reschedule requests.
+3. If a booking was just confirmed and user responds positively, classify as 'none'."""
                     },
                     *conversation_history
                 ]
@@ -179,7 +231,11 @@ class AppointmentDetector:
                 messages = [
                     {
                         "role": "system",
-                        "content": f"You are an expert at classifying user intents for a medical receptionist AI. {date_context} Analyze the user's message and extract appointment-related information. CRITICAL: When user says 'day after tomorrow', 'tomorrow', or similar relative dates, extract them EXACTLY as they said them - do NOT convert to specific dates."
+                        "content": f"""You are an expert at classifying user intents for a receptionist AI. {date_context} Analyze the user's message and extract appointment-related information.
+
+CRITICAL RULES:
+1. When user says 'day after tomorrow', 'tomorrow', or similar relative dates, extract them EXACTLY as they said them - do NOT convert to specific dates.
+2. Only classify as 'reschedule' if the user EXPLICITLY says they want to change/move an EXISTING appointment."""
                     },
                     {
                         "role": "user",

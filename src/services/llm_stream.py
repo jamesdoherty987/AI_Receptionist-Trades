@@ -361,7 +361,9 @@ _appointment_state = {
     "phone_number": None,
     "phone_confirmed": False,
     "caller_identified": False,  # Track if we've identified the caller
-    "client_info": None  # Store client info from database
+    "client_info": None,  # Store client info from database
+    "last_booking_turn": 0,  # Track which turn the last booking was made (for cooldown)
+    "current_turn": 0  # Track current conversation turn
 }
 
 def reset_appointment_state():
@@ -382,7 +384,9 @@ def reset_appointment_state():
         "phone_number": None,
         "phone_confirmed": False,
         "caller_identified": False,
-        "client_info": None
+        "client_info": None,
+        "last_booking_turn": 0,
+        "current_turn": 0
     }
 
 def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_email: str = None, company_id: int = None) -> dict:
@@ -502,6 +506,17 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
 
     import re  # Import at function level for use in birth year detection
     global _appointment_state
+    
+    # Track conversation turn for post-booking cooldown
+    _appointment_state["current_turn"] = _appointment_state.get("current_turn", 0) + 1
+    current_turn = _appointment_state["current_turn"]
+    last_booking_turn = _appointment_state.get("last_booking_turn", 0)
+    
+    # Post-booking cooldown: only the immediate turn after booking, be extra careful about reschedule detection
+    in_post_booking_cooldown = (last_booking_turn > 0 and current_turn - last_booking_turn <= 1)
+    if in_post_booking_cooldown:
+        print(f"[COOLDOWN] In post-booking cooldown (turn {current_turn}, booking was turn {last_booking_turn})")
+    
     # --- Name Correction Handling using AI ---
     user_text = messages[-1]["content"] if messages and messages[-1].get("role") == "user" else ""
     
@@ -638,6 +653,20 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
             
             intent = appointment_details["intent"]
             print(f"🔍 INTENT DETECTED: {intent}, details: {appointment_details}")
+            
+            # POST-BOOKING COOLDOWN: If we just made a booking, be extra careful about reschedule detection
+            # This prevents false reschedule detection when user says "great", "thanks", etc. after booking
+            if intent == AppointmentIntent.RESCHEDULE and in_post_booking_cooldown:
+                if not _appointment_state.get("reschedule_active"):
+                    # Check if user explicitly said "reschedule" or similar
+                    explicit_reschedule_words = ["reschedule", "change my appointment", "move my appointment", "different time for my appointment"]
+                    user_explicitly_wants_reschedule = any(word in user_text.lower() for word in explicit_reschedule_words)
+                    
+                    if not user_explicitly_wants_reschedule:
+                        # User probably just acknowledged the booking - don't start reschedule flow
+                        print(f"[COOLDOWN] Ignoring potential false reschedule detection - user said: '{user_text}'")
+                        intent = AppointmentIntent.NONE
+                        appointment_details["intent"] = AppointmentIntent.NONE
         
             # Print the detected action
             if intent != AppointmentIntent.NONE:
@@ -1932,6 +1961,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         if booking_result:
                             # Booking succeeded - mark temporarily to prevent duplicate in same message
                             _appointment_state["already_booked"] = True
+                            # Track when booking was made for post-booking cooldown
+                            _appointment_state["last_booking_turn"] = _appointment_state.get("current_turn", 0)
                             requested_time = parse_datetime(appointment_details["datetime"])
                             system_message = f"[SYSTEM: SUCCESS! Booking confirmed for {appointment_details['customer_name']} on {requested_time.strftime('%A, %B %d at %I:%M %p')}. Say EXACTLY: 'Perfect, you're all booked for {requested_time.strftime('%A at %I:%M %p')}. Anything else I can help with?' Then STOP - do not repeat the confirmation.]"
                             messages.append({"role": "system", "content": system_message})
@@ -2821,14 +2852,13 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
                         from src.services.database import get_database
                         db = get_database()
                         # Find the booking by calendar event ID and DELETE it
-                        # Get company_id from services dict if available
-                        current_company_id = services.get('company_id') if 'services' in dir() else None
-                        bookings = db.get_all_bookings(company_id=current_company_id)
+                        # Use company_id from function parameter
+                        bookings = db.get_all_bookings(company_id=company_id)
                         for booking in bookings:
                             if booking.get('calendar_event_id') == event_id:
                                 # Delete booking completely from database
-                                db.delete_booking(booking['id'], company_id=current_company_id)
-                                print(f"✅ DELETED booking from database (ID: {booking['id']}, company_id: {current_company_id})")
+                                db.delete_booking(booking['id'], company_id=company_id)
+                                print(f"✅ DELETED booking from database (ID: {booking['id']}, company_id: {company_id})")
                                 break
                     except Exception as e:
                         print(f"⚠️ Failed to delete booking from database: {e}")
