@@ -2138,6 +2138,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     checking_msg = None
     
     # Generic filler phrases that work for ANY action - can't be wrong
+    # NOTE: These must match the pre-recorded audio files in src/audio/fillers/
     generic_fillers = [
         "One moment.",
         "Let me check that for you.",
