@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -17,6 +17,7 @@ function SubscriptionManager() {
   const { checkAuth } = useAuth();
   const queryClient = useQueryClient();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [syncAttempted, setSyncAttempted] = useState(false);
 
   const { data: subscriptionData, isLoading, refetch } = useQuery({
     queryKey: ['subscription-status'],
@@ -29,6 +30,36 @@ function SubscriptionManager() {
     staleTime: 0,
     cacheTime: 10 * 60 * 1000
   });
+
+  // Auto-sync on mount if user has a stripe_customer_id but tier is not pro
+  // This catches cases where webhook failed or was delayed
+  useEffect(() => {
+    const autoSync = async () => {
+      if (syncAttempted) return;
+      if (!subscriptionData) return;
+      
+      // If user has a Stripe customer but isn't pro, try to sync
+      if (subscriptionData.stripe_customer_id && subscriptionData.tier !== 'pro') {
+        console.log('[SUBSCRIPTION_MANAGER] Auto-syncing: has customer_id but tier is', subscriptionData.tier);
+        setSyncAttempted(true);
+        
+        try {
+          const syncResponse = await syncSubscription();
+          console.log('[SUBSCRIPTION_MANAGER] Auto-sync response:', syncResponse.data);
+          
+          if (syncResponse.data.subscription?.tier === 'pro') {
+            console.log('[SUBSCRIPTION_MANAGER] Auto-sync SUCCESS - now pro!');
+            await checkAuth();
+            refetch();
+          }
+        } catch (error) {
+          console.log('[SUBSCRIPTION_MANAGER] Auto-sync error:', error);
+        }
+      }
+    };
+    
+    autoSync();
+  }, [subscriptionData, syncAttempted, checkAuth, refetch]);
 
   const { data: invoicesData } = useQuery({
     queryKey: ['invoices'],
@@ -119,15 +150,26 @@ function SubscriptionManager() {
   }
 
   const handleRefresh = async () => {
+    console.log('[SUBSCRIPTION_MANAGER] Manual refresh clicked');
     try {
       // First try to sync from Stripe (in case webhook was delayed)
-      await syncSubscription();
+      console.log('[SUBSCRIPTION_MANAGER] Calling syncSubscription...');
+      const syncResponse = await syncSubscription();
+      console.log('[SUBSCRIPTION_MANAGER] Sync response:', syncResponse.data);
+      
+      if (syncResponse.data.subscription?.tier === 'pro') {
+        console.log('[SUBSCRIPTION_MANAGER] Sync successful - tier is now pro!');
+      }
     } catch (error) {
+      console.log('[SUBSCRIPTION_MANAGER] Sync error:', error.response?.data || error.message);
       // Sync may fail if no Stripe customer yet - that's okay
     }
     // Then refresh auth and query
+    console.log('[SUBSCRIPTION_MANAGER] Refreshing auth and query...');
     await checkAuth();
     refetch();
+    // Reset sync attempted so auto-sync can try again if needed
+    setSyncAttempted(false);
   };
 
   const subscription = subscriptionData || {};
