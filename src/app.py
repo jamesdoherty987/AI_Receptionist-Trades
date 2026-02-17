@@ -213,8 +213,11 @@ def rate_limit(max_requests: int = 60, window_seconds: int = 60):
             limiter = get_rate_limiter()
             ip = get_client_ip()
             
+            # Use IP + endpoint as key so rate limits are per-endpoint
+            rate_key = f"{ip}:{request.path}"
+            
             allowed, remaining = limiter.check_rate_limit(
-                ip, max_requests, window_seconds
+                rate_key, max_requests, window_seconds
             )
             
             if not allowed:
@@ -819,7 +822,7 @@ def logout():
 
 @app.route("/api/auth/delete-account", methods=["POST"])
 @login_required
-@rate_limit(max_requests=3, window_seconds=300)  # 3 attempts per 5 minutes
+@rate_limit(max_requests=10, window_seconds=300)  # 10 attempts per 5 minutes
 def delete_account():
     """
     Permanently delete the user's account and all associated data.
