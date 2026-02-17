@@ -1337,35 +1337,18 @@ def get_subscription_info(company: dict) -> dict:
     current_period_end = company.get('subscription_current_period_end')
     cancel_at_period_end = bool(company.get('subscription_cancel_at_period_end', 0))
     
-    # Pro users should never show trial info - clear it regardless of what's in DB
-    if subscription_tier == 'pro':
-        trial_end = None
-        trial_days_remaining = 0
-    else:
-        # Parse dates if they're strings and ensure they're timezone-naive for comparison
-        if isinstance(trial_end, str):
-            try:
-                parsed = datetime.fromisoformat(trial_end.replace('Z', '+00:00'))
-                # Convert to naive datetime for comparison with datetime.now()
-                trial_end = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
-            except:
-                trial_end = None
-        elif trial_end and hasattr(trial_end, 'tzinfo') and trial_end.tzinfo:
-            # If it's already a datetime with timezone, make it naive
-            trial_end = trial_end.replace(tzinfo=None)
-        
-        # Calculate trial days remaining (round up to include partial days)
-        trial_days_remaining = 0
-        if subscription_tier == 'trial' and trial_end:
-            # Calculate days remaining, rounding up for partial days
-            import math
-            seconds_remaining = (trial_end - now).total_seconds()
-            if seconds_remaining > 0:
-                trial_days_remaining = math.ceil(seconds_remaining / 86400)
-            else:
-                trial_days_remaining = 0
+    # Parse dates if they're strings and ensure they're timezone-naive for comparison
+    if isinstance(trial_end, str):
+        try:
+            parsed = datetime.fromisoformat(trial_end.replace('Z', '+00:00'))
+            # Convert to naive datetime for comparison with datetime.now()
+            trial_end = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+        except:
+            trial_end = None
+    elif trial_end and hasattr(trial_end, 'tzinfo') and trial_end.tzinfo:
+        # If it's already a datetime with timezone, make it naive
+        trial_end = trial_end.replace(tzinfo=None)
     
-    # Parse current_period_end for pro users
     if isinstance(current_period_end, str):
         try:
             parsed = datetime.fromisoformat(current_period_end.replace('Z', '+00:00'))
@@ -1374,6 +1357,17 @@ def get_subscription_info(company: dict) -> dict:
             current_period_end = None
     elif current_period_end and hasattr(current_period_end, 'tzinfo') and current_period_end.tzinfo:
         current_period_end = current_period_end.replace(tzinfo=None)
+    
+    # Calculate trial days remaining (round up to include partial days)
+    trial_days_remaining = 0
+    if subscription_tier == 'trial' and trial_end:
+        # Calculate days remaining, rounding up for partial days
+        import math
+        seconds_remaining = (trial_end - now).total_seconds()
+        if seconds_remaining > 0:
+            trial_days_remaining = math.ceil(seconds_remaining / 86400)
+        else:
+            trial_days_remaining = 0
     
     # Determine if subscription is active (can use the app)
     is_active = False
@@ -1714,8 +1708,9 @@ def sync_subscription():
         if sub.current_period_end:
             update_data['subscription_current_period_end'] = datetime.fromtimestamp(sub.current_period_end)
         
-        # If subscription exists and is active (including trialing), set tier to pro
-        # A paid subscription in 'trialing' status is still a pro subscription
+        # If subscription is active or trialing (paid subscription with trial period), set tier to pro
+        # Note: 'trialing' here means a paid Stripe subscription with a trial period, NOT our free trial
+        # Our free trial doesn't create a Stripe subscription at all
         if is_active:
             update_data['subscription_tier'] = 'pro'
             update_data['trial_start'] = None
@@ -1839,11 +1834,10 @@ def stripe_webhook():
                 if current_period_end:
                     update_data['subscription_current_period_end'] = datetime.fromtimestamp(current_period_end)
                 
-                # If subscription is active or trialing (paid), ensure tier is pro
-                if status in ('active', 'trialing'):
+                # If subscription is active or trialing (paid subscription), ensure tier is pro
+                # 'trialing' here means a paid Stripe subscription with trial period, not our free trial
+                if status in ('active', 'trialing', 'past_due'):
                     update_data['subscription_tier'] = 'pro'
-                    update_data['trial_start'] = None
-                    update_data['trial_end'] = None
                 
                 db.update_company(company_id, **update_data)
                 print(f"[SUCCESS] Subscription updated for company {company_id}: {status}")

@@ -319,14 +319,24 @@ function SubscriptionManager() {
 
           {/* Show reactivate button if cancelling */}
           {isPro && cancelAtPeriodEnd && (
-            <button
-              className="btn btn-primary"
-              onClick={() => reactivateMutation.mutate()}
-              disabled={reactivateMutation.isPending}
-            >
-              <i className="fas fa-redo"></i>
-              {reactivateMutation.isPending ? 'Loading...' : 'Reactivate Subscription'}
-            </button>
+            <div className="pro-actions">
+              <button
+                className="btn btn-primary"
+                onClick={() => reactivateMutation.mutate()}
+                disabled={reactivateMutation.isPending}
+              >
+                <i className="fas fa-redo"></i>
+                {reactivateMutation.isPending ? 'Loading...' : 'Reactivate Subscription'}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => portalMutation.mutate()}
+                disabled={portalMutation.isPending}
+              >
+                <i className="fas fa-file-invoice-dollar"></i>
+                {portalMutation.isPending ? 'Loading...' : 'Manage Billing'}
+              </button>
+            </div>
           )}
         </div>
       </div>
