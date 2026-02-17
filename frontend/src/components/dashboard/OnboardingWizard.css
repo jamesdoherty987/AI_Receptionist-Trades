@@ -289,3 +289,65 @@
     width: 100%;
   }
 }
+
+
+/* Trial Features List */
+.trial-features {
+  text-align: left;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.trial-features h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.trial-features ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.trial-features li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.trial-features li i {
+  color: #10b981;
+  font-size: 0.85rem;
+}
+
+/* Progress line between dots */
+.progress-line {
+  width: 40px;
+  height: 2px;
+  background: var(--border-color);
+  align-self: center;
+}
+
+/* Optional label */
+.optional-label {
+  font-weight: 400;
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+}
+
+/* Multiple buttons in step actions */
+.step-actions .btn-success {
+  background: #10b981;
+  color: white;
+}
+
+.step-actions .btn-success:hover {
+  background: #059669;
+}

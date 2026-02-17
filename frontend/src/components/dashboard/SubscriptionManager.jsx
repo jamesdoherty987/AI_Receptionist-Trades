@@ -315,8 +315,8 @@ function SubscriptionManager() {
         </div>
 
         <div className="subscription-actions">
-          {/* Show Start Trial only for users with no plan (never tried before) - never for pro users */}
-          {isNone && !isPro && (
+          {/* Show Start Trial for users with no plan OR expired trial - never for pro users */}
+          {(isNone || (isTrial && !isActive)) && !isPro && (
             <button
               className="btn btn-success btn-subscribe"
               onClick={() => trialMutation.mutate()}

@@ -132,10 +132,21 @@ export function AuthProvider({ children }) {
         if (newUser.subscription_tier) {
           const sub = {
             tier: newUser.subscription_tier,
-            status: 'active',
-            is_active: true,
+            status: newUser.subscription_tier === 'none' ? 'inactive' : 'active',
+            is_active: newUser.subscription_tier !== 'none',
             trial_end: newUser.trial_end || null,
-            trial_days_remaining: 14,
+            trial_days_remaining: newUser.subscription_tier === 'trial' ? 14 : 0,
+          };
+          setSubscription(sub);
+          sessionStorage.setItem('authSubscription', JSON.stringify(sub));
+        } else {
+          // No subscription tier means no active subscription
+          const sub = {
+            tier: 'none',
+            status: 'inactive',
+            is_active: false,
+            trial_end: null,
+            trial_days_remaining: 0,
           };
           setSubscription(sub);
           sessionStorage.setItem('authSubscription', JSON.stringify(sub));

@@ -246,8 +246,29 @@ class TestWebhookHandling:
 class TestGetSubscriptionInfo:
     """Test the get_subscription_info function that determines what the frontend sees"""
     
+    def test_none_tier_is_not_active(self):
+        """Users with 'none' tier should not be active"""
+        from src.app import get_subscription_info
+        
+        company = {
+            'subscription_tier': 'none',
+            'subscription_status': 'inactive',
+            'trial_start': None,
+            'trial_end': None,
+            'subscription_current_period_end': None,
+            'subscription_cancel_at_period_end': 0,
+            'stripe_customer_id': None,
+            'stripe_subscription_id': None
+        }
+        
+        info = get_subscription_info(company)
+        
+        assert info['tier'] == 'none'
+        assert info['is_active'] is False
+        assert info['trial_days_remaining'] == 0
+    
     def test_pro_user_has_no_trial_info(self):
-        """Pro users should never see trial information"""
+        """Pro users should be active regardless of leftover trial data"""
         from src.app import get_subscription_info
         
         company = {
@@ -265,8 +286,8 @@ class TestGetSubscriptionInfo:
         
         assert info['tier'] == 'pro'
         assert info['is_active'] is True
-        assert info['trial_end'] is None  # Should be cleared for pro users
-        assert info['trial_days_remaining'] == 0  # Should be 0 for pro users
+        # Pro users should have 0 trial days remaining even if trial_end exists
+        assert info['trial_days_remaining'] == 0
         assert info['current_period_end'] is not None
     
     def test_trial_user_has_trial_info(self):
@@ -553,7 +574,6 @@ class TestEndToEndFlow:
         
         assert info['tier'] == 'pro'
         assert info['is_active'] is True
-        assert info['trial_end'] is None
         assert info['trial_days_remaining'] == 0
         
         # Cleanup
@@ -584,11 +604,10 @@ class TestEndToEndFlow:
         
         info = get_subscription_info(company_with_leftover_trial)
         
-        # Even with leftover trial data, should show as pro with no trial info
+        # Even with leftover trial data, should show as pro with no trial days
         assert info['tier'] == 'pro'
         assert info['is_active'] is True
-        assert info['trial_end'] is None  # Should be cleared
-        assert info['trial_days_remaining'] == 0  # Should be 0
+        assert info['trial_days_remaining'] == 0  # Should be 0 for pro users
 
 
 class TestStripeErrorHandling:

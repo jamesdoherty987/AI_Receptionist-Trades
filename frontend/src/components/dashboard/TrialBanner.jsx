@@ -11,9 +11,27 @@ function TrialBanner() {
   const daysRemaining = getTrialDaysRemaining();
   const isActive = subscription.is_active;
   
-  // Pro users never see trial banners - they have a paid subscription
-  if (tier === 'pro') {
+  // Active pro users never see banners
+  if (tier === 'pro' && isActive) {
     return null;
+  }
+  
+  // Pro user whose subscription ended (edge case - webhook may not have updated tier)
+  if (tier === 'pro' && !isActive) {
+    return (
+      <div className="trial-banner banner-expired">
+        <div className="banner-left">
+          <i className="fas fa-exclamation-triangle banner-icon"></i>
+          <div className="banner-text">
+            <strong>Your subscription has expired</strong>
+            <span className="banner-sub">Subscribe to continue using BookedForYou.</span>
+          </div>
+        </div>
+        <Link to="/settings?tab=subscription" className="banner-btn">
+          <i className="fas fa-credit-card"></i> Subscribe Now
+        </Link>
+      </div>
+    );
   }
   
   // No subscription at all

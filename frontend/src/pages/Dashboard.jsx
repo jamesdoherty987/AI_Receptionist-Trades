@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import Tabs from '../components/Tabs';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -17,6 +19,7 @@ import './Dashboard.css';
 
 function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const { hasActiveSubscription, getSubscriptionTier, loading: authLoading, initialized } = useAuth();
 
   // Check if user needs onboarding
   const { data: settings } = useQuery({
@@ -34,14 +37,16 @@ function Dashboard() {
     // Show onboarding if:
     // 1. User hasn't dismissed/completed onboarding before
     // 2. AND settings are loaded
-    // 3. AND business name or phone is missing (indicates new user)
-    if (!onboardingComplete && settings !== undefined) {
-      const needsSetup = !settings?.business_name || !settings?.business_phone;
-      if (needsSetup) {
+    // 3. AND (no subscription OR business info is missing)
+    if (!onboardingComplete && settings !== undefined && initialized) {
+      const tier = getSubscriptionTier();
+      const needsSubscription = tier === 'none' || (!hasActiveSubscription() && tier !== 'pro');
+      const needsSetup = !settings?.address || !settings?.coverage_area;
+      if (needsSubscription || needsSetup) {
         setShowOnboarding(true);
       }
     }
-  }, [settings]);
+  }, [settings, initialized, hasActiveSubscription, getSubscriptionTier]);
 
   // Scroll to top when dashboard loads
   useEffect(() => {
@@ -110,6 +115,12 @@ function Dashboard() {
     setShowOnboarding(false);
   };
 
+  // Check if subscription is inactive (block dashboard usage)
+  const tier = getSubscriptionTier();
+  const isActive = hasActiveSubscription();
+  // Block if not active, regardless of tier (handles edge case where tier is 'pro' but subscription ended)
+  const subscriptionBlocked = initialized && !authLoading && !isActive;
+
   return (
     <div className="dashboard">
       <Header />
@@ -119,7 +130,29 @@ function Dashboard() {
           <div className="dashboard-header">
             <h1>Dashboard</h1>
           </div>
-          <Tabs tabs={tabs} defaultTab={0} />
+          
+          {/* Subscription blocker overlay */}
+          {subscriptionBlocked && !showOnboarding && (
+            <div className="subscription-blocker">
+              <div className="blocker-content">
+                <i className="fas fa-lock blocker-icon"></i>
+                <h2>Subscription Required</h2>
+                <p>Start a free trial or subscribe to access your dashboard and all features.</p>
+                <div className="blocker-actions">
+                  <Link to="/settings?tab=subscription" className="btn btn-success btn-lg">
+                    <i className="fas fa-gift"></i> Start Free Trial
+                  </Link>
+                  <Link to="/settings?tab=subscription" className="btn btn-primary btn-lg">
+                    <i className="fas fa-credit-card"></i> Subscribe - €99/mo
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div className={subscriptionBlocked && !showOnboarding ? 'dashboard-blocked' : ''}>
+            <Tabs tabs={tabs} defaultTab={0} />
+          </div>
         </div>
       </main>
 

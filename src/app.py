@@ -686,17 +686,11 @@ def signup():
     )
     
     if company_id:
-        # Set up 14-day trial
-        from datetime import datetime, timedelta
-        trial_start = datetime.now()
-        trial_end = trial_start + timedelta(days=14)
-        
+        # Don't auto-start trial - user will choose to start trial or subscribe in settings
         db.update_company(
             company_id,
-            subscription_tier='trial',
-            subscription_status='active',
-            trial_start=trial_start,
-            trial_end=trial_end
+            subscription_tier='none',
+            subscription_status='inactive'
         )
         
         # Log the user in (phone number will be configured separately)
@@ -709,15 +703,14 @@ def signup():
         company = db.get_company(company_id)
         return jsonify({
             "success": True,
-            "message": "Account created successfully. Your 14-day free trial has started!",
+            "message": "Account created successfully!",
             "auth_token": auth_token,
             "user": {
                 "id": company_id,
                 "company_name": company['company_name'],
                 "owner_name": company['owner_name'],
                 "email": company['email'],
-                "subscription_tier": company['subscription_tier'],
-                "trial_end": trial_end.isoformat(),
+                "subscription_tier": 'none',
                 "twilio_phone_number": company.get('twilio_phone_number')
             }
         }), 201
@@ -1372,8 +1365,8 @@ def get_subscription_info(company: dict) -> dict:
     """Get comprehensive subscription info for a company"""
     now = datetime.now()
     
-    subscription_tier = company.get('subscription_tier', 'trial')
-    subscription_status = company.get('subscription_status', 'active')
+    subscription_tier = company.get('subscription_tier', 'none')
+    subscription_status = company.get('subscription_status', 'inactive')
     trial_end = company.get('trial_end')
     current_period_end = company.get('subscription_current_period_end')
     cancel_at_period_end = bool(company.get('subscription_cancel_at_period_end', 0))

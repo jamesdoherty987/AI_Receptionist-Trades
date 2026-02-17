@@ -154,16 +154,7 @@ function Signup() {
         <div className="auth-card">
           <div className="auth-header">
             <h1>Create your account</h1>
-            <p>Start your 14-day free trial — no card required</p>
-          </div>
-
-          {/* Free Trial Banner */}
-          <div className="trial-banner">
-            <i className="fas fa-gift"></i>
-            <div>
-              <strong>14 Days Free</strong>
-              <span>Full access to all features. No credit card needed.</span>
-            </div>
+            <p>Get started with BookedForYou</p>
           </div>
 
           {/* Progress Steps */}
