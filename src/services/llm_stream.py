@@ -2271,6 +2271,9 @@ When customer wants to reschedule:
     system_prompt_with_time = active_system_prompt + time_context + tool_usage_guidance
     
     try:
+        print(f"[LLM_DEBUG] Creating OpenAI stream with model={config.CHAT_MODEL}")
+        print(f"[LLM_DEBUG] Messages count: {len(messages)}, company_id={company_id}")
+        print(f"[LLM_DEBUG] Last user message: {messages[-1].get('content', '')[:100] if messages else 'N/A'}...")
         stream = client.chat.completions.create(
             model=config.CHAT_MODEL,
             stream=True,
@@ -2286,8 +2289,12 @@ When customer wants to reschedule:
             top_p=0.9,  # Focus on most likely tokens for speed
             stream_options={"include_usage": False}  # Disable usage tracking for speed
         )
+        print(f"[LLM_DEBUG] OpenAI stream created successfully")
     except Exception as e:
-        print(f"❌ Error creating LLM stream: {e}")
+        print(f"❌ [LLM_ERROR] Error creating LLM stream: {e}")
+        print(f"[LLM_ERROR] Exception type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         yield "I apologize, I'm having technical difficulties. Please try again."
         return
     
@@ -2298,6 +2305,7 @@ When customer wants to reschedule:
     has_yielded_split_marker = likely_needs_tool  # Already yielded if pre-check detected it
     
     try:
+        print(f"[LLM_DEBUG] Starting to iterate over stream...")
         for part in stream:
             delta = part.choices[0].delta
             
@@ -2374,7 +2382,10 @@ When customer wants to reschedule:
                     yield cleaned_token  # Send cleaned version to TTS
                 
     except Exception as e:
-        print(f"❌ Error during LLM streaming: {e}")
+        print(f"❌ [LLM_ERROR] Error during LLM streaming: {e}")
+        print(f"[LLM_ERROR] Exception type: {type(e).__name__}")
+        print(f"[LLM_ERROR] Token count at error: {token_count}")
+        print(f"[LLM_ERROR] Tool calls collected: {len(tool_calls)}")
         import traceback
         traceback.print_exc()
         if not token_count:
@@ -2413,6 +2424,8 @@ When customer wants to reschedule:
         # Import database service (config already imported at module level)
         from src.services.database import get_database
         
+        print(f"[TOOL_DEBUG] Preparing services for tool execution...")
+        
         # Prepare services for tool execution
         # Use database calendar by default (scalable for SaaS)
         # Optional: Use Google Calendar if USE_GOOGLE_CALENDAR = True
@@ -2421,9 +2434,11 @@ When customer wants to reschedule:
             try:
                 from src.services.google_calendar import get_calendar_service as get_cal_service
                 calendar = get_cal_service()
-                print("[INFO] Using Google Calendar (OAuth-based)")
+                print("[TOOL_DEBUG] Using Google Calendar (OAuth-based)")
             except Exception as e:
-                print(f"[WARNING] Could not load Google Calendar: {e}")
+                print(f"[TOOL_WARNING] Could not load Google Calendar: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Always use database calendar as fallback (or primary if Google disabled)
         if calendar is None:
@@ -2432,11 +2447,15 @@ When customer wants to reschedule:
                 # Use actual company_id from context for proper multi-tenant isolation
                 calendar_company_id = int(company_id) if company_id else None
                 calendar = get_database_calendar_service(company_id=calendar_company_id)
-                print(f"[INFO] Using Database Calendar (company_id={calendar_company_id})")
+                print(f"[TOOL_DEBUG] Using Database Calendar (company_id={calendar_company_id})")
             except Exception as e:
-                print(f"[ERROR] Could not load database calendar: {e}")
+                print(f"[TOOL_ERROR] Could not load database calendar: {e}")
+                import traceback
+                traceback.print_exc()
         
         db = get_database()
+        print(f"[TOOL_DEBUG] Database loaded: {db is not None}")
+        
         # Include company_id in services for proper data isolation
         company_id_int = int(company_id) if company_id else None
         services = {
@@ -2445,6 +2464,7 @@ When customer wants to reschedule:
             'db': db,
             'company_id': company_id_int  # CRITICAL: Pass company_id for data isolation
         }
+        print(f"[TOOL_DEBUG] Services prepared: calendar={calendar is not None}, db={db is not None}, company_id={company_id_int}")
         
         # Execute each tool call and collect results
         tool_results = []
@@ -2452,23 +2472,35 @@ When customer wants to reschedule:
             tool_name = tool_call["function"]["name"]
             try:
                 arguments = json.loads(tool_call["function"]["arguments"])
-                print(f"   🔧 Executing: {tool_name}({arguments})")
+                print(f"   🔧 [TOOL_EXEC] Executing: {tool_name}")
+                print(f"   🔧 [TOOL_EXEC] Arguments: {json.dumps(arguments, indent=2)}")
                 
                 # Execute tool with timeout protection
                 try:
+                    import time
+                    tool_start = time.time()
                     result = execute_tool_call(tool_name, arguments, services)
+                    tool_duration = time.time() - tool_start
+                    print(f"   🔧 [TOOL_EXEC] Tool {tool_name} completed in {tool_duration:.2f}s")
+                    
                     if not result:
+                        print(f"   ⚠️ [TOOL_ERROR] Tool {tool_name} returned None!")
                         raise Exception("Tool returned None")
+                    
+                    print(f"   🔧 [TOOL_RESULT] Success: {result.get('success')}, Message: {result.get('message', result.get('error', 'N/A'))[:100]}")
                     
                     # Check if this is a transfer request
                     if result.get("transfer") and result.get("success"):
-                        print(f"📞 TRANSFER REQUESTED: {result.get('reason')}")
-                        print(f"📲 Will transfer to: {result.get('fallback_number')}")
+                        print(f"📞 [TRANSFER] TRANSFER REQUESTED: {result.get('reason')}")
+                        print(f"📲 [TRANSFER] Will transfer to: {result.get('fallback_number')}")
                         # Add a special marker in the result for the media handler to detect
                         result["__TRANSFER_REQUESTED__"] = True
                         
                 except Exception as tool_error:
-                    print(f"   ⚠️ Tool execution error: {tool_error}")
+                    print(f"   ⚠️ [TOOL_ERROR] Tool execution error for {tool_name}: {tool_error}")
+                    print(f"   ⚠️ [TOOL_ERROR] Exception type: {type(tool_error).__name__}")
+                    import traceback
+                    traceback.print_exc()
                     result = {"success": False, "error": str(tool_error), "message": "Unable to complete request"}
                 
                 tool_results.append({
@@ -2478,10 +2510,11 @@ When customer wants to reschedule:
                     "content": json.dumps(result)
                 })
                 
-                print(f"   ✅ Result: {result.get('message', result.get('success'))}")
+                print(f"   ✅ [TOOL_DONE] Result: {result.get('message', result.get('success'))}")
                 
             except Exception as e:
-                print(f"   ❌ Error executing {tool_name}: {e}")
+                print(f"   ❌ [TOOL_ERROR] Error executing {tool_name}: {e}")
+                print(f"   ❌ [TOOL_ERROR] Exception type: {type(e).__name__}")
                 import traceback
                 traceback.print_exc()
                 tool_results.append({

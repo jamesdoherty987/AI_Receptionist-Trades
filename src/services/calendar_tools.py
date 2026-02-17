@@ -1053,13 +1053,19 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     from ..utils.date_parser import parse_datetime
     from src.utils.config import config
     
+    logger.info(f"[TOOL_EXEC] ========== EXECUTING TOOL: {tool_name} ==========")
+    logger.info(f"[TOOL_EXEC] Arguments: {arguments}")
+    
     google_calendar = services.get('google_calendar')
     db = services.get('db') or services.get('database')  # Support both keys
     # CRITICAL: Extract company_id for proper multi-tenant data isolation
     company_id = services.get('company_id')
     
+    logger.info(f"[TOOL_EXEC] Services: calendar={google_calendar is not None}, db={db is not None}, company_id={company_id}")
+    
     # Calendar should always be available (database or Google)
     if not google_calendar and tool_name in ['check_availability', 'book_appointment', 'reschedule_appointment', 'cancel_appointment', 'book_job', 'cancel_job', 'reschedule_job']:
+        logger.error(f"[TOOL_ERROR] Calendar service is not available for tool {tool_name}")
         return {
             'success': False,
             'message': 'Calendar service is not available. Please contact support.'
@@ -1067,13 +1073,16 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     
     try:
         if tool_name == "check_availability":
+            logger.info(f"[CHECK_AVAIL] ========== CHECKING AVAILABILITY ==========")
             start_date_str = arguments.get('start_date')
             end_date_str = arguments.get('end_date', start_date_str)
             service_type = arguments.get('service_type', 'general')
             
+            logger.info(f"[CHECK_AVAIL] start_date={start_date_str}, end_date={end_date_str}, service_type={service_type}")
+            
             # Get service duration for the requested service type
             service_duration = get_service_duration(service_type, company_id=company_id)
-            logger.debug(f"Availability: Checking availability for service '{service_type}' with duration {service_duration} mins")
+            logger.info(f"[CHECK_AVAIL] Service duration: {service_duration} mins")
             
             # Special handling for "this week" - today through Friday
             if start_date_str and 'this week' in start_date_str.lower():
@@ -1086,7 +1095,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 
                 start_date = today.replace(hour=9, minute=0, second=0, microsecond=0)
                 end_date = this_friday.replace(hour=17, minute=0, second=0, microsecond=0)
-                logger.info(f" 'this week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
+                logger.info(f"[CHECK_AVAIL] 'this week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
             # Special handling for "next week" - expand to Monday-Friday
             elif start_date_str and 'next week' in start_date_str.lower():
                 today = datetime.now()
@@ -1099,18 +1108,22 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 
                 start_date = next_monday.replace(hour=9, minute=0, second=0, microsecond=0)
                 end_date = next_friday.replace(hour=17, minute=0, second=0, microsecond=0)
-                logger.info(f" 'next week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
+                logger.info(f"[CHECK_AVAIL] 'next week' expanded to {start_date.strftime('%A, %B %d')} - {end_date.strftime('%A, %B %d')}")
             else:
                 # Parse dates normally - allow_past=True because we're checking a date range
                 # get_available_slots_for_day will filter out past time slots
+                logger.info(f"[CHECK_AVAIL] Parsing start_date: {start_date_str}")
                 start_date = parse_datetime(start_date_str, require_time=False, default_time=(9, 0), allow_past=True)
                 if not start_date:
+                    logger.warning(f"[CHECK_AVAIL] Could not parse start_date, using today")
                     start_date = datetime.now().replace(hour=9, minute=0, second=0, microsecond=0)
                 
                 if end_date_str and end_date_str != start_date_str:
                     end_date = parse_datetime(end_date_str, require_time=False, default_time=(17, 0), allow_past=True)
                 else:
                     end_date = start_date.replace(hour=17, minute=0)
+                
+                logger.info(f"[CHECK_AVAIL] Parsed dates: {start_date} to {end_date}")
             
             # Collect available slots across date range
             from collections import defaultdict
@@ -1118,7 +1131,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             current_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
             end_search = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
             
-            logger.debug(f"Search: Checking availability from {current_date.strftime('%Y-%m-%d')} to {end_search.strftime('%Y-%m-%d')}")
+            logger.info(f"[CHECK_AVAIL] Searching from {current_date.strftime('%Y-%m-%d')} to {end_search.strftime('%Y-%m-%d')}")
             
             # Get dynamic business days
             try:
@@ -1126,20 +1139,25 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             except:
                 business_days = config.BUSINESS_DAYS
             
+            logger.info(f"[CHECK_AVAIL] Business days: {business_days}")
+            
             # Check if company has workers - if so, we need to filter by worker availability
             has_workers = db.has_workers(company_id) if db else False
             if has_workers:
-                logger.debug(f"Worker check: Company has workers, will filter slots by worker availability")
+                logger.info(f"[CHECK_AVAIL] Company has workers, will filter slots by worker availability")
             
             # Check all days in range (no early exit - we want full picture)
             while current_date <= end_search:
                 # Only check business days (configured in config.BUSINESS_DAYS)
                 if current_date.weekday() in business_days:
-                    logger.debug(f"[CHECK] Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
+                    logger.info(f"[CHECK_AVAIL] Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
                     try:
                         day_slots = google_calendar.get_available_slots_for_day(current_date, service_duration=service_duration)
+                        logger.info(f"[CHECK_AVAIL] Found {len(day_slots) if day_slots else 0} slots")
                     except Exception as e:
-                        logger.debug(f"[WARNING] Connection error checking {current_date.strftime('%A, %B %d')}: {e}")
+                        logger.error(f"[CHECK_AVAIL] Error checking {current_date.strftime('%A, %B %d')}: {e}")
+                        import traceback
+                        traceback.print_exc()
                         # Re-raise so retry logic in google_calendar handles it
                         raise
                     
@@ -1379,23 +1397,30 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             }
         
         elif tool_name == "book_appointment":
+            logger.info(f"[BOOK_APPT] ========== BOOKING APPOINTMENT ==========")
             customer_name = arguments.get('customer_name')
             email = arguments.get('email')
             phone = arguments.get('phone')
             appointment_datetime = arguments.get('appointment_datetime')
             reason = arguments.get('reason', 'General appointment')
             
+            logger.info(f"[BOOK_APPT] Customer: {customer_name}, Phone: {phone}, Email: {email}")
+            logger.info(f"[BOOK_APPT] DateTime: {appointment_datetime}, Reason: {reason}")
+            
             # Clean phone number if it's placeholder text
             if phone and ('calling from' in phone.lower() or 'number you' in phone.lower()):
+                logger.info(f"[BOOK_APPT] Cleaning placeholder phone: {phone}")
                 phone = None  # Will get from caller_phone or ask again
             
             if not customer_name:
+                logger.warning(f"[BOOK_APPT] Missing customer name")
                 return {
                     "success": False,
                     "error": "Customer name is required"
                 }
             
             if not appointment_datetime:
+                logger.warning(f"[BOOK_APPT] Missing appointment datetime")
                 return {
                     "success": False,
                     "error": "Appointment date and time are required. Please ask the customer for a specific date and time.",
@@ -1405,6 +1430,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Check for vague time requests
             vague_time_phrases = ["within", "asap", "as soon as possible", "urgently", "quickly", "soon"]
             if any(phrase in appointment_datetime.lower() for phrase in vague_time_phrases):
+                logger.warning(f"[BOOK_APPT] Vague time detected: {appointment_datetime}")
                 return {
                     "success": False,
                     "error": f"The time '{appointment_datetime}' is not specific enough. Please check availability and suggest the next available time slot to the customer.",
@@ -1413,13 +1439,16 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 }
             
             # Parse the appointment time
+            logger.info(f"[BOOK_APPT] Parsing datetime: {appointment_datetime}")
             parsed_time = parse_datetime(appointment_datetime)
             if not parsed_time:
+                logger.error(f"[BOOK_APPT] Failed to parse datetime: {appointment_datetime}")
                 return {
                     "success": False,
                     "error": f"Could not parse date/time: '{appointment_datetime}'. Please ask the customer for a specific date and time (e.g., 'tomorrow at 2pm', 'Monday at 9am').",
                     "needs_clarification": "datetime"
                 }
+            logger.info(f"[BOOK_APPT] Parsed time: {parsed_time}")
             
             # Validate business hours - MUST pass company_id for correct company-specific hours
             from src.utils.config import Config
@@ -1428,7 +1457,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             start_hour = business_hours.get('start', 9)
             end_hour = business_hours.get('end', 17)
             
+            logger.info(f"[BOOK_APPT] Business hours: {start_hour}:00 - {end_hour}:00, Requested hour: {requested_hour}")
+            
             if requested_hour < start_hour or requested_hour >= end_hour:
+                logger.warning(f"[BOOK_APPT] Outside business hours: {requested_hour}")
                 # Generate user-friendly message based on whether time is before or after hours
                 if requested_hour < start_hour:
                     time_msg = f"We don't open until {start_hour}:00 AM"
@@ -1449,14 +1481,19 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 }
             
             # Get service duration based on reason/service type
+            logger.info(f"[BOOK_APPT] Matching service for reason: {reason}")
             match_result = match_service(reason, company_id=company_id)
             matched_service_name = match_result['matched_name']
             appointment_duration = match_result['service'].get('duration_minutes', 60)
-            logger.debug(f"Duration: Appointment duration for '{reason}' -> '{matched_service_name}': {appointment_duration} mins")
+            logger.info(f"[BOOK_APPT] Matched service: {matched_service_name}, Duration: {appointment_duration} mins")
             
             # Check if slot is available with the correct duration
+            logger.info(f"[BOOK_APPT] Checking availability at {parsed_time} for {appointment_duration} mins")
             is_available = google_calendar.check_availability(parsed_time, duration_minutes=appointment_duration)
+            logger.info(f"[BOOK_APPT] Availability check result: {is_available}")
+            
             if not is_available:
+                logger.warning(f"[BOOK_APPT] Time slot not available")
                 return {
                     "success": False,
                     "error": f"That time slot is already booked or doesn't have enough time for this appointment ({appointment_duration} mins). Please check availability and suggest another time."
@@ -1464,15 +1501,32 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             # Create calendar event with correct duration
             summary = f"{matched_service_name} - {customer_name}"
-            event = google_calendar.book_appointment(
-                summary=summary,
-                start_time=parsed_time,
-                duration_minutes=appointment_duration,
-                description=f"Booked via AI receptionist\nCustomer: {customer_name}\nService: {matched_service_name}\nCustomer Request: {reason}\nPhone: {phone}\nEmail: {email}\nDuration: {appointment_duration} mins",
-                phone_number=phone
-            )
+            logger.info(f"[BOOK_APPT] Creating calendar event: {summary}")
+            
+            try:
+                event = google_calendar.book_appointment(
+                    summary=summary,
+                    start_time=parsed_time,
+                    duration_minutes=appointment_duration,
+                    description=f"Booked via AI receptionist\nCustomer: {customer_name}\nService: {matched_service_name}\nCustomer Request: {reason}\nPhone: {phone}\nEmail: {email}\nDuration: {appointment_duration} mins",
+                    phone_number=phone
+                )
+                logger.info(f"[BOOK_APPT] Calendar event created: {event}")
+            except Exception as cal_error:
+                logger.error(f"[BOOK_APPT] Calendar event creation failed: {cal_error}")
+                import traceback
+                traceback.print_exc()
+                return {
+                    "success": False,
+                    "error": f"Failed to create calendar event: {str(cal_error)}"
+                }
             
             if not event:
+                logger.error(f"[BOOK_APPT] Calendar returned None for event")
+                return {
+                    "success": False,
+                    "error": "Failed to create calendar event"
+                }
                 return {
                     "success": False,
                     "error": "Failed to create calendar event"
@@ -1480,8 +1534,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             # Save to database
             if db:
+                logger.info(f"[BOOK_APPT] Saving to database...")
                 try:
                     # Find or create client - MUST pass company_id for data isolation
+                    logger.info(f"[BOOK_APPT] Finding/creating client: {customer_name}, phone={phone}, email={email}")
                     client_id = db.find_or_create_client(
                         name=customer_name,
                         phone=phone,
@@ -1489,8 +1545,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         date_of_birth=None,
                         company_id=company_id
                     )
+                    logger.info(f"[BOOK_APPT] Client ID: {client_id}")
                     
                     # Add booking - MUST pass company_id for data isolation
+                    logger.info(f"[BOOK_APPT] Adding booking to database...")
                     booking_id = db.add_booking(
                         client_id=client_id,
                         calendar_event_id=event.get('id'),
@@ -1501,6 +1559,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         company_id=company_id,
                         duration_minutes=appointment_duration
                     )
+                    logger.info(f"[BOOK_APPT] Booking ID: {booking_id}")
                     
                     # Add note with original customer request
                     db.add_appointment_note(booking_id, f"Booked via AI receptionist.\nService: {matched_service_name}\nCustomer Request: {reason}\nDuration: {appointment_duration} mins", created_by="system")
@@ -1512,10 +1571,15 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     except Exception:
                         pass
                     
-                    logger.info(f" Booking saved to database (ID: {booking_id}, company_id: {company_id}, duration: {appointment_duration} mins)")
+                    logger.info(f"[BOOK_APPT] ✅ Booking saved to database (ID: {booking_id}, company_id: {company_id}, duration: {appointment_duration} mins)")
                 except Exception as e:
-                    logger.error(f" Database save failed: {e}")
+                    logger.error(f"[BOOK_APPT] ❌ Database save failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                logger.warning(f"[BOOK_APPT] No database available - booking not saved to DB")
             
+            logger.info(f"[BOOK_APPT] ========== BOOKING COMPLETE ==========")
             return {
                 "success": True,
                 "message": f"Appointment booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({format_duration(appointment_duration)})",
@@ -1779,6 +1843,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 }
         
         elif tool_name == "book_job":
+            logger.info(f"[BOOK_JOB] ========== BOOKING JOB ==========")
             # Trades-specific booking with additional fields
             customer_name = arguments.get('customer_name')
             phone = arguments.get('phone')
@@ -1789,14 +1854,20 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             urgency_level = arguments.get('urgency_level', 'scheduled')
             property_type = arguments.get('property_type', 'residential')
             
+            logger.info(f"[BOOK_JOB] Customer: {customer_name}, Phone: {phone}, Email: {email}")
+            logger.info(f"[BOOK_JOB] Address: {job_address}, Description: {job_description}")
+            logger.info(f"[BOOK_JOB] DateTime: {appointment_datetime}, Urgency: {urgency_level}, Property: {property_type}")
+            
             # Validation
             if not customer_name:
+                logger.warning(f"[BOOK_JOB] Missing customer name")
                 return {
                     "success": False,
                     "error": "Customer name is required"
                 }
             
             if not phone:
+                logger.warning(f"[BOOK_JOB] Missing phone number")
                 return {
                     "success": False,
                     "error": "Phone number is MANDATORY. Please ask the customer for their phone number.",
@@ -1808,6 +1879,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Keep the field optional for backwards compatibility
             
             if not job_address:
+                logger.warning(f"[BOOK_JOB] Missing job address")
                 return {
                     "success": False,
                     "error": "Job address is required. Please ask for the full address where the work will be performed.",
@@ -1815,11 +1887,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 }
             
             # Enhanced address validation and processing
+            logger.info(f"[BOOK_JOB] Validating address: {job_address}")
             address_validator = AddressValidator()
             address_data = address_validator.parse_address_input(job_address)
+            logger.info(f"[BOOK_JOB] Address validation result: {address_data}")
             
             # Check if address needs clarification
             if address_data['needs_clarification']:
+                logger.warning(f"[BOOK_JOB] Address needs clarification: {address_data['suggestions']}")
                 return {
                     "success": False,
                     "error": address_data['suggestions'][0] if address_data['suggestions'] else "Please provide a more complete address.",
@@ -1830,13 +1905,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Extract and normalize eircode if present
             extracted_eircode = address_data.get('eircode')
             if extracted_eircode:
-                logger.info(f" Extracted eircode from address: {extracted_eircode}")
+                logger.info(f"[BOOK_JOB] Extracted eircode: {extracted_eircode}")
             
             # Use validated and potentially enhanced address
             validated_address = address_data['full_address']
-            logger.info(f" Address validation result: {address_data['type']} - {validated_address}")
+            logger.info(f"[BOOK_JOB] Validated address: {validated_address}")
             
             if not job_description:
+                logger.warning(f"[BOOK_JOB] Missing job description")
                 return {
                     "success": False,
                     "error": "Job description is required. Please ask what needs to be done.",
@@ -1844,6 +1920,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 }
             
             if not appointment_datetime:
+                logger.warning(f"[BOOK_JOB] Missing appointment datetime")
                 return {
                     "success": False,
                     "error": "Appointment date and time are required. Please ask the customer for a specific date and time.",
@@ -1853,6 +1930,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Check for vague time requests
             vague_time_phrases = ["within", "asap", "as soon as possible", "urgently", "quickly", "soon", "right away", "immediately"]
             if any(phrase in appointment_datetime.lower() for phrase in vague_time_phrases):
+                logger.warning(f"[BOOK_JOB] Vague time detected: {appointment_datetime}")
                 return {
                     "success": False,
                     "error": f"The time '{appointment_datetime}' is not specific enough. You must provide a SPECIFIC time. Please check availability using check_availability and suggest the next available time slot to the customer (e.g., 'I have 2pm available today').",
@@ -1861,13 +1939,16 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 }
             
             # Parse the appointment time
+            logger.info(f"[BOOK_JOB] Parsing datetime: {appointment_datetime}")
             parsed_time = parse_datetime(appointment_datetime)
             if not parsed_time:
+                logger.error(f"[BOOK_JOB] Failed to parse datetime: {appointment_datetime}")
                 return {
                     "success": False,
                     "error": f"Could not parse date/time: '{appointment_datetime}'. Please ask the customer for a specific date and time (e.g., 'tomorrow at 2pm', 'Monday at 9am').",
                     "needs_clarification": "datetime"
                 }
+            logger.info(f"[BOOK_JOB] Parsed time: {parsed_time}")
             
             # Validate business hours - MUST pass company_id for correct company-specific hours
             from src.utils.config import Config
@@ -1876,7 +1957,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             start_hour = business_hours.get('start', 9)
             end_hour = business_hours.get('end', 17)
             
+            logger.info(f"[BOOK_JOB] Business hours: {start_hour}:00 - {end_hour}:00, Requested hour: {requested_hour}")
+            
             if requested_hour < start_hour or requested_hour >= end_hour:
+                logger.warning(f"[BOOK_JOB] Outside business hours: {requested_hour}")
                 # Generate user-friendly message based on whether time is before or after hours
                 if requested_hour < start_hour:
                     time_msg = f"We don't open until {start_hour}:00 AM"
@@ -1898,15 +1982,20 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             # Check if slot is available - use service duration
             # Get matched service info for duration, price, and service name
+            logger.info(f"[BOOK_JOB] Matching service for: {job_description}")
             match_result = match_service(job_description, company_id=company_id)
             matched_service = match_result['service']
             matched_service_name = match_result['matched_name']
             service_duration = matched_service.get('duration_minutes', 60)
-            logger.debug(f"Service match: '{job_description}' -> '{matched_service_name}' (duration: {service_duration} mins)")
+            logger.info(f"[BOOK_JOB] Matched service: {matched_service_name}, Duration: {service_duration} mins")
             
             # ALWAYS check calendar availability first (prevents double-booking)
+            logger.info(f"[BOOK_JOB] Checking availability at {parsed_time} for {service_duration} mins")
             is_available = google_calendar.check_availability(parsed_time, duration_minutes=service_duration)
+            logger.info(f"[BOOK_JOB] Availability check result: {is_available}")
+            
             if not is_available:
+                logger.warning(f"[BOOK_JOB] Time slot not available")
                 return {
                     "success": False,
                     "error": f"That time slot is already booked or doesn't have enough time for this service ({service_duration} mins). Please check availability and suggest another time."
@@ -1915,21 +2004,25 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Check if company has workers configured
             has_workers = db.has_workers(company_id) if db else False
             assigned_worker = None
+            logger.info(f"[BOOK_JOB] Company has workers: {has_workers}")
             
             if has_workers:
                 # Find available workers for this time slot
+                logger.info(f"[BOOK_JOB] Finding available workers...")
                 available_workers = db.find_available_workers_for_slot(
                     appointment_time=parsed_time,
                     duration_minutes=service_duration,
                     company_id=company_id
                 )
+                logger.info(f"[BOOK_JOB] Available workers: {available_workers}")
                 
                 if available_workers is None:
                     # Database error - log warning but proceed without worker assignment
                     # Better to book without worker than fail the booking entirely
-                    logger.warning(f"Worker lookup failed due to database error - proceeding without worker assignment")
+                    logger.warning(f"[BOOK_JOB] Worker lookup failed due to database error - proceeding without worker assignment")
                 elif len(available_workers) == 0:
                     # No workers available at this time (not an error, just busy)
+                    logger.warning(f"[BOOK_JOB] No workers available at this time")
                     return {
                         "success": False,
                         "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time when a worker is free."
@@ -1937,19 +2030,32 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 else:
                     # Select the first available worker (could be enhanced to pick by specialty)
                     assigned_worker = available_workers[0]
-                    logger.debug(f"Worker: Auto-assigning worker '{assigned_worker['name']}' (ID: {assigned_worker['id']})")
+                    logger.info(f"[BOOK_JOB] Auto-assigning worker: {assigned_worker['name']} (ID: {assigned_worker['id']})")
             
             # Create calendar event with trades details
             summary = f"{urgency_level.upper()}: {job_description[:50]} - {customer_name}"
-            event = google_calendar.book_appointment(
-                summary=summary,
-                start_time=parsed_time,
-                duration_minutes=service_duration,
-                description=f"Booked via AI receptionist\n\nCustomer: {customer_name}\nPhone: {phone}\nEmail: {email}\n\nJob Address: {validated_address}\nJob Description: {job_description}\nMatched Service: {matched_service_name}\nUrgency: {urgency_level}\nProperty Type: {property_type}\nDuration: {service_duration} mins",
-                phone_number=phone
-            )
+            logger.info(f"[BOOK_JOB] Creating calendar event: {summary}")
+            
+            try:
+                event = google_calendar.book_appointment(
+                    summary=summary,
+                    start_time=parsed_time,
+                    duration_minutes=service_duration,
+                    description=f"Booked via AI receptionist\n\nCustomer: {customer_name}\nPhone: {phone}\nEmail: {email}\n\nJob Address: {validated_address}\nJob Description: {job_description}\nMatched Service: {matched_service_name}\nUrgency: {urgency_level}\nProperty Type: {property_type}\nDuration: {service_duration} mins",
+                    phone_number=phone
+                )
+                logger.info(f"[BOOK_JOB] Calendar event created: {event}")
+            except Exception as cal_error:
+                logger.error(f"[BOOK_JOB] Calendar event creation failed: {cal_error}")
+                import traceback
+                traceback.print_exc()
+                return {
+                    "success": False,
+                    "error": f"Failed to create calendar event: {str(cal_error)}"
+                }
             
             if not event:
+                logger.error(f"[BOOK_JOB] Calendar returned None for event")
                 return {
                     "success": False,
                     "error": "Failed to create calendar event"
@@ -1957,8 +2063,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             # Save to database with trades-specific fields
             if db:
+                logger.info(f"[BOOK_JOB] Saving to database...")
                 try:
                     # Find or create client - MUST pass company_id for data isolation
+                    logger.info(f"[BOOK_JOB] Finding/creating client: {customer_name}, phone={phone}, email={email}")
                     client_id = db.find_or_create_client(
                         name=customer_name,
                         phone=phone,
@@ -1966,16 +2074,18 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         date_of_birth=None,
                         company_id=company_id
                     )
+                    logger.info(f"[BOOK_JOB] Client ID: {client_id}")
                     
                     # Get the correct price from matched service
                     if urgency_level == 'emergency' and matched_service.get('emergency_price'):
                         job_charge = float(matched_service['emergency_price'])
                     else:
                         job_charge = float(matched_service.get('price', 0))
-                    logger.debug(f"Pricing: Charge for '{job_description}' ({urgency_level}): EUR{job_charge}")
+                    logger.info(f"[BOOK_JOB] Job charge: EUR{job_charge}")
                     
                     # Add booking with validated address information, correct charge, and duration
                     # MUST pass company_id for data isolation
+                    logger.info(f"[BOOK_JOB] Adding booking to database...")
                     booking_id = db.add_booking(
                         client_id=client_id,
                         calendar_event_id=event.get('id'),
@@ -1991,6 +2101,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         company_id=company_id,
                         duration_minutes=service_duration
                     )
+                    logger.info(f"[BOOK_JOB] Booking ID: {booking_id}")
                     
                     # Add note with job details including matched service and original description
                     db.add_appointment_note(
@@ -2002,13 +2113,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     # Auto-assign worker if one was selected
                     if assigned_worker:
                         try:
+                            logger.info(f"[BOOK_JOB] Assigning worker {assigned_worker['name']} to booking {booking_id}")
                             assignment_result = db.assign_worker_to_job(booking_id, assigned_worker['id'])
                             if assignment_result.get('success'):
-                                logger.info(f" Worker '{assigned_worker['name']}' (ID: {assigned_worker['id']}) assigned to booking {booking_id}")
+                                logger.info(f"[BOOK_JOB] ✅ Worker assigned successfully")
                             else:
-                                logger.warning(f" Failed to assign worker: {assignment_result.get('error')}")
+                                logger.warning(f"[BOOK_JOB] ⚠️ Failed to assign worker: {assignment_result.get('error')}")
                         except Exception as worker_err:
-                            logger.warning(f" Could not assign worker: {worker_err}")
+                            logger.warning(f"[BOOK_JOB] ⚠️ Could not assign worker: {worker_err}")
                     
                     # Update client description
                     try:
@@ -2017,13 +2129,18 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     except Exception:
                         pass
                     
-                    logger.info(f" Job booking saved to database (ID: {booking_id}, company_id: {company_id})")
+                    logger.info(f"[BOOK_JOB] ✅ Job booking saved to database (ID: {booking_id}, company_id: {company_id})")
                 except Exception as e:
-                    logger.error(f" Database save failed: {e}")
+                    logger.error(f"[BOOK_JOB] ❌ Database save failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+            else:
+                logger.warning(f"[BOOK_JOB] No database available - booking not saved to DB")
             
             # Build response message
             worker_msg = f" Assigned to {assigned_worker['name']}." if assigned_worker else ""
             
+            logger.info(f"[BOOK_JOB] ========== JOB BOOKING COMPLETE ==========")
             return {
                 "success": True,
                 "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({format_duration(service_duration)}). {urgency_level.title()} job at {validated_address}.{worker_msg}",
@@ -2046,10 +2163,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             }
         
         elif tool_name == "cancel_job":
+            logger.info(f"[CANCEL_JOB] Redirecting to cancel_appointment")
             # Alias for cancel_appointment - same functionality
             return execute_tool_call("cancel_appointment", arguments, services)
         
         elif tool_name == "reschedule_job":
+            logger.info(f"[RESCHEDULE_JOB] Redirecting to reschedule_appointment")
             # Alias for reschedule_appointment - same functionality
             return execute_tool_call("reschedule_appointment", arguments, services)
         
@@ -2087,7 +2206,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             }
     
     except Exception as e:
-        logger.error(f" Error executing tool {tool_name}: {e}")
+        logger.error(f"[TOOL_ERROR] ========== TOOL EXECUTION FAILED ==========")
+        logger.error(f"[TOOL_ERROR] Tool: {tool_name}")
+        logger.error(f"[TOOL_ERROR] Arguments: {arguments}")
+        logger.error(f"[TOOL_ERROR] Exception type: {type(e).__name__}")
+        logger.error(f"[TOOL_ERROR] Error message: {str(e)}")
         import traceback
         traceback.print_exc()
         return {

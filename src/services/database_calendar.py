@@ -2,9 +2,13 @@
 Database-based calendar/availability system
 No external dependencies - works for all customers out of the box
 """
+import logging
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 from src.utils.config import config
+
+# Set up logger for this module
+logger = logging.getLogger(__name__)
 
 
 def _make_naive(dt):
@@ -56,6 +60,8 @@ class DatabaseCalendarService:
         Returns:
             List of available datetime slots
         """
+        logger.info(f"[DB_CAL] get_available_slots_for_day called: date={date}, service_duration={service_duration}, company_id={self.company_id}")
+        
         # Normalize to start of day
         day_start = date.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
@@ -65,7 +71,9 @@ class DatabaseCalendarService:
             business_hours = config.get_business_hours(company_id=self.company_id)
             start_hour = business_hours.get('start', 9)
             end_hour = business_hours.get('end', 17)
-        except Exception:
+            logger.info(f"[DB_CAL] Business hours: {start_hour}:00 - {end_hour}:00")
+        except Exception as e:
+            logger.warning(f"[DB_CAL] Error getting business hours: {e}")
             start_hour = getattr(config, 'BUSINESS_HOURS_START', 9)
             end_hour = getattr(config, 'BUSINESS_HOURS_END', 17)
         
@@ -74,17 +82,27 @@ class DatabaseCalendarService:
             from src.services.settings_manager import get_settings_manager
             settings_mgr = get_settings_manager()
             default_duration = settings_mgr.get_default_duration_minutes(company_id=self.company_id)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[DB_CAL] Error getting default duration: {e}")
             default_duration = 60
         
         # Use provided duration or default
         slot_duration = service_duration if service_duration else default_duration
+        logger.info(f"[DB_CAL] Using slot duration: {slot_duration} mins")
         
         # Don't return past time slots
         now = datetime.now()
         
         # Get existing bookings for this day - MUST filter by company_id for data isolation
-        all_bookings = self.db.get_all_bookings(company_id=self.company_id)
+        try:
+            all_bookings = self.db.get_all_bookings(company_id=self.company_id)
+            logger.info(f"[DB_CAL] Total bookings for company {self.company_id}: {len(all_bookings)}")
+        except Exception as e:
+            logger.error(f"[DB_CAL] Error getting bookings: {e}")
+            import traceback
+            traceback.print_exc()
+            all_bookings = []
+        
         day_bookings = []
         for booking in all_bookings:
             if booking.get('status') in ['cancelled', 'completed']:
@@ -99,6 +117,8 @@ class DatabaseCalendarService:
                     'duration': booking_duration,
                     'end': appt_time + timedelta(minutes=booking_duration)
                 })
+        
+        logger.info(f"[DB_CAL] Bookings on {day_start.strftime('%Y-%m-%d')}: {len(day_bookings)}")
         
         # Generate all possible slots for the day
         available_slots = []
@@ -136,6 +156,7 @@ class DatabaseCalendarService:
             
             current_slot += timedelta(minutes=30)  # Check every 30 minutes for more granular slots
         
+        logger.info(f"[DB_CAL] Available slots found: {len(available_slots)}")
         return available_slots
     
     def check_availability(self, start_time: datetime, duration_minutes: int = None) -> bool:
@@ -149,10 +170,13 @@ class DatabaseCalendarService:
         Returns:
             True if available, False if booked
         """
+        logger.info(f"[DB_CAL] check_availability called: start_time={start_time}, duration={duration_minutes}, company_id={self.company_id}")
+        
         start_time = _make_naive(start_time)
         
         # Don't allow booking in the past
         if start_time <= datetime.now():
+            logger.warning(f"[DB_CAL] Rejecting past time: {start_time}")
             return False
         
         # Get default duration from settings
@@ -160,7 +184,8 @@ class DatabaseCalendarService:
             from src.services.settings_manager import get_settings_manager
             settings_mgr = get_settings_manager()
             default_duration = settings_mgr.get_default_duration_minutes(company_id=self.company_id)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[DB_CAL] Error getting default duration: {e}")
             default_duration = 60
         
         # Use provided duration or default
@@ -169,9 +194,17 @@ class DatabaseCalendarService:
         
         # Calculate slot end (no buffer)
         slot_end = start_time + timedelta(minutes=duration_minutes)
+        logger.info(f"[DB_CAL] Checking slot: {start_time} to {slot_end}")
         
         # Get all non-cancelled bookings - MUST filter by company_id for data isolation
-        all_bookings = self.db.get_all_bookings(company_id=self.company_id)
+        try:
+            all_bookings = self.db.get_all_bookings(company_id=self.company_id)
+            logger.info(f"[DB_CAL] Total bookings to check: {len(all_bookings)}")
+        except Exception as e:
+            logger.error(f"[DB_CAL] Error getting bookings: {e}")
+            import traceback
+            traceback.print_exc()
+            return True  # Fail open - allow booking if we can't check
         
         for booking in all_bookings:
             if booking.get('status') in ['cancelled', 'completed']:
@@ -187,8 +220,10 @@ class DatabaseCalendarService:
             
             # Check for overlap
             if (start_time < booking_end and slot_end > appt_time):
+                logger.info(f"[DB_CAL] Conflict found with booking: {appt_time} to {booking_end}")
                 return False  # Conflict found
         
+        logger.info(f"[DB_CAL] Slot is available")
         return True  # No conflicts
     
     def book_appointment(self, summary: str, start_time: datetime, 
@@ -211,17 +246,20 @@ class DatabaseCalendarService:
         Returns:
             Dict with booking confirmation (compatible with Google Calendar format)
         """
+        logger.info(f"[DB_CAL] book_appointment called: summary={summary}, start_time={start_time}, duration={duration_minutes}")
+        
         # Get default duration if not provided
         if duration_minutes is None:
             try:
                 from src.services.settings_manager import get_settings_manager
                 settings_mgr = get_settings_manager()
                 duration_minutes = settings_mgr.get_default_duration_minutes(company_id=self.company_id)
-            except Exception:
+            except Exception as e:
+                logger.warning(f"[DB_CAL] Error getting default duration: {e}")
                 duration_minutes = 60
         
         # Generate a fake "event" dict for compatibility
-        return {
+        event = {
             'id': f"db_{int(start_time.timestamp())}",
             'summary': summary,
             'description': description,
@@ -230,6 +268,8 @@ class DatabaseCalendarService:
             'duration_minutes': duration_minutes,
             'htmlLink': '#'  # Placeholder
         }
+        logger.info(f"[DB_CAL] Created event: {event}")
+        return event
     
     def find_appointment_by_details(self, customer_name: Optional[str] = None,
                                     appointment_time: Optional[datetime] = None) -> Optional[Dict]:
