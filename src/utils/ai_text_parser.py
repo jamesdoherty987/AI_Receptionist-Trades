@@ -3,9 +3,11 @@ AI-powered text parsing utilities
 Replaces hardcoded regex patterns with flexible AI-based parsing
 """
 import json
+import time
 from typing import Optional, Tuple, Dict, Any
 from openai import OpenAI
 from src.utils.config import config
+from src.utils.ai_logger import ai_logger
 
 # Lazy initialization
 _client = None
@@ -97,6 +99,7 @@ def extract_time_window_ai(text: str) -> Tuple[Optional[int], Optional[int]]:
     if not text:
         return (None, None)
     
+    start_time = time.time()
     try:
         client = get_openai_client()
         
@@ -118,8 +121,15 @@ def extract_time_window_ai(text: str) -> Tuple[Optional[int], Optional[int]]:
             max_tokens=100
         )
         
+        duration_ms = (time.time() - start_time) * 1000
+        
         tool_calls = response.choices[0].message.tool_calls
         if not tool_calls or len(tool_calls) == 0:
+            ai_logger.debug(
+                "Time window extraction returned no result",
+                operation="extract_time_window",
+                input_text=text[:100]
+            )
             return (None, None)
         
         parsed = json.loads(tool_calls[0].function.arguments)
@@ -132,7 +142,13 @@ def extract_time_window_ai(text: str) -> Tuple[Optional[int], Optional[int]]:
         
         # If specific hours provided, use them
         if start is not None and end is not None:
-            print(f"🤖 AI extracted time window: {start}:00-{end}:00")
+            ai_logger.info(
+                f"Time window extracted: {start}:00-{end}:00",
+                operation="extract_time_window",
+                start_hour=start,
+                end_hour=end,
+                duration_ms=round(duration_ms, 2)
+            )
             return (start, end)
         
         # Otherwise, use preference mapping
@@ -149,7 +165,14 @@ def extract_time_window_ai(text: str) -> Tuple[Optional[int], Optional[int]]:
         return (None, None)
         
     except Exception as e:
-        print(f"❌ AI time window extraction error: {e}")
+        duration_ms = (time.time() - start_time) * 1000
+        ai_logger.error(
+            "Time window extraction failed",
+            exception=e,
+            operation="extract_time_window",
+            input_text=text[:100],
+            duration_ms=round(duration_ms, 2)
+        )
         return (None, None)
 
 
@@ -166,6 +189,7 @@ def extract_name_ai(text: str) -> Optional[Dict[str, Any]]:
     if not text:
         return None
     
+    start_time = time.time()
     try:
         client = get_openai_client()
         
@@ -187,8 +211,15 @@ def extract_name_ai(text: str) -> Optional[Dict[str, Any]]:
             max_tokens=100
         )
         
+        duration_ms = (time.time() - start_time) * 1000
+        
         tool_calls = response.choices[0].message.tool_calls
         if not tool_calls or len(tool_calls) == 0:
+            ai_logger.debug(
+                "Name extraction returned no result",
+                operation="extract_name",
+                input_text=text[:100]
+            )
             return None
         
         parsed = json.loads(tool_calls[0].function.arguments)
@@ -203,13 +234,26 @@ def extract_name_ai(text: str) -> Optional[Dict[str, Any]]:
                 "is_correction": parsed.get("is_correction", False),
                 "confidence": parsed.get("confidence", "medium")
             }
-            print(f"🤖 AI extracted name: {result}")
+            ai_logger.info(
+                f"Name extracted: {result['name']}",
+                operation="extract_name",
+                is_correction=result["is_correction"],
+                confidence=result["confidence"],
+                duration_ms=round(duration_ms, 2)
+            )
             return result
         
         return None
         
     except Exception as e:
-        print(f"❌ AI name extraction error: {e}")
+        duration_ms = (time.time() - start_time) * 1000
+        ai_logger.error(
+            "Name extraction failed",
+            exception=e,
+            operation="extract_name",
+            input_text=text[:100],
+            duration_ms=round(duration_ms, 2)
+        )
         return None
 
 
@@ -223,6 +267,7 @@ def detect_birth_year(text: str) -> Optional[int]:
     Returns:
         Year if it's likely a birth year (< 2007), None otherwise
     """
+    start_time = time.time()
     try:
         client = get_openai_client()
         
@@ -263,6 +308,8 @@ def detect_birth_year(text: str) -> Optional[int]:
             max_tokens=50
         )
         
+        duration_ms = (time.time() - start_time) * 1000
+        
         tool_calls = response.choices[0].message.tool_calls
         if not tool_calls or len(tool_calls) == 0:
             return None
@@ -272,13 +319,25 @@ def detect_birth_year(text: str) -> Optional[int]:
         if parsed.get("has_birth_year"):
             year = parsed.get("year")
             if year and year < 2007:
-                print(f"🤖 AI detected birth year: {year}")
+                ai_logger.info(
+                    f"Birth year detected: {year}",
+                    operation="detect_birth_year",
+                    year=year,
+                    duration_ms=round(duration_ms, 2)
+                )
                 return year
         
         return None
         
     except Exception as e:
-        print(f"❌ AI birth year detection error: {e}")
+        duration_ms = (time.time() - start_time) * 1000
+        ai_logger.error(
+            "Birth year detection failed",
+            exception=e,
+            operation="detect_birth_year",
+            input_text=text[:100],
+            duration_ms=round(duration_ms, 2)
+        )
         return None
 
 
@@ -307,6 +366,7 @@ def is_affirmative_response(text: str, context: str = None) -> bool:
         return False
     
     # Use AI for more complex cases
+    start_time = time.time()
     try:
         client = get_openai_client()
         
@@ -346,8 +406,15 @@ def is_affirmative_response(text: str, context: str = None) -> bool:
             max_tokens=50
         )
         
+        duration_ms = (time.time() - start_time) * 1000
+        
         tool_calls = response.choices[0].message.tool_calls
         if not tool_calls or len(tool_calls) == 0:
+            ai_logger.debug(
+                "Affirmative detection returned no result",
+                operation="is_affirmative_response",
+                input_text=text[:100]
+            )
             return False
         
         parsed = json.loads(tool_calls[0].function.arguments)
@@ -356,11 +423,24 @@ def is_affirmative_response(text: str, context: str = None) -> bool:
         
         # Only return True if high or medium confidence
         if is_affirmative and confidence in ["high", "medium"]:
+            ai_logger.debug(
+                f"Affirmative response detected",
+                operation="is_affirmative_response",
+                confidence=confidence,
+                duration_ms=round(duration_ms, 2)
+            )
             return True
         
         return False
         
     except Exception as e:
-        print(f"❌ AI affirmative detection error: {e}")
+        duration_ms = (time.time() - start_time) * 1000
+        ai_logger.error(
+            "Affirmative detection failed",
+            exception=e,
+            operation="is_affirmative_response",
+            input_text=text[:100],
+            duration_ms=round(duration_ms, 2)
+        )
         # Fallback to simple word matching
         return any(word in text_lower for word in ['yes', 'yeah', 'yep', 'yup', 'correct', 'right', 'ok', 'okay', 'sure', 'ya'])

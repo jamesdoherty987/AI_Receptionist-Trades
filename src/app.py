@@ -600,6 +600,42 @@ def config_check():
     return jsonify(config_info)
 
 
+@app.route("/api/ai-logs", methods=["GET"])
+@login_required
+def get_ai_logs():
+    """
+    Get AI operation logs for debugging.
+    Returns recent errors and statistics.
+    
+    Query params:
+        - errors_only: If 'true', only return errors
+        - limit: Number of recent errors to return (default 20)
+    """
+    try:
+        from src.utils.ai_logger import ai_logger
+        
+        errors_only = request.args.get('errors_only', 'false').lower() == 'true'
+        limit = min(int(request.args.get('limit', 20)), 100)  # Cap at 100
+        
+        stats = ai_logger.get_stats()
+        recent_errors = ai_logger.get_recent_errors(limit)
+        
+        response_data = {
+            "stats": stats,
+            "recent_errors": recent_errors if errors_only or recent_errors else [],
+            "log_file_hint": "Check logs/ai_YYYYMMDD.log for full logs"
+        }
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        return jsonify({
+            "error": f"Failed to get AI logs: {str(e)}",
+            "stats": {},
+            "recent_errors": []
+        }), 500
+
+
 # ============================================
 # AUTHENTICATION ENDPOINTS
 # ============================================
