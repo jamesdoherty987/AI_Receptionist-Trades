@@ -44,22 +44,9 @@ function TrialBanner() {
     );
   }
   
-  // No subscription / tier is 'none' - show get started banner
+  // No subscription / tier is 'none' - don't show banner (users know they don't have a subscription)
   if (tier === 'none' || !tier) {
-    return (
-      <div className="trial-banner banner-expired">
-        <div className="banner-left">
-          <i className="fas fa-info-circle banner-icon"></i>
-          <div className="banner-text">
-            <strong>No active subscription</strong>
-            <span className="banner-sub">Start a free trial or subscribe to unlock all features.</span>
-          </div>
-        </div>
-        <Link to="/settings?tab=subscription" className="banner-btn">
-          <i className="fas fa-rocket"></i> Get Started
-        </Link>
-      </div>
-    );
+    return null;
   }
   
   // Any inactive subscription (expired trial, cancelled pro, etc) - show expired banner

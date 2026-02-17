@@ -409,97 +409,34 @@ function Settings() {
             </div>
           )}
 
-          {/* Setup Progress Card - show when setup is incomplete */}
-          {settings && (
-            !settings.business_name || 
-            !settings.business_phone || 
-            !settings.twilio_phone_number
-          ) && (
+          {/* Setup Progress Card - show only when AI phone number is not configured */}
+          {settings && !settings.twilio_phone_number && (
             <div className="setup-progress-card">
               <div className="setup-progress-header">
                 <div className="setup-progress-title">
-                  <i className="fas fa-rocket"></i>
+                  <i className="fas fa-phone"></i>
                   <div>
-                    <h3>Complete Your Setup</h3>
-                    <p>A few quick steps to get your AI receptionist running</p>
+                    <h3>Configure AI Phone Number</h3>
+                    <p>Set up your AI receptionist phone number to start receiving calls</p>
                   </div>
-                </div>
-                <div className="setup-progress-count">
-                  {[
-                    settings.business_name,
-                    settings.business_phone,
-                    settings.twilio_phone_number
-                  ].filter(Boolean).length}/3 complete
                 </div>
               </div>
               <div className="setup-checklist">
-                <div className={`setup-item ${settings.business_name ? 'complete' : ''}`}>
+                <div className="setup-item">
                   <div className="setup-item-icon">
-                    {settings.business_name ? (
-                      <i className="fas fa-check-circle"></i>
-                    ) : (
-                      <i className="far fa-circle"></i>
-                    )}
-                  </div>
-                  <div className="setup-item-content">
-                    <span className="setup-item-title">Business name</span>
-                    {!settings.business_name && (
-                      <button 
-                        className="setup-item-action"
-                        onClick={() => {
-                          setActiveTab('business');
-                          document.getElementById('business_name')?.focus();
-                        }}
-                      >
-                        Add now
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className={`setup-item ${settings.business_phone ? 'complete' : ''}`}>
-                  <div className="setup-item-icon">
-                    {settings.business_phone ? (
-                      <i className="fas fa-check-circle"></i>
-                    ) : (
-                      <i className="far fa-circle"></i>
-                    )}
-                  </div>
-                  <div className="setup-item-content">
-                    <span className="setup-item-title">Your phone number</span>
-                    {!settings.business_phone && (
-                      <button 
-                        className="setup-item-action"
-                        onClick={() => {
-                          setActiveTab('business');
-                          document.getElementById('business_phone')?.focus();
-                        }}
-                      >
-                        Add now
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className={`setup-item ${settings.twilio_phone_number ? 'complete' : ''}`}>
-                  <div className="setup-item-icon">
-                    {settings.twilio_phone_number ? (
-                      <i className="fas fa-check-circle"></i>
-                    ) : (
-                      <i className="far fa-circle"></i>
-                    )}
+                    <i className="far fa-circle"></i>
                   </div>
                   <div className="setup-item-content">
                     <span className="setup-item-title">AI phone number</span>
-                    {!settings.twilio_phone_number && (
-                      <button 
-                        className="setup-item-action"
-                        onClick={() => {
-                          setActiveTab('business');
-                          setShowPhoneModal(true);
-                        }}
-                      >
-                        Configure
-                      </button>
-                    )}
+                    <button 
+                      className="setup-item-action"
+                      onClick={() => {
+                        setActiveTab('business');
+                        setShowPhoneModal(true);
+                      }}
+                    >
+                      Configure
+                    </button>
                   </div>
                 </div>
               </div>
