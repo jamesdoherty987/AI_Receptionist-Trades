@@ -13,6 +13,23 @@ from src.utils.config import config
 from src.services.asr_deepgram import DeepgramASR
 from src.services.llm_stream import stream_llm, process_appointment_with_calendar, reset_appointment_state
 
+# Import pre-recorded audio service with safe fallback
+try:
+    from src.services.prerecorded_audio import (
+        get_filler_audio, get_random_filler_id, send_prerecorded_audio, 
+        has_prerecorded_fillers, preload_fillers
+    )
+    # Pre-load filler audio at module import (safe - never raises)
+    preload_fillers()
+except Exception as e:
+    print(f"[AUDIO] Warning: Could not import prerecorded_audio: {e}")
+    # Provide stub functions so the rest of the code works
+    def has_prerecorded_fillers(): return False
+    def get_random_filler_id(): return "one_moment"
+    def get_filler_audio(phrase_id): return None
+    async def send_prerecorded_audio(ws, sid, data): pass
+    def preload_fillers(): pass
+
 # Import TTS based on provider setting
 TTS_PROVIDER = config.TTS_PROVIDER if hasattr(config, 'TTS_PROVIDER') else 'deepgram'
 
@@ -163,6 +180,7 @@ async def media_handler(ws):
                 full_text = ""  # Capture full text for logging
                 MIN_TOKENS_BEFORE_INTERRUPT = config.MIN_TOKENS_BEFORE_INTERRUPT
                 needs_continuation = False  # Track if we need a second TTS session
+                used_prerecorded = False  # Track if we used pre-recorded audio
                 
                 # First TTS session - will speak either the full response OR just the checking message
                 print(f"   🗣️ Starting first TTS session...")
@@ -173,7 +191,7 @@ async def media_handler(ws):
                 prefetch_task = None
                 
                 async def prefetch_remaining():
-                    """Pre-fetch remaining tokens while TTS speaks the filler"""
+                    """Pre-fetch remaining tokens while TTS/audio plays the filler"""
                     nonlocal transfer_number
                     try:
                         token_received = False
@@ -199,52 +217,120 @@ async def media_handler(ws):
                         prefetch_done.set()
                         print(f"   ⚡ Prefetch complete: {len(prefetch_buffer)} tokens buffered")
                 
-                async def simple_stream_with_prefetch():
-                    nonlocal token_count, speaking, transfer_number, full_text, needs_continuation, prefetch_task
-                    
+                # FAST PATH: Check for SPLIT_TTS marker FIRST, before any TTS
+                # This allows us to send pre-recorded audio IMMEDIATELY
+                first_token = None
+                try:
                     async for token in text_stream:
-                        # Check for SPLIT_TTS marker - this means we need to speak something NOW
-                        # while continuing to process the LLM stream in PARALLEL
-                        if token.startswith("<<<SPLIT_TTS:"):
-                            # Extract the message to speak immediately
-                            split_msg = token.replace("<<<SPLIT_TTS:", "").replace(">>>", "").strip()
-                            print(f"🔀 SPLIT_TTS MARKER DETECTED: '{split_msg}'")
-                            # Yield this message so it gets spoken now
-                            yield split_msg
-                            full_text += split_msg + " "
-                            needs_continuation = True
-                            
-                            # START PARALLEL PREFETCH - LLM/tool work happens while TTS speaks
-                            print(f"   ⚡ Starting parallel prefetch while TTS speaks...")
-                            prefetch_task = asyncio.create_task(prefetch_remaining())
-                            
-                            # Break to let TTS speak the filler
-                            break
-                        
-                        # Check for transfer marker
-                        if token.startswith("<<<TRANSFER:"):
-                            transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
-                            print(f"📞 TRANSFER MARKER DETECTED: {transfer_number}")
-                            continue
-                        
-                        # Skip other control markers
-                        if token.startswith("<<<") and token.endswith(">>>"):
-                            continue
-                        
-                        token_count += 1
-                        full_text += token
-                        yield token
-                        if token_count == MIN_TOKENS_BEFORE_INTERRUPT:
-                            speaking = False
-                            print(f"✅ Ready to listen (text streaming)")
+                        first_token = token
+                        break
+                except Exception as e:
+                    print(f"⚠️ Error getting first token: {e}")
+                    first_token = None
                 
-                await asyncio.wait_for(
-                    stream_tts(simple_stream_with_prefetch(), ws, stream_sid, lambda: interrupt),
-                    timeout=config.TTS_TIMEOUT
-                )
-                print(f"   ✅ First TTS session complete")
+                if first_token and first_token.startswith("<<<SPLIT_TTS:"):
+                    split_msg = first_token.replace("<<<SPLIT_TTS:", "").replace(">>>", "").strip()
+                    print(f"🔀 SPLIT_TTS MARKER DETECTED (fast path): '{split_msg}'")
+                    
+                    # Try pre-recorded audio FIRST for instant playback
+                    # Wrapped in try/except to NEVER fail - falls back to TTS
+                    try:
+                        if has_prerecorded_fillers():
+                            filler_id = get_random_filler_id()
+                            filler_audio = get_filler_audio(filler_id)
+                            if filler_audio and len(filler_audio) > 0:
+                                print(f"   ⚡ INSTANT: Pre-recorded filler ready: {filler_id} ({len(filler_audio)} bytes)")
+                                
+                                # TRUE PARALLEL EXECUTION:
+                                # Run BOTH tasks simultaneously - zero wasted time!
+                                # - Task 1: Send audio to Twilio (caller hears filler)
+                                # - Task 2: Prefetch LLM response (tool calls execute)
+                                print(f"   ⚡ Starting TRUE PARALLEL: audio + prefetch")
+                                
+                                async def send_audio_task():
+                                    try:
+                                        await send_prerecorded_audio(ws, stream_sid, filler_audio)
+                                        print(f"   ✓ Audio send complete")
+                                    except Exception as e:
+                                        print(f"   ⚠️ Audio send error (non-fatal): {e}")
+                                
+                                # Start both tasks - prefetch first so it starts immediately
+                                prefetch_task = asyncio.create_task(prefetch_remaining())
+                                audio_task = asyncio.create_task(send_audio_task())
+                                
+                                # Wait for audio to finish (prefetch continues in background)
+                                try:
+                                    await asyncio.wait_for(audio_task, timeout=5.0)
+                                except asyncio.TimeoutError:
+                                    print(f"   ⚠️ Audio send timeout (continuing anyway)")
+                                except Exception as e:
+                                    print(f"   ⚠️ Audio task error (non-fatal): {e}")
+                                
+                                full_text += split_msg + " "
+                                needs_continuation = True
+                                used_prerecorded = True
+                                first_token = None  # Consumed
+                    except Exception as e:
+                        # NEVER let pre-recorded audio crash the call
+                        print(f"   ⚠️ Pre-recorded audio error (falling back to TTS): {e}")
+                        used_prerecorded = False
                 
-                # If we need continuation (due to SPLIT_TTS), start a second TTS session for the rest
+                # If we didn't use pre-recorded, fall back to TTS streaming
+                if not used_prerecorded:
+                    async def simple_stream_with_prefetch():
+                        nonlocal token_count, speaking, transfer_number, full_text, needs_continuation, prefetch_task, first_token
+                        
+                        # Yield the first token if we have one (and it wasn't a pre-recorded marker)
+                        if first_token:
+                            if first_token.startswith("<<<SPLIT_TTS:"):
+                                # TTS fallback for filler
+                                split_msg = first_token.replace("<<<SPLIT_TTS:", "").replace(">>>", "").strip()
+                                print(f"   📢 TTS fallback for filler: '{split_msg}'")
+                                yield split_msg
+                                full_text += split_msg + " "
+                                needs_continuation = True
+                                prefetch_task = asyncio.create_task(prefetch_remaining())
+                                return  # Exit to let TTS speak, then continue
+                            elif not first_token.startswith("<<<"):
+                                token_count += 1
+                                full_text += first_token
+                                yield first_token
+                        
+                        async for token in text_stream:
+                            # Check for SPLIT_TTS marker
+                            if token.startswith("<<<SPLIT_TTS:"):
+                                split_msg = token.replace("<<<SPLIT_TTS:", "").replace(">>>", "").strip()
+                                print(f"🔀 SPLIT_TTS MARKER (mid-stream): '{split_msg}'")
+                                yield split_msg
+                                full_text += split_msg + " "
+                                needs_continuation = True
+                                prefetch_task = asyncio.create_task(prefetch_remaining())
+                                break
+                            
+                            # Check for transfer marker
+                            if token.startswith("<<<TRANSFER:"):
+                                transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
+                                print(f"📞 TRANSFER MARKER DETECTED: {transfer_number}")
+                                continue
+                            
+                            # Skip other control markers
+                            if token.startswith("<<<") and token.endswith(">>>"):
+                                continue
+                            
+                            token_count += 1
+                            full_text += token
+                            yield token
+                            if token_count == MIN_TOKENS_BEFORE_INTERRUPT:
+                                speaking = False
+                                print(f"✅ Ready to listen (text streaming)")
+                    
+                    await asyncio.wait_for(
+                        stream_tts(simple_stream_with_prefetch(), ws, stream_sid, lambda: interrupt),
+                        timeout=config.TTS_TIMEOUT
+                    )
+                    print(f"   ✅ First TTS session complete")
+                
+                # If we need continuation (due to SPLIT_TTS or pre-recorded), start a second TTS session
                 if needs_continuation:
                     print(f"   🔄 Starting second TTS session for remaining content...")
                     token_count = 0  # Reset for second session

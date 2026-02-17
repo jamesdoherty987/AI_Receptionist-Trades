@@ -88,6 +88,10 @@ function FinancesTab() {
 
   const handleSendInvoice = (transaction, e) => {
     e.stopPropagation();
+    if (!isSubscriptionActive) {
+      addToast('You need an active subscription to send invoices', 'warning');
+      return;
+    }
     if (!transaction.booking_id && !transaction.id) {
       addToast('Cannot send invoice: No booking ID found', 'warning');
       return;
@@ -251,8 +255,7 @@ function FinancesTab() {
                         <button
                           className="btn-send-invoice"
                           onClick={(e) => handleSendInvoice(transaction, e)}
-                          disabled={isSending || !isSubscriptionActive}
-                          title={!isSubscriptionActive ? 'Subscribe to send invoices' : 'Send invoice email'}
+                          disabled={isSending}
                         >
                           <i className={`fas ${isSending ? 'fa-spinner fa-spin' : !isSubscriptionActive ? 'fa-lock' : 'fa-paper-plane'}`}></i>
                           {isSending ? 'Sending...' : !isSubscriptionActive ? 'Subscribe' : 'Send Invoice'}

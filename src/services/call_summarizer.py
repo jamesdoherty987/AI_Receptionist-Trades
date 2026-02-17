@@ -4,9 +4,11 @@ Extracts job-relevant details from call transcripts and adds them to job cards.
 Filters out small talk and focuses on actionable job information.
 """
 import json
+import time
 from typing import Dict, List, Optional, Any
 from openai import OpenAI
 from src.utils.config import config
+from src.utils.ai_logger import ai_logger
 
 
 # Lazy initialization of OpenAI client
@@ -87,6 +89,7 @@ def summarize_call(conversation_log: List[Dict[str, Any]], caller_phone: str = N
         Dictionary with extracted job details, or None if no job content
     """
     if not conversation_log:
+        ai_logger.debug("Call summarization skipped: empty conversation log", operation="summarize_call")
         return None
     
     # Build transcript text
@@ -98,9 +101,11 @@ def summarize_call(conversation_log: List[Dict[str, Any]], caller_phone: str = N
             transcript_lines.append(f"{role}: {content}")
     
     if not transcript_lines:
+        ai_logger.debug("Call summarization skipped: no transcript content", operation="summarize_call")
         return None
     
     transcript = "\n".join(transcript_lines)
+    start_time = time.time()
     
     try:
         client = get_openai_client()
@@ -142,6 +147,8 @@ If the call doesn't contain any real job information (e.g., wrong number, just c
             max_tokens=1000
         )
         
+        duration_ms = (time.time() - start_time) * 1000
+        
         # Extract the function call result
         tool_calls = response.choices[0].message.tool_calls
         if tool_calls and len(tool_calls) > 0:
@@ -149,15 +156,41 @@ If the call doesn't contain any real job information (e.g., wrong number, just c
             
             # Only return if there's actual job content
             if not args.get('has_job_content', False):
-                print("[INFO] Call summary: No job-relevant content found")
+                ai_logger.info(
+                    "Call summary: No job-relevant content found",
+                    operation="summarize_call",
+                    duration_ms=round(duration_ms, 2),
+                    transcript_length=len(transcript)
+                )
                 return None
+            
+            ai_logger.info(
+                "Call summarized successfully",
+                operation="summarize_call",
+                duration_ms=round(duration_ms, 2),
+                urgency=args.get('urgency_level', 'normal'),
+                has_location=bool(args.get('location_details')),
+                has_access_info=bool(args.get('access_instructions'))
+            )
             
             return args
         
+        ai_logger.warning(
+            "Call summarization returned no tool calls",
+            operation="summarize_call",
+            duration_ms=round(duration_ms, 2)
+        )
         return None
         
     except Exception as e:
-        print(f"[ERROR] Call summarization failed: {e}")
+        duration_ms = (time.time() - start_time) * 1000
+        ai_logger.error(
+            "Call summarization failed",
+            exception=e,
+            operation="summarize_call",
+            duration_ms=round(duration_ms, 2),
+            transcript_length=len(transcript) if transcript else 0
+        )
         return None
 
 

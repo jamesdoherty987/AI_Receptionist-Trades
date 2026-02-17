@@ -297,7 +297,12 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
         return result
         
     except Exception as e:
-        print(f"[ERROR] AI date parsing error: {e}")
+        print(f"[DATE_PARSER_ERROR] ========== AI DATE PARSING FAILED ==========")
+        print(f"[DATE_PARSER_ERROR] Input text: '{text}'")
+        print(f"[DATE_PARSER_ERROR] Exception type: {type(e).__name__}")
+        print(f"[DATE_PARSER_ERROR] Error message: {str(e)}")
+        import traceback
+        traceback.print_exc()
         # Fallback to simple regex for critical patterns
         return _fallback_parse_datetime(text)
 

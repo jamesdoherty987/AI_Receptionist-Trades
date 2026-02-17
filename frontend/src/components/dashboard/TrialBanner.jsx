@@ -5,54 +5,19 @@ import './TrialBanner.css';
 function TrialBanner() {
   const { subscription, getTrialDaysRemaining, getSubscriptionTier } = useAuth();
   
+  // No subscription data yet - don't show anything
   if (!subscription) return null;
   
   const tier = getSubscriptionTier();
   const daysRemaining = getTrialDaysRemaining();
-  const isActive = subscription.is_active;
+  const isActive = subscription.is_active === true; // Explicit check for true
   
-  // Pro users never see trial banners - they have a paid subscription
-  if (tier === 'pro') {
+  // Active pro users - no banner needed
+  if (tier === 'pro' && isActive) {
     return null;
   }
   
-  // No subscription at all
-  if (!isActive && (tier === 'none' || !tier)) {
-    return (
-      <div className="trial-banner banner-expired">
-        <div className="banner-left">
-          <i className="fas fa-info-circle banner-icon"></i>
-          <div className="banner-text">
-            <strong>No active subscription</strong>
-            <span className="banner-sub">Start a free trial or subscribe to unlock all features.</span>
-          </div>
-        </div>
-        <Link to="/settings?tab=subscription" className="banner-btn">
-          <i className="fas fa-rocket"></i> Get Started
-        </Link>
-      </div>
-    );
-  }
-  
-  // Expired trial / subscription
-  if (!isActive && (tier === 'trial' || tier === 'expired')) {
-    return (
-      <div className="trial-banner banner-expired">
-        <div className="banner-left">
-          <i className="fas fa-exclamation-triangle banner-icon"></i>
-          <div className="banner-text">
-            <strong>Your subscription has expired</strong>
-            <span className="banner-sub">Subscribe to continue using BookedForYou.</span>
-          </div>
-        </div>
-        <Link to="/settings?tab=subscription" className="banner-btn">
-          <i className="fas fa-credit-card"></i> Subscribe Now
-        </Link>
-      </div>
-    );
-  }
-  
-  // Active trial
+  // Active trial - show trial banner with days remaining
   if (tier === 'trial' && isActive) {
     const isUrgent = daysRemaining <= 3;
     return (
@@ -79,7 +44,30 @@ function TrialBanner() {
     );
   }
   
-  // Anything else - no banner needed
+  // No subscription / tier is 'none' - don't show banner (users know they don't have a subscription)
+  if (tier === 'none' || !tier) {
+    return null;
+  }
+  
+  // Any inactive subscription (expired trial, cancelled pro, etc) - show expired banner
+  if (!isActive) {
+    return (
+      <div className="trial-banner banner-expired">
+        <div className="banner-left">
+          <i className="fas fa-exclamation-triangle banner-icon"></i>
+          <div className="banner-text">
+            <strong>Your subscription has expired</strong>
+            <span className="banner-sub">Subscribe to continue using BookedForYou.</span>
+          </div>
+        </div>
+        <Link to="/settings?tab=subscription" className="banner-btn">
+          <i className="fas fa-credit-card"></i> Subscribe Now
+        </Link>
+      </div>
+    );
+  }
+  
+  // Fallback - no banner
   return null;
 }
 

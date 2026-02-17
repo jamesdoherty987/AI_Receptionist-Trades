@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import Tabs from '../components/Tabs';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -17,6 +18,7 @@ import './Dashboard.css';
 
 function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const { initialized } = useAuth();
 
   // Check if user needs onboarding
   const { data: settings } = useQuery({
@@ -34,14 +36,14 @@ function Dashboard() {
     // Show onboarding if:
     // 1. User hasn't dismissed/completed onboarding before
     // 2. AND settings are loaded
-    // 3. AND business name or phone is missing (indicates new user)
-    if (!onboardingComplete && settings !== undefined) {
-      const needsSetup = !settings?.business_name || !settings?.business_phone;
+    // 3. AND business info is missing
+    if (!onboardingComplete && settings !== undefined && initialized) {
+      const needsSetup = !settings?.address || !settings?.coverage_area;
       if (needsSetup) {
         setShowOnboarding(true);
       }
     }
-  }, [settings]);
+  }, [settings, initialized]);
 
   // Scroll to top when dashboard loads
   useEffect(() => {
@@ -105,11 +107,6 @@ function Dashboard() {
     setShowOnboarding(false);
   };
 
-  const handleOnboardingDismiss = () => {
-    localStorage.setItem('onboarding_complete', 'true');
-    setShowOnboarding(false);
-  };
-
   return (
     <div className="dashboard">
       <Header />
@@ -119,6 +116,7 @@ function Dashboard() {
           <div className="dashboard-header">
             <h1>Dashboard</h1>
           </div>
+          
           <Tabs tabs={tabs} defaultTab={0} />
         </div>
       </main>
@@ -127,7 +125,6 @@ function Dashboard() {
       {showOnboarding && (
         <OnboardingWizard 
           onComplete={handleOnboardingComplete}
-          onDismiss={handleOnboardingDismiss}
         />
       )}
     </div>

@@ -3,11 +3,13 @@ Appointment intent detection and management using OpenAI function calling
 """
 import re
 import json
+import time
 from enum import Enum
 from typing import Optional, Dict, Any
 from datetime import datetime
 from openai import OpenAI
 from src.utils.config import config
+from src.utils.ai_logger import ai_logger
 
 
 # Lazy initialization of OpenAI client
@@ -102,6 +104,7 @@ class AppointmentDetector:
         Returns:
             AppointmentIntent enum value
         """
+        start_time = time.time()
         try:
             client = get_openai_client()
             response = client.chat.completions.create(
@@ -136,6 +139,8 @@ Only classify as 'reschedule' for phrases like:
                 max_tokens=100
             )
             
+            duration_ms = (time.time() - start_time) * 1000
+            
             # Extract tool call result
             tool_calls = response.choices[0].message.tool_calls
             if tool_calls and len(tool_calls) > 0:
@@ -151,12 +156,34 @@ Only classify as 'reschedule' for phrases like:
                     "none": AppointmentIntent.NONE
                 }
                 
-                return intent_map.get(intent_str, AppointmentIntent.NONE)
+                detected_intent = intent_map.get(intent_str, AppointmentIntent.NONE)
+                
+                # Log successful detection
+                ai_logger.log_intent_detection(
+                    user_text=text,
+                    detected_intent=intent_str,
+                    confidence=args.get("confidence", "unknown"),
+                    details={"duration_ms": round(duration_ms, 2)}
+                )
+                
+                return detected_intent
             
+            ai_logger.warning(
+                "Intent detection returned no tool calls",
+                operation="detect_intent",
+                user_text=text[:100]
+            )
             return AppointmentIntent.NONE
             
         except Exception as e:
-            print(f"⚠️ Error in OpenAI intent detection: {e}")
+            duration_ms = (time.time() - start_time) * 1000
+            ai_logger.error(
+                "OpenAI intent detection failed",
+                exception=e,
+                operation="detect_intent",
+                user_text=text[:100],
+                duration_ms=round(duration_ms, 2)
+            )
             # Fallback to simple keyword matching
             return cls._fallback_detect_intent(text)
     
@@ -193,6 +220,7 @@ Only classify as 'reschedule' for phrases like:
         Returns:
             Dictionary with extracted details
         """
+        start_time = time.time()
         try:
             client = get_openai_client()
             
@@ -262,6 +290,8 @@ CRITICAL RULES:
                 max_tokens=200
             )
             
+            duration_ms = (time.time() - start_time) * 1000
+            
             # Extract tool call result
             tool_calls = response.choices[0].message.tool_calls
             if tool_calls and len(tool_calls) > 0:
@@ -286,10 +316,33 @@ CRITICAL RULES:
                     "confidence": args.get("confidence", "unknown")
                 }
                 
+                # Log successful extraction
+                ai_logger.info(
+                    f"Appointment details extracted",
+                    operation="extract_appointment_details",
+                    intent=intent_str,
+                    confidence=details["confidence"],
+                    has_datetime=bool(details["datetime"]),
+                    has_name=bool(details["customer_name"]),
+                    duration_ms=round(duration_ms, 2)
+                )
+                
                 return details
             
+            ai_logger.warning(
+                "Detail extraction returned no tool calls",
+                operation="extract_appointment_details",
+                user_text=(text or "")[:100]
+            )
+            
         except Exception as e:
-            print(f"⚠️ Error in OpenAI detail extraction: {e}")
+            duration_ms = (time.time() - start_time) * 1000
+            ai_logger.error(
+                "OpenAI detail extraction failed",
+                exception=e,
+                operation="extract_appointment_details",
+                duration_ms=round(duration_ms, 2)
+            )
         
         # Fallback to basic detection
         return {

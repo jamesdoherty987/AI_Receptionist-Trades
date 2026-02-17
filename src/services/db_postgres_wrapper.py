@@ -100,8 +100,8 @@ class PostgreSQLDatabaseWrapper:
                     address TEXT,
                     logo_url TEXT,
                     business_hours TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
-                    subscription_tier TEXT DEFAULT 'trial',
-                    subscription_status TEXT DEFAULT 'active',
+                    subscription_tier TEXT DEFAULT 'none',
+                    subscription_status TEXT DEFAULT 'inactive',
                     stripe_customer_id TEXT,
                     stripe_subscription_id TEXT,
                     stripe_connect_account_id TEXT,
@@ -770,6 +770,11 @@ class PostgreSQLDatabaseWrapper:
     
     def update_company(self, company_id: int, **kwargs) -> bool:
         """Update company information"""
+        print(f"[DB_UPDATE] ========== UPDATE COMPANY {company_id} ==========")
+        print(f"[DB_UPDATE] Fields to update: {list(kwargs.keys())}")
+        for key, value in kwargs.items():
+            print(f"[DB_UPDATE]   - {key}: {value}")
+        
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
@@ -805,23 +810,28 @@ class PostgreSQLDatabaseWrapper:
                         values.append(value)
                     else:
                         skipped_fields.append(key)
+                else:
+                    print(f"[DB_UPDATE] WARNING: Field '{key}' not in allowed_fields!")
             
             if skipped_fields:
-                print(f"[WARNING] Skipped fields not in database: {skipped_fields}")
+                print(f"[DB_UPDATE] WARNING: Skipped fields not in database: {skipped_fields}")
             
             if fields:
                 values.append(datetime.now())
                 values.append(company_id)
                 query = f"UPDATE companies SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
+                print(f"[DB_UPDATE] Executing query with {len(fields)} fields")
                 try:
                     cursor.execute(query, values)
                     conn.commit()
                     success = cursor.rowcount > 0
+                    print(f"[DB_UPDATE] Query executed, rows affected: {cursor.rowcount}, success: {success}")
                 except Exception as e:
                     conn.rollback()
-                    print(f"[ERROR] Error updating company {company_id}: {e}")
+                    print(f"[DB_UPDATE] ERROR executing query: {e}")
                     raise
             else:
+                print(f"[DB_UPDATE] No valid fields to update!")
                 success = False
             
             return success
@@ -1211,16 +1221,22 @@ class PostgreSQLDatabaseWrapper:
     
     def find_or_create_client(self, name: str, phone: str = None, email: str = None, date_of_birth: str = None, company_id: int = None) -> int:
         """Find existing client or create new one"""
+        print(f"[DB_CLIENT] ========== FIND OR CREATE CLIENT ==========")
+        print(f"[DB_CLIENT] name={name}, phone={phone}, email={email}, dob={date_of_birth}, company_id={company_id}")
+        
         if not phone and not email:
+            print(f"[DB_CLIENT] ❌ Error: No phone or email provided")
             raise ValueError("Client must have either phone number or email address")
         
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             name = name.lower().strip()
+            print(f"[DB_CLIENT] Normalized name: {name}")
             
             # First priority: Try to find by name + DOB if DOB is provided
             if date_of_birth:
+                print(f"[DB_CLIENT] Searching by name + DOB...")
                 if company_id:
                     cursor.execute("""
                         SELECT id FROM clients WHERE company_id = %s AND name = %s AND date_of_birth = %s
@@ -1231,14 +1247,15 @@ class PostgreSQLDatabaseWrapper:
                     """, (name, date_of_birth))
                 row = cursor.fetchone()
                 if row:
-                    print(f"[SUCCESS] Found existing client by name + DOB: {name} (ID: {row['id']})")
+                    print(f"[DB_CLIENT] ✅ Found existing client by name + DOB: {name} (ID: {row['id']})")
                     return row['id']
                 else:
                     # DOB provided but no match found - create new client
-                    print(f"[SUCCESS] Creating NEW client (same name, different DOB): {name} (DOB: {date_of_birth})")
+                    print(f"[DB_CLIENT] Creating NEW client (same name, different DOB): {name} (DOB: {date_of_birth})")
                     return self.add_client(name, phone, email, date_of_birth, company_id=company_id)
             
             # No DOB provided - fall back to matching by name + contact info
+            print(f"[DB_CLIENT] Searching by name + contact info...")
             if phone:
                 if company_id:
                     cursor.execute("""
@@ -1261,9 +1278,18 @@ class PostgreSQLDatabaseWrapper:
             row = cursor.fetchone()
             
             if row:
+                print(f"[DB_CLIENT] ✅ Found existing client: ID={row['id']}")
                 return row['id']
             else:
-                return self.add_client(name, phone, email, date_of_birth, company_id=company_id)
+                print(f"[DB_CLIENT] Creating new client...")
+                new_id = self.add_client(name, phone, email, date_of_birth, company_id=company_id)
+                print(f"[DB_CLIENT] ✅ Created new client: ID={new_id}")
+                return new_id
+        except Exception as e:
+            print(f"[DB_CLIENT] ❌ Error in find_or_create_client: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
         finally:
             self.return_connection(conn)
     
@@ -1524,19 +1550,29 @@ class PostgreSQLDatabaseWrapper:
                     property_type: str = None, charge: float = None, company_id: int = None,
                     duration_minutes: int = 60) -> Optional[int]:
         """Add a new booking"""
+        print(f"[DB_BOOKING] ========== ADDING BOOKING ==========")
+        print(f"[DB_BOOKING] client_id={client_id}, calendar_event_id={calendar_event_id}")
+        print(f"[DB_BOOKING] appointment_time={appointment_time}, service_type={service_type}")
+        print(f"[DB_BOOKING] phone={phone_number}, email={email}, company_id={company_id}")
+        print(f"[DB_BOOKING] urgency={urgency}, address={address}, eircode={eircode}")
+        print(f"[DB_BOOKING] property_type={property_type}, charge={charge}, duration={duration_minutes}")
+        
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             # If phone/email not provided, get from client record
             if not phone_number and not email:
+                print(f"[DB_BOOKING] No phone/email provided, fetching from client {client_id}")
                 cursor.execute("SELECT phone, email FROM clients WHERE id = %s", (client_id,))
                 client = cursor.fetchone()
                 if client:
                     phone_number = client.get('phone')
                     email = client.get('email')
+                    print(f"[DB_BOOKING] Got from client: phone={phone_number}, email={email}")
             
             # Insert booking with company_id and duration_minutes
             if charge is not None:
+                print(f"[DB_BOOKING] Inserting booking with charge...")
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
@@ -1546,6 +1582,7 @@ class PostgreSQLDatabaseWrapper:
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
                       phone_number, email, urgency, address, eircode, property_type, charge, company_id, duration_minutes))
             else:
+                print(f"[DB_BOOKING] Inserting booking without charge...")
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
@@ -1557,8 +1594,10 @@ class PostgreSQLDatabaseWrapper:
             
             result = cursor.fetchone()
             booking_id = result['id'] if result else None
+            print(f"[DB_BOOKING] Booking inserted with ID: {booking_id}")
             
             # Update client stats
+            print(f"[DB_BOOKING] Updating client stats...")
             cursor.execute("""
                 UPDATE clients 
                 SET total_appointments = total_appointments + 1,
@@ -1568,10 +1607,14 @@ class PostgreSQLDatabaseWrapper:
             """, (appointment_time, datetime.now(), client_id))
             
             conn.commit()
+            print(f"[DB_BOOKING] ✅ Booking committed successfully: ID={booking_id}")
             return booking_id
         except Exception as e:
             conn.rollback()
-            print(f"Error adding booking: {e}")
+            print(f"[DB_BOOKING] ❌ Error adding booking: {e}")
+            print(f"[DB_BOOKING] Exception type: {type(e).__name__}")
+            import traceback
+            traceback.print_exc()
             return None
         finally:
             self.return_connection(conn)

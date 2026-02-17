@@ -1,22 +1,49 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '../../context/AuthContext';
 import PhoneConfigModal from '../modals/PhoneConfigModal';
 import { getBusinessSettings, updateBusinessSettings } from '../../services/api';
 import './OnboardingWizard.css';
 
-function OnboardingWizard({ onComplete, onDismiss }) {
+const STEPS = [
+  {
+    id: 'service-area',
+    title: 'Service Area',
+    icon: 'fa-map-marker-alt',
+    iconClass: 'welcome-icon',
+    description: 'Where do you provide services?'
+  },
+  {
+    id: 'payment',
+    title: 'Payment Details',
+    icon: 'fa-university',
+    iconClass: '',
+    description: 'Bank details for invoices'
+  },
+  {
+    id: 'phone',
+    title: 'AI Phone Number',
+    icon: 'fa-phone',
+    iconClass: 'phone-icon',
+    description: 'Your AI receptionist number'
+  }
+];
+
+function OnboardingWizard({ onComplete }) {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStepIndex, setCurrentStepIndex] = useState(null);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [formData, setFormData] = useState({
-    business_name: '',
-    business_phone: '',
-    coverage_area: ''
+    address: '',
+    coverage_area: '',
+    business_hours: '',
+    bank_iban: '',
+    bank_bic: '',
+    bank_name: '',
+    bank_account_holder: ''
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [completedSteps, setCompletedSteps] = useState([]);
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['business-settings'],
@@ -26,16 +53,33 @@ function OnboardingWizard({ onComplete, onDismiss }) {
     },
   });
 
-  // Pre-fill form with existing settings or signup data
+  // Pre-fill form with existing settings and determine completed steps
   useEffect(() => {
-    if (settings || user) {
+    if (settings) {
       setFormData({
-        business_name: settings?.business_name || user?.company_name || '',
-        business_phone: settings?.business_phone || user?.phone || '',
-        coverage_area: settings?.coverage_area || ''
+        address: settings?.address || '',
+        coverage_area: settings?.coverage_area || '',
+        business_hours: settings?.business_hours || '',
+        bank_iban: settings?.bank_iban || '',
+        bank_bic: settings?.bank_bic || '',
+        bank_name: settings?.bank_name || '',
+        bank_account_holder: settings?.bank_account_holder || ''
       });
+
+      // Determine which steps are complete
+      const completed = [];
+      if (settings.address || settings.coverage_area || settings.business_hours) {
+        completed.push('service-area');
+      }
+      if (settings.bank_iban || settings.bank_account_holder) {
+        completed.push('payment');
+      }
+      if (settings.twilio_phone_number) {
+        completed.push('phone');
+      }
+      setCompletedSteps(completed);
     }
-  }, [settings, user]);
+  }, [settings]);
 
   const saveMutation = useMutation({
     mutationFn: updateBusinessSettings,
@@ -50,21 +94,16 @@ function OnboardingWizard({ onComplete, onDismiss }) {
     setError('');
   };
 
-  const handleSaveAndContinue = async () => {
-    if (!formData.business_name.trim()) {
-      setError('Please enter your business name');
-      return;
-    }
-    if (!formData.business_phone.trim()) {
-      setError('Please enter your phone number');
-      return;
-    }
-    
+  const handleSaveStep = async () => {
     setSaving(true);
     setError('');
     try {
       await saveMutation.mutateAsync(formData);
-      setCurrentStep(1);
+      const currentStep = STEPS[currentStepIndex];
+      if (!completedSteps.includes(currentStep.id)) {
+        setCompletedSteps(prev => [...prev, currentStep.id]);
+      }
+      setCurrentStepIndex(null); // Return to overview
     } catch (err) {
       setError('Failed to save. Please try again.');
       console.error('Error saving:', err);
@@ -76,8 +115,10 @@ function OnboardingWizard({ onComplete, onDismiss }) {
   const handlePhoneConfigured = () => {
     setShowPhoneModal(false);
     queryClient.invalidateQueries(['business-settings']);
-    // Go to finish step
-    handleFinish();
+    if (!completedSteps.includes('phone')) {
+      setCompletedSteps(prev => [...prev, 'phone']);
+    }
+    setCurrentStepIndex(null);
   };
 
   const handleFinish = () => {
@@ -85,141 +126,196 @@ function OnboardingWizard({ onComplete, onDismiss }) {
     onComplete();
   };
 
+  const handleSkipStep = () => {
+    setCurrentStepIndex(null);
+  };
+
+  const isStepComplete = (stepId) => {
+    if (stepId === 'phone') return !!settings?.twilio_phone_number;
+    if (stepId === 'service-area') return !!(settings?.address || settings?.coverage_area || settings?.business_hours);
+    if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder);
+    return completedSteps.includes(stepId);
+  };
+
   if (isLoading) {
     return (
-      <div className="onboarding-overlay">
-        <div className="onboarding-wizard">
-          <div className="onboarding-loading">
-            <i className="fas fa-spinner fa-spin"></i>
-            <p>Loading...</p>
-          </div>
+      <div className="onboarding-inline">
+        <div className="onboarding-loading">
+          <i className="fas fa-spinner fa-spin"></i>
+          <p>Loading...</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <>
-      <div className="onboarding-overlay">
-        <div className="onboarding-wizard">
-          {/* Simple progress indicator */}
-          <div className="onboarding-progress">
-            <div className={`progress-dot ${currentStep >= 0 ? 'active' : ''}`}>
-              {currentStep > 0 ? <i className="fas fa-check"></i> : <span>1</span>}
-            </div>
-            <div className={`progress-dot ${currentStep >= 1 ? 'active' : ''}`}>
-              <span>2</span>
-            </div>
-          </div>
+  // If all steps complete, don't show anything
+  const allComplete = STEPS.every(step => isStepComplete(step.id));
+  if (allComplete) {
+    return null;
+  }
 
-          <div className="onboarding-content">
-            {/* Step 1: Business Details (combined with welcome) */}
-            {currentStep === 0 && (
-              <div className="onboarding-step">
-                <div className="step-icon welcome-icon">
-                  <i className="fas fa-hand-sparkles"></i>
-                </div>
-                <h2>Welcome{user?.owner_name ? `, ${user.owner_name.split(' ')[0]}` : ''}!</h2>
-                <p className="step-description">
-                  Let's quickly set up your AI receptionist. Just 2 quick steps.
-                </p>
-                
-                {error && (
-                  <div className="onboarding-error">
-                    <i className="fas fa-exclamation-circle"></i> {error}
-                  </div>
-                )}
-                
-                <div className="onboarding-form">
-                  <div className="form-group">
-                    <label htmlFor="ob_business_name">Business Name</label>
-                    <input
-                      type="text"
-                      id="ob_business_name"
-                      name="business_name"
-                      value={formData.business_name}
-                      onChange={handleChange}
-                      placeholder="e.g., Smith's Plumbing"
-                      autoFocus
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label htmlFor="ob_business_phone">Your Phone Number</label>
-                    <input
-                      type="tel"
-                      id="ob_business_phone"
-                      name="business_phone"
-                      value={formData.business_phone}
-                      onChange={handleChange}
-                      placeholder="e.g., 085 123 4567"
-                    />
-                    <small>For call transfers when AI is unavailable</small>
-                  </div>
-                </div>
+  // Show step detail view
+  if (currentStepIndex !== null) {
+    const currentStep = STEPS[currentStepIndex];
+    
+    return (
+      <>
+        <div className="onboarding-inline">
+          <div className="onboarding-step-card">
+            <button className="step-back-btn" onClick={() => setCurrentStepIndex(null)}>
+              <i className="fas fa-arrow-left"></i> Back to setup
+            </button>
+            
+            <div className={`step-icon ${currentStep.iconClass}`}>
+              <i className={`fas ${currentStep.icon}`}></i>
+            </div>
+            <h3>{currentStep.title}</h3>
+            <p className="step-description">{currentStep.description}</p>
 
-                <div className="step-actions">
-                  <button 
-                    className="btn btn-primary btn-lg"
-                    onClick={handleSaveAndContinue}
-                    disabled={saving}
-                  >
-                    {saving ? 'Saving...' : 'Continue'}
-                    {!saving && <i className="fas fa-arrow-right"></i>}
-                  </button>
-                </div>
-                <button className="skip-link" onClick={onDismiss}>
-                  I'll do this later
-                </button>
+            {error && (
+              <div className="onboarding-error">
+                <i className="fas fa-exclamation-circle"></i> {error}
               </div>
             )}
 
-            {/* Step 2: Phone Number */}
-            {currentStep === 1 && (
-              <div className="onboarding-step">
-                <div className="step-icon">
-                  <i className="fas fa-phone"></i>
+            {currentStep.id === 'service-area' && (
+              <div className="onboarding-form">
+                <div className="form-group">
+                  <label htmlFor="ob_address">Business Address</label>
+                  <input
+                    type="text"
+                    id="ob_address"
+                    name="address"
+                    value={formData.address}
+                    onChange={handleChange}
+                    placeholder="e.g., 123 Main St, Dublin"
+                  />
                 </div>
-                <h2>Get Your AI Phone Number</h2>
-                
+                <div className="form-group">
+                  <label htmlFor="ob_coverage_area">Service Area</label>
+                  <input
+                    type="text"
+                    id="ob_coverage_area"
+                    name="coverage_area"
+                    value={formData.coverage_area}
+                    onChange={handleChange}
+                    placeholder="e.g., Dublin and surrounding areas"
+                  />
+                  <small>Where do you provide services?</small>
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ob_business_hours">Business Hours</label>
+                  <input
+                    type="text"
+                    id="ob_business_hours"
+                    name="business_hours"
+                    value={formData.business_hours}
+                    onChange={handleChange}
+                    placeholder="e.g., Mon-Fri 9am-5pm"
+                  />
+                </div>
+                <div className="step-actions">
+                  <button className="btn btn-secondary" onClick={handleSkipStep}>
+                    Skip for now
+                  </button>
+                  <button 
+                    className="btn btn-primary"
+                    onClick={handleSaveStep}
+                    disabled={saving}
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {currentStep.id === 'payment' && (
+              <div className="onboarding-form">
+                <div className="form-group">
+                  <label htmlFor="ob_bank_account_holder">Name on Account</label>
+                  <input
+                    type="text"
+                    id="ob_bank_account_holder"
+                    name="bank_account_holder"
+                    value={formData.bank_account_holder}
+                    onChange={handleChange}
+                    placeholder="e.g., John Smith"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ob_bank_name">Bank Name</label>
+                  <input
+                    type="text"
+                    id="ob_bank_name"
+                    name="bank_name"
+                    value={formData.bank_name}
+                    onChange={handleChange}
+                    placeholder="e.g., AIB, Bank of Ireland"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ob_bank_iban">IBAN</label>
+                  <input
+                    type="text"
+                    id="ob_bank_iban"
+                    name="bank_iban"
+                    value={formData.bank_iban}
+                    onChange={handleChange}
+                    placeholder="e.g., IE29 AIBK 9311 5212 3456 78"
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="ob_bank_bic">BIC / SWIFT Code</label>
+                  <input
+                    type="text"
+                    id="ob_bank_bic"
+                    name="bank_bic"
+                    value={formData.bank_bic}
+                    onChange={handleChange}
+                    placeholder="e.g., AIBKIE2D"
+                  />
+                </div>
+                <div className="step-actions">
+                  <button className="btn btn-secondary" onClick={handleSkipStep}>
+                    Skip for now
+                  </button>
+                  <button 
+                    className="btn btn-primary"
+                    onClick={handleSaveStep}
+                    disabled={saving}
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {currentStep.id === 'phone' && (
+              <div className="onboarding-form">
                 {settings?.twilio_phone_number ? (
                   <>
-                    <p className="step-description">
-                      You're all set! Your AI receptionist is ready.
-                    </p>
                     <div className="phone-display">
                       <i className="fas fa-check-circle"></i>
                       <span>{settings.twilio_phone_number}</span>
                     </div>
                     <div className="step-actions">
-                      <button className="btn btn-primary btn-lg" onClick={handleFinish}>
-                        Go to Dashboard <i className="fas fa-arrow-right"></i>
+                      <button className="btn btn-primary" onClick={() => setCurrentStepIndex(null)}>
+                        Done
                       </button>
                     </div>
                   </>
                 ) : (
                   <>
-                    <p className="step-description">
-                      Choose a phone number customers will call to reach your AI receptionist.
-                    </p>
-                    <div className="phone-cta">
+                    <p className="phone-cta-text">Choose a phone number for your AI receptionist.</p>
+                    <div className="step-actions">
+                      <button className="btn btn-secondary" onClick={handleSkipStep}>
+                        Skip for now
+                      </button>
                       <button 
-                        className="btn btn-primary btn-lg"
+                        className="btn btn-primary"
                         onClick={() => setShowPhoneModal(true)}
                       >
-                        <i className="fas fa-phone"></i>
-                        Choose Number
-                      </button>
-                    </div>
-                    <div className="step-actions">
-                      <button 
-                        className="btn btn-secondary" 
-                        onClick={() => setCurrentStep(0)}
-                      >
-                        <i className="fas fa-arrow-left"></i> Back
-                      </button>
-                      <button className="skip-link" onClick={handleFinish}>
-                        Skip for now
+                        <i className="fas fa-phone"></i> Choose Number
                       </button>
                     </div>
                   </>
@@ -228,16 +324,63 @@ function OnboardingWizard({ onComplete, onDismiss }) {
             )}
           </div>
         </div>
-      </div>
 
-      {/* Phone Configuration Modal */}
-      <PhoneConfigModal
-        isOpen={showPhoneModal}
-        onClose={() => setShowPhoneModal(false)}
-        onSuccess={handlePhoneConfigured}
-        allowSkip={false}
-      />
-    </>
+        <PhoneConfigModal
+          isOpen={showPhoneModal}
+          onClose={() => setShowPhoneModal(false)}
+          onSuccess={handlePhoneConfigured}
+          allowSkip={false}
+        />
+      </>
+    );
+  }
+
+  // Show overview with step list
+  const completedCount = STEPS.filter(step => isStepComplete(step.id)).length;
+  
+  return (
+    <div className="onboarding-inline">
+      <div className="onboarding-overview">
+        <div className="onboarding-overview-header">
+          <div className="overview-title">
+            <i className="fas fa-clipboard-check"></i>
+            <div>
+              <h3>Quick Setup</h3>
+              <p>{completedCount} of {STEPS.length} complete</p>
+            </div>
+          </div>
+          <button className="dismiss-btn" onClick={handleFinish} title="Dismiss">
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+        
+        <div className="setup-steps-list">
+          {STEPS.map((step, index) => {
+            const isComplete = isStepComplete(step.id);
+            return (
+              <button
+                key={step.id}
+                className={`setup-step-item ${isComplete ? 'complete' : ''}`}
+                onClick={() => setCurrentStepIndex(index)}
+              >
+                <div className="step-item-icon">
+                  {isComplete ? (
+                    <i className="fas fa-check-circle"></i>
+                  ) : (
+                    <i className={`fas ${step.icon}`}></i>
+                  )}
+                </div>
+                <div className="step-item-content">
+                  <span className="step-item-title">{step.title}</span>
+                  <span className="step-item-desc">{step.description}</span>
+                </div>
+                <i className="fas fa-chevron-right step-arrow"></i>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
