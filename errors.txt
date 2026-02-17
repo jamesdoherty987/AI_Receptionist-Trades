@@ -1,0 +1,1197 @@
+1a. the filler phrases still dont get said in paralell so add debug to say th exact secodn theyr said
+
+
+
+
+1. technical difficulties:
+❌ [LLM_ERROR] Error creating LLM stream: Error code: 400 - {'error': {'message': "Invalid parameter: messages with role 'tool' must be a response to a preceeding message with 'tool_calls'.", 'type': 'invalid_request_error', 'param': 'messages.[2].role', 'code': None}}
+
+
+
+
+2.
+🤖 RECEPTIONIST: Bear with me one second. Welcome, James! I have your number as 085 263 5954. Is that the best number to reach you?
+================================================================================
+Traceback (most recent call last):
+  File "/opt/render/project/src/src/services/llm_stream.py", line 2277, in stream_llm
+    stream = client.chat.completions.create(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_utils/_utils.py", line 275, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/resources/chat/completions.py", line 829, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_base_client.py", line 1278, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_base_client.py", line 955, in request
+    return self._request(
+           ^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_base_client.py", line 1059, in _request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': "Invalid parameter: messages with role 'tool' must be a response to a preceeding message with 'tool_calls'.", 'type': 'invalid_request_error', 'param': 'messages.[2].role', 'code': None}}
+🛑 TTS end (respond) - duration: 5.14s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yeah. It's the best number. Yeah.
+
+
+
+
+3. Asks for the address at the end even after getting eircode at start
+
+
+
+
+
+4. At the greeting:
+🗣️ TTS start (greet)
+   🗣️ Starting first TTS session...
+✅ Deepgram closed
+   ⚠️ ElevenLabs TTS error (attempt 1): no close frame received or sent
+   📋 Error type: ConnectionClosed
+   📋 Error details: ConnectionClosed(None, None)
+   📋 Traceback:
+Traceback (most recent call last):
+  File "/opt/render/project/src/src/server.py", line 59, in send
+    await self._ws.send_text(str(data))
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/starlette/websockets.py", line 166, in send_text
+    await self.send({"type": "websocket.send", "text": data})
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/starlette/websockets.py", line 98, in send
+    raise RuntimeError('Cannot call "send" once a close message has been sent.')
+RuntimeError: Cannot call "send" once a close message has been sent.
+During handling of the above exception, another exception occurred:
+Traceback (most recent call last):
+  File "/opt/render/project/src/src/services/tts_elevenlabs.py", line 121, in stream_tts
+    await asyncio.gather(sender(), receiver())
+  File "/opt/render/project/src/src/services/tts_elevenlabs.py", line 112, in receiver
+    await websocket.send(json.dumps({
+  File "/opt/render/project/src/src/server.py", line 64, in send
+    raise websockets.ConnectionClosed(None, None)
+websockets.exceptions.ConnectionClosed: no close frame received or sent
+
+
+
+
+
+5. Implement something that after eg 0.9 seconds of silence,
+ it start generating a resonse, but it it hears an inturuption or more
+ speech withthin 2 seconds, it stops working and just appends that to the
+ previous speech as it mean they werent dont talking.
+
+
+
+
+
+ 6. This whole converation:
+ 
+============================================================
+============================================================
+📞 Incoming Twilio Call - AI ENABLED
+[PHONE] Caller: +353852635954
+[COMPANY] ID: 1, Name: JD
+[AI] Connecting to AI at: wss://ai-receptionist-backend-0e9i.onrender.com/media
+============================================================
+INFO:     52.91.172.89:0 - "POST /twilio/voice HTTP/1.1" 200 OK
+INFO:     54.82.99.57:0 - "WebSocket /media" [accepted]
+INFO:     connection open
+[WS] Media stream connected from 54.82.99.57:0
+✅ Twilio WS client connected: ('54.82.99.57', 0)
+✅ Deepgram connected
+❓ Unknown event: connected
+🎧 start streamSid: MZc907575b655ee7942ba515f61a7fd769
+📞 Call SID: CAe0f351dbbd156a961947b9e06cbda248
+📱 Caller phone: +353852635954
+🏢 Company ID: 1
+================================================================================
+🤖 RECEPTIONIST (GREETING): Hi, thank you for calling. How can I help you today?
+================================================================================
+🗣️ TTS start (greet)
+   🗣️ Starting first TTS session...
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Hi, thank you for calling. How can I help you today?
+================================================================================
+🛑 TTS end (greet) - duration: 0.22s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Hi. I believe in my toilet.
+================================================================================
+⏱️ Caller response time: 6.80s
+👤 USER: Hi. I believe in my toilet.
+🔊 Starting LLM response (conversation length: 2)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 2 messages
+[PHONE] Caller phone automatically captured: +353852635954
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 2, company_id=1
+[LLM_DEBUG] Last user message: Hi. I believe in my toilet....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: No problem, we can help with that. Can I get your name?
+================================================================================
+🛑 TTS end (respond) - duration: 8.75s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yep. My name is James Daugherty.
+================================================================================
+⏱️ Caller response time: 6.79s
+👤 USER: Yep. My name is James Daugherty.
+🔊 Starting LLM response (conversation length: 4)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 4 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+   🚀 PRE-CHECK: Customer lookup detected
+   🗣️ Speaking BEFORE OpenAI call: 'Bear with me one second.'
+   📝 User message: 'yep. my name is james daugherty....'
+🔀 SPLIT_TTS MARKER DETECTED (fast path): 'Bear with me one second.'
+   ⚡ INSTANT: Pre-recorded filler ready: let_me_look (9288 bytes)
+   ⚡ Starting TRUE PARALLEL: audio + prefetch
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 4, company_id=1
+[LLM_DEBUG] Last user message: Yep. My name is James Daugherty....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+⚠️ Pre-check fired but no tools were called - yielding suppressed response: 'Just to confirm, that's J-A-M-E-S D-A-U-G-H-E-R-T-...'
+   ⚡ Prefetch complete: 1 tokens buffered
+   ✓ Audio send complete
+   ⚠️ Audio send timeout (continuing anyway)
+   🔄 Starting second TTS session for remaining content...
+   ⚡ Prefetch ready: 1 tokens available
+   ✅ Second TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Bear with me one second. Just to confirm, that's J-A-M-E-S D-A-U-G-H-E-R-T-Y, is that right?
+================================================================================
+🛑 TTS end (respond) - duration: 10.28s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: No. It's j a m e s. D o h e r t y.
+================================================================================
+⏱️ Caller response time: 12.88s
+👤 USER: No. It's j a m e s. D o h e r t y.
+🔊 Starting LLM response (conversation length: 6)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 6 messages
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 6, company_id=1
+[LLM_DEBUG] Last user message: No. It's j a m e s. D o h e r t y....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Got it! Just to confirm, that's J-A-M-E-S D-O-H-E-R-T-Y, is that right?
+================================================================================
+🛑 TTS end (respond) - duration: 5.24s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: No. It's j a m e s. D o h e r t y.
+================================================================================
+⏱️ Caller response time: 2.42s
+👤 USER: No. It's j a m e s. D o h e r t y.
+🔊 Starting LLM response (conversation length: 8)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 8 messages
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 8, company_id=1
+[LLM_DEBUG] Last user message: No. It's j a m e s. D o h e r t y....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Thank you for clarifying. Just to confirm, that's J-A-M-E-S D-O-H-E-R-T-Y, is that correct?
+================================================================================
+🛑 TTS end (respond) - duration: 4.83s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yeah. That's right.
+================================================================================
+⏱️ Caller response time: 8.26s
+👤 USER: Yeah. That's right.
+🔊 Starting LLM response (conversation length: 10)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 10 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+   🚀 PRE-CHECK: Booking confirmation detected
+   🗣️ Speaking BEFORE OpenAI call: 'Bear with me one second.'
+   📝 User message: 'yeah. that's right....'
+🔀 SPLIT_TTS MARKER DETECTED (fast path): 'Bear with me one second.'
+   ⚡ INSTANT: Pre-recorded filler ready: let_me_look (9288 bytes)
+   ⚡ Starting TRUE PARALLEL: audio + prefetch
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 10, company_id=1
+[LLM_DEBUG] Last user message: Yeah. That's right....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+⚠️ WARNING: LLM completed but generated ZERO tokens!
+   Tool calls: 1
+   Full response length: 0
+🔧 LLM requested 1 tool call(s)
+   (Split marker already yielded during stream)
+   ⏳ Now executing tools...
+[TOOL_DEBUG] Preparing services for tool execution...
+[TOOL_DEBUG] Using Database Calendar (company_id=1)
+[TOOL_DEBUG] Database loaded: True
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Thank you for clarifying. Just to confirm, that's J-A-M-E-S D-O-H-E-R-T-Y, is that correct?
+================================================================================
+🛑 TTS end (respond) - duration: 4.83s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yeah. That's right.
+================================================================================
+⏱️ Caller response time: 8.26s
+👤 USER: Yeah. That's right.
+🔊 Starting LLM response (conversation length: 10)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 10 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+   🚀 PRE-CHECK: Booking confirmation detected
+   🗣️ Speaking BEFORE OpenAI call: 'Bear with me one second.'
+   📝 User message: 'yeah. that's right....'
+🔀 SPLIT_TTS MARKER DETECTED (fast path): 'Bear with me one second.'
+   ⚡ INSTANT: Pre-recorded filler ready: let_me_look (9288 bytes)
+   ⚡ Starting TRUE PARALLEL: audio + prefetch
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 10, company_id=1
+[LLM_DEBUG] Last user message: Yeah. That's right....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+⚠️ WARNING: LLM completed but generated ZERO tokens!
+   Tool calls: 1
+   Full response length: 0
+🔧 LLM requested 1 tool call(s)
+   (Split marker already yielded during stream)
+   ⏳ Now executing tools...
+[TOOL_DEBUG] Preparing services for tool execution...
+[TOOL_DEBUG] Using Database Calendar (company_id=1)
+[TOOL_DEBUG] Database loaded: True
+[TOOL_DEBUG] Services prepared: calendar=True, db=True, company_id=1
+   🔧 [TOOL_EXEC] Executing: lookup_customer
+   🔧 [TOOL_EXEC] Arguments: {
+  "customer_name": "James Doherty",
+  "phone": "0852635954"
+}
+   🔧 [TOOL_EXEC] Tool lookup_customer completed in 0.01s
+   🔧 [TOOL_RESULT] Success: True, Message: Found returning customer: james doherty, phone 0852635954, last address V94 ABC1
+   ✅ [TOOL_DONE] Result: Found returning customer: james doherty, phone 0852635954, last address V94 ABC1
+   🔄 Getting LLM response with tool results...
+   📊 Tool results being sent to LLM: [{'tool_call_id': 'call_dNo4XESWuytDL67pLUafUWJl', 'role': 'tool', 'name': 'lookup_customer', 'content': '{"success": true, "customer_exists": true, "customer_info": {"id": 17, "name": "james doherty", "pho...'}]
+   ⏳ Starting follow-up stream...
+   🗣️ Follow-up first token: 'Great...'
+   📊 Follow-up stream complete: 27 tokens generated in 0.56s
+   ✅ Follow-up complete: 27 tokens, response: 'Great to hear from you again, James! I have your address as V94 ABC1. Is this job for the same locat...'
+   ⚡ Prefetch complete: 27 tokens buffered
+   ✓ Audio send complete
+   🔄 Starting second TTS session for remaining content...
+   ⚡ Prefetch ready: 27 tokens available
+✅ Ready to listen (continuation)
+   ✅ Second TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Bear with me one second. Great to hear from you again, James! I have your address as V94 ABC1. Is this job for the same location?
+================================================================================
+🛑 TTS end (respond) - duration: 4.28s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yes.
+================================================================================
+⏱️ Caller response time: 9.18s
+👤 USER: Yes.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Yes....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Perfect! What day works best for you?
+================================================================================
+🛑 TTS end (respond) - duration: 1.73s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Maybe next Monday if you have it.
+================================================================================
+⏱️ Caller response time: 7.74s
+👤 USER: Maybe next Monday if you have it.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Maybe next Monday if you have it....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+   🗣️ IMMEDIATE: First tool call detected (check_availability) - yielding split marker with: 'Bear with me one second.'
+🔀 SPLIT_TTS MARKER DETECTED (fast path): 'Bear with me one second.'
+   ⚡ INSTANT: Pre-recorded filler ready: just_a_moment (5944 bytes)
+   ⚡ Starting TRUE PARALLEL: audio + prefetch
+⚠️ WARNING: LLM completed but generated ZERO tokens!
+   Tool calls: 1
+   Full response length: 0
+🔧 LLM requested 1 tool call(s)
+   (Split marker already yielded during stream)
+   ⏳ Now executing tools...
+[TOOL_DEBUG] Preparing services for tool execution...
+[TOOL_DEBUG] Using Database Calendar (company_id=1)
+[TOOL_DEBUG] Database loaded: True
+[TOOL_DEBUG] Services prepared: calendar=True, db=True, company_id=1
+   🔧 [TOOL_EXEC] Executing: check_availability
+   🔧 [TOOL_EXEC] Arguments: {
+  "start_date": "2026-02-22",
+  "end_date": "2026-02-22"
+}
+[AI] AI parsed '2026-02-22': {'has_date': True, 'has_time': False, 'year': 2026, 'month': 2, 'day': 22, 'needs_clarification': None}
+[DATE] Using default time 09:00 for specific date
+[DATE] Specific date: 2/22/2026
+   🔧 [TOOL_EXEC] Tool check_availability completed in 1.94s
+   🔧 [TOOL_RESULT] Success: True, Message: No available slots between Sunday, February 22 and Sunday, February 22
+   ✅ [TOOL_DONE] Result: No available slots between Sunday, February 22 and Sunday, February 22
+   🔄 Getting LLM response with tool results...
+   📊 Tool results being sent to LLM: [{'tool_call_id': 'call_39EqeFcXofmfBQO1qkuSyapx', 'role': 'tool', 'name': 'check_availability', 'content': '{"success": true, "available_slots": [], "message": "No available slots between Sunday, February 22 ...'}]
+   ⏳ Starting follow-up stream...
+   🗣️ Follow-up first token: 'I'm...'
+   📊 Follow-up stream complete: 21 tokens generated in 0.85s
+   ✅ Follow-up complete: 21 tokens, response: 'I'm sorry, but I don't have any available slots next Monday. Would you like to choose another day?...'
+   ⚡ Prefetch complete: 21 tokens buffered
+   ✓ Audio send complete
+   🔄 Starting second TTS session for remaining content...
+   ⚡ Prefetch ready: 21 tokens available
+✅ Ready to listen (continuation)
+   ✅ Second TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Bear with me one second. I'm sorry, but I don't have any available slots next Monday. Would you like to choose another day?
+================================================================================
+🛑 TTS end (respond) - duration: 6.55s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Slot?
+================================================================================
+⏱️ Caller response time: 11.59s
+👤 USER: Slot?
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Slot?...
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: I have availability on Tuesday, Wednesday, and Thursday next week. What day works for you?
+================================================================================
+🛑 TTS end (respond) - duration: 2.82s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Perfect. I'll shoot you
+================================================================================
+⏱️ Caller response time: 7.16s
+👤 USER: Perfect. I'll shoot you
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Perfect. I'll shoot you...
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Could you please confirm your preferred day and time?
+================================================================================
+🛑 TTS end (respond) - duration: 2.25s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yeah. Tuesday, whenever, our seats to come out, maybe around 09:00.
+================================================================================
+⏱️ Caller response time: 8.29s
+👤 USER: Yeah. Tuesday, whenever, our seats to come out, maybe around 09:00.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Yeah. Tuesday, whenever, our seats to come out, maybe around 09:00....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+ Caller response time: 7.74s
+👤 USER: Maybe next Monday if you have it.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Maybe next Monday if you have it....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+   🗣️ IMMEDIATE: First tool call detected (check_availability) - yielding split marker with: 'Bear with me one second.'
+🔀 SPLIT_TTS MARKER DETECTED (fast path): 'Bear with me one second.'
+   ⚡ INSTANT: Pre-recorded filler ready: just_a_moment (5944 bytes)
+   ⚡ Starting TRUE PARALLEL: audio + prefetch
+⚠️ WARNING: LLM completed but generated ZERO tokens!
+   Tool calls: 1
+   Full response length: 0
+🔧 LLM requested 1 tool call(s)
+   (Split marker already yielded during stream)
+   ⏳ Now executing tools...
+[TOOL_DEBUG] Preparing services for tool execution...
+[TOOL_DEBUG] Using Database Calendar (company_id=1)
+[TOOL_DEBUG] Database loaded: True
+[TOOL_DEBUG] Services prepared: calendar=True, db=True, company_id=1
+   🔧 [TOOL_EXEC] Executing: check_availability
+   🔧 [TOOL_EXEC] Arguments: {
+  "start_date": "2026-02-22",
+  "end_date": "2026-02-22"
+}
+[AI] AI parsed '2026-02-22': {'has_date': True, 'has_time': False, 'year': 2026, 'month': 2, 'day': 22, 'needs_clarification': None}
+[DATE] Using default time 09:00 for specific date
+[DATE] Specific date: 2/22/2026
+   🔧 [TOOL_EXEC] Tool check_availability completed in 1.94s
+   🔧 [TOOL_RESULT] Success: True, Message: No available slots between Sunday, February 22 and Sunday, February 22
+   ✅ [TOOL_DONE] Result: No available slots between Sunday, February 22 and Sunday, February 22
+   🔄 Getting LLM response with tool results...
+   📊 Tool results being sent to LLM: [{'tool_call_id': 'call_39EqeFcXofmfBQO1qkuSyapx', 'role': 'tool', 'name': 'check_availability', 'content': '{"success": true, "available_slots": [], "message": "No available slots between Sunday, February 22 ...'}]
+   ⏳ Starting follow-up stream...
+   🗣️ Follow-up first token: 'I'm...'
+   📊 Follow-up stream complete: 21 tokens generated in 0.85s
+   ✅ Follow-up complete: 21 tokens, response: 'I'm sorry, but I don't have any available slots next Monday. Would you like to choose another day?...'
+   ⚡ Prefetch complete: 21 tokens buffered
+   ✓ Audio send complete
+   🔄 Starting second TTS session for remaining content...
+   ⚡ Prefetch ready: 21 tokens available
+✅ Ready to listen (continuation)
+   ✅ Second TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Bear with me one second. I'm sorry, but I don't have any available slots next Monday. Would you like to choose another day?
+================================================================================
+🛑 TTS end (respond) - duration: 6.55s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Slot?
+================================================================================
+⏱️ Caller response time: 11.59s
+👤 USER: Slot?
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Slot?...
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: I have availability on Tuesday, Wednesday, and Thursday next week. What day works for you?
+================================================================================
+🛑 TTS end (respond) - duration: 2.82s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Perfect. I'll shoot you
+================================================================================
+⏱️ Caller response time: 7.16s
+👤 USER: Perfect. I'll shoot you
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Perfect. I'll shoot you...
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Could you please confirm your preferred day and time?
+================================================================================
+🛑 TTS end (respond) - duration: 2.25s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yeah. Tuesday, whenever, our seats to come out, maybe around 09:00.
+================================================================================
+⏱️ Caller response time: 8.29s
+👤 USER: Yeah. Tuesday, whenever, our seats to come out, maybe around 09:00.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Yeah. Tuesday, whenever, our seats to come out, maybe around 09:00....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+   🗣️ IMMEDIATE: First tool call detected (check_availability) - yielding split marker with: 'Just a moment.'
+🔀 SPLIT_TTS MARKER DETECTED (fast path): 'Just a moment.'
+   ⚡ INSTANT: Pre-recorded filler ready: let_me_look (9288 bytes)
+   ⚡ Starting TRUE PARALLEL: audio + prefetch
+⚠️ WARNING: LLM completed but generated ZERO tokens!
+   Tool calls: 1
+   Full response length: 0
+🔧 LLM requested 1 tool call(s)
+   (Split marker already yielded during stream)
+   ⏳ Now executing tools...
+[TOOL_DEBUG] Preparing services for tool execution...
+[TOOL_DEBUG] Using Database Calendar (company_id=1)
+[TOOL_DEBUG] Database loaded: True
+[TOOL_DEBUG] Services prepared: calendar=True, db=True, company_id=1
+   🔧 [TOOL_EXEC] Executing: check_availability
+   🔧 [TOOL_EXEC] Arguments: {
+  "start_date": "2026-02-24",
+  "end_date": "2026-02-24"
+}
+[AI] AI parsed '2026-02-24': {'has_date': True, 'has_time': False, 'year': 2026, 'month': 2, 'day': 24, 'needs_clarification': None}
+[DATE] Using default time 09:00 for specific date
+[DATE] Specific date: 2/24/2026
+   🔧 [TOOL_EXEC] Tool check_availability completed in 1.96s
+   🔧 [TOOL_RESULT] Success: True, Message: This week I have: Tuesday: slots from 8 am to 5 pm
+   ✅ [TOOL_DONE] Result: This week I have: Tuesday: slots from 8 am to 5 pm
+   🔄 Getting LLM response with tool results...
+   📊 Tool results being sent to LLM: [{'tool_call_id': 'call_gyaCCIC64tCYNtSQCVRppviz', 'role': 'tool', 'name': 'check_availability', 'content': '{"success": true, "available_slots": [{"date": "Tuesday, February 24, 2026", "time": "08:00 AM", "is...'}]
+   ⏳ Starting follow-up stream...
+   🗣️ Follow-up first token: 'I...'
+   📊 Follow-up stream complete: 25 tokens generated in 0.67s
+   ✅ Follow-up complete: 25 tokens, response: 'I have slots available on Tuesday from 8 AM to 5 PM. Would you like to book for 9 AM?...'
+   ⚡ Prefetch complete: 25 tokens buffered
+   ✓ Audio send complete
+   🔄 Starting second TTS session for remaining content...
+   ⚡ Prefetch ready: 25 tokens available
+✅ Ready to listen (continuation)
+   ✅ Second TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Just a moment. I have slots available on Tuesday from 8 AM to 5 PM. Would you like to book for 9 AM?
+================================================================================
+🛑 TTS end (respond) - duration: 5.57s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yeah. 9AM sounds good.
+================================================================================
+⏱️ Caller response time: 11.10s
+👤 USER: Yeah. 9AM sounds good.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Yeah. 9AM sounds good....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Can I get your name, please?
+================================================================================
+🛑 TTS end (respond) - duration: 1.95s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yeah. It's j a n z s d o h e r t y.
+================================================================================
+⏱️ Caller response time: 12.19s
+👤 USER: Yeah. It's j a n z s d o h e r t y.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Yeah. It's j a n z s d o h e r t y....
+[LLM_DEBUG] OpenAI stream created successfully
+Traceback (most recent call last):
+  File "/opt/render/project/src/src/services/llm_stream.py", line 2277, in stream_llm
+    stream = client.chat.completions.create(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_utils/_utils.py", line 275, in wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/resources/chat/completions.py", line 829, in create
+    return self._post(
+           ^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_base_client.py", line 1278, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_base_client.py", line 955, in request
+    return self._request(
+           ^^^^^^^^^^^^^^
+  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_base_client.py", line 1059, in _request
+    raise self._make_status_error_from_response(err.response) from None
+openai.BadRequestError: Error code: 400 - {'error': {'message': "Invalid parameter: messages with role 'tool' must be a response to a preceeding message with 'tool_calls'.", 'type': 'invalid_request_error', 'param': 'messages.[2].role', 'code': None}}
+INFO:     connection closed
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Just to confirm, that's J-A-N-Z-S-D-O-H-E-R-T-Y, is that right?
+================================================================================
+🛑 TTS end (respond) - duration: 2.21s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: No. It's j a n e s. A d o h e r t y.
+================================================================================
+⏱️ Caller response time: 10.93s
+👤 USER: No. It's j a n e s. A d o h e r t y.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: No. It's j a n e s. A d o h e r t y....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Got it! Just to confirm, that's J-A-N-E-S A-D-O-H-E-R-T-Y, is that right?
+================================================================================
+🛑 TTS end (respond) - duration: 2.33s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: No. It's j a m e s. D o h e r t y.
+================================================================================
+⏱️ Caller response time: 13.61s
+👤 USER: No. It's j a m e s. D o h e r t y.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: No. It's j a m e s. D o h e r t y....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Thanks for that! Just to confirm, that's J-A-M-E-S D-O-H-E-R-T-Y, is that right?
+================================================================================
+🛑 TTS end (respond) - duration: 2.52s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yep.
+================================================================================
+⏱️ Caller response time: 7.32s
+👤 USER: Yep.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Yep....
+❌ [LLM_ERROR] Error creating LLM stream: Error code: 400 - {'error': {'message': "Invalid parameter: messages with role 'tool' must be a response to a preceeding message with 'tool_calls'.", 'type': 'invalid_request_error', 'param': 'messages.[2].role', 'code': None}}
+[LLM_ERROR] Exception type: BadRequestError
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: I apologize, I'm having technical difficulties. Please try again.
+================================================================================
+🛑 TTS end (respond) - duration: 1.52s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+🛑 stop
+################################################################################
+📊 CALL SUMMARY
+################################################################################
+📞 Call SID: CAe0f351dbbd156a961947b9e06cbda248
+📱 Caller: +353852635954
+🔢 Total messages: 32
+📝 FULL CONVERSATION TRANSCRIPT:
+--------------------------------------------------------------------------------
+[1] 🤖 RECEPTIONIST: Hi, thank you for calling. How can I help you today?
+[2] 🤖 RECEPTIONIST: Hi, thank you for calling. How can I help you today?
+[3] 👤 CALLER: Hi. I believe in my toilet.
+[4] 🤖 RECEPTIONIST: No problem, we can help with that. Can I get your name?
+[5] 👤 CALLER: Yep. My name is James Daugherty.
+[6] 🤖 RECEPTIONIST: Bear with me one second. Just to confirm, that's J-A-M-E-S D-A-U-G-H-E-R-T-Y, is that right?
+[7] 👤 CALLER: No. It's j a m e s. D o h e r t y.
+[8] 🤖 RECEPTIONIST: Got it! Just to confirm, that's J-A-M-E-S D-O-H-E-R-T-Y, is that right?
+[9] 👤 CALLER: No. It's j a m e s. D o h e r t y.
+[10] 🤖 RECEPTIONIST: Thank you for clarifying. Just to confirm, that's J-A-M-E-S D-O-H-E-R-T-Y, is that correct?
+[11] 👤 CALLER: Yeah. That's right.
+[12] 🤖 RECEPTIONIST: Bear with me one second. Great to hear from you again, James! I have your address as V94 ABC1. Is this job for the same location?
+[13] 👤 CALLER: Yes.
+[14] 🤖 RECEPTIONIST: Perfect! What day works best for you?
+[15] 👤 CALLER: Maybe next Monday if you have it.
+[16] 🤖 RECEPTIONIST: Bear with me one second. I'm sorry, but I don't have any available slots next Monday. Would you like to choose another day?
+[17] 👤 CALLER: Slot?
+[18] 🤖 RECEPTIONIST: I have availability on Tuesday, Wednesday, and Thursday next week. What day works for you?
+[19] 👤 CALLER: Perfect. I'll shoot you
+[20] 🤖 RECEPTIONIST: Could you please confirm your preferred day and time?
+[21] 👤 CALLER: Yeah. Tuesday, whenever, our seats to come out, maybe around 09:00.
+[22] 🤖 RECEPTIONIST: Just a moment. I have slots available on Tuesday from 8 AM to 5 PM. Would you like to book for 9 AM?
+[23] 👤 CALLER: Yeah. 9AM sounds good.
+[24] 🤖 RECEPTIONIST: Can I get your name, please?
+[25] 👤 CALLER: Yeah. It's j a n z s d o h e r t y.
+[26] 🤖 RECEPTIONIST: Just to confirm, that's J-A-N-Z-S-D-O-H-E-R-T-Y, is that right?
+[27] 👤 CALLER: No. It's j a n e s. A d o h e r t y.
+[28] 🤖 RECEPTIONIST: Got it! Just to confirm, that's J-A-N-E-S A-D-O-H-E-R-T-Y, is that right?
+[29] 👤 CALLER: No. It's j a m e s. D o h e r t y.
+[30] 🤖 RECEPTIONIST: Thanks for that! Just to confirm, that's J-A-M-E-S D-O-H-E-R-T-Y, is that right?
+[31] 👤 CALLER: Yep.
+[32] 🤖 RECEPTIONIST: I apologize, I'm having technical difficulties. Please try again.
+--------------------------------------------------------------------------------
+⏱️ RESPONSE TIME STATS:
+   Average: 9.08s
+   Fastest: 2.42s
+   Slowest: 13.61s
+📝 Generating call summary for job card...
+[AI] Call summarized successfully | operation=summarize_call | duration_ms=2925.48 | urgency=normal | has_location=True | has_access_info=False
+[INFO] No client found for phone +353852635954
+ℹ️ No job card updated (no booking found or no job content)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+6. infinite loop of asking for name and address and time etc:
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=False, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Can I do next week sometime?...
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+   🗣️ IMMEDIATE: First tool call detected (check_availability) - yielding split marker with: 'Let me check that for you.'
+🔀 SPLIT_TTS MARKER DETECTED (fast path): 'Let me check that for you.'
+   ⚡ INSTANT: Pre-recorded filler ready: bear_with_me (11517 bytes)
+   ⚡ Starting TRUE PARALLEL: audio + prefetch
+⚠️ WARNING: LLM completed but generated ZERO tokens!
+   Tool calls: 1
+   Full response length: 0
+🔧 LLM requested 1 tool call(s)
+   (Split marker already yielded during stream)
+   ⏳ Now executing tools...
+[TOOL_DEBUG] Preparing services for tool execution...
+[TOOL_DEBUG] Using Database Calendar (company_id=1)
+[TOOL_DEBUG] Database loaded: True
+[TOOL_DEBUG] Services prepared: calendar=True, db=True, company_id=1
+   🔧 [TOOL_EXEC] Executing: check_availability
+   🔧 [TOOL_EXEC] Arguments: {
+  "start_date": "2026-02-22",
+  "end_date": "2026-02-28"
+}
+[AI] AI parsed '2026-02-22': {'has_date': True, 'has_time': False, 'year': 2026, 'month': 2, 'day': 22}
+[DATE] Using default time 09:00 for specific date
+[DATE] Specific date: 2/22/2026
+[AI] AI parsed '2026-02-28': {'has_date': True, 'has_time': False, 'year': 2026, 'month': 2, 'day': 28}
+[DATE] Using default time 17:00 for specific date
+[DATE] Specific date: 2/28/2026
+   🔧 [TOOL_EXEC] Tool check_availability completed in 16.68s
+   🔧 [TOOL_RESULT] Success: True, Message: This week I have: Monday: slots from 8 am to 4 pm, Tuesday: slots from 8 am to 5 pm, Wednesday: slot
+   ✅ [TOOL_DONE] Result: This week I have: Monday: slots from 8 am to 4 pm, Tuesday: slots from 8 am to 5 pm, Wednesday: slots from 8 am to 5 pm, Thursday: slots from 8 am to 5 pm, and Friday: slots from 9 am to 5 pm
+   🔄 Getting LLM response with tool results...
+   📊 Tool results being sent to LLM: [{'tool_call_id': 'call_Gxk4yfx0E0GY1iV8k2UHmj6U', 'role': 'tool', 'name': 'check_availability', 'content': '{"success": true, "available_slots": [{"date": "Monday, February 23, 2026", "time": "08:00 AM", "iso...'}]
+   ⏳ Starting follow-up stream...
+   🗣️ Follow-up first token: 'I...'
+   📊 Follow-up stream complete: 48 tokens generated in 2.51s
+   ✅ Follow-up complete: 48 tokens, response: 'I have availability next week: Monday from 8 AM to 4 PM, Tuesday to Thursday from 8 AM to 5 PM, and ...'
+   ⚡ Prefetch complete: 48 tokens buffered
+   ✓ Audio send complete
+   ⚠️ Audio send timeout (continuing anyway)
+   🔄 Starting second TTS session for remaining content...
+   ⚡ Prefetch ready: 48 tokens available
+⚠️ WATCHDOG: Speaking timeout - forcing reset
+🛑 TTS cancelled
+🛑 TTS end (respond) - duration: 32.07s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+🛑 stop
+################################################################################
+📊 CALL SUMMARY
+################################################################################
+📞 Call SID: CA3aaeacaee23539ae908aeff8db42b9bd
+📱 Caller: +353852635954
+🔢 Total messages: 21
+📝 FULL CONVERSATION TRANSCRIPT:
+--------------------------------------------------------------------------------
+[1] 🤖 RECEPTIONIST: Hi, thank you for calling. How can I help you today?
+[2] 🤖 RECEPTIONIST: Hi, thank you for calling. How can I help you today?
+[3] 👤 CALLER: Hi.
+[4] 🤖 RECEPTIONIST: What can I help you with today?
+[5] 👤 CALLER: I burst a pipe. I'm just wondering if you can help with that.
+[6] 🤖 RECEPTIONIST: No problem, we can help with that. Can I get your name?
+[7] 👤 CALLER: Yeah. My name is James Dorothy.
+[8] 🤖 RECEPTIONIST: Bear with me one second. Just to confirm, that's J-A-M-E-S D-O-R-O-T-H-Y, is that right?
+[9] 👤 CALLER: No. It's j a m e s.
+[10] 🤖 RECEPTIONIST: Could you spell that for me?
+[11] 👤 CALLER: D o h e r t y.
+[12] 🤖 RECEPTIONIST: Just to confirm, that's J-A-M-E-S D-O-H-E-R-T-Y, is that right?
+[13] 👤 CALLER: Yeah. I just did j a n e s d o h e r t y.
+[14] 🤖 RECEPTIONIST: Could you please confirm the spelling again? I have J-A-N-E-S D-O-H-E-R-T-Y. Is that correct?
+[15] 👤 CALLER: Yes. Right.
+[16] 🤖 RECEPTIONIST: Bear with me one second. Great to hear from you again, James! I have your number as 085 263 5954 and your address as V94 ABC1. Is this job for the same location?
+[17] 👤 CALLER: No. J a m e s. D o h e r t y.
+[18] 🤖 RECEPTIONIST: I understand, but I have your address as V94 ABC1. What's the new address for this job?
+[19] 👤 CALLER: Yeah. It is.
+[20] 🤖 RECEPTIONIST: Perfect! When would suit you best for the job?
+[21] 👤 CALLER: Can I do next week sometime?
+--------------------------------------------------------------------------------
+⏱️ RESPONSE TIME STATS:
+   Average: 8.98s
+   Fastest: 5.72s
+   Slowest: 12.69s
+📝 Generating call summary for job card...
+[AI] Call summarized successfully | operation=summarize_call | duration_ms=3720.28 | urgency=urgent | has_location=False | has_access_info=False
+[INFO] No client found for phone +353852635954
+ℹ️ No job card updated (no booking found or no job content)
+################################################################################
+✅ Deepgram closed
+============================================================
+📞 Incoming Twilio Call - AI ENABLED
+[PHONE] Caller: +353852635954
+[COMPANY] ID: 1, Name: JD
+[AI] Connecting to AI at: wss://ai-receptionist-backend-0e9i.onrender.com/media
+============================================================
+INFO:     18.215.174.144:0 - "POST /twilio/voice HTTP/1.1" 200 OK
+INFO:     54.167.40.222:0 - "WebSocket /media" [accepted]
+INFO:     connection open
+================================================================================
+⏱️ Caller response time: 6.11s
+👤 USER: Yeah. It's James Doherty.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Yeah. It's James Doherty....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Just to confirm, that's J-A-M-E-S D-O-H-E-R-T-Y, is that right?
+================================================================================
+🛑 TTS end (respond) - duration: 2.18s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yeah. It's rice.
+================================================================================
+⏱️ Caller response time: 6.98s
+👤 USER: Yeah. It's rice.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Yeah. It's rice....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+   🗣️ IMMEDIATE: First tool call detected (lookup_customer) - yielding split marker with: 'Let me check that for you.'
+🔀 SPLIT_TTS MARKER DETECTED (fast path): 'Let me check that for you.'
+   ⚡ INSTANT: Pre-recorded filler ready: one_moment (6687 bytes)
+   ⚡ Starting TRUE PARALLEL: audio + prefetch
+⚠️ WARNING: LLM completed but generated ZERO tokens!
+   Tool calls: 1
+   Full response length: 0
+🔧 LLM requested 1 tool call(s)
+   (Split marker already yielded during stream)
+   ⏳ Now executing tools...
+[TOOL_DEBUG] Preparing services for tool execution...
+[TOOL_DEBUG] Using Database Calendar (company_id=1)
+[TOOL_DEBUG] Database loaded: True
+[TOOL_DEBUG] Services prepared: calendar=True, db=True, company_id=1
+   🔧 [TOOL_EXEC] Executing: lookup_customer
+   🔧 [TOOL_EXEC] Arguments: {
+  "customer_name": "James Doherty",
+  "phone": "085 263 5954"
+}
+   🔧 [TOOL_EXEC] Tool lookup_customer completed in 0.01s
+   🔧 [TOOL_RESULT] Success: True, Message: Found returning customer: james doherty, phone 0852635954, last address V94 ABC1
+   ✅ [TOOL_DONE] Result: Found returning customer: james doherty, phone 0852635954, last address V94 ABC1
+   🔄 Getting LLM response with tool results...
+   📊 Tool results being sent to LLM: [{'tool_call_id': 'call_Pn7ptmos9uygjU1sycmVxw1H', 'role': 'tool', 'name': 'lookup_customer', 'content': '{"success": true, "customer_exists": true, "customer_info": {"id": 17, "name": "james doherty", "pho...'}]
+   ⏳ Starting follow-up stream...
+   🗣️ Follow-up first token: 'Great...'
+   📊 Follow-up stream complete: 27 tokens generated in 0.41s
+   ✅ Follow-up complete: 27 tokens, response: 'Great to hear from you again, James! I have your address as V94 ABC1. Is this job for the same locat...'
+   ⚡ Prefetch complete: 27 tokens buffered
+   ✓ Audio send complete
+   🔄 Starting second TTS session for remaining content...
+   ⚡ Prefetch ready: 27 tokens available
+✅ Ready to listen (continuation)
+   ✅ Second TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Let me check that for you. Great to hear from you again, James! I have your address as V94 ABC1. Is this job for the same location?
+================================================================================
+🛑 TTS end (respond) - duration: 3.82s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yeah. It's rice.
+================================================================================
+⏱️ Caller response time: 5.78s
+👤 USER: Yeah. It's rice.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Yeah. It's rice....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Perfect! What day works best for you?
+================================================================================
+🛑 TTS end (respond) - duration: 2.18s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yeah.
+================================================================================
+⏱️ Caller response time: 1.52s
+👤 USER: Yeah.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Yeah....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: Could you please specify the day you'd like to schedule the appointment?
+================================================================================
+🛑 TTS end (respond) - duration: 1.84s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+================================================================================
+👤 CALLER: Yeah.
+================================================================================
+⏱️ Caller response time: 2.50s
+👤 USER: Yeah.
+📝 Trimmed conversation to 13 messages
+🔊 Starting LLM response (conversation length: 13)
+🗣️ TTS start (respond)
+   🗣️ Starting first TTS session...
+[AI] stream_llm called with 13 messages
+🔍 Appointment keyword check: likely_appointment=True, in_reschedule_flow=None, in_cancel_flow=None, active_booking=False
+⚡ Skipping ALL appointment detection - LLM handles everything with native tools
+[INFO] Loaded business info for company_id=1: JD
+[LLM_DEBUG] Creating OpenAI stream with model=gpt-4o-mini
+[LLM_DEBUG] Messages count: 13, company_id=1
+[LLM_DEBUG] Last user message: Yeah....
+[LLM_DEBUG] OpenAI stream created successfully
+[LLM_DEBUG] Starting to iterate over stream...
+✅ Ready to listen (text streaming)
+   ✅ First TTS session complete
+================================================================================
+🤖 RECEPTIONIST: I need a specific day for the appointment. Could you let me know which day works for you?
+================================================================================
+🛑 TTS end (respond) - duration: 2.75s
+👂 Ready to receive audio again (speaking=False, llm_processing=False)
+🛑 stop
+################################################################################
+📊 CALL SUMMARY
+################################################################################
+📞 Call SID: CA95b2736ee8cbc227937dc902feb6143a
+📱 Caller: +353852635954
+🔢 Total messages: 28
+📝 FULL CONVERSATION TRANSCRIPT:
+--------------------------------------------------------------------------------
+[1] 🤖 RECEPTIONIST: Hi, thank you for calling. How can I help you today?
+[2] 🤖 RECEPTIONIST: Hi, thank you for calling. How can I help you today?
+[3] 👤 CALLER: Hi. And I have a leak in my bathroom.
+[4] 🤖 RECEPTIONIST: No problem, we can help with that. Can I get your name?
+[5] 👤 CALLER: Yeah. My name is James Dorothy.
+[6] 🤖 RECEPTIONIST: Just a moment. Just to confirm, that's J-A-M-E-S D-O-R-O-T-H-Y, is that right?
+[7] 👤 CALLER: j a n e s d o h e r t y.
+[8] 🤖 RECEPTIONIST: Could you spell that for me again?
+[9] 👤 CALLER: J a n e s d o h e r t y.
+[10] 🤖 RECEPTIONIST: Let me check that for you. Great to hear from you again, James! I have your number as 0852635954 and your address as V94 ABC1. Is this job for the same location?
+[11] 👤 CALLER: Yeah. It is. It's for the same location.
+[12] 🤖 RECEPTIONIST: Perfect! What day works for you?
+[13] 👤 CALLER: If you have something next week, that would be good. Maybe next Monday.
+[14] 🤖 RECEPTIONIST: Bear with me one second. I'm sorry, but there are no available slots next Monday. Would you like to choose another day?
+[15] 👤 CALLER: next Tuesday if you have this.
+[16] 🤖 RECEPTIONIST: Bear with me one second. I have slots available next Tuesday from 8 AM to 4 PM. What time works best for you?
+[17] 👤 CALLER: 8AM should be good.
+[18] 🤖 RECEPTIONIST: Let me have a look. Can I get your name, please?
+[19] 👤 CALLER: Yeah. It's James Doherty.
+[20] 🤖 RECEPTIONIST: Just to confirm, that's J-A-M-E-S D-O-H-E-R-T-Y, is that right?
+[21] 👤 CALLER: Yeah. It's rice.
+[22] 🤖 RECEPTIONIST: Let me check that for you. Great to hear from you again, James! I have your address as V94 ABC1. Is this job for the same location?
+[23] 👤 CALLER: Yeah. It's rice.
+[24] 🤖 RECEPTIONIST: Perfect! What day works best for you?
+[25] 👤 CALLER: Yeah.
+[26] 🤖 RECEPTIONIST: Could you please specify the day you'd like to schedule the appointment?
+[27] 👤 CALLER: Yeah.
+[28] 🤖 RECEPTIONIST: I need a specific day for the appointment. Could you let me know which day works for you?
+--------------------------------------------------------------------------------
+⏱️ RESPONSE TIME STATS:
+   Average: 7.42s
+   Fastest: 1.52s
+INFO:     connection closed
