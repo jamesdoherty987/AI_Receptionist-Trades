@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { formatDateTime, getStatusBadgeClass } from '../../utils/helpers';
+import { useToast } from '../Toast';
 import AddJobModal from '../modals/AddJobModal';
 import JobDetailModal from '../modals/JobDetailModal';
 import './JobsTab.css';
@@ -9,9 +9,18 @@ import './JobsTab.css';
 function JobsTab({ bookings }) {
   const { hasActiveSubscription } = useAuth();
   const isSubscriptionActive = hasActiveSubscription();
+  const { addToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
+
+  const handleAddClick = () => {
+    if (!isSubscriptionActive) {
+      addToast('You need an active subscription to add jobs', 'warning');
+      return;
+    }
+    setShowAddModal(true);
+  };
 
   // Get job time status for color coding
   const getJobTimeStatus = (appointmentTime) => {
@@ -193,17 +202,10 @@ function JobsTab({ bookings }) {
         
         <button 
           className="btn btn-primary" 
-          onClick={() => setShowAddModal(true)}
-          disabled={!isSubscriptionActive}
-          title={!isSubscriptionActive ? 'Subscribe to add jobs' : ''}
+          onClick={handleAddClick}
         >
-          <i className="fas fa-plus"></i> Add Job
+          <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Job
         </button>
-        {!isSubscriptionActive && (
-          <Link to="/settings?tab=subscription" className="btn btn-secondary btn-sm" style={{ marginLeft: '8px' }}>
-            <i className="fas fa-lock"></i> Subscribe
-          </Link>
-        )}
       </div>
 
       {/* Jobs List Grouped by Day */}

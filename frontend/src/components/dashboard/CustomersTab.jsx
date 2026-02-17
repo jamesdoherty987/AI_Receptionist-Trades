@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { formatPhone } from '../../utils/helpers';
+import { useToast } from '../Toast';
 import AddClientModal from '../modals/AddClientModal';
 import CustomerDetailModal from '../modals/CustomerDetailModal';
 import './CustomersTab.css';
@@ -9,9 +9,18 @@ import './CustomersTab.css';
 function CustomersTab({ clients, bookings = [] }) {
   const { hasActiveSubscription } = useAuth();
   const isSubscriptionActive = hasActiveSubscription();
+  const { addToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState(null);
+
+  const handleAddClick = () => {
+    if (!isSubscriptionActive) {
+      addToast('You need an active subscription to add customers', 'warning');
+      return;
+    }
+    setShowAddModal(true);
+  };
 
   // Calculate booking counts for each client
   const clientsWithBookings = useMemo(() => {
@@ -55,17 +64,10 @@ function CustomersTab({ clients, bookings = [] }) {
           </div>
           <button 
             className="btn btn-primary btn-sm" 
-            onClick={() => setShowAddModal(true)}
-            disabled={!isSubscriptionActive}
-            title={!isSubscriptionActive ? 'Subscribe to add customers' : ''}
+            onClick={handleAddClick}
           >
-            <i className="fas fa-plus"></i> Add Customer
+            <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Customer
           </button>
-          {!isSubscriptionActive && (
-            <Link to="/settings?tab=subscription" className="btn btn-secondary btn-sm" style={{ marginLeft: '8px' }}>
-              <i className="fas fa-lock"></i> Subscribe
-            </Link>
-          )}
         </div>
       </div>
 

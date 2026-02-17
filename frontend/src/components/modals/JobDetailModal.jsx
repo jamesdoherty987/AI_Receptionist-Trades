@@ -13,6 +13,7 @@ import {
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
+import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../Toast';
 import { formatDateTime, getStatusBadgeClass, formatCurrency, formatPhone } from '../../utils/helpers';
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
@@ -20,6 +21,8 @@ import './JobDetailModal.css';
 
 function JobDetailModal({ isOpen, onClose, jobId }) {
   const queryClient = useQueryClient();
+  const { hasActiveSubscription } = useAuth();
+  const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
   const [showAssignWorker, setShowAssignWorker] = useState(false);
   const [forceAssign, setForceAssign] = useState(false);
@@ -265,6 +268,10 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
   });
 
   const handleSendInvoice = () => {
+    if (!isSubscriptionActive) {
+      addToast('You need an active subscription to send invoices', 'warning');
+      return;
+    }
     if (!job.estimated_charge && !job.charge) {
       addToast('Cannot send invoice: No charge amount set', 'warning');
       return;
@@ -428,14 +435,16 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                 </button>
                 {(job.estimated_charge || job.charge) && (
                   <button 
-                    className={`btn btn-invoice ${invoiceConfig && !invoiceConfig.can_send_invoice ? 'btn-disabled' : ''}`}
+                    className={`btn btn-invoice ${(invoiceConfig && !invoiceConfig.can_send_invoice) || !isSubscriptionActive ? 'btn-disabled' : ''}`}
                     onClick={handleSendInvoice}
                     disabled={invoiceMutation.isPending || (invoiceConfig && !invoiceConfig.can_send_invoice)}
-                    title={invoiceConfig && !invoiceConfig.can_send_invoice 
-                      ? (invoiceConfig.warnings?.[0] || 'Invoice service not configured') 
-                      : `Send invoice via ${invoiceConfig?.service_name || 'email'}`}
+                    title={!isSubscriptionActive 
+                      ? 'Subscription required to send invoices'
+                      : invoiceConfig && !invoiceConfig.can_send_invoice 
+                        ? (invoiceConfig.warnings?.[0] || 'Invoice service not configured') 
+                        : `Send invoice via ${invoiceConfig?.service_name || 'email'}`}
                   >
-                    <i className={`fas ${invoiceMutation.isPending ? 'fa-spinner fa-spin' : 'fa-file-invoice-dollar'}`}></i>
+                    <i className={`fas ${invoiceMutation.isPending ? 'fa-spinner fa-spin' : !isSubscriptionActive ? 'fa-lock' : 'fa-file-invoice-dollar'}`}></i>
                     {invoiceMutation.isPending ? 'Sending...' : `Send Invoice${invoiceConfig?.delivery_method === 'sms' ? ' (SMS)' : ''}`}
                   </button>
                 )}

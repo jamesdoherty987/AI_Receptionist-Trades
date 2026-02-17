@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '../../context/AuthContext';
 import { createClient } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
@@ -10,8 +8,6 @@ import './AddClientModal.css';
 function AddClientModal({ isOpen, onClose }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
-  const { hasActiveSubscription } = useAuth();
-  const isSubscriptionActive = hasActiveSubscription();
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -49,18 +45,6 @@ function AddClientModal({ isOpen, onClose }) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add New Customer">
-      {!isSubscriptionActive ? (
-        <div className="subscription-required-message">
-          <div className="subscription-required-content">
-            <i className="fas fa-lock"></i>
-            <h3>Subscription Required</h3>
-            <p>Your trial has expired. Subscribe to continue adding customers.</p>
-            <Link to="/settings?tab=subscription" className="btn btn-primary" onClick={onClose}>
-              <i className="fas fa-credit-card"></i> Subscribe Now
-            </Link>
-          </div>
-        </div>
-      ) : (
       <form onSubmit={handleSubmit} className="form">
         <div className="form-group">
           <label className="form-label">Name *</label>
@@ -116,7 +100,6 @@ function AddClientModal({ isOpen, onClose }) {
           </button>
         </div>
       </form>
-      )}
     </Modal>
   );
 }
