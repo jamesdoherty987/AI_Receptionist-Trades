@@ -231,11 +231,15 @@ def get_subscription_status(customer_id: str) -> Dict[str, Any]:
         
         sub = subscriptions.data[0]
         
+        # Use get() for safe attribute access (handles different API versions)
+        trial_end = getattr(sub, 'trial_end', None)
+        current_period_end = getattr(sub, 'current_period_end', None)
+        
         return {
             'status': sub.status,
-            'trial_end': datetime.fromtimestamp(sub.trial_end) if sub.trial_end else None,
-            'current_period_end': datetime.fromtimestamp(sub.current_period_end) if sub.current_period_end else None,
-            'cancel_at_period_end': sub.cancel_at_period_end,
+            'trial_end': datetime.fromtimestamp(trial_end) if trial_end else None,
+            'current_period_end': datetime.fromtimestamp(current_period_end) if current_period_end else None,
+            'cancel_at_period_end': getattr(sub, 'cancel_at_period_end', False),
             'subscription_id': sub.id
         }
         
