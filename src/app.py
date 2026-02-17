@@ -911,6 +911,8 @@ def get_current_user():
     # Get subscription info
     subscription_info = get_subscription_info(company)
     
+    print(f"[AUTH_CHECK] Subscription for {company['email']}: tier={subscription_info['tier']}, is_active={subscription_info['is_active']}")
+    
     return jsonify({
         "authenticated": True,
         "user": {
@@ -1337,6 +1339,15 @@ def get_subscription_info(company: dict) -> dict:
     current_period_end = company.get('subscription_current_period_end')
     cancel_at_period_end = bool(company.get('subscription_cancel_at_period_end', 0))
     
+    print(f"[GET_SUB_INFO] Company {company.get('id')} raw data:")
+    print(f"[GET_SUB_INFO]   - subscription_tier: {subscription_tier}")
+    print(f"[GET_SUB_INFO]   - subscription_status: {subscription_status}")
+    print(f"[GET_SUB_INFO]   - trial_end: {trial_end}")
+    print(f"[GET_SUB_INFO]   - current_period_end: {current_period_end}")
+    print(f"[GET_SUB_INFO]   - cancel_at_period_end: {cancel_at_period_end}")
+    print(f"[GET_SUB_INFO]   - stripe_customer_id: {company.get('stripe_customer_id')}")
+    print(f"[GET_SUB_INFO]   - stripe_subscription_id: {company.get('stripe_subscription_id')}")
+    
     # Parse dates if they're strings and ensure they're timezone-naive for comparison
     if isinstance(trial_end, str):
         try:
@@ -1373,11 +1384,15 @@ def get_subscription_info(company: dict) -> dict:
     is_active = False
     if subscription_tier == 'trial':
         is_active = bool(trial_end and trial_end > now)
+        print(f"[GET_SUB_INFO] Trial check: trial_end={trial_end}, now={now}, is_active={is_active}")
     elif subscription_tier == 'pro':
         # Pro is active if status is active, trialing, or past_due (grace period)
         is_active = subscription_status in ('active', 'trialing', 'past_due')
+        print(f"[GET_SUB_INFO] Pro check: status={subscription_status}, is_active={is_active}")
+    else:
+        print(f"[GET_SUB_INFO] Unknown tier '{subscription_tier}', is_active=False")
     
-    return {
+    result = {
         'tier': subscription_tier,
         'status': subscription_status,
         'is_active': is_active,
@@ -1388,6 +1403,10 @@ def get_subscription_info(company: dict) -> dict:
         'stripe_customer_id': company.get('stripe_customer_id'),
         'stripe_subscription_id': company.get('stripe_subscription_id')
     }
+    
+    print(f"[GET_SUB_INFO] Returning: tier={result['tier']}, is_active={result['is_active']}")
+    
+    return result
 
 
 def subscription_required(f):
@@ -1438,6 +1457,9 @@ def get_subscription_status_endpoint():
     
     subscription_info = get_subscription_info(company)
     
+    # Debug logging
+    print(f"[SUBSCRIPTION_STATUS] Company {company['id']}: tier={subscription_info['tier']}, is_active={subscription_info['is_active']}, stripe_sub_id={company.get('stripe_subscription_id')}")
+    
     return jsonify({
         "success": True,
         "subscription": subscription_info
@@ -1449,19 +1471,28 @@ def get_subscription_status_endpoint():
 @rate_limit(max_requests=10, window_seconds=60)
 def create_checkout():
     """Create a Stripe checkout session for subscription"""
+    print(f"[CHECKOUT] ========== CREATE CHECKOUT CALLED ==========")
+    print(f"[CHECKOUT] Company ID from session: {session.get('company_id')}")
+    
     db = get_database()
     company = db.get_company(session['company_id'])
     
     if not company:
+        print(f"[CHECKOUT] ERROR: Company not found!")
         return jsonify({"error": "Company not found"}), 404
     
+    print(f"[CHECKOUT] Company: {company['id']} ({company['email']})")
+    print(f"[CHECKOUT] Current stripe_customer_id: {company.get('stripe_customer_id')}")
+    
     if not is_stripe_configured():
+        print(f"[CHECKOUT] ERROR: Stripe not configured!")
         return jsonify({"error": "Payment system not configured"}), 503
     
     data = request.json or {}
     
     # Get base URL for redirects
     base_url = data.get('base_url', os.getenv('FRONTEND_URL', 'http://localhost:3000'))
+    print(f"[CHECKOUT] Base URL: {base_url}")
     
     result = create_checkout_session(
         company_id=company['id'],
@@ -1473,9 +1504,21 @@ def create_checkout():
     )
     
     if result:
+        print(f"[CHECKOUT] Checkout session created successfully:")
+        print(f"[CHECKOUT]   - session_id: {result.get('session_id')}")
+        print(f"[CHECKOUT]   - customer_id: {result.get('customer_id')}")
+        
         # Save the Stripe customer ID immediately so sync can work even before webhook
-        if result.get('customer_id') and not company.get('stripe_customer_id'):
-            db.update_company(company['id'], stripe_customer_id=result['customer_id'])
+        if result.get('customer_id'):
+            if not company.get('stripe_customer_id'):
+                db.update_company(company['id'], stripe_customer_id=result['customer_id'])
+                print(f"[CHECKOUT] SAVED stripe_customer_id={result['customer_id']} to database for company {company['id']}")
+            else:
+                print(f"[CHECKOUT] stripe_customer_id already exists: {company.get('stripe_customer_id')}")
+        
+        # Verify it was saved
+        updated_company = db.get_company(company['id'])
+        print(f"[CHECKOUT] Verified stripe_customer_id in DB: {updated_company.get('stripe_customer_id')}")
         
         return jsonify({
             "success": True,
@@ -1483,6 +1526,7 @@ def create_checkout():
             "session_id": result['session_id']
         })
     else:
+        print(f"[CHECKOUT] ERROR: create_checkout_session returned None!")
         return jsonify({"error": "Failed to create checkout session"}), 500
 
 
@@ -1644,60 +1688,99 @@ def sync_subscription():
     Manually sync subscription status from Stripe.
     Useful if webhook was delayed or missed.
     """
+    print(f"[SYNC] ========== SYNC ENDPOINT CALLED ==========")
+    print(f"[SYNC] Session company_id: {session.get('company_id')}")
+    
     db = get_database()
     company = db.get_company(session['company_id'])
     
     if not company:
+        print(f"[SYNC] ERROR: Company not found in database!")
         return jsonify({"error": "Company not found"}), 404
     
     customer_id = company.get('stripe_customer_id')
     subscription_id = company.get('stripe_subscription_id')
+    current_tier = company.get('subscription_tier')
+    current_status = company.get('subscription_status')
+    
+    print(f"[SYNC] Company {company['id']} ({company['email']}):")
+    print(f"[SYNC]   - stripe_customer_id: {customer_id}")
+    print(f"[SYNC]   - stripe_subscription_id: {subscription_id}")
+    print(f"[SYNC]   - current_tier: {current_tier}")
+    print(f"[SYNC]   - current_status: {current_status}")
     
     if not customer_id:
+        print(f"[SYNC] No Stripe customer found - returning current subscription info")
+        sub_info = get_subscription_info(company)
+        print(f"[SYNC] Returning: tier={sub_info['tier']}, is_active={sub_info['is_active']}")
         return jsonify({
             "success": True,
             "message": "No Stripe customer found - nothing to sync",
-            "subscription": get_subscription_info(company)
+            "subscription": sub_info
         })
     
     try:
         import stripe
+        print(f"[SYNC] Stripe API key configured: {bool(stripe.api_key)}")
         
         # Get the latest subscription from Stripe
         if subscription_id:
+            print(f"[SYNC] Trying to retrieve subscription by ID: {subscription_id}")
             try:
                 sub = stripe.Subscription.retrieve(subscription_id)
-            except stripe.error.InvalidRequestError:
-                # Subscription ID is invalid or deleted, try to find by customer
+                print(f"[SYNC] Found subscription by ID: status={sub.status}")
+            except stripe.error.InvalidRequestError as e:
+                print(f"[SYNC] Subscription ID invalid: {e}")
                 subscription_id = None
         
         if not subscription_id:
+            print(f"[SYNC] Searching for subscription by customer_id: {customer_id}")
+            
             # Try to find active subscription by customer
-            # First try active subscriptions
+            print(f"[SYNC] Trying status='active'...")
             subs = stripe.Subscription.list(customer=customer_id, status='active', limit=1)
+            print(f"[SYNC] Found {len(subs.data)} active subscriptions")
+            
             if not subs.data:
-                # Try trialing subscriptions
+                print(f"[SYNC] Trying status='trialing'...")
                 subs = stripe.Subscription.list(customer=customer_id, status='trialing', limit=1)
+                print(f"[SYNC] Found {len(subs.data)} trialing subscriptions")
+            
             if not subs.data:
-                # Try past_due subscriptions (grace period)
+                print(f"[SYNC] Trying status='past_due'...")
                 subs = stripe.Subscription.list(customer=customer_id, status='past_due', limit=1)
+                print(f"[SYNC] Found {len(subs.data)} past_due subscriptions")
+            
             if not subs.data:
-                # Try all subscriptions as last resort
-                subs = stripe.Subscription.list(customer=customer_id, limit=1)
+                print(f"[SYNC] Trying all subscriptions...")
+                subs = stripe.Subscription.list(customer=customer_id, limit=5)
+                print(f"[SYNC] Found {len(subs.data)} total subscriptions")
+                for i, s in enumerate(subs.data):
+                    print(f"[SYNC]   Sub {i}: id={s.id}, status={s.status}")
             
             if subs.data:
                 sub = subs.data[0]
                 subscription_id = sub.id
+                print(f"[SYNC] Using subscription: id={subscription_id}, status={sub.status}")
             else:
+                print(f"[SYNC] NO SUBSCRIPTION FOUND IN STRIPE for customer {customer_id}")
+                sub_info = get_subscription_info(company)
                 return jsonify({
                     "success": True,
                     "message": "No subscription found in Stripe",
-                    "subscription": get_subscription_info(company)
+                    "subscription": sub_info
                 })
         
         # Update database based on Stripe subscription status
         status = sub.status
         is_active = status in ('active', 'trialing', 'past_due')
+        
+        print(f"[SYNC] Stripe subscription details:")
+        print(f"[SYNC]   - id: {subscription_id}")
+        print(f"[SYNC]   - status: {status}")
+        print(f"[SYNC]   - is_active: {is_active}")
+        print(f"[SYNC]   - cancel_at_period_end: {sub.cancel_at_period_end}")
+        print(f"[SYNC]   - current_period_end: {sub.current_period_end}")
         
         update_data = {
             'stripe_subscription_id': subscription_id,
@@ -1709,22 +1792,31 @@ def sync_subscription():
             update_data['subscription_current_period_end'] = datetime.fromtimestamp(sub.current_period_end)
         
         # If subscription is active or trialing (paid subscription with trial period), set tier to pro
-        # Note: 'trialing' here means a paid Stripe subscription with a trial period, NOT our free trial
-        # Our free trial doesn't create a Stripe subscription at all
         if is_active:
             update_data['subscription_tier'] = 'pro'
             update_data['trial_start'] = None
             update_data['trial_end'] = None
+            print(f"[SYNC] SETTING TIER TO 'pro' for company {company['id']}")
         elif status in ('canceled', 'unpaid', 'incomplete_expired'):
             update_data['subscription_tier'] = 'expired'
+            print(f"[SYNC] SETTING TIER TO 'expired' for company {company['id']}")
+        else:
+            print(f"[SYNC] NOT CHANGING TIER - status is: {status}")
+        
+        print(f"[SYNC] Update data: {update_data}")
         
         db.update_company(company['id'], **update_data)
+        print(f"[SYNC] Database updated for company {company['id']}")
         
         # Get updated subscription info
         updated_company = db.get_company(company['id'])
         subscription_info = get_subscription_info(updated_company)
         
-        print(f"[SUCCESS] Synced subscription for company {company['id']}: {status} -> tier={subscription_info['tier']}")
+        print(f"[SYNC] ========== SYNC COMPLETED ==========")
+        print(f"[SYNC] Final result for company {company['id']}:")
+        print(f"[SYNC]   - tier: {subscription_info['tier']}")
+        print(f"[SYNC]   - is_active: {subscription_info['is_active']}")
+        print(f"[SYNC]   - status: {subscription_info['status']}")
         
         return jsonify({
             "success": True,
@@ -1733,42 +1825,56 @@ def sync_subscription():
         })
         
     except stripe.error.StripeError as e:
-        print(f"[ERROR] Stripe error syncing subscription: {e}")
+        print(f"[SYNC] STRIPE ERROR: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": f"Failed to sync from Stripe: {str(e)}"}), 500
     except Exception as e:
-        print(f"[ERROR] Error syncing subscription: {e}")
+        print(f"[SYNC] UNEXPECTED ERROR: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": "Failed to sync subscription"}), 500
 
 
 @app.route("/stripe/webhook", methods=["POST"])
 def stripe_webhook():
     """Handle Stripe webhook events"""
+    print(f"[WEBHOOK] ========== WEBHOOK RECEIVED ==========")
+    
     payload = request.data
     sig_header = request.headers.get('Stripe-Signature', '')
     
+    print(f"[WEBHOOK] Payload size: {len(payload)} bytes")
+    print(f"[WEBHOOK] Signature header present: {bool(sig_header)}")
+    
     if not STRIPE_WEBHOOK_SECRET:
-        print("⚠️ Stripe webhook secret not configured")
+        print("[WEBHOOK] ERROR: Stripe webhook secret not configured!")
         return jsonify({"error": "Webhook not configured"}), 400
     
     result = handle_webhook_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     
     if not result['success']:
-        print(f"[ERROR] Webhook error: {result['error']}")
+        print(f"[WEBHOOK] ERROR: Webhook validation failed: {result['error']}")
         return jsonify({"error": result['error']}), 400
     
     event_type = result['event_type']
     data = result['data']
     db = get_database()
     
+    print(f"[WEBHOOK] Event type: {event_type}")
+    print(f"[WEBHOOK] Event ID: {result.get('event_id')}")
+    
     def get_company_id_from_event(event_data, db_instance):
         """Helper to get company_id from event data with fallbacks"""
         # Try metadata first
         company_id = int(event_data.get('metadata', {}).get('company_id', 0))
+        print(f"[WEBHOOK] Looking for company_id in metadata: {company_id}")
         if company_id:
             return company_id
         
         # Try to find by stripe_customer_id
         customer_id = event_data.get('customer')
+        print(f"[WEBHOOK] Looking for company by customer_id: {customer_id}")
         if customer_id:
             company = db_instance.get_company_by_stripe_customer_id(customer_id)
             if company:
@@ -1786,20 +1892,30 @@ def stripe_webhook():
     try:
         if event_type == 'checkout.session.completed':
             # Subscription checkout completed
+            print(f"[WEBHOOK] Processing checkout.session.completed...")
+            print(f"[WEBHOOK] Session data keys: {list(data.keys())}")
+            print(f"[WEBHOOK] Metadata: {data.get('metadata')}")
+            
             company_id = get_company_id_from_event(data, db)
             customer_id = data.get('customer')
             subscription_id = data.get('subscription')
             
-            print(f"[WEBHOOK] checkout.session.completed - company_id: {company_id}, customer_id: {customer_id}, subscription_id: {subscription_id}")
+            print(f"[WEBHOOK] checkout.session.completed:")
+            print(f"[WEBHOOK]   - company_id: {company_id}")
+            print(f"[WEBHOOK]   - customer_id: {customer_id}")
+            print(f"[WEBHOOK]   - subscription_id: {subscription_id}")
             
             if company_id and subscription_id:
                 # Get subscription details
                 import stripe
                 sub = stripe.Subscription.retrieve(subscription_id)
                 
-                print(f"[WEBHOOK] Subscription status from Stripe: {sub.status}, current_period_end: {sub.current_period_end}")
+                print(f"[WEBHOOK] Stripe subscription retrieved:")
+                print(f"[WEBHOOK]   - status: {sub.status}")
+                print(f"[WEBHOOK]   - current_period_end: {sub.current_period_end}")
                 
                 # Clear trial fields when upgrading to pro to ensure clean state
+                print(f"[WEBHOOK] Updating company {company_id} to pro...")
                 db.update_company(
                     company_id,
                     subscription_tier='pro',
@@ -1811,9 +1927,19 @@ def stripe_webhook():
                     trial_start=None,
                     trial_end=None
                 )
-                print(f"[SUCCESS] Subscription activated for company {company_id} - tier set to 'pro', trial fields cleared")
+                
+                # Verify the update
+                updated_company = db.get_company(company_id)
+                print(f"[WEBHOOK] Company {company_id} updated successfully:")
+                print(f"[WEBHOOK]   - subscription_tier: {updated_company.get('subscription_tier')}")
+                print(f"[WEBHOOK]   - subscription_status: {updated_company.get('subscription_status')}")
+                print(f"[WEBHOOK]   - stripe_subscription_id: {updated_company.get('stripe_subscription_id')}")
             else:
-                print(f"[WARNING] checkout.session.completed: Could not find company_id (metadata: {data.get('metadata')}, customer: {customer_id})")
+                print(f"[WEBHOOK] WARNING: Could not process checkout.session.completed!")
+                print(f"[WEBHOOK]   - company_id found: {company_id}")
+                print(f"[WEBHOOK]   - subscription_id found: {subscription_id}")
+                print(f"[WEBHOOK]   - metadata: {data.get('metadata')}")
+                print(f"[WEBHOOK]   - customer: {customer_id}")
         
         elif event_type == 'customer.subscription.updated':
             # Subscription updated (e.g., renewed, cancelled)

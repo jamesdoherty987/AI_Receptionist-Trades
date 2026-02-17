@@ -48,6 +48,7 @@ function Settings() {
     }
     
     if (subscriptionStatus === 'success') {
+      console.log('[SUBSCRIPTION] ========== CHECKOUT SUCCESS ==========');
       setSaveMessage('Subscription activated successfully! Welcome to BookedForYou Pro.');
       setActiveTab('subscription');
       // Clear the URL parameter
@@ -55,25 +56,36 @@ function Settings() {
       
       // Poll for subscription update (webhook may take a moment to process)
       const pollSubscription = async (attempts = 0) => {
-        if (isCancelled) return;
+        console.log(`[SUBSCRIPTION] Poll attempt ${attempts + 1}/15`);
+        if (isCancelled) {
+          console.log('[SUBSCRIPTION] Polling cancelled');
+          return;
+        }
         
         try {
           // Try to sync from Stripe directly (bypasses webhook delay)
+          console.log('[SUBSCRIPTION] Calling syncSubscription...');
           const syncResponse = await syncSubscription();
+          console.log('[SUBSCRIPTION] Sync response:', syncResponse.data);
           
           if (syncResponse.data.subscription?.tier === 'pro') {
+            console.log('[SUBSCRIPTION] SUCCESS! Tier is now pro');
             // Refresh auth state and query cache
             await checkAuth();
             queryClient.invalidateQueries(['subscription-status']);
             return; // Success - stop polling
+          } else {
+            console.log('[SUBSCRIPTION] Tier is still:', syncResponse.data.subscription?.tier);
           }
         } catch (error) {
+          console.log('[SUBSCRIPTION] Sync error:', error.response?.data || error.message);
           // Sync may fail - continue polling
         }
         
         if (isCancelled) return;
         
         // Also refresh auth state
+        console.log('[SUBSCRIPTION] Calling checkAuth...');
         await checkAuth();
         queryClient.invalidateQueries(['subscription-status']);
         
@@ -86,18 +98,24 @@ function Settings() {
         const cachedData = queryClient.getQueryData(['subscription-status']);
         const authSub = JSON.parse(sessionStorage.getItem('authSubscription') || '{}');
         
+        console.log('[SUBSCRIPTION] Cached data tier:', cachedData?.tier);
+        console.log('[SUBSCRIPTION] Auth session tier:', authSub.tier);
+        
         // Check if subscription is now pro from either source
         const isPro = cachedData?.tier === 'pro' || authSub.tier === 'pro';
         
         if (!isPro && attempts < 15) {
           // Exponential backoff: 1s, 1.5s, 2s, 2.5s, etc. up to 15 attempts (~30s total)
           const delay = 1000 + (attempts * 500);
+          console.log(`[SUBSCRIPTION] Not pro yet, retrying in ${delay}ms...`);
           pollTimeoutId = setTimeout(() => pollSubscription(attempts + 1), delay);
         } else if (isPro) {
+          console.log('[SUBSCRIPTION] SUCCESS! Subscription is now pro');
           // Final refresh to ensure everything is in sync
           queryClient.invalidateQueries(['subscription-status']);
           await checkAuth();
         } else {
+          console.log('[SUBSCRIPTION] FAILED: Max attempts reached, tier still not pro');
           setSaveMessage('Payment received! Your subscription is being activated. Please click the refresh button if the status doesn\'t update shortly.');
         }
       };

@@ -770,6 +770,11 @@ class PostgreSQLDatabaseWrapper:
     
     def update_company(self, company_id: int, **kwargs) -> bool:
         """Update company information"""
+        print(f"[DB_UPDATE] ========== UPDATE COMPANY {company_id} ==========")
+        print(f"[DB_UPDATE] Fields to update: {list(kwargs.keys())}")
+        for key, value in kwargs.items():
+            print(f"[DB_UPDATE]   - {key}: {value}")
+        
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
@@ -805,23 +810,28 @@ class PostgreSQLDatabaseWrapper:
                         values.append(value)
                     else:
                         skipped_fields.append(key)
+                else:
+                    print(f"[DB_UPDATE] WARNING: Field '{key}' not in allowed_fields!")
             
             if skipped_fields:
-                print(f"[WARNING] Skipped fields not in database: {skipped_fields}")
+                print(f"[DB_UPDATE] WARNING: Skipped fields not in database: {skipped_fields}")
             
             if fields:
                 values.append(datetime.now())
                 values.append(company_id)
                 query = f"UPDATE companies SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
+                print(f"[DB_UPDATE] Executing query with {len(fields)} fields")
                 try:
                     cursor.execute(query, values)
                     conn.commit()
                     success = cursor.rowcount > 0
+                    print(f"[DB_UPDATE] Query executed, rows affected: {cursor.rowcount}, success: {success}")
                 except Exception as e:
                     conn.rollback()
-                    print(f"[ERROR] Error updating company {company_id}: {e}")
+                    print(f"[DB_UPDATE] ERROR executing query: {e}")
                     raise
             else:
+                print(f"[DB_UPDATE] No valid fields to update!")
                 success = False
             
             return success
