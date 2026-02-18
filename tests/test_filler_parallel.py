@@ -13,6 +13,7 @@ import asyncio
 import time
 import sys
 import os
+import pytest
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -124,9 +125,10 @@ def test_filler_detection():
         print(f"{status} '{phrase}' -> {result} (expected {expected}) [{reason}]")
     
     print(f"\nResults: {passed}/{len(test_phrases)} passed")
-    return failed == 0
+    assert failed == 0
 
 
+@pytest.mark.asyncio
 async def test_parallel_execution_simulation():
     """Test that parallel execution works correctly (simulated, no API needed)"""
     print("\n" + "="*80)
@@ -191,9 +193,10 @@ async def test_parallel_execution_simulation():
     else:
         print(f"\n⚠️ Would fall back to TTS (slower but still works)")
     
-    return True
+    assert True  # Test passes if we get here
 
 
+@pytest.mark.asyncio
 async def test_full_flow_with_mock_stream():
     """Test the full flow with a mock LLM stream"""
     print("\n" + "="*80)

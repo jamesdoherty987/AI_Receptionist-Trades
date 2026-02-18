@@ -4671,6 +4671,7 @@ def chat():
     """Chat with the AI receptionist"""
     import asyncio
     from src.services.llm_stream import stream_llm, process_appointment_with_calendar, SYSTEM_PROMPT
+    from src.services.call_state import create_call_state
     
     data = request.json
     user_message = data.get('message', '')
@@ -4702,8 +4703,11 @@ def chat():
     async def get_response():
         response_text = ""
         try:
+            # Create per-request call state for web chat
+            # Note: Web chat is stateless, so state doesn't persist between requests
+            chat_call_state = create_call_state()
             # Don't pass caller_phone since this is web chat
-            async for token in stream_llm(conversation, process_appointment_with_calendar, caller_phone=None):
+            async for token in stream_llm(conversation, process_appointment_with_calendar, caller_phone=None, call_state=chat_call_state):
                 # Filter out special markers that are meant for TTS only
                 if token != "<<<FLUSH>>>":
                     response_text += token
@@ -4738,9 +4742,10 @@ def chat():
 @app.route("/api/chat/reset", methods=["POST"])
 def chat_reset():
     """Reset chat conversation state"""
-    from src.services.llm_stream import reset_appointment_state
-    reset_appointment_state()
-    return jsonify({"message": "Chat state reset"})
+    # Note: With per-call state, this endpoint is less relevant
+    # Each chat request now gets its own CallState
+    # This endpoint is kept for backwards compatibility
+    return jsonify({"message": "Chat state reset (note: each request now has isolated state)"})
 
 
 @app.route("/api/finances", methods=["GET"])

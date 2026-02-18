@@ -1,5 +1,9 @@
 """
 LLM streaming service with appointment handling
+
+CONCURRENCY NOTE: This module is designed to handle multiple concurrent phone calls.
+All per-call state is encapsulated in the CallState class, which must be passed
+to stream_llm() for each call. Do NOT use global state for call-specific data.
 """
 import re
 import os
@@ -11,6 +15,7 @@ from openai import OpenAI
 from src.utils.config import config
 from src.utils.date_parser import parse_datetime
 from src.services.calendar_tools import CALENDAR_TOOLS, execute_tool_call
+from src.services.call_state import CallState, create_call_state
 
 # --- AI-based utilities for text parsing ---
 import re
@@ -346,49 +351,29 @@ def remove_repetition(text: str) -> str:
     return text
 
 
-# Global state to track appointment booking across multiple turns
-_appointment_state = {
-    "active_booking": False,
-    "initial_request": None,  # Track user's original request (e.g., "book job")
-    "customer_name": None,
-    "datetime": None,
-    "service_type": None,
-    "job_address": None,  # Address or eircode where work will be performed
-    "job_description": None,  # What needs doing
-    "urgency_level": None,  # Same-Day/Scheduled/Quote (no emergency)
-    "property_type": None,  # Residential/Commercial
-    "gathering_started": False,
-    "already_booked": False,  # Track if we've already completed a booking
-    "phone_number": None,
-    "phone_confirmed": False,
-    "caller_identified": False,  # Track if we've identified the caller
-    "client_info": None,  # Store client info from database
-    "last_booking_turn": 0,  # Track which turn the last booking was made (for cooldown)
-    "current_turn": 0  # Track current conversation turn
-}
+# DEPRECATED: Global state removed for concurrent call support.
+# Use CallState class instead - each call gets its own instance.
+# This global is kept ONLY for backwards compatibility with resetcall_state()
+call_state = None  # Will be lazily initialized if needed for legacy code
 
-def reset_appointment_state():
-    """Reset appointment tracking state"""
+def resetcall_state(call_state: CallState = None):
+    """
+    Reset appointment tracking state.
+    
+    DEPRECATED: This function exists for backwards compatibility.
+    For new code, create a new CallState instance instead.
+    
+    Args:
+        call_state: Optional CallState instance to reset. If None, resets the
+                   legacy global state (not recommended for concurrent calls).
+    """
+    if call_state is not None:
+        call_state.reset()
+        return
+    
+    # Legacy behavior: reset global state (NOT safe for concurrent calls)
     global _appointment_state
-    _appointment_state = {
-        "active_booking": False,
-        "initial_request": None,
-        "customer_name": None,
-        "datetime": None,
-        "service_type": None,
-        "job_address": None,
-        "job_description": None,
-        "urgency_level": None,
-        "property_type": None,
-        "gathering_started": False,
-        "already_booked": False,
-        "phone_number": None,
-        "phone_confirmed": False,
-        "caller_identified": False,
-        "client_info": None,
-        "last_booking_turn": 0,
-        "current_turn": 0
-    }
+    _appointment_state = create_call_state()
 
 def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_email: str = None, company_id: int = None) -> dict:
     """
@@ -487,7 +472,7 @@ def spell_out_name(name: str) -> str:
     
     return " ".join(spelled_parts)
 
-async def stream_llm(messages, process_appointment_callback=None, caller_phone=None, company_id=None):
+async def stream_llm(messages, process_appointment_callback=None, caller_phone=None, company_id=None, call_state: CallState = None):
     """
     Stream LLM responses with appointment detection
     
@@ -496,6 +481,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         process_appointment_callback: Optional callback for appointment processing
         caller_phone: Caller's phone number from Twilio
         company_id: Company ID for multi-tenant business context
+        call_state: Per-call state for concurrent call handling. If None, creates
+                   a new instance (not recommended for production - pass explicitly).
         
     Yields:
         Text tokens from LLM
@@ -506,12 +493,18 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     print(f"[AI] stream_llm called with {len(messages)} messages")
 
     import re  # Import at function level for use in birth year detection
-    global _appointment_state
+    
+    # Use provided call_state or create a new one (for backwards compatibility)
+    # WARNING: Creating a new CallState here means state won't persist across turns
+    # For proper concurrent call handling, always pass call_state from media_handler
+    if call_state is None:
+        print("[WARNING] stream_llm called without call_state - creating temporary instance")
+        call_state = create_call_state()
     
     # Track conversation turn for post-booking cooldown
-    _appointment_state["current_turn"] = _appointment_state.get("current_turn", 0) + 1
-    current_turn = _appointment_state["current_turn"]
-    last_booking_turn = _appointment_state.get("last_booking_turn", 0)
+    call_state.current_turn = call_state.current_turn + 1
+    current_turn = call_state.current_turn
+    last_booking_turn = call_state.last_booking_turn
     
     # Post-booking cooldown: only the immediate turn after booking, be extra careful about reschedule detection
     in_post_booking_cooldown = (last_booking_turn > 0 and current_turn - last_booking_turn <= 1)
@@ -532,22 +525,22 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                 idx = user_text.lower().index(phrase) + len(phrase)
                 potential_name = user_text[idx:].strip().split('.')[0].strip()
                 if potential_name and len(potential_name.split()) <= 3:
-                    _appointment_state["customer_name"] = potential_name.title()
-                    _appointment_state["caller_identified"] = False
+                    call_state["customer_name"] = potential_name.title()
+                    call_state["caller_identified"] = False
                     print(f"[INFO] Name correction detected: {potential_name.title()}")
                 break
     
     # --- Birth Year Detection (Trades business - optional, not required) ---
     birth_year = detect_birth_year(user_text)
     if birth_year:
-        _appointment_state["birth_year"] = birth_year
+        call_state["birth_year"] = birth_year
         print(f"[INFO] Birth year detected: {birth_year}")
     
     # Store phone number if provided and not already stored
-    if caller_phone and not _appointment_state.get("phone_number"):
-        _appointment_state["phone_number"] = caller_phone
+    if caller_phone and not call_state.get("phone_number"):
+        call_state["phone_number"] = caller_phone
         # Automatically confirm phone if it came from Twilio (caller_phone)
-        _appointment_state["phone_confirmed"] = True
+        call_state["phone_confirmed"] = True
         print(f"[PHONE] Caller phone automatically captured: {caller_phone}")
     
     # Check if last user message contains appointment intent
@@ -568,9 +561,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         likely_appointment = any(word in user_text.lower() for word in appointment_keywords)
         
         # Track initial request if user asks to book appointment BEFORE identification
-        if not _appointment_state.get("caller_identified") and not _appointment_state.get("initial_request"):
+        if not call_state.get("caller_identified") and not call_state.get("initial_request"):
             if any(word in user_text.lower() for word in ["book", "schedule", "make an appointment", "get an appointment"]):
-                _appointment_state["initial_request"] = user_text
+                call_state["initial_request"] = user_text
                 print(f"[INFO] Captured initial request: {user_text}")
         
         # Don't trigger appointment detection if user is providing DOB
@@ -582,28 +575,28 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
             likely_appointment = False
         
         # Check if we're in an active booking or reschedule flow
-        if _appointment_state["active_booking"]:
+        if call_state["active_booking"]:
             likely_appointment = True
         
         # Check if we're in an active reschedule flow
-        in_reschedule_flow = (_appointment_state.get("reschedule_active") or
-                             _appointment_state.get("reschedule_found_appointment") or 
-                             _appointment_state.get("reschedule_name_confirmed") or 
-                             _appointment_state.get("reschedule_final_asked"))
+        in_reschedule_flow = (call_state.get("reschedule_active") or
+                             call_state.get("reschedule_found_appointment") or 
+                             call_state.get("reschedule_name_confirmed") or 
+                             call_state.get("reschedule_final_asked"))
         if in_reschedule_flow:
             likely_appointment = True
-            print(f"[RESCHEDULE] In active reschedule flow - forcing appointment detection (flags: active={_appointment_state.get('reschedule_active')}, found={_appointment_state.get('reschedule_found_appointment')}, name_confirmed={_appointment_state.get('reschedule_name_confirmed')}, final_asked={_appointment_state.get('reschedule_final_asked')})")
+            print(f"[RESCHEDULE] In active reschedule flow - forcing appointment detection (flags: active={call_state.get('reschedule_active')}, found={call_state.get('reschedule_found_appointment')}, name_confirmed={call_state.get('reschedule_name_confirmed')}, final_asked={call_state.get('reschedule_final_asked')})")
         
         # Check if we're in an active cancel flow
-        in_cancel_flow = (_appointment_state.get("cancel_active") or
-                         _appointment_state.get("cancel_found_appointment") or 
-                         _appointment_state.get("cancel_name_confirmed") or 
-                         _appointment_state.get("cancel_final_asked"))
+        in_cancel_flow = (call_state.get("cancel_active") or
+                         call_state.get("cancel_found_appointment") or 
+                         call_state.get("cancel_name_confirmed") or 
+                         call_state.get("cancel_final_asked"))
         if in_cancel_flow:
             likely_appointment = True
-            print(f"🗑️ In active cancel flow - forcing appointment detection (flags: active={_appointment_state.get('cancel_active')}, found={_appointment_state.get('cancel_found_appointment')}, name_confirmed={_appointment_state.get('cancel_name_confirmed')}, final_asked={_appointment_state.get('cancel_final_asked')})")
+            print(f"🗑️ In active cancel flow - forcing appointment detection (flags: active={call_state.get('cancel_active')}, found={call_state.get('cancel_found_appointment')}, name_confirmed={call_state.get('cancel_name_confirmed')}, final_asked={call_state.get('cancel_final_asked')})")
         
-        print(f"🔍 Appointment keyword check: likely_appointment={likely_appointment}, in_reschedule_flow={in_reschedule_flow}, in_cancel_flow={in_cancel_flow}, active_booking={_appointment_state['active_booking']}")
+        print(f"🔍 Appointment keyword check: likely_appointment={likely_appointment}, in_reschedule_flow={in_reschedule_flow}, in_cancel_flow={in_cancel_flow}, active_booking={call_state['active_booking']}")
         
         # PERFORMANCE OPTIMIZATION: Skip ALL appointment detection - let LLM use its tools
         # The main LLM has check_availability, cancel_appointment, reschedule_appointment tools
@@ -618,19 +611,19 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
             # CRITICAL: During reschedule/cancel confirmation step, don't pass full conversation history
             # to avoid AI hallucinating times from previous messages
             reschedule_awaiting_confirmation = (
-                _appointment_state.get("reschedule_found_appointment") and 
-                not _appointment_state.get("reschedule_name_confirmed")
+                call_state.get("reschedule_found_appointment") and 
+                not call_state.get("reschedule_name_confirmed")
             )
             
             cancel_awaiting_confirmation = (
-                _appointment_state.get("cancel_found_appointment") and 
-                not _appointment_state.get("cancel_name_confirmed")
+                call_state.get("cancel_found_appointment") and 
+                not call_state.get("cancel_name_confirmed")
             )
             
             cancel_awaiting_final = (
-                _appointment_state.get("cancel_found_appointment") and
-                _appointment_state.get("cancel_name_confirmed") and
-                not _appointment_state.get("cancel_final_asked")
+                call_state.get("cancel_found_appointment") and
+                call_state.get("cancel_name_confirmed") and
+                not call_state.get("cancel_final_asked")
             )
             
             if reschedule_awaiting_confirmation or cancel_awaiting_confirmation or cancel_awaiting_final:
@@ -658,7 +651,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
             # POST-BOOKING COOLDOWN: If we just made a booking, be extra careful about reschedule detection
             # This prevents false reschedule detection when user says "great", "thanks", etc. after booking
             if intent == AppointmentIntent.RESCHEDULE and in_post_booking_cooldown:
-                if not _appointment_state.get("reschedule_active"):
+                if not call_state.get("reschedule_active"):
                     # Check if user explicitly said "reschedule" or similar
                     explicit_reschedule_words = ["reschedule", "change my appointment", "move my appointment", "different time for my appointment"]
                     user_explicitly_wants_reschedule = any(word in user_text.lower() for word in explicit_reschedule_words)
@@ -674,15 +667,15 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                 print_appointment_action(intent, appointment_details)
                 
                 # Check if we're in an active reschedule flow
-                in_reschedule_flow = (_appointment_state.get("reschedule_active") or
-                                     _appointment_state.get("reschedule_found_appointment") or 
-                                     _appointment_state.get("reschedule_name_confirmed") or 
-                                     _appointment_state.get("reschedule_final_asked"))
+                in_reschedule_flow = (call_state.get("reschedule_active") or
+                                     call_state.get("reschedule_found_appointment") or 
+                                     call_state.get("reschedule_name_confirmed") or 
+                                     call_state.get("reschedule_final_asked"))
                 
                 # Update state with any new information gathered
                 # Don't store customer_name during reschedule - we get it from the appointment
                 if appointment_details.get("customer_name") and not in_reschedule_flow:
-                    _appointment_state["customer_name"] = appointment_details["customer_name"]
+                    call_state["customer_name"] = appointment_details["customer_name"]
                 
                 # Handle datetime updates intelligently - combine previous date with new time if needed
                 # FIRST: Check if user said "tomorrow" or "today" even if OpenAI didn't extract it
@@ -690,11 +683,11 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                 if 'tomorrow' in text_lower and not appointment_details.get("datetime"):
                     print(f"🔄 Detected 'tomorrow' in query - updating state")
                     appointment_details["datetime"] = "tomorrow"
-                    _appointment_state["datetime"] = "tomorrow"
-                elif 'today' in text_lower and not appointment_details.get("datetime") and not _appointment_state.get("datetime"):
+                    call_state["datetime"] = "tomorrow"
+                elif 'today' in text_lower and not appointment_details.get("datetime") and not call_state.get("datetime"):
                     print(f"🔄 Detected 'today' in query - updating state")
                     appointment_details["datetime"] = "today"
-                    _appointment_state["datetime"] = "today"
+                    call_state["datetime"] = "today"
                 
                 # CRITICAL FIX: Extract time directly from current user message
                 # This catches cases where user says "12pm" but OpenAI returns "tomorrow" (the previous date)
@@ -716,7 +709,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                 
                 # If no time found with am/pm, check for standalone numbers in time-choosing context
                 # Look for patterns like "I'll do 12", "can I do 3", "how about 2"
-                if not extracted_time and _appointment_state.get("datetime"):
+                if not extracted_time and call_state.get("datetime"):
                     # Check if assistant just offered time slots (last assistant message)
                     if len(messages) >= 2 and messages[-2].get("role") == "assistant":
                         last_assistant_msg = (messages[-2].get("content") or "").lower()
@@ -759,12 +752,12 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                             print(f"🕐 Inferred time from simple number: '{extracted_time}' (user said: '{user_text}')")
                 
                 # If we found a time in the message and have a date in state, combine them
-                if extracted_time and _appointment_state.get("datetime"):
-                    previous_datetime = _appointment_state["datetime"]
+                if extracted_time and call_state.get("datetime"):
+                    previous_datetime = call_state["datetime"]
                     # Remove any existing time from previous datetime
                     date_only = re.sub(r'\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b', '', previous_datetime, flags=re.IGNORECASE).strip()
                     combined_datetime = f"{date_only} {extracted_time}"
-                    _appointment_state["datetime"] = combined_datetime
+                    call_state["datetime"] = combined_datetime
                     print(f"✅ Combined date '{date_only}' with extracted time '{extracted_time}' -> '{combined_datetime}'")
                 elif appointment_details.get("datetime"):
                     new_datetime_str = appointment_details["datetime"]
@@ -778,9 +771,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                     
                     is_time_only = any(re.match(pattern, new_datetime_str.strip().lower()) for pattern in time_only_patterns)
                     
-                    if is_time_only and _appointment_state.get("datetime"):
+                    if is_time_only and call_state.get("datetime"):
                         # User provided just time, we have a previous date - REPLACE old time with new time
-                        previous_datetime = _appointment_state["datetime"]
+                        previous_datetime = call_state["datetime"]
                         print(f"🔄 Combining previous date '{previous_datetime}' with new time '{new_datetime_str}'")
                         
                         # Extract just the date portion (remove any existing time)
@@ -790,17 +783,17 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         date_only = re.sub(r'\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b', '', date_only, flags=re.IGNORECASE).strip()
                         
                         combined_datetime = f"{date_only} {new_datetime_str}"
-                        _appointment_state["datetime"] = combined_datetime
+                        call_state["datetime"] = combined_datetime
                         print(f"✅ Combined datetime (time replaced): '{combined_datetime}'")
                     else:
                         # Either a full date+time or a new date reference
-                        _appointment_state["datetime"] = new_datetime_str
+                        call_state["datetime"] = new_datetime_str
                 
                 if appointment_details.get("service_type"):
-                    _appointment_state["service_type"] = appointment_details["service_type"]
+                    call_state["service_type"] = appointment_details["service_type"]
                 
                 # Extract phone number from user message if not already captured
-                if not _appointment_state.get("phone_number"):
+                if not call_state.get("phone_number"):
                     # Look for phone numbers in various formats
                     phone_patterns = [
                         r'\b\d{10}\b',  # 0851234567
@@ -812,15 +805,15 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         match = re.search(pattern, user_text)
                         if match:
                             phone_number = match.group(0).replace('-', '').replace('.', '').replace(' ', '').replace('(', '').replace(')', '')
-                            _appointment_state["phone_number"] = phone_number
+                            call_state["phone_number"] = phone_number
                             # For web chat (caller_phone is None), auto-confirm phone since user typed it
                             if caller_phone is None:
-                                _appointment_state["phone_confirmed"] = True
+                                call_state["phone_confirmed"] = True
                                 print(f"📱 Phone number detected and auto-confirmed (web chat): {phone_number}")
                             else:
                                 # For phone calls, don't auto-confirm - ask them to confirm
-                                _appointment_state["phone_confirmed"] = False
-                                _appointment_state["phone_needs_confirmation"] = True
+                                call_state["phone_confirmed"] = False
+                                call_state["phone_needs_confirmation"] = True
                                 print(f"📱 Phone number detected from speech: {phone_number} - needs confirmation")
                                 
                                 # Add system message asking for confirmation
@@ -829,10 +822,10 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             break
                     
                     # If user declined caller_phone but didn't provide a number yet, remind them
-                    if caller_phone and _appointment_state.get("caller_phone_declined") and not _appointment_state.get("phone_number"):
-                        if not _appointment_state.get("asked_for_alternate_phone"):
+                    if caller_phone and call_state.get("caller_phone_declined") and not call_state.get("phone_number"):
+                        if not call_state.get("asked_for_alternate_phone"):
                             # Add a reminder to ask for their preferred number
-                            _appointment_state["asked_for_alternate_phone"] = True
+                            call_state["asked_for_alternate_phone"] = True
                             reminder_msg = "[SYSTEM: User declined to use caller phone. Ask: 'What's the best phone number to reach you?' DO NOT ask them to say it - they can simply provide it in text or you can collect it via SMS link if needed.]"
                             messages.append({"role": "system", "content": reminder_msg})
                 
@@ -840,9 +833,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                 should_process = False
                 
                 # Check if we're in an active reschedule flow - if so, ignore BOOK intents
-                in_reschedule_flow = (_appointment_state.get("reschedule_found_appointment") or 
-                                     _appointment_state.get("reschedule_name_confirmed") or 
-                                     _appointment_state.get("reschedule_final_asked"))
+                in_reschedule_flow = (call_state.get("reschedule_found_appointment") or 
+                                     call_state.get("reschedule_name_confirmed") or 
+                                     call_state.get("reschedule_final_asked"))
                 
                 if in_reschedule_flow and intent == AppointmentIntent.BOOK:
                     print("⚠️ Ignoring BOOK intent - currently in active RESCHEDULE flow")
@@ -873,10 +866,10 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                 # but we need to continue with the reschedule flow
                 if intent == AppointmentIntent.NONE and in_reschedule_flow:
                     # Check if we're waiting for final confirmation (after availability checked)
-                    final_asked = _appointment_state.get("reschedule_final_asked", False)
-                    name_confirmed = _appointment_state.get("reschedule_name_confirmed", False)
-                    found_appointment = _appointment_state.get("reschedule_found_appointment")
-                    new_datetime = _appointment_state.get("reschedule_new_datetime")
+                    final_asked = call_state.get("reschedule_final_asked", False)
+                    name_confirmed = call_state.get("reschedule_name_confirmed", False)
+                    found_appointment = call_state.get("reschedule_found_appointment")
+                    new_datetime = call_state.get("reschedule_new_datetime")
                     
                     if final_asked and name_confirmed and found_appointment and new_datetime:
                         # Use AI to detect confirmation (more flexible than word lists)
@@ -886,8 +879,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             print("🔄 NONE intent detected but user is confirming reschedule - forcing to RESCHEDULE intent")
                             intent = AppointmentIntent.RESCHEDULE
                             # Populate appointment_details from state
-                            appointment_details["customer_name"] = _appointment_state.get("reschedule_customer_name")
-                            appointment_details["datetime"] = _appointment_state.get("reschedule_found_appointment", {}).get('start', {}).get('dateTime', '')
+                            appointment_details["customer_name"] = call_state.get("reschedule_customer_name")
+                            appointment_details["datetime"] = call_state.get("reschedule_found_appointment", {}).get('start', {}).get('dateTime', '')
                             appointment_details["new_datetime"] = new_datetime
                             print(f"📋 Populated appointment_details for reschedule: old={appointment_details['datetime']}, new={appointment_details['new_datetime']}")
                     # CRITICAL: Also check if we're at the name confirmation stage
@@ -900,19 +893,19 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             print("🔄 NONE intent detected but user confirming appointment name - forcing to RESCHEDULE intent")
                             intent = AppointmentIntent.RESCHEDULE
                             # Populate appointment_details from state
-                            appointment_details["customer_name"] = _appointment_state.get("reschedule_customer_name")
-                            appointment_details["datetime"] = _appointment_state.get("reschedule_found_appointment", {}).get('start', {}).get('dateTime', '')
+                            appointment_details["customer_name"] = call_state.get("reschedule_customer_name")
+                            appointment_details["datetime"] = call_state.get("reschedule_found_appointment", {}).get('start', {}).get('dateTime', '')
                             appointment_details["new_datetime"] = new_datetime
                             print(f"📋 Populated appointment_details for name confirmation step: old={appointment_details['datetime']}, new={appointment_details['new_datetime']}")
                 
                 # CRITICAL FIX: Handle NONE intent during cancel flow (same issue as reschedule)
-                in_cancel_flow = (_appointment_state.get("cancel_active") or
-                                _appointment_state.get("cancel_found_appointment") is not None)
+                in_cancel_flow = (call_state.get("cancel_active") or
+                                call_state.get("cancel_found_appointment") is not None)
                 if intent == AppointmentIntent.NONE and in_cancel_flow:
-                    found_appointment = _appointment_state.get("cancel_found_appointment")
-                    name_confirmed = _appointment_state.get("cancel_name_confirmed", False)
-                    final_asked = _appointment_state.get("cancel_final_asked", False)
-                    cancel_time = _appointment_state.get("cancel_found_appointment", {}).get('start', {}).get('dateTime', '')
+                    found_appointment = call_state.get("cancel_found_appointment")
+                    name_confirmed = call_state.get("cancel_name_confirmed", False)
+                    final_asked = call_state.get("cancel_final_asked", False)
+                    cancel_time = call_state.get("cancel_found_appointment", {}).get('start', {}).get('dateTime', '')
                     
                     # Check if user is confirming at any stage
                     is_affirmative = is_affirmative_response(user_text, context="appointment confirmation") and len(user_text.split()) <= 6
@@ -921,25 +914,25 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         print("🗑️ NONE intent detected but user confirming during cancel - forcing to CANCEL intent")
                         intent = AppointmentIntent.CANCEL
                         # Populate appointment_details from state
-                        appointment_details["customer_name"] = _appointment_state.get("cancel_customer_name")
+                        appointment_details["customer_name"] = call_state.get("cancel_customer_name")
                         appointment_details["datetime"] = cancel_time
                         print(f"📋 Populated appointment_details for cancel: {appointment_details['datetime']}")
                 
                 if intent == AppointmentIntent.BOOK:
                     # Mark that we're in an active booking flow
-                    _appointment_state["active_booking"] = True
-                    _appointment_state["gathering_started"] = True
+                    call_state["active_booking"] = True
+                    call_state["gathering_started"] = True
                     
                     # Check if we've already booked in this session
-                    if _appointment_state["already_booked"]:
+                    if call_state["already_booked"]:
                         print("⚠️ Already booked in this session - ignoring duplicate booking attempt")
                         should_process = False
                     else:
                         # Store datetime in state if provided (LLM naturally handles corrections)
                         if appointment_details.get("datetime"):
-                            if _appointment_state.get("datetime") and _appointment_state.get("datetime") != appointment_details["datetime"]:
-                                print(f"✏️ Date/Time updated: old='{_appointment_state.get('datetime')}', new='{appointment_details['datetime']}'")
-                            _appointment_state["datetime"] = appointment_details["datetime"]
+                            if call_state.get("datetime") and call_state.get("datetime") != appointment_details["datetime"]:
+                                print(f"✏️ Date/Time updated: old='{call_state.get('datetime')}', new='{appointment_details['datetime']}'")
+                            call_state["datetime"] = appointment_details["datetime"]
                             print(f"📅 Stored datetime: {appointment_details['datetime']}")
                         
                         # Check if user is confirming using AI - more flexible than word lists
@@ -958,17 +951,17 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         is_confirmation = is_short and is_affirmative_response(user_text, context="appointment booking") and not is_contact_confirmation
                         
                         # Use accumulated state for checking completeness
-                        has_name = _appointment_state["customer_name"] is not None
+                        has_name = call_state["customer_name"] is not None
                         # DOB not required for trades - removed has_dob check
-                        has_time = _appointment_state["datetime"] is not None
-                        has_service = _appointment_state["service_type"] is not None
-                        has_phone = _appointment_state.get("phone_number") is not None
-                        phone_confirmed = _appointment_state.get("phone_confirmed", False)
+                        has_time = call_state["datetime"] is not None
+                        has_service = call_state["service_type"] is not None
+                        has_phone = call_state.get("phone_number") is not None
+                        phone_confirmed = call_state.get("phone_confirmed", False)
                         
                         # Validate that the datetime includes a specific time (not just a date)
                         if has_time:
                             try:
-                                parsed_dt = parse_datetime(_appointment_state["datetime"])
+                                parsed_dt = parse_datetime(call_state["datetime"])
                                 if parsed_dt is None:
                                     # Date was provided without time - need to check if ANY slots available first
                                     has_time = False
@@ -979,7 +972,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                     calendar = get_calendar_service()
                                     if calendar:
                                         # Parse the date to check availability
-                                        text_lower = _appointment_state["datetime"].lower().strip()
+                                        text_lower = call_state["datetime"].lower().strip()
                                         now = datetime.now()
                                         
                                         if text_lower == 'today':
@@ -988,7 +981,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                             check_date = (now + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
                                         else:
                                             # Try to parse the date
-                                            check_date = parse_datetime(_appointment_state["datetime"] + " 9am")
+                                            check_date = parse_datetime(call_state["datetime"] + " 9am")
                                         
                                         if check_date:
                                             available_slots = calendar.get_available_slots_for_day(check_date)
@@ -1000,9 +993,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                                     missing_time_msg = f"[SYSTEM: NO AVAILABLE SLOTS today because it's after business hours (we close at {config.BUSINESS_HOURS_END}:00 / {config.BUSINESS_HOURS_END - 12 if config.BUSINESS_HOURS_END > 12 else config.BUSINESS_HOURS_END} PM). You MUST tell the user: 'We don't work after {config.BUSINESS_HOURS_END - 12 if config.BUSINESS_HOURS_END > 12 else config.BUSINESS_HOURS_END} PM. Would you like to book for tomorrow or another day?' DO NOT say 'no slots today' - be specific about business hours.]"
                                                 else:
                                                     # Fully booked on this day
-                                                    missing_time_msg = f"[SYSTEM: NO AVAILABLE SLOTS on {_appointment_state['datetime']}. You MUST tell the user: 'Unfortunately, we don't have any available appointments {_appointment_state['datetime']}. Would you like to check another day?' DO NOT ask for a time - there are no slots available.]"
+                                                    missing_time_msg = f"[SYSTEM: NO AVAILABLE SLOTS on {call_state['datetime']}. You MUST tell the user: 'Unfortunately, we don't have any available appointments {call_state['datetime']}. Would you like to check another day?' DO NOT ask for a time - there are no slots available.]"
                                                 messages.append({"role": "system", "content": missing_time_msg})
-                                                print(f"❌ No slots available on {_appointment_state['datetime']}")
+                                                print(f"❌ No slots available on {call_state['datetime']}")
                                             else:
                                                 # Slots available - FIRST answer if user asked a question, then show times
                                                 times_str = ', '.join([slot.strftime('%I:%M %p') for slot in available_slots[:5]])  # Show first 5
@@ -1012,36 +1005,36 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                                 
                                                 if user_asked_question:
                                                     # Answer YES first, then show times
-                                                    missing_time_msg = f"[SYSTEM: The user ASKED if '{_appointment_state['datetime']}' is available. Answer 'Yes!' or 'Absolutely!' first to confirm it's available. Then show the times: {times_str}. Example: 'Yes! I have {times_str} available. What time works best for you?']"
+                                                    missing_time_msg = f"[SYSTEM: The user ASKED if '{call_state['datetime']}' is available. Answer 'Yes!' or 'Absolutely!' first to confirm it's available. Then show the times: {times_str}. Example: 'Yes! I have {times_str} available. What time works best for you?']"
                                                 else:
                                                     # Not a question, just show available times
-                                                    missing_time_msg = f"[SYSTEM: The user provided a date ('{_appointment_state['datetime']}') but NO TIME. Available times: {times_str}. You MUST tell them the available times and ask which one they prefer. Example: 'I have {times_str} available. Which works best for you?']"
+                                                    missing_time_msg = f"[SYSTEM: The user provided a date ('{call_state['datetime']}') but NO TIME. Available times: {times_str}. You MUST tell them the available times and ask which one they prefer. Example: 'I have {times_str} available. Which works best for you?']"
                                                 
                                                 messages.append({"role": "system", "content": missing_time_msg})
-                                                print(f"✅ Found {len(available_slots)} available slots on {_appointment_state['datetime']}")
+                                                print(f"✅ Found {len(available_slots)} available slots on {call_state['datetime']}")
                                         else:
                                             # Couldn't parse date - just ask for time
-                                            missing_time_msg = f"[SYSTEM: The user provided a date ('{_appointment_state['datetime']}') but NO TIME. You MUST ask for a specific time. Say: 'What time works best for you on {_appointment_state['datetime']}?' DO NOT proceed with booking until you have a specific time.]"
+                                            missing_time_msg = f"[SYSTEM: The user provided a date ('{call_state['datetime']}') but NO TIME. You MUST ask for a specific time. Say: 'What time works best for you on {call_state['datetime']}?' DO NOT proceed with booking until you have a specific time.]"
                                             messages.append({"role": "system", "content": missing_time_msg})
                                     else:
                                         # No calendar service - just ask for time
-                                        missing_time_msg = f"[SYSTEM: The user provided a date ('{_appointment_state['datetime']}') but NO TIME. You MUST ask for a specific time. Say: 'What time works best for you on {_appointment_state['datetime']}?' DO NOT proceed with booking until you have a specific time.]"
+                                        missing_time_msg = f"[SYSTEM: The user provided a date ('{call_state['datetime']}') but NO TIME. You MUST ask for a specific time. Say: 'What time works best for you on {call_state['datetime']}?' DO NOT proceed with booking until you have a specific time.]"
                                         messages.append({"role": "system", "content": missing_time_msg})
                                         print(f"⚠️ Date without time detected - prompting for time")
                                 else:
                                     # Successfully parsed - update state with parsed datetime for consistency
                                     print(f"✅ Successfully parsed datetime: {parsed_dt}")
                             except Exception as e:
-                                print(f"⚠️ Error parsing datetime '{_appointment_state['datetime']}': {e}")
+                                print(f"⚠️ Error parsing datetime '{call_state['datetime']}': {e}")
                                 # Try to extract just the time from the user's last message
                                 time_match = re.search(r'\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b', user_text, re.IGNORECASE)
                                 if time_match:
                                     time_str = time_match.group(0)
                                     print(f"🔍 Found time in message: {time_str}")
                                     # Try combining with previous date if available
-                                    if _appointment_state.get("datetime"):
+                                    if call_state.get("datetime"):
                                         # Look for date in previous datetime string
-                                        prev_datetime = _appointment_state["datetime"]
+                                        prev_datetime = call_state["datetime"]
                                         # Try to extract date part
                                         date_match = re.search(r'(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\\s+\\d{1,2}', prev_datetime, re.IGNORECASE)
                                         if date_match:
@@ -1051,7 +1044,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                             try:
                                                 test_parse = parse_datetime(combined)
                                                 if test_parse:
-                                                    _appointment_state["datetime"] = combined
+                                                    call_state["datetime"] = combined
                                                     print(f"✅ Successfully combined and parsed: {test_parse}")
                                                     # Don't mark has_time as False - we fixed it!
                                                 else:
@@ -1067,13 +1060,13 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         
                         # Check if user is confirming the phone number using AI
                         # Special handling: if caller_phone exists but phone not yet confirmed, check for yes/no response
-                        if caller_phone and not _appointment_state.get("phone_number") and not phone_confirmed:
+                        if caller_phone and not call_state.get("phone_number") and not phone_confirmed:
                             # User is being asked if caller_phone is correct
                             if len(words) <= 5:
                                 if is_affirmative_response(user_text, context="phone number"):
                                     # User said yes - use the caller's phone number
-                                    _appointment_state["phone_number"] = caller_phone
-                                    _appointment_state["phone_confirmed"] = True
+                                    call_state["phone_number"] = caller_phone
+                                    call_state["phone_confirmed"] = True
                                     phone_confirmed = True
                                     has_phone = True
                                     print(f"✅ Caller phone number confirmed and set: {caller_phone}")
@@ -1081,7 +1074,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                     # Add a system message to remind the LLM what info we already have
                                     collected_info = []
                                     if has_name:
-                                        collected_info.append(f"Name: {_appointment_state['customer_name']}")
+                                        collected_info.append(f"Name: {call_state['customer_name']}")
                                     # DOB not shown in collected info
                                     collected_info.append(f"Phone: {caller_phone} (CONFIRMED)")
                                     
@@ -1090,7 +1083,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                     print(f"📋 Added reminder message about collected info")
                                 elif user_text.lower() in ["no", "nope", "nah", "not that one", "different number", "no that's not it"]:
                                     # User said no - they want to provide a different number
-                                    _appointment_state["caller_phone_declined"] = True
+                                    call_state["caller_phone_declined"] = True
                                     print(f"❌ User declined caller phone {caller_phone}, asking for alternate")
                                     
                                     decline_msg = "[SYSTEM: User wants to use a different phone number. Acknowledge with 'No problem!' and ask: 'What number would you like me to use instead?' Wait for them to provide the number - DO NOT ask them to speak it digit by digit.]"
@@ -1098,17 +1091,17 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         elif has_phone and not phone_confirmed:
                             # Use AI to detect phone confirmation (for manually entered phone)
                             if len(words) <= 5 and is_affirmative_response(user_text, context="phone number"):
-                                _appointment_state["phone_confirmed"] = True
+                                call_state["phone_confirmed"] = True
                                 phone_confirmed = True
-                                print(f"✅ Phone number confirmed: {_appointment_state['phone_number']}")
+                                print(f"✅ Phone number confirmed: {call_state['phone_number']}")
                                 
                                 # Add a system message to remind the LLM what info we already have
                                 collected_info = []
                                 if has_name:
-                                    collected_info.append(f"Name: {_appointment_state['customer_name']}")
+                                    collected_info.append(f"Name: {call_state['customer_name']}")
                                 # DOB not shown in collected info
                                 if has_phone:
-                                    collected_info.append(f"Phone: {_appointment_state['phone_number']} (CONFIRMED)")
+                                    collected_info.append(f"Phone: {call_state['phone_number']} (CONFIRMED)")
                                 
                                 reminder_msg = f"[SYSTEM: Phone confirmed. Information already collected: {', '.join(collected_info)}. DO NOT ask for any of these again. Now ask: 'How can I help you today?' or 'What brings you in?' to proceed with their request.]"
                                 messages.append({"role": "system", "content": reminder_msg})
@@ -1132,11 +1125,11 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             system_check_msg = "[SYSTEM: User has confirmed their details. System is now checking calendar availability (this happens instantly in the background). DO NOT mention checking, DO NOT say 'let me check', 'one moment', or any delay phrases. Simply wait silently for the system response about availability.]"
                             messages.append({"role": "system", "content": system_check_msg})
                             # Merge state into appointment_details for booking
-                            appointment_details["customer_name"] = _appointment_state["customer_name"]
+                            appointment_details["customer_name"] = call_state["customer_name"]
                             # DOB field removed - not needed for trades
-                            appointment_details["datetime"] = _appointment_state["datetime"]
-                            appointment_details["service_type"] = _appointment_state["service_type"] or "General"
-                            appointment_details["phone_number"] = _appointment_state.get("phone_number")
+                            appointment_details["datetime"] = call_state["datetime"]
+                            appointment_details["service_type"] = call_state["service_type"] or "General"
+                            appointment_details["phone_number"] = call_state.get("phone_number")
                         else:
                             # Check what's missing and guide the LLM
                             # DOB check removed - not required for trades business
@@ -1148,8 +1141,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             elif has_time and has_name and phone_requirement_met and not is_confirmation:
                                 # Have all info, just need final confirmation
                                 try:
-                                    req_time = parse_datetime(_appointment_state["datetime"])
-                                    prevent_hallucination = f"[SYSTEM: DO NOT make up availability information or say times are busy/available. You do NOT yet have calendar data. Simply confirm the appointment details with the customer: '{_appointment_state['customer_name']}' on '{req_time.strftime('%B %d at %I:%M %p')}' for '{_appointment_state.get('service_type', 'appointment')}'. Ask 'Is that correct?' to get final confirmation. DO NOT say they're booked or all set yet - you must check availability first after they confirm.]"
+                                    req_time = parse_datetime(call_state["datetime"])
+                                    prevent_hallucination = f"[SYSTEM: DO NOT make up availability information or say times are busy/available. You do NOT yet have calendar data. Simply confirm the appointment details with the customer: '{call_state['customer_name']}' on '{req_time.strftime('%B %d at %I:%M %p')}' for '{call_state.get('service_type', 'appointment')}'. Ask 'Is that correct?' to get final confirmation. DO NOT say they're booked or all set yet - you must check availability first after they confirm.]"
                                     messages.append({"role": "system", "content": prevent_hallucination})
                                 except Exception as e:
                                     print(f"⚠️ Error parsing datetime for confirmation: {e}")
@@ -1157,8 +1150,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                 # Handle RESCHEDULE intent
                 elif intent == AppointmentIntent.RESCHEDULE:
                     # Mark that we're in an active reschedule flow IMMEDIATELY
-                    if not _appointment_state.get("reschedule_active"):
-                        _appointment_state["reschedule_active"] = True
+                    if not call_state.get("reschedule_active"):
+                        call_state["reschedule_active"] = True
                         print(f"🔄 Starting RESCHEDULE flow - setting reschedule_active flag")
                     
                     print(f"🔄 RESCHEDULE FLOW ACTIVE")
@@ -1175,8 +1168,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                     customer_name = appointment_details.get("customer_name")
                     
                     # Check for name confirmation state (stored after we find appointment)
-                    found_appointment = _appointment_state.get("reschedule_found_appointment")
-                    name_confirmed = _appointment_state.get("reschedule_name_confirmed", False)
+                    found_appointment = call_state.get("reschedule_found_appointment")
+                    name_confirmed = call_state.get("reschedule_name_confirmed", False)
                     
                     # NEW: Check if user can't remember their appointment time
                     cant_remember_indicators = ['dont remember', "don't remember", 'cant remember', "can't remember", 
@@ -1185,12 +1178,12 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                     
                     # Store flag if user says they can't remember
                     if user_cant_remember:
-                        _appointment_state["user_cant_remember_time"] = True
+                        call_state["user_cant_remember_time"] = True
                     
                     # Check if user previously said they can't remember AND we just identified them
                     # This handles the flow: "can't remember" -> name -> phone/email -> now look up their appointment
-                    if (_appointment_state.get("user_cant_remember_time") and 
-                        _appointment_state.get("caller_identified") and 
+                    if (call_state.get("user_cant_remember_time") and 
+                        call_state.get("caller_identified") and 
                         customer_name and 
                         not found_appointment and
                         not user_cant_remember):  # Don't double-process on the "can't remember" message itself
@@ -1215,7 +1208,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                     # Calendar disabled
                                     error_msg = "[SYSTEM: Calendar service is currently disabled. Inform the user that rescheduling is not available at the moment.]"
                                     messages.append({"role": "system", "content": error_msg})
-                                    _appointment_state.pop("reschedule_active", None)
+                                    call_state.pop("reschedule_active", None)
                                     should_process = False
                                 else:
                                     # Find next future appointment by name only
@@ -1228,8 +1221,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                             event_start = datetime.fromisoformat(event_start_str.replace('Z', '+00:00')).replace(tzinfo=None)
                                             
                                             # Store found appointment
-                                            _appointment_state["reschedule_found_appointment"] = event
-                                            _appointment_state["reschedule_customer_name"] = customer_name
+                                            call_state["reschedule_found_appointment"] = event
+                                            call_state["reschedule_customer_name"] = customer_name
                                             
                                             # Ask for confirmation
                                             time_display = event_start.strftime('%B %d at %I:%M %p')
@@ -1246,7 +1239,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                         messages.append({"role": "system", "content": no_appt_msg})
                                         print(f"❌ No future appointments found for {customer_name}")
                                         # Clean up state
-                                        _appointment_state.pop("reschedule_active", None)
+                                        call_state.pop("reschedule_active", None)
                                         should_process = False
                             except Exception as e:
                                 print(f"❌ Error finding appointment by name: {e}")
@@ -1274,7 +1267,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                     
                     # Store new_datetime in state if provided (for query lookups)
                     if new_time:
-                        _appointment_state["reschedule_new_datetime"] = new_time
+                        call_state["reschedule_new_datetime"] = new_time
                         print(f"💾 Stored new_datetime in reschedule state: {new_time}")
                     
                     # Use utility function to check if time is vague
@@ -1296,7 +1289,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                 # Calendar disabled
                                 error_msg = "[SYSTEM: Calendar service is currently disabled. Inform the user that rescheduling is not available at the moment.]"
                                 messages.append({"role": "system", "content": error_msg})
-                                _appointment_state.pop("reschedule_active", None)
+                                call_state.pop("reschedule_active", None)
                                 should_process = False
                             else:
                                 parsed_old_time = parse_datetime(old_time)
@@ -1320,8 +1313,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                                 extracted_name = event_summary.strip()
                                         
                                         # Store found appointment and extracted name in state
-                                        _appointment_state["reschedule_found_appointment"] = event
-                                        _appointment_state["reschedule_customer_name"] = extracted_name
+                                        call_state["reschedule_found_appointment"] = event
+                                        call_state["reschedule_customer_name"] = extracted_name
                                         
                                         # Ask for name confirmation using config
                                         time_display = parsed_old_time.strftime('%B %d at %I:%M %p') if parsed_old_time else 'the appointment time'
@@ -1365,13 +1358,13 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         
                         # If user is clearly referencing the appointment contextually, treat as confirmation
                         if is_affirmative or is_recent_appointment_reference:
-                            _appointment_state["reschedule_name_confirmed"] = True
-                            customer_name = _appointment_state.get("reschedule_customer_name")
+                            call_state["reschedule_name_confirmed"] = True
+                            customer_name = call_state.get("reschedule_customer_name")
                             print(f"   ✅ Name confirmed: {customer_name}")
                             
                             # CRITICAL: Check stored state for new_time, not just current extraction
                             # User may have provided new time in initial request
-                            stored_new_time = _appointment_state.get("reschedule_new_datetime")
+                            stored_new_time = call_state.get("reschedule_new_datetime")
                             if stored_new_time:
                                 new_time = stored_new_time
                                 print(f"   📋 Using stored new_time from state: {new_time}")
@@ -1411,9 +1404,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                         display_new_time = new_dt.strftime('%B %d at %I:%M %p')
                                     
                                     # Store display time for use in success message after callback
-                                    _appointment_state["reschedule_final_asked"] = True
-                                    _appointment_state["reschedule_display_time"] = display_new_time
-                                    _appointment_state["skip_llm_response"] = True  # CRITICAL: Skip LLM to go directly to callback
+                                    call_state["reschedule_final_asked"] = True
+                                    call_state["reschedule_display_time"] = display_new_time
+                                    call_state["skip_llm_response"] = True  # CRITICAL: Skip LLM to go directly to callback
                                     
                                     # Set the details for the callback
                                     appointment_details["customer_name"] = customer_name
@@ -1438,14 +1431,14 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                 messages.append({"role": "system", "content": RESCHEDULE_MESSAGES["name_mismatch"]})
                                 print(f"❌ User clearly indicated wrong appointment, asking for correct customer name")
                                 # Reset reschedule state
-                                _appointment_state.pop("reschedule_found_appointment", None)
-                                _appointment_state.pop("reschedule_customer_name", None)
+                                call_state.pop("reschedule_found_appointment", None)
+                                call_state.pop("reschedule_customer_name", None)
                                 should_process = False
                             elif new_time and not is_vague_time:
                                 # User provided a specific new time - implicit confirmation!
                                 print(f"✅ User provided new time during name confirmation - treating as implicit 'yes'")
-                                _appointment_state["reschedule_name_confirmed"] = True
-                                customer_name = _appointment_state.get("reschedule_customer_name")
+                                call_state["reschedule_name_confirmed"] = True
+                                customer_name = call_state.get("reschedule_customer_name")
                                 
                                 # Proceed with reschedule
                                 try:
@@ -1480,9 +1473,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                             else:
                                                 display_new_time = new_dt.strftime('%B %d at %I:%M %p')
                                             
-                                            _appointment_state["reschedule_final_asked"] = True
-                                            _appointment_state["reschedule_display_time"] = display_new_time
-                                            _appointment_state["skip_llm_response"] = True
+                                            call_state["reschedule_final_asked"] = True
+                                            call_state["reschedule_display_time"] = display_new_time
+                                            call_state["skip_llm_response"] = True
                                             
                                             appointment_details["customer_name"] = customer_name
                                             appointment_details["datetime"] = old_time
@@ -1494,8 +1487,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                     should_process = False
                             else:
                                 # Ambiguous response - let AI interpret in context
-                                customer_name = _appointment_state.get("reschedule_customer_name")
-                                old_time_formatted = _appointment_state.get("reschedule_found_appointment", {}).get('start', {}).get('dateTime', '')
+                                customer_name = call_state.get("reschedule_customer_name")
+                                old_time_formatted = call_state.get("reschedule_found_appointment", {}).get('start', {}).get('dateTime', '')
                                 if old_time_formatted:
                                     old_dt = parse_datetime(old_time_formatted)
                                     old_time_display = old_dt.strftime('%B %d at %I:%M %p') if old_dt else (old_time if old_time else 'the appointment time')
@@ -1510,10 +1503,10 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                     # Step 3: If name confirmed and we have new time, do final confirmation
                     elif found_appointment and name_confirmed and new_time and not is_vague_time:
                         print(f"🔍 Step 3: Final confirmation for reschedule")
-                        customer_name = _appointment_state.get("reschedule_customer_name")
+                        customer_name = call_state.get("reschedule_customer_name")
                         
                         # Check if user provided a NEW time (accepting an alternative after slot unavailable)
-                        last_attempted_time = _appointment_state.get("reschedule_last_attempted_time")
+                        last_attempted_time = call_state.get("reschedule_last_attempted_time")
                         
                         # Parse both times to compare properly
                         is_new_time_attempt = False
@@ -1536,15 +1529,15 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             appointment_details["customer_name"] = customer_name
                             appointment_details["datetime"] = old_time
                             appointment_details["new_datetime"] = new_time
-                            _appointment_state["reschedule_last_attempted_time"] = new_time  # Track this attempt
+                            call_state["reschedule_last_attempted_time"] = new_time  # Track this attempt
                             should_process = True
                         else:
                             # Store this time attempt for future comparison
-                            _appointment_state["reschedule_last_attempted_time"] = new_time
+                            call_state["reschedule_last_attempted_time"] = new_time
                             
                             # Let AI determine if user is confirming (simpler, more flexible)
                             # Just provide context about what we're waiting for
-                            need_confirmation = not _appointment_state.get("reschedule_final_asked", False)
+                            need_confirmation = not call_state.get("reschedule_final_asked", False)
                             
                             if need_confirmation:
                                 # Proceed directly with availability check - no LLM response needed
@@ -1566,9 +1559,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                             display_new_time = new_dt.strftime('%B %d at %I:%M %p')
                                         
                                         # Store state and skip LLM response - callback will add result
-                                        _appointment_state["reschedule_final_asked"] = True
-                                        _appointment_state["reschedule_display_time"] = display_new_time
-                                        _appointment_state["skip_llm_response"] = True
+                                        call_state["reschedule_final_asked"] = True
+                                        call_state["reschedule_display_time"] = display_new_time
+                                        call_state["skip_llm_response"] = True
                                         
                                         # Proceed with the reschedule
                                         appointment_details["customer_name"] = customer_name
@@ -1595,7 +1588,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                             should_process = False
                                         else:
                                             # Calculate display time if not already stored
-                                            if not _appointment_state.get("reschedule_display_time"):
+                                            if not call_state.get("reschedule_display_time"):
                                                 try:
                                                     old_dt = parse_datetime(old_time)
                                                     has_date = has_date_indicator(new_time)
@@ -1603,11 +1596,11 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                                         display_new_time = old_dt.strftime('%B %d at ') + new_dt.strftime('%I:%M %p')
                                                     else:
                                                         display_new_time = new_dt.strftime('%B %d at %I:%M %p')
-                                                    _appointment_state["reschedule_display_time"] = display_new_time
+                                                    call_state["reschedule_display_time"] = display_new_time
                                                 except:
                                                     pass
                                             
-                                            _appointment_state["skip_llm_response"] = True  # Skip LLM response, callback will add result
+                                            call_state["skip_llm_response"] = True  # Skip LLM response, callback will add result
                                             appointment_details["customer_name"] = customer_name
                                             appointment_details["datetime"] = old_time
                                             appointment_details["new_datetime"] = new_time
@@ -1638,10 +1631,10 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                 elif intent == AppointmentIntent.CANCEL:
                     # AI-driven cancellation - find appointment and confirm name first
                     cancel_time = appointment_details.get("datetime")
-                    found_appointment = _appointment_state.get("cancel_found_appointment")
-                    name_confirmed = _appointment_state.get("cancel_name_confirmed", False)
-                    final_asked = _appointment_state.get("cancel_final_asked", False)
-                    customer_name = appointment_details.get("customer_name") or _appointment_state.get("cancel_customer_name")
+                    found_appointment = call_state.get("cancel_found_appointment")
+                    name_confirmed = call_state.get("cancel_name_confirmed", False)
+                    final_asked = call_state.get("cancel_final_asked", False)
+                    customer_name = appointment_details.get("customer_name") or call_state.get("cancel_customer_name")
                     
                     print(f"\n{'='*80}")
                     print(f"🗑️  CANCEL INTENT DETECTED")
@@ -1683,8 +1676,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                     print(f"🗑️  CANCEL START: cancel_time='{cancel_time}', found={bool(found_appointment)}, name_confirmed={name_confirmed}")
                     
                     # Set cancel_active flag when starting cancel flow
-                    if not _appointment_state.get("cancel_active"):
-                        _appointment_state["cancel_active"] = True
+                    if not call_state.get("cancel_active"):
+                        call_state["cancel_active"] = True
                         print(f"🗑️  Starting CANCEL flow - setting cancel_active flag")
                     
                     # Check if user can't remember their appointment time
@@ -1694,11 +1687,11 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                     
                     # Store flag if user says they can't remember
                     if user_cant_remember:
-                        _appointment_state["user_cant_remember_cancel_time"] = True
+                        call_state["user_cant_remember_cancel_time"] = True
                     
                     # If user previously said they can't remember AND we just identified them, look up their appointment
-                    if (_appointment_state.get("user_cant_remember_cancel_time") and 
-                        _appointment_state.get("caller_identified") and 
+                    if (call_state.get("user_cant_remember_cancel_time") and 
+                        call_state.get("caller_identified") and 
                         customer_name and 
                         not found_appointment and
                         not user_cant_remember):  # Don't double-process on the "can't remember" message itself
@@ -1724,7 +1717,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                     # Calendar disabled
                                     error_msg = "[SYSTEM: Calendar service is currently disabled. Inform the user that cancellation is not available at the moment.]"
                                     messages.append({"role": "system", "content": error_msg})
-                                    _appointment_state.pop("cancel_active", None)
+                                    call_state.pop("cancel_active", None)
                                     should_process = False
                                 else:
                                     # Find next future appointment by name only
@@ -1737,8 +1730,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                             event_start = datetime.fromisoformat(event_start_str.replace('Z', '+00:00')).replace(tzinfo=None)
                                             
                                             # Store found appointment
-                                            _appointment_state["cancel_found_appointment"] = event
-                                            _appointment_state["cancel_customer_name"] = customer_name
+                                            call_state["cancel_found_appointment"] = event
+                                            call_state["cancel_customer_name"] = customer_name
                                             
                                             # Ask for confirmation
                                             time_display = event_start.strftime('%B %d at %I:%M %p')
@@ -1752,8 +1745,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                         messages.append({"role": "system", "content": msg})
                                         print(f"❌ No future appointments found for {customer_name}")
                                         # Clean up cancel state
-                                        _appointment_state.pop("cancel_active", None)
-                                        _appointment_state.pop("user_cant_remember_cancel_time", None)
+                                        call_state.pop("cancel_active", None)
+                                        call_state.pop("user_cant_remember_cancel_time", None)
                                         should_process = False
                             except Exception as e:
                                 print(f"❌ Error finding appointment by name: {e}")
@@ -1775,7 +1768,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                 # Calendar disabled
                                 error_msg = "[SYSTEM: Calendar service is currently disabled. Inform the user that cancellation is not available at the moment.]"
                                 messages.append({"role": "system", "content": error_msg})
-                                _appointment_state.pop("cancel_active", None)
+                                call_state.pop("cancel_active", None)
                                 should_process = False
                             else:
                                 parsed_time = parse_datetime(cancel_time)
@@ -1798,8 +1791,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                             else:
                                                 extracted_name = event_summary.strip()
                                         
-                                        _appointment_state["cancel_found_appointment"] = event
-                                        _appointment_state["cancel_customer_name"] = extracted_name
+                                        call_state["cancel_found_appointment"] = event
+                                        call_state["cancel_customer_name"] = extracted_name
                                         
                                         # Ask for name confirmation - FORCE this message to be used
                                         time_display = parsed_time.strftime('%B %d at %I:%M %p') if parsed_time else 'the appointment time'
@@ -1814,7 +1807,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                         messages.append({"role": "system", "content": msg})
                                         print(f"❓ No appointment found - asking caller to confirm date/time first")
                                         # Store the attempted time so we can track if they're confirming or clarifying
-                                        _appointment_state["cancel_attempted_time"] = cancel_time
+                                        call_state["cancel_attempted_time"] = cancel_time
                                         should_process = False
                                 else:
                                     # Couldn't parse the time - ask caller to clarify
@@ -1843,8 +1836,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         is_affirmative = is_affirmative_response(user_text, context="appointment identification") and len(user_text.split()) <= 6
                         
                         if is_affirmative or is_restating_cancel_intent:
-                            _appointment_state["cancel_name_confirmed"] = True
-                            customer_name = _appointment_state.get("cancel_customer_name")
+                            call_state["cancel_name_confirmed"] = True
+                            customer_name = call_state.get("cancel_customer_name")
                             print(f"✅ Name confirmed: {customer_name}")
                             
                             # Ask for final cancellation confirmation
@@ -1863,26 +1856,26 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                                 if cancel_dt:
                                     msg = f"[SYSTEM: Final confirmation - ask if they want to proceed with cancelling the appointment on {cancel_dt.strftime('%B %d at %I:%M %p')}. If yes, proceed.]"
                                     messages.append({"role": "system", "content": msg})
-                                    _appointment_state["cancel_final_asked"] = True
+                                    call_state["cancel_final_asked"] = True
                                 else:
                                     # Fallback if we can't get the time
                                     msg = "[SYSTEM: Final confirmation - ask if they want to proceed with cancelling this appointment. If yes, proceed.]"
                                     messages.append({"role": "system", "content": msg})
-                                    _appointment_state["cancel_final_asked"] = True
+                                    call_state["cancel_final_asked"] = True
                             except Exception as e:
                                 print(f"⚠️ Error formatting cancel time: {e}")
                                 msg = "[SYSTEM: Final confirmation - ask if they want to proceed with cancelling this appointment. If yes, proceed.]"
                                 messages.append({"role": "system", "content": msg})
-                                _appointment_state["cancel_final_asked"] = True
+                                call_state["cancel_final_asked"] = True
                             should_process = False
                         else:
                             # User said no - clear found appointment but keep cancel flow active
                             msg = "[SYSTEM: That's not their appointment. Ask them for the correct date/time of their appointment.]"
                             messages.append({"role": "system", "content": msg})
                             print(f"❌ Name not confirmed - clearing found appointment but keeping cancel flow active")
-                            _appointment_state.pop("cancel_found_appointment", None)
-                            _appointment_state.pop("cancel_customer_name", None)
-                            _appointment_state.pop("cancel_name_confirmed", None)
+                            call_state.pop("cancel_found_appointment", None)
+                            call_state.pop("cancel_customer_name", None)
+                            call_state.pop("cancel_name_confirmed", None)
                             should_process = False
                     
                     # Step 3: Final confirmation to cancel
@@ -1895,7 +1888,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                         print(f"🔍 STEP 3: affirmative={affirmative}")
                         
                         if affirmative:
-                            customer_name = _appointment_state.get("cancel_customer_name")
+                            customer_name = call_state.get("cancel_customer_name")
                             appointment_details["customer_name"] = customer_name
                             
                             # Get appointment time - either from cancel_time or from found_appointment
@@ -1917,19 +1910,19 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             messages.append({"role": "system", "content": msg})
                             
                             # Clean up state
-                            _appointment_state.pop("cancel_found_appointment", None)
-                            _appointment_state.pop("cancel_customer_name", None)
-                            _appointment_state.pop("cancel_name_confirmed", None)
-                            _appointment_state.pop("cancel_final_asked", None)
+                            call_state.pop("cancel_found_appointment", None)
+                            call_state.pop("cancel_customer_name", None)
+                            call_state.pop("cancel_name_confirmed", None)
+                            call_state.pop("cancel_final_asked", None)
                         else:
                             # User declined final confirmation - ask again or clear if explicit no
                             if any(word in text_lower for word in ['no', 'nope', 'nah', 'dont', "don't", 'never']):
                                 # Clear cancel flow if user explicitly says no
-                                _appointment_state.pop("cancel_active", None)
-                                _appointment_state.pop("cancel_found_appointment", None)
-                                _appointment_state.pop("cancel_customer_name", None)
-                                _appointment_state.pop("cancel_name_confirmed", None)
-                                _appointment_state.pop("cancel_final_asked", None)
+                                call_state.pop("cancel_active", None)
+                                call_state.pop("cancel_found_appointment", None)
+                                call_state.pop("cancel_customer_name", None)
+                                call_state.pop("cancel_name_confirmed", None)
+                                call_state.pop("cancel_final_asked", None)
                                 msg = "[SYSTEM: User decided not to cancel. Ask if there's anything else you can help with.]"
                             else:
                                 msg = "[SYSTEM: Ask them to confirm if they want to cancel the appointment.]"
@@ -1961,14 +1954,14 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                     if intent == AppointmentIntent.BOOK:
                         if booking_result:
                             # Booking succeeded - mark temporarily to prevent duplicate in same message
-                            _appointment_state["already_booked"] = True
+                            call_state["already_booked"] = True
                             # Track when booking was made for post-booking cooldown
-                            _appointment_state["last_booking_turn"] = _appointment_state.get("current_turn", 0)
+                            call_state["last_booking_turn"] = call_state.get("current_turn", 0)
                             requested_time = parse_datetime(appointment_details["datetime"])
                             system_message = f"[SYSTEM: SUCCESS! Booking confirmed for {appointment_details['customer_name']} on {requested_time.strftime('%A, %B %d at %I:%M %p')}. Say EXACTLY: 'Perfect, you're all booked for {requested_time.strftime('%A at %I:%M %p')}. Anything else I can help with?' Then STOP - do not repeat the confirmation.]"
                             messages.append({"role": "system", "content": system_message})
                             # Reset flag to allow additional bookings after this one is complete
-                            _appointment_state["already_booked"] = False
+                            call_state["already_booked"] = False
                         else:
                             # Booking failed (slot busy)
                             from src.services.google_calendar import get_calendar_service
@@ -2006,14 +1999,14 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                     elif intent == AppointmentIntent.CANCEL:
                         if booking_result:
                             # Cancellation succeeded - clear appointment state and cancel flow
-                            _appointment_state["datetime"] = None
-                            _appointment_state["service_type"] = None
-                            _appointment_state["customer_name"] = None
-                            _appointment_state.pop("cancel_active", None)
-                            _appointment_state.pop("cancel_found_appointment", None)
-                            _appointment_state.pop("cancel_customer_name", None)
-                            _appointment_state.pop("cancel_name_confirmed", None)
-                            _appointment_state.pop("cancel_final_asked", None)
+                            call_state["datetime"] = None
+                            call_state["service_type"] = None
+                            call_state["customer_name"] = None
+                            call_state.pop("cancel_active", None)
+                            call_state.pop("cancel_found_appointment", None)
+                            call_state.pop("cancel_customer_name", None)
+                            call_state.pop("cancel_name_confirmed", None)
+                            call_state.pop("cancel_final_asked", None)
                             print(f"🧹 Cleared appointment state and cancel flow after cancellation")
                             
                             system_message = f"[SYSTEM: SUCCESS! Appointment cancelled for {appointment_details.get('customer_name', 'the customer')}. Say EXACTLY: 'That's cancelled for you. Anything else I can help with?' Then STOP - do not repeat.]"
@@ -2034,21 +2027,21 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             requested_time = appointment_details.get('new_datetime', 'that time')
                             messages.append({"role": "system", "content": RESCHEDULE_MESSAGES["slot_unavailable"](requested_time)})
                             # Keep reschedule state active but reset final_asked so user can pick alternative
-                            _appointment_state.pop("reschedule_final_asked", None)
+                            call_state.pop("reschedule_final_asked", None)
                             print(f"⚠️ Slot unavailable - keeping reschedule context active, reset final_asked for alternative selection")
                         elif booking_result:
                             # Rescheduling succeeded - NOW tell the AI about the success
-                            display_time = _appointment_state.get("reschedule_display_time", "the new time")
+                            display_time = call_state.get("reschedule_display_time", "the new time")
                             success_msg = RESCHEDULE_MESSAGES["success"](display_time)
                             messages.append({"role": "system", "content": success_msg})
                             
                             # Clean up state
-                            _appointment_state.pop("reschedule_active", None)
-                            _appointment_state.pop("reschedule_found_appointment", None)
-                            _appointment_state.pop("reschedule_customer_name", None)
-                            _appointment_state.pop("reschedule_name_confirmed", None)
-                            _appointment_state.pop("reschedule_final_asked", None)
-                            _appointment_state.pop("reschedule_display_time", None)
+                            call_state.pop("reschedule_active", None)
+                            call_state.pop("reschedule_found_appointment", None)
+                            call_state.pop("reschedule_customer_name", None)
+                            call_state.pop("reschedule_name_confirmed", None)
+                            call_state.pop("reschedule_final_asked", None)
+                            call_state.pop("reschedule_display_time", None)
                             print(f"🧹 Cleaned up reschedule state after success")
                         else:
                             # Generic failure (couldn't find appointment, etc.) - use config
@@ -2125,9 +2118,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                             messages.append({"role": "system", "content": system_message})
     
     # Check if we should skip LLM response (callback added result, now generate single response)
-    if _appointment_state.get("skip_llm_response"):
+    if call_state.get("skip_llm_response"):
         print("⏭️ Skipping initial LLM response - will generate single response with callback result")
-        _appointment_state.pop("skip_llm_response", None)  # Clear flag
+        call_state.pop("skip_llm_response", None)  # Clear flag
         # Don't return - continue to generate response with callback result now in messages
     
     # PRE-CHECK: Detect if user message likely requires a tool call
@@ -3211,10 +3204,10 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
         
         elif intent == AppointmentIntent.QUERY:
             # --- Enhanced logic: handle "next week" by checking ALL weekdays ---
-            time_reference = details.get("datetime") or _appointment_state.get("datetime")
+            time_reference = details.get("datetime") or call_state.get("datetime")
             print(f"🔍 DEBUG QUERY: time_reference = {time_reference}")
             print(f"🔍 DEBUG QUERY: details = {details}")
-            print(f"🔍 DEBUG QUERY: _appointment_state = {_appointment_state}")
+            print(f"🔍 DEBUG QUERY: call_state = {call_state}")
 
             # Extract time window (e.g., after 2, between 2 and 4, late times)
             start_hour, end_hour = extract_time_window(time_reference or '')
@@ -3286,7 +3279,7 @@ async def process_appointment_with_calendar(intent: AppointmentIntent, details: 
             query_date = None
             
             # CRITICAL FIX: If in reschedule flow asking about "same day", use the old appointment date
-            in_reschedule = _appointment_state.get("reschedule_found_appointment")
+            in_reschedule = call_state.get("reschedule_found_appointment")
             if in_reschedule:
                 old_event_time = in_reschedule.get('start', {}).get('dateTime')
                 if old_event_time:

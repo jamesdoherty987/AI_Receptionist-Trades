@@ -12,7 +12,8 @@ import websockets
 from src.utils.audio_utils import ulaw_energy
 from src.utils.config import config
 from src.services.asr_deepgram import DeepgramASR
-from src.services.llm_stream import stream_llm, process_appointment_with_calendar, reset_appointment_state
+from src.services.llm_stream import stream_llm, process_appointment_with_calendar
+from src.services.call_state import CallState, create_call_state
 
 # Import pre-recorded audio service with safe fallback
 try:
@@ -79,9 +80,9 @@ async def media_handler(ws):
     """
     print("✅ Twilio WS client connected:", ws.remote_address)
     
-    # CRITICAL: Reset appointment state at the start of each call
-    # This prevents state from previous calls bleeding into new calls
-    reset_appointment_state()
+    # CRITICAL: Create per-call state for concurrent call handling
+    # Each call gets its own CallState instance - no shared global state
+    call_state = create_call_state()
 
     asr = DeepgramASR()
     try:
@@ -1160,7 +1161,7 @@ async def media_handler(ws):
                                         # Note: start_tts creates a background task and returns immediately
                                         # The llm_processing flag is cleared in the TTS finally block
                                         await start_tts(
-                                            stream_llm(conversation, process_appointment_with_calendar, caller_phone=caller_phone, company_id=company_id),
+                                            stream_llm(conversation, process_appointment_with_calendar, caller_phone=caller_phone, company_id=company_id, call_state=call_state),
                                             label="respond"
                                         )
                                         # Code here runs immediately after task creation, not after TTS completes
