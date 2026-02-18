@@ -94,12 +94,12 @@
 
 @media (max-width: 768px) {
   .modal-overlay {
-    padding: 3.5rem 0.5rem 0.5rem 0.5rem;
+    padding: 1rem 0.5rem 0.5rem 0.5rem;
     align-items: flex-start;
   }
 
   .modal-container {
-    max-height: calc(100vh - 4rem);
+    max-height: calc(100vh - 1.5rem);
     border-radius: 12px;
     max-width: calc(100vw - 1rem);
     margin-top: 0;
@@ -136,12 +136,12 @@
 
 @media (max-width: 480px) {
   .modal-overlay {
-    padding: 3rem 0.25rem 0.25rem 0.25rem;
+    padding: 0.75rem 0.25rem 0.25rem 0.25rem;
   }
 
   .modal-container {
     max-width: calc(100vw - 0.5rem);
-    max-height: calc(100vh - 3.5rem);
+    max-height: calc(100vh - 1rem);
     border-radius: 10px;
   }
 
