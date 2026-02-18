@@ -922,7 +922,6 @@ async def media_handler(ws):
                                         for msg in conversation[1:]:  # Skip system message
                                             if msg.get('role') == 'tool' and msg.get('name') == 'lookup_customer':
                                                 try:
-                                                    import json
                                                     result = json.loads(msg.get('content', '{}'))
                                                     if result.get('success') and result.get('customer_exists'):
                                                         info = result.get('customer_info', {})
@@ -931,7 +930,6 @@ async def media_handler(ws):
                                                     pass
                                             elif msg.get('role') == 'tool' and msg.get('name') == 'book_job':
                                                 try:
-                                                    import json
                                                     result = json.loads(msg.get('content', '{}'))
                                                     if result.get('success'):
                                                         context_summary.append(f"JOB BOOKED: {result.get('message', 'Booking confirmed')}")
