@@ -78,6 +78,12 @@ class Config:
     # Media Handler - LLM Processing (filler speech filtering)
     LLM_PROCESSING_TIMEOUT = float(os.getenv("LLM_PROCESSING_TIMEOUT", 8.0))  # Max time to filter filler speech
     
+    # Continuation window - allows caller to continue speaking after response starts
+    # If speech detected within this window, cancel response and restart with combined text
+    # 2s catches natural thinking pauses like "I need to book... um... an appointment for Tuesday"
+    # The AI still starts generating immediately - this just allows recovery if caller wasn't done
+    CONTINUATION_WINDOW = float(os.getenv("CONTINUATION_WINDOW", 2.0))  # Seconds
+    
     # TTS Chunk Sizes
     MIN_TTS_CHUNK_CHARS = int(os.getenv("MIN_TTS_CHUNK_CHARS", 20))
     MAX_TTS_CHUNK_CHARS = int(os.getenv("MAX_TTS_CHUNK_CHARS", 120))

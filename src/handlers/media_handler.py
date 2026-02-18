@@ -107,6 +107,15 @@ async def media_handler(ws):
     interrupted_text = ""         # What the AI was saying when interrupted
     INTERRUPT_COOLDOWN = 1.5      # Seconds to wait after interrupt before allowing another
     MAX_CONSECUTIVE_INTERRUPTS = 3  # After this many, pause and let caller speak fully
+    
+    # --- Continuation window (allows caller to continue after response starts) ---
+    # If caller speaks within this window after response starts, cancel and restart with combined text
+    CONTINUATION_WINDOW = config.CONTINUATION_WINDOW if hasattr(config, 'CONTINUATION_WINDOW') else 2.0
+    continuation_window_start = 0.0  # When we started generating (for continuation check)
+    continuation_original_text = ""  # The text that triggered generation
+    continuation_energy_since = 0.0  # Track sustained energy for continuation detection
+    continuation_recovery_mode = False  # True when we cancelled and are waiting for more speech
+    continuation_base_text = ""  # The combined text to build upon during recovery
 
     # --- Speech segmentation with sentence-level detection ---
     in_speech = False
@@ -584,6 +593,13 @@ async def media_handler(ws):
                 interrupt = False  # Reset interrupt flag
                 llm_processing = False  # LLM response complete
                 
+                # Clear continuation window state - response completed normally
+                continuation_window_start = 0.0
+                continuation_original_text = ""
+                continuation_energy_since = 0.0
+                continuation_recovery_mode = False
+                continuation_base_text = ""
+                
                 # Process any queued speech that came in during LLM processing
                 if queued_speech:
                     combined_queued = " ".join(queued_speech)
@@ -727,6 +743,86 @@ async def media_handler(ws):
                     if last_interrupt_time > 0 and (now - last_interrupt_time) < INTERRUPT_COOLDOWN:
                         continue
                     
+                    # --- CONTINUATION WINDOW: First 2 seconds after response starts ---
+                    # If caller continues speaking, cancel response and restart with combined text
+                    in_continuation_window = (
+                        continuation_window_start > 0 and 
+                        (now - continuation_window_start) <= CONTINUATION_WINDOW and
+                        continuation_original_text  # Must have original text to append to
+                    )
+                    
+                    if in_continuation_window:
+                        # During continuation window, use lower threshold and check for real speech
+                        if energy > SPEECH_ENERGY:  # Lower threshold than normal barge-in
+                            if continuation_energy_since == 0.0:
+                                continuation_energy_since = now
+                            elif (now - continuation_energy_since) >= 0.15:  # 150ms sustained speech
+                                # Feed audio and check ASR for real words
+                                await asr.feed(audio)
+                                interim_check = asr.get_interim()
+                                words = interim_check.strip().split()
+                                
+                                # Require at least 1 word and 3 characters (not just noise)
+                                # Also check it's different from what triggered the original response
+                                is_new_speech = (
+                                    len(words) >= 1 and 
+                                    len(interim_check.strip()) >= 3 and
+                                    norm_text(interim_check) != norm_text(continuation_original_text)
+                                )
+                                
+                                if is_new_speech:
+                                    # This is real NEW speech during continuation window!
+                                    # Cancel current response and restart with combined text
+                                    print(f"\n🔄 [CONTINUATION] Speech detected during continuation window!")
+                                    print(f"   Original text: '{continuation_original_text}'")
+                                    print(f"   New speech: '{interim_check}'")
+                                    
+                                    # Cancel current response
+                                    await clear_twilio_audio()
+                                    if respond_task and not respond_task.done():
+                                        respond_task.cancel()
+                                    speaking = False
+                                    tts_ended_at = now
+                                    llm_processing = False
+                                    
+                                    # Reset continuation tracking
+                                    continuation_energy_since = 0.0
+                                    
+                                    # DON'T clear ASR - let it continue building the transcript
+                                    # The ASR will naturally include the continuation speech
+                                    
+                                    # Reset speech detection state to capture the rest
+                                    in_speech = True
+                                    silence_since = 0.0
+                                    speech_start_time = now - 0.2  # Pretend speech started slightly earlier
+                                    
+                                    # Set recovery mode - we'll prepend the original text when response triggers
+                                    continuation_recovery_mode = True
+                                    continuation_base_text = continuation_original_text
+                                    
+                                    # Set pending_text to current ASR output (will be combined with base later)
+                                    pending_text = interim_check
+                                    
+                                    # Remove the last user message from conversation (we'll re-add with combined text)
+                                    if conversation and conversation[-1].get('role') == 'user':
+                                        conversation.pop()
+                                    
+                                    print(f"   Base text saved: '{continuation_base_text}'")
+                                    print(f"   Waiting for caller to finish speaking...")
+                                    
+                                    # Clear continuation window state
+                                    continuation_window_start = 0.0
+                                    continuation_original_text = ""
+                                    
+                                    continue
+                        else:
+                            continuation_energy_since = 0.0
+                        
+                        # During continuation window, still feed audio to ASR
+                        await asr.feed(audio)
+                        continue
+                    
+                    # --- Normal barge-in (after continuation window) ---
                     # If too many consecutive interrupts, require longer sustained speech
                     required_hold = BARGEIN_HOLD
                     if interrupt_count >= MAX_CONSECUTIVE_INTERRUPTS:
@@ -756,6 +852,10 @@ async def media_handler(ws):
                                 speaking = False
                                 tts_ended_at = now
                                 bargein_since = 0.0
+                                
+                                # Clear continuation window state on normal interrupt
+                                continuation_window_start = 0.0
+                                continuation_original_text = ""
                             else:
                                 # Reset if not real speech
                                 bargein_since = 0.0
@@ -803,6 +903,16 @@ async def media_handler(ws):
                             (now - silence_since) >= SILENCE_HOLD and
                             (now - speech_start_time) >= MIN_SPEECH_DURATION):
                             text = (final_text or pending_text).strip()
+                            
+                            # If in continuation recovery mode, prepend the base text
+                            if continuation_recovery_mode and continuation_base_text:
+                                # Check if ASR already included the base text (sometimes it does)
+                                if not norm_text(text).startswith(norm_text(continuation_base_text)):
+                                    text = continuation_base_text + " " + text
+                                    print(f"🔄 [CONTINUATION] Combined text: '{text}'")
+                                # Reset recovery mode
+                                continuation_recovery_mode = False
+                                continuation_base_text = ""
                             
                             if text and len(text.split()) >= MIN_WORDS:
                                 # Check if sentence appears complete
@@ -995,6 +1105,12 @@ async def media_handler(ws):
                                     llm_started_at = now
                                     queued_speech.clear()  # Clear any old queued speech (use .clear() to keep same list reference)
                                     
+                                    # Set continuation window state - allows caller to continue speaking
+                                    # within 2 seconds and have their speech appended to original
+                                    continuation_window_start = now
+                                    continuation_original_text = text
+                                    continuation_energy_since = 0.0
+                                    
                                     # Stream LLM with appointment detection, phone number, and company context
                                     try:
                                         # Note: start_tts creates a background task and returns immediately
@@ -1016,6 +1132,8 @@ async def media_handler(ws):
                                         queued_speech.clear()
                                         speaking = False
                                         interrupt = False
+                                        continuation_window_start = 0.0
+                                        continuation_original_text = ""
                                 else:
                                     # Duplicate detected, just reset
                                     in_speech = False
