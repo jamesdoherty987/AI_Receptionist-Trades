@@ -213,10 +213,17 @@ async def send_prerecorded_audio(websocket, stream_sid: str, audio_data: bytes):
     
     Never raises - errors are logged and ignored (TTS fallback will handle it)
     """
+    import time
+    send_start = time.time()
     try:
         # Split into 20ms chunks (160 bytes for mulaw 8kHz)
         # Send all chunks as fast as possible - Twilio buffers them
         chunk_size = 160
+        chunk_count = 0
+        
+        # Calculate expected audio duration
+        audio_duration_ms = len(audio_data) / 8  # 8 bytes per ms at 8kHz mulaw
+        print(f"[AUDIO] 🔊 Sending {len(audio_data)} bytes ({audio_duration_ms:.0f}ms) of pre-recorded audio")
         
         for i in range(0, len(audio_data), chunk_size):
             chunk = audio_data[i:i+chunk_size]
@@ -227,9 +234,14 @@ async def send_prerecorded_audio(websocket, stream_sid: str, audio_data: bytes):
                 "streamSid": stream_sid,
                 "media": {"payload": payload},
             }))
+            chunk_count += 1
+        
+        send_duration = time.time() - send_start
+        print(f"[AUDIO] ✅ Sent {chunk_count} chunks in {send_duration:.3f}s (audio will play for {audio_duration_ms:.0f}ms)")
+        
     except Exception as e:
         # Log but don't raise - TTS fallback will handle it
-        print(f"[AUDIO] Error sending pre-recorded audio: {type(e).__name__}: {e}")
+        print(f"[AUDIO] ❌ Error sending pre-recorded audio: {type(e).__name__}: {e}")
 
 
 def has_prerecorded_fillers() -> bool:

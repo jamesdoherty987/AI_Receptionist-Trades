@@ -2210,7 +2210,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         print(f"   🚀 PRE-CHECK: Customer lookup detected")
     
     if likely_needs_tool and checking_msg:
-        print(f"   🗣️ Speaking BEFORE OpenAI call: '{checking_msg}'")
+        import time
+        precheck_time = time.time()
+        print(f"   🗣️ [PRE-CHECK] Speaking BEFORE OpenAI call at {precheck_time:.3f}: '{checking_msg}'")
         print(f"   📝 User message: '{user_message[:100]}...'")
         yield f"<<<SPLIT_TTS:{checking_msg}>>>"
     
@@ -2527,7 +2529,10 @@ When customer wants to reschedule:
     
     # Process tool calls if any were made
     if tool_calls:
-        print(f"\n🔧 LLM requested {len(tool_calls)} tool call(s)")
+        import time
+        tool_phase_start = time.time()
+        print(f"\n🔧 [TOOL_PHASE] Starting tool execution at {tool_phase_start:.3f}")
+        print(f"🔧 LLM requested {len(tool_calls)} tool call(s)")
         print(f"   (Split marker already yielded during stream)")
         print(f"   ⏳ Now executing tools...")
         
@@ -2578,6 +2583,12 @@ When customer wants to reschedule:
         
         # Execute each tool call and collect results
         tool_results = []
+        
+        # Yield control to event loop before tool execution
+        # This allows other tasks (like audio playback) to run
+        await asyncio.sleep(0)
+        print(f"   🔧 [TOOL_EXEC] Yielded control before tool execution")
+        
         for tool_call in tool_calls:
             tool_name = tool_call["function"]["name"]
             try:
@@ -2589,7 +2600,14 @@ When customer wants to reschedule:
                 try:
                     import time
                     tool_start = time.time()
-                    result = execute_tool_call(tool_name, arguments, services)
+                    
+                    # Run tool execution in thread pool to not block event loop
+                    # This allows audio playback to continue during tool execution
+                    result = await asyncio.get_event_loop().run_in_executor(
+                        None,  # Use default thread pool
+                        lambda: execute_tool_call(tool_name, arguments, services)
+                    )
+                    
                     tool_duration = time.time() - tool_start
                     print(f"   🔧 [TOOL_EXEC] Tool {tool_name} completed in {tool_duration:.2f}s")
                     
@@ -2645,6 +2663,8 @@ When customer wants to reschedule:
         messages.extend(tool_results)
         
         # Make another call to get LLM's response based on tool results
+        tool_exec_duration = time.time() - tool_phase_start
+        print(f"   🔧 [TOOL_PHASE] Tool execution complete in {tool_exec_duration:.3f}s")
         print("   🔄 Getting LLM response with tool results...")
         print(f"   📊 Tool results being sent to LLM: {[{**tr, 'content': tr['content'][:100] + '...' if len(tr['content']) > 100 else tr['content']} for tr in tool_results]}")
         try:
@@ -2689,30 +2709,33 @@ When customer wants to reschedule:
             
             follow_up_response = ""
             follow_up_token_count = 0
-            print(f"   ⏳ Starting follow-up stream...")
+            follow_up_start = time.time()
+            print(f"   ⏳ [FOLLOW_UP] Starting follow-up stream at {follow_up_start:.3f}")
             
             # Add timeout protection to prevent infinite hangs
-            import time
-            start_time = time.time()
             timeout_seconds = 20  # Increased to prevent cutting off longer responses
             
             for part in follow_up_stream:
                 # Check timeout
-                if time.time() - start_time > timeout_seconds:
+                if time.time() - follow_up_start > timeout_seconds:
                     print(f"⚠️ WARNING: Follow-up stream timed out after {timeout_seconds}s")
                     break
                     
                 delta = part.choices[0].delta.content
                 if delta:
                     follow_up_token_count += 1
+                    token_time = time.time() - follow_up_start
                     # Strip markdown formatting
                     cleaned_delta = delta.replace('**', '').replace('__', '').replace('~~', '')
                     follow_up_response += delta  # Keep original
                     if follow_up_token_count == 1:
-                        print(f"   🗣️ Follow-up first token: '{cleaned_delta[:50]}...'")
+                        print(f"   🗣️ [FOLLOW_UP] First token at {token_time:.3f}s: '{cleaned_delta[:50]}...'")
+                    elif follow_up_token_count % 20 == 0:
+                        print(f"   🗣️ [FOLLOW_UP] Token #{follow_up_token_count} at {token_time:.3f}s")
                     yield cleaned_delta  # Send cleaned to TTS
             
-            print(f"   📊 Follow-up stream complete: {follow_up_token_count} tokens generated in {time.time() - start_time:.2f}s")
+            total_follow_up_time = time.time() - follow_up_start
+            print(f"   📊 [FOLLOW_UP] Stream complete: {follow_up_token_count} tokens in {total_follow_up_time:.3f}s")
             
             # Check if any tool result requested a transfer
             transfer_requested = False

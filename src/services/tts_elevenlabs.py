@@ -27,6 +27,10 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
         stream_sid: Twilio stream ID
         interrupt_fn: Function to check if interrupted
     """
+    import time
+    tts_start = time.time()
+    print(f"[TTS] 🎤 Starting ElevenLabs TTS at {tts_start:.3f}")
+    
     # Try primary voice first, fallback to backup if it fails
     voice_id = config.ELEVENLABS_VOICE_ID
     

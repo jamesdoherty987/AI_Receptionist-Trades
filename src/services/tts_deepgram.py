@@ -29,6 +29,10 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
         stream_sid: Twilio stream ID
         interrupt_fn: Function to check if interrupted
     """
+    import time
+    tts_start = time.time()
+    print(f"[TTS] 🎤 Starting Deepgram TTS at {tts_start:.3f}")
+    
     # Use faster model and optimized settings for speed
     # aura-luna-en is a natural female voice optimized for conversational use
     uri = f"wss://api.deepgram.com/v1/speak?model=aura-luna-en&encoding={config.AUDIO_ENCODING}&sample_rate={config.AUDIO_SAMPLE_RATE}&container=none"
