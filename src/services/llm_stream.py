@@ -2133,9 +2133,19 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     # If so, speak acknowledgment IMMEDIATELY before calling OpenAI (to avoid OpenAI latency)
     # IMPORTANT: Filler messages run in PARALLEL with tool execution - TTS speaks while work happens
     # NOTE: Use GENERIC fillers that work for any action - avoid action-specific phrases that could be wrong
+    
+    import time as time_module  # Import for timing
+    precheck_start = time_module.time()
+    
     user_message = messages[-1]["content"].lower() if messages and messages[-1].get("role") == "user" else ""
     likely_needs_tool = False
     checking_msg = None
+    detected_intent = None
+    
+    print(f"\n{'='*60}")
+    print(f"🔍 [PRE-CHECK] === FILLER PRE-CHECK ANALYSIS ===")
+    print(f"🔍 [PRE-CHECK] User message: '{user_message[:80]}...'")
+    print(f"{'='*60}")
     
     # Generic filler phrases that work for ANY action - can't be wrong
     # NOTE: These must match the pre-recorded audio files in src/audio/fillers/
@@ -2151,12 +2161,13 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     transfer_phrases = ["transfer", "speak to a", "talk to a", "speak with", "talk with", "real person", "actual person", "someone else", "a human", "the manager", "the owner"]
     if any(phrase in user_message for phrase in transfer_phrases):
         likely_needs_tool = True
+        detected_intent = "TRANSFER"
         checking_msg = random.choice([
             "No problem, let me transfer you now.",
             "Sure, transferring you now.",
             "Of course, I'll connect you now."
         ])
-        print(f"   🚀 PRE-CHECK: Transfer request detected")
+        print(f"   ✅ [PRE-CHECK] Detected: TRANSFER REQUEST")
     
     # Detect booking confirmation (user confirming details before booking)
     booking_confirm_phrases = ["yes", "yeah", "yep", "correct", "that's right", "book it", "sounds good", "perfect", "go ahead", "please book", "book that"]
@@ -2169,52 +2180,66 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     
     if not likely_needs_tool and is_booking_confirmation:
         likely_needs_tool = True
-        # Use generic filler - the follow-up will confirm what was done
+        detected_intent = "BOOKING_CONFIRMATION"
         checking_msg = random.choice(generic_fillers)
-        print(f"   🚀 PRE-CHECK: Booking confirmation detected")
+        print(f"   ✅ [PRE-CHECK] Detected: BOOKING CONFIRMATION")
     
     # Detect availability/schedule checking
     availability_phrases = ["available", "availability", "what times", "when are you", "when can", "any slots", "free", "open"]
     if not likely_needs_tool and any(phrase in user_message for phrase in availability_phrases):
         likely_needs_tool = True
+        detected_intent = "AVAILABILITY_CHECK"
         checking_msg = random.choice(generic_fillers)
-        print(f"   🚀 PRE-CHECK: Availability check detected")
+        print(f"   ✅ [PRE-CHECK] Detected: AVAILABILITY CHECK")
     
     # Detect cancellation requests
     cancel_phrases = ["cancel", "cancelling", "canceling"]
     cancel_context = ["appointment", "booking", "scheduled", "job"]
     if not likely_needs_tool and any(phrase in user_message for phrase in cancel_phrases) and any(ctx in user_message for ctx in cancel_context):
         likely_needs_tool = True
+        detected_intent = "CANCELLATION"
         checking_msg = random.choice(generic_fillers)
-        print(f"   🚀 PRE-CHECK: Cancellation request detected")
+        print(f"   ✅ [PRE-CHECK] Detected: CANCELLATION REQUEST")
     
     # Detect reschedule requests
     reschedule_phrases = ["reschedule", "change my appointment", "move my appointment", "different time", "move it to"]
     if not likely_needs_tool and any(phrase in user_message for phrase in reschedule_phrases):
         likely_needs_tool = True
+        detected_intent = "RESCHEDULE"
         checking_msg = random.choice(generic_fillers)
-        print(f"   🚀 PRE-CHECK: Reschedule request detected")
+        print(f"   ✅ [PRE-CHECK] Detected: RESCHEDULE REQUEST")
     
     # Detect lookup/verification requests (when asking about existing appointments)
     lookup_phrases = ["my appointment", "do i have", "what time is my", "when is my"]
     if not likely_needs_tool and any(phrase in user_message for phrase in lookup_phrases):
         likely_needs_tool = True
+        detected_intent = "APPOINTMENT_LOOKUP"
         checking_msg = random.choice(generic_fillers)
-        print(f"   🚀 PRE-CHECK: Appointment lookup detected")
+        print(f"   ✅ [PRE-CHECK] Detected: APPOINTMENT LOOKUP")
     
     # Detect customer lookup (after getting name)
     name_intro_patterns = ["my name is ", "the name is ", "name's "]
     if not likely_needs_tool and any(phrase in user_message for phrase in name_intro_patterns):
         likely_needs_tool = True
+        detected_intent = "CUSTOMER_LOOKUP"
         checking_msg = random.choice(generic_fillers)
-        print(f"   🚀 PRE-CHECK: Customer lookup detected")
+        print(f"   ✅ [PRE-CHECK] Detected: CUSTOMER LOOKUP")
+    
+    precheck_duration = time_module.time() - precheck_start
     
     if likely_needs_tool and checking_msg:
-        import time
-        precheck_time = time.time()
-        print(f"   🗣️ [PRE-CHECK] Speaking BEFORE OpenAI call at {precheck_time:.3f}: '{checking_msg}'")
-        print(f"   📝 User message: '{user_message[:100]}...'")
+        print(f"\n   {'─'*50}")
+        print(f"   🎯 [PRE-CHECK] FILLER WILL BE TRIGGERED!")
+        print(f"   🎯 [PRE-CHECK] Intent: {detected_intent}")
+        print(f"   🎯 [PRE-CHECK] Filler message: '{checking_msg}'")
+        print(f"   🎯 [PRE-CHECK] Analysis took: {precheck_duration*1000:.1f}ms")
+        print(f"   🎯 [PRE-CHECK] Yielding SPLIT_TTS marker NOW (before OpenAI call)")
+        print(f"   {'─'*50}\n")
         yield f"<<<SPLIT_TTS:{checking_msg}>>>"
+    else:
+        print(f"   ❌ [PRE-CHECK] No filler trigger detected")
+        print(f"   ❌ [PRE-CHECK] Analysis took: {precheck_duration*1000:.1f}ms")
+        print(f"   ❌ [PRE-CHECK] Will proceed directly to OpenAI without filler\n")
     
     # Stream from OpenAI with optimized settings
     client = get_openai_client()
@@ -2532,14 +2557,20 @@ When customer wants to reschedule:
         import time
         tool_phase_start = time.time()
         print(f"\n🔧 [TOOL_PHASE] Starting tool execution at {tool_phase_start:.3f}")
-        print(f"🔧 LLM requested {len(tool_calls)} tool call(s)")
-        print(f"   (Split marker already yielded during stream)")
-        print(f"   ⏳ Now executing tools...")
+        print(f"\n{'='*60}")
+        print(f"🔧 [TOOL_PHASE] === TOOL EXECUTION PHASE ===")
+        print(f"🔧 [TOOL_PHASE] Start time: {tool_phase_start:.3f}")
+        print(f"🔧 [TOOL_PHASE] Tool calls requested: {len(tool_calls)}")
+        for i, tc in enumerate(tool_calls):
+            print(f"🔧 [TOOL_PHASE]   {i+1}. {tc['function']['name']}")
+        print(f"🔧 [TOOL_PHASE] Note: SPLIT_TTS marker was already yielded")
+        print(f"🔧 [TOOL_PHASE] Audio should be playing while this executes")
+        print(f"{'='*60}\n")
         
         # Import database service (config already imported at module level)
         from src.services.database import get_database
         
-        print(f"[TOOL_DEBUG] Preparing services for tool execution...")
+        print(f"   📦 [TOOL_SETUP] Preparing services...")
         
         # Prepare services for tool execution
         # Use database calendar by default (scalable for SaaS)
@@ -2549,57 +2580,57 @@ When customer wants to reschedule:
             try:
                 from src.services.google_calendar import get_calendar_service as get_cal_service
                 calendar = get_cal_service()
-                print("[TOOL_DEBUG] Using Google Calendar (OAuth-based)")
+                print(f"   📦 [TOOL_SETUP] Using Google Calendar (OAuth-based)")
             except Exception as e:
-                print(f"[TOOL_WARNING] Could not load Google Calendar: {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"   ⚠️ [TOOL_SETUP] Could not load Google Calendar: {e}")
         
         # Always use database calendar as fallback (or primary if Google disabled)
         if calendar is None:
             try:
                 from src.services.database_calendar import get_database_calendar_service
-                # Use actual company_id from context for proper multi-tenant isolation
                 calendar_company_id = int(company_id) if company_id else None
                 calendar = get_database_calendar_service(company_id=calendar_company_id)
-                print(f"[TOOL_DEBUG] Using Database Calendar (company_id={calendar_company_id})")
+                print(f"   📦 [TOOL_SETUP] Using Database Calendar (company_id={calendar_company_id})")
             except Exception as e:
-                print(f"[TOOL_ERROR] Could not load database calendar: {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"   ❌ [TOOL_SETUP] Could not load database calendar: {e}")
         
         db = get_database()
-        print(f"[TOOL_DEBUG] Database loaded: {db is not None}")
         
-        # Include company_id in services for proper data isolation
         company_id_int = int(company_id) if company_id else None
         services = {
             'google_calendar': calendar,
-            'calendar': calendar,  # Alias for clarity
+            'calendar': calendar,
             'db': db,
-            'company_id': company_id_int  # CRITICAL: Pass company_id for data isolation
+            'company_id': company_id_int
         }
-        print(f"[TOOL_DEBUG] Services prepared: calendar={calendar is not None}, db={db is not None}, company_id={company_id_int}")
+        print(f"   📦 [TOOL_SETUP] Services ready: calendar={calendar is not None}, db={db is not None}")
         
         # Execute each tool call and collect results
         tool_results = []
         
         # Yield control to event loop before tool execution
         # This allows other tasks (like audio playback) to run
+        print(f"   ⏸️ [TOOL_EXEC] Yielding to event loop (allows audio to continue)...")
         await asyncio.sleep(0)
-        print(f"   🔧 [TOOL_EXEC] Yielded control before tool execution")
         
-        for tool_call in tool_calls:
+        for i, tool_call in enumerate(tool_calls):
             tool_name = tool_call["function"]["name"]
+            tool_id = tool_call["id"]
+            
+            print(f"\n   {'─'*50}")
+            print(f"   🔧 [TOOL_EXEC] === Executing Tool {i+1}/{len(tool_calls)} ===")
+            print(f"   🔧 [TOOL_EXEC] Name: {tool_name}")
+            print(f"   🔧 [TOOL_EXEC] ID: {tool_id}")
+            
             try:
                 arguments = json.loads(tool_call["function"]["arguments"])
-                print(f"   🔧 [TOOL_EXEC] Executing: {tool_name}")
-                print(f"   🔧 [TOOL_EXEC] Arguments: {json.dumps(arguments, indent=2)}")
+                print(f"   🔧 [TOOL_EXEC] Arguments: {json.dumps(arguments)}")
                 
                 # Execute tool with timeout protection
                 try:
-                    import time
                     tool_start = time.time()
+                    print(f"   🔧 [TOOL_EXEC] Starting execution at {tool_start:.3f}...")
+                    print(f"   🔧 [TOOL_EXEC] Running in thread pool (non-blocking)...")
                     
                     # Run tool execution in thread pool to not block event loop
                     # This allows audio playback to continue during tool execution
@@ -2609,10 +2640,10 @@ When customer wants to reschedule:
                     )
                     
                     tool_duration = time.time() - tool_start
-                    print(f"   🔧 [TOOL_EXEC] Tool {tool_name} completed in {tool_duration:.2f}s")
+                    print(f"   🔧 [TOOL_EXEC] ✅ Tool completed in {tool_duration:.3f}s")
                     
                     if not result:
-                        print(f"   ⚠️ [TOOL_ERROR] Tool {tool_name} returned None!")
+                        print(f"   ⚠️ [TOOL_EXEC] Tool returned None!")
                         raise Exception("Tool returned None")
                     
                     print(f"   🔧 [TOOL_RESULT] Success: {result.get('success')}, Message: {result.get('message', result.get('error', 'N/A'))[:100]}")
