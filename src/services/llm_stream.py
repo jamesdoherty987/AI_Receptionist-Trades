@@ -5,6 +5,7 @@ import re
 import os
 import json
 import asyncio
+import time  # For timing logs
 
 from openai import OpenAI
 from src.utils.config import config
@@ -2134,8 +2135,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     # IMPORTANT: Filler messages run in PARALLEL with tool execution - TTS speaks while work happens
     # NOTE: Use GENERIC fillers that work for any action - avoid action-specific phrases that could be wrong
     
-    import time as time_module  # Import for timing
-    precheck_start = time_module.time()
+    precheck_start = time.time()
     
     user_message = messages[-1]["content"].lower() if messages and messages[-1].get("role") == "user" else ""
     likely_needs_tool = False
@@ -2225,7 +2225,7 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         checking_msg = random.choice(generic_fillers)
         print(f"   ✅ [PRE-CHECK] Detected: CUSTOMER LOOKUP")
     
-    precheck_duration = time_module.time() - precheck_start
+    precheck_duration = time.time() - precheck_start
     
     if likely_needs_tool and checking_msg:
         print(f"\n   {'─'*50}")
@@ -2554,7 +2554,6 @@ When customer wants to reschedule:
     
     # Process tool calls if any were made
     if tool_calls:
-        import time
         tool_phase_start = time.time()
         print(f"\n🔧 [TOOL_PHASE] Starting tool execution at {tool_phase_start:.3f}")
         print(f"\n{'='*60}")

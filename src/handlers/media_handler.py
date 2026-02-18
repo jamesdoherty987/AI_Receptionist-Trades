@@ -6,6 +6,7 @@ import asyncio
 import json
 import base64
 import re
+import time as time_module  # For timing logs
 import websockets
 
 from src.utils.audio_utils import ulaw_energy
@@ -167,7 +168,6 @@ async def media_handler(ws):
             label: Label for logging
         """
         nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at, llm_processing, queued_speech
-        import time as time_module  # Import at function level for timing
 
         async def run():
             nonlocal speaking, tts_started_at, tts_ended_at, call_sid, conversation_log, llm_processing, queued_speech, conversation
