@@ -10,6 +10,7 @@ import os
 import json
 import asyncio
 import time  # For timing logs
+import random  # For random filler message selection
 
 from openai import OpenAI
 from src.utils.config import config
@@ -18,7 +19,6 @@ from src.services.calendar_tools import CALENDAR_TOOLS, execute_tool_call
 from src.services.call_state import CallState, create_call_state
 
 # --- AI-based utilities for text parsing ---
-import re
 from src.utils.ai_text_parser import extract_time_window_ai, extract_name_ai, detect_birth_year, is_affirmative_response
 
 # Use AI for time window extraction
@@ -488,12 +488,8 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         Text tokens from LLM
     """
     
-    import random  # For random message selection
-    
     print(f"[AI] stream_llm called with {len(messages)} messages")
 
-    import re  # Import at function level for use in birth year detection
-    
     # Use provided call_state or create a new one (for backwards compatibility)
     # WARNING: Creating a new CallState here means state won't persist across turns
     # For proper concurrent call handling, always pass call_state from media_handler

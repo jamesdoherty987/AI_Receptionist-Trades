@@ -54,7 +54,6 @@ def content_fingerprint(s: str) -> str:
     Removes all spaces and punctuation to catch cases where the same content
     is transcribed with different spacing (e.g., "v 9 5 h 5 p 2" vs "v95h5p2").
     """
-    import re
     # Remove all non-alphanumeric characters and lowercase
     return re.sub(r'[^a-z0-9]', '', (s or "").lower())
 
