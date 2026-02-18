@@ -627,10 +627,10 @@ async def media_handler(ws):
         respond_task = asyncio.create_task(run())
 
     async def greet():
-        """Send initial greeting"""
+        """Send initial greeting - uses pre-recorded audio if available for instant playback"""
+        nonlocal speaking, stream_sid
         greeting_text = "Hi, thank you for calling. How can I help you today?"
-        async def tokens():
-            yield greeting_text
+        
         print(f"\n{'='*80}")
         print(f"🤖 RECEPTIONIST (GREETING): {greeting_text}")
         print(f"{'='*80}\n")
@@ -639,6 +639,22 @@ async def media_handler(ws):
             "content": greeting_text,
             "timestamp": asyncio.get_event_loop().time()
         })
+        
+        # Try pre-recorded greeting first for instant playback
+        try:
+            if has_prerecorded_fillers():
+                greeting_audio = get_filler_audio("greeting")
+                if greeting_audio and len(greeting_audio) > 0 and stream_sid:
+                    print(f"[GREETING] Using pre-recorded greeting ({len(greeting_audio)} bytes)")
+                    await send_prerecorded_audio(ws, stream_sid, greeting_audio)
+                    speaking = False  # Ready to listen immediately
+                    return
+        except Exception as e:
+            print(f"[GREETING] Pre-recorded greeting failed, falling back to TTS: {e}")
+        
+        # Fallback to TTS
+        async def tokens():
+            yield greeting_text
         await start_tts(tokens(), label="greet")
 
     try:
@@ -929,13 +945,16 @@ async def media_handler(ws):
                                 # Enhanced duplicate detection
                                 is_duplicate = False
                                 
-                                if (now - last_response_time) < DUPLICATE_WINDOW:
-                                    # Exact match
-                                    if norm_text(text) == norm_text(last_committed):
-                                        is_duplicate = True
-                                        print(f"🔄 Duplicate detected (exact match): '{text}'")
+                                # Check for exact match with last committed (regardless of time window)
+                                # This catches echo/feedback issues where the same text appears again
+                                if norm_text(text) == norm_text(last_committed) and last_committed:
+                                    is_duplicate = True
+                                    print(f"🔄 Duplicate detected (exact match with last): '{text}'")
+                                
+                                # Time-windowed duplicate checks
+                                if not is_duplicate and (now - last_response_time) < DUPLICATE_WINDOW:
                                     # New text is just the old text with more words (continuation)
-                                    elif norm_text(last_committed) and len(norm_text(last_committed)) > 5 and norm_text(text).startswith(norm_text(last_committed)):
+                                    if norm_text(last_committed) and len(norm_text(last_committed)) > 5 and norm_text(text).startswith(norm_text(last_committed)):
                                         is_duplicate = True
                                         print(f"🔄 Duplicate detected (continuation): '{text}' starts with '{last_committed}'")
                                     # Old text is just the new text with more words (shouldn't happen but safety check)

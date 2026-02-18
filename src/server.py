@@ -115,6 +115,18 @@ async def media_websocket_endpoint(websocket: WebSocket):
 # This runs Flask in a thread pool - fully compatible with all Flask features
 flask_asgi = WSGIMiddleware(flask_app)
 
+
+async def startup_event():
+    """Pre-load resources at server startup"""
+    print("[STARTUP] Running startup tasks...")
+    try:
+        from src.services.prerecorded_audio import preload_fillers_async, has_prerecorded_fillers
+        await preload_fillers_async()
+        print(f"[STARTUP] Filler audio ready: {has_prerecorded_fillers()}")
+    except Exception as e:
+        print(f"[STARTUP] Warning: Could not pre-load fillers: {e}")
+
+
 # Create the combined ASGI application
 # - /media -> WebSocket handler (Twilio media streams)
 # - everything else -> Flask HTTP API
@@ -123,6 +135,7 @@ app = Starlette(
         WebSocketRoute("/media", media_websocket_endpoint),
         Mount("/", app=flask_asgi),
     ],
+    on_startup=[startup_event],
 )
 
 

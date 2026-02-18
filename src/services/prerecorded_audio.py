@@ -37,6 +37,7 @@ FILLER_PHRASES = {
     "just_a_moment": "Just a moment.",
     "let_me_look": "Let me have a look.",
     "transferring": "Transferring you now.",
+    "greeting": "Hi, thank you for calling. How can I help you today?",  # Pre-recorded greeting for instant playback
 }
 
 # R2 folder for filler audio
