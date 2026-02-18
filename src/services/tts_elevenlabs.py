@@ -48,7 +48,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
         try:
             async with websockets.connect(
                 uri,
-                additional_headers={"xi-api-key": config.ELEVENLABS_API_KEY},
+                extra_headers={"xi-api-key": config.ELEVENLABS_API_KEY},
                 open_timeout=12,
                 close_timeout=5,
                 ping_interval=20,

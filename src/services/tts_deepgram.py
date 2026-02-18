@@ -43,7 +43,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
         try:
             async with websockets.connect(
                 uri,
-                additional_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
+                extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
                 open_timeout=8,   # Faster connection timeout
                 close_timeout=3,  # Faster close
                 ping_interval=15, # More frequent pings for stability

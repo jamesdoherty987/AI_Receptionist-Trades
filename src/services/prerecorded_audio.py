@@ -335,10 +335,10 @@ async def generate_filler_audio_elevenlabs(phrase_id: str, text: str) -> bytes:
     
     audio_chunks = []
     
-    # websockets v16+ uses additional_headers instead of extra_headers
+    # websockets v12+ uses extra_headers instead of additional_headers
     async with websockets.connect(
         uri,
-        additional_headers={"xi-api-key": api_key},
+        extra_headers={"xi-api-key": api_key},
         open_timeout=15,
     ) as ws:
         # Initialize with same voice settings as live TTS
