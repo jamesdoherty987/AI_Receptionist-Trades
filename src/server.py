@@ -125,6 +125,105 @@ async def startup_event():
         print(f"[STARTUP] Filler audio ready: {has_prerecorded_fillers()}")
     except Exception as e:
         print(f"[STARTUP] Warning: Could not pre-load fillers: {e}")
+    
+    # Warmup OpenAI connection to avoid cold start delay on first call
+    try:
+        await warmup_openai()
+    except Exception as e:
+        print(f"[STARTUP] Warning: OpenAI warmup failed: {e}")
+    
+    # Start background keepalive task to prevent connection going cold
+    global _keepalive_task
+    _keepalive_task = asyncio.create_task(openai_keepalive_loop())
+
+
+async def warmup_openai():
+    """
+    Warmup OpenAI API connection to avoid cold start delay on first real call.
+    Makes a minimal API call to establish the HTTPS connection and warm up the client.
+    """
+    import time
+    from src.services.llm_stream import get_openai_client
+    from src.utils.config import config
+    
+    print("[STARTUP] Warming up OpenAI connection...")
+    start = time.time()
+    
+    try:
+        client = get_openai_client()
+        # Run sync OpenAI call in thread pool to avoid blocking event loop
+        await asyncio.to_thread(
+            client.chat.completions.create,
+            model=config.CHAT_MODEL,
+            messages=[{"role": "user", "content": "hi"}],
+            max_tokens=1,
+            stream=False
+        )
+        elapsed = time.time() - start
+        print(f"[STARTUP] OpenAI warmup complete in {elapsed:.2f}s")
+    except Exception as e:
+        elapsed = time.time() - start
+        print(f"[STARTUP] OpenAI warmup failed after {elapsed:.2f}s: {e}")
+
+
+OPENAI_KEEPALIVE_INTERVAL = 120  # Ping every 2 minutes to keep connection warm
+_keepalive_task = None  # Track task for graceful shutdown
+
+
+async def openai_keepalive_loop():
+    """
+    Background task that pings OpenAI periodically to keep the connection warm.
+    Prevents cold start delays after idle periods.
+    
+    Cost: ~$0.01/month (negligible)
+    """
+    from src.services.llm_stream import get_openai_client
+    from src.utils.config import config
+    
+    print(f"[KEEPALIVE] Started OpenAI keepalive (every {OPENAI_KEEPALIVE_INTERVAL}s)")
+    
+    consecutive_failures = 0
+    max_failures_before_warning = 3
+    
+    while True:
+        try:
+            await asyncio.sleep(OPENAI_KEEPALIVE_INTERVAL)
+        except asyncio.CancelledError:
+            print("[KEEPALIVE] Shutting down gracefully")
+            return
+        
+        try:
+            client = get_openai_client()
+            # Run sync OpenAI call in thread pool to avoid blocking event loop
+            await asyncio.to_thread(
+                client.chat.completions.create,
+                model=config.CHAT_MODEL,
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+                stream=False
+            )
+            consecutive_failures = 0  # Reset on success
+        except asyncio.CancelledError:
+            print("[KEEPALIVE] Shutting down gracefully")
+            return
+        except Exception as e:
+            consecutive_failures += 1
+            # Only log after multiple failures to avoid log spam
+            if consecutive_failures >= max_failures_before_warning:
+                print(f"[KEEPALIVE] Ping failed {consecutive_failures}x: {e}")
+                consecutive_failures = 0  # Reset to avoid continuous logging
+
+
+async def shutdown_event():
+    """Clean up background tasks on shutdown"""
+    global _keepalive_task
+    if _keepalive_task and not _keepalive_task.done():
+        _keepalive_task.cancel()
+        try:
+            await _keepalive_task
+        except asyncio.CancelledError:
+            pass
+    print("[SHUTDOWN] Cleanup complete")
 
 
 # Create the combined ASGI application
@@ -136,6 +235,7 @@ app = Starlette(
         Mount("/", app=flask_asgi),
     ],
     on_startup=[startup_event],
+    on_shutdown=[shutdown_event],
 )
 
 

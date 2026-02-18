@@ -31,14 +31,27 @@ from typing import Optional
 # Filler phrase definitions - must match what's generated
 # These are the phrases that will be pre-recorded and played instantly
 FILLER_PHRASES = {
+    # Generic fillers
     "one_moment": "One moment.",
     "let_me_check": "Let me check that for you.",
     "bear_with_me": "Bear with me one second.",
     "just_a_moment": "Just a moment.",
     "let_me_look": "Let me have a look.",
+    # Booking-specific fillers
+    "let_me_book": "Let me book that for you, one moment.",
+    "let_me_confirm": "Let me confirm that for you, one moment.",
+    # Transfer fillers
     "transferring": "Transferring you now.",
+    "connecting": "Connecting you now.",
+    "let_me_connect": "Let me get someone for you.",
+    # Greeting
     "greeting": "Hi, thank you for calling. How can I help you today?",  # Pre-recorded greeting for instant playback
 }
+
+# Context-specific filler groups
+BOOKING_FILLERS = ["let_me_book", "let_me_confirm"]
+GENERIC_FILLERS = ["one_moment", "let_me_check", "bear_with_me", "just_a_moment", "let_me_look"]
+TRANSFER_FILLERS = ["transferring", "connecting", "let_me_connect"]
 
 # R2 folder for filler audio
 R2_FILLER_FOLDER = "audio/fillers"
@@ -182,11 +195,30 @@ def preload_fillers():
         _loading_in_progress = False
 
 
-def get_random_filler_id() -> str:
-    """Get a random generic filler phrase ID (only from loaded cache)"""
+def get_random_filler_id(tool_name: str = None) -> str:
+    """Get a random filler phrase ID based on context (only from loaded cache)
+    
+    Args:
+        tool_name: Optional tool name to select context-appropriate filler
+                   - book_appointment, book_job: Use booking-specific fillers
+                   - transfer_to_human: Use transfer filler
+                   - Others: Use generic fillers
+    """
     try:
-        generic = ["one_moment", "let_me_check", "bear_with_me", "just_a_moment", "let_me_look"]
-        available = [f for f in generic if f in _audio_cache]
+        # Select appropriate filler group based on tool
+        if tool_name in ["book_appointment", "book_job"]:
+            # Booking-specific fillers
+            available = [f for f in BOOKING_FILLERS if f in _audio_cache]
+            if available:
+                return random.choice(available)
+        elif tool_name == "transfer_to_human":
+            # Transfer filler
+            available = [f for f in TRANSFER_FILLERS if f in _audio_cache]
+            if available:
+                return random.choice(available)
+        
+        # Fall back to generic fillers
+        available = [f for f in GENERIC_FILLERS if f in _audio_cache]
         if available:
             return random.choice(available)
     except Exception:
@@ -198,6 +230,29 @@ def get_filler_audio(phrase_id: str) -> Optional[bytes]:
     """Get pre-recorded audio for a filler phrase (instant - from memory)"""
     try:
         return _audio_cache.get(phrase_id)
+    except Exception:
+        return None
+
+
+def get_filler_id_from_message(message: str) -> Optional[str]:
+    """Get the filler ID that matches a given message text
+    
+    Args:
+        message: The filler message text (e.g., "Let me book that for you, one moment.")
+    
+    Returns:
+        The phrase ID if found in cache, None otherwise
+    """
+    try:
+        # Normalize the message for comparison
+        normalized_msg = message.strip().lower()
+        
+        for phrase_id, phrase_text in FILLER_PHRASES.items():
+            if phrase_text.strip().lower() == normalized_msg:
+                # Only return if we have this audio cached
+                if phrase_id in _audio_cache:
+                    return phrase_id
+        return None
     except Exception:
         return None
 
@@ -280,9 +335,10 @@ async def generate_filler_audio_elevenlabs(phrase_id: str, text: str) -> bytes:
     
     audio_chunks = []
     
+    # websockets v16+ uses additional_headers instead of extra_headers
     async with websockets.connect(
         uri,
-        extra_headers={"xi-api-key": api_key},
+        additional_headers={"xi-api-key": api_key},
         open_timeout=15,
     ) as ws:
         # Initialize with same voice settings as live TTS

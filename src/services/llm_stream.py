@@ -2163,9 +2163,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         likely_needs_tool = True
         detected_intent = "TRANSFER"
         checking_msg = random.choice([
-            "No problem, let me transfer you now.",
-            "Sure, transferring you now.",
-            "Of course, I'll connect you now."
+            "Transferring you now.",
+            "Connecting you now.",
+            "Let me get someone for you."
         ])
         print(f"   ✅ [PRE-CHECK] Detected: TRANSFER REQUEST")
     
@@ -2181,7 +2181,11 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     if not likely_needs_tool and is_booking_confirmation:
         likely_needs_tool = True
         detected_intent = "BOOKING_CONFIRMATION"
-        checking_msg = random.choice(generic_fillers)
+        # Use booking-specific fillers for booking confirmations
+        checking_msg = random.choice([
+            "Let me book that for you, one moment.",
+            "Let me confirm that for you, one moment.",
+        ])
         print(f"   ✅ [PRE-CHECK] Detected: BOOKING CONFIRMATION")
     
     # Detect availability/schedule checking
@@ -2458,26 +2462,28 @@ When customer wants to reschedule:
                             tool_name_hint = tc_delta.function.name
                             break
                     
-                    # Generic filler messages - avoid action-specific phrases that could be wrong
-                    # The follow-up response will confirm what was actually done
-                    generic_fillers = [
-                        "One moment.",
-                        "Let me check that for you.",
-                        "Bear with me one second.",
-                        "Just a moment.",
-                        "Let me have a look.",
-                    ]
-                    
-                    # Only use specific messaging for transfers (user explicitly asked)
+                    # Context-specific filler messages based on tool type
                     if tool_name_hint == "transfer_to_human":
                         checking_phrases = [
                             "Transferring you now.",
                             "Connecting you now.",
                             "Let me get someone for you."
                         ]
+                    elif tool_name_hint in ["book_appointment", "book_job"]:
+                        # Booking-specific fillers
+                        checking_phrases = [
+                            "Let me book that for you, one moment.",
+                            "Let me confirm that for you, one moment.",
+                        ]
                     else:
-                        # Use generic fillers for everything else
-                        checking_phrases = generic_fillers
+                        # Generic fillers for everything else
+                        checking_phrases = [
+                            "One moment.",
+                            "Let me check that for you.",
+                            "Bear with me one second.",
+                            "Just a moment.",
+                            "Let me have a look.",
+                        ]
                     
                     checking_msg = random.choice(checking_phrases)
                     print(f"   🗣️ IMMEDIATE: First tool call detected ({tool_name_hint or 'unknown'}) - yielding split marker with: '{checking_msg}'")

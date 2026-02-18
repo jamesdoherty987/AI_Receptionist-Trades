@@ -19,6 +19,8 @@ class DeepgramASR:
         self.closed = False
         self._send_task = None
         self._recv_task = None
+        self._last_final_text = ""  # Track last final to prevent duplicates
+        self._last_final_fingerprint = ""  # Fingerprint of last final for fuzzy matching
 
     async def connect(self):
         """Connect to Deepgram websocket"""
@@ -38,7 +40,7 @@ class DeepgramASR:
             "&utterances=true"  # Better utterance detection
             "&utt_split=0.8"  # Slightly longer pause before splitting utterances
             "&endpointing=300",  # Faster end-of-speech detection (300ms)
-            extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
+            additional_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
             open_timeout=5,   # Faster connection timeout
             close_timeout=2,  # Faster close
             ping_interval=20, # Keep connection alive
@@ -60,6 +62,12 @@ class DeepgramASR:
 
     async def _recv(self):
         """Receive transcription results from Deepgram"""
+        import re
+        
+        def fingerprint(s: str) -> str:
+            """Create fingerprint by removing non-alphanumeric chars"""
+            return re.sub(r'[^a-z0-9]', '', (s or "").lower())
+        
         try:
             async for msg in self.ws:
                 data = json.loads(msg)
@@ -67,16 +75,34 @@ class DeepgramASR:
                 alt = data.get("channel", {}).get("alternatives", [])
                 if alt and alt[0].get("transcript"):
                     transcript = alt[0]["transcript"]
+                    transcript_fp = fingerprint(transcript)
+                    
                     if is_final:
-                        # Only update if different from current text (prevent duplicates)
-                        if transcript.strip() and transcript.strip() != self.text.strip():
+                        # Check for duplicate using both exact match and fingerprint
+                        is_duplicate = (
+                            transcript.strip() == self.text.strip() or
+                            transcript.strip() == self._last_final_text.strip() or
+                            (transcript_fp and transcript_fp == self._last_final_fingerprint)
+                        )
+                        
+                        if transcript.strip() and not is_duplicate:
                             self.text = transcript
                             self.is_final = True
-                        elif transcript.strip() == self.text.strip():
+                            self._last_final_text = transcript
+                            self._last_final_fingerprint = transcript_fp
+                            # Clear interim when we get final to prevent stale data
+                            self.interim_text = ""
+                            print(f"[ASR] Final transcript: '{transcript}'")
+                        elif is_duplicate:
                             # Same text, just mark as final without re-setting
                             self.is_final = True
+                            self.interim_text = ""
+                            print(f"[ASR] Duplicate final ignored: '{transcript}'")
                     else:
-                        self.interim_text = transcript
+                        # Only update interim if it's actually different
+                        # This prevents the same interim from triggering multiple times
+                        if transcript.strip() != self.interim_text.strip():
+                            self.interim_text = transcript
         except websockets.exceptions.ConnectionClosed:
             pass
 
@@ -110,6 +136,9 @@ class DeepgramASR:
         self.text = ""
         self.interim_text = ""
         self.is_final = False
+        # Note: We intentionally DON'T clear _last_final_text and _last_final_fingerprint
+        # because we want to detect duplicates even across clear_all() calls
+        # This prevents the same utterance from being processed twice
 
     async def close(self):
         """Close ASR connection"""

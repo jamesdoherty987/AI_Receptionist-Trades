@@ -18,7 +18,7 @@ from src.services.llm_stream import stream_llm, process_appointment_with_calenda
 try:
     from src.services.prerecorded_audio import (
         get_filler_audio, get_random_filler_id, send_prerecorded_audio, 
-        has_prerecorded_fillers, preload_fillers
+        has_prerecorded_fillers, preload_fillers, get_filler_id_from_message
     )
     # Pre-load filler audio at module import (safe - never raises)
     preload_fillers()
@@ -27,10 +27,11 @@ except Exception as e:
     print(f"[AUDIO] Warning: Could not import prerecorded_audio: {e}")
     # Provide stub functions so the rest of the code works
     def has_prerecorded_fillers(): return False
-    def get_random_filler_id(): return "one_moment"
+    def get_random_filler_id(tool_name=None): return "one_moment"
     def get_filler_audio(phrase_id): return None
     async def send_prerecorded_audio(ws, sid, data): pass
     def preload_fillers(): pass
+    def get_filler_id_from_message(message): return None
 
 # Import TTS based on provider setting
 TTS_PROVIDER = config.TTS_PROVIDER if hasattr(config, 'TTS_PROVIDER') else 'deepgram'
@@ -44,6 +45,17 @@ else:
 def norm_text(s: str) -> str:
     """Normalize text for comparison"""
     return " ".join((s or "").lower().split())
+
+
+def content_fingerprint(s: str) -> str:
+    """
+    Create a content fingerprint for duplicate detection.
+    Removes all spaces and punctuation to catch cases where the same content
+    is transcribed with different spacing (e.g., "v 9 5 h 5 p 2" vs "v95h5p2").
+    """
+    import re
+    # Remove all non-alphanumeric characters and lowercase
+    return re.sub(r'[^a-z0-9]', '', (s or "").lower())
 
 
 def has_sentence_end(text: str) -> bool:
@@ -292,7 +304,11 @@ async def media_handler(ws):
                         print(f"   📊 [FILLER] has_prerecorded_fillers() = {has_fillers}")
                         
                         if has_fillers:
-                            filler_id = get_random_filler_id()
+                            # Try to match the exact filler message first
+                            filler_id = get_filler_id_from_message(split_msg)
+                            if not filler_id:
+                                # Fall back to random filler if no exact match
+                                filler_id = get_random_filler_id()
                             filler_audio = get_filler_audio(filler_id)
                             audio_size = len(filler_audio) if filler_audio else 0
                             audio_duration_ms = audio_size / 8 if audio_size > 0 else 0  # 8 bytes per ms
@@ -950,6 +966,15 @@ async def media_handler(ws):
                                 if norm_text(text) == norm_text(last_committed) and last_committed:
                                     is_duplicate = True
                                     print(f"🔄 Duplicate detected (exact match with last): '{text}'")
+                                
+                                # Check for content fingerprint match (catches "v 9 5" vs "v95" duplicates)
+                                # This handles cases where ASR transcribes the same speech with different spacing
+                                if not is_duplicate and last_committed:
+                                    text_fp = content_fingerprint(text)
+                                    last_fp = content_fingerprint(last_committed)
+                                    if text_fp and last_fp and text_fp == last_fp:
+                                        is_duplicate = True
+                                        print(f"🔄 Duplicate detected (fingerprint match): '{text}' == '{last_committed}'")
                                 
                                 # Time-windowed duplicate checks
                                 if not is_duplicate and (now - last_response_time) < DUPLICATE_WINDOW:
