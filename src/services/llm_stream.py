@@ -2270,10 +2270,120 @@ When customer wants to reschedule:
     active_system_prompt = load_system_prompt(company_id=company_id) if company_id else SYSTEM_PROMPT
     system_prompt_with_time = active_system_prompt + time_context + tool_usage_guidance
     
+    # Sanitize messages to ensure tool messages have their preceding assistant message with tool_calls
+    # This prevents the "messages with role 'tool' must be a response to a preceding message with 'tool_calls'" error
+    def sanitize_messages(msgs):
+        """Remove orphaned tool messages that don't have a preceding assistant message with tool_calls.
+        Also validates that tool_call_ids match between assistant and tool messages."""
+        if not msgs:
+            return []
+            
+        sanitized = []
+        i = 0
+        while i < len(msgs):
+            msg = msgs[i]
+            role = msg.get('role')
+            
+            if role == 'tool':
+                # Check if there's a preceding assistant message with tool_calls
+                # Need to look back past any other tool messages (parallel tool calls create multiple tool messages)
+                has_valid_assistant = False
+                tool_call_id = msg.get('tool_call_id')
+                
+                for j in range(len(sanitized) - 1, -1, -1):
+                    prev_msg = sanitized[j]
+                    prev_role = prev_msg.get('role')
+                    
+                    if prev_role == 'tool':
+                        # Keep looking back past other tool messages
+                        continue
+                    elif prev_role == 'assistant' and prev_msg.get('tool_calls'):
+                        # Found an assistant message with tool_calls
+                        # Verify this tool message's ID matches one of the tool_calls
+                        tool_call_ids = [tc.get('id') for tc in prev_msg.get('tool_calls', [])]
+                        if tool_call_id in tool_call_ids:
+                            has_valid_assistant = True
+                        else:
+                            print(f"⚠️ [SANITIZE] Tool message ID {tool_call_id} not in assistant's tool_calls: {tool_call_ids}")
+                        break
+                    else:
+                        # Found a non-tool, non-assistant-with-tool_calls message - stop looking
+                        break
+                
+                if has_valid_assistant:
+                    sanitized.append(msg)
+                else:
+                    # Orphaned tool message - skip it
+                    print(f"⚠️ [SANITIZE] Removing orphaned tool message: {msg.get('name', 'unknown')} (id: {tool_call_id})")
+                    
+            elif role == 'assistant' and msg.get('tool_calls'):
+                # Check if there are tool responses following this message in the ORIGINAL list
+                has_tool_response = False
+                expected_tool_ids = [tc.get('id') for tc in msg.get('tool_calls', [])]
+                
+                # Look ahead in original messages for matching tool responses
+                for k in range(i + 1, len(msgs)):
+                    next_msg = msgs[k]
+                    if next_msg.get('role') == 'tool':
+                        if next_msg.get('tool_call_id') in expected_tool_ids:
+                            has_tool_response = True
+                            break
+                    elif next_msg.get('role') != 'tool':
+                        # Hit a non-tool message, stop looking
+                        break
+                
+                if has_tool_response:
+                    sanitized.append(msg)
+                else:
+                    # Assistant message with tool_calls but no tool response - skip it
+                    print(f"⚠️ [SANITIZE] Removing assistant message with orphaned tool_calls: {[tc.get('function', {}).get('name') for tc in msg.get('tool_calls', [])]}")
+            else:
+                sanitized.append(msg)
+            i += 1
+        
+        return sanitized
+    
+    # Sanitize messages before sending to OpenAI
+    sanitized_messages = sanitize_messages(messages)
+    if len(sanitized_messages) != len(messages):
+        print(f"⚠️ [SANITIZE] Removed {len(messages) - len(sanitized_messages)} orphaned messages")
+        print(f"⚠️ [SANITIZE] Original message roles: {[m.get('role') for m in messages]}")
+        print(f"⚠️ [SANITIZE] Sanitized message roles: {[m.get('role') for m in sanitized_messages]}")
+    
+    # Debug: Print message structure before API call
+    print(f"[LLM_DEBUG] Message roles being sent: {[m.get('role') for m in sanitized_messages]}")
+    for idx, msg in enumerate(sanitized_messages):
+        if msg.get('role') == 'tool':
+            print(f"[LLM_DEBUG] Message[{idx}] is tool: {msg.get('name', 'unknown')}")
+        elif msg.get('role') == 'assistant' and msg.get('tool_calls'):
+            print(f"[LLM_DEBUG] Message[{idx}] is assistant with tool_calls: {[tc.get('function', {}).get('name') for tc in msg.get('tool_calls', [])]}")
+    
+    # FINAL SAFETY CHECK: Verify no orphaned tool messages exist
+    # This is a last-resort check before sending to OpenAI
+    final_messages = []
+    seen_tool_call_ids = set()
+    for msg in sanitized_messages:
+        if msg.get('role') == 'assistant' and msg.get('tool_calls'):
+            # Track all tool_call IDs from this assistant message
+            for tc in msg.get('tool_calls', []):
+                seen_tool_call_ids.add(tc.get('id'))
+            final_messages.append(msg)
+        elif msg.get('role') == 'tool':
+            # Only include if we've seen the corresponding tool_call
+            if msg.get('tool_call_id') in seen_tool_call_ids:
+                final_messages.append(msg)
+            else:
+                print(f"🚨 [FINAL_CHECK] Removing orphaned tool message at last check: {msg.get('name')} (id: {msg.get('tool_call_id')})")
+        else:
+            final_messages.append(msg)
+    
+    if len(final_messages) != len(sanitized_messages):
+        print(f"🚨 [FINAL_CHECK] Removed {len(sanitized_messages) - len(final_messages)} messages in final safety check")
+    
     try:
         print(f"[LLM_DEBUG] Creating OpenAI stream with model={config.CHAT_MODEL}")
-        print(f"[LLM_DEBUG] Messages count: {len(messages)}, company_id={company_id}")
-        print(f"[LLM_DEBUG] Last user message: {messages[-1].get('content', '')[:100] if messages else 'N/A'}...")
+        print(f"[LLM_DEBUG] Messages count: {len(final_messages)}, company_id={company_id}")
+        print(f"[LLM_DEBUG] Last user message: {final_messages[-1].get('content', '')[:100] if final_messages else 'N/A'}...")
         stream = client.chat.completions.create(
             model=config.CHAT_MODEL,
             stream=True,
@@ -2281,7 +2391,7 @@ When customer wants to reschedule:
             max_tokens=180,   # Reduced for faster responses while maintaining completeness
             presence_penalty=0.1,  # Reduced to prevent excessive avoidance
             frequency_penalty=0.1, # Reduced to prevent excessive avoidance
-            messages=[{"role": "system", "content": system_prompt_with_time}, *messages],
+            messages=[{"role": "system", "content": system_prompt_with_time}, *final_messages],
             tools=CALENDAR_TOOLS,
             tool_choice="auto",
             parallel_tool_calls=True,  # Enable parallel tool execution for speed
@@ -2544,6 +2654,25 @@ When customer wants to reschedule:
                 "content": "[CRITICAL INSTRUCTION: You ALREADY told the customer 'let me check that for you'. The tool has COMPLETED. You MUST NOW provide the actual results - DO NOT go silent, DO NOT say 'let me check' again. The customer is waiting for your answer. Start immediately with the results: 'I have [times] available' or 'Great to hear from you again!' or 'Your appointment is confirmed' or 'I found your appointment'. NEVER leave the customer waiting in silence.]"
             })
             
+            # Sanitize messages again before follow-up call (safety check)
+            follow_up_messages = sanitize_messages(messages)
+            
+            # Apply same final safety check for follow-up call
+            follow_up_final = []
+            seen_ids = set()
+            for msg in follow_up_messages:
+                if msg.get('role') == 'assistant' and msg.get('tool_calls'):
+                    for tc in msg.get('tool_calls', []):
+                        seen_ids.add(tc.get('id'))
+                    follow_up_final.append(msg)
+                elif msg.get('role') == 'tool':
+                    if msg.get('tool_call_id') in seen_ids:
+                        follow_up_final.append(msg)
+                    else:
+                        print(f"🚨 [FOLLOW_UP_CHECK] Removing orphaned tool: {msg.get('name')}")
+                else:
+                    follow_up_final.append(msg)
+            
             follow_up_stream = client.chat.completions.create(
                 model=config.CHAT_MODEL,
                 stream=True,
@@ -2551,7 +2680,7 @@ When customer wants to reschedule:
                 max_tokens=200,   # Reduced for faster completion  
                 presence_penalty=0.1,
                 frequency_penalty=0.1,
-                messages=[{"role": "system", "content": system_prompt_with_time}, *messages],
+                messages=[{"role": "system", "content": system_prompt_with_time}, *follow_up_final],
                 tools=CALENDAR_TOOLS,
                 tool_choice="none",  # Prevent nested tool calls
                 top_p=0.9,  # Focus on most likely tokens

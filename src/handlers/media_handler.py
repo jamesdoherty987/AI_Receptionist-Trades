@@ -776,11 +776,82 @@ async def media_handler(ws):
                                     
                                     # Trim conversation history to prevent context overflow
                                     # Keep system message (first) + last N message pairs
-                                    MAX_HISTORY = 12  # Keep last 12 messages (6 turns)
+                                    # CRITICAL: Must preserve tool_calls + tool message pairs together
+                                    MAX_HISTORY = 40  # Keep last 40 messages (20 turns) - much larger to preserve context
                                     if len(conversation) > MAX_HISTORY + 1:  # +1 for system message
-                                        # Keep first message (system) and last MAX_HISTORY messages
-                                        conversation[:] = [conversation[0]] + conversation[-(MAX_HISTORY):]
-                                        print(f"📝 Trimmed conversation to {len(conversation)} messages")
+                                        # BEFORE trimming: Extract key context from tool results we're about to lose
+                                        # This prevents the AI from forgetting customer info after trimming
+                                        context_summary = []
+                                        for msg in conversation[1:]:  # Skip system message
+                                            if msg.get('role') == 'tool' and msg.get('name') == 'lookup_customer':
+                                                try:
+                                                    import json
+                                                    result = json.loads(msg.get('content', '{}'))
+                                                    if result.get('success') and result.get('customer_exists'):
+                                                        info = result.get('customer_info', {})
+                                                        context_summary.append(f"RETURNING CUSTOMER: {info.get('name', 'Unknown')}, phone: {info.get('phone', 'N/A')}, address: {info.get('last_address', 'N/A')}")
+                                                except:
+                                                    pass
+                                            elif msg.get('role') == 'tool' and msg.get('name') == 'book_job':
+                                                try:
+                                                    import json
+                                                    result = json.loads(msg.get('content', '{}'))
+                                                    if result.get('success'):
+                                                        context_summary.append(f"JOB BOOKED: {result.get('message', 'Booking confirmed')}")
+                                                except:
+                                                    pass
+                                        
+                                        # Find a safe trim point that doesn't break tool call sequences
+                                        # Tool messages MUST follow an assistant message with tool_calls
+                                        messages_to_keep = conversation[-(MAX_HISTORY):]
+                                        
+                                        # Check if first message to keep is a 'tool' role - if so, we need to include the preceding assistant message
+                                        while messages_to_keep and messages_to_keep[0].get('role') == 'tool':
+                                            # Find the index in original conversation
+                                            trim_start = len(conversation) - len(messages_to_keep)
+                                            if trim_start > 1:  # Make sure we have room to go back
+                                                # Include one more message (should be the assistant with tool_calls)
+                                                messages_to_keep = conversation[trim_start - 1:] 
+                                            else:
+                                                # Can't go back further, remove the orphaned tool message
+                                                messages_to_keep = messages_to_keep[1:]
+                                                break
+                                        
+                                        # Also check for assistant messages with tool_calls that lost their tool responses
+                                        # Remove any assistant message with tool_calls if not followed by tool messages
+                                        cleaned_messages = []
+                                        i = 0
+                                        while i < len(messages_to_keep):
+                                            msg = messages_to_keep[i]
+                                            if msg.get('role') == 'assistant' and msg.get('tool_calls'):
+                                                # Check if next message(s) are tool responses
+                                                has_tool_response = (i + 1 < len(messages_to_keep) and 
+                                                                    messages_to_keep[i + 1].get('role') == 'tool')
+                                                if has_tool_response:
+                                                    # Keep the assistant message and all following tool messages
+                                                    cleaned_messages.append(msg)
+                                                    i += 1
+                                                    while i < len(messages_to_keep) and messages_to_keep[i].get('role') == 'tool':
+                                                        cleaned_messages.append(messages_to_keep[i])
+                                                        i += 1
+                                                else:
+                                                    # Skip this orphaned assistant message with tool_calls
+                                                    i += 1
+                                            else:
+                                                cleaned_messages.append(msg)
+                                                i += 1
+                                        
+                                        # Add context summary as a system message if we extracted any
+                                        if context_summary:
+                                            context_msg = {
+                                                "role": "system",
+                                                "content": f"[CONTEXT FROM EARLIER IN CALL - DO NOT ASK FOR THIS INFO AGAIN: {'; '.join(context_summary)}]"
+                                            }
+                                            conversation[:] = [conversation[0], context_msg] + cleaned_messages
+                                            print(f"📝 Trimmed conversation to {len(conversation)} messages (preserved context: {context_summary})")
+                                        else:
+                                            conversation[:] = [conversation[0]] + cleaned_messages
+                                            print(f"📝 Trimmed conversation to {len(conversation)} messages (preserved tool call sequences)")
                                     
                                     print(f"🔊 Starting LLM response (conversation length: {len(conversation)})")
                                     # Set LLM processing state to filter filler speech

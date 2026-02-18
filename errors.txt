@@ -3,39 +3,6 @@
 
 
 
-1. technical difficulties:
-❌ [LLM_ERROR] Error creating LLM stream: Error code: 400 - {'error': {'message': "Invalid parameter: messages with role 'tool' must be a response to a preceeding message with 'tool_calls'.", 'type': 'invalid_request_error', 'param': 'messages.[2].role', 'code': None}}
-
-
-
-
-2.
-🤖 RECEPTIONIST: Bear with me one second. Welcome, James! I have your number as 085 263 5954. Is that the best number to reach you?
-================================================================================
-Traceback (most recent call last):
-  File "/opt/render/project/src/src/services/llm_stream.py", line 2277, in stream_llm
-    stream = client.chat.completions.create(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_utils/_utils.py", line 275, in wrapper
-    return func(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/resources/chat/completions.py", line 829, in create
-    return self._post(
-           ^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_base_client.py", line 1278, in post
-    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
-                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_base_client.py", line 955, in request
-    return self._request(
-           ^^^^^^^^^^^^^^
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/openai/_base_client.py", line 1059, in _request
-    raise self._make_status_error_from_response(err.response) from None
-openai.BadRequestError: Error code: 400 - {'error': {'message': "Invalid parameter: messages with role 'tool' must be a response to a preceeding message with 'tool_calls'.", 'type': 'invalid_request_error', 'param': 'messages.[2].role', 'code': None}}
-🛑 TTS end (respond) - duration: 5.14s
-👂 Ready to receive audio again (speaking=False, llm_processing=False)
-================================================================================
-👤 CALLER: Yeah. It's the best number. Yeah.
-
 
 
 
@@ -43,33 +10,6 @@ openai.BadRequestError: Error code: 400 - {'error': {'message': "Invalid paramet
 
 
 
-
-
-4. At the greeting:
-🗣️ TTS start (greet)
-   🗣️ Starting first TTS session...
-✅ Deepgram closed
-   ⚠️ ElevenLabs TTS error (attempt 1): no close frame received or sent
-   📋 Error type: ConnectionClosed
-   📋 Error details: ConnectionClosed(None, None)
-   📋 Traceback:
-Traceback (most recent call last):
-  File "/opt/render/project/src/src/server.py", line 59, in send
-    await self._ws.send_text(str(data))
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/starlette/websockets.py", line 166, in send_text
-    await self.send({"type": "websocket.send", "text": data})
-  File "/opt/render/project/src/.venv/lib/python3.12/site-packages/starlette/websockets.py", line 98, in send
-    raise RuntimeError('Cannot call "send" once a close message has been sent.')
-RuntimeError: Cannot call "send" once a close message has been sent.
-During handling of the above exception, another exception occurred:
-Traceback (most recent call last):
-  File "/opt/render/project/src/src/services/tts_elevenlabs.py", line 121, in stream_tts
-    await asyncio.gather(sender(), receiver())
-  File "/opt/render/project/src/src/services/tts_elevenlabs.py", line 112, in receiver
-    await websocket.send(json.dumps({
-  File "/opt/render/project/src/src/server.py", line 64, in send
-    raise websockets.ConnectionClosed(None, None)
-websockets.exceptions.ConnectionClosed: no close frame received or sent
 
 
 

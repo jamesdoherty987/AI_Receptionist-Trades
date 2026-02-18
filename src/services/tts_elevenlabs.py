@@ -104,16 +104,25 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                                 if quiet_timeouts >= 4:
                                     return
                             continue
+                        except websockets.ConnectionClosed:
+                            # ElevenLabs connection closed
+                            print("   ℹ️ ElevenLabs connection closed")
+                            return
 
                         data = json.loads(msg)
 
                         if data.get("audio"):
                             got_any_audio = True
-                            await websocket.send(json.dumps({
-                                "event": "media",
-                                "streamSid": stream_sid,
-                                "media": {"payload": data["audio"]},
-                            }))
+                            try:
+                                await websocket.send(json.dumps({
+                                    "event": "media",
+                                    "streamSid": stream_sid,
+                                    "media": {"payload": data["audio"]},
+                                }))
+                            except (websockets.ConnectionClosed, RuntimeError) as send_err:
+                                # Twilio connection closed (caller hung up) - this is normal
+                                print(f"   ℹ️ Twilio connection closed during TTS (caller likely hung up)")
+                                return
 
                         if data.get("isFinal"):
                             return
@@ -121,6 +130,19 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                 await asyncio.gather(sender(), receiver())
                 return
 
+        except websockets.ConnectionClosed as e:
+            # Connection closed - usually means caller hung up, not a real error
+            print(f"   ℹ️ ElevenLabs TTS connection closed (attempt {attempt}): {e}")
+            return  # Don't retry, just exit gracefully
+            
+        except RuntimeError as e:
+            # RuntimeError from trying to send on closed connection
+            if "close message" in str(e).lower() or "closed" in str(e).lower():
+                print(f"   ℹ️ Twilio connection closed during TTS (caller hung up)")
+                return  # Don't retry, just exit gracefully
+            # Re-raise other RuntimeErrors
+            raise
+            
         except Exception as e:
             error_msg = str(e)
             print(f"   ⚠️ ElevenLabs TTS error (attempt {attempt}): {e}")
