@@ -2989,6 +2989,27 @@ def client_api(client_id):
             notes = db.get_client_notes(client_id)
             client['bookings'] = bookings
             client['notes'] = notes
+            
+            # If client doesn't have address/eircode/email stored, get from most recent booking
+            if not client.get('address') and bookings:
+                # Find most recent booking with an address
+                for booking in sorted(bookings, key=lambda b: b.get('appointment_time', ''), reverse=True):
+                    if booking.get('address'):
+                        client['address'] = booking['address']
+                        break
+            if not client.get('eircode') and bookings:
+                # Find most recent booking with an eircode
+                for booking in sorted(bookings, key=lambda b: b.get('appointment_time', ''), reverse=True):
+                    if booking.get('eircode'):
+                        client['eircode'] = booking['eircode']
+                        break
+            if not client.get('email') and bookings:
+                # Find most recent booking with an email
+                for booking in sorted(bookings, key=lambda b: b.get('appointment_time', ''), reverse=True):
+                    if booking.get('email'):
+                        client['email'] = booking['email']
+                        break
+            
             return jsonify(client)
         return jsonify({"error": "Client not found"}), 404
     

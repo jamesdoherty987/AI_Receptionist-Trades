@@ -26,7 +26,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "check_availability",
-            "description": "Check available appointment time slots. Use this IMMEDIATELY when customer asks about available times, slots, or when they're looking for appointments. Returns list of available slots with exact times. Use this for queries like 'what times next week', 'what about Monday', 'any slots Thursday'.",
+            "description": "Check available appointment time slots. Use this IMMEDIATELY when customer asks about available times, slots, or when they're looking for appointments. Returns list of available slots with exact times. Use this for queries like 'what times next week', 'what about Monday', 'any slots Thursday'. IMPORTANT: If you know the job type/description, include it so slots are filtered by service duration.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -41,7 +41,11 @@ CALENDAR_TOOLS = [
                     "service_type": {
                         "type": "string",
                         "enum": ["consultation", "checkup", "general"],
-                        "description": "Type of appointment service"
+                        "description": "Type of appointment service (legacy - prefer job_description for trades)"
+                    },
+                    "job_description": {
+                        "type": "string",
+                        "description": "Description of the job/service needed (e.g., 'burst pipe', 'painting', 'electrical work'). This determines the service duration and filters out slots that don't have enough time before closing."
                     }
                 },
                 "required": ["start_date"]
@@ -159,6 +163,10 @@ CALENDAR_TOOLS = [
                     "phone": {
                         "type": "string",
                         "description": "Customer's phone number (MANDATORY) - use the caller's number unless they provide a different one"
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "Customer's email address (OPTIONAL) - only include if the customer voluntarily provides it"
                     },
                     "job_address": {
                         "type": "string",
@@ -1077,12 +1085,17 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             start_date_str = arguments.get('start_date')
             end_date_str = arguments.get('end_date', start_date_str)
             service_type = arguments.get('service_type', 'general')
+            job_description = arguments.get('job_description')  # New: get job description for duration
             
-            logger.info(f"[CHECK_AVAIL] start_date={start_date_str}, end_date={end_date_str}, service_type={service_type}")
+            logger.info(f"[CHECK_AVAIL] start_date={start_date_str}, end_date={end_date_str}, service_type={service_type}, job_description={job_description}")
             
-            # Get service duration for the requested service type
-            service_duration = get_service_duration(service_type, company_id=company_id)
-            logger.info(f"[CHECK_AVAIL] Service duration: {service_duration} mins")
+            # Get service duration - prefer job_description over service_type for trades
+            if job_description:
+                service_duration = get_service_duration(job_description, company_id=company_id)
+                logger.info(f"[CHECK_AVAIL] Service duration from job_description '{job_description}': {service_duration} mins")
+            else:
+                service_duration = get_service_duration(service_type, company_id=company_id)
+                logger.info(f"[CHECK_AVAIL] Service duration from service_type: {service_duration} mins")
             
             # Special handling for "this week" - today through Friday
             if start_date_str and 'this week' in start_date_str.lower():
@@ -1989,6 +2002,34 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             service_duration = matched_service.get('duration_minutes', 60)
             logger.info(f"[BOOK_JOB] Matched service: {matched_service_name}, Duration: {service_duration} mins")
             
+            # CRITICAL: Check if the job can be completed before closing time
+            job_end_time = parsed_time + timedelta(minutes=service_duration)
+            closing_time = parsed_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
+            
+            if job_end_time > closing_time:
+                # Calculate the latest possible start time
+                latest_start_hour = end_hour - (service_duration // 60)
+                latest_start_minute = 60 - (service_duration % 60) if service_duration % 60 > 0 else 0
+                if latest_start_minute == 60:
+                    latest_start_minute = 0
+                else:
+                    latest_start_hour -= 1 if service_duration % 60 > 0 else 0
+                
+                # Format times for display
+                end_hour_12 = end_hour if end_hour <= 12 else end_hour - 12
+                end_period = "PM" if end_hour >= 12 else "AM"
+                latest_hour_12 = latest_start_hour if latest_start_hour <= 12 else latest_start_hour - 12
+                latest_period = "PM" if latest_start_hour >= 12 else "AM"
+                
+                logger.warning(f"[BOOK_JOB] Job would extend past closing: {parsed_time.strftime('%I:%M %p')} + {service_duration} mins = {job_end_time.strftime('%I:%M %p')}, closes at {end_hour}:00")
+                return {
+                    "success": False,
+                    "error": f"This {service_duration}-minute job starting at {parsed_time.strftime('%I:%M %p')} would finish at {job_end_time.strftime('%I:%M %p')}, but we close at {end_hour_12}:00 {end_period}. The latest we can start this job is {latest_hour_12}:{latest_start_minute:02d} {latest_period}. Please suggest an earlier time.",
+                    "needs_clarification": "datetime",
+                    "service_duration": service_duration,
+                    "latest_start_time": f"{latest_hour_12}:{latest_start_minute:02d} {latest_period}"
+                }
+            
             # ALWAYS check calendar availability first (prevents double-booking)
             logger.info(f"[BOOK_JOB] Checking availability at {parsed_time} for {service_duration} mins")
             is_available = google_calendar.check_availability(parsed_time, duration_minutes=service_duration)
@@ -2128,6 +2169,23 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         update_client_description(client_id)
                     except Exception:
                         pass
+                    
+                    # Update client's address/eircode/email if not already set
+                    try:
+                        existing_client = db.get_client(client_id, company_id=company_id)
+                        if existing_client:
+                            update_fields = {}
+                            if not existing_client.get('address') and validated_address:
+                                update_fields['address'] = validated_address
+                            if not existing_client.get('eircode') and extracted_eircode:
+                                update_fields['eircode'] = extracted_eircode
+                            if not existing_client.get('email') and email:
+                                update_fields['email'] = email
+                            if update_fields:
+                                db.update_client(client_id, **update_fields)
+                                logger.info(f"[BOOK_JOB] Updated client info: {update_fields}")
+                    except Exception as addr_err:
+                        logger.warning(f"[BOOK_JOB] Could not update client info: {addr_err}")
                     
                     logger.info(f"[BOOK_JOB] ✅ Job booking saved to database (ID: {booking_id}, company_id: {company_id})")
                 except Exception as e:

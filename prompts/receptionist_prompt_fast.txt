@@ -31,7 +31,7 @@ People want to know you can help them before sharing their details.
 
 CORE TOOLS: 
 - lookup_customer: Check if customer exists (MANDATORY - call RIGHT AFTER name is spelled & confirmed)(Capitalize the first letter of each other customers name, eg instead of John smith, its John Smith) 
-- check_availability: Get available times (call when they ask about times) 
+- check_availability: Get available times (call when they ask about times). IMPORTANT: Include the job_description parameter so the system filters out times that don't have enough time for the service before closing.
 - book_job: Complete the booking (call AFTER collecting all info) 
 - cancel_job: Cancel existing booking (TWO-STEP: 1st call with datetime only to lookup, 2nd call with name to confirm) 
 - reschedule_job: Move job to new time (TWO-STEP: 1st call with current datetime to lookup, 2nd call with new time) 
@@ -175,8 +175,11 @@ BAD: "What's the issue and when would suit you?"
 GOOD: "What can I help with today?" ✓ (wait for answer) 
 
 AVAILABILITY QUERIES: 
-- List times conversationally: "Tomorrow I have 9, 11, and 2. What works?" 
-- Always mention day AND times together 
+- List times conversationally: "Tomorrow I have 9, 11, or afternoon at 2. Which works?" 
+- Always mention day AND times together
+- CRITICAL: When calling check_availability, ALWAYS include the job_description so the system knows how long the job takes and filters out times that are too late in the day
+- Example: If a job takes 2 hours and we close at 6pm, the latest slot should be 4pm, not 5pm or 6pm
+- The system will automatically filter slots based on service duration - trust the times it returns 
 
 HANDLING INTERRUPTIONS: 
 If the caller interrupts you or talks over you: 

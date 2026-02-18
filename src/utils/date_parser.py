@@ -20,7 +20,7 @@ def get_openai_client():
 # OpenAI function for date/time parsing
 DATETIME_PARSE_FUNCTION = {
     "name": "parse_datetime",
-    "description": "Parse natural language date and time references into structured datetime components",
+    "description": "Parse natural language date and time references into structured datetime components. CRITICAL: For weekday names (Monday, Tuesday, etc.), ALWAYS use day_of_week field, NEVER use month/day fields.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -34,15 +34,15 @@ DATETIME_PARSE_FUNCTION = {
             },
             "year": {
                 "type": "integer",
-                "description": "Year if explicitly mentioned, otherwise null"
+                "description": "Year if explicitly mentioned, otherwise null. DO NOT set this for weekday references like 'Monday' or 'next Tuesday'."
             },
             "month": {
                 "type": "integer",
-                "description": "Month number (1-12) if mentioned"
+                "description": "Month number (1-12) ONLY if a specific month was mentioned (e.g., 'January 5', 'March 10'). DO NOT set this for weekday references like 'Monday' or 'next Friday'."
             },
             "day": {
                 "type": "integer",
-                "description": "Day of month (1-31) if mentioned"
+                "description": "Day of month (1-31) ONLY if a specific day number was mentioned (e.g., 'the 5th', 'January 10'). DO NOT set this for weekday references like 'Monday' or 'next Tuesday'."
             },
             "hour": {
                 "type": "integer",
@@ -59,11 +59,11 @@ DATETIME_PARSE_FUNCTION = {
             "day_of_week": {
                 "type": "string",
                 "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
-                "description": "Day of week if ANY weekday name is mentioned (e.g., 'Monday', 'next Friday', 'this Tuesday'). ALWAYS use this field for weekday names, NOT relative_days."
+                "description": "CRITICAL: Day of week if ANY weekday name is mentioned (e.g., 'Monday', 'next Friday', 'this Tuesday', 'on Wednesday'). ALWAYS use this field for weekday names instead of month/day fields. This is the PRIMARY field for weekday references."
             },
             "is_next_week": {
                 "type": "boolean",
-                "description": "True if 'next week' was mentioned"
+                "description": "True ONLY if the phrase 'next week' was explicitly mentioned (not just 'next Monday'). For 'next Monday', use day_of_week='monday' instead."
             },
             "is_birth_date": {
                 "type": "boolean",
@@ -121,16 +121,25 @@ CURRENT DATE/TIME:
 - Today is {current_day_name}, {now.strftime('%B %d, %Y')}
 - Current time is {now.strftime('%I:%M %p')}
 
-CRITICAL RULES FOR WEEKDAY NAMES:
-- When user says a weekday name (Monday, Tuesday, etc.), ALWAYS use the 'day_of_week' field
+CRITICAL RULES FOR WEEKDAY NAMES (VERY IMPORTANT):
+- When user says ANY weekday name (Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday), you MUST use the 'day_of_week' field
+- Do NOT use month/day fields for weekday references
 - Do NOT use 'relative_days' for weekday names
+- "next Monday", "this Monday", "on Monday", "Monday" → ALL use day_of_week: "monday"
 - Use 'relative_days' ONLY for: 'today' (0), 'tomorrow' (1), 'day after tomorrow' (2)
 
-EXAMPLES:
-- "Monday at 2pm" → day_of_week: "monday", hour: 14
-- "next Friday" → day_of_week: "friday", hour: null (ask for time)
+CORRECT EXAMPLES:
+- "Monday at 2pm" → day_of_week: "monday", hour: 14 (NOT month/day!)
+- "next Monday" → day_of_week: "monday" (NOT month/day!)
+- "next Friday at 3" → day_of_week: "friday", hour: 15
+- "this Tuesday" → day_of_week: "tuesday"
+- "on Wednesday" → day_of_week: "wednesday"
 - "tomorrow at 9am" → relative_days: 1, hour: 9
 - "today at 3pm" → relative_days: 0, hour: 15
+- "January 15 at 2pm" → month: 1, day: 15, hour: 14 (specific date, NOT weekday)
+
+WRONG (DO NOT DO THIS):
+- "next Monday" → month: 2, day: 20 ❌ WRONG! Use day_of_week: "monday" instead
 
 Remember: Today is {current_day_name}. If user says "{current_day_name}", that means TODAY (relative_days: 0)."""
                 },
@@ -155,6 +164,27 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
         parsed = json.loads(tool_calls[0].function.arguments)
         
         print(f"[AI] AI parsed '{text}': {parsed}")
+        
+        # CRITICAL FIX: If AI returned month/day but text contains a weekday name, override with day_of_week
+        # This catches cases where AI incorrectly converts "next Monday" to a specific date
+        text_lower = text.lower()
+        weekday_names = {
+            "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+            "friday": 4, "saturday": 5, "sunday": 6
+        }
+        detected_weekday = None
+        for day_name, day_num in weekday_names.items():
+            if day_name in text_lower:
+                detected_weekday = day_name
+                break
+        
+        if detected_weekday and parsed.get("month") and parsed.get("day") and not parsed.get("day_of_week"):
+            # AI incorrectly used month/day instead of day_of_week - fix it
+            print(f"[DATE_FIX] AI used month/day for weekday '{detected_weekday}' - correcting to day_of_week")
+            parsed["day_of_week"] = detected_weekday
+            parsed["month"] = None
+            parsed["day"] = None
+            parsed["year"] = None
         
         # Check if it's a birth date
         if parsed.get("is_birth_date"):
@@ -183,11 +213,18 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
             target_day = days_map[day_name]
             days_ahead = (target_day - now.weekday()) % 7
             
+            # Check if user said "next [weekday]" - this means next week's occurrence
+            has_next_prefix = 'next ' + day_name in text_lower or 'next' in text_lower.split()
+            
             # If today is the requested day and we have a time that's still in the future, use today
-            # Otherwise, use next occurrence
+            # UNLESS user explicitly said "next Monday" etc.
             if days_ahead == 0:
-                # Check if the requested time is still in the future today
-                if hour is not None:
+                if has_next_prefix:
+                    # User said "next Monday" on a Monday - they mean next week
+                    days_ahead = 7
+                    print(f"[DATE] Day of week: {day_name} is TODAY but user said 'next {day_name}' - using next week")
+                elif hour is not None:
+                    # Check if the requested time is still in the future today
                     requested_time_today = now.replace(hour=hour, minute=minute or 0, second=0, microsecond=0)
                     if requested_time_today > now:
                         # Time is still in the future today - use today
@@ -201,6 +238,12 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
                     # No time specified - default to next occurrence to be safe
                     days_ahead = 7
                     print(f"[DATE] Day of week: {day_name} is TODAY but no time specified - using next week")
+            elif has_next_prefix and days_ahead < 7:
+                # User said "next Monday" but it's not Monday today - still means next week's Monday
+                # Only apply this if the day is coming up this week (days_ahead < 7)
+                # "next Monday" on a Wednesday should be next week's Monday, not this week's
+                days_ahead += 7
+                print(f"[DATE] Day of week: user said 'next {day_name}' - adding 7 days to get next week")
             
             # If no time specified, use default or return None
             if hour is None:
@@ -213,7 +256,7 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
             
             result = now.replace(hour=hour, minute=minute or 0, second=0, microsecond=0)
             result += timedelta(days=days_ahead)
-            print(f"[DATE] Day of week: {day_name} (+{days_ahead} days)")
+            print(f"[DATE] Day of week: {day_name} (+{days_ahead} days) = {result.strftime('%A, %B %d, %Y')}")
         
         # Handle relative dates (tomorrow, day after tomorrow, etc.)
         elif parsed.get("relative_days") is not None:
