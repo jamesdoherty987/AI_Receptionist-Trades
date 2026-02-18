@@ -40,7 +40,7 @@ class DeepgramASR:
             "&utterances=true"  # Better utterance detection
             "&utt_split=0.8"  # Slightly longer pause before splitting utterances
             "&endpointing=300",  # Faster end-of-speech detection (300ms)
-            additional_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
+            extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
             open_timeout=5,   # Faster connection timeout
             close_timeout=2,  # Faster close
             ping_interval=20, # Keep connection alive
