@@ -21,6 +21,7 @@ class DeepgramASR:
         self._recv_task = None
         self._last_final_text = ""  # Track last final to prevent duplicates
         self._last_final_fingerprint = ""  # Fingerprint of last final for fuzzy matching
+        self._last_final_time = 0.0  # Timestamp of last final for echo detection
 
     async def connect(self):
         """Connect to Deepgram websocket"""
@@ -63,10 +64,49 @@ class DeepgramASR:
     async def _recv(self):
         """Receive transcription results from Deepgram"""
         import re
+        import time
         
         def fingerprint(s: str) -> str:
             """Create fingerprint by removing non-alphanumeric chars"""
             return re.sub(r'[^a-z0-9]', '', (s or "").lower())
+        
+        def is_repetitive_pattern(text: str) -> bool:
+            """
+            Detect repetitive patterns like "Yeah. That's correct. Yeah." 
+            which often indicate echo/feedback issues.
+            """
+            words = text.lower().split()
+            if len(words) < 4:
+                return False
+            
+            # Check if first and last words are the same short affirmation
+            affirmations = {'yeah', 'yes', 'yep', 'ok', 'okay', 'no', 'nope', 'right', 'correct'}
+            first_word = words[0].rstrip('.,!?')
+            last_word = words[-1].rstrip('.,!?')
+            
+            if first_word in affirmations and first_word == last_word:
+                return True
+            
+            return False
+        
+        def clean_repetitive_text(text: str) -> str:
+            """Remove trailing repetitive affirmations that are likely echo"""
+            words = text.split()
+            if len(words) < 4:
+                return text
+            
+            affirmations = {'yeah', 'yes', 'yep', 'ok', 'okay', 'no', 'nope', 'right', 'correct'}
+            first_word = words[0].lower().rstrip('.,!?')
+            last_word = words[-1].lower().rstrip('.,!?')
+            
+            # If first and last are same affirmation, remove the last one
+            if first_word in affirmations and first_word == last_word:
+                # Remove trailing affirmation
+                cleaned = ' '.join(words[:-1])
+                print(f"[ASR] Cleaned repetitive pattern: '{text}' -> '{cleaned}'")
+                return cleaned
+            
+            return text
         
         try:
             async for msg in self.ws:
@@ -78,6 +118,11 @@ class DeepgramASR:
                     transcript_fp = fingerprint(transcript)
                     
                     if is_final:
+                        # Clean repetitive patterns (echo detection)
+                        if is_repetitive_pattern(transcript):
+                            transcript = clean_repetitive_text(transcript)
+                            transcript_fp = fingerprint(transcript)
+                        
                         # Check for duplicate using both exact match and fingerprint
                         is_duplicate = (
                             transcript.strip() == self.text.strip() or
@@ -85,11 +130,22 @@ class DeepgramASR:
                             (transcript_fp and transcript_fp == self._last_final_fingerprint)
                         )
                         
+                        # Also check if this is a subset of the last final (echo picking up partial)
+                        if not is_duplicate and self._last_final_text:
+                            last_fp = fingerprint(self._last_final_text)
+                            # If new transcript is contained in last, or last is contained in new
+                            if transcript_fp in last_fp or last_fp in transcript_fp:
+                                # Check timing - if within 2 seconds, likely echo
+                                if hasattr(self, '_last_final_time') and (time.time() - self._last_final_time) < 2.0:
+                                    is_duplicate = True
+                                    print(f"[ASR] Echo duplicate detected (timing): '{transcript}'")
+                        
                         if transcript.strip() and not is_duplicate:
                             self.text = transcript
                             self.is_final = True
                             self._last_final_text = transcript
                             self._last_final_fingerprint = transcript_fp
+                            self._last_final_time = time.time()
                             # Clear interim when we get final to prevent stale data
                             self.interim_text = ""
                             print(f"[ASR] Final transcript: '{transcript}'")
