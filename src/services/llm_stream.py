@@ -2245,6 +2245,72 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         checking_msg = random.choice(generic_fillers)
         print(f"   ✅ [PRE-CHECK] Detected: CUSTOMER LOOKUP")
     
+    # Detect pricing/quote requests (requires service matching which can take time)
+    pricing_phrases = ["how much", "what's the price", "what's the cost", "price for", "cost of", 
+                       "quote for", "get a quote", "give me a quote", "estimate for", "how much would"]
+    if not likely_needs_tool and any(phrase in user_message for phrase in pricing_phrases):
+        likely_needs_tool = True
+        detected_intent = "PRICING_INQUIRY"
+        checking_msg = random.choice(generic_fillers)
+        print(f"   ✅ [PRE-CHECK] Detected: PRICING INQUIRY")
+    
+    # Detect booking requests (initial booking intent)
+    booking_phrases = ["book an appointment", "book a job", "schedule an appointment", "schedule a job",
+                       "make an appointment", "make a booking", "i need to book", "i'd like to book",
+                       "can i book", "can you book", "want to book", "need an appointment"]
+    if not likely_needs_tool and any(phrase in user_message for phrase in booking_phrases):
+        likely_needs_tool = True
+        detected_intent = "BOOKING_REQUEST"
+        checking_msg = random.choice(generic_fillers)
+        print(f"   ✅ [PRE-CHECK] Detected: BOOKING REQUEST")
+    
+    # Detect date/time preference responses (when user gives a time preference)
+    time_preference_phrases = ["tomorrow", "next week", "monday", "tuesday", "wednesday", "thursday", 
+                               "friday", "saturday", "morning", "afternoon", "evening", "o'clock",
+                               "this week", "next monday", "next tuesday", "in the morning", "in the afternoon"]
+    # Only trigger if it looks like they're giving a time preference (not just mentioning a day in passing)
+    time_context_phrases = ["works", "suits", "good for me", "prefer", "available", "free", "can do", "how about", "what about"]
+    if not likely_needs_tool and any(phrase in user_message for phrase in time_preference_phrases):
+        # Check if this seems like a scheduling context OR it's a short direct answer
+        is_short_answer = len(user_message.split()) <= 4
+        has_time_context = any(ctx in user_message for ctx in time_context_phrases)
+        # Also check if previous message was asking about times
+        prev_asked_time = any(phrase in prev_assistant_msg for phrase in ["when", "what time", "what day", "which day", "suits you", "work for you"])
+        
+        if has_time_context or (is_short_answer and prev_asked_time):
+            likely_needs_tool = True
+            detected_intent = "TIME_PREFERENCE"
+            checking_msg = random.choice(generic_fillers)
+            print(f"   ✅ [PRE-CHECK] Detected: TIME PREFERENCE")
+    
+    # Detect confirmation responses that might trigger actions (yes to various prompts)
+    confirmation_phrases = ["yes", "yeah", "yep", "yup", "correct", "that's right", "that's correct", 
+                           "confirmed", "confirm", "go ahead", "sounds good", "perfect", "great"]
+    # Check if previous message was asking for confirmation
+    if not likely_needs_tool and any(phrase in user_message for phrase in confirmation_phrases):
+        confirmation_prompts = ["is that correct", "is that right", "can you confirm", "shall i", 
+                               "would you like me to", "do you want me to", "ready to book",
+                               "want to proceed", "should i cancel", "should i reschedule"]
+        if any(prompt in prev_assistant_msg for prompt in confirmation_prompts):
+            likely_needs_tool = True
+            detected_intent = "CONFIRMATION_RESPONSE"
+            checking_msg = random.choice(generic_fillers)
+            print(f"   ✅ [PRE-CHECK] Detected: CONFIRMATION RESPONSE")
+    
+    # Detect service/job description (when user describes what they need done)
+    # Only trigger for substantial problem descriptions, not casual mentions
+    service_indicators = ["blocked", "leaking", "broken", "not working", "burst", "flooding", 
+                          "no power", "no hot water", "no heating", "dripping", "clogged"]
+    # These are action words that suggest they want something done
+    action_indicators = ["need", "want", "can you", "could you", "please", "help", "fix", "repair"]
+    if not likely_needs_tool and any(indicator in user_message for indicator in service_indicators):
+        # Only trigger if it's a substantial description AND has action context
+        if len(user_message.split()) >= 4 or any(action in user_message for action in action_indicators):
+            likely_needs_tool = True
+            detected_intent = "SERVICE_DESCRIPTION"
+            checking_msg = random.choice(generic_fillers)
+            print(f"   ✅ [PRE-CHECK] Detected: SERVICE DESCRIPTION")
+    
     precheck_duration = time.time() - precheck_start
     
     if likely_needs_tool and checking_msg:
