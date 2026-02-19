@@ -257,6 +257,48 @@ CALENDAR_TOOLS = [
                 "required": ["reason"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "modify_job",
+            "description": "Modify details of an existing job/appointment. Use when customer wants to change the address, job description, or other details of a booking WITHOUT changing the time. WORKFLOW: 1) Get the appointment date/time from the user. 2) Call this function with ONLY appointment_datetime to look up the booking. 3) System returns customer name and current details. 4) Confirm with user: 'That appointment is for [name]. What would you like to change?' 5) When they tell you what to change, call this function again with the datetime, customer_name, and the fields to update.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "appointment_datetime": {
+                        "type": "string",
+                        "description": "Date and time of the job to modify (e.g., 'Thursday at 3pm', 'January 15th at 10am')"
+                    },
+                    "customer_name": {
+                        "type": "string",
+                        "description": "Customer name (provide AFTER user confirms the booking lookup)"
+                    },
+                    "new_address": {
+                        "type": "string",
+                        "description": "New job address or eircode if customer wants to change location"
+                    },
+                    "new_job_description": {
+                        "type": "string",
+                        "description": "Updated job description if customer wants to change what needs to be done"
+                    },
+                    "new_phone": {
+                        "type": "string",
+                        "description": "New contact phone number if customer wants to update it"
+                    },
+                    "new_email": {
+                        "type": "string",
+                        "description": "New email address if customer wants to update it"
+                    },
+                    "new_urgency": {
+                        "type": "string",
+                        "enum": ["same-day", "scheduled", "quote"],
+                        "description": "New urgency level if customer wants to change it"
+                    }
+                },
+                "required": ["appointment_datetime"]
+            }
+        }
     }
 ]
 
@@ -2229,6 +2271,263 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             logger.info(f"[RESCHEDULE_JOB] Redirecting to reschedule_appointment")
             # Alias for reschedule_appointment - same functionality
             return execute_tool_call("reschedule_appointment", arguments, services)
+        
+        elif tool_name == "modify_job":
+            """Modify details of an existing job without changing the time"""
+            logger.info(f"[MODIFY_JOB] ========== MODIFYING JOB ==========")
+            appointment_datetime = arguments.get('appointment_datetime')
+            customer_name = arguments.get('customer_name')
+            new_address = arguments.get('new_address')
+            new_job_description = arguments.get('new_job_description')
+            new_phone = arguments.get('new_phone')
+            new_email = arguments.get('new_email')
+            new_urgency = arguments.get('new_urgency')
+            
+            logger.info(f"[MODIFY_JOB] DateTime: {appointment_datetime}, Customer: {customer_name}")
+            logger.info(f"[MODIFY_JOB] Updates - Address: {new_address}, Description: {new_job_description}, Phone: {new_phone}, Email: {new_email}, Urgency: {new_urgency}")
+            
+            if not appointment_datetime:
+                return {
+                    "success": False,
+                    "error": "Appointment date/time is required to find the booking"
+                }
+            
+            # Verify database is available
+            if not db:
+                return {
+                    "success": False,
+                    "error": "Database service is not available. Please try again later."
+                }
+            
+            # Parse the appointment time
+            parsed_time = parse_datetime(appointment_datetime)
+            if not parsed_time:
+                return {
+                    "success": False,
+                    "error": f"Could not parse date/time: {appointment_datetime}"
+                }
+            
+            # If no customer name provided, look up by time only and return details for confirmation
+            if not customer_name:
+                event = google_calendar.find_appointment_by_details(
+                    customer_name=None,
+                    appointment_time=parsed_time
+                )
+                
+                if not event:
+                    return {
+                        "success": False,
+                        "error": f"No appointment found at {parsed_time.strftime('%B %d at %I:%M %p')}. Please verify the date and time."
+                    }
+                
+                # Extract customer name from the event
+                event_summary = event.get('summary', '')
+                if ' - ' in event_summary:
+                    extracted_name = event_summary.split(' - ')[-1].strip()
+                else:
+                    import re
+                    between_match = re.search(r'between\s+([^and]+)\s+and', event_summary, re.IGNORECASE)
+                    if between_match:
+                        extracted_name = between_match.group(1).strip()
+                    else:
+                        extracted_name = event_summary.strip()
+                
+                # Get current booking details from database
+                current_details = {}
+                event_id = event.get('id')
+                try:
+                    bookings = db.get_all_bookings(company_id=company_id)
+                    for booking in bookings:
+                        # Handle both string and int event_id comparison
+                        booking_event_id = booking.get('calendar_event_id')
+                        if booking_event_id and str(booking_event_id) == str(event_id):
+                            current_details = {
+                                'address': booking.get('address'),
+                                'service_type': booking.get('service_type'),
+                                'phone': booking.get('phone_number'),
+                                'email': booking.get('email'),
+                                'urgency': booking.get('urgency')
+                            }
+                            break
+                except Exception as e:
+                    logger.warning(f"[MODIFY_JOB] Could not fetch booking details: {e}")
+                
+                # Return details for confirmation
+                return {
+                    "success": False,
+                    "requires_confirmation": True,
+                    "customer_name": extracted_name,
+                    "appointment_time": parsed_time.strftime('%B %d at %I:%M %p'),
+                    "current_details": current_details,
+                    "message": f"Found appointment at {parsed_time.strftime('%B %d at %I:%M %p')} for {extracted_name}. Current address: {current_details.get('address', 'Not set')}. What would you like to change?"
+                }
+            
+            # Customer name confirmed - check if any updates were provided
+            has_updates = any([new_address, new_job_description, new_phone, new_email, new_urgency])
+            if not has_updates:
+                return {
+                    "success": False,
+                    "error": "No changes specified. Please ask the customer what they would like to update (address, job description, phone, email, or urgency)."
+                }
+            
+            # Find the appointment
+            event = google_calendar.find_appointment_by_details(
+                customer_name=customer_name,
+                appointment_time=parsed_time
+            )
+            
+            if not event:
+                return {
+                    "success": False,
+                    "error": f"No appointment found for {customer_name} at {parsed_time.strftime('%B %d at %I:%M %p')}"
+                }
+            
+            event_id = event.get('id')
+            
+            # Find the booking in database
+            booking_id = None
+            current_booking = None
+            try:
+                bookings = db.get_all_bookings(company_id=company_id)
+                for booking in bookings:
+                    # Handle both string and int event_id comparison
+                    booking_event_id = booking.get('calendar_event_id')
+                    if booking_event_id and str(booking_event_id) == str(event_id):
+                        booking_id = booking['id']
+                        current_booking = booking
+                        break
+            except Exception as e:
+                logger.error(f"[MODIFY_JOB] Error finding booking: {e}")
+                return {
+                    "success": False,
+                    "error": f"Database error while finding booking: {str(e)}"
+                }
+            
+            if not booking_id:
+                return {
+                    "success": False,
+                    "error": "Could not find the booking in the database. The calendar event exists but database record is missing."
+                }
+            
+            # Build update fields
+            update_fields = {}
+            changes_made = []
+            
+            # Determine the effective urgency (new or existing)
+            effective_urgency = new_urgency if new_urgency else current_booking.get('urgency', 'scheduled')
+            
+            if new_address:
+                # Validate the new address
+                address_validator = AddressValidator()
+                address_data = address_validator.parse_address_input(new_address)
+                
+                if address_data['needs_clarification']:
+                    return {
+                        "success": False,
+                        "error": address_data['suggestions'][0] if address_data['suggestions'] else "Please provide a more complete address.",
+                        "needs_clarification": "new_address"
+                    }
+                
+                update_fields['address'] = address_data['full_address']
+                if address_data.get('eircode'):
+                    update_fields['eircode'] = address_data['eircode']
+                changes_made.append(f"address to {address_data['full_address']}")
+            
+            if new_job_description:
+                # Re-match service based on new description
+                match_result = match_service(new_job_description, company_id=company_id)
+                matched_service = match_result['service']
+                matched_service_name = match_result['matched_name']
+                
+                update_fields['service_type'] = matched_service_name
+                
+                # Update charge based on new service and effective urgency
+                if effective_urgency == 'emergency' and matched_service.get('emergency_price'):
+                    update_fields['charge'] = float(matched_service['emergency_price'])
+                else:
+                    update_fields['charge'] = float(matched_service.get('price', 0))
+                
+                # Update duration
+                update_fields['duration_minutes'] = matched_service.get('duration_minutes', 60)
+                
+                changes_made.append(f"job description to '{new_job_description}' (matched service: {matched_service_name})")
+            
+            if new_phone:
+                update_fields['phone_number'] = new_phone
+                changes_made.append(f"phone to {new_phone}")
+            
+            if new_email:
+                update_fields['email'] = new_email
+                changes_made.append(f"email to {new_email}")
+            
+            if new_urgency:
+                update_fields['urgency'] = new_urgency
+                changes_made.append(f"urgency to {new_urgency}")
+                
+                # If urgency changed and we didn't already update the charge (via job description change),
+                # recalculate the charge based on the current service type
+                if not new_job_description and current_booking.get('service_type'):
+                    try:
+                        match_result = match_service(current_booking['service_type'], company_id=company_id)
+                        matched_service = match_result['service']
+                        if new_urgency == 'emergency' and matched_service.get('emergency_price'):
+                            update_fields['charge'] = float(matched_service['emergency_price'])
+                        else:
+                            update_fields['charge'] = float(matched_service.get('price', 0))
+                    except Exception as price_err:
+                        logger.warning(f"[MODIFY_JOB] Could not update charge for urgency change: {price_err}")
+            
+            # Update the booking in database
+            try:
+                success = db.update_booking(booking_id, company_id=company_id, **update_fields)
+                
+                if not success:
+                    return {
+                        "success": False,
+                        "error": "Failed to update the booking in the database"
+                    }
+                
+                # Add a note about the modification
+                changes_summary = ", ".join(changes_made)
+                db.add_appointment_note(
+                    booking_id,
+                    f"Job modified via AI receptionist: Changed {changes_summary}",
+                    created_by="system"
+                )
+                
+                # Update calendar event description if address or description changed
+                if new_address or new_job_description:
+                    try:
+                        # Get updated booking info
+                        updated_booking = None
+                        refreshed_bookings = db.get_all_bookings(company_id=company_id)
+                        for booking in refreshed_bookings:
+                            if booking['id'] == booking_id:
+                                updated_booking = booking
+                                break
+                        
+                        if updated_booking and hasattr(google_calendar, 'update_event_description'):
+                            new_description = f"Booked via AI receptionist\n\nCustomer: {customer_name}\nPhone: {updated_booking.get('phone_number', '')}\nEmail: {updated_booking.get('email', '')}\n\nJob Address: {updated_booking.get('address', '')}\nService: {updated_booking.get('service_type', '')}\nUrgency: {updated_booking.get('urgency', '')}\n\n[Modified: {changes_summary}]"
+                            google_calendar.update_event_description(event_id, new_description)
+                    except Exception as cal_err:
+                        logger.warning(f"[MODIFY_JOB] Could not update calendar description: {cal_err}")
+                
+                logger.info(f"[MODIFY_JOB] ✅ Job modified successfully: {changes_summary}")
+                
+                return {
+                    "success": True,
+                    "message": f"Successfully updated the job for {customer_name} on {parsed_time.strftime('%B %d at %I:%M %p')}. Changed: {changes_summary}.",
+                    "changes": changes_made
+                }
+                
+            except Exception as e:
+                logger.error(f"[MODIFY_JOB] Error updating booking: {e}")
+                import traceback
+                traceback.print_exc()
+                return {
+                    "success": False,
+                    "error": f"Error updating booking: {str(e)}"
+                }
         
         elif tool_name == "transfer_to_human":
             """Transfer call to a real human"""

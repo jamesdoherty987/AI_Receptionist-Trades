@@ -227,8 +227,23 @@ def load_system_prompt(company_id=None):
         coverage_area = business_info.get('coverage_area', '').strip()
         coverage_line = f"COVERAGE AREA: {coverage_area}" if coverage_area else ""
         
+        # Get current date/time for context
+        now = datetime.now()
+        current_day = now.strftime('%A')
+        current_date = now.strftime('%B %d, %Y')
+        tomorrow_day = (now + timedelta(days=1)).strftime('%A')
+        
         # Add business info section at the end of prompt
         business_context = f"""
+
+###############################################################################
+## CURRENT DATE/TIME CONTEXT
+###############################################################################
+
+TODAY IS: {current_day}, {current_date}
+TOMORROW IS: {tomorrow_day}
+
+IMPORTANT: When offering availability for TOMORROW, always say "tomorrow" - never say "{tomorrow_day}" or the date.
 
 ###############################################################################
 ## BUSINESS INFORMATION (Auto-loaded from database)
@@ -2201,6 +2216,18 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         detected_intent = "RESCHEDULE"
         checking_msg = random.choice(generic_fillers)
         print(f"   ✅ [PRE-CHECK] Detected: RESCHEDULE REQUEST")
+    
+    # Detect modify job requests (changing address, details, etc. without changing time)
+    modify_phrases = ["change the address", "change my address", "different address", "update the address", 
+                      "change the details", "update the details", "change the job", "modify the job",
+                      "change the phone", "update my phone", "different phone", "change my number",
+                      "change the email", "update my email", "different email",
+                      "change it to emergency", "make it urgent", "change urgency"]
+    if not likely_needs_tool and any(phrase in user_message for phrase in modify_phrases):
+        likely_needs_tool = True
+        detected_intent = "MODIFY_JOB"
+        checking_msg = random.choice(generic_fillers)
+        print(f"   ✅ [PRE-CHECK] Detected: MODIFY JOB REQUEST")
     
     # Detect lookup/verification requests (when asking about existing appointments)
     lookup_phrases = ["my appointment", "do i have", "what time is my", "when is my"]
