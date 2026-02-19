@@ -128,6 +128,13 @@ async def media_handler(ws):
     continuation_energy_since = 0.0  # Track sustained energy for continuation detection
     continuation_recovery_mode = False  # True when we cancelled and are waiting for more speech
     continuation_base_text = ""  # The combined text to build upon during recovery
+    tool_execution_in_progress = False  # True when LLM is executing tool calls (unsafe to cancel)
+    
+    # --- Pre-response interruption (during COMPLETION_WAIT) ---
+    # If caller continues speaking during COMPLETION_WAIT, discard pending response and combine texts
+    pre_response_pending = False  # True when we're in COMPLETION_WAIT and about to respond
+    pre_response_text = ""  # The text that would trigger response
+    pre_response_start = 0.0  # When we entered COMPLETION_WAIT
 
     # --- Speech segmentation with sentence-level detection ---
     in_speech = False
@@ -191,7 +198,7 @@ async def media_handler(ws):
         nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at, llm_processing, queued_speech
 
         async def run():
-            nonlocal speaking, tts_started_at, tts_ended_at, call_sid, conversation_log, llm_processing, queued_speech, conversation
+            nonlocal speaking, tts_started_at, tts_ended_at, call_sid, conversation_log, llm_processing, queued_speech, conversation, tool_execution_in_progress, continuation_window_start, continuation_original_text, continuation_energy_since, continuation_recovery_mode, continuation_base_text
             speaking = True
             interrupt = False
             tts_started_at = asyncio.get_event_loop().time()
@@ -295,6 +302,9 @@ async def media_handler(ws):
                     print(f"   🔀 [FILLER]   1. Play filler audio (instant)")
                     print(f"   🔀 [FILLER]   2. Prefetch LLM response (in background)")
                     print(f"   {'='*50}\n")
+                    
+                    # Mark that tool execution is in progress - unsafe to cancel/restart
+                    tool_execution_in_progress = True
                     
                     # Try pre-recorded audio FIRST for instant playback
                     # Wrapped in try/except to NEVER fail - falls back to TTS
@@ -608,13 +618,16 @@ async def media_handler(ws):
                 speaking = False
                 interrupt = False  # Reset interrupt flag
                 llm_processing = False  # LLM response complete
+                tool_execution_in_progress = False  # Tool execution complete
                 
-                # Clear continuation window state - response completed normally
-                continuation_window_start = 0.0
-                continuation_original_text = ""
-                continuation_energy_since = 0.0
-                continuation_recovery_mode = False
-                continuation_base_text = ""
+                # IMPORTANT: Only clear continuation window state if NOT in recovery mode
+                # If we're in recovery mode, we were interrupted and need to keep the base text
+                # for combining with the new speech
+                if not continuation_recovery_mode:
+                    continuation_window_start = 0.0
+                    continuation_original_text = ""
+                    continuation_energy_since = 0.0
+                    # Don't clear continuation_base_text here - it's needed for recovery
                 
                 # Process any queued speech that came in during LLM processing
                 if queued_speech:
@@ -775,12 +788,16 @@ async def media_handler(ws):
                     if last_interrupt_time > 0 and (now - last_interrupt_time) < INTERRUPT_COOLDOWN:
                         continue
                     
-                    # --- CONTINUATION WINDOW: First 2 seconds after response starts ---
-                    # If caller continues speaking, cancel response and restart with combined text
+                    # --- CONTINUATION WINDOW: If caller speaks within CONTINUATION_WINDOW after response starts ---
+                    # Cancel response and restart with combined text
+                    # Note: We use CONTINUATION_WINDOW (2.0s default) not COMPLETION_WAIT (0.2s)
+                    # because the filler phrase takes ~1-2s to play
+                    # IMPORTANT: Don't allow cancellation during tool execution (could corrupt data)
                     in_continuation_window = (
                         continuation_window_start > 0 and 
                         (now - continuation_window_start) <= CONTINUATION_WINDOW and
-                        continuation_original_text  # Must have original text to append to
+                        continuation_original_text and  # Must have original text to append to
+                        not tool_execution_in_progress  # Don't cancel during tool execution
                     )
                     
                     if in_continuation_window:
@@ -805,7 +822,7 @@ async def media_handler(ws):
                                 if is_new_speech:
                                     # This is real NEW speech during continuation window!
                                     # Cancel current response and restart with combined text
-                                    print(f"\n🔄 [CONTINUATION] Speech detected during continuation window!")
+                                    print(f"\n🔄 [CONTINUATION] Speech detected within {CONTINUATION_WINDOW}s - restarting!")
                                     print(f"   Original text: '{continuation_original_text}'")
                                     print(f"   New speech: '{interim_check}'")
                                     
@@ -920,6 +937,15 @@ async def media_handler(ws):
                         speech_start_time = now  # Track speech start
 
                     silence_since = 0.0
+                    
+                    # Check if we're in pre-response wait and caller started speaking again
+                    if pre_response_pending and energy > SPEECH_ENERGY:
+                        # Caller is continuing to speak during COMPLETION_WAIT
+                        # Reset the wait and let them continue
+                        print(f"🔄 [PRE-RESPONSE] Caller continuing during wait, resetting...")
+                        pre_response_pending = False
+                        # Keep pre_response_text - we'll combine it with new speech
+                        # Don't reset speech state - let it continue building
 
                 else:
                     # Low energy - check for silence
@@ -935,6 +961,21 @@ async def media_handler(ws):
                             (now - silence_since) >= SILENCE_HOLD and
                             (now - speech_start_time) >= MIN_SPEECH_DURATION):
                             text = (final_text or pending_text).strip()
+                            
+                            # If we were in pre-response wait and got more speech, combine texts
+                            if pre_response_text and text != pre_response_text:
+                                # Check if the new text already contains the pre-response text
+                                if not norm_text(text).startswith(norm_text(pre_response_text)):
+                                    # New speech detected after pre-response wait - combine them
+                                    combined = pre_response_text + " " + text
+                                    print(f"🔄 [PRE-RESPONSE] Combined texts: '{pre_response_text}' + '{text}' = '{combined}'")
+                                    text = combined
+                                else:
+                                    print(f"🔄 [PRE-RESPONSE] ASR already combined: '{text}'")
+                                # Reset pre-response state
+                                pre_response_pending = False
+                                pre_response_text = ""
+                                pre_response_start = 0.0
                             
                             # If in continuation recovery mode, prepend the base text
                             if continuation_recovery_mode and continuation_base_text:
@@ -956,7 +997,9 @@ async def media_handler(ws):
                                 
                                 # If not complete, wait a bit more unless it's been too long
                                 if not is_complete_thought and (now - silence_since) < (SILENCE_HOLD + COMPLETION_WAIT):
-                                    continue
+                                    # Don't wait - start generating but track we're in early response window
+                                    # If caller speaks within COMPLETION_WAIT, we'll cancel and restart
+                                    pass  # Fall through to start response
                                 
                                 # Enhanced duplicate detection
                                 is_duplicate = False
@@ -1057,6 +1100,11 @@ async def media_handler(ws):
                                     last_interim = ""
                                     last_committed = text
                                     last_response_time = now
+                                    
+                                    # Reset pre-response wait state
+                                    pre_response_pending = False
+                                    pre_response_text = ""
+                                    pre_response_start = 0.0
                                     
                                     # Clear ASR state
                                     asr.clear_all()

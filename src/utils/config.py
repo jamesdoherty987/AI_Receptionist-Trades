@@ -69,7 +69,7 @@ class Config:
     MIN_WORDS = int(os.getenv("MIN_WORDS", 1))
     DUPLICATE_WINDOW = float(os.getenv("DUPLICATE_WINDOW", 3.0))
     MIN_SPEECH_DURATION = float(os.getenv("MIN_SPEECH_DURATION", 0.3))
-    COMPLETION_WAIT = float(os.getenv("COMPLETION_WAIT", 0.2))
+    COMPLETION_WAIT = float(os.getenv("COMPLETION_WAIT", 2.0))
     
     # Media Handler - TTS Settings
     MIN_TOKENS_BEFORE_INTERRUPT = int(os.getenv("MIN_TOKENS_BEFORE_INTERRUPT", 8))
