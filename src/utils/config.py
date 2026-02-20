@@ -69,6 +69,12 @@ class Config:
     MIN_WORDS = int(os.getenv("MIN_WORDS", 1))
     DUPLICATE_WINDOW = float(os.getenv("DUPLICATE_WINDOW", 3.0))
     MIN_SPEECH_DURATION = float(os.getenv("MIN_SPEECH_DURATION", 0.3))
+    
+    # COMPLETION_WAIT - allows caller to continue speaking after SILENCE_HOLD
+    # Flow: Caller speaks -> silence -> SILENCE_HOLD (0.7s) -> start generating response
+    # COMPLETION_WAIT (2s) runs IN PARALLEL with response generation
+    # If caller speaks within COMPLETION_WAIT, cancel response, combine texts, restart
+    # Example: "I need to book..." [0.7s pause] -> AI starts generating -> "...for Tuesday" -> cancel & combine
     COMPLETION_WAIT = float(os.getenv("COMPLETION_WAIT", 2.0))
     
     # Media Handler - TTS Settings
@@ -77,12 +83,6 @@ class Config:
     
     # Media Handler - LLM Processing (filler speech filtering)
     LLM_PROCESSING_TIMEOUT = float(os.getenv("LLM_PROCESSING_TIMEOUT", 8.0))  # Max time to filter filler speech
-    
-    # Continuation window - allows caller to continue speaking after response starts
-    # If speech detected within this window, cancel response and restart with combined text
-    # 2s catches natural thinking pauses like "I need to book... um... an appointment for Tuesday"
-    # The AI still starts generating immediately - this just allows recovery if caller wasn't done
-    CONTINUATION_WINDOW = float(os.getenv("CONTINUATION_WINDOW", 2.0))  # Seconds
     
     # TTS Chunk Sizes
     MIN_TTS_CHUNK_CHARS = int(os.getenv("MIN_TTS_CHUNK_CHARS", 20))

@@ -114,19 +114,19 @@ class TestCompletionWaitInterruption:
         config = Mock()
         config.SPEECH_ENERGY = 1600
         config.SILENCE_ENERGY = 1000
-        config.SILENCE_HOLD = 0.5  # 500ms
-        config.COMPLETION_WAIT = 0.3  # 300ms - window for interruption
+        config.SILENCE_HOLD = 0.7  # 700ms - wait after silence before starting response
+        config.COMPLETION_WAIT = 2.0  # 2s - window for caller to continue (runs parallel with response generation)
         config.INTERRUPT_ENERGY = 2800
         config.NO_BARGEIN_WINDOW = 0.5
-        config.BARGEIN_HOLD = 0.2
+        config.BARGEIN_HOLD = 0.4
         config.POST_TTS_IGNORE = 0.05
         config.MIN_WORDS = 1
         config.DUPLICATE_WINDOW = 3.0
-        config.MIN_SPEECH_DURATION = 0.2
+        config.MIN_SPEECH_DURATION = 0.3
         config.LLM_PROCESSING_TIMEOUT = 8.0
         config.MIN_TOKENS_BEFORE_INTERRUPT = 8
         config.TTS_TIMEOUT = 20.0
-        config.CONTINUATION_WINDOW = 2.0
+        config.CONTINUATION_WINDOW = 2.0  # Same as COMPLETION_WAIT (legacy alias)
         config.AUDIO_ENCODING = "mulaw"
         config.AUDIO_SAMPLE_RATE = 8000
         config.AUDIO_CHANNELS = 1
@@ -135,18 +135,30 @@ class TestCompletionWaitInterruption:
         return config
 
     def test_completion_wait_window_calculation(self, mock_config):
-        """Test that COMPLETION_WAIT window is calculated correctly"""
-        # The window should be: response_start_time + COMPLETION_WAIT
-        response_start = 10.0
-        completion_wait = mock_config.COMPLETION_WAIT
+        """Test that COMPLETION_WAIT window is calculated correctly
         
-        # At time 10.1 (0.1s after start), should be in window
-        current_time = 10.1
+        Flow:
+        1. Caller speaks, then goes silent
+        2. Wait SILENCE_HOLD (0.7s) after silence detected
+        3. After SILENCE_HOLD, start generating response (this is response_start)
+        4. COMPLETION_WAIT (2s) timer starts when SILENCE_HOLD finishes
+        5. Response generation happens in parallel with COMPLETION_WAIT
+        """
+        response_start = 10.0  # When SILENCE_HOLD finished and response generation started
+        completion_wait = mock_config.COMPLETION_WAIT  # 2.0s
+        
+        # At time 10.5 (0.5s after start), should be in window
+        current_time = 10.5
         in_window = (current_time - response_start) <= completion_wait
         assert in_window is True
         
-        # At time 10.4 (0.4s after start), should be outside window (0.3s window)
-        current_time = 10.4
+        # At time 11.5 (1.5s after start), should still be in window
+        current_time = 11.5
+        in_window = (current_time - response_start) <= completion_wait
+        assert in_window is True
+        
+        # At time 12.5 (2.5s after start), should be outside window (2.0s window)
+        current_time = 12.5
         in_window = (current_time - response_start) <= completion_wait
         assert in_window is False
 
@@ -354,30 +366,30 @@ class TestCompletionWaitTiming:
     def test_interruption_at_exact_boundary(self):
         """Test interruption exactly at COMPLETION_WAIT boundary"""
         response_start = 10.0
-        completion_wait = 0.3
+        completion_wait = 2.0  # 2 seconds
         
         # Just before boundary - should be in window
-        current_time = 10.29
+        current_time = 11.99
         in_window = (current_time - response_start) <= completion_wait
         assert in_window is True
         
         # Just past boundary - should be outside
-        current_time = 10.31
+        current_time = 12.01
         in_window = (current_time - response_start) <= completion_wait
         assert in_window is False
 
     def test_sustained_speech_detection(self):
-        """Test that speech must be sustained for 150ms"""
+        """Test that speech must be sustained for 100-150ms"""
         speech_start = 10.0
-        required_duration = 0.15  # 150ms
+        required_duration = 0.1  # 100ms for LLM processing check, 150ms for TTS speaking check
         
         # Too short - should not trigger
-        current_time = 10.1  # 100ms
+        current_time = 10.05  # 50ms
         is_sustained = (current_time - speech_start) >= required_duration
         assert is_sustained is False
         
         # Long enough - should trigger
-        current_time = 10.2  # 200ms
+        current_time = 10.15  # 150ms
         is_sustained = (current_time - speech_start) >= required_duration
         assert is_sustained is True
 
@@ -387,8 +399,8 @@ class TestIntegrationScenarios:
     
     def test_scenario_caller_continues_mid_sentence(self):
         """
-        Scenario: Caller says "I need to book..." pauses, AI starts,
-        then caller says "...for Tuesday"
+        Scenario: Caller says "I need to book..." pauses for 0.7s (SILENCE_HOLD),
+        AI starts generating, then caller says "...for Tuesday" within 2s (COMPLETION_WAIT)
         
         Expected: AI cancels, combines to "I need to book for Tuesday", restarts
         """
@@ -396,16 +408,17 @@ class TestIntegrationScenarios:
         original_text = "I need to book"
         conversation = [{"role": "user", "content": original_text}]
         
-        # AI starts generating (continuation_window_start set)
+        # After SILENCE_HOLD (0.7s), AI starts generating
+        # continuation_window_start is set to this moment
         continuation_window_start = 10.0
         continuation_original_text = original_text
         
-        # Caller speaks within window
-        current_time = 10.2  # 200ms later, within 300ms window
+        # Caller speaks within COMPLETION_WAIT window (2s)
+        current_time = 11.0  # 1s later, within 2s window
         new_speech = "for Tuesday"
         
         # Check if in window
-        completion_wait = 0.3
+        completion_wait = 2.0
         in_window = (current_time - continuation_window_start) <= completion_wait
         assert in_window is True
         
@@ -418,16 +431,16 @@ class TestIntegrationScenarios:
 
     def test_scenario_caller_interrupts_after_window(self):
         """
-        Scenario: Caller says something, AI starts, caller interrupts
-        AFTER COMPLETION_WAIT window
+        Scenario: Caller says something, AI starts generating after SILENCE_HOLD,
+        caller interrupts AFTER COMPLETION_WAIT window (2s)
         
         Expected: Normal barge-in behavior, not text combination
         """
         continuation_window_start = 10.0
-        completion_wait = 0.3
+        completion_wait = 2.0
         
         # Caller speaks after window
-        current_time = 10.5  # 500ms later, outside 300ms window
+        current_time = 12.5  # 2.5s later, outside 2s window
         
         in_window = (current_time - continuation_window_start) <= completion_wait
         assert in_window is False
