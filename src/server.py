@@ -182,7 +182,7 @@ async def warmup_openai():
         print(f"[STARTUP] OpenAI warmup failed after {elapsed:.2f}s: {e}")
 
 
-OPENAI_KEEPALIVE_INTERVAL = 120  # Ping every 2 minutes to keep connection warm
+OPENAI_KEEPALIVE_INTERVAL = 60  # Ping every 60 seconds to keep connection warm
 _keepalive_task = None  # Track task for graceful shutdown
 
 
@@ -210,6 +210,7 @@ async def openai_keepalive_loop():
         
         try:
             client = get_openai_client()
+            start = time.time()
             # Run sync OpenAI call in thread pool to avoid blocking event loop
             await asyncio.to_thread(
                 client.chat.completions.create,
@@ -218,7 +219,15 @@ async def openai_keepalive_loop():
                 max_tokens=1,
                 stream=False
             )
+            elapsed = time.time() - start
             consecutive_failures = 0  # Reset on success
+            # Log occasionally to confirm it's working (every 5 pings = 5 minutes)
+            if hasattr(openai_keepalive_loop, '_ping_count'):
+                openai_keepalive_loop._ping_count += 1
+            else:
+                openai_keepalive_loop._ping_count = 1
+            if openai_keepalive_loop._ping_count % 5 == 0:
+                print(f"[KEEPALIVE] ✓ OpenAI connection warm (ping #{openai_keepalive_loop._ping_count}, {elapsed:.2f}s)")
         except asyncio.CancelledError:
             print("[KEEPALIVE] Shutting down gracefully")
             return

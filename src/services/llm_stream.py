@@ -50,14 +50,20 @@ DEFAULT_APPOINTMENT_DURATION_MINUTES = 60  # Default duration for AI phone booki
 CONFIRMATION_THRESHOLD = 0.7  # Confidence threshold for confirmation detection
 SKIP_APPOINTMENT_DETECTION = True  # Skip ALL appointment detection - LLM handles it with tools
 
-# Lazy initialization of OpenAI client
+# Lazy initialization of OpenAI client with optimized settings
 _client = None
 
 def get_openai_client():
-    """Get or create OpenAI client instance"""
+    """Get or create OpenAI client instance with optimized connection settings"""
     global _client
     if _client is None:
-        _client = OpenAI(api_key=config.OPENAI_API_KEY)
+        import httpx
+        # Create client with reasonable timeouts (not too aggressive)
+        _client = OpenAI(
+            api_key=config.OPENAI_API_KEY,
+            timeout=httpx.Timeout(60.0, connect=10.0),  # 10s connect, 60s total
+            max_retries=2,  # Allow retries for reliability
+        )
     return _client
 
 
@@ -615,6 +621,10 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     if call_state is None:
         print("[WARNING] stream_llm called without call_state - creating temporary instance")
         call_state = create_call_state()
+    
+    setup_time = time_module.time() - llm_start_time
+    if setup_time > 0.1:
+        print(f"[LLM_TIMING] ⚠️ Call state setup took {setup_time*1000:.1f}ms")
     
     # Track conversation turn for post-booking cooldown
     call_state.current_turn = call_state.current_turn + 1
@@ -2244,6 +2254,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     # NOTE: Use GENERIC fillers that work for any action - avoid action-specific phrases that could be wrong
     
     precheck_start = time.time()
+    time_to_precheck = precheck_start - llm_start_time
+    if time_to_precheck > 0.1:
+        print(f"[LLM_TIMING] ⚠️ Time before pre-check: {time_to_precheck*1000:.1f}ms (should be <100ms)")
     
     user_message = messages[-1]["content"].lower() if messages and messages[-1].get("role") == "user" else ""
     likely_needs_tool = False
@@ -2439,14 +2452,17 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
             print(f"   ℹ️ [PRE-CHECK] Skipping: Phone/address confirmation (no slow tool call)")
     
     # Detect service/job description (when user describes what they need done)
-    # DISABLED: When user describes a problem, the LLM typically asks follow-up questions
-    # rather than calling tools. This was causing "Let me check that for you" followed by questions.
-    # service_indicators = ["blocked", "leaking", "broken", "not working", "burst", "flooding", 
-    #                       "no power", "no hot water", "no heating", "dripping", "clogged"]
-    # action_indicators = ["need", "want", "can you", "could you", "please", "help", "fix", "repair"]
-    # if not likely_needs_tool and any(indicator in user_message for indicator in service_indicators):
-    #     # DISABLED - LLM asks questions first, doesn't call tools
-    #     pass
+    # When user describes a problem like "I have a leak", the LLM needs time to process
+    # Play a filler to acknowledge and buy time for the response
+    service_indicators = ["leak", "blocked", "leaking", "broken", "not working", "burst", "flooding", 
+                          "no power", "no hot water", "no heating", "dripping", "clogged", "emergency",
+                          "urgent", "water damage", "pipe", "drain", "toilet", "sink", "tap", "boiler"]
+    if not likely_needs_tool and any(indicator in user_message for indicator in service_indicators):
+        likely_needs_tool = True
+        detected_intent = "SERVICE_DESCRIPTION"
+        # Use a short acknowledgment that won't overlap with LLM response
+        checking_msg = "Sure, one moment."
+        print(f"   ✅ [PRE-CHECK] Detected: SERVICE DESCRIPTION (will acknowledge)")
     
     precheck_duration = time.time() - precheck_start
     

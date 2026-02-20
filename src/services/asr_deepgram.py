@@ -22,6 +22,7 @@ class DeepgramASR:
         self._last_final_text = ""  # Track last final to prevent duplicates
         self._last_final_fingerprint = ""  # Fingerprint of last final for fuzzy matching
         self._last_final_time = 0.0  # Timestamp of last final for echo detection
+        self._last_transcript_time = 0.0  # When the last transcript was received (for staleness check)
 
     async def connect(self):
         """Connect to Deepgram websocket"""
@@ -155,6 +156,7 @@ class DeepgramASR:
                             self._last_final_text = transcript
                             self._last_final_fingerprint = transcript_fp
                             self._last_final_time = time.time()
+                            self._last_transcript_time = time.time()
                             # Clear interim when we get final to prevent stale data
                             self.interim_text = ""
                             print(f"[ASR] Final transcript: '{transcript}'")
@@ -168,6 +170,7 @@ class DeepgramASR:
                         # This prevents the same interim from triggering multiple times
                         if transcript.strip() != self.interim_text.strip():
                             self.interim_text = transcript
+                            self._last_transcript_time = time.time()
         except websockets.exceptions.ConnectionClosed:
             pass
 
@@ -192,6 +195,13 @@ class DeepgramASR:
         """Get interim (in-progress) transcription text"""
         return self.interim_text.strip()
     
+    def get_transcript_age(self) -> float:
+        """Get how old the current transcript is in seconds"""
+        import time
+        if self._last_transcript_time == 0.0:
+            return 0.0
+        return time.time() - self._last_transcript_time
+    
     def reset_final_flag(self):
         """Reset the final flag for next transcription"""
         self.is_final = False
@@ -201,6 +211,7 @@ class DeepgramASR:
         self.text = ""
         self.interim_text = ""
         self.is_final = False
+        self._last_transcript_time = 0.0  # Reset timestamp so old transcripts aren't used
         # Note: We intentionally DON'T clear _last_final_text and _last_final_fingerprint
         # because we want to detect duplicates even across clear_all() calls
         # This prevents the same utterance from being processed twice

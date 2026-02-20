@@ -1070,6 +1070,34 @@ async def media_handler(ws):
                             (now - speech_start_time) >= MIN_SPEECH_DURATION):
                             text = (final_text or pending_text).strip()
                             
+                            # Skip if no text
+                            if not text:
+                                in_speech = False
+                                silence_since = 0.0
+                                continue
+                            
+                            # Check for stale transcript - if transcript is too old, it might be from
+                            # a previous turn that wasn't cleared properly
+                            transcript_age = asr.get_transcript_age()
+                            # If age is 0, it means no transcript was received yet (cleared state)
+                            # If age > 5s, transcript is stale
+                            if transcript_age == 0.0 and not asr.get_interim() and not asr.get_text():
+                                # No actual transcript data - skip
+                                print(f"⚠️ [STALE] No transcript data available, skipping")
+                                in_speech = False
+                                silence_since = 0.0
+                                pending_text = ""
+                                last_interim = ""
+                                continue
+                            elif transcript_age > 5.0:
+                                print(f"⚠️ [STALE] Ignoring stale transcript ({transcript_age:.1f}s old): '{text[:50]}...'")
+                                asr.clear_all()
+                                in_speech = False
+                                silence_since = 0.0
+                                pending_text = ""
+                                last_interim = ""
+                                continue
+                            
                             # If in continuation recovery mode, prepend the base text
                             if continuation_recovery_mode and continuation_base_text:
                                 # Check if ASR already included the base text (sometimes it does)
