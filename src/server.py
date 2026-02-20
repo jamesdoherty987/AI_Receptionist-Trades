@@ -150,6 +150,7 @@ async def startup_event():
     total_startup = time.time() - startup_start
     print(f"\n{'='*70}")
     print(f"[STARTUP] ✅ All startup tasks complete in {total_startup:.3f}s")
+    print(f"[STARTUP] 🟢 SERVER READY FOR CALLS - OpenAI warmed up, fillers loaded")
     print(f"{'='*70}\n")
 
 
@@ -221,12 +222,12 @@ async def openai_keepalive_loop():
             )
             elapsed = time.time() - start
             consecutive_failures = 0  # Reset on success
-            # Log occasionally to confirm it's working (every 5 pings = 5 minutes)
+            # Log first ping and then every 5 pings (5 minutes)
             if hasattr(openai_keepalive_loop, '_ping_count'):
                 openai_keepalive_loop._ping_count += 1
             else:
                 openai_keepalive_loop._ping_count = 1
-            if openai_keepalive_loop._ping_count % 5 == 0:
+            if openai_keepalive_loop._ping_count == 1 or openai_keepalive_loop._ping_count % 5 == 0:
                 print(f"[KEEPALIVE] ✓ OpenAI connection warm (ping #{openai_keepalive_loop._ping_count}, {elapsed:.2f}s)")
         except asyncio.CancelledError:
             print("[KEEPALIVE] Shutting down gracefully")
