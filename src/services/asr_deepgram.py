@@ -41,9 +41,8 @@ class DeepgramASR:
             "&numerals=true"  # Better number handling for addresses
             "&language=en"  # General English
             "&diarize=false"  # Single speaker, no need for diarization
-            "&utterances=true"  # Better utterance detection
-            "&utt_split=1.2"  # Pause before splitting utterances
-            "&endpointing=800",  # End-of-speech detection (800ms)
+            "&utterances=false"  # Disable utterance splitting - we handle this locally
+            "&endpointing=2500",  # 2.5s - longer than COMPLETION_WAIT so local logic controls timing
             extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
             open_timeout=5,   # Faster connection timeout
             close_timeout=2,  # Faster close
