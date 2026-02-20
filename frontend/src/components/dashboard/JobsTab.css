@@ -262,9 +262,8 @@
 
 /* Time-based styling */
 .job-card.time-now {
-  border: 2px solid #f59e0b;
-  background: linear-gradient(135deg, #fffbeb, white);
-  animation: pulse-glow 2s infinite;
+  border: 2px solid var(--accent-blue);
+  background: rgba(59, 130, 246, 0.03);
 }
 
 .job-card.time-past {
@@ -277,16 +276,7 @@
 }
 
 .job-card.time-soon {
-  border-color: #fbbf24;
-}
-
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 12px 4px rgba(245, 158, 11, 0.3);
-  }
+  border-color: var(--accent-blue);
 }
 
 .job-card-content {
@@ -343,13 +333,19 @@
 }
 
 .job-time-badge.time-now {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
+  background: var(--accent-blue);
   color: white;
 }
 
 .job-time-badge.time-past {
   background: rgba(107, 114, 128, 0.1);
   color: #6b7280;
+}
+
+/* In Progress badge */
+.badge-in-progress {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: white;
 }
 
 .pulse-dot {

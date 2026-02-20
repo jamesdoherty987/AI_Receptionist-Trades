@@ -16,10 +16,7 @@
   color: #1f2937;
 }
 
-.banner-urgent {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  box-shadow: 0 1px 6px rgba(245, 158, 11, 0.2);
-}
+/* banner-urgent class removed - no longer used */
 
 .banner-expired {
   background: linear-gradient(135deg, #ef4444, #dc2626);
@@ -75,10 +72,7 @@
   color: #2563eb;
 }
 
-.days-badge.days-urgent {
-  background: rgba(255, 255, 255, 0.25);
-  animation: pulse-badge 2s infinite;
-}
+/* days-urgent class removed - no longer used */
 
 .days-number {
   font-size: 1rem;
@@ -118,9 +112,7 @@
   color: #6b7280;
 }
 
-.banner-urgent .banner-btn {
-  color: #d97706;
-}
+/* banner-urgent .banner-btn removed - no longer used */
 
 .banner-expired .banner-btn {
   color: #dc2626;
@@ -131,10 +123,7 @@
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 
-@keyframes pulse-badge {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-}
+/* pulse-badge animation removed - no longer used */
 
 @media (max-width: 600px) {
   .trial-banner {

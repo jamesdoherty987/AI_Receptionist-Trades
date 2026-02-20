@@ -19,21 +19,17 @@ function TrialBanner() {
   
   // Active trial - show trial banner with days remaining
   if (tier === 'trial' && isActive) {
-    const isUrgent = daysRemaining <= 3;
     return (
-      <div className={`trial-banner ${isUrgent ? 'banner-urgent' : 'banner-trial'}`}>
+      <div className="trial-banner banner-trial">
         <div className="banner-left">
-          <div className={`days-badge ${isUrgent ? 'days-urgent' : ''}`}>
+          <div className="days-badge">
             <span className="days-number">{daysRemaining}</span>
             <span className="days-label">{daysRemaining === 1 ? 'day' : 'days'}</span>
           </div>
           <div className="banner-text">
-            <strong>{isUrgent ? 'Trial ending soon!' : 'Free trial active'}</strong>
+            <strong>Free trial active</strong>
             <span className="banner-sub">
-              {isUrgent 
-                ? 'Subscribe now to keep your data and features.' 
-                : `You have ${daysRemaining} days left in your free trial.`
-              }
+              {`You have ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} left in your free trial.`}
             </span>
           </div>
         </div>

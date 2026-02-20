@@ -115,11 +115,16 @@ function JobsTab({ bookings }) {
 
   const renderJobCard = (job) => {
     const timeStatus = getJobTimeStatus(job.appointment_time);
+    // Show "In Progress" if job is happening now and not completed/cancelled
+    const displayStatus = (timeStatus === 'now' && job.status !== 'completed' && job.status !== 'cancelled') 
+      ? 'in-progress' 
+      : job.status;
+    const displayStatusText = displayStatus === 'in-progress' ? 'In Progress' : job.status;
     
     return (
       <div 
         key={job.id} 
-        className={`job-card status-${job.status} time-${timeStatus}`}
+        className={`job-card status-${displayStatus} time-${timeStatus}`}
         onClick={() => setSelectedJobId(job.id)}
       >
         <div className="job-card-indicator"></div>
@@ -127,8 +132,8 @@ function JobsTab({ bookings }) {
           <div className="job-header">
             <div className="job-title">
               <h3>{job.customer_name}</h3>
-              <span className={`badge ${getStatusBadgeClass(job.status)}`}>
-                {job.status}
+              <span className={`badge ${displayStatus === 'in-progress' ? 'badge-in-progress' : getStatusBadgeClass(job.status)}`}>
+                {displayStatusText}
               </span>
             </div>
             <div className={`job-time-badge time-${timeStatus}`}>
