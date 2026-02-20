@@ -42,8 +42,8 @@ class DeepgramASR:
             "&language=en"  # General English
             "&diarize=false"  # Single speaker, no need for diarization
             "&utterances=true"  # Better utterance detection
-            "&utt_split=1.2"  # Longer pause before splitting utterances (was 0.8)
-            "&endpointing=800",  # Slower end-of-speech detection (was 300ms, now 800ms)
+            "&utt_split=1.2"  # Pause before splitting utterances
+            "&endpointing=800",  # End-of-speech detection (800ms)
             extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
             open_timeout=5,   # Faster connection timeout
             close_timeout=2,  # Faster close

@@ -3064,21 +3064,25 @@ def client_api(client_id):
 @login_required
 def add_note_api(client_id):
     """Add a note to a client"""
+    print(f"[ADD_NOTE] Adding note for client {client_id}")
     db = get_database()
     company_id = session.get('company_id')
     
     # Verify client belongs to this company
     client = db.get_client(client_id, company_id=company_id)
     if not client:
+        print(f"[ADD_NOTE] Client {client_id} not found for company {company_id}")
         return jsonify({"error": "Client not found"}), 404
     
     data = request.json
+    print(f"[ADD_NOTE] Note data: {data}")
     
     note_id = db.add_note(
         client_id=client_id,
         note=data['note'],
         created_by=data.get('created_by', 'user')
     )
+    print(f"[ADD_NOTE] Note added with ID: {note_id}")
     return jsonify({"id": note_id, "message": "Note added"}), 201
 
 

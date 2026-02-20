@@ -37,6 +37,7 @@ FILLER_PHRASES = {
     "bear_with_me": "Bear with me one second.",
     "just_a_moment": "Just a moment.",
     "let_me_look": "Let me have a look.",
+    "grand_one_moment": "Grand, one moment.",  # Irish-style acknowledgment for name confirmation
     # Booking-specific fillers
     "let_me_book": "Let me book that for you, one moment.",
     "let_me_confirm": "Let me confirm that for you, one moment.",

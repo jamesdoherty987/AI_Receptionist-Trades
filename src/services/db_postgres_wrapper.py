@@ -1483,6 +1483,24 @@ class PostgreSQLDatabaseWrapper:
             row = cursor.fetchone()
             
             if row:
+                # Fetch notes from the notes table and aggregate them
+                cursor.execute("""
+                    SELECT note, created_at, created_by 
+                    FROM notes 
+                    WHERE client_id = %s 
+                    ORDER BY created_at ASC
+                """, (client_id,))
+                notes_rows = cursor.fetchall()
+                
+                # Format notes as a single string with timestamps
+                notes_text = ""
+                if notes_rows:
+                    note_entries = []
+                    for note_row in notes_rows:
+                        timestamp = note_row['created_at'].strftime('%Y-%m-%d %H:%M') if note_row['created_at'] else ''
+                        note_entries.append(f"[{timestamp}] {note_row['note']}")
+                    notes_text = "\n\n".join(note_entries)
+                
                 return {
                     'id': row['id'],
                     'company_id': row.get('company_id'),
@@ -1497,7 +1515,8 @@ class PostgreSQLDatabaseWrapper:
                     'date_of_birth': row.get('date_of_birth'),
                     'description': row.get('description'),
                     'address': row.get('address'),
-                    'eircode': row.get('eircode')
+                    'eircode': row.get('eircode'),
+                    'notes': notes_text
                 }
             return None
         finally:

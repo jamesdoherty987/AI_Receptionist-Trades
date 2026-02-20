@@ -2277,14 +2277,26 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         ])
         print(f"   ✅ [PRE-CHECK] Detected: TRANSFER REQUEST")
     
-    # Detect booking confirmation (user confirming details before booking)
+    # Detect booking confirmation (user confirming details before ACTUAL booking)
+    # Must have booking-related context, not just name/phone confirmation
     booking_confirm_phrases = ["yes", "yeah", "yep", "correct", "that's right", "book it", "sounds good", "perfect", "go ahead", "please book", "book that"]
     prev_assistant_msg = ""
     for msg in reversed(messages[:-1]):
         if msg.get("role") == "assistant":
             prev_assistant_msg = msg.get("content", "").lower()
             break
-    is_booking_confirmation = ("let me confirm" in prev_assistant_msg or "all correct" in prev_assistant_msg or "is that correct" in prev_assistant_msg) and any(phrase in user_message for phrase in booking_confirm_phrases)
+    
+    # Check for ACTUAL booking context - must mention appointment/booking/time, not just name confirmation
+    booking_context_phrases = ["book", "appointment", "schedule", "confirm the booking", "confirm your appointment", 
+                               "ready to book", "shall i book", "want me to book", "proceed with the booking"]
+    has_booking_context = any(phrase in prev_assistant_msg for phrase in booking_context_phrases)
+    
+    # Exclude name/phone confirmation scenarios - these are NOT booking confirmations
+    name_confirmation_phrases = ["is that correct", "is that right", "spell", "j-", "confirm your name", 
+                                 "confirm the name", "is that the best number", "reach you"]
+    is_just_name_confirmation = any(phrase in prev_assistant_msg for phrase in name_confirmation_phrases) and not has_booking_context
+    
+    is_booking_confirmation = has_booking_context and any(phrase in user_message for phrase in booking_confirm_phrases) and not is_just_name_confirmation
     
     if not likely_needs_tool and is_booking_confirmation:
         likely_needs_tool = True
@@ -2342,12 +2354,14 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         print(f"   ✅ [PRE-CHECK] Detected: APPOINTMENT LOOKUP")
     
     # Detect customer lookup (after getting name)
-    name_intro_patterns = ["my name is ", "the name is ", "name's "]
-    if not likely_needs_tool and any(phrase in user_message for phrase in name_intro_patterns):
-        likely_needs_tool = True
-        detected_intent = "CUSTOMER_LOOKUP"
-        checking_msg = random.choice(generic_fillers)
-        print(f"   ✅ [PRE-CHECK] Detected: CUSTOMER LOOKUP")
+    # IMPORTANT: The LLM is instructed to SPELL BACK the name and get confirmation BEFORE calling lookup_customer
+    # So we should NOT trigger a filler when user first gives their name - the LLM will ask for confirmation first
+    # Only trigger when user CONFIRMS the spelling (handled by CONFIRMATION_RESPONSE below)
+    # DISABLED: This was causing "Let me check that for you" followed by spelling confirmation questions
+    # name_intro_patterns = ["my name is ", "the name is ", "name's "]
+    # if not likely_needs_tool and any(phrase in user_message for phrase in name_intro_patterns):
+    #     # This is DISABLED because LLM will ask for spelling confirmation first, not call lookup_customer
+    #     pass
     
     # Detect pricing/quote requests (requires service matching which can take time)
     pricing_phrases = ["how much", "what's the price", "what's the cost", "price for", "cost of", 
@@ -2388,32 +2402,51 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
             print(f"   ✅ [PRE-CHECK] Detected: TIME PREFERENCE")
     
     # Detect confirmation responses that might trigger actions (yes to various prompts)
+    # IMPORTANT: Be VERY selective - only trigger for confirmations that will DEFINITELY call a tool
     confirmation_phrases = ["yes", "yeah", "yep", "yup", "correct", "that's right", "that's correct", 
                            "confirmed", "confirm", "go ahead", "sounds good", "perfect", "great"]
     # Check if previous message was asking for confirmation
     if not likely_needs_tool and any(phrase in user_message for phrase in confirmation_phrases):
-        confirmation_prompts = ["is that correct", "is that right", "can you confirm", "shall i", 
-                               "would you like me to", "do you want me to", "ready to book",
-                               "want to proceed", "should i cancel", "should i reschedule"]
-        if any(prompt in prev_assistant_msg for prompt in confirmation_prompts):
+        # Booking/action confirmations - these lead to booking tool calls
+        booking_confirmation_prompts = ["ready to book", "shall i book", "want me to book", 
+                                        "proceed with the booking", "confirm the booking",
+                                        "should i cancel", "should i reschedule", "want to proceed",
+                                        "all correct"]
+        
+        # Name spelling confirmation - AI spelled back name like "J-A-M-E-S", user says "yes"
+        # This triggers lookup_customer tool call
+        name_spelling_indicators = ["j-", "k-", "l-", "m-", "n-", "o-", "p-", "s-", "t-", "a-", "b-", "c-", "d-", "e-", "f-", "g-", "h-", "i-", "r-", "u-", "v-", "w-", "y-", "z-"]
+        is_name_spelling_confirmation = any(indicator in prev_assistant_msg for indicator in name_spelling_indicators)
+        
+        # Phone/address confirmations - these are quick, no filler needed
+        phone_address_indicators = ["is that the best number", "is that still", "same location", "same address", "reach you"]
+        is_phone_address_confirmation = any(indicator in prev_assistant_msg for indicator in phone_address_indicators)
+        
+        is_booking_confirmation = any(prompt in prev_assistant_msg for prompt in booking_confirmation_prompts)
+        
+        if is_booking_confirmation:
             likely_needs_tool = True
             detected_intent = "CONFIRMATION_RESPONSE"
             checking_msg = random.choice(generic_fillers)
-            print(f"   ✅ [PRE-CHECK] Detected: CONFIRMATION RESPONSE")
+            print(f"   ✅ [PRE-CHECK] Detected: CONFIRMATION RESPONSE (booking action)")
+        elif is_name_spelling_confirmation and not is_phone_address_confirmation:
+            # User confirmed name spelling - LLM will call lookup_customer
+            likely_needs_tool = True
+            detected_intent = "NAME_SPELLING_CONFIRMED"
+            checking_msg = "Grand, one moment."
+            print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CONFIRMED (will lookup customer)")
+        elif is_phone_address_confirmation:
+            print(f"   ℹ️ [PRE-CHECK] Skipping: Phone/address confirmation (no slow tool call)")
     
     # Detect service/job description (when user describes what they need done)
-    # Only trigger for substantial problem descriptions, not casual mentions
-    service_indicators = ["blocked", "leaking", "broken", "not working", "burst", "flooding", 
-                          "no power", "no hot water", "no heating", "dripping", "clogged"]
-    # These are action words that suggest they want something done
-    action_indicators = ["need", "want", "can you", "could you", "please", "help", "fix", "repair"]
-    if not likely_needs_tool and any(indicator in user_message for indicator in service_indicators):
-        # Only trigger if it's a substantial description AND has action context
-        if len(user_message.split()) >= 4 or any(action in user_message for action in action_indicators):
-            likely_needs_tool = True
-            detected_intent = "SERVICE_DESCRIPTION"
-            checking_msg = random.choice(generic_fillers)
-            print(f"   ✅ [PRE-CHECK] Detected: SERVICE DESCRIPTION")
+    # DISABLED: When user describes a problem, the LLM typically asks follow-up questions
+    # rather than calling tools. This was causing "Let me check that for you" followed by questions.
+    # service_indicators = ["blocked", "leaking", "broken", "not working", "burst", "flooding", 
+    #                       "no power", "no hot water", "no heating", "dripping", "clogged"]
+    # action_indicators = ["need", "want", "can you", "could you", "please", "help", "fix", "repair"]
+    # if not likely_needs_tool and any(indicator in user_message for indicator in service_indicators):
+    #     # DISABLED - LLM asks questions first, doesn't call tools
+    #     pass
     
     precheck_duration = time.time() - precheck_start
     
@@ -2754,7 +2787,10 @@ When customer wants to reschedule:
     # SAFETY CHECK: If we yielded a split marker in pre-check but OpenAI didn't actually call tools
     if has_yielded_split_marker and not tool_calls:
         if full_response:
-            print(f"⚠️ Pre-check fired but no tools were called - yielding suppressed response: '{full_response[:50]}...'")
+            print(f"\n⚠️ [PRE-CHECK MISFIRE] Filler was played but LLM didn't call any tools!")
+            print(f"⚠️ [PRE-CHECK MISFIRE] User message was: '{user_message[:80]}...'")
+            print(f"⚠️ [PRE-CHECK MISFIRE] LLM response: '{full_response[:100]}...'")
+            print(f"⚠️ [PRE-CHECK MISFIRE] This creates awkward UX - consider disabling this pre-check trigger\n")
             # Yield the response that was collected but suppressed
             # Strip markdown formatting
             cleaned_response = full_response.replace('**', '').replace('__', '').replace('~~', '')
