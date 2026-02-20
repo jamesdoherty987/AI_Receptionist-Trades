@@ -22,6 +22,20 @@ function ServicesTab() {
   const [editingId, setEditingId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', price: '', duration: '60', image_url: '' });
+  const [deleteConfirm, setDeleteConfirm] = useState({ show: false, service: null });
+
+  // Handle escape key to close delete confirmation
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && deleteConfirm.show) {
+        setDeleteConfirm({ show: false, service: null });
+      }
+    };
+    if (deleteConfirm.show) {
+      document.addEventListener('keydown', handleEscape);
+    }
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [deleteConfirm.show]);
 
   const handleAddClick = () => {
     if (!isSubscriptionActive) {
@@ -62,11 +76,17 @@ function ServicesTab() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteService,
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['services-menu'] });
-      addToast('Service deleted', 'success');
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      const jobsAffected = response.data?.jobs_affected || 0;
+      addToast(`Service deleted${jobsAffected > 0 ? ` (${jobsAffected} job${jobsAffected !== 1 ? 's' : ''} used this service)` : ''}`, 'success');
+      setDeleteConfirm({ show: false, service: null });
     },
-    onError: () => addToast('Failed to delete service', 'error'),
+    onError: () => {
+      setDeleteConfirm({ show: false, service: null });
+      addToast('Failed to delete service', 'error');
+    },
   });
 
 
@@ -93,9 +113,13 @@ function ServicesTab() {
     });
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('Delete this service?')) {
-      deleteMutation.mutate(id);
+  const handleDelete = (service) => {
+    setDeleteConfirm({ show: true, service });
+  };
+
+  const confirmDelete = () => {
+    if (deleteConfirm.service) {
+      deleteMutation.mutate(deleteConfirm.service.id);
     }
   };
 
@@ -210,10 +234,41 @@ function ServicesTab() {
               onEdit={() => startEdit(service)}
               onSave={handleUpdate}
               onCancel={() => setEditingId(null)}
-              onDelete={() => handleDelete(service.id)}
+              onDelete={() => handleDelete(service)}
               isPending={updateMutation.isPending || deleteMutation.isPending}
             />
           ))}
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirm.show && deleteConfirm.service && (
+        <div className="delete-confirm-overlay">
+          <div className="delete-confirm-dialog">
+            <div className="delete-confirm-icon">
+              <i className="fas fa-exclamation-triangle"></i>
+            </div>
+            <h3>Delete Service?</h3>
+            <p className="delete-warning">
+              This will permanently delete <strong>{deleteConfirm.service.name}</strong>.
+            </p>
+            <p className="delete-cascade-warning">
+              <i className="fas fa-info-circle"></i>
+              Jobs using this service will keep their service type but the service will no longer be available for new bookings.
+            </p>
+            <div className="delete-confirm-actions">
+              <button className="btn btn-secondary" onClick={() => setDeleteConfirm({ show: false, service: null })}>
+                Cancel
+              </button>
+              <button 
+                className="btn btn-danger" 
+                onClick={confirmDelete}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete Service'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

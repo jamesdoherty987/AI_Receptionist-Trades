@@ -376,7 +376,7 @@ class SettingsManager:
             print(f"Error updating service: {e}")
             return False
     
-    def delete_service(self, service_id: str, company_id: int = None) -> bool:
+    def delete_service(self, service_id: str, company_id: int = None) -> dict:
         """Delete a service from the database for a specific company"""
         from src.services.database import get_database
         db = get_database()
@@ -385,7 +385,7 @@ class SettingsManager:
             return db.delete_service(service_id, company_id=company_id)
         except Exception as e:
             print(f"Error deleting service: {e}")
-            return False
+            return {"success": False, "error": str(e), "jobs_affected": 0}
     
     def update_business_hours(self, hours_data: Dict[str, Any], company_id: int = None) -> bool:
         """Update business hours in business settings for a specific company"""

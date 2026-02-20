@@ -1544,6 +1544,90 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
+    def delete_client(self, client_id: int, company_id: int = None) -> dict:
+        """
+        Delete a client and all associated bookings (cascade delete).
+        Returns dict with success status and count of deleted bookings.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            # First, count and delete associated bookings
+            if company_id:
+                cursor.execute("""
+                    SELECT COUNT(*) as count FROM bookings 
+                    WHERE client_id = %s AND company_id = %s
+                """, (client_id, company_id))
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) as count FROM bookings 
+                    WHERE client_id = %s
+                """, (client_id,))
+            
+            result = cursor.fetchone()
+            bookings_count = result['count'] if result else 0
+            
+            # Delete worker assignments for those bookings first
+            if company_id:
+                cursor.execute("""
+                    DELETE FROM worker_assignments 
+                    WHERE booking_id IN (
+                        SELECT id FROM bookings WHERE client_id = %s AND company_id = %s
+                    )
+                """, (client_id, company_id))
+            else:
+                cursor.execute("""
+                    DELETE FROM worker_assignments 
+                    WHERE booking_id IN (
+                        SELECT id FROM bookings WHERE client_id = %s
+                    )
+                """, (client_id,))
+            
+            # Delete the bookings
+            if company_id:
+                cursor.execute("""
+                    DELETE FROM bookings WHERE client_id = %s AND company_id = %s
+                """, (client_id, company_id))
+            else:
+                cursor.execute("""
+                    DELETE FROM bookings WHERE client_id = %s
+                """, (client_id,))
+            
+            # Delete client notes if they exist (notes table uses client_id)
+            # Use try/except in case notes table doesn't exist
+            try:
+                cursor.execute("DELETE FROM notes WHERE client_id = %s", (client_id,))
+            except Exception:
+                pass  # Notes table may not exist in all deployments
+            
+            # Finally delete the client
+            if company_id:
+                cursor.execute("""
+                    DELETE FROM clients WHERE id = %s AND company_id = %s
+                """, (client_id, company_id))
+            else:
+                cursor.execute("""
+                    DELETE FROM clients WHERE id = %s
+                """, (client_id,))
+            
+            client_deleted = cursor.rowcount > 0
+            conn.commit()
+            
+            return {
+                "success": client_deleted,
+                "bookings_deleted": bookings_count
+            }
+        except Exception as e:
+            conn.rollback()
+            print(f"Error deleting client: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "bookings_deleted": 0
+            }
+        finally:
+            self.return_connection(conn)
+    
     def add_booking(self, client_id: int, calendar_event_id: str, appointment_time: str,
                     service_type: str, phone_number: str = None, email: str = None,
                     urgency: str = None, address: str = None, eircode: str = None,
@@ -2042,20 +2126,53 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def delete_worker(self, worker_id: int) -> bool:
-        """Delete a worker"""
+    def delete_worker(self, worker_id: int, company_id: int = None) -> dict:
+        """
+        Delete a worker and remove from all job assignments (cascade delete).
+        Returns dict with success status and count of removed assignments.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("DELETE FROM workers WHERE id = %s", (worker_id,))
+            # First, count worker assignments
+            cursor.execute("""
+                SELECT COUNT(*) as count FROM worker_assignments 
+                WHERE worker_id = %s
+            """, (worker_id,))
+            result = cursor.fetchone()
+            assignments_count = result['count'] if result else 0
             
-            rows_affected = cursor.rowcount
+            # Delete worker assignments
+            cursor.execute("DELETE FROM worker_assignments WHERE worker_id = %s", (worker_id,))
+            
+            # Update bookings to remove this worker from assigned_worker_ids array
+            cursor.execute("""
+                UPDATE bookings 
+                SET assigned_worker_ids = array_remove(assigned_worker_ids, %s)
+                WHERE %s = ANY(assigned_worker_ids)
+            """, (worker_id, worker_id))
+            
+            # Delete the worker
+            if company_id:
+                cursor.execute("DELETE FROM workers WHERE id = %s AND company_id = %s", (worker_id, company_id))
+            else:
+                cursor.execute("DELETE FROM workers WHERE id = %s", (worker_id,))
+            
+            worker_deleted = cursor.rowcount > 0
             conn.commit()
-            return rows_affected > 0
+            
+            return {
+                "success": worker_deleted,
+                "assignments_removed": assignments_count
+            }
         except Exception as e:
             conn.rollback()
             print(f"Error deleting worker: {e}")
-            return False
+            return {
+                "success": False,
+                "error": str(e),
+                "assignments_removed": 0
+            }
         finally:
             self.return_connection(conn)
     
@@ -2536,19 +2653,56 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def delete_service(self, service_id: str, company_id: int = None) -> bool:
-        """Delete a service for a specific company"""
+    def delete_service(self, service_id: str, company_id: int = None) -> dict:
+        """
+        Delete a service for a specific company.
+        Jobs using this service will have their service_type set to null.
+        Returns dict with success status and count of affected jobs.
+        """
         conn = self.get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         try:
+            # First get the service name to find affected jobs
+            if company_id:
+                cursor.execute("SELECT name FROM services WHERE id = %s AND company_id = %s", (service_id, company_id))
+            else:
+                cursor.execute("SELECT name FROM services WHERE id = %s", (service_id,))
+            
+            service = cursor.fetchone()
+            service_name = service['name'] if service else None
+            
+            # Count jobs that use this service
+            jobs_count = 0
+            if service_name and company_id:
+                cursor.execute("""
+                    SELECT COUNT(*) as count FROM bookings 
+                    WHERE service_type = %s AND company_id = %s
+                """, (service_name, company_id))
+                result = cursor.fetchone()
+                jobs_count = result['count'] if result else 0
+            
+            # Delete the service
             if company_id:
                 cursor.execute("DELETE FROM services WHERE id = %s AND company_id = %s", (service_id, company_id))
             else:
                 cursor.execute("DELETE FROM services WHERE id = %s", (service_id,))
-            rows_affected = cursor.rowcount
+            
+            service_deleted = cursor.rowcount > 0
             conn.commit()
-            return rows_affected > 0
+            
+            return {
+                "success": service_deleted,
+                "jobs_affected": jobs_count
+            }
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Error deleting service: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "jobs_affected": 0
+            }
         finally:
             self.return_connection(conn)
     

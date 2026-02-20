@@ -31,16 +31,18 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
     """
     import time
     tts_start = time.time()
-    print(f"[TTS] 🎤 Starting Deepgram TTS at {tts_start:.3f}")
+    print(f"\n[TTS_TIMING] 🎤 stream_tts started at {tts_start:.3f}")
     
     # Use faster model and optimized settings for speed
     # aura-luna-en is a natural female voice optimized for conversational use
     uri = f"wss://api.deepgram.com/v1/speak?model=aura-luna-en&encoding={config.AUDIO_ENCODING}&sample_rate={config.AUDIO_SAMPLE_RATE}&container=none"
 
     MAX_TTS_SECONDS = 30.0  # Increased to prevent cutting off longer responses
+    first_audio_time = None  # Track time to first audio
 
     for attempt in (1, 2):
         try:
+            ws_connect_start = time.time()
             async with websockets.connect(
                 uri,
                 extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
@@ -50,6 +52,8 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                 ping_timeout=10,  # Shorter ping timeout
                 max_size=2**20,
             ) as tts:
+                ws_connect_time = time.time() - ws_connect_start
+                print(f"[TTS_TIMING] Deepgram TTS WebSocket connected in {ws_connect_time:.3f}s")
 
                 start_time = asyncio.get_event_loop().time()
                 got_audio = False
@@ -59,7 +63,9 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
 
                 async def sender():
                     """Send text tokens to Deepgram"""
+                    nonlocal first_audio_time
                     token_sent_count = 0
+                    first_token_sent_time = None
                     try:
                         async for token in _aiter(text_stream):
                             if interrupt_fn():
@@ -83,7 +89,9 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                             
                             token_sent_count += 1
                             if token_sent_count == 1:
-                                print(f"   📤 First TTS token sent: '{token[:20]}...'")
+                                first_token_sent_time = time.time()
+                                time_to_first_token = first_token_sent_time - tts_start
+                                print(f"[TTS_TIMING] 📤 First token sent to TTS: '{token[:30]}...' ({time_to_first_token:.3f}s from start)")
                             # Send text to Deepgram
                             await tts.send(json.dumps({"type": "Speak", "text": token}))
                     finally:
@@ -97,7 +105,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
 
                 async def receiver():
                     """Receive audio from Deepgram and forward to Twilio"""
-                    nonlocal got_audio
+                    nonlocal got_audio, first_audio_time
                     quiet_timeouts = 0
                     last_audio_time = asyncio.get_event_loop().time()
 
@@ -129,6 +137,11 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
 
                         # Deepgram sends binary audio directly
                         if isinstance(msg, bytes):
+                            if not got_audio:
+                                first_audio_time = time.time()
+                                time_to_first_audio = first_audio_time - tts_start
+                                print(f"[TTS_TIMING] 🔊 First audio received from Deepgram: {time_to_first_audio:.3f}s from start")
+                            
                             got_audio = True
                             last_audio_time = asyncio.get_event_loop().time()
                             
@@ -148,6 +161,9 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                                 }))
 
                 await asyncio.gather(sender(), receiver())
+                
+                total_tts_time = time.time() - tts_start
+                print(f"[TTS_TIMING] ✅ TTS complete in {total_tts_time:.3f}s")
                 return
 
         except Exception as e:

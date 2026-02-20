@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getClient, updateClient, getBookings, addClientNote } from '../../services/api';
+import { getClient, updateClient, deleteClient, getBookings, addClientNote } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import { formatPhone, formatDateTime, getStatusBadgeClass, formatCurrency } from '../../utils/helpers';
@@ -12,6 +12,20 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [newNote, setNewNote] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Handle escape key to close delete confirmation
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && showDeleteConfirm) {
+        setShowDeleteConfirm(false);
+      }
+    };
+    if (showDeleteConfirm) {
+      document.addEventListener('keydown', handleEscape);
+    }
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [showDeleteConfirm]);
 
   const { data: client, isLoading: loadingClient } = useQuery({
     queryKey: ['client', clientId],
@@ -125,6 +139,30 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
     }
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteClient(clientId),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      setShowDeleteConfirm(false);
+      onClose();
+      const bookingsDeleted = response.data?.bookings_deleted || 0;
+      addToast(`Customer deleted${bookingsDeleted > 0 ? ` (${bookingsDeleted} job${bookingsDeleted !== 1 ? 's' : ''} also removed)` : ''}`, 'success');
+    },
+    onError: (error) => {
+      setShowDeleteConfirm(false);
+      addToast('Error deleting customer: ' + (error.response?.data?.error || error.message), 'error');
+    }
+  });
+
+  const handleDelete = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = () => {
+    deleteMutation.mutate();
+  };
+
   const handleEditStart = () => {
     setEditData({
       name: client.name || '',
@@ -231,12 +269,54 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
                 </button>
               </>
             ) : (
-              <button className="btn btn-secondary" onClick={handleEditStart}>
-                <i className="fas fa-edit"></i> Edit Customer
-              </button>
+              <>
+                <button className="btn btn-secondary" onClick={handleEditStart}>
+                  <i className="fas fa-edit"></i> Edit
+                </button>
+                <button 
+                  className="btn btn-danger"
+                  onClick={handleDelete}
+                  disabled={deleteMutation.isPending}
+                >
+                  <i className="fas fa-trash"></i> Delete
+                </button>
+              </>
             )}
           </div>
         </div>
+
+        {/* Delete Confirmation */}
+        {showDeleteConfirm && (
+          <div className="delete-confirm-overlay">
+            <div className="delete-confirm-dialog">
+              <div className="delete-confirm-icon">
+                <i className="fas fa-exclamation-triangle"></i>
+              </div>
+              <h3>Delete Customer?</h3>
+              <p className="delete-warning">
+                This will permanently delete <strong>{client.name}</strong> and all their associated data.
+              </p>
+              {totalBookings > 0 && (
+                <p className="delete-cascade-warning">
+                  <i className="fas fa-exclamation-circle"></i>
+                  <strong>{totalBookings} job{totalBookings !== 1 ? 's' : ''}</strong> will also be deleted.
+                </p>
+              )}
+              <div className="delete-confirm-actions">
+                <button className="btn btn-secondary" onClick={() => setShowDeleteConfirm(false)}>
+                  Cancel
+                </button>
+                <button 
+                  className="btn btn-danger" 
+                  onClick={confirmDelete}
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending ? 'Deleting...' : 'Delete Customer'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Content Grid */}
         <div className="customer-modal-grid">

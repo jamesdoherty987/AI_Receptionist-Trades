@@ -17,6 +17,7 @@ from src.utils.config import config
 from src.utils.date_parser import parse_datetime
 from src.services.calendar_tools import CALENDAR_TOOLS, execute_tool_call
 from src.services.call_state import CallState, create_call_state
+from src.utils.security import normalize_phone_for_comparison
 
 # --- AI-based utilities for text parsing ---
 from src.utils.ai_text_parser import extract_time_window_ai, extract_name_ai, detect_birth_year, is_affirmative_response
@@ -64,6 +65,9 @@ def load_business_info(company_id=None):
     """Load business information from companies table by company_id.
     Falls back to first company if no company_id provided (backwards compatible).
     """
+    import time as time_module
+    load_start = time_module.time()
+    
     from src.services.database import get_database
     
     try:
@@ -96,10 +100,12 @@ def load_business_info(company_id=None):
                 company = None
             conn.close()
         
+        load_time = time_module.time() - load_start
+        
         if company:
             # Return in the format expected by the rest of the code
             business_name = company.get('company_name') or 'Your Business'
-            print(f"[INFO] Loaded business info for company_id={company_id}: {business_name}")
+            print(f"[TIMING] load_business_info completed in {load_time:.3f}s (company_id={company_id}: {business_name})")
             
             return {
                 'business_name': business_name,
@@ -111,7 +117,8 @@ def load_business_info(company_id=None):
                 'coverage_area': company.get('coverage_area') or ''
             }
     except Exception as e:
-        print(f"[WARNING] Could not load business info from database (company_id={company_id}): {e}")
+        load_time = time_module.time() - load_start
+        print(f"[TIMING] load_business_info failed after {load_time:.3f}s (company_id={company_id}): {e}")
     
     # Fallback to generic info
     return {
@@ -179,7 +186,15 @@ def is_business_day(dt: datetime) -> bool:
 def load_system_prompt(company_id=None):
     """Load system prompt from file and inject business information.
     When company_id is provided, loads that company's specific info.
+    
+    CACHING: For company_id=None (default), uses cached SYSTEM_PROMPT.
+    For specific company_id, loads fresh from DB (company-specific data).
     """
+    import time as time_module
+    prompt_start = time_module.time()
+    
+    print(f"\n[PROMPT_DEBUG] load_system_prompt called with company_id={company_id}")
+    
     # Use fast/condensed prompt for better performance
     prompt_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
@@ -187,16 +202,33 @@ def load_system_prompt(company_id=None):
     )
     
     # Load business info (for specific company if ID provided) and services menu
+    biz_info_start = time_module.time()
+    print(f"[PROMPT_DEBUG] Loading business info...")
     business_info = load_business_info(company_id=company_id)
+    biz_info_time = time_module.time() - biz_info_start
+    print(f"[PROMPT_DEBUG] Business info loaded in {biz_info_time*1000:.1f}ms")
+    
+    services_start = time_module.time()
+    print(f"[PROMPT_DEBUG] Loading services menu...")
     services_menu = load_services_menu()
+    services_time = time_module.time() - services_start
+    print(f"[PROMPT_DEBUG] Services menu loaded in {services_time*1000:.1f}ms")
     
     # Get business hours from database settings (pass company_id for company-specific hours)
+    hours_start = time_module.time()
+    print(f"[PROMPT_DEBUG] Loading business hours...")
     business_hours_data = config.get_business_hours(company_id=company_id)
+    hours_time = time_module.time() - hours_start
+    print(f"[PROMPT_DEBUG] Business hours loaded in {hours_time*1000:.1f}ms")
+    
     business_hours = {
         'start_hour': business_hours_data['start'],
         'end_hour': business_hours_data['end'],
         'days_open': business_hours_data['days_open']
     }
+    
+    db_total = biz_info_time + services_time + hours_time
+    print(f"[TIMING] load_system_prompt DB calls: biz_info={biz_info_time*1000:.1f}ms, services={services_time*1000:.1f}ms, hours={hours_time*1000:.1f}ms, TOTAL={db_total*1000:.1f}ms")
     
     try:
         with open(prompt_path, 'r', encoding='utf-8') as f:
@@ -289,11 +321,16 @@ IMPORTANT: Use these details when relevant during conversations. For example, if
 """
         prompt += business_context
         
+        total_prompt_time = time_module.time() - prompt_start
+        print(f"[TIMING] load_system_prompt total: {total_prompt_time:.3f}s (company_id={company_id})")
+        
         return prompt
         
     except FileNotFoundError:
         # Fallback to basic prompt if file not found
         hours = get_business_hours_from_menu()
+        total_prompt_time = time_module.time() - prompt_start
+        print(f"[TIMING] load_system_prompt fallback: {total_prompt_time:.3f}s (file not found)")
         return f"""You are a professional AI receptionist for {business_info.get('business_name', 'Your Business')}.
         
 Business hours: {hours['start']}:00 to {hours['end']}:00
@@ -303,6 +340,51 @@ Be friendly and natural."""
 
 
 SYSTEM_PROMPT = load_system_prompt()
+
+# Cache for company-specific prompts (avoids repeated DB queries during a call)
+# Key: company_id, Value: (prompt_text, timestamp)
+_company_prompt_cache = {}
+_PROMPT_CACHE_TTL = 300  # 5 minutes - refresh periodically to pick up changes
+
+
+def get_cached_system_prompt(company_id=None):
+    """Get system prompt with caching for company-specific prompts.
+    
+    This avoids hitting the database on every LLM call during a conversation.
+    Cache TTL is 5 minutes to balance freshness with performance.
+    """
+    import time as time_module
+    
+    # No company_id = use the global cached prompt (loaded at startup)
+    if company_id is None:
+        print(f"[PROMPT_CACHE] Using global SYSTEM_PROMPT (no company_id)")
+        return SYSTEM_PROMPT
+    
+    # Check cache for company-specific prompt
+    cache_key = str(company_id)
+    now = time_module.time()
+    
+    if cache_key in _company_prompt_cache:
+        cached_prompt, cached_time = _company_prompt_cache[cache_key]
+        age = now - cached_time
+        if age < _PROMPT_CACHE_TTL:
+            print(f"[PROMPT_CACHE] HIT for company_id={company_id} (age={age:.1f}s)")
+            return cached_prompt
+        else:
+            print(f"[PROMPT_CACHE] EXPIRED for company_id={company_id} (age={age:.1f}s > TTL={_PROMPT_CACHE_TTL}s)")
+    else:
+        print(f"[PROMPT_CACHE] MISS for company_id={company_id}")
+    
+    # Load fresh from database
+    load_start = time_module.time()
+    prompt = load_system_prompt(company_id=company_id)
+    load_time = time_module.time() - load_start
+    
+    # Cache it
+    _company_prompt_cache[cache_key] = (prompt, now)
+    print(f"[PROMPT_CACHE] Cached prompt for company_id={company_id} (loaded in {load_time*1000:.1f}ms)")
+    
+    return prompt
 
 
 def get_closed_day_message(dt: datetime) -> str:
@@ -437,7 +519,8 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
         
         # Try to narrow down by phone number if provided
         if caller_phone:
-            phone_matches = [c for c in matching_clients if c.get('phone') == caller_phone]
+            normalized_caller_phone = normalize_phone_for_comparison(caller_phone)
+            phone_matches = [c for c in matching_clients if normalize_phone_for_comparison(c.get('phone') or '') == normalized_caller_phone]
             if len(phone_matches) == 1:
                 client = phone_matches[0]
                 print(f"[SUCCESS] Matched by phone number: {client['name']} (ID: {client['id']})")
@@ -446,6 +529,14 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
                     "status": "returning",
                     "message": f"Great to hear from you again, {caller_name}!{description_text}",
                     "clients": [client]
+                }
+            elif len(phone_matches) == 0:
+                # Phone provided but doesn't match any existing customer - treat as new
+                print(f"[CLIENT] Name matched {len(matching_clients)} customers but phone doesn't match any - treating as NEW customer")
+                return {
+                    "status": "new",
+                    "message": f"Welcome! I'll get you set up in our system.",
+                    "clients": []
                 }
         
         # Try to narrow down by email if provided
@@ -460,8 +551,16 @@ def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_
                     "message": f"Great to hear from you again, {caller_name}!{description_text}",
                     "clients": [client]
                 }
+            elif len(email_matches) == 0:
+                # Email provided but doesn't match any existing customer - treat as new
+                print(f"[CLIENT] Name matched {len(matching_clients)} customers but email doesn't match any - treating as NEW customer")
+                return {
+                    "status": "new",
+                    "message": f"Welcome! I'll get you set up in our system.",
+                    "clients": []
+                }
         
-        # Still multiple matches - ask for phone to narrow down
+        # No phone or email provided - ask for phone to narrow down
         return {
             "status": "multiple",
             "message": f"I have {len(matching_clients)} customers with that name. Can I get your phone number to confirm which {caller_name.split()[0]} you are?",
@@ -502,8 +601,13 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     Yields:
         Text tokens from LLM
     """
+    import time as time_module
+    llm_start_time = time_module.time()
     
-    print(f"[AI] stream_llm called with {len(messages)} messages")
+    print(f"\n{'='*70}")
+    print(f"[LLM_TIMING] stream_llm started at {llm_start_time:.3f}")
+    print(f"[LLM_TIMING] Messages count: {len(messages)}")
+    print(f"{'='*70}")
 
     # Use provided call_state or create a new one (for backwards compatibility)
     # WARNING: Creating a new CallState here means state won't persist across turns
@@ -2330,6 +2434,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     # Stream from OpenAI with optimized settings
     client = get_openai_client()
     
+    # --- TIMING: System prompt loading ---
+    prompt_load_start = time_module.time()
+    
     # Add current time context to system prompt
     current_time = datetime.now()
     current_time_str = current_time.strftime('%I:%M %p on %A, %B %d, %Y')
@@ -2379,9 +2486,15 @@ When customer wants to reschedule:
 5. When they confirm, call reschedule_appointment tool
 """
     
-    # Load company-specific system prompt if company_id provided, otherwise use cached default
-    active_system_prompt = load_system_prompt(company_id=company_id) if company_id else SYSTEM_PROMPT
+    # Load company-specific system prompt with CACHING to avoid repeated DB queries
+    prompt_load_db_start = time_module.time()
+    active_system_prompt = get_cached_system_prompt(company_id=company_id)
+    prompt_load_time = time_module.time() - prompt_load_db_start
+    print(f"[LLM_TIMING] System prompt retrieved in {prompt_load_time*1000:.1f}ms (company_id={company_id})")
+    
     system_prompt_with_time = active_system_prompt + time_context + tool_usage_guidance
+    prompt_total_time = time_module.time() - prompt_load_start
+    print(f"[LLM_TIMING] Total prompt preparation: {prompt_total_time:.3f}s")
     
     # Sanitize messages to ensure tool messages have their preceding assistant message with tool_calls
     # This prevents the "messages with role 'tool' must be a response to a preceding message with 'tool_calls'" error
@@ -2494,9 +2607,12 @@ When customer wants to reschedule:
         print(f"🚨 [FINAL_CHECK] Removed {len(sanitized_messages) - len(final_messages)} messages in final safety check")
     
     try:
-        print(f"[LLM_DEBUG] Creating OpenAI stream with model={config.CHAT_MODEL}")
-        print(f"[LLM_DEBUG] Messages count: {len(final_messages)}, company_id={company_id}")
-        print(f"[LLM_DEBUG] Last user message: {final_messages[-1].get('content', '')[:100] if final_messages else 'N/A'}...")
+        openai_call_start = time_module.time()
+        time_since_llm_start = openai_call_start - llm_start_time
+        print(f"[LLM_TIMING] Creating OpenAI stream with model={config.CHAT_MODEL}")
+        print(f"[LLM_TIMING] Time since stream_llm start: {time_since_llm_start:.3f}s")
+        print(f"[LLM_TIMING] Messages count: {len(final_messages)}, company_id={company_id}")
+        print(f"[LLM_TIMING] Last user message: {final_messages[-1].get('content', '')[:100] if final_messages else 'N/A'}...")
         stream = client.chat.completions.create(
             model=config.CHAT_MODEL,
             stream=True,
@@ -2512,7 +2628,8 @@ When customer wants to reschedule:
             top_p=0.9,  # Focus on most likely tokens for speed
             stream_options={"include_usage": False}  # Disable usage tracking for speed
         )
-        print(f"[LLM_DEBUG] OpenAI stream created successfully")
+        openai_create_time = time_module.time() - openai_call_start
+        print(f"[LLM_TIMING] ✅ OpenAI stream created in {openai_create_time:.3f}s")
     except Exception as e:
         print(f"❌ [LLM_ERROR] Error creating LLM stream: {e}")
         print(f"[LLM_ERROR] Exception type: {type(e).__name__}")
@@ -2526,10 +2643,21 @@ When customer wants to reschedule:
     current_tool_call = None
     token_count = 0
     has_yielded_split_marker = likely_needs_tool  # Already yielded if pre-check detected it
+    first_token_time = None  # Track time to first token
     
     try:
-        print(f"[LLM_DEBUG] Starting to iterate over stream...")
+        print(f"[LLM_TIMING] Starting to iterate over stream...")
+        stream_iter_start = time_module.time()
         for part in stream:
+            # Track first token timing
+            if first_token_time is None:
+                first_token_time = time_module.time()
+                ttft = first_token_time - openai_call_start
+                total_ttft = first_token_time - llm_start_time
+                print(f"[LLM_TIMING] ⚡ FIRST TOKEN received!")
+                print(f"[LLM_TIMING]    Time from API call: {ttft:.3f}s")
+                print(f"[LLM_TIMING]    Time from stream_llm start: {total_ttft:.3f}s")
+            
             delta = part.choices[0].delta
             
             # Handle tool calls

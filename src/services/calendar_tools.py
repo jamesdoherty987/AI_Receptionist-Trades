@@ -20,6 +20,7 @@ from src.utils.address_validator import (
     get_address_completion_prompt
 )
 from src.utils.duration_utils import format_duration
+from src.utils.security import normalize_phone_for_comparison
 
 CALENDAR_TOOLS = [
     {
@@ -1379,6 +1380,98 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             "address_prompt": address_confirmation_msg
                         }
                     elif len(clients) > 1:
+                        # Multiple customers with same name - try to match by phone or email
+                        logger.info(f"[LOOKUP] Multiple customers ({len(clients)}) found with name: {customer_name}")
+                        
+                        # Try to narrow down by phone number if provided
+                        if phone:
+                            normalized_phone = normalize_phone_for_comparison(phone)
+                            phone_matches = [c for c in clients if normalize_phone_for_comparison(c.get('phone') or '') == normalized_phone]
+                            if len(phone_matches) == 1:
+                                client = phone_matches[0]
+                                logger.info(f"[LOOKUP] Matched by name + phone: {client['name']} (ID: {client['id']})")
+                                # Get most recent booking address
+                                bookings = db.get_client_bookings(client['id'], company_id=company_id)
+                                last_address = None
+                                if bookings:
+                                    for booking in bookings:
+                                        if booking.get('address'):
+                                            last_address = booking['address']
+                                            break
+                                
+                                msg_parts = [f"Found returning customer: {client['name']}"]
+                                if client.get('phone'):
+                                    msg_parts.append(f"phone {client.get('phone')}")
+                                if client.get('email'):
+                                    msg_parts.append(f"email {client.get('email')}")
+                                if last_address:
+                                    msg_parts.append(f"last address {last_address}")
+                                
+                                return {
+                                    "success": True,
+                                    "customer_exists": True,
+                                    "customer_info": {
+                                        "id": client['id'],
+                                        "name": client['name'],
+                                        "phone": client.get('phone'),
+                                        "email": client.get('email'),
+                                        "last_address": last_address
+                                    },
+                                    "message": ", ".join(msg_parts)
+                                }
+                            elif len(phone_matches) == 0:
+                                # Phone provided but doesn't match any existing customer - treat as new
+                                logger.info(f"[LOOKUP] Name matched {len(clients)} customers but phone doesn't match any - treating as NEW customer")
+                                return {
+                                    "success": True,
+                                    "customer_exists": False,
+                                    "message": f"No existing customer found for {customer_name} with that phone number. This is a new customer."
+                                }
+                        
+                        # Try to narrow down by email if provided
+                        if email:
+                            email_matches = [c for c in clients if c.get('email') and c.get('email').lower() == email.lower()]
+                            if len(email_matches) == 1:
+                                client = email_matches[0]
+                                logger.info(f"[LOOKUP] Matched by name + email: {client['name']} (ID: {client['id']})")
+                                bookings = db.get_client_bookings(client['id'], company_id=company_id)
+                                last_address = None
+                                if bookings:
+                                    for booking in bookings:
+                                        if booking.get('address'):
+                                            last_address = booking['address']
+                                            break
+                                
+                                msg_parts = [f"Found returning customer: {client['name']}"]
+                                if client.get('phone'):
+                                    msg_parts.append(f"phone {client.get('phone')}")
+                                if client.get('email'):
+                                    msg_parts.append(f"email {client.get('email')}")
+                                if last_address:
+                                    msg_parts.append(f"last address {last_address}")
+                                
+                                return {
+                                    "success": True,
+                                    "customer_exists": True,
+                                    "customer_info": {
+                                        "id": client['id'],
+                                        "name": client['name'],
+                                        "phone": client.get('phone'),
+                                        "email": client.get('email'),
+                                        "last_address": last_address
+                                    },
+                                    "message": ", ".join(msg_parts)
+                                }
+                            elif len(email_matches) == 0:
+                                # Email provided but doesn't match any existing customer - treat as new
+                                logger.info(f"[LOOKUP] Name matched {len(clients)} customers but email doesn't match any - treating as NEW customer")
+                                return {
+                                    "success": True,
+                                    "customer_exists": False,
+                                    "message": f"No existing customer found for {customer_name} with that email. This is a new customer."
+                                }
+                        
+                        # No phone or email provided - ask for phone to confirm
                         return {
                             "success": True,
                             "customer_exists": True,

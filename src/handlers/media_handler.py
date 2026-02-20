@@ -77,18 +77,28 @@ async def media_handler(ws):
     Args:
         ws: WebSocket connection from Twilio
     """
-    print("✅ Twilio WS client connected:", ws.remote_address)
+    import time as time_module
+    call_start_time = time_module.time()
+    
+    print(f"\n{'='*70}")
+    print(f"📞 [CALL_START] New call at {call_start_time:.3f}")
+    print(f"📞 [CALL_START] Twilio WS client connected: {ws.remote_address}")
+    print(f"{'='*70}")
     
     # CRITICAL: Create per-call state for concurrent call handling
     # Each call gets its own CallState instance - no shared global state
     call_state = create_call_state()
 
+    # --- TIMING: Deepgram ASR connection ---
+    asr_connect_start = time_module.time()
     asr = DeepgramASR()
     try:
         await asr.connect()
-        print("✅ Deepgram connected")
+        asr_connect_time = time_module.time() - asr_connect_start
+        print(f"✅ [TIMING] Deepgram connected in {asr_connect_time:.3f}s")
     except Exception as e:
-        print("❌ Deepgram connect failed:", repr(e))
+        asr_connect_time = time_module.time() - asr_connect_start
+        print(f"❌ [TIMING] Deepgram connect failed after {asr_connect_time:.3f}s: {repr(e)}")
         return
 
     conversation = []
@@ -658,9 +668,13 @@ async def media_handler(ws):
     async def greet():
         """Send initial greeting - uses pre-recorded audio if available for instant playback"""
         nonlocal speaking, stream_sid
+        import time as time_module
+        greet_start = time_module.time()
+        
         greeting_text = "Hi, thank you for calling. How can I help you today?"
         
         print(f"\n{'='*80}")
+        print(f"🤖 [GREETING] Starting greeting at {greet_start:.3f}")
         print(f"🤖 RECEPTIONIST (GREETING): {greeting_text}")
         print(f"{'='*80}\n")
         conversation_log.append({
@@ -671,20 +685,38 @@ async def media_handler(ws):
         
         # Try pre-recorded greeting first for instant playback
         try:
-            if has_prerecorded_fillers():
+            prerecord_check_start = time_module.time()
+            has_fillers = has_prerecorded_fillers()
+            prerecord_check_time = time_module.time() - prerecord_check_start
+            print(f"[GREETING] Pre-recorded check took {prerecord_check_time:.3f}s, has_fillers={has_fillers}")
+            
+            if has_fillers:
+                audio_fetch_start = time_module.time()
                 greeting_audio = get_filler_audio("greeting")
+                audio_fetch_time = time_module.time() - audio_fetch_start
+                print(f"[GREETING] Audio fetch took {audio_fetch_time:.3f}s, size={len(greeting_audio) if greeting_audio else 0} bytes")
+                
                 if greeting_audio and len(greeting_audio) > 0 and stream_sid:
+                    send_start = time_module.time()
                     print(f"[GREETING] Using pre-recorded greeting ({len(greeting_audio)} bytes)")
                     await send_prerecorded_audio(ws, stream_sid, greeting_audio)
+                    send_time = time_module.time() - send_start
+                    total_greet_time = time_module.time() - greet_start
+                    print(f"[GREETING] ✅ Pre-recorded send took {send_time:.3f}s, total greeting time: {total_greet_time:.3f}s")
                     speaking = False  # Ready to listen immediately
                     return
         except Exception as e:
             print(f"[GREETING] Pre-recorded greeting failed, falling back to TTS: {e}")
         
         # Fallback to TTS
+        tts_start = time_module.time()
+        print(f"[GREETING] Falling back to TTS at {tts_start:.3f}")
         async def tokens():
             yield greeting_text
         await start_tts(tokens(), label="greet")
+        tts_time = time_module.time() - tts_start
+        total_greet_time = time_module.time() - greet_start
+        print(f"[GREETING] TTS greeting took {tts_time:.3f}s, total greeting time: {total_greet_time:.3f}s")
 
     try:
         async for msg in ws:
@@ -699,6 +731,10 @@ async def media_handler(ws):
                 continue
 
             if event == "start":
+                event_start_time = time_module.time()
+                time_since_call_start = event_start_time - call_start_time
+                print(f"\n[TIMING] 'start' event received {time_since_call_start:.3f}s after WS connect")
+                
                 stream_sid = data["start"]["streamSid"]
                 # Extract caller phone number and company ID from Twilio metadata
                 call_sid = data["start"].get("callSid", "")
@@ -754,6 +790,9 @@ async def media_handler(ws):
                     )
                 })
                 
+                greet_task_start = time_module.time()
+                time_to_greet = greet_task_start - call_start_time
+                print(f"\n[TIMING] ⏱️ Starting greeting task {time_to_greet:.3f}s after call start")
                 asyncio.create_task(greet())
 
             elif event == "media":
@@ -1203,6 +1242,12 @@ async def media_handler(ws):
                                     continuation_original_text = text
                                     continuation_energy_since = 0.0
                                     
+                                    # --- TIMING: End-to-end response latency ---
+                                    response_trigger_time = time_module.time()
+                                    time_since_call_start = response_trigger_time - call_start_time
+                                    print(f"\n[E2E_TIMING] 🎯 Response triggered {time_since_call_start:.3f}s after call start")
+                                    print(f"[E2E_TIMING] User said: '{text[:50]}...'")
+                                    
                                     # Stream LLM with appointment detection, phone number, and company context
                                     try:
                                         # Note: start_tts creates a background task and returns immediately
@@ -1253,12 +1298,18 @@ async def media_handler(ws):
         import traceback
         traceback.print_exc()
     finally:
+        # Calculate total call duration
+        call_end_time = time_module.time()
+        total_call_duration = call_end_time - call_start_time
+        
         # Print conversation summary
         print(f"\n\n{'#'*80}")
         print(f"📊 CALL SUMMARY")
         print(f"{'#'*80}")
         print(f"📞 Call SID: {call_sid}")
         print(f"📱 Caller: {caller_phone}")
+        print(f"🏢 Company ID: {company_id}")
+        print(f"⏱️ Total call duration: {total_call_duration:.2f}s")
         print(f"🔢 Total messages: {len(conversation_log)}")
         print(f"\n📝 FULL CONVERSATION TRANSCRIPT:")
         print(f"{'-'*80}")

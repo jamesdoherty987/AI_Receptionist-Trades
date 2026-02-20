@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getWorker, updateWorker, deleteWorker, getWorkerJobs, getWorkerHoursThisWeek } from '../../services/api';
 import Modal from './Modal';
@@ -14,6 +14,20 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [selectedJobId, setSelectedJobId] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Handle escape key to close delete confirmation
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && showDeleteConfirm) {
+        setShowDeleteConfirm(false);
+      }
+    };
+    if (showDeleteConfirm) {
+      document.addEventListener('keydown', handleEscape);
+    }
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [showDeleteConfirm]);
 
   const { data: worker, isLoading: loadingWorker } = useQuery({
     queryKey: ['worker', workerId],
@@ -82,13 +96,17 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteWorker(workerId),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['workers'] });
+      setShowDeleteConfirm(false);
       onClose();
-      addToast('Worker deleted', 'success');
+      const assignmentsRemoved = response.data?.assignments_removed || 0;
+      addToast(`Worker deleted${assignmentsRemoved > 0 ? ` (removed from ${assignmentsRemoved} job${assignmentsRemoved !== 1 ? 's' : ''})` : ''}`, 'success');
     },
     onError: (error) => {
-      addToast('Error deleting worker', 'error');
+      setShowDeleteConfirm(false);
+      addToast('Error deleting worker: ' + (error.response?.data?.error || error.message), 'error');
     }
   });
 
@@ -146,9 +164,11 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
   };
 
   const handleDelete = () => {
-    if (window.confirm(`Delete ${worker.name}? This cannot be undone.`)) {
-      deleteMutation.mutate();
-    }
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = () => {
+    deleteMutation.mutate();
   };
 
   if (loadingWorker) {
@@ -458,6 +478,39 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
         onClose={() => setSelectedJobId(null)}
         jobId={selectedJobId}
       />
+
+      {/* Delete Confirmation */}
+      {showDeleteConfirm && (
+        <div className="delete-confirm-overlay">
+          <div className="delete-confirm-dialog">
+            <div className="delete-confirm-icon">
+              <i className="fas fa-exclamation-triangle"></i>
+            </div>
+            <h3>Delete Worker?</h3>
+            <p className="delete-warning">
+              This will permanently delete <strong>{worker.name}</strong>.
+            </p>
+            {jobsByPeriod.total > 0 && (
+              <p className="delete-cascade-warning">
+                <i className="fas fa-exclamation-circle"></i>
+                Worker will be removed from <strong>{jobsByPeriod.total} job assignment{jobsByPeriod.total !== 1 ? 's' : ''}</strong>.
+              </p>
+            )}
+            <div className="delete-confirm-actions">
+              <button className="btn btn-secondary" onClick={() => setShowDeleteConfirm(false)}>
+                Cancel
+              </button>
+              <button 
+                className="btn btn-danger" 
+                onClick={confirmDelete}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete Worker'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

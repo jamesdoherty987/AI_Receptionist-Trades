@@ -327,6 +327,37 @@ def validate_phone(phone: str) -> bool:
     return bool(re.match(pattern, cleaned))
 
 
+def normalize_phone_for_comparison(phone: str) -> str:
+    """
+    Normalize a phone number for comparison purposes.
+    Strips all formatting and returns just digits (with optional leading +).
+    
+    Args:
+        phone: Phone number in any format
+        
+    Returns:
+        Normalized phone string for comparison (digits only, optional +)
+    """
+    if not phone:
+        return ""
+    
+    # Remove all non-digit characters except +
+    cleaned = re.sub(r'[^\d+]', '', phone.strip())
+    
+    # Handle Irish numbers: convert local format to international
+    # 0851234567 -> +353851234567
+    if cleaned.startswith('0') and len(cleaned) == 10:
+        cleaned = '+353' + cleaned[1:]
+    # 353851234567 -> +353851234567
+    elif cleaned.startswith('353') and not cleaned.startswith('+'):
+        cleaned = '+' + cleaned
+    # 00353851234567 -> +353851234567
+    elif cleaned.startswith('00'):
+        cleaned = '+' + cleaned[2:]
+    
+    return cleaned
+
+
 def sanitize_filename(filename: str) -> str:
     """
     Sanitize a filename to prevent path traversal attacks.

@@ -25,6 +25,9 @@ class DeepgramASR:
 
     async def connect(self):
         """Connect to Deepgram websocket"""
+        import time as time_module
+        connect_start = time_module.time()
+        
         self.ws = await websockets.connect(
             "wss://api.deepgram.com/v1/listen"
             f"?encoding={config.AUDIO_ENCODING}&sample_rate={config.AUDIO_SAMPLE_RATE}&channels={config.AUDIO_CHANNELS}"
@@ -47,8 +50,15 @@ class DeepgramASR:
             ping_interval=20, # Keep connection alive
             ping_timeout=10,  # Shorter timeout
         )
+        
+        ws_connect_time = time_module.time() - connect_start
+        print(f"[ASR_TIMING] WebSocket connected in {ws_connect_time:.3f}s")
+        
         self._recv_task = asyncio.create_task(self._recv())
         self._send_task = asyncio.create_task(self._send())
+        
+        total_connect_time = time_module.time() - connect_start
+        print(f"[ASR_TIMING] Total ASR setup: {total_connect_time:.3f}s")
 
     async def _send(self):
         """Send audio data to Deepgram"""

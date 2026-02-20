@@ -118,23 +118,39 @@ flask_asgi = WSGIMiddleware(flask_app)
 
 async def startup_event():
     """Pre-load resources at server startup"""
-    print("[STARTUP] Running startup tasks...")
+    import time
+    startup_start = time.time()
+    print(f"\n{'='*70}")
+    print(f"[STARTUP] Running startup tasks at {startup_start:.3f}")
+    print(f"{'='*70}")
+    
+    # --- TIMING: Filler audio preload ---
     try:
+        filler_start = time.time()
         from src.services.prerecorded_audio import preload_fillers_async, has_prerecorded_fillers
         await preload_fillers_async()
-        print(f"[STARTUP] Filler audio ready: {has_prerecorded_fillers()}")
+        filler_time = time.time() - filler_start
+        print(f"[STARTUP] ✅ Filler audio loaded in {filler_time:.3f}s, ready: {has_prerecorded_fillers()}")
     except Exception as e:
-        print(f"[STARTUP] Warning: Could not pre-load fillers: {e}")
+        print(f"[STARTUP] ⚠️ Could not pre-load fillers: {e}")
     
-    # Warmup OpenAI connection to avoid cold start delay on first call
+    # --- TIMING: OpenAI warmup ---
     try:
+        warmup_start = time.time()
         await warmup_openai()
+        warmup_time = time.time() - warmup_start
+        print(f"[STARTUP] ✅ OpenAI warmup completed in {warmup_time:.3f}s")
     except Exception as e:
-        print(f"[STARTUP] Warning: OpenAI warmup failed: {e}")
+        print(f"[STARTUP] ⚠️ OpenAI warmup failed: {e}")
     
     # Start background keepalive task to prevent connection going cold
     global _keepalive_task
     _keepalive_task = asyncio.create_task(openai_keepalive_loop())
+    
+    total_startup = time.time() - startup_start
+    print(f"\n{'='*70}")
+    print(f"[STARTUP] ✅ All startup tasks complete in {total_startup:.3f}s")
+    print(f"{'='*70}\n")
 
 
 async def warmup_openai():

@@ -2905,10 +2905,13 @@ def manage_service_api(service_id):
         return jsonify({"error": "Service not found"}), 404
     
     elif request.method == "DELETE":
-        success = settings_mgr.delete_service(service_id, company_id=company_id)
-        if success:
-            return jsonify({"message": "Service deleted successfully"})
-        return jsonify({"error": "Service not found"}), 404
+        result = settings_mgr.delete_service(service_id, company_id=company_id)
+        if result.get('success'):
+            return jsonify({
+                "message": "Service deleted successfully",
+                "jobs_affected": result.get('jobs_affected', 0)
+            })
+        return jsonify({"error": result.get('error', 'Service not found')}), 404
 
 
 @app.route("/api/services/business-hours", methods=["GET", "POST"])
@@ -2973,10 +2976,10 @@ def clients_api():
         return jsonify({"id": client_id, "message": "Client created"}), 201
 
 
-@app.route("/api/clients/<int:client_id>", methods=["GET", "PUT"])
+@app.route("/api/clients/<int:client_id>", methods=["GET", "PUT", "DELETE"])
 @login_required
 def client_api(client_id):
-    """Get or update a specific client"""
+    """Get, update or delete a specific client"""
     db = get_database()
     company_id = session.get('company_id')
     
@@ -3041,6 +3044,20 @@ def client_api(client_id):
         
         db.update_client(client_id, **sanitized_data)
         return jsonify({"message": "Client updated"})
+    
+    elif request.method == "DELETE":
+        # Verify client belongs to this company before deleting
+        client = db.get_client(client_id, company_id=company_id)
+        if not client:
+            return jsonify({"error": "Client not found"}), 404
+        
+        result = db.delete_client(client_id, company_id=company_id)
+        if result.get('success'):
+            return jsonify({
+                "message": "Customer deleted",
+                "bookings_deleted": result.get('bookings_deleted', 0)
+            })
+        return jsonify({"error": result.get('error', 'Failed to delete customer')}), 500
 
 
 @app.route("/api/clients/<int:client_id>/notes", methods=["POST"])
@@ -4250,10 +4267,13 @@ def worker_api(worker_id):
         if not worker:
             return jsonify({"error": "Worker not found"}), 404
         
-        success = db.delete_worker(worker_id)
-        if success:
-            return jsonify({"message": "Worker deleted"})
-        return jsonify({"error": "Worker not found"}), 404
+        result = db.delete_worker(worker_id, company_id=company_id)
+        if result.get('success'):
+            return jsonify({
+                "message": "Worker deleted",
+                "assignments_removed": result.get('assignments_removed', 0)
+            })
+        return jsonify({"error": result.get('error', 'Failed to delete worker')}), 500
 
 
 @app.route("/api/bookings/<int:booking_id>/assign-worker", methods=["POST"])
