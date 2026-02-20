@@ -889,13 +889,14 @@ class PostgreSQLDatabaseWrapper:
         """
         Delete a company and all associated data.
         This is a destructive operation that removes:
+        - All appointment_notes (references bookings)
         - All bookings and job_workers assignments
         - All clients
         - All workers
         - All services
         - The company record itself
         
-        Note: Tables with ON DELETE CASCADE (notes, appointment_notes, call_logs, 
+        Note: Tables with ON DELETE CASCADE on company_id (notes, call_logs, 
         business_settings, developer_settings) are automatically deleted.
         
         Returns True if successful, False otherwise.
@@ -908,7 +909,10 @@ class PostgreSQLDatabaseWrapper:
             # 1. Delete job_workers assignments (references bookings and workers)
             cursor.execute("DELETE FROM job_workers WHERE booking_id IN (SELECT id FROM bookings WHERE company_id = %s)", (company_id,))
             
-            # 2. Delete bookings
+            # 2. Delete appointment_notes (references bookings)
+            cursor.execute("DELETE FROM appointment_notes WHERE booking_id IN (SELECT id FROM bookings WHERE company_id = %s)", (company_id,))
+            
+            # 3. Delete bookings
             cursor.execute("DELETE FROM bookings WHERE company_id = %s", (company_id,))
             
             # 3. Delete workers
@@ -1578,6 +1582,22 @@ class PostgreSQLDatabaseWrapper:
             else:
                 cursor.execute("""
                     DELETE FROM worker_assignments 
+                    WHERE booking_id IN (
+                        SELECT id FROM bookings WHERE client_id = %s
+                    )
+                """, (client_id,))
+            
+            # Delete appointment notes for those bookings
+            if company_id:
+                cursor.execute("""
+                    DELETE FROM appointment_notes 
+                    WHERE booking_id IN (
+                        SELECT id FROM bookings WHERE client_id = %s AND company_id = %s
+                    )
+                """, (client_id, company_id))
+            else:
+                cursor.execute("""
+                    DELETE FROM appointment_notes 
                     WHERE booking_id IN (
                         SELECT id FROM bookings WHERE client_id = %s
                     )
