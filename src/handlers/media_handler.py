@@ -1080,7 +1080,8 @@ async def media_handler(ws):
                             # a previous turn that wasn't cleared properly
                             transcript_age = asr.get_transcript_age()
                             # If age is 0, it means no transcript was received yet (cleared state)
-                            # If age > 5s, transcript is stale
+                            # If age > 10s AND we're not actively speaking, transcript is stale
+                            # (Increased from 5s to 10s to handle brief server hiccups)
                             if transcript_age == 0.0 and not asr.get_interim() and not asr.get_text():
                                 # No actual transcript data - skip
                                 print(f"⚠️ [STALE] No transcript data available, skipping")
@@ -1089,7 +1090,7 @@ async def media_handler(ws):
                                 pending_text = ""
                                 last_interim = ""
                                 continue
-                            elif transcript_age > 5.0:
+                            elif transcript_age > 10.0:
                                 print(f"⚠️ [STALE] Ignoring stale transcript ({transcript_age:.1f}s old): '{text[:50]}...'")
                                 asr.clear_all()
                                 in_speech = False

@@ -668,8 +668,11 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         call_state["phone_confirmed"] = True
         print(f"[PHONE] Caller phone automatically captured: {caller_phone}")
     
-    # Check if last user message contains appointment intent
-    if messages and messages[-1].get("role") == "user":
+    # PERFORMANCE: Skip ALL appointment detection when flag is set
+    # The LLM handles everything with native tools - no need for pre-processing
+    if not SKIP_APPOINTMENT_DETECTION and messages and messages[-1].get("role") == "user":
+        # This entire block is skipped when SKIP_APPOINTMENT_DETECTION=True
+        # Jump directly to pre-check for faster response times
         user_text = messages[-1]["content"]
         
         # NOTE: All DOB (date of birth) collection logic removed for trades business.

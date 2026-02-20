@@ -243,13 +243,24 @@ async def openai_keepalive_loop():
 async def shutdown_event():
     """Clean up background tasks on shutdown"""
     global _keepalive_task
+    
+    print("\n" + "="*70)
+    print("[SHUTDOWN] ⚠️ Server shutting down - cleaning up...")
+    print("[SHUTDOWN] Active WebSocket connections will be terminated")
+    print("="*70 + "\n")
+    
     if _keepalive_task and not _keepalive_task.done():
         _keepalive_task.cancel()
         try:
             await _keepalive_task
         except asyncio.CancelledError:
             pass
-    print("[SHUTDOWN] Cleanup complete")
+    
+    # Give active calls a moment to wrap up (Render sends SIGTERM then waits)
+    print("[SHUTDOWN] Waiting 2s for active calls to finish...")
+    await asyncio.sleep(2)
+    
+    print("[SHUTDOWN] ✅ Cleanup complete")
 
 
 # Create the combined ASGI application
