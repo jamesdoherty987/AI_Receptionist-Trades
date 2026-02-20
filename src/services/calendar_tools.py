@@ -1270,9 +1270,13 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 first_time = day_slots[0].strftime('%I %p').lstrip('0').lower().replace(' 0', ' ')
                 last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower().replace(' 0', ' ')
                 
+                # Note: For jobs requiring multiple hours, the last bookable slot is earlier
+                # than last_time. The AI should clarify this when confirming bookings.
+                
                 if len(day_slots) >= 6:
                     # Many slots available - describe as a range
-                    summary = f"{day_name}: slots from {first_time} to {last_time}"
+                    # Use "starting from" to clarify these are START times
+                    summary = f"{day_name}: appointments starting from {first_time} to {last_time}"
                 elif len(day_slots) >= 3:
                     # Several slots - mention range
                     summary = f"{day_name}: {first_time}, {last_time}, and times in between"

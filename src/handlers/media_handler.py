@@ -815,17 +815,13 @@ async def media_handler(ws):
 
                 # ---- While speaking: barge-in only ----
                 if speaking:
-                    # Don't allow interruption in critical first moments
-                    if (now - tts_started_at) <= NO_BARGEIN_WINDOW:
-                        continue
-                    
-                    # Cooldown: don't allow rapid consecutive interruptions
-                    if last_interrupt_time > 0 and (now - last_interrupt_time) < INTERRUPT_COOLDOWN:
-                        continue
-                    
-                    # --- COMPLETION_WAIT WINDOW: If caller speaks within COMPLETION_WAIT after response starts ---
+                    # --- COMPLETION_WAIT WINDOW: Check FIRST, before NO_BARGEIN_WINDOW ---
                     # This is the parallel window that started when SILENCE_HOLD finished
                     # If caller continues speaking, cancel response and restart with combined text
+                    # IMPORTANT: This must be checked BEFORE NO_BARGEIN_WINDOW because:
+                    # - COMPLETION_WAIT is for caller continuing their sentence (not a barge-in)
+                    # - NO_BARGEIN_WINDOW blocks ALL interruptions including legitimate continuations
+                    # - Without this order, COMPLETION_WAIT only has 0.5s effective window (2.0s - 1.5s)
                     # IMPORTANT: Don't allow cancellation during tool execution (could corrupt data)
                     in_completion_wait_window = (
                         continuation_window_start > 0 and 
@@ -833,6 +829,12 @@ async def media_handler(ws):
                         continuation_original_text and  # Must have original text to append to
                         not tool_execution_in_progress  # Don't cancel during tool execution
                     )
+                    
+                    # Debug: Log when we're in the COMPLETION_WAIT window
+                    if continuation_window_start > 0:
+                        time_in_window = now - continuation_window_start
+                        if time_in_window <= COMPLETION_WAIT and energy > SPEECH_ENERGY:
+                            print(f"🔍 [COMPLETION_WAIT] In window: {time_in_window:.2f}s/{COMPLETION_WAIT}s, energy={energy}, tool_exec={tool_execution_in_progress}")
                     
                     if in_completion_wait_window:
                         # During COMPLETION_WAIT window, use lower threshold and check for real speech
@@ -906,6 +908,18 @@ async def media_handler(ws):
                         
                         # During COMPLETION_WAIT window, still feed audio to ASR
                         await asr.feed(audio)
+                        continue
+                    
+                    # --- Normal barge-in checks (only after COMPLETION_WAIT window has passed) ---
+                    # These checks prevent false barge-ins from echo/feedback
+                    # They are placed AFTER COMPLETION_WAIT so they don't block legitimate continuations
+                    
+                    # Don't allow interruption in critical first moments (prevents echo triggering)
+                    if (now - tts_started_at) <= NO_BARGEIN_WINDOW:
+                        continue
+                    
+                    # Cooldown: don't allow rapid consecutive interruptions
+                    if last_interrupt_time > 0 and (now - last_interrupt_time) < INTERRUPT_COOLDOWN:
                         continue
                     
                     # --- Normal barge-in (after COMPLETION_WAIT window) ---
@@ -1080,8 +1094,8 @@ async def media_handler(ws):
                             # a previous turn that wasn't cleared properly
                             transcript_age = asr.get_transcript_age()
                             # If age is 0, it means no transcript was received yet (cleared state)
-                            # If age > 10s AND we're not actively speaking, transcript is stale
-                            # (Increased from 5s to 10s to handle brief server hiccups)
+                            # If age > 8s AND we're not actively speaking, transcript is stale
+                            # 8 seconds is enough time for normal speech but catches leftover transcripts
                             if transcript_age == 0.0 and not asr.get_interim() and not asr.get_text():
                                 # No actual transcript data - skip
                                 print(f"⚠️ [STALE] No transcript data available, skipping")
@@ -1090,7 +1104,7 @@ async def media_handler(ws):
                                 pending_text = ""
                                 last_interim = ""
                                 continue
-                            elif transcript_age > 10.0:
+                            elif transcript_age > 8.0:
                                 print(f"⚠️ [STALE] Ignoring stale transcript ({transcript_age:.1f}s old): '{text[:50]}...'")
                                 asr.clear_all()
                                 in_speech = False
@@ -1303,10 +1317,12 @@ async def media_handler(ws):
                                     queued_speech.clear()  # Clear any old queued speech (use .clear() to keep same list reference)
                                     
                                     # Set continuation window state - allows caller to continue speaking
-                                    # within 2 seconds and have their speech appended to original
+                                    # within COMPLETION_WAIT seconds and have their speech appended to original
                                     continuation_window_start = now
                                     continuation_original_text = text
                                     continuation_energy_since = 0.0
+                                    print(f"🔄 [COMPLETION_WAIT] Window STARTED - caller can continue for {COMPLETION_WAIT}s")
+                                    print(f"   Original text: '{text[:60]}...'")
                                     
                                     # --- TIMING: End-to-end response latency ---
                                     response_trigger_time = time_module.time()
