@@ -57,7 +57,7 @@ class Config:
     # Media Handler - Speech Detection
     SPEECH_ENERGY = int(os.getenv("SPEECH_ENERGY", 1600))
     SILENCE_ENERGY = int(os.getenv("SILENCE_ENERGY", 1000))
-    SILENCE_HOLD = float(os.getenv("SILENCE_HOLD", 0.8))  # Wait 0.8s of silence before starting response
+    SILENCE_HOLD = float(os.getenv("SILENCE_HOLD", 1.2))  # Wait 1.2s of silence before starting response (was 0.8s)
     
     # Media Handler - Interruption Settings
     INTERRUPT_ENERGY = int(os.getenv("INTERRUPT_ENERGY", 2800))
