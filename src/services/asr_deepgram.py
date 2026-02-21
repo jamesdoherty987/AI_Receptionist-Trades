@@ -14,6 +14,7 @@ class DeepgramASR:
         self.text = ""
         self.interim_text = ""
         self.is_final = False
+        self.speech_final = False  # True when Deepgram signals end of utterance (speech_final event)
         self.ws = None
         self.queue = asyncio.Queue()
         self.closed = False
@@ -23,6 +24,7 @@ class DeepgramASR:
         self._last_final_fingerprint = ""  # Fingerprint of last final for fuzzy matching
         self._last_final_time = 0.0  # Timestamp of last final for echo detection
         self._last_transcript_time = 0.0  # When the last transcript was received (for staleness check)
+        self._accumulated_text = ""  # Accumulate text across multiple is_final segments until speech_final
 
     async def connect(self):
         """Connect to Deepgram websocket"""
@@ -42,8 +44,8 @@ class DeepgramASR:
             "&numerals=true"  # Better number handling for addresses
             "&language=en"  # General English
             "&diarize=false"  # Single speaker, no need for diarization
-            "&utterances=false"  # Disable utterance splitting - we handle this locally
-            "&endpointing=2500",  # 2.5s - longer than COMPLETION_WAIT so local logic controls timing
+            "&utterances=true"  # Enable utterance detection - Deepgram will signal end of speech
+            "&endpointing=800",  # 800ms - let Deepgram detect end of utterance
             extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
             open_timeout=5,   # Faster connection timeout
             close_timeout=2,  # Faster close
@@ -121,7 +123,12 @@ class DeepgramASR:
         try:
             async for msg in self.ws:
                 data = json.loads(msg)
+                
+                # Check for speech_final - this indicates end of utterance
+                # This is the key signal that the caller has stopped speaking
+                is_speech_final = data.get("speech_final", False)
                 is_final = data.get("is_final", False)
+                
                 alt = data.get("channel", {}).get("alternatives", [])
                 if alt and alt[0].get("transcript"):
                     transcript = alt[0]["transcript"]
@@ -133,44 +140,86 @@ class DeepgramASR:
                             transcript = clean_repetitive_text(transcript)
                             transcript_fp = fingerprint(transcript)
                         
-                        # Check for duplicate using both exact match and fingerprint
-                        is_duplicate = (
-                            transcript.strip() == self.text.strip() or
-                            transcript.strip() == self._last_final_text.strip() or
-                            (transcript_fp and transcript_fp == self._last_final_fingerprint)
-                        )
-                        
-                        # Also check if this is a subset of the last final (echo picking up partial)
-                        if not is_duplicate and self._last_final_text:
-                            last_fp = fingerprint(self._last_final_text)
-                            # If new transcript is contained in last, or last is contained in new
-                            if transcript_fp in last_fp or last_fp in transcript_fp:
-                                # Check timing - if within 2 seconds, likely echo
-                                if hasattr(self, '_last_final_time') and (time.time() - self._last_final_time) < 2.0:
-                                    is_duplicate = True
-                                    print(f"[ASR] Echo duplicate detected (timing): '{transcript}'")
-                        
-                        if transcript.strip() and not is_duplicate:
-                            self.text = transcript
-                            self.is_final = True
-                            self._last_final_text = transcript
-                            self._last_final_fingerprint = transcript_fp
-                            self._last_final_time = time.time()
+                        # Accumulate text from this segment
+                        if transcript.strip():
+                            if self._accumulated_text:
+                                self._accumulated_text += " " + transcript.strip()
+                            else:
+                                self._accumulated_text = transcript.strip()
                             self._last_transcript_time = time.time()
-                            # Clear interim when we get final to prevent stale data
-                            self.interim_text = ""
-                            print(f"[ASR] Final transcript: '{transcript}'")
-                        elif is_duplicate:
-                            # Same text, just mark as final without re-setting
-                            self.is_final = True
-                            self.interim_text = ""
-                            print(f"[ASR] Duplicate final ignored: '{transcript}'")
+                            print(f"[ASR] Segment final: '{transcript}' (accumulated: '{self._accumulated_text[:60]}...')")
+                        
+                        # Clear interim when we get final segment
+                        self.interim_text = ""
+                        
+                        # If this is also speech_final, the caller has finished speaking
+                        if is_speech_final:
+                            full_text = self._accumulated_text.strip()
+                            
+                            # Check for duplicate using both exact match and fingerprint
+                            full_fp = fingerprint(full_text)
+                            is_duplicate = (
+                                full_text == self.text.strip() or
+                                full_text == self._last_final_text.strip() or
+                                (full_fp and full_fp == self._last_final_fingerprint)
+                            )
+                            
+                            # Also check if this is a subset of the last final (echo picking up partial)
+                            if not is_duplicate and self._last_final_text:
+                                last_fp = fingerprint(self._last_final_text)
+                                if full_fp in last_fp or last_fp in full_fp:
+                                    if (time.time() - self._last_final_time) < 2.0:
+                                        is_duplicate = True
+                                        print(f"[ASR] Echo duplicate detected (timing): '{full_text}'")
+                            
+                            if full_text and not is_duplicate:
+                                self.text = full_text
+                                self.is_final = True
+                                self.speech_final = True  # Signal that caller finished speaking
+                                self._last_final_text = full_text
+                                self._last_final_fingerprint = full_fp
+                                self._last_final_time = time.time()
+                                print(f"[ASR] ✅ SPEECH FINAL: '{full_text}'")
+                            elif is_duplicate:
+                                self.is_final = True
+                                self.speech_final = True
+                                print(f"[ASR] Duplicate speech_final ignored: '{full_text}'")
+                            
+                            # Reset accumulator for next utterance
+                            self._accumulated_text = ""
                     else:
-                        # Only update interim if it's actually different
-                        # This prevents the same interim from triggering multiple times
-                        if transcript.strip() != self.interim_text.strip():
-                            self.interim_text = transcript
+                        # Interim result - update interim text
+                        # Combine accumulated text with current interim for full picture
+                        if self._accumulated_text:
+                            combined = self._accumulated_text + " " + transcript.strip()
+                            if combined.strip() != self.interim_text.strip():
+                                self.interim_text = combined.strip()
+                                self._last_transcript_time = time.time()
+                        elif transcript.strip() != self.interim_text.strip():
+                            self.interim_text = transcript.strip()
                             self._last_transcript_time = time.time()
+                
+                # Handle speech_final without transcript (silence detected)
+                elif is_speech_final and self._accumulated_text:
+                    full_text = self._accumulated_text.strip()
+                    full_fp = fingerprint(full_text)
+                    
+                    is_duplicate = (
+                        full_text == self._last_final_text.strip() or
+                        (full_fp and full_fp == self._last_final_fingerprint)
+                    )
+                    
+                    if full_text and not is_duplicate:
+                        self.text = full_text
+                        self.is_final = True
+                        self.speech_final = True
+                        self._last_final_text = full_text
+                        self._last_final_fingerprint = full_fp
+                        self._last_final_time = time.time()
+                        print(f"[ASR] ✅ SPEECH FINAL (silence): '{full_text}'")
+                    
+                    self._accumulated_text = ""
+                    
         except websockets.exceptions.ConnectionClosed:
             pass
 
@@ -205,12 +254,19 @@ class DeepgramASR:
     def reset_final_flag(self):
         """Reset the final flag for next transcription"""
         self.is_final = False
+        self.speech_final = False
+
+    def is_speech_finished(self) -> bool:
+        """Check if Deepgram has signaled end of utterance (caller stopped speaking)"""
+        return self.speech_final
 
     def clear_all(self):
         """Fully clear all transcription state"""
         self.text = ""
         self.interim_text = ""
         self.is_final = False
+        self.speech_final = False
+        self._accumulated_text = ""
         self._last_transcript_time = 0.0  # Reset timestamp so old transcripts aren't used
         # Note: We intentionally DON'T clear _last_final_text and _last_final_fingerprint
         # because we want to detect duplicates even across clear_all() calls

@@ -1078,10 +1078,29 @@ async def media_handler(ws):
                         else:
                             silence_since = 0.0
 
-                        # TRIGGER RESPONSE after silence threshold AND minimum speech duration
-                        if (silence_since and 
-                            (now - silence_since) >= SILENCE_HOLD and
-                            (now - speech_start_time) >= MIN_SPEECH_DURATION):
+                        # TRIGGER RESPONSE when Deepgram signals speech_final (caller finished speaking)
+                        # We rely on Deepgram's endpointing (800ms) to detect end of utterance
+                        # Local silence detection is only used as a fallback timeout
+                        speech_finished = asr.is_speech_finished()
+                        silence_met = silence_since and (now - silence_since) >= SILENCE_HOLD
+                        duration_met = (now - speech_start_time) >= MIN_SPEECH_DURATION
+                        
+                        # CRITICAL: Only use local silence as a FALLBACK after extended silence (3s)
+                        # This prevents triggering mid-sentence when caller pauses briefly
+                        # Deepgram's speech_final is the primary trigger
+                        extended_silence = silence_since and (now - silence_since) >= 3.0
+                        
+                        # Primary trigger: Deepgram's speech_final signal (most reliable)
+                        # Fallback trigger: Extended local silence (3s) as safety net
+                        should_trigger = (speech_finished and duration_met) or (extended_silence and duration_met)
+                        
+                        if should_trigger:
+                            # Log which trigger fired
+                            if speech_finished:
+                                print(f"[TRIGGER] speech_final from Deepgram")
+                            else:
+                                print(f"[TRIGGER] Extended silence fallback (3s)")
+                            
                             text = (final_text or pending_text).strip()
                             
                             # Skip if no text
