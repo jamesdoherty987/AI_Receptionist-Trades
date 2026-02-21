@@ -19,7 +19,7 @@ function AddJobModal({ isOpen, onClose }) {
     eircode: '',
     property_type: '',
     estimated_charge: '',
-    duration_minutes: 60,
+    duration_minutes: 1440,
     notes: '',
     worker_id: ''
   });
@@ -104,7 +104,7 @@ function AddJobModal({ isOpen, onClose }) {
   });
 
   const resetForm = () => {
-    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', duration_minutes: 60, notes: '', worker_id: '' });
+    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', duration_minutes: 1440, notes: '', worker_id: '' });
     setSelectedQuickDate('');
     setSelectedDate('');
     setShowTimeSlots(false);

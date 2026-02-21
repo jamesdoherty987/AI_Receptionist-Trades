@@ -506,9 +506,9 @@ class SettingsManager:
         return settings.get('buffer_time_minutes', 15)
     
     def get_default_duration_minutes(self, company_id: int = None) -> int:
-        """Get default appointment duration in minutes for a specific company"""
+        """Get default appointment duration in minutes for a specific company (1 day default for trades)"""
         settings = self.get_business_settings(company_id=company_id)
-        return settings.get('default_duration_minutes', 60)
+        return settings.get('default_duration_minutes', 1440)
     
     def get_service_duration(self, service_name: str, company_id: int = None) -> int:
         """Get duration for a specific service by name, with fallback to default"""

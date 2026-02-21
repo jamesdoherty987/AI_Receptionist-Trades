@@ -160,7 +160,7 @@ class PostgreSQLDatabaseWrapper:
                     client_id BIGINT,
                     calendar_event_id TEXT UNIQUE,
                     appointment_time TIMESTAMP NOT NULL,
-                    duration_minutes INTEGER DEFAULT 60,
+                    duration_minutes INTEGER DEFAULT 1440,
                     service_type TEXT,
                     status TEXT DEFAULT 'scheduled',
                     urgency TEXT DEFAULT 'scheduled',
@@ -274,7 +274,7 @@ class PostgreSQLDatabaseWrapper:
                     category TEXT NOT NULL,
                     name TEXT NOT NULL,
                     description TEXT,
-                    duration_minutes INTEGER DEFAULT 60,
+                    duration_minutes INTEGER DEFAULT 1440,
                     price REAL DEFAULT 0,
                     emergency_price REAL,
                     currency TEXT DEFAULT 'EUR',
@@ -299,7 +299,7 @@ class PostgreSQLDatabaseWrapper:
                     working_hours JSONB,
                     logo_url TEXT,
                     buffer_time_minutes INTEGER DEFAULT 15,
-                    default_duration_minutes INTEGER DEFAULT 60,
+                    default_duration_minutes INTEGER DEFAULT 1440,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -385,7 +385,7 @@ class PostgreSQLDatabaseWrapper:
         """)
         if not cursor.fetchone():
             try:
-                cursor.execute("ALTER TABLE bookings ADD COLUMN duration_minutes INTEGER DEFAULT 60")
+                cursor.execute("ALTER TABLE bookings ADD COLUMN duration_minutes INTEGER DEFAULT 1440")
                 print("[SUCCESS] Added duration_minutes column to bookings table")
             except Exception as e:
                 print(f"[WARNING] Could not add duration_minutes to bookings: {e}")
@@ -556,11 +556,11 @@ class PostgreSQLDatabaseWrapper:
             'reminder_hours_before': 'INTEGER DEFAULT 24',
             'auto_confirm_bookings': 'INTEGER DEFAULT 1',
             'fallback_phone_number': 'TEXT',
-            'appointment_duration': 'INTEGER DEFAULT 60',
+            'appointment_duration': 'INTEGER DEFAULT 1440',
             'max_booking_days_ahead': 'INTEGER DEFAULT 30',
             'allow_weekend_booking': 'INTEGER DEFAULT 1',
             'buffer_time_minutes': 'INTEGER DEFAULT 15',
-            'default_duration_minutes': 'INTEGER DEFAULT 60',
+            'default_duration_minutes': 'INTEGER DEFAULT 1440',
         }
         
         for col_name, col_type in bs_migrations.items():
@@ -1671,8 +1671,8 @@ class PostgreSQLDatabaseWrapper:
                     service_type: str, phone_number: str = None, email: str = None,
                     urgency: str = None, address: str = None, eircode: str = None,
                     property_type: str = None, charge: float = None, company_id: int = None,
-                    duration_minutes: int = 60) -> Optional[int]:
-        """Add a new booking"""
+                    duration_minutes: int = 1440) -> Optional[int]:
+        """Add a new booking (default 1 day duration for trades)"""
         print(f"[DB_BOOKING] ========== ADDING BOOKING ==========")
         print(f"[DB_BOOKING] client_id={client_id}, calendar_event_id={calendar_event_id}")
         print(f"[DB_BOOKING] appointment_time={appointment_time}, service_type={service_type}")
@@ -2386,7 +2386,7 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def check_worker_availability(self, worker_id: int, appointment_time, duration_minutes: int = 60, 
+    def check_worker_availability(self, worker_id: int, appointment_time, duration_minutes: int = 1440, 
                                    exclude_booking_id: int = None, company_id: int = None) -> Dict:
         """
         Check if a worker is available at a specific time.
@@ -2394,7 +2394,7 @@ class PostgreSQLDatabaseWrapper:
         Args:
             worker_id: The worker to check
             appointment_time: The appointment start time (datetime or string)
-            duration_minutes: Duration of the appointment in minutes
+            duration_minutes: Duration of the appointment in minutes (default 1 day for trades)
             exclude_booking_id: Booking ID to exclude from conflict check (for reassignments)
             company_id: Company ID for data isolation
             
@@ -2494,14 +2494,14 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def find_available_workers_for_slot(self, appointment_time, duration_minutes: int = 60,
+    def find_available_workers_for_slot(self, appointment_time, duration_minutes: int = 1440,
                                         company_id: int = None, trade_specialty: str = None) -> Optional[List[Dict]]:
         """
         Find all workers who are available at a specific time slot.
         
         Args:
             appointment_time: The appointment start time (datetime or string)
-            duration_minutes: Duration of the appointment in minutes
+            duration_minutes: Duration of the appointment in minutes (default 1 day for trades)
             company_id: Company ID for data isolation (required)
             trade_specialty: Optional filter by worker's trade specialty
             
@@ -2584,12 +2584,12 @@ class PostgreSQLDatabaseWrapper:
     
     # Service management methods
     def add_service(self, service_id: str, category: str, name: str, 
-                   description: str = None, duration_minutes: int = 60,
+                   description: str = None, duration_minutes: int = 1440,
                    price: float = 0, emergency_price: float = None,
                    currency: str = 'EUR', active: bool = True,
                    image_url: str = None, sort_order: int = 0,
                    company_id: int = None) -> bool:
-        """Add a new service for a specific company"""
+        """Add a new service for a specific company (default 1 day duration for trades)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         

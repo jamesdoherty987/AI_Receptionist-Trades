@@ -628,14 +628,14 @@ class ServiceMatcher:
         return (score, {"type": match_type, "matched": service_name, "tokens_matched": len(set(job_tokens) & set(service_tokens))})
     
     @classmethod
-    def match(cls, job_description: str, services: list, default_duration: int = 60) -> dict:
+    def match(cls, job_description: str, services: list, default_duration: int = 1440) -> dict:
         """
         Match a job description to the best service.
         
         Args:
             job_description: Description of the job from customer
             services: List of service dicts from database
-            default_duration: Default duration if no match found
+            default_duration: Default duration if no match found (1 day for trades)
             
         Returns:
             Dict with matched service info
@@ -766,14 +766,14 @@ class AIServiceMatcher:
         return f"{job_description.lower().strip()}:{hash(service_names)}"
     
     @classmethod
-    def match(cls, job_description: str, services: list, default_duration: int = 60) -> dict:
+    def match(cls, job_description: str, services: list, default_duration: int = 1440) -> dict:
         """
         Match a job description to the best service using AI.
         
         Args:
             job_description: Description of the job from customer
             services: List of service dicts from database
-            default_duration: Default duration if no match found
+            default_duration: Default duration if no match found (1 day for trades)
             
         Returns:
             Dict with matched service info
@@ -1065,8 +1065,8 @@ def get_service_duration(job_description: str, company_id: int = None) -> int:
         return duration
         
     except Exception as e:
-        logger.warning(f"Error loading service duration: {e}, using default 60 mins")
-        return 60
+        logger.warning(f"Error loading service duration: {e}, using default 1440 mins (1 day)")
+        return 1440
 
 
 def get_matched_service_name(job_description: str, company_id: int = None) -> str:
@@ -1922,14 +1922,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 }
             
             # Get the booking's duration from database
-            booking_duration = 60  # Default
+            booking_duration = 1440  # Default 1 day for trades
             event_id = event.get('id')
             if db:
                 try:
                     bookings = db.get_all_bookings(company_id=company_id)
                     for booking in bookings:
                         if booking.get('calendar_event_id') == event_id:
-                            booking_duration = booking.get('duration_minutes', 60)
+                            booking_duration = booking.get('duration_minutes', 1440)
                             logger.debug(f"Duration: Found booking duration: {booking_duration} mins")
                             break
                 except Exception as e:

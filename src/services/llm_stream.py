@@ -46,7 +46,7 @@ import dateparser
 
 # Configuration constants
 MAX_CONVERSATION_HISTORY = 6  # Maximum number of message pairs to keep in context
-DEFAULT_APPOINTMENT_DURATION_MINUTES = 60  # Default duration for AI phone bookings
+DEFAULT_APPOINTMENT_DURATION_MINUTES = 1440  # Default duration for AI phone bookings (1 day for trades)
 CONFIRMATION_THRESHOLD = 0.7  # Confidence threshold for confirmation detection
 SKIP_APPOINTMENT_DETECTION = True  # Skip ALL appointment detection - LLM handles it with tools
 

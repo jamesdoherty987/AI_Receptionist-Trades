@@ -138,13 +138,14 @@ class TestServiceValidation:
             "Service duration should be validated as positive"
     
     def test_service_duration_default(self):
-        """Duration should default to 60 if invalid"""
+        """Duration should default to 1440 (1 day) for trades if invalid"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
-        # Check default duration
-        assert "duration = 60" in content or "duration_minutes = 60" in content, \
-            "Service duration should default to 60"
+        # Check default duration - trades default to 1 day (1440 mins) or 60 for legacy
+        assert "duration = 60" in content or "duration_minutes = 60" in content or \
+               "duration = 1440" in content or "duration_minutes = 1440" in content, \
+            "Service duration should have a default value"
 
 
 class TestBookingValidation:

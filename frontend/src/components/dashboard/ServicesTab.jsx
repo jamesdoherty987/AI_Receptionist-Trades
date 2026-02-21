@@ -21,7 +21,7 @@ function ServicesTab() {
   const { addToast } = useToast();
   const [editingId, setEditingId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', price: '', duration: '60', image_url: '' });
+  const [formData, setFormData] = useState({ name: '', price: '', duration: '1440', image_url: '' });
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, service: null });
 
   // Handle escape key to close delete confirmation
@@ -59,7 +59,7 @@ function ServicesTab() {
       queryClient.invalidateQueries({ queryKey: ['services-menu'] });
       addToast('Service added!', 'success');
       setShowAddForm(false);
-      setFormData({ name: '', price: '', duration: '60', image_url: '' });
+      setFormData({ name: '', price: '', duration: '1440', image_url: '' });
     },
     onError: () => addToast('Failed to add service', 'error'),
   });

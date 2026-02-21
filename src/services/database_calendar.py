@@ -84,7 +84,7 @@ class DatabaseCalendarService:
             default_duration = settings_mgr.get_default_duration_minutes(company_id=self.company_id)
         except Exception as e:
             logger.warning(f"[DB_CAL] Error getting default duration: {e}")
-            default_duration = 60
+            default_duration = 1440  # 1 day default for trades
         
         # Use provided duration or default
         slot_duration = service_duration if service_duration else default_duration
@@ -186,7 +186,7 @@ class DatabaseCalendarService:
             default_duration = settings_mgr.get_default_duration_minutes(company_id=self.company_id)
         except Exception as e:
             logger.warning(f"[DB_CAL] Error getting default duration: {e}")
-            default_duration = 60
+            default_duration = 1440  # 1 day default for trades
         
         # Use provided duration or default
         if duration_minutes is None:
@@ -256,7 +256,7 @@ class DatabaseCalendarService:
                 duration_minutes = settings_mgr.get_default_duration_minutes(company_id=self.company_id)
             except Exception as e:
                 logger.warning(f"[DB_CAL] Error getting default duration: {e}")
-                duration_minutes = 60
+                duration_minutes = 1440  # 1 day default for trades
         
         # Generate a fake "event" dict for compatibility
         event = {

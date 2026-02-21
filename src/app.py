@@ -2832,11 +2832,11 @@ def add_service_api():
         price = 0
     
     try:
-        duration = int(data.get('duration_minutes', 60)) if data.get('duration_minutes') else 60
+        duration = int(data.get('duration_minutes', 1440)) if data.get('duration_minutes') else 1440
         if duration < 1:
-            duration = 60
+            duration = 1440
     except (ValueError, TypeError):
-        duration = 60
+        duration = 1440
     
     # Upload image to R2 if it's base64
     image_url = data.get('image_url', '')
@@ -2888,10 +2888,10 @@ def manage_service_api(service_id):
         # Sanitize duration if provided
         if 'duration_minutes' in data:
             try:
-                duration = int(data.get('duration_minutes', 60)) if data.get('duration_minutes') else 60
-                data['duration_minutes'] = duration if duration > 0 else 60
+                duration = int(data.get('duration_minutes', 1440)) if data.get('duration_minutes') else 1440
+                data['duration_minutes'] = duration if duration > 0 else 1440
             except (ValueError, TypeError):
-                data['duration_minutes'] = 60
+                data['duration_minutes'] = 1440
         
         # Upload image to R2 if it's base64
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
