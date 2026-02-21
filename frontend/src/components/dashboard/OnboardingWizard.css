@@ -1,31 +1,31 @@
 /* ========================================
-   ONBOARDING WIZARD - Inline, non-intrusive
+   ONBOARDING WIZARD - Inline, subtle banner
    ======================================== */
 
 .onboarding-inline {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .onboarding-loading {
-  padding: 2rem;
+  padding: 1rem;
   text-align: center;
   color: var(--text-secondary);
-  background: white;
-  border-radius: 12px;
-  border: 2px solid var(--border-color);
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
 }
 
 .onboarding-loading i {
-  font-size: 1.5rem;
+  font-size: 1rem;
   color: var(--accent-blue);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
-/* Overview Card */
+/* Overview Card - Subtle horizontal banner */
 .onboarding-overview {
-  background: white;
-  border: 2px solid var(--border-color);
-  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
   overflow: hidden;
 }
 
@@ -33,32 +33,32 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.25rem;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  padding: 0.625rem 1rem;
+  background: transparent;
   border-bottom: 1px solid var(--border-color);
 }
 
 .overview-title {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .overview-title > i {
-  font-size: 1.25rem;
+  font-size: 1rem;
   color: var(--accent-blue);
 }
 
 .overview-title h3 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .overview-title p {
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
 }
 
@@ -67,58 +67,59 @@
   border: none;
   color: var(--text-tertiary);
   cursor: pointer;
-  padding: 0.5rem;
-  border-radius: 6px;
+  padding: 0.35rem;
+  border-radius: 4px;
   transition: all 0.2s;
+  font-size: 0.8rem;
 }
 
 .dismiss-btn:hover {
-  background: var(--bg-gray);
+  background: var(--bg-tertiary);
   color: var(--text-secondary);
 }
 
-/* Steps List */
+/* Steps List - Horizontal on desktop */
 .setup-steps-list {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
 }
 
 .setup-step-item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.875rem 1.25rem;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
   background: none;
   border: none;
-  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
   cursor: pointer;
   text-align: left;
   transition: background 0.2s;
-  width: 100%;
+  flex: 1;
 }
 
 .setup-step-item:last-child {
-  border-bottom: none;
+  border-right: none;
 }
 
 .setup-step-item:hover {
-  background: var(--bg-gray);
+  background: var(--bg-tertiary);
 }
 
 .setup-step-item.complete {
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 .step-item-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
   background: rgba(59, 130, 246, 0.1);
   color: var(--accent-blue);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
+  font-size: 0.75rem;
   flex-shrink: 0;
 }
 
@@ -134,65 +135,65 @@
 
 .step-item-title {
   display: block;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 500;
   color: var(--text-primary);
 }
 
 .step-item-desc {
   display: block;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-secondary);
   margin-top: 0.1rem;
 }
 
 .step-arrow {
   color: var(--text-tertiary);
-  font-size: 0.75rem;
+  font-size: 0.65rem;
 }
 
 /* Step Detail Card */
 .onboarding-step-card {
   background: white;
-  border: 2px solid var(--border-color);
-  border-radius: 12px;
-  padding: 1.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1.25rem;
   text-align: center;
 }
 
 .step-back-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   background: none;
   border: none;
   color: var(--text-secondary);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   cursor: pointer;
-  padding: 0.4rem 0.6rem;
-  border-radius: 6px;
-  margin-bottom: 1rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
   transition: all 0.2s;
 }
 
 .step-back-btn:hover {
-  background: var(--bg-gray);
+  background: var(--bg-secondary);
   color: var(--accent-blue);
 }
 
 .onboarding-step-card .step-icon {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 1rem;
+  margin: 0 auto 0.75rem;
 }
 
 .onboarding-step-card .step-icon i {
-  font-size: 1.4rem;
+  font-size: 1.2rem;
   background: var(--gradient-primary);
   background-clip: text;
   -webkit-background-clip: text;
@@ -222,16 +223,16 @@
 }
 
 .onboarding-step-card h3 {
-  font-size: 1.15rem;
+  font-size: 1rem;
   font-weight: 600;
-  margin: 0 0 0.35rem 0;
+  margin: 0 0 0.25rem 0;
   color: var(--text-primary);
 }
 
 .onboarding-step-card .step-description {
   color: var(--text-secondary);
-  font-size: 0.9rem;
-  margin-bottom: 1.25rem;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
 }
 
 /* Error message */
@@ -330,32 +331,46 @@
 .step-actions {
   display: flex;
   justify-content: center;
-  gap: 0.75rem;
-  margin-top: 1.25rem;
+  gap: 0.5rem;
+  margin-top: 1rem;
 }
 
 /* Responsive */
-@media (max-width: 480px) {
-  .onboarding-overview-header {
-    padding: 0.875rem 1rem;
-  }
-
-  .overview-title h3 {
-    font-size: 0.9rem;
+@media (max-width: 640px) {
+  .setup-steps-list {
+    flex-direction: column;
   }
 
   .setup-step-item {
-    padding: 0.75rem 1rem;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.5rem 0.875rem;
   }
 
-  .step-item-icon {
-    width: 28px;
-    height: 28px;
+  .setup-step-item:last-child {
+    border-bottom: none;
+  }
+
+  .onboarding-overview-header {
+    padding: 0.5rem 0.875rem;
+  }
+
+  .overview-title h3 {
     font-size: 0.8rem;
   }
 
+  .step-item-icon {
+    width: 24px;
+    height: 24px;
+    font-size: 0.7rem;
+  }
+
   .step-item-title {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
+  }
+
+  .step-item-desc {
+    font-size: 0.65rem;
   }
 
   .onboarding-step-card {

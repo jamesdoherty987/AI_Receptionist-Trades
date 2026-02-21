@@ -113,6 +113,14 @@ function Dashboard() {
       <main className="dashboard-main">
         <div className="container">
           <TrialBanner />
+          
+          {/* Onboarding Wizard for new users - at top, subtle */}
+          {showOnboarding && (
+            <OnboardingWizard 
+              onComplete={handleOnboardingComplete}
+            />
+          )}
+          
           <div className="dashboard-header">
             <h1>Dashboard</h1>
           </div>
@@ -120,13 +128,6 @@ function Dashboard() {
           <Tabs tabs={tabs} defaultTab={0} />
         </div>
       </main>
-
-      {/* Onboarding Wizard for new users */}
-      {showOnboarding && (
-        <OnboardingWizard 
-          onComplete={handleOnboardingComplete}
-        />
-      )}
     </div>
   );
 }
