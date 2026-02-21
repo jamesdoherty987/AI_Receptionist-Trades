@@ -57,13 +57,13 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "lookup_customer",
-            "description": "Look up existing customer information by name or phone. Use this EARLY to check if customer exists in system. Call this right after getting their name to see if they're a returning customer.",
+            "description": "Look up existing customer information by name or phone. Call this right after spelling back the name and getting confirmation. CRITICAL: Use the CORRECTED spelling you confirmed with the customer, NOT the original ASR transcription. Example: If you spelled 'D-O-H-E-R-T-Y' and they said yes, use 'Doherty' not 'Dorothy'.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "customer_name": {
                         "type": "string",
-                        "description": "Customer's full name to look up"
+                        "description": "Customer's full name - USE THE SPELLING YOU CONFIRMED, not the original transcription"
                     },
                     "phone": {
                         "type": "string",
@@ -1491,37 +1491,69 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         
                         best_match = None
                         best_similarity = 0
+                        best_match_reason = ""
+                        
+                        # Helper to split name into first/last
+                        def split_name(name):
+                            parts = name.strip().split()
+                            if len(parts) >= 2:
+                                return parts[0].lower(), ' '.join(parts[1:]).lower()
+                            return name.lower(), ""
+                        
+                        search_first, search_last = split_name(customer_name)
                         
                         for potential_client in all_clients:
-                            # Check name similarity (90%+ match for high confidence)
-                            similarity = SequenceMatcher(None, 
+                            client_first, client_last = split_name(potential_client['name'])
+                            
+                            # Full name similarity
+                            full_similarity = SequenceMatcher(None, 
                                 customer_name.lower(), 
                                 potential_client['name'].lower()).ratio()
                             
-                            # Also check if phone matches (if provided)
+                            # First name similarity (important for identity)
+                            first_similarity = SequenceMatcher(None, search_first, client_first).ratio()
+                            
+                            # Last name similarity (often has ASR errors like Dorothy/Doherty)
+                            last_similarity = SequenceMatcher(None, search_last, client_last).ratio() if search_last and client_last else 0
+                            
+                            # Check if phone matches
                             phone_matches = False
                             if phone and potential_client.get('phone'):
-                                # Normalize phone numbers for comparison
                                 norm_phone = ''.join(filter(str.isdigit, phone))[-10:]
                                 norm_client_phone = ''.join(filter(str.isdigit, potential_client.get('phone', '')))[-10:]
                                 phone_matches = norm_phone == norm_client_phone
                             
-                            # If phone matches, lower the name similarity threshold BUT still require reasonable match
-                            # "Joe Smith" vs "John Smith" is ~81% - too different even with phone match
-                            if phone_matches and similarity >= 0.85:
-                                # Phone match + 85% name similarity = confident match
-                                # This catches ASR errors like "Jon" vs "John" but not "Joe" vs "John"
-                                if similarity > best_similarity:
-                                    best_similarity = similarity
-                                    best_match = potential_client
-                            elif similarity >= 0.92:  # 92% similar = very likely same person (ASR error)
-                                # Without phone match, require very high name similarity
-                                if similarity > best_similarity:
-                                    best_similarity = similarity
-                                    best_match = potential_client
+                            # Matching logic with multiple strategies:
+                            match_score = 0
+                            match_reason = ""
+                            
+                            # Strategy 1: Phone matches + first name exact/close + last name reasonable
+                            # Catches: "James Dorothy" vs "James Doherty" (ASR error on last name)
+                            if phone_matches and first_similarity >= 0.90 and last_similarity >= 0.65:
+                                match_score = 0.95 + (last_similarity * 0.05)  # High confidence
+                                match_reason = f"phone+first_name (first:{first_similarity:.0%}, last:{last_similarity:.0%})"
+                            
+                            # Strategy 2: Phone matches + full name 80%+ similar
+                            # Catches: minor ASR errors across the name
+                            elif phone_matches and full_similarity >= 0.80:
+                                match_score = full_similarity + 0.10  # Boost for phone match
+                                match_reason = f"phone+name (full:{full_similarity:.0%})"
+                            
+                            # Strategy 3: No phone but very high name similarity (92%+)
+                            # Catches: "Jon Smith" vs "John Smith" without phone
+                            elif full_similarity >= 0.92:
+                                match_score = full_similarity
+                                match_reason = f"name_only (full:{full_similarity:.0%})"
+                            
+                            if match_score > best_similarity:
+                                best_similarity = match_score
+                                best_match = potential_client
+                                best_match_reason = match_reason
+                        
+                        logger.info(f"[LOOKUP] Search: '{customer_name}', phone: {phone}, best_match: {best_match['name'] if best_match else 'None'}, score: {best_similarity:.2%}, reason: {best_match_reason}")
                         
                         if best_match:
-                            logger.info(f"[LOOKUP] Fuzzy match: '{customer_name}' -> '{best_match['name']}' (similarity: {best_similarity:.2%})")
+                            logger.info(f"[LOOKUP] ✅ Fuzzy match: '{customer_name}' -> '{best_match['name']}' ({best_match_reason})")
                             # Get most recent booking address - filter by company_id
                             bookings = db.get_client_bookings(best_match['id'], company_id=company_id)
                             last_address = None
