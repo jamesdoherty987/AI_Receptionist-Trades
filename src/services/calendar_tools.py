@@ -1506,13 +1506,16 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 norm_client_phone = ''.join(filter(str.isdigit, potential_client.get('phone', '')))[-10:]
                                 phone_matches = norm_phone == norm_client_phone
                             
-                            # If phone matches, lower the name similarity threshold
-                            if phone_matches and similarity >= 0.6:
-                                # Phone match + 60% name similarity = confident match
+                            # If phone matches, lower the name similarity threshold BUT still require reasonable match
+                            # "Joe Smith" vs "John Smith" is ~81% - too different even with phone match
+                            if phone_matches and similarity >= 0.85:
+                                # Phone match + 85% name similarity = confident match
+                                # This catches ASR errors like "Jon" vs "John" but not "Joe" vs "John"
                                 if similarity > best_similarity:
                                     best_similarity = similarity
                                     best_match = potential_client
-                            elif similarity >= 0.90:  # 90% similar = very likely same person (ASR error)
+                            elif similarity >= 0.92:  # 92% similar = very likely same person (ASR error)
+                                # Without phone match, require very high name similarity
                                 if similarity > best_similarity:
                                     best_similarity = similarity
                                     best_match = potential_client

@@ -30,7 +30,9 @@ class AddressValidator:
     ]
     
     # Eircode pattern: Letter-Number-Number space Letter-Number-Number-Number
-    EIRCODE_PATTERN = re.compile(r'^[A-Z]\d{2}\s?[A-Z0-9]{4}$', re.IGNORECASE)
+    # Note: ASR often confuses O/0, so we need to be flexible
+    # Matches: D02WR97, DO2WR97, V94 ABC1, etc.
+    EIRCODE_PATTERN = re.compile(r'^[A-Z][O0]\d\s?[A-Z0-9]{4}$|^[A-Z]\d{2}\s?[A-Z0-9]{4}$', re.IGNORECASE)
     
     # Common Irish postcode patterns (legacy system)
     POSTCODE_PATTERNS = [
@@ -56,8 +58,15 @@ class AddressValidator:
         # Remove all spaces and convert to uppercase
         clean = re.sub(r'\s+', '', eircode.upper())
         
+        # Fix common ASR errors: O -> 0 in second position (e.g., DO2 -> D02)
+        if len(clean) >= 2 and clean[1] == 'O':
+            clean = clean[0] + '0' + clean[2:]
+        
         # Check if it matches eircode pattern (7 characters)
-        if len(clean) == 7 and re.match(r'^[A-Z]\d{2}[A-Z0-9]{4}$', clean):
+        if len(clean) == 7 and re.match(r'^[A-Z][0O]\d[A-Z0-9]{4}$|^[A-Z]\d{2}[A-Z0-9]{4}$', clean):
+            # Ensure second char is 0 not O for consistency
+            if clean[1] == 'O':
+                clean = clean[0] + '0' + clean[2:]
             # Format as XXX XXXX
             return f"{clean[:3]} {clean[3:]}"
         

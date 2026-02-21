@@ -50,6 +50,51 @@ DEFAULT_APPOINTMENT_DURATION_MINUTES = 1440  # Default duration for AI phone boo
 CONFIRMATION_THRESHOLD = 0.7  # Confidence threshold for confirmation detection
 SKIP_APPOINTMENT_DETECTION = True  # Skip ALL appointment detection - LLM handles it with tools
 
+
+def format_for_tts_spelling(text: str) -> str:
+    """
+    Format text for TTS to read spelled-out content more slowly.
+    
+    When the AI spells out names, eircodes, or phone numbers (e.g., "D-O-2-W-R-9-7"),
+    the TTS tends to rush through them. This function adds spaces between letters
+    to make TTS read them more slowly and clearly.
+    
+    Examples:
+        "D-O-2-W-R-9-7" -> "D - O - 2 - W - R - 9 - 7"
+        "J-O-H-N" -> "J - O - H - N"
+        "085 263 5954" -> "0 8 5,  2 6 3,  5 9 5 4"
+    """
+    if not text:
+        return text
+    
+    # Pattern for spelled-out content: single characters separated by dashes
+    # e.g., "J-O-H-N" or "D-O-2-W-R-9-7"
+    spelled_pattern = re.compile(r'\b([A-Z0-9]-)+[A-Z0-9]\b', re.IGNORECASE)
+    
+    def add_spaces_to_spelled(match):
+        # Add spaces around dashes for slower reading
+        spelled = match.group(0)
+        return spelled.replace('-', ' - ')
+    
+    result = spelled_pattern.sub(add_spaces_to_spelled, text)
+    
+    # Also handle phone numbers - add slight pauses between digit groups
+    # Pattern: 3+ digits together (phone number segments)
+    phone_pattern = re.compile(r'\b(\d{3,})\b')
+    
+    def space_out_digits(match):
+        digits = match.group(0)
+        # Add spaces between digits for clearer reading
+        # Group in 3s with commas for natural pauses
+        if len(digits) >= 7:  # Likely a phone number
+            spaced = ' '.join(digits)
+            return spaced
+        return digits
+    
+    result = phone_pattern.sub(space_out_digits, result)
+    
+    return result
+
 # Lazy initialization of OpenAI client with optimized settings
 _client = None
 
@@ -2783,6 +2828,8 @@ When customer wants to reschedule:
                 if not tool_calls and not has_yielded_split_marker:
                     # Strip markdown formatting to prevent TTS reading "**" as "star star"
                     cleaned_token = delta.content.replace('**', '').replace('__', '').replace('~~', '')
+                    # Add pauses for spelled-out content (letters/numbers separated by dashes)
+                    cleaned_token = format_for_tts_spelling(cleaned_token)
                     yield cleaned_token  # Send cleaned version to TTS
                 
     except Exception as e:
