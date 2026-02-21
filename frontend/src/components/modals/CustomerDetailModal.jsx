@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getClient, updateClient, deleteClient, getBookings, addClientNote } from '../../services/api';
+import { getClient, updateClient, deleteClient, getBookings } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import { formatPhone, formatDateTime, getStatusBadgeClass, formatCurrency } from '../../utils/helpers';
@@ -11,7 +11,6 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
   const { addToast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
-  const [newNote, setNewNote] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Handle escape key to close delete confirmation
@@ -91,78 +90,6 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
     }
   });
 
-  const noteMutation = useMutation({
-    mutationFn: (note) => addClientNote(clientId, note),
-    onMutate: async (note) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['client', clientId] });
-      
-      // Snapshot previous value
-      const previousClient = queryClient.getQueryData(['client', clientId]);
-      
-      // Only do optimistic update if we have existing data
-      if (previousClient) {
-        const currentNotes = previousClient.notes || '';
-        const timestamp = new Date().toLocaleString();
-        const newNoteWithTimestamp = `[${timestamp}] ${note}`;
-        const updatedNotes = currentNotes 
-          ? `${currentNotes}\n\n${newNoteWithTimestamp}`
-          : newNoteWithTimestamp;
-        
-        queryClient.setQueryData(['client', clientId], {
-          ...previousClient,
-          notes: updatedNotes
-        });
-      }
-      
-      // Clear input immediately
-      setNewNote('');
-      
-      return { previousClient };
-    },
-    onSuccess: (response, note) => {
-      // Refetch client data to get the updated notes from server
-      queryClient.refetchQueries({ queryKey: ['client', clientId] });
-      
-      // Also update the dashboard cache directly to keep the notes in sync
-      // without causing a loading state
-      const dashboardData = queryClient.getQueryData(['dashboard']);
-      if (dashboardData?.clients) {
-        const updatedClients = dashboardData.clients.map(c => {
-          if (c.id === clientId) {
-            const currentNotes = c.notes || '';
-            const timestamp = new Date().toLocaleString();
-            const newNoteWithTimestamp = `[${timestamp}] ${note}`;
-            return {
-              ...c,
-              notes: currentNotes 
-                ? `${currentNotes}\n\n${newNoteWithTimestamp}`
-                : newNoteWithTimestamp
-            };
-          }
-          return c;
-        });
-        queryClient.setQueryData(['dashboard'], {
-          ...dashboardData,
-          clients: updatedClients
-        });
-      }
-      
-      addToast('Note added!', 'success');
-    },
-    onError: (error, variables, context) => {
-      // Rollback on error
-      if (context?.previousClient) {
-        queryClient.setQueryData(['client', clientId], context.previousClient);
-      }
-      // Restore the note text so user doesn't lose it
-      setNewNote(variables);
-      const errorMsg = error.response?.data?.error || 'Error adding note';
-      addToast(errorMsg, 'error');
-      console.error('Error adding note:', error);
-    }
-  });
-
   const deleteMutation = useMutation({
     mutationFn: () => deleteClient(clientId),
     onSuccess: (response) => {
@@ -205,15 +132,6 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       return;
     }
     updateMutation.mutate(editData);
-  };
-
-  const handleAddNote = () => {
-    const trimmedNote = newNote.trim();
-    if (trimmedNote) {
-      noteMutation.mutate(trimmedNote);
-    } else {
-      addToast('Please enter a note', 'warning');
-    }
   };
 
   if (loadingClient) {
@@ -431,30 +349,14 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
             </div>
 
             {/* Notes */}
-            <div className="info-card">
-              <h3><i className="fas fa-sticky-note"></i> Notes</h3>
-              {client.notes && (
+            {client.notes && (
+              <div className="info-card">
+                <h3><i className="fas fa-sticky-note"></i> Notes</h3>
                 <div className="existing-note">
                   <p>{client.notes}</p>
                 </div>
-              )}
-              <div className="add-note">
-                <textarea
-                  className="form-input"
-                  placeholder="Add a note about this customer..."
-                  value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  rows={2}
-                />
-                <button 
-                  className="btn btn-primary btn-sm"
-                  onClick={handleAddNote}
-                  disabled={!newNote.trim() || noteMutation.isPending}
-                >
-                  {noteMutation.isPending ? 'Adding...' : 'Add Note'}
-                </button>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Right Column - Booking History */}
