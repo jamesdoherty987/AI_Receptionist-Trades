@@ -103,6 +103,25 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
     text = text.strip()
     now = datetime.now()
     
+    # FAST PATH: Check for ISO format dates (YYYY-MM-DD) - no need for AI
+    # This saves ~500ms per date parse when LLM already provides ISO format
+    import re
+    iso_date_match = re.match(r'^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$', text)
+    if iso_date_match:
+        year = int(iso_date_match.group(1))
+        month = int(iso_date_match.group(2))
+        day = int(iso_date_match.group(3))
+        hour = int(iso_date_match.group(4)) if iso_date_match.group(4) else default_time[0]
+        minute = int(iso_date_match.group(5)) if iso_date_match.group(5) else default_time[1]
+        
+        try:
+            result = datetime(year, month, day, hour, minute)
+            print(f"[DATE] Fast path: parsed ISO date '{text}' -> {result}")
+            return result
+        except ValueError as e:
+            print(f"[DATE] Invalid ISO date '{text}': {e}")
+            # Fall through to AI parsing
+    
     try:
         client = get_openai_client()
         

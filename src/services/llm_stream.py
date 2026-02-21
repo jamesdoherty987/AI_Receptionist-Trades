@@ -655,11 +655,10 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                     print(f"[INFO] Name correction detected: {potential_name.title()}")
                 break
     
-    # --- Birth Year Detection (Trades business - optional, not required) ---
-    birth_year = detect_birth_year(user_text)
-    if birth_year:
-        call_state["birth_year"] = birth_year
-        print(f"[INFO] Birth year detected: {birth_year}")
+    # --- Birth Year Detection DISABLED ---
+    # PERFORMANCE: Removed AI-based birth year detection - it was adding 600ms+ to EVERY response
+    # Trades businesses don't need DOB - customers are identified by phone/name only
+    # If birth year detection is ever needed, use simple regex instead of OpenAI API call
     
     # Store phone number if provided and not already stored
     if caller_phone and not call_state.get("phone_number"):
