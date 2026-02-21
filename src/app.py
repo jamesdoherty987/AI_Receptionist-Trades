@@ -2987,11 +2987,11 @@ def client_api(client_id):
         # Get client with company_id filter for security
         client = db.get_client(client_id, company_id=company_id)
         if client:
-            # Get bookings and notes filtered by company_id
+            # Get bookings filtered by company_id
             bookings = db.get_client_bookings(client_id, company_id=company_id)
-            notes = db.get_client_notes(client_id)
             client['bookings'] = bookings
-            client['notes'] = notes
+            # Note: client['notes'] is already populated as a formatted string by get_client()
+            # Don't overwrite it with the raw array from get_client_notes()
             
             # If client doesn't have address/eircode/email stored, get from most recent booking
             if not client.get('address') and bookings:
