@@ -608,7 +608,7 @@ class PostgreSQLDatabaseWrapper:
                             "General",
                             "General Service",
                             "Default service for general jobs and appointments that don't match a specific service category",
-                            60,
+                            1440,  # 1 day (24 hours)
                             0,
                             'EUR',
                             1,
@@ -685,7 +685,7 @@ class PostgreSQLDatabaseWrapper:
                         category="General",
                         name="General Service",
                         description="Default service for general jobs and appointments that don't match a specific service category",
-                        duration_minutes=60,
+                        duration_minutes=1440,  # 1 day (24 hours)
                         price=0,
                         emergency_price=None,
                         currency='EUR',

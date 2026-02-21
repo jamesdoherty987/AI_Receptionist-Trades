@@ -1275,20 +1275,20 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 
                 if len(day_slots) >= 6:
                     # Many slots available - describe as a range
-                    # Use "starting from" to clarify these are START times
-                    summary = f"{day_name}: appointments starting from {first_time} to {last_time}"
+                    # Use trades-friendly language: "free from X to Y" instead of "appointments starting from"
+                    summary = f"{day_name}: free from {first_time} to {last_time}"
                 elif len(day_slots) >= 3:
                     # Several slots - mention range
-                    summary = f"{day_name}: {first_time}, {last_time}, and times in between"
+                    summary = f"{day_name}: available {first_time} to {last_time}"
                 else:
                     # Few slots - list them specifically
                     times = [s.strftime('%I %p').lstrip('0').lower().replace(' 0', ' ') for s in day_slots]
                     if len(times) == 1:
-                        summary = f"{day_name}: {times[0]}"
+                        summary = f"{day_name}: {times[0]} only"
                     elif len(times) == 2:
-                        summary = f"{day_name}: {times[0]} and {times[1]}"
+                        summary = f"{day_name}: {times[0]} or {times[1]}"
                     else:
-                        summary = f"{day_name}: {', '.join(times[:-1])}, and {times[-1]}"
+                        summary = f"{day_name}: {', '.join(times[:-1])}, or {times[-1]}"
                 
                 day_summaries.append(summary)
             
@@ -1489,47 +1489,69 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         from difflib import SequenceMatcher
                         all_clients = db.get_all_clients(company_id=company_id)
                         
+                        best_match = None
+                        best_similarity = 0
+                        
                         for potential_client in all_clients:
-                            # Check name similarity (75%+ match)
+                            # Check name similarity (90%+ match for high confidence)
                             similarity = SequenceMatcher(None, 
                                 customer_name.lower(), 
                                 potential_client['name'].lower()).ratio()
                             
-                            if similarity >= 0.75:  # 75% similar = likely match
-                                logger.info(f" Fuzzy match: '{customer_name}' -> '{potential_client['name']}' (similarity: {similarity:.2%})")
-                                # Get most recent booking address - filter by company_id
-                                bookings = db.get_client_bookings(potential_client['id'], company_id=company_id)
-                                last_address = None
-                                if bookings:
-                                    for booking in bookings:
-                                        if booking.get('address'):
-                                            last_address = booking['address']
-                                            break
-                                
-                                # Build the message with all available info
-                                msg_parts = [f"Found returning customer: {potential_client['name']} (I heard {customer_name}, but found a close match)"]
-                                if potential_client.get('phone'):
-                                    msg_parts.append(f"phone {potential_client.get('phone')}")
-                                if potential_client.get('email'):
-                                    msg_parts.append(f"email {potential_client.get('email')}")
-                                if last_address:
-                                    msg_parts.append(f"last address {last_address}")
-                                
-                                return {
-                                    "success": True,
-                                    "customer_exists": True,
-                                    "fuzzy_match": True,
-                                    "heard_name": customer_name,
-                                    "actual_name": potential_client['name'],
-                                    "customer_info": {
-                                        "id": potential_client['id'],
-                                        "name": potential_client['name'],
-                                        "phone": potential_client.get('phone'),
-                                        "email": potential_client.get('email'),
-                                        "last_address": last_address
-                                    },
-                                    "message": ", ".join(msg_parts)
-                                }
+                            # Also check if phone matches (if provided)
+                            phone_matches = False
+                            if phone and potential_client.get('phone'):
+                                # Normalize phone numbers for comparison
+                                norm_phone = ''.join(filter(str.isdigit, phone))[-10:]
+                                norm_client_phone = ''.join(filter(str.isdigit, potential_client.get('phone', '')))[-10:]
+                                phone_matches = norm_phone == norm_client_phone
+                            
+                            # If phone matches, lower the name similarity threshold
+                            if phone_matches and similarity >= 0.6:
+                                # Phone match + 60% name similarity = confident match
+                                if similarity > best_similarity:
+                                    best_similarity = similarity
+                                    best_match = potential_client
+                            elif similarity >= 0.90:  # 90% similar = very likely same person (ASR error)
+                                if similarity > best_similarity:
+                                    best_similarity = similarity
+                                    best_match = potential_client
+                        
+                        if best_match:
+                            logger.info(f"[LOOKUP] Fuzzy match: '{customer_name}' -> '{best_match['name']}' (similarity: {best_similarity:.2%})")
+                            # Get most recent booking address - filter by company_id
+                            bookings = db.get_client_bookings(best_match['id'], company_id=company_id)
+                            last_address = None
+                            if bookings:
+                                for booking in bookings:
+                                    if booking.get('address'):
+                                        last_address = booking['address']
+                                        break
+                            
+                            # Build the message with all available info
+                            msg_parts = [f"Found returning customer: {best_match['name']} (I heard {customer_name}, but found a close match)"]
+                            if best_match.get('phone'):
+                                msg_parts.append(f"phone {best_match.get('phone')}")
+                            if best_match.get('email'):
+                                msg_parts.append(f"email {best_match.get('email')}")
+                            if last_address:
+                                msg_parts.append(f"last address {last_address}")
+                            
+                            return {
+                                "success": True,
+                                "customer_exists": True,
+                                "fuzzy_match": True,
+                                "heard_name": customer_name,
+                                "actual_name": best_match['name'],
+                                "customer_info": {
+                                    "id": best_match['id'],
+                                    "name": best_match['name'],
+                                    "phone": best_match.get('phone'),
+                                    "email": best_match.get('email'),
+                                    "last_address": last_address
+                                },
+                                "message": ", ".join(msg_parts)
+                            }
                         
                         return {
                             "success": True,
@@ -1601,6 +1623,34 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "needs_clarification": "datetime"
                 }
             logger.info(f"[BOOK_APPT] Parsed time: {parsed_time}")
+            
+            # CRITICAL: Validate day of week if the input contains a weekday name
+            # This prevents the LLM from booking the wrong day (e.g., booking Thursday when user said Monday)
+            weekday_names = {
+                'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+                'friday': 4, 'saturday': 5, 'sunday': 6
+            }
+            input_lower = appointment_datetime.lower()
+            mentioned_weekday = None
+            for day_name, day_num in weekday_names.items():
+                if day_name in input_lower:
+                    mentioned_weekday = (day_name, day_num)
+                    break
+            
+            if mentioned_weekday:
+                day_name, expected_weekday = mentioned_weekday
+                actual_weekday = parsed_time.weekday()
+                if actual_weekday != expected_weekday:
+                    actual_day_name = parsed_time.strftime('%A')
+                    logger.error(f"[BOOK_APPT] DAY MISMATCH: User said '{day_name}' but parsed date {parsed_time.strftime('%Y-%m-%d')} is {actual_day_name}")
+                    return {
+                        "success": False,
+                        "error": f"There's a date mismatch - you mentioned {day_name.capitalize()} but the date provided ({parsed_time.strftime('%B %d')}) is actually a {actual_day_name}. Please use check_availability to find the correct date for {day_name.capitalize()} and try again.",
+                        "needs_clarification": "datetime",
+                        "expected_day": day_name.capitalize(),
+                        "actual_day": actual_day_name
+                    }
+                logger.info(f"[BOOK_APPT] Day of week validated: {day_name} matches {parsed_time.strftime('%A')}")
             
             # Validate business hours - MUST pass company_id for correct company-specific hours
             from src.utils.config import Config
@@ -2101,6 +2151,34 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "needs_clarification": "datetime"
                 }
             logger.info(f"[BOOK_JOB] Parsed time: {parsed_time}")
+            
+            # CRITICAL: Validate day of week if the input contains a weekday name
+            # This prevents the LLM from booking the wrong day (e.g., booking Thursday when user said Monday)
+            weekday_names = {
+                'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+                'friday': 4, 'saturday': 5, 'sunday': 6
+            }
+            input_lower = appointment_datetime.lower()
+            mentioned_weekday = None
+            for day_name, day_num in weekday_names.items():
+                if day_name in input_lower:
+                    mentioned_weekday = (day_name, day_num)
+                    break
+            
+            if mentioned_weekday:
+                day_name, expected_weekday = mentioned_weekday
+                actual_weekday = parsed_time.weekday()
+                if actual_weekday != expected_weekday:
+                    actual_day_name = parsed_time.strftime('%A')
+                    logger.error(f"[BOOK_JOB] DAY MISMATCH: User said '{day_name}' but parsed date {parsed_time.strftime('%Y-%m-%d')} is {actual_day_name}")
+                    return {
+                        "success": False,
+                        "error": f"There's a date mismatch - you mentioned {day_name.capitalize()} but the date provided ({parsed_time.strftime('%B %d')}) is actually a {actual_day_name}. Please use check_availability to find the correct date for {day_name.capitalize()} and try again.",
+                        "needs_clarification": "datetime",
+                        "expected_day": day_name.capitalize(),
+                        "actual_day": actual_day_name
+                    }
+                logger.info(f"[BOOK_JOB] Day of week validated: {day_name} matches {parsed_time.strftime('%A')}")
             
             # Validate business hours - MUST pass company_id for correct company-specific hours
             from src.utils.config import Config
