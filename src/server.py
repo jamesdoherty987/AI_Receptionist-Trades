@@ -193,6 +193,9 @@ async def openai_keepalive_loop():
     Background task that pings OpenAI periodically to keep the connection warm.
     Prevents cold start delays after idle periods.
     
+    IMPORTANT: Uses stream=True to match actual LLM calls - streaming and non-streaming
+    may use different connection paths in OpenAI's infrastructure.
+    
     Cost: ~$0.01/month (negligible)
     """
     from src.services.llm_stream import get_openai_client
@@ -213,14 +216,22 @@ async def openai_keepalive_loop():
         try:
             client = get_openai_client()
             start = time.time()
-            # Run sync OpenAI call in thread pool to avoid blocking event loop
-            await asyncio.to_thread(
-                client.chat.completions.create,
-                model=config.CHAT_MODEL,
-                messages=[{"role": "user", "content": "ping"}],
-                max_tokens=1,
-                stream=False
-            )
+            
+            # Use stream=True to match actual LLM calls - this warms up the streaming path
+            # which is what we actually use for responses
+            def do_streaming_ping():
+                stream = client.chat.completions.create(
+                    model=config.CHAT_MODEL,
+                    messages=[{"role": "user", "content": "hi"}],
+                    max_tokens=1,
+                    stream=True,  # CRITICAL: Match actual LLM calls
+                    temperature=0.1,
+                )
+                # Consume the stream to complete the request
+                for _ in stream:
+                    pass
+            
+            await asyncio.to_thread(do_streaming_ping)
             elapsed = time.time() - start
             consecutive_failures = 0  # Reset on success
             # Log first ping and then every 5 pings (5 minutes)
@@ -229,7 +240,7 @@ async def openai_keepalive_loop():
             else:
                 openai_keepalive_loop._ping_count = 1
             if openai_keepalive_loop._ping_count == 1 or openai_keepalive_loop._ping_count % 5 == 0:
-                print(f"[KEEPALIVE] ✓ OpenAI connection warm (ping #{openai_keepalive_loop._ping_count}, {elapsed:.2f}s)")
+                print(f"[KEEPALIVE] ✓ OpenAI streaming connection warm (ping #{openai_keepalive_loop._ping_count}, {elapsed:.2f}s)")
         except asyncio.CancelledError:
             print("[KEEPALIVE] Shutting down gracefully")
             return

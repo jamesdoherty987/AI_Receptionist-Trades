@@ -800,6 +800,34 @@ async def media_handler(ws):
                 time_to_greet = greet_task_start - call_start_time
                 print(f"\n[TIMING] ⏱️ Starting greeting task {time_to_greet:.3f}s after call start")
                 asyncio.create_task(greet())
+                
+                # WARMUP: Start OpenAI streaming warmup in parallel with greeting
+                # This ensures the streaming connection is hot when we need it
+                async def warmup_openai():
+                    try:
+                        from src.services.llm_stream import get_openai_client
+                        client = get_openai_client()
+                        warmup_start = time_module.time()
+                        
+                        # Use streaming to warm up the same path as actual calls
+                        def do_warmup():
+                            stream = client.chat.completions.create(
+                                model=config.CHAT_MODEL,
+                                messages=[{"role": "user", "content": "hi"}],
+                                max_tokens=1,
+                                stream=True,
+                                temperature=0.1,
+                            )
+                            for _ in stream:
+                                pass
+                        
+                        await asyncio.to_thread(do_warmup)
+                        warmup_time = time_module.time() - warmup_start
+                        print(f"🔥 [WARMUP] OpenAI streaming warmed up in {warmup_time:.2f}s")
+                    except Exception as e:
+                        print(f"⚠️ [WARMUP] OpenAI warmup failed: {e}")
+                
+                asyncio.create_task(warmup_openai())
 
             elif event == "media":
                 if not stream_sid:
