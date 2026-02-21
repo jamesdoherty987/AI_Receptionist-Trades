@@ -117,7 +117,7 @@ class MockDeepgramASR:
     def is_speech_finished(self) -> bool:
         return self.speech_final
     
-    def clear_all(self):
+    def clear(self):
         self.text = ""
         self.interim_text = ""
         self.is_final = False
@@ -354,7 +354,7 @@ class TestDominoEffectPrevention:
         # Brief pause (0.8s) - OLD code would trigger here
         if check_trigger(asr, 0.8):
             responses_triggered.append(asr.get_text())
-            asr.clear_all()
+            asr.clear()
         
         # Should NOT have triggered
         assert len(responses_triggered) == 0
@@ -465,8 +465,8 @@ class TestEdgeCases:
         
         assert asr.get_text() == "Hello world"
     
-    def test_clear_all_resets_accumulator(self):
-        """clear_all should reset the accumulator"""
+    def test_clear_resets_accumulator(self):
+        """clear should reset the accumulator"""
         asr = MockDeepgramASR()
         
         asr.process_message({
@@ -477,7 +477,7 @@ class TestEdgeCases:
         
         assert asr._accumulated_text == "Hello"
         
-        asr.clear_all()
+        asr.clear()
         
         assert asr._accumulated_text == ""
         assert asr.get_text() == ""

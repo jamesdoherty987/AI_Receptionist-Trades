@@ -130,32 +130,25 @@ async def media_handler(ws):
     INTERRUPT_COOLDOWN = 1.5      # Seconds to wait after interrupt before allowing another
     MAX_CONSECUTIVE_INTERRUPTS = 3  # After this many, pause and let caller speak fully
     
-    # --- COMPLETION_WAIT window (allows caller to continue after SILENCE_HOLD) ---
-    # Flow: Caller speaks -> silence -> SILENCE_HOLD (0.7s) -> start generating response
+    # --- COMPLETION_WAIT window (allows caller to continue after speech_final) ---
+    # Flow: Caller speaks -> Deepgram detects end (speech_final) -> start generating response
     # COMPLETION_WAIT (2s) runs IN PARALLEL with response generation
     # If caller speaks within COMPLETION_WAIT, cancel response, combine texts, restart
-    # Example: "I need to book..." [0.7s pause] -> AI starts generating -> "...for Tuesday" -> cancel & combine
-    continuation_window_start = 0.0  # When SILENCE_HOLD finished and we started generating
+    continuation_window_start = 0.0  # When speech_final triggered and we started generating
     continuation_original_text = ""  # The text that triggered generation
     continuation_energy_since = 0.0  # Track sustained energy for continuation detection
     continuation_recovery_mode = False  # True when we cancelled and are waiting for more speech
     continuation_base_text = ""  # The combined text to build upon during recovery
     tool_execution_in_progress = False  # True when LLM is executing tool calls (unsafe to cancel)
 
-    # --- Speech segmentation with sentence-level detection ---
-    in_speech = False
-    silence_since = 0.0
-    speech_start_time = 0.0
-    pending_text = ""
+    # --- State tracking ---
     last_committed = ""
-    last_interim = ""
     last_response_time = 0.0
     last_audio_time = 0.0  # Track last audio received for watchdog
 
     # --- Configurable Tunables (loaded from .env via config) ---
     SPEECH_ENERGY = config.SPEECH_ENERGY
     SILENCE_ENERGY = config.SILENCE_ENERGY
-    SILENCE_HOLD = config.SILENCE_HOLD
 
     INTERRUPT_ENERGY = config.INTERRUPT_ENERGY
     NO_BARGEIN_WINDOW = config.NO_BARGEIN_WINDOW
@@ -164,7 +157,6 @@ async def media_handler(ws):
     POST_TTS_IGNORE = config.POST_TTS_IGNORE
     MIN_WORDS = config.MIN_WORDS
     DUPLICATE_WINDOW = config.DUPLICATE_WINDOW
-    MIN_SPEECH_DURATION = config.MIN_SPEECH_DURATION
     COMPLETION_WAIT = config.COMPLETION_WAIT
     
     # LLM processing timeout - ignore filler speech during this window
@@ -640,14 +632,32 @@ async def media_handler(ws):
                     combined_queued = " ".join(queued_speech)
                     print(f"📬 Processing queued speech after TTS: '{combined_queued}'")
                     # Add to conversation so it's included in context for next response
+                    # But first check for duplicates - the same text might have been processed already
                     if len(combined_queued.split()) >= 2:  # At least 2 words
-                        conversation.append({"role": "user", "content": combined_queued})
-                        conversation_log.append({
-                            "role": "user",
-                            "content": combined_queued,
-                            "timestamp": asyncio.get_event_loop().time()
-                        })
-                        print(f"📬 Added queued speech to conversation")
+                        # Check if this is a duplicate of the last user message
+                        is_queued_duplicate = False
+                        if conversation:
+                            # Find the last user message
+                            for msg in reversed(conversation):
+                                if msg.get('role') == 'user':
+                                    last_user_content = msg.get('content', '')
+                                    # Check exact match or fingerprint match
+                                    if norm_text(combined_queued) == norm_text(last_user_content):
+                                        is_queued_duplicate = True
+                                        print(f"📬 Queued speech is duplicate of last user message, skipping")
+                                    elif content_fingerprint(combined_queued) == content_fingerprint(last_user_content):
+                                        is_queued_duplicate = True
+                                        print(f"📬 Queued speech is fingerprint duplicate, skipping")
+                                    break
+                        
+                        if not is_queued_duplicate:
+                            conversation.append({"role": "user", "content": combined_queued})
+                            conversation_log.append({
+                                "role": "user",
+                                "content": combined_queued,
+                                "timestamp": asyncio.get_event_loop().time()
+                            })
+                            print(f"📬 Added queued speech to conversation")
                     queued_speech.clear()
                 
                 # Signal end immediately so user can speak
@@ -811,12 +821,12 @@ async def media_handler(ws):
 
                 if DEBUG_ENERGY and debug_countdown > 0:
                     debug_countdown -= 1
-                    print(f"⚡ energy={int(energy)} speaking={speaking} in_speech={in_speech}")
+                    print(f"⚡ energy={int(energy)} speaking={speaking}")
 
                 # ---- While speaking: barge-in only ----
                 if speaking:
                     # --- COMPLETION_WAIT WINDOW: Check FIRST, before NO_BARGEIN_WINDOW ---
-                    # This is the parallel window that started when SILENCE_HOLD finished
+                    # This is the parallel window that started when speech_final triggered
                     # If caller continues speaking, cancel response and restart with combined text
                     # IMPORTANT: This must be checked BEFORE NO_BARGEIN_WINDOW because:
                     # - COMPLETION_WAIT is for caller continuing their sentence (not a barge-in)
@@ -874,19 +884,11 @@ async def media_handler(ws):
                                     continuation_energy_since = 0.0
                                     
                                     # DON'T clear ASR - let it continue building the transcript
-                                    # The ASR will naturally include the continuation speech
-                                    
-                                    # Reset speech detection state to capture the rest
-                                    in_speech = True
-                                    silence_since = 0.0
-                                    speech_start_time = now - 0.2  # Pretend speech started slightly earlier
+                                    # Deepgram will send speech_final when caller finishes
                                     
                                     # Set recovery mode - we'll prepend the original text when response triggers
                                     continuation_recovery_mode = True
                                     continuation_base_text = continuation_original_text
-                                    
-                                    # Set pending_text to current ASR output (will be combined with base later)
-                                    pending_text = interim_check
                                     
                                     # Remove the last user message from conversation (we'll re-add with combined text)
                                     if conversation and conversation[-1].get('role') == 'user':
@@ -969,7 +971,7 @@ async def media_handler(ws):
                     continue
 
                 # ---- CONTINUATION CHECK DURING LLM PROCESSING (COMPLETION_WAIT window) ----
-                # Flow: Caller speaks -> silence -> SILENCE_HOLD (0.7s) -> start generating response
+                # Flow: Caller speaks -> Deepgram speech_final -> start generating response
                 # COMPLETION_WAIT (2s) runs IN PARALLEL with response generation
                 # If caller speaks within COMPLETION_WAIT, cancel response, combine texts, restart
                 #
@@ -1005,7 +1007,7 @@ async def media_handler(ws):
                                     # Caller is speaking during LLM generation!
                                     # Cancel the LLM and wait for them to finish
                                     print(f"\n🔄 [COMPLETION_WAIT] Speech detected during LLM generation!")
-                                    print(f"   Time since SILENCE_HOLD ended: {time_since_generation_started:.2f}s (within {COMPLETION_WAIT}s window)")
+                                    print(f"   Time since response started: {time_since_generation_started:.2f}s (within {COMPLETION_WAIT}s window)")
                                     print(f"   Original text: '{continuation_original_text}'")
                                     print(f"   New speech detected: '{interim_check}'")
                                     
@@ -1020,11 +1022,6 @@ async def media_handler(ws):
                                     continuation_recovery_mode = True
                                     continuation_base_text = continuation_original_text
                                     
-                                    # Reset speech detection to capture the new speech
-                                    in_speech = True
-                                    silence_since = 0.0
-                                    speech_start_time = now - 0.1
-                                    
                                     # Remove the last user message (we'll re-add with combined text)
                                     if conversation and conversation[-1].get('role') == 'user':
                                         removed = conversation.pop()
@@ -1038,8 +1035,8 @@ async def media_handler(ws):
                                     continuation_original_text = ""
                                     continuation_energy_since = 0.0
                                     
-                                    print(f"   ✅ Waiting for caller to finish, then will combine texts and restart")
-                                    # Continue - audio already fed, let normal speech detection handle the rest
+                                    print(f"   ✅ Waiting for Deepgram speech_final, then will combine texts and restart")
+                                    # Continue - audio already fed, Deepgram will send speech_final when done
                                     continue
                         else:
                             continuation_energy_since = 0.0
@@ -1050,330 +1047,132 @@ async def media_handler(ws):
                 # ---- Feed audio to ASR ----
                 await asr.feed(audio)
                 
-                # Get transcript
+                # Get transcript for display
                 interim = asr.get_interim()
-                final_text = asr.get_text()
-                current_text = final_text if final_text else interim
 
-                # Update pending text
-                if current_text and current_text != last_interim:
-                    last_interim = current_text
-                    pending_text = current_text.strip()
-
-                # ---- Speech detection with improved stability ----
-                if energy > SPEECH_ENERGY:
-                    if not in_speech:
-                        in_speech = True
-                        silence_since = 0.0
-                        speech_start_time = now  # Track speech start
-
-                    silence_since = 0.0
-
-                else:
-                    # Low energy - check for silence
-                    if in_speech:
-                        if energy < SILENCE_ENERGY:
-                            if silence_since == 0.0:
-                                silence_since = now
+                # ---- SIMPLIFIED: Trust Deepgram's speech_final signal ----
+                # Deepgram's VAD handles:
+                # - Multi-segment utterances (accumulates automatically)
+                # - End-of-speech detection (speech_final after 800ms silence)
+                # We just wait for speech_final=true before responding
+                
+                if asr.is_speech_finished():
+                    text = asr.get_text().strip()
+                    
+                    # Skip if no text
+                    if not text:
+                        asr.clear()
+                        continue
+                    
+                    # If in continuation recovery mode, prepend the base text
+                    if continuation_recovery_mode and continuation_base_text:
+                        if not norm_text(text).startswith(norm_text(continuation_base_text)):
+                            text = continuation_base_text + " " + text
+                            print(f"🔄 [CONTINUATION] Combined text: '{text}'")
+                        continuation_recovery_mode = False
+                        continuation_base_text = ""
+                    
+                    if len(text.split()) >= MIN_WORDS:
+                        # Simple duplicate detection
+                        is_duplicate = (
+                            norm_text(text) == norm_text(last_committed) and last_committed
+                        ) or (
+                            content_fingerprint(text) == content_fingerprint(last_committed) and last_committed
+                        )
+                        
+                        if not is_duplicate:
+                            # Safety timeout for LLM processing flag
+                            if llm_processing and (now - llm_started_at) > LLM_PROCESSING_TIMEOUT:
+                                print(f"⚠️ LLM processing timeout - resetting")
+                                llm_processing = False
+                            
+                            # Check for filler phrases during LLM processing
+                            text_lower = text.lower().strip().rstrip('?.,!')
+                            is_filler = text_lower in FILLER_PHRASES
+                            
+                            if llm_processing and is_filler:
+                                print(f"🤫 Ignoring filler during LLM processing: '{text}'")
+                                asr.clear()
+                                continue
+                            
+                            # Queue substantial speech during LLM processing
+                            if llm_processing and not is_filler:
+                                # Check for duplicates before queuing
+                                text_fp = content_fingerprint(text)
+                                is_queue_dup = any(
+                                    norm_text(text) == norm_text(q) or text_fp == content_fingerprint(q)
+                                    for q in queued_speech
+                                )
+                                if not is_queue_dup:
+                                    print(f"📝 Queuing speech during LLM processing: '{text}'")
+                                    queued_speech.append(text)
+                                asr.clear()
+                                continue
+                            
+                            # Add interruption context if needed
+                            if interrupt_count >= 2:
+                                conversation.append({
+                                    "role": "system",
+                                    "content": f"[SYSTEM: Caller interrupted {interrupt_count} times. Keep response SHORT.]"
+                                })
+                            if interrupt_count > 0:
+                                interrupt_count = 0
+                            
+                            # Log user speech
+                            conversation_log.append({"role": "user", "content": text, "timestamp": now})
+                            print(f"\n{'='*80}")
+                            print(f"👤 CALLER: {text}")
+                            print(f"{'='*80}\n")
+                            
+                            # Update state
+                            last_committed = text
+                            last_response_time = now
+                            asr.clear()
+                            
+                            conversation.append({"role": "user", "content": text})
+                            
+                            # Trim conversation history if needed
+                            MAX_HISTORY = 40
+                            if len(conversation) > MAX_HISTORY + 1:
+                                # Keep system message + recent messages
+                                conversation[:] = [conversation[0]] + conversation[-(MAX_HISTORY):]
+                                print(f"📝 Trimmed conversation to {len(conversation)} messages")
+                            
+                            # Start LLM response
+                            print(f"🔊 Starting LLM response")
+                            llm_processing = True
+                            llm_started_at = now
+                            queued_speech.clear()
+                            
+                            # Set continuation window
+                            continuation_window_start = now
+                            continuation_original_text = text
+                            
+                            try:
+                                await start_tts(
+                                    stream_llm(conversation, process_appointment_with_calendar, 
+                                              caller_phone=caller_phone, company_id=company_id, call_state=call_state),
+                                    label="respond"
+                                )
+                            except Exception as e:
+                                print(f"❌ Error starting response: {e}")
+                                llm_processing = False
+                                queued_speech.clear()
+                                speaking = False
+                                continuation_window_start = 0.0
                         else:
-                            silence_since = 0.0
-
-                        # TRIGGER RESPONSE after silence threshold AND minimum speech duration
-                        # COMPLETION_WAIT runs in parallel - if caller continues within 2s, we cancel and restart
-                        silence_met = silence_since and (now - silence_since) >= SILENCE_HOLD
-                        duration_met = (now - speech_start_time) >= MIN_SPEECH_DURATION
-                        
-                        should_trigger = silence_met and duration_met
-                        
-                        if should_trigger:
-                            text = (final_text or pending_text).strip()
-                            
-                            # Skip if no text
-                            if not text:
-                                in_speech = False
-                                silence_since = 0.0
-                                continue
-                            
-                            # Check for stale transcript - if transcript is too old, it might be from
-                            # a previous turn that wasn't cleared properly
-                            transcript_age = asr.get_transcript_age()
-                            # If age is 0, it means no transcript was received yet (cleared state)
-                            # If age > 8s AND we're not actively speaking, transcript is stale
-                            # 8 seconds is enough time for normal speech but catches leftover transcripts
-                            if transcript_age == 0.0 and not asr.get_interim() and not asr.get_text():
-                                # No actual transcript data - skip
-                                print(f"⚠️ [STALE] No transcript data available, skipping")
-                                in_speech = False
-                                silence_since = 0.0
-                                pending_text = ""
-                                last_interim = ""
-                                continue
-                            elif transcript_age > 8.0:
-                                print(f"⚠️ [STALE] Ignoring stale transcript ({transcript_age:.1f}s old): '{text[:50]}...'")
-                                asr.clear_all()
-                                in_speech = False
-                                silence_since = 0.0
-                                pending_text = ""
-                                last_interim = ""
-                                continue
-                            
-                            # If in continuation recovery mode, prepend the base text
-                            if continuation_recovery_mode and continuation_base_text:
-                                # Check if ASR already included the base text (sometimes it does)
-                                if not norm_text(text).startswith(norm_text(continuation_base_text)):
-                                    text = continuation_base_text + " " + text
-                                    print(f"🔄 [CONTINUATION] Combined text: '{text}'")
-                                # Reset recovery mode
-                                continuation_recovery_mode = False
-                                continuation_base_text = ""
-                            
-                            if text and len(text.split()) >= MIN_WORDS:
-                                
-                                # Enhanced duplicate detection
-                                is_duplicate = False
-                                
-                                # Check for exact match with last committed (regardless of time window)
-                                # This catches echo/feedback issues where the same text appears again
-                                if norm_text(text) == norm_text(last_committed) and last_committed:
-                                    is_duplicate = True
-                                    print(f"🔄 Duplicate detected (exact match with last): '{text}'")
-                                
-                                # Check for content fingerprint match (catches "v 9 5" vs "v95" duplicates)
-                                # This handles cases where ASR transcribes the same speech with different spacing
-                                if not is_duplicate and last_committed:
-                                    text_fp = content_fingerprint(text)
-                                    last_fp = content_fingerprint(last_committed)
-                                    if text_fp and last_fp and text_fp == last_fp:
-                                        is_duplicate = True
-                                        print(f"🔄 Duplicate detected (fingerprint match): '{text}' == '{last_committed}'")
-                                
-                                # Time-windowed duplicate checks
-                                if not is_duplicate and (now - last_response_time) < DUPLICATE_WINDOW:
-                                    # New text is just the old text with more words (continuation)
-                                    if norm_text(last_committed) and len(norm_text(last_committed)) > 5 and norm_text(text).startswith(norm_text(last_committed)):
-                                        is_duplicate = True
-                                        print(f"🔄 Duplicate detected (continuation): '{text}' starts with '{last_committed}'")
-                                    # Old text is just the new text with more words (shouldn't happen but safety check)
-                                    elif norm_text(text) and len(norm_text(text)) > 5 and norm_text(last_committed).startswith(norm_text(text)):
-                                        is_duplicate = True
-                                        print(f"🔄 Duplicate detected (subset): '{text}' is subset of '{last_committed}'")
-                                
-                                if not is_duplicate:
-                                    # Safety timeout: if llm_processing has been true for too long, reset it
-                                    if llm_processing and (now - llm_started_at) > LLM_PROCESSING_TIMEOUT:
-                                        print(f"⚠️ LLM processing timeout ({LLM_PROCESSING_TIMEOUT}s) - resetting flag")
-                                        llm_processing = False
-                                    
-                                    # Check if we're currently waiting for LLM and this is just filler
-                                    text_lower = text.lower().strip().rstrip('?.,!')
-                                    is_filler = text_lower in FILLER_PHRASES or (len(text.split()) <= 2 and any(f in text_lower for f in ['hello', 'there', 'hi']))
-                                    
-                                    if llm_processing and is_filler:
-                                        # Ignore filler phrases while LLM is thinking
-                                        print(f"🤫 Ignoring filler during LLM processing: '{text}'")
-                                        in_speech = False
-                                        silence_since = 0.0
-                                        pending_text = ""
-                                        last_interim = ""
-                                        asr.clear_all()
-                                        continue
-                                    
-                                    # If LLM is processing and this is substantial speech, queue it
-                                    if llm_processing and not is_filler:
-                                        print(f"📝 Queuing speech during LLM processing: '{text}'")
-                                        queued_speech.append(text)
-                                        in_speech = False
-                                        silence_since = 0.0
-                                        pending_text = ""
-                                        last_interim = ""
-                                        asr.clear_all()
-                                        continue
-                                    
-                                    # If there have been multiple interruptions, add context for the AI
-                                    # Check BEFORE resetting the counter
-                                    if interrupt_count >= 2:
-                                        conversation.append({
-                                            "role": "system", 
-                                            "content": f"[SYSTEM: The caller has interrupted {interrupt_count} times. They may be trying to say something important. Listen carefully, keep your response SHORT (1 sentence max), and pause to let them finish speaking. Don't repeat yourself.]"
-                                        })
-                                        print(f"⚠️ Added interruption context to conversation (count: {interrupt_count})")
-                                    
-                                    # Successful turn completion - reset interrupt counter AFTER adding context
-                                    if interrupt_count > 0:
-                                        print(f"✅ Successful turn - resetting interrupt counter (was {interrupt_count})")
-                                        interrupt_count = 0
-                                    
-                                    # Log the user speech
-                                    conversation_log.append({
-                                        "role": "user",
-                                        "content": text,
-                                        "timestamp": now
-                                    })
-                                    print(f"\n{'='*80}")
-                                    print(f"👤 CALLER: {text}")
-                                    print(f"{'='*80}\n")
-                                    
-                                    # Calculate response time if this is a follow-up
-                                    if len(conversation_log) > 1:
-                                        prev_msg = conversation_log[-2]
-                                        if prev_msg['role'] == 'assistant':
-                                            response_time = now - prev_msg['timestamp']
-                                            response_times.append(response_time)
-                                            print(f"⏱️ Caller response time: {response_time:.2f}s")
-                                    
-                                    # Reset state
-                                    in_speech = False
-                                    silence_since = 0.0
-                                    pending_text = ""
-                                    last_interim = ""
-                                    last_committed = text
-                                    last_response_time = now
-                                    
-                                    # Clear ASR state
-                                    asr.clear_all()
-                                    
-                                    print(f"👤 USER: {text}")
-                                    
-                                    conversation.append({"role": "user", "content": text})
-                                    
-                                    # Trim conversation history to prevent context overflow
-                                    # Keep system message (first) + last N message pairs
-                                    # CRITICAL: Must preserve tool_calls + tool message pairs together
-                                    MAX_HISTORY = 40  # Keep last 40 messages (20 turns) - much larger to preserve context
-                                    if len(conversation) > MAX_HISTORY + 1:  # +1 for system message
-                                        # BEFORE trimming: Extract key context from tool results we're about to lose
-                                        # This prevents the AI from forgetting customer info after trimming
-                                        context_summary = []
-                                        for msg in conversation[1:]:  # Skip system message
-                                            if msg.get('role') == 'tool' and msg.get('name') == 'lookup_customer':
-                                                try:
-                                                    result = json.loads(msg.get('content', '{}'))
-                                                    if result.get('success') and result.get('customer_exists'):
-                                                        info = result.get('customer_info', {})
-                                                        context_summary.append(f"RETURNING CUSTOMER: {info.get('name', 'Unknown')}, phone: {info.get('phone', 'N/A')}, address: {info.get('last_address', 'N/A')}")
-                                                except:
-                                                    pass
-                                            elif msg.get('role') == 'tool' and msg.get('name') == 'book_job':
-                                                try:
-                                                    result = json.loads(msg.get('content', '{}'))
-                                                    if result.get('success'):
-                                                        context_summary.append(f"JOB BOOKED: {result.get('message', 'Booking confirmed')}")
-                                                except:
-                                                    pass
-                                        
-                                        # Find a safe trim point that doesn't break tool call sequences
-                                        # Tool messages MUST follow an assistant message with tool_calls
-                                        messages_to_keep = conversation[-(MAX_HISTORY):]
-                                        
-                                        # Check if first message to keep is a 'tool' role - if so, we need to include the preceding assistant message
-                                        while messages_to_keep and messages_to_keep[0].get('role') == 'tool':
-                                            # Find the index in original conversation
-                                            trim_start = len(conversation) - len(messages_to_keep)
-                                            if trim_start > 1:  # Make sure we have room to go back
-                                                # Include one more message (should be the assistant with tool_calls)
-                                                messages_to_keep = conversation[trim_start - 1:] 
-                                            else:
-                                                # Can't go back further, remove the orphaned tool message
-                                                messages_to_keep = messages_to_keep[1:]
-                                                break
-                                        
-                                        # Also check for assistant messages with tool_calls that lost their tool responses
-                                        # Remove any assistant message with tool_calls if not followed by tool messages
-                                        cleaned_messages = []
-                                        i = 0
-                                        while i < len(messages_to_keep):
-                                            msg = messages_to_keep[i]
-                                            if msg.get('role') == 'assistant' and msg.get('tool_calls'):
-                                                # Check if next message(s) are tool responses
-                                                has_tool_response = (i + 1 < len(messages_to_keep) and 
-                                                                    messages_to_keep[i + 1].get('role') == 'tool')
-                                                if has_tool_response:
-                                                    # Keep the assistant message and all following tool messages
-                                                    cleaned_messages.append(msg)
-                                                    i += 1
-                                                    while i < len(messages_to_keep) and messages_to_keep[i].get('role') == 'tool':
-                                                        cleaned_messages.append(messages_to_keep[i])
-                                                        i += 1
-                                                else:
-                                                    # Skip this orphaned assistant message with tool_calls
-                                                    i += 1
-                                            else:
-                                                cleaned_messages.append(msg)
-                                                i += 1
-                                        
-                                        # Add context summary as a system message if we extracted any
-                                        if context_summary:
-                                            context_msg = {
-                                                "role": "system",
-                                                "content": f"[CONTEXT FROM EARLIER IN CALL - DO NOT ASK FOR THIS INFO AGAIN: {'; '.join(context_summary)}]"
-                                            }
-                                            conversation[:] = [conversation[0], context_msg] + cleaned_messages
-                                            print(f"📝 Trimmed conversation to {len(conversation)} messages (preserved context: {context_summary})")
-                                        else:
-                                            conversation[:] = [conversation[0]] + cleaned_messages
-                                            print(f"📝 Trimmed conversation to {len(conversation)} messages (preserved tool call sequences)")
-                                    
-                                    print(f"🔊 Starting LLM response (conversation length: {len(conversation)})")
-                                    # Set LLM processing state to filter filler speech
-                                    # This flag is cleared in start_tts finally block when TTS completes
-                                    llm_processing = True
-                                    llm_started_at = now
-                                    queued_speech.clear()  # Clear any old queued speech (use .clear() to keep same list reference)
-                                    
-                                    # Set continuation window state - allows caller to continue speaking
-                                    # within COMPLETION_WAIT seconds and have their speech appended to original
-                                    continuation_window_start = now
-                                    continuation_original_text = text
-                                    continuation_energy_since = 0.0
-                                    print(f"🔄 [COMPLETION_WAIT] Window STARTED - caller can continue for {COMPLETION_WAIT}s")
-                                    print(f"   Original text: '{text[:60]}...'")
-                                    
-                                    # --- TIMING: End-to-end response latency ---
-                                    response_trigger_time = time_module.time()
-                                    time_since_call_start = response_trigger_time - call_start_time
-                                    print(f"\n[E2E_TIMING] 🎯 Response triggered {time_since_call_start:.3f}s after call start")
-                                    print(f"[E2E_TIMING] User said: '{text[:50]}...'")
-                                    
-                                    # Stream LLM with appointment detection, phone number, and company context
-                                    try:
-                                        # Note: start_tts creates a background task and returns immediately
-                                        # The llm_processing flag is cleared in the TTS finally block
-                                        await start_tts(
-                                            stream_llm(conversation, process_appointment_with_calendar, caller_phone=caller_phone, company_id=company_id, call_state=call_state),
-                                            label="respond"
-                                        )
-                                        # Code here runs immediately after task creation, not after TTS completes
-                                        # State cleanup happens in TTS finally block
-                                        
-                                    except Exception as e:
-                                        print(f"❌ Error starting response: {e}")
-                                        import traceback
-                                        traceback.print_exc()
-                                        
-                                        # Reset on error to prevent stuck states
-                                        llm_processing = False
-                                        queued_speech.clear()
-                                        speaking = False
-                                        interrupt = False
-                                        continuation_window_start = 0.0
-                                        continuation_original_text = ""
-                                else:
-                                    # Duplicate detected, just reset
-                                    in_speech = False
-                                    silence_since = 0.0
-                            else:
-                                # Not enough words
-                                in_speech = False
-                                silence_since = 0.0
+                            # Duplicate - skip
+                            asr.clear()
+                    else:
+                        # Not enough words - skip
+                        asr.clear()
 
             elif event == "stop":
                 print("🛑 stop")
                 break
             elif event == "mark":
-                # Twilio mark events - ignore
                 pass
             else:
-                # Unknown event type
                 if event:
                     print(f"❓ Unknown event: {event}")
 

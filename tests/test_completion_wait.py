@@ -53,7 +53,7 @@ class MockASR:
     def reset_final_flag(self):
         self.is_final = False
     
-    def clear_all(self):
+    def clear(self):
         self.text = ""
         self.interim_text = ""
         self.is_final = False

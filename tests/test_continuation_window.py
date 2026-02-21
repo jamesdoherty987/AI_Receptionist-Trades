@@ -19,7 +19,7 @@ class MockASR:
     def get_text(self):
         return self.text
     
-    def clear_all(self):
+    def clear(self):
         self.interim = ""
         self.text = ""
         
