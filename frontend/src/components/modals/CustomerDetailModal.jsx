@@ -120,10 +120,34 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       
       return { previousClient };
     },
-    onSuccess: () => {
-      // Refetch to get server data, but don't invalidate to avoid undefined state
+    onSuccess: (response, note) => {
+      // Refetch client data to get the updated notes from server
       queryClient.refetchQueries({ queryKey: ['client', clientId] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      
+      // Also update the dashboard cache directly to keep the notes in sync
+      // without causing a loading state
+      const dashboardData = queryClient.getQueryData(['dashboard']);
+      if (dashboardData?.clients) {
+        const updatedClients = dashboardData.clients.map(c => {
+          if (c.id === clientId) {
+            const currentNotes = c.notes || '';
+            const timestamp = new Date().toLocaleString();
+            const newNoteWithTimestamp = `[${timestamp}] ${note}`;
+            return {
+              ...c,
+              notes: currentNotes 
+                ? `${currentNotes}\n\n${newNoteWithTimestamp}`
+                : newNoteWithTimestamp
+            };
+          }
+          return c;
+        });
+        queryClient.setQueryData(['dashboard'], {
+          ...dashboardData,
+          clients: updatedClients
+        });
+      }
+      
       addToast('Note added!', 'success');
     },
     onError: (error, variables, context) => {
