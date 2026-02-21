@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getClient, updateClient, deleteClient, getBookings } from '../../services/api';
+import { getClient, updateClient, deleteClient, getBookings, addClientNote } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import { formatPhone, formatDateTime, getStatusBadgeClass, formatCurrency } from '../../utils/helpers';
@@ -12,6 +12,8 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [newNote, setNewNote] = useState('');
+  const [isAddingNote, setIsAddingNote] = useState(false);
 
   // Handle escape key to close delete confirmation
   useEffect(() => {
@@ -25,6 +27,17 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
     }
     return () => document.removeEventListener('keydown', handleEscape);
   }, [showDeleteConfirm]);
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setIsEditing(false);
+      setEditData({});
+      setShowDeleteConfirm(false);
+      setNewNote('');
+      setIsAddingNote(false);
+    }
+  }, [isOpen]);
 
   const { data: client, isLoading: loadingClient } = useQuery({
     queryKey: ['client', clientId],
@@ -105,6 +118,29 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       addToast('Error deleting customer: ' + (error.response?.data?.error || error.message), 'error');
     }
   });
+
+  const noteMutation = useMutation({
+    mutationFn: (note) => addClientNote(clientId, note),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      setNewNote('');
+      setIsAddingNote(false);
+      addToast('Note added successfully!', 'success');
+    },
+    onError: (error) => {
+      addToast('Error adding note: ' + (error.response?.data?.error || error.message), 'error');
+    }
+  });
+
+  const handleAddNote = () => {
+    const trimmedNote = newNote.trim();
+    if (!trimmedNote) {
+      addToast('Please enter a note', 'warning');
+      return;
+    }
+    noteMutation.mutate(trimmedNote);
+  };
 
   const handleDelete = () => {
     setShowDeleteConfirm(true);
@@ -349,14 +385,60 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
             </div>
 
             {/* Notes */}
-            {client.notes && (
-              <div className="info-card">
+            <div className="info-card">
+              <div className="notes-header">
                 <h3><i className="fas fa-sticky-note"></i> Notes</h3>
+                {!isAddingNote && (
+                  <button 
+                    className="btn btn-sm btn-secondary"
+                    onClick={() => setIsAddingNote(true)}
+                  >
+                    <i className="fas fa-plus"></i> Add Note
+                  </button>
+                )}
+              </div>
+              
+              {isAddingNote && (
+                <div className="add-note">
+                  <textarea
+                    className="form-input"
+                    placeholder="Enter your note here..."
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    rows={3}
+                    autoFocus
+                  />
+                  <div className="add-note-actions">
+                    <button 
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => {
+                        setIsAddingNote(false);
+                        setNewNote('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      className="btn btn-sm btn-primary"
+                      onClick={handleAddNote}
+                      disabled={noteMutation.isPending || !newNote.trim()}
+                    >
+                      {noteMutation.isPending ? 'Saving...' : 'Save Note'}
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {client.notes ? (
                 <div className="existing-note">
                   <p>{client.notes}</p>
                 </div>
-              </div>
-            )}
+              ) : !isAddingNote && (
+                <div className="empty-notes">
+                  <p>No notes yet</p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Column - Booking History */}
