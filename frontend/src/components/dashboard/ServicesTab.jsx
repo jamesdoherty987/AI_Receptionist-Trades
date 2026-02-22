@@ -41,7 +41,8 @@ function ServicesTab() {
     },
   });
 
-  const workers = workersData?.workers || [];
+  // API returns workers as array directly, not { workers: [...] }
+  const workers = Array.isArray(workersData) ? workersData : (workersData?.workers || []);
 
   // Handle escape key to close delete confirmation
   useEffect(() => {
@@ -274,13 +275,11 @@ function ServicesTab() {
           </div>
           
           {/* Worker Restrictions */}
-          {workers.length > 0 && (
-            <WorkerRestrictions
-              restrictions={formData.worker_restrictions}
-              onChange={(restrictions) => setFormData({ ...formData, worker_restrictions: restrictions })}
-              workers={workers}
-            />
-          )}
+          <WorkerRestrictions
+            restrictions={formData.worker_restrictions}
+            onChange={(restrictions) => setFormData({ ...formData, worker_restrictions: restrictions })}
+            workers={workers}
+          />
           
           <div className="form-group">
             <label>Image (optional)</label>
@@ -379,6 +378,19 @@ function WorkerRestrictions({ restrictions, onChange, workers }) {
     onChange({ type, worker_ids: newIds });
   };
 
+  // If no workers, show a message
+  if (!workers || workers.length === 0) {
+    return (
+      <div className="worker-restrictions">
+        <label>Who Can Do This Job</label>
+        <div className="no-workers-message">
+          <i className="fas fa-info-circle"></i>
+          <span>Add workers in the Workers tab to set job restrictions</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="worker-restrictions">
       <label>Who Can Do This Job</label>
@@ -443,6 +455,7 @@ function WorkerRestrictions({ restrictions, onChange, workers }) {
 
 function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, isPending, workers }) {
   const [editData, setEditData] = useState(service);
+  const [imageError, setImageError] = useState(false);
 
   // Reset edit data when editing starts
   useEffect(() => {
@@ -453,6 +466,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
       });
     }
   }, [isEditing, service]);
+
+  // Reset image error when service changes
+  useEffect(() => {
+    setImageError(false);
+  }, [service.image_url]);
 
   const handleSave = () => {
     if (!editData.name?.trim()) return;
@@ -539,13 +557,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
             </div>
           </div>
           
-          {workers.length > 0 && (
-            <WorkerRestrictions
-              restrictions={editData.worker_restrictions}
-              onChange={(restrictions) => setEditData({ ...editData, worker_restrictions: restrictions })}
-              workers={workers}
-            />
-          )}
+          <WorkerRestrictions
+            restrictions={editData.worker_restrictions}
+            onChange={(restrictions) => setEditData({ ...editData, worker_restrictions: restrictions })}
+            workers={workers}
+          />
           
           <ImageUpload
             value={editData.image_url || ''}
@@ -568,8 +584,13 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
   return (
     <div className="service-card">
       <div className="service-image">
-        {service.image_url ? (
-          <img src={service.image_url} alt={service.name} />
+        {service.image_url && !imageError ? (
+          <img 
+            src={service.image_url} 
+            alt={service.name}
+            onError={() => setImageError(true)}
+            loading="lazy"
+          />
         ) : (
           <i className="fas fa-wrench"></i>
         )}
