@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getBookings, getWorkers } from '../../services/api';
+import { getBookings, getWorkers, getBusinessHours } from '../../services/api';
 import { getStatusBadgeClass } from '../../utils/helpers';
 import LoadingSpinner from '../LoadingSpinner';
 import JobDetailModal from '../modals/JobDetailModal';
@@ -25,8 +25,6 @@ const formatTimeRange = (appointmentTime, durationMinutes) => {
   if (!appointmentTime) return '';
   
   const start = new Date(appointmentTime);
-  const startHour = start.getHours();
-  const startMin = start.getMinutes();
   
   // Full day job (8+ hours)
   if (durationMinutes >= 480) {
@@ -35,16 +33,16 @@ const formatTimeRange = (appointmentTime, durationMinutes) => {
   
   // Calculate end time
   const end = new Date(start.getTime() + (durationMinutes || 60) * 60000);
-  const endHour = end.getHours();
-  const endMin = end.getMinutes();
   
-  const formatHour = (h, m) => {
+  const formatHour = (date) => {
+    const h = date.getHours();
+    const m = date.getMinutes();
     const hour12 = h % 12 || 12;
     const ampm = h < 12 ? 'am' : 'pm';
     return m > 0 ? `${hour12}:${String(m).padStart(2, '0')}${ampm}` : `${hour12}${ampm}`;
   };
   
-  return `${formatHour(startHour, startMin)} - ${formatHour(endHour, endMin)}`;
+  return `${formatHour(start)} - ${formatHour(end)}`;
 };
 
 function CalendarTab() {
@@ -69,6 +67,18 @@ function CalendarTab() {
       return response.data;
     },
   });
+
+  const { data: businessHours } = useQuery({
+    queryKey: ['businessHours'],
+    queryFn: async () => {
+      const response = await getBusinessHours();
+      return response.data;
+    },
+  });
+
+  // Get business hours with fallbacks
+  const openingHour = businessHours?.start || 8;
+  const closingHour = businessHours?.end || 18;
 
   // Create worker color map
   const workerColorMap = useMemo(() => {
@@ -222,11 +232,14 @@ function CalendarTab() {
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
-  // Time slots for week view (6am to 8pm)
-  const timeSlots = [];
-  for (let h = 6; h <= 20; h++) {
-    timeSlots.push(h);
-  }
+  // Time slots for week view (based on business hours)
+  const timeSlots = useMemo(() => {
+    const slots = [];
+    for (let h = openingHour; h <= closingHour; h++) {
+      slots.push(h);
+    }
+    return slots;
+  }, [openingHour, closingHour]);
 
   // Get header text based on view mode
   const getHeaderText = () => {
@@ -451,6 +464,53 @@ function CalendarTab() {
             {weekData.map((date, dayIndex) => {
               const dayEvents = getEventsForDate(date);
               
+              // Group overlapping events to position them side by side
+              const getEventLayout = (events) => {
+                const layouts = [];
+                const columns = []; // Track which column each event is in
+                
+                // Sort events by start time
+                const sortedEvents = [...events].sort((a, b) => 
+                  new Date(a.appointment_time) - new Date(b.appointment_time)
+                );
+                
+                sortedEvents.forEach(event => {
+                  const eventStart = new Date(event.appointment_time);
+                  const duration = event.duration_minutes || 60;
+                  const isFullDay = duration >= 480;
+                  
+                  let eventEnd;
+                  if (isFullDay) {
+                    eventEnd = new Date(eventStart);
+                    eventEnd.setHours(closingHour, 0, 0, 0);
+                  } else {
+                    eventEnd = new Date(eventStart.getTime() + duration * 60000);
+                  }
+                  
+                  // Find first column where this event doesn't overlap
+                  let column = 0;
+                  while (columns[column]) {
+                    const lastInColumn = columns[column];
+                    const lastEnd = lastInColumn.end;
+                    if (eventStart >= lastEnd) {
+                      break; // No overlap, can use this column
+                    }
+                    column++;
+                  }
+                  
+                  columns[column] = { event, end: eventEnd };
+                  layouts.push({ event, column, totalColumns: 0 });
+                });
+                
+                // Calculate total columns for width calculation
+                const maxColumn = layouts.reduce((max, l) => Math.max(max, l.column), 0) + 1;
+                layouts.forEach(l => l.totalColumns = maxColumn);
+                
+                return layouts;
+              };
+              
+              const eventLayouts = getEventLayout(dayEvents);
+              
               return (
                 <div 
                   key={dayIndex} 
@@ -468,33 +528,37 @@ function CalendarTab() {
                       <div key={hour} className="time-slot"></div>
                     ))}
                     
-                    {/* Events positioned absolutely */}
-                    {dayEvents.map(event => {
+                    {/* Events positioned absolutely with overlap handling */}
+                    {eventLayouts.map(({ event, column, totalColumns }) => {
                       const eventTime = new Date(event.appointment_time);
                       const startHour = eventTime.getHours() + eventTime.getMinutes() / 60;
                       const duration = event.duration_minutes || 60;
                       const durationHours = duration / 60;
                       
-                      // Full day jobs (8+ hours) - show from 6am to 8pm
+                      // Full day jobs (8+ hours) - show from opening to closing
                       const isFullDay = duration >= 480;
                       
-                      // Calculate position (6am = 0, each hour = 50px)
+                      // Calculate position based on business hours
                       let top, height;
                       if (isFullDay) {
-                        // Full day spans entire visible area
+                        // Full day spans from opening to closing
                         top = 0;
-                        height = timeSlots.length * 50; // Full height
+                        height = timeSlots.length * 50;
                       } else {
-                        // Clamp start hour to visible range (6am-8pm)
-                        const visibleStart = Math.max(6, Math.min(startHour, 20));
-                        const visibleEnd = Math.min(20, startHour + durationHours);
+                        // Clamp start hour to visible range (business hours)
+                        const visibleStart = Math.max(openingHour, Math.min(startHour, closingHour));
+                        const visibleEnd = Math.min(closingHour, startHour + durationHours);
                         
-                        top = (visibleStart - 6) * 50;
+                        top = (visibleStart - openingHour) * 50;
                         height = Math.max((visibleEnd - visibleStart) * 50, 25);
                         
                         // Skip if completely outside visible range
-                        if (startHour >= 20 || startHour + durationHours <= 6) return null;
+                        if (startHour >= closingHour || startHour + durationHours <= openingHour) return null;
                       }
+                      
+                      // Calculate width and left position for overlapping events
+                      const width = totalColumns > 1 ? `calc((100% - 8px) / ${totalColumns})` : 'calc(100% - 8px)';
+                      const left = totalColumns > 1 ? `calc(4px + (100% - 8px) * ${column} / ${totalColumns})` : '4px';
                       
                       return (
                         <div
@@ -503,6 +567,9 @@ function CalendarTab() {
                           style={{
                             top: `${top}px`,
                             height: `${height}px`,
+                            width,
+                            left,
+                            right: 'auto',
                             backgroundColor: getWorkerColor(event),
                             borderColor: getWorkerColor(event)
                           }}

@@ -27,17 +27,17 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "check_availability",
-            "description": "Check available appointment time slots. Use this IMMEDIATELY when customer asks about available times, slots, or when they're looking for appointments. Returns list of available slots with exact times. Use this for queries like 'what times next week', 'what about Monday', 'any slots Thursday'. IMPORTANT: If you know the job type/description, include it so slots are filtered by service duration.",
+            "description": "Check available appointment time slots. Use this IMMEDIATELY when customer asks about available times, slots, or when they're looking for appointments. Returns list of available slots with exact times. Use this for queries like 'what times next week', 'what about Monday', 'any slots Thursday'. IMPORTANT: If you know the job type/description, include it so slots are filtered by service duration. CRITICAL: For 'closest day', 'next available', 'soonest' queries, use a DATE RANGE (start_date=today, end_date=next week) - do NOT check one day at a time.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "start_date": {
                         "type": "string",
-                        "description": "Start date in ISO format (YYYY-MM-DD) or natural language like 'today', 'tomorrow', 'next Monday', 'next week'"
+                        "description": "Start date in ISO format (YYYY-MM-DD) or natural language like 'today', 'tomorrow', 'next Monday', 'next week'. For 'closest available' queries, use 'today'."
                     },
                     "end_date": {
                         "type": "string",
-                        "description": "End date in ISO format (YYYY-MM-DD) or natural language. If checking single day, use same as start_date. For 'next week' use end of week."
+                        "description": "End date in ISO format (YYYY-MM-DD) or natural language. If checking single day, use same as start_date. For 'next week' use end of week. For 'closest available' queries, use a range like 'next week' or '2 weeks from now'."
                     },
                     "service_type": {
                         "type": "string",
@@ -2201,6 +2201,27 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "needs_clarification": "datetime",
                     "is_urgent": True
                 }
+            
+            # PRE-CHECK: For full-day services, auto-add start time if only day is provided
+            # This prevents the "Could not parse date/time: 'Tuesday'" error for full-day jobs
+            match_result_precheck = match_service(job_description, company_id=company_id)
+            service_duration_precheck = match_result_precheck['service'].get('duration_minutes', 60)
+            
+            if service_duration_precheck >= 480:  # Full-day service (8+ hours)
+                # Check if appointment_datetime is just a day name without time
+                time_indicators = ['am', 'pm', ':', 'morning', 'afternoon', 'evening', 'noon', 'midnight']
+                has_time = any(indicator in appointment_datetime.lower() for indicator in time_indicators)
+                
+                if not has_time:
+                    # Get business hours start time
+                    from src.utils.config import Config
+                    business_hours_precheck = Config.get_business_hours(company_id=company_id)
+                    start_hour_precheck = business_hours_precheck.get('start', 8)
+                    
+                    # Auto-add start time for full-day jobs
+                    original_datetime = appointment_datetime
+                    appointment_datetime = f"{appointment_datetime} at {start_hour_precheck}am"
+                    logger.info(f"[BOOK_JOB] Full-day service detected - auto-added start time: '{original_datetime}' -> '{appointment_datetime}'")
             
             # Parse the appointment time
             logger.info(f"[BOOK_JOB] Parsing datetime: {appointment_datetime}")

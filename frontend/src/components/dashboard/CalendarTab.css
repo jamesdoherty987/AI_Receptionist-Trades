@@ -799,7 +799,9 @@
 /* Day Slots */
 .day-slots {
   position: relative;
-  height: calc(15 * 50px); /* 15 hours * 50px */
+  /* Height is now dynamic based on business hours, set via inline style or CSS variable */
+  /* Default: 11 hours (8am-6pm + closing hour) * 50px = 550px */
+  min-height: 550px;
 }
 
 .time-slot {
@@ -814,8 +816,6 @@
 /* Week Events */
 .week-event {
   position: absolute;
-  left: 4px;
-  right: 4px;
   border-radius: 6px;
   padding: 4px 6px;
   cursor: pointer;
@@ -823,6 +823,7 @@
   border-left: 3px solid;
   transition: transform 0.15s, box-shadow 0.15s;
   z-index: 1;
+  box-sizing: border-box;
 }
 
 .week-event:hover {
@@ -944,12 +945,10 @@
   }
   
   .day-slots {
-    height: calc(15 * 40px);
+    min-height: 440px; /* 11 hours * 40px for mobile */
   }
   
   .week-event {
-    left: 2px;
-    right: 2px;
     padding: 2px 3px;
     border-left-width: 2px;
   }
