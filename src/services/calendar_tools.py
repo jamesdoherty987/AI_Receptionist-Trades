@@ -1138,12 +1138,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 matched_service = match_result['service']
                 service_duration = matched_service.get('duration_minutes', 60)
                 workers_required = matched_service.get('workers_required', 1) or 1
+                worker_restrictions = matched_service.get('worker_restrictions')
                 logger.info(f"[CHECK_AVAIL] Service from job_description '{job_description}': {service_duration} mins, {workers_required} worker(s)")
             else:
                 match_result = match_service(service_type, company_id=company_id)
                 matched_service = match_result['service']
                 service_duration = matched_service.get('duration_minutes', 60)
                 workers_required = matched_service.get('workers_required', 1) or 1
+                worker_restrictions = matched_service.get('worker_restrictions')
                 logger.info(f"[CHECK_AVAIL] Service from service_type: {service_duration} mins, {workers_required} worker(s)")
             
             # Special handling for "this week" - today through Friday
@@ -1232,6 +1234,17 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 duration_minutes=service_duration,
                                 company_id=company_id
                             )
+                            
+                            # Apply worker restrictions if any
+                            if available_workers and worker_restrictions:
+                                restriction_type = worker_restrictions.get('type', 'all')
+                                restricted_ids = worker_restrictions.get('worker_ids', [])
+                                
+                                if restriction_type == 'only' and restricted_ids:
+                                    available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                elif restriction_type == 'except' and restricted_ids:
+                                    available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                            
                             # None means error - include slot (fail open for availability check)
                             # Check if enough workers are available for this service
                             if available_workers is None or len(available_workers) >= workers_required:
@@ -2321,14 +2334,19 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             if not is_available:
                 logger.warning(f"[BOOK_JOB] Time slot not available")
+                day_name = parsed_time.strftime('%A')
                 return {
                     "success": False,
-                    "error": f"That time slot is already booked or doesn't have enough time for this service ({service_duration} mins). Please check availability and suggest another time."
+                    "error": f"That time slot on {day_name} is already booked. If multiple times on {day_name} have failed, suggest trying a different day instead. Use check_availability to find available times on other days.",
+                    "failed_day": day_name,
+                    "failed_time": parsed_time.strftime('%I:%M %p'),
+                    "service_duration": service_duration
                 }
             
             # Get workers_required from matched service (default 1)
             workers_required = matched_service.get('workers_required', 1) or 1
-            logger.info(f"[BOOK_JOB] Service requires {workers_required} worker(s)")
+            worker_restrictions = matched_service.get('worker_restrictions')
+            logger.info(f"[BOOK_JOB] Service requires {workers_required} worker(s), restrictions: {worker_restrictions}")
             
             # Check if company has workers configured
             has_workers = db.has_workers(company_id) if db else False
@@ -2345,6 +2363,20 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 )
                 logger.info(f"[BOOK_JOB] Available workers: {available_workers}")
                 
+                # Apply worker restrictions if any
+                if available_workers and worker_restrictions:
+                    restriction_type = worker_restrictions.get('type', 'all')
+                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                    
+                    if restriction_type == 'only' and restricted_ids:
+                        # Only these workers can do this job
+                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                        logger.info(f"[BOOK_JOB] After 'only' restriction: {len(available_workers)} workers")
+                    elif restriction_type == 'except' and restricted_ids:
+                        # All workers except these can do this job
+                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                        logger.info(f"[BOOK_JOB] After 'except' restriction: {len(available_workers)} workers")
+                
                 if available_workers is None:
                     # Database error - log warning but proceed without worker assignment
                     # Better to book without worker than fail the booking entirely
@@ -2352,11 +2384,21 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 elif len(available_workers) < workers_required:
                     # Not enough workers available at this time
                     logger.warning(f"[BOOK_JOB] Not enough workers available: need {workers_required}, have {len(available_workers)}")
+                    
+                    # Provide more helpful error message based on whether restrictions are in play
+                    has_restrictions = worker_restrictions and worker_restrictions.get('type') in ['only', 'except']
+                    
                     if len(available_workers) == 0:
-                        return {
-                            "success": False,
-                            "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time when a worker is free."
-                        }
+                        if has_restrictions:
+                            return {
+                                "success": False,
+                                "error": f"No qualified workers are available for this type of job at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time."
+                            }
+                        else:
+                            return {
+                                "success": False,
+                                "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time when a worker is free."
+                            }
                     else:
                         return {
                             "success": False,

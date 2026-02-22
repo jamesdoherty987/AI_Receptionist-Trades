@@ -5,7 +5,8 @@ import {
   getServicesMenu, 
   createService,
   updateService,
-  deleteService
+  deleteService,
+  getWorkers
 } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
@@ -21,8 +22,26 @@ function ServicesTab() {
   const { addToast } = useToast();
   const [editingId, setEditingId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', price: '', duration: '1440', image_url: '', workers_required: '1' });
+  const [formData, setFormData] = useState({ 
+    name: '', 
+    price: '', 
+    duration: '1440', 
+    image_url: '', 
+    workers_required: '1',
+    worker_restrictions: { type: 'all', worker_ids: [] }
+  });
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, service: null });
+
+  // Fetch workers for the worker restrictions selector
+  const { data: workersData } = useQuery({
+    queryKey: ['workers'],
+    queryFn: async () => {
+      const response = await getWorkers();
+      return response.data;
+    },
+  });
+
+  const workers = workersData?.workers || [];
 
   // Handle escape key to close delete confirmation
   useEffect(() => {
@@ -59,7 +78,14 @@ function ServicesTab() {
       queryClient.invalidateQueries({ queryKey: ['services-menu'] });
       addToast('Service added!', 'success');
       setShowAddForm(false);
-      setFormData({ name: '', price: '', duration: '1440', image_url: '', workers_required: '1' });
+      setFormData({ 
+        name: '', 
+        price: '', 
+        duration: '1440', 
+        image_url: '', 
+        workers_required: '1',
+        worker_restrictions: { type: 'all', worker_ids: [] }
+      });
     },
     onError: () => addToast('Failed to add service', 'error'),
   });
@@ -93,16 +119,42 @@ function ServicesTab() {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name.trim()) return;
+    
+    // Validate worker restrictions - if 'only' or 'except' is selected, must have workers
+    const restrictionType = formData.worker_restrictions?.type;
+    const hasWorkerIds = formData.worker_restrictions?.worker_ids?.length > 0;
+    if ((restrictionType === 'only' || restrictionType === 'except') && !hasWorkerIds) {
+      addToast('Please select at least one worker for the restriction', 'warning');
+      return;
+    }
+    
+    const restrictions = formData.worker_restrictions?.type === 'all' 
+      ? null 
+      : formData.worker_restrictions;
+    
     createMutation.mutate({
       name: formData.name,
       price: parseFloat(formData.price) || 0,
       duration_minutes: parseInt(formData.duration) || 60,
       image_url: formData.image_url,
       workers_required: parseInt(formData.workers_required) || 1,
+      worker_restrictions: restrictions,
     });
   };
 
   const handleUpdate = (service) => {
+    // Validate worker restrictions - if 'only' or 'except' is selected, must have workers
+    const restrictionType = service.worker_restrictions?.type;
+    const hasWorkerIds = service.worker_restrictions?.worker_ids?.length > 0;
+    if ((restrictionType === 'only' || restrictionType === 'except') && !hasWorkerIds) {
+      addToast('Please select at least one worker for the restriction', 'warning');
+      return;
+    }
+    
+    const restrictions = service.worker_restrictions?.type === 'all' 
+      ? null 
+      : service.worker_restrictions;
+    
     updateMutation.mutate({
       id: service.id,
       data: {
@@ -111,6 +163,7 @@ function ServicesTab() {
         duration_minutes: parseInt(service.duration_minutes) || 60,
         image_url: service.image_url,
         workers_required: parseInt(service.workers_required) || 1,
+        worker_restrictions: restrictions,
       },
     });
   };
@@ -197,16 +250,38 @@ function ServicesTab() {
             </div>
             <div className="form-group">
               <label>Workers Required</label>
-              <input
-                type="number"
-                className="form-input"
-                value={formData.workers_required}
-                onChange={(e) => setFormData({ ...formData, workers_required: e.target.value })}
-                min="1"
-                max="10"
-              />
+              <div className="workers-input-wrapper">
+                <button 
+                  type="button" 
+                  className="workers-btn"
+                  onClick={() => setFormData({ ...formData, workers_required: Math.max(1, parseInt(formData.workers_required || 1) - 1).toString() })}
+                  disabled={parseInt(formData.workers_required || 1) <= 1}
+                >
+                  <i className="fas fa-minus"></i>
+                </button>
+                <span className="workers-value">{formData.workers_required || 1}</span>
+                <button 
+                  type="button" 
+                  className="workers-btn"
+                  onClick={() => setFormData({ ...formData, workers_required: (parseInt(formData.workers_required || 1) + 1).toString() })}
+                  disabled={parseInt(formData.workers_required || 1) >= 10}
+                >
+                  <i className="fas fa-plus"></i>
+                </button>
+              </div>
+              <span className="form-hint">How many workers needed for this job</span>
             </div>
           </div>
+          
+          {/* Worker Restrictions */}
+          {workers.length > 0 && (
+            <WorkerRestrictions
+              restrictions={formData.worker_restrictions}
+              onChange={(restrictions) => setFormData({ ...formData, worker_restrictions: restrictions })}
+              workers={workers}
+            />
+          )}
+          
           <div className="form-group">
             <label>Image (optional)</label>
             <ImageUpload
@@ -249,6 +324,7 @@ function ServicesTab() {
               onCancel={() => setEditingId(null)}
               onDelete={() => handleDelete(service)}
               isPending={updateMutation.isPending || deleteMutation.isPending}
+              workers={workers}
             />
           ))}
         </div>
@@ -288,14 +364,93 @@ function ServicesTab() {
   );
 }
 
+function WorkerRestrictions({ restrictions, onChange, workers }) {
+  const type = restrictions?.type || 'all';
+  const selectedIds = restrictions?.worker_ids || [];
 
-function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, isPending }) {
+  const handleTypeChange = (newType) => {
+    onChange({ type: newType, worker_ids: newType === 'all' ? [] : selectedIds });
+  };
+
+  const toggleWorker = (workerId) => {
+    const newIds = selectedIds.includes(workerId)
+      ? selectedIds.filter(id => id !== workerId)
+      : [...selectedIds, workerId];
+    onChange({ type, worker_ids: newIds });
+  };
+
+  return (
+    <div className="worker-restrictions">
+      <label>Who Can Do This Job</label>
+      <div className="restriction-type-selector">
+        <button
+          type="button"
+          className={`restriction-type-btn ${type === 'all' ? 'active' : ''}`}
+          onClick={() => handleTypeChange('all')}
+        >
+          <i className="fas fa-users"></i>
+          All Workers
+        </button>
+        <button
+          type="button"
+          className={`restriction-type-btn ${type === 'only' ? 'active' : ''}`}
+          onClick={() => handleTypeChange('only')}
+        >
+          <i className="fas fa-user-check"></i>
+          Only Selected
+        </button>
+        <button
+          type="button"
+          className={`restriction-type-btn ${type === 'except' ? 'active' : ''}`}
+          onClick={() => handleTypeChange('except')}
+        >
+          <i className="fas fa-user-times"></i>
+          All Except
+        </button>
+      </div>
+      
+      {type !== 'all' && (
+        <div className="worker-selection">
+          <span className="selection-hint">
+            {type === 'only' 
+              ? 'Select workers who CAN do this job:' 
+              : 'Select workers who CANNOT do this job:'}
+          </span>
+          <div className="worker-chips">
+            {workers.map(worker => (
+              <button
+                key={worker.id}
+                type="button"
+                className={`worker-chip ${selectedIds.includes(worker.id) ? 'selected' : ''}`}
+                onClick={() => toggleWorker(worker.id)}
+              >
+                <i className={`fas ${selectedIds.includes(worker.id) ? 'fa-check' : 'fa-user'}`}></i>
+                {worker.name}
+              </button>
+            ))}
+          </div>
+          {type !== 'all' && selectedIds.length === 0 && (
+            <span className="selection-warning">
+              <i className="fas fa-exclamation-circle"></i>
+              Select at least one worker
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, isPending, workers }) {
   const [editData, setEditData] = useState(service);
 
   // Reset edit data when editing starts
   useEffect(() => {
     if (isEditing) {
-      setEditData(service);
+      setEditData({
+        ...service,
+        worker_restrictions: service.worker_restrictions || { type: 'all', worker_ids: [] }
+      });
     }
   }, [isEditing, service]);
 
@@ -304,51 +459,94 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
     onSave(editData);
   };
 
+  // Get worker restriction summary for display
+  const getRestrictionSummary = () => {
+    const restrictions = service.worker_restrictions;
+    if (!restrictions || restrictions.type === 'all') return null;
+    
+    const count = restrictions.worker_ids?.length || 0;
+    if (restrictions.type === 'only') {
+      return `${count} worker${count !== 1 ? 's' : ''} only`;
+    } else {
+      return `All except ${count}`;
+    }
+  };
+
   if (isEditing) {
     return (
       <div className="service-card editing">
         <div className="edit-form">
-          <input
-            type="text"
-            className="form-input"
-            value={editData.name || ''}
-            onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-            placeholder="Service Name"
-          />
-          <div className="edit-row">
+          <div className="form-group">
+            <label>Service Name</label>
             <input
-              type="number"
+              type="text"
               className="form-input"
-              value={editData.price || ''}
-              onChange={(e) => setEditData({ ...editData, price: e.target.value })}
-              placeholder="Price"
-              step="0.01"
-              min="0"
-            />
-            <select
-              className="form-input"
-              value={editData.duration_minutes || 60}
-              onChange={(e) => setEditData({ ...editData, duration_minutes: parseInt(e.target.value) })}
-            >
-              {Object.entries(DURATION_OPTIONS_GROUPED).map(([group, options]) => (
-                <optgroup key={group} label={group}>
-                  {options.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            <input
-              type="number"
-              className="form-input"
-              value={editData.workers_required || 1}
-              onChange={(e) => setEditData({ ...editData, workers_required: parseInt(e.target.value) || 1 })}
-              placeholder="Workers"
-              min="1"
-              max="10"
-              title="Workers required"
+              value={editData.name || ''}
+              onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+              placeholder="Service Name"
             />
           </div>
+          <div className="edit-row">
+            <div className="form-group">
+              <label>Price (€)</label>
+              <input
+                type="number"
+                className="form-input"
+                value={editData.price || ''}
+                onChange={(e) => setEditData({ ...editData, price: e.target.value })}
+                placeholder="Price"
+                step="0.01"
+                min="0"
+              />
+            </div>
+            <div className="form-group">
+              <label>Duration</label>
+              <select
+                className="form-input"
+                value={editData.duration_minutes || 60}
+                onChange={(e) => setEditData({ ...editData, duration_minutes: parseInt(e.target.value) })}
+              >
+                {Object.entries(DURATION_OPTIONS_GROUPED).map(([group, options]) => (
+                  <optgroup key={group} label={group}>
+                    {options.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Workers</label>
+              <div className="workers-input-wrapper compact">
+                <button 
+                  type="button" 
+                  className="workers-btn"
+                  onClick={() => setEditData({ ...editData, workers_required: Math.max(1, (editData.workers_required || 1) - 1) })}
+                  disabled={(editData.workers_required || 1) <= 1}
+                >
+                  <i className="fas fa-minus"></i>
+                </button>
+                <span className="workers-value">{editData.workers_required || 1}</span>
+                <button 
+                  type="button" 
+                  className="workers-btn"
+                  onClick={() => setEditData({ ...editData, workers_required: (editData.workers_required || 1) + 1 })}
+                  disabled={(editData.workers_required || 1) >= 10}
+                >
+                  <i className="fas fa-plus"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          {workers.length > 0 && (
+            <WorkerRestrictions
+              restrictions={editData.worker_restrictions}
+              onChange={(restrictions) => setEditData({ ...editData, worker_restrictions: restrictions })}
+              workers={workers}
+            />
+          )}
+          
           <ImageUpload
             value={editData.image_url || ''}
             onChange={(value) => setEditData({ ...editData, image_url: value })}
@@ -364,6 +562,8 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
       </div>
     );
   }
+
+  const restrictionSummary = getRestrictionSummary();
 
   return (
     <div className="service-card">
@@ -385,9 +585,12 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               <i className="fas fa-clock"></i> {formatDuration(service.duration_minutes || service.duration)}
             </span>
           )}
-          {service.workers_required > 1 && (
-            <span className="meta-item workers">
-              <i className="fas fa-users"></i> {service.workers_required} workers
+          <span className="meta-item workers" title="Workers required for this job">
+            <i className="fas fa-user-hard-hat"></i> {service.workers_required || 1} worker{(service.workers_required || 1) !== 1 ? 's' : ''}
+          </span>
+          {restrictionSummary && (
+            <span className="meta-item restriction" title="Worker restrictions">
+              <i className="fas fa-user-lock"></i> {restrictionSummary}
             </span>
           )}
         </div>

@@ -282,9 +282,21 @@ class PostgreSQLDatabaseWrapper:
                     image_url TEXT,
                     sort_order INTEGER DEFAULT 0,
                     workers_required INTEGER DEFAULT 1,
+                    worker_restrictions JSONB DEFAULT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
+            """)
+            
+            # Add worker_restrictions column if it doesn't exist (migration)
+            cursor.execute("""
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                   WHERE table_name='services' AND column_name='worker_restrictions') THEN
+                        ALTER TABLE services ADD COLUMN worker_restrictions JSONB DEFAULT NULL;
+                    END IF;
+                END $$;
             """)
             
             # Business settings table
@@ -2417,6 +2429,7 @@ class PostgreSQLDatabaseWrapper:
             Dict with 'available' (bool), 'conflicts' (list of conflicting jobs), 'message' (str)
         """
         from datetime import timedelta
+        from src.utils.config import config
         
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -2432,9 +2445,22 @@ class PostgreSQLDatabaseWrapper:
             if hasattr(appointment_time, 'tzinfo') and appointment_time.tzinfo is not None:
                 appointment_time = appointment_time.replace(tzinfo=None)
             
+            # Get business hours for full-day job handling
+            try:
+                business_hours = config.get_business_hours(company_id=company_id)
+                end_hour = business_hours.get('end', 17)
+            except Exception:
+                end_hour = 17
+            
             # Calculate appointment end time with buffer
             buffer_minutes = 15  # Buffer between jobs
-            appointment_end = appointment_time + timedelta(minutes=duration_minutes + buffer_minutes)
+            
+            # For full-day services (8+ hours = 480 mins), the job blocks until closing time
+            if duration_minutes >= 480:
+                appointment_end = appointment_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
+                appointment_end = appointment_end + timedelta(minutes=buffer_minutes)
+            else:
+                appointment_end = appointment_time + timedelta(minutes=duration_minutes + buffer_minutes)
             
             # Get all active jobs assigned to this worker
             query = """
@@ -2472,7 +2498,13 @@ class PostgreSQLDatabaseWrapper:
                     job_time = job_time.replace(tzinfo=None)
                 
                 job_duration = job.get('duration_minutes') or 60
-                job_end = job_time + timedelta(minutes=job_duration + buffer_minutes)
+                
+                # For full-day jobs (8+ hours = 480 mins), the job blocks until closing time
+                if job_duration >= 480:
+                    job_end = job_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
+                    job_end = job_end + timedelta(minutes=buffer_minutes)
+                else:
+                    job_end = job_time + timedelta(minutes=job_duration + buffer_minutes)
                 
                 # Check for overlap
                 if appointment_time < job_end and appointment_end > job_time:
@@ -2603,22 +2635,26 @@ class PostgreSQLDatabaseWrapper:
                    price: float = 0, emergency_price: float = None,
                    currency: str = 'EUR', active: bool = True,
                    image_url: str = None, sort_order: int = 0,
-                   workers_required: int = 1,
+                   workers_required: int = 1, worker_restrictions: dict = None,
                    company_id: int = None) -> bool:
         """Add a new service for a specific company (default 1 day duration for trades)"""
+        import json
         conn = self.get_connection()
         cursor = conn.cursor()
         
         # Ensure workers_required is at least 1
         workers_required = max(1, workers_required or 1)
         
+        # Convert worker_restrictions to JSON string if provided
+        restrictions_json = json.dumps(worker_restrictions) if worker_restrictions else None
+        
         try:
             cursor.execute("""
                 INSERT INTO services (id, category, name, description, duration_minutes,
-                                    price, emergency_price, currency, active, image_url, sort_order, workers_required, company_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    price, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, company_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (service_id, category, name, description, duration_minutes,
-                  price, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, company_id))
+                  price, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, company_id))
             
             conn.commit()
             return True
@@ -2672,13 +2708,14 @@ class PostgreSQLDatabaseWrapper:
     
     def update_service(self, service_id: str, company_id: int = None, **kwargs) -> bool:
         """Update service information for a specific company"""
+        import json
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
             allowed_fields = ['category', 'name', 'description', 'duration_minutes',
                              'price', 'emergency_price', 'currency', 'active',
-                             'image_url', 'sort_order', 'workers_required']
+                             'image_url', 'sort_order', 'workers_required', 'worker_restrictions']
             
             fields = []
             values = []
@@ -2686,6 +2723,9 @@ class PostgreSQLDatabaseWrapper:
                 if key in allowed_fields:
                     if key == 'active' and isinstance(value, bool):
                         value = 1 if value else 0
+                    # Convert worker_restrictions dict to JSON
+                    if key == 'worker_restrictions' and isinstance(value, dict):
+                        value = json.dumps(value)
                     fields.append(f"{key} = %s")
                     values.append(value)
             

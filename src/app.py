@@ -2843,6 +2843,19 @@ def add_service_api():
     if image_url and image_url.startswith('data:image/'):
         image_url = upload_base64_image_to_r2(image_url, company_id, 'services')
     
+    # Validate and sanitize worker_restrictions
+    restrictions = data.get('worker_restrictions')
+    if restrictions and isinstance(restrictions, dict):
+        valid_types = ['all', 'only', 'except']
+        if restrictions.get('type') not in valid_types:
+            restrictions = None
+        elif restrictions.get('type') != 'all' and not restrictions.get('worker_ids'):
+            restrictions = None  # 'only' and 'except' require worker_ids
+        elif restrictions.get('type') == 'all':
+            restrictions = None  # 'all' doesn't need to be stored
+    else:
+        restrictions = None
+    
     # Build sanitized service data
     sanitized_data = {
         'name': name,
@@ -2851,7 +2864,8 @@ def add_service_api():
         'image_url': image_url if image_url else None,
         'category': data.get('category', 'General'),
         'description': data.get('description', '').strip() if data.get('description') else None,
-        'workers_required': max(1, int(data.get('workers_required', 1)) if data.get('workers_required') else 1)
+        'workers_required': max(1, int(data.get('workers_required', 1)) if data.get('workers_required') else 1),
+        'worker_restrictions': restrictions
     }
     
     success = settings_mgr.add_service(sanitized_data, company_id=company_id)
@@ -2901,6 +2915,22 @@ def manage_service_api(service_id):
                 data['workers_required'] = max(1, workers)
             except (ValueError, TypeError):
                 data['workers_required'] = 1
+        
+        # Handle worker_restrictions if provided
+        if 'worker_restrictions' in data:
+            # Validate structure: {type: 'all'|'only'|'except', worker_ids: [...]}
+            restrictions = data.get('worker_restrictions')
+            if restrictions and isinstance(restrictions, dict):
+                valid_types = ['all', 'only', 'except']
+                if restrictions.get('type') not in valid_types:
+                    restrictions = None
+                elif restrictions.get('type') != 'all' and not restrictions.get('worker_ids'):
+                    restrictions = None  # 'only' and 'except' require worker_ids
+                elif restrictions.get('type') == 'all':
+                    restrictions = None  # 'all' doesn't need to be stored
+            else:
+                restrictions = None
+            data['worker_restrictions'] = restrictions
         
         # Upload image to R2 if it's base64
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
