@@ -2518,10 +2518,24 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
             # User confirmed name spelling - LLM will call lookup_customer
             likely_needs_tool = True
             detected_intent = "NAME_SPELLING_CONFIRMED"
-            checking_msg = "Grand, one moment."
+            checking_msg = random.choice([
+                "Grand, one moment.",
+                "Got it, just checking.",
+                "Perfect, one moment.",
+                "Grand, let me check that.",
+            ])
             print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CONFIRMED (will lookup customer)")
         elif is_phone_address_confirmation:
-            print(f"   ℹ️ [PRE-CHECK] Skipping: Phone/address confirmation (no slow tool call)")
+            # User confirmed phone/address - play a short acknowledgment filler
+            # This helps fill the gap while LLM processes
+            likely_needs_tool = True
+            detected_intent = "PHONE_ADDRESS_CONFIRMED"
+            checking_msg = random.choice([
+                "Grand.",
+                "Perfect.",
+                "Great.",
+            ])
+            print(f"   ✅ [PRE-CHECK] Detected: PHONE/ADDRESS CONFIRMED (short acknowledgment)")
     
     # Detect service/job description (when user describes what they need done)
     # When user describes a problem like "I have a leak", the LLM needs time to process

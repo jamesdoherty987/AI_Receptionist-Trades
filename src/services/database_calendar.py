@@ -296,9 +296,16 @@ class DatabaseCalendarService:
                 logger.warning(f"[DB_CAL] Error getting default duration: {e}")
                 duration_minutes = 1440  # 1 day default for trades
         
+        # Generate a unique event ID using timestamp + random suffix to avoid collisions
+        # when multiple bookings are made at the same time slot for different customers
+        import random
+        import string
+        random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        event_id = f"db_{int(start_time.timestamp())}_{random_suffix}"
+        
         # Generate a fake "event" dict for compatibility
         event = {
-            'id': f"db_{int(start_time.timestamp())}",
+            'id': event_id,
             'summary': summary,
             'description': description,
             'start': {'dateTime': start_time.isoformat()},

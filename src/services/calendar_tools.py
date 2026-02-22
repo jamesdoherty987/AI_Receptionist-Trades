@@ -2637,6 +2637,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     )
                     logger.info(f"[BOOK_JOB] Booking ID: {booking_id}")
                     
+                    # Check if booking was created successfully
+                    if not booking_id:
+                        logger.error(f"[BOOK_JOB] ❌ Failed to create booking in database")
+                        return {
+                            "success": False,
+                            "error": "Failed to save booking to database. Please try again."
+                        }
+                    
                     # Add note with job details including matched service and original description
                     db.add_appointment_note(
                         booking_id, 

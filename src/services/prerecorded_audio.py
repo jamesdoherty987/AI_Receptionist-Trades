@@ -31,16 +31,33 @@ from typing import Optional
 # Filler phrase definitions - must match what's generated
 # These are the phrases that will be pre-recorded and played instantly
 FILLER_PHRASES = {
-    # Generic fillers
+    # Generic fillers - used for most tool calls
     "one_moment": "One moment.",
     "let_me_check": "Let me check that for you.",
     "bear_with_me": "Bear with me one second.",
     "just_a_moment": "Just a moment.",
     "let_me_look": "Let me have a look.",
     "grand_one_moment": "Grand, one moment.",  # Irish-style acknowledgment for name confirmation
+    "sure_one_sec": "Sure, one second.",
+    "okay_let_me_see": "Okay, let me see.",
+    "right_one_moment": "Right, one moment.",
+    "give_me_a_sec": "Give me a second.",
+    "let_me_pull_that_up": "Let me pull that up.",
+    # Name/spelling confirmation fillers
+    "got_it_checking": "Got it, just checking.",
+    "perfect_one_moment": "Perfect, one moment.",
+    "grand_let_me_check": "Grand, let me check that.",
+    # Number/eircode confirmation fillers  
+    "thanks_checking": "Thanks, just checking.",
+    "okay_checking": "Okay, checking that now.",
+    # Short acknowledgment fillers (for quick confirmations)
+    "grand": "Grand.",
+    "perfect": "Perfect.",
+    "great": "Great.",
     # Booking-specific fillers
     "let_me_book": "Let me book that for you, one moment.",
     "let_me_confirm": "Let me confirm that for you, one moment.",
+    "booking_that_now": "Booking that now.",
     # Transfer fillers
     "transferring": "Transferring you now.",
     "connecting": "Connecting you now.",
@@ -50,8 +67,12 @@ FILLER_PHRASES = {
 }
 
 # Context-specific filler groups
-BOOKING_FILLERS = ["let_me_book", "let_me_confirm"]
-GENERIC_FILLERS = ["one_moment", "let_me_check", "bear_with_me", "just_a_moment", "let_me_look"]
+BOOKING_FILLERS = ["let_me_book", "let_me_confirm", "booking_that_now"]
+GENERIC_FILLERS = ["one_moment", "let_me_check", "bear_with_me", "just_a_moment", "let_me_look", 
+                   "sure_one_sec", "okay_let_me_see", "right_one_moment", "give_me_a_sec", "let_me_pull_that_up"]
+NAME_CONFIRMATION_FILLERS = ["got_it_checking", "perfect_one_moment", "grand_let_me_check", "grand_one_moment"]
+NUMBER_CONFIRMATION_FILLERS = ["thanks_checking", "okay_checking", "one_moment", "let_me_check"]
+SHORT_ACKNOWLEDGMENT_FILLERS = ["grand", "perfect", "great"]
 TRANSFER_FILLERS = ["transferring", "connecting", "let_me_connect"]
 
 # R2 folder for filler audio
@@ -196,17 +217,31 @@ def preload_fillers():
         _loading_in_progress = False
 
 
-def get_random_filler_id(tool_name: str = None) -> str:
+def get_random_filler_id(tool_name: str = None, context: str = None) -> str:
     """Get a random filler phrase ID based on context (only from loaded cache)
     
     Args:
         tool_name: Optional tool name to select context-appropriate filler
                    - book_appointment, book_job: Use booking-specific fillers
                    - transfer_to_human: Use transfer filler
+                   - lookup_customer: Use name confirmation fillers
                    - Others: Use generic fillers
+        context: Optional context hint for filler selection
+                 - "name_confirmed": User confirmed name spelling
+                 - "number_confirmed": User confirmed phone/eircode
     """
     try:
-        # Select appropriate filler group based on tool
+        # Select appropriate filler group based on context hint first
+        if context == "name_confirmed":
+            available = [f for f in NAME_CONFIRMATION_FILLERS if f in _audio_cache]
+            if available:
+                return random.choice(available)
+        elif context == "number_confirmed":
+            available = [f for f in NUMBER_CONFIRMATION_FILLERS if f in _audio_cache]
+            if available:
+                return random.choice(available)
+        
+        # Select based on tool name
         if tool_name in ["book_appointment", "book_job"]:
             # Booking-specific fillers
             available = [f for f in BOOKING_FILLERS if f in _audio_cache]
@@ -215,6 +250,11 @@ def get_random_filler_id(tool_name: str = None) -> str:
         elif tool_name == "transfer_to_human":
             # Transfer filler
             available = [f for f in TRANSFER_FILLERS if f in _audio_cache]
+            if available:
+                return random.choice(available)
+        elif tool_name == "lookup_customer":
+            # Name confirmation fillers
+            available = [f for f in NAME_CONFIRMATION_FILLERS if f in _audio_cache]
             if available:
                 return random.choice(available)
         
@@ -336,10 +376,10 @@ async def generate_filler_audio_elevenlabs(phrase_id: str, text: str) -> bytes:
     
     audio_chunks = []
     
-    # websockets v12+ uses extra_headers instead of additional_headers
+    # websockets 12.0+ uses additional_headers (not extra_headers)
     async with websockets.connect(
         uri,
-        extra_headers={"xi-api-key": api_key},
+        additional_headers={"xi-api-key": api_key},
         open_timeout=15,
     ) as ws:
         # Initialize with same voice settings as live TTS
