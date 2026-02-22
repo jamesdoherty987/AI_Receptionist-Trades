@@ -1533,9 +1533,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 match_score = 0.95 + (last_similarity * 0.05)  # High confidence
                                 match_reason = f"phone+first_name (first:{first_similarity:.0%}, last:{last_similarity:.0%})"
                             
-                            # Strategy 2: Phone matches + full name 80%+ similar
+                            # Strategy 2: Phone matches + full name 85%+ similar
                             # Catches: minor ASR errors across the name
-                            elif phone_matches and full_similarity >= 0.80:
+                            # Note: 85% threshold prevents "Joe Smith" matching "John Smith" (84%)
+                            elif phone_matches and full_similarity >= 0.85:
                                 match_score = full_similarity + 0.10  # Boost for phone match
                                 match_reason = f"phone+name (full:{full_similarity:.0%})"
                             

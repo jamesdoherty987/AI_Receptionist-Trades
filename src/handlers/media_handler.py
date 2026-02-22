@@ -346,12 +346,15 @@ async def media_handler(ws):
                                     except Exception as e:
                                         print(f"   🔊 [AUDIO_TASK] ⚠️ Error (non-fatal): {e}")
                                 
-                                # Start both tasks - prefetch first so it starts immediately
-                                print(f"   ⚡ [PARALLEL] Creating prefetch task (will run tool calls)...")
-                                prefetch_task = asyncio.create_task(prefetch_remaining())
-                                
+                                # Start both tasks - audio FIRST for instant playback, then prefetch
                                 print(f"   ⚡ [PARALLEL] Creating audio task (will send to Twilio)...")
                                 audio_task = asyncio.create_task(send_audio_task())
+                                
+                                # Yield control so audio task can start immediately
+                                await asyncio.sleep(0)
+                                
+                                print(f"   ⚡ [PARALLEL] Creating prefetch task (will run tool calls)...")
+                                prefetch_task = asyncio.create_task(prefetch_remaining())
                                 
                                 print(f"   ⚡ [PARALLEL] Both tasks now running concurrently!")
                                 print(f"   ⚡ [PARALLEL] Waiting for audio task to complete...")
