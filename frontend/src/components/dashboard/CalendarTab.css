@@ -76,6 +76,42 @@
   gap: 0.75rem;
 }
 
+/* View Toggle */
+.view-toggle {
+  display: flex;
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.view-btn {
+  padding: 0.5rem 0.875rem;
+  border: none;
+  background: white;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  transition: all 0.2s;
+}
+
+.view-btn:first-child {
+  border-right: 1px solid var(--border-color);
+}
+
+.view-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--accent-blue);
+}
+
+.view-btn.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
 /* Worker Filter */
 .worker-filter-select {
   padding: 0.625rem 1rem;
@@ -662,5 +698,271 @@
 
   .empty-events p {
     font-size: 0.85rem;
+  }
+}
+
+
+/* ==================== WEEK VIEW ==================== */
+.week-view-container {
+  flex: 1;
+  background: white;
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: 60px repeat(7, 1fr);
+  height: 100%;
+  min-height: 600px;
+  overflow-y: auto;
+}
+
+/* Time Column */
+.time-column {
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.time-header {
+  height: 60px;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.time-slot-label {
+  height: 50px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 0 8px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  transform: translateY(-8px);
+}
+
+/* Day Columns */
+.day-column {
+  border-right: 1px solid var(--border-color);
+  position: relative;
+}
+
+.day-column:last-child {
+  border-right: none;
+}
+
+.day-column.today {
+  background: rgba(59, 130, 246, 0.03);
+}
+
+.week-day-header {
+  height: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 2px solid var(--border-color);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.week-day-header:hover {
+  background: var(--bg-secondary);
+}
+
+.week-day-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.week-day-number {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.week-day-number.today-number {
+  background: var(--accent-blue);
+  color: white;
+}
+
+/* Day Slots */
+.day-slots {
+  position: relative;
+  height: calc(15 * 50px); /* 15 hours * 50px */
+}
+
+.time-slot {
+  height: 50px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.time-slot:nth-child(even) {
+  background: rgba(0, 0, 0, 0.01);
+}
+
+/* Week Events */
+.week-event {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  border-radius: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  overflow: hidden;
+  border-left: 3px solid;
+  transition: transform 0.15s, box-shadow 0.15s;
+  z-index: 1;
+}
+
+.week-event:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+}
+
+.week-event-time {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: white;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.week-event-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.week-event-service {
+  font-size: 0.65rem;
+  color: white;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.week-event.full-day {
+  opacity: 0.85;
+}
+
+/* Time Range Display */
+.time-range {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--accent-blue);
+}
+
+/* Responsive Week View */
+@media (max-width: 1024px) {
+  .week-grid {
+    grid-template-columns: 50px repeat(7, 1fr);
+    min-height: 500px;
+  }
+  
+  .time-slot-label {
+    font-size: 0.65rem;
+    padding: 0 4px;
+  }
+  
+  .week-day-name {
+    font-size: 0.65rem;
+  }
+  
+  .week-day-number {
+    font-size: 1rem;
+    width: 30px;
+    height: 30px;
+  }
+  
+  .week-event {
+    padding: 2px 4px;
+  }
+  
+  .week-event-time {
+    font-size: 0.6rem;
+  }
+  
+  .week-event-title {
+    font-size: 0.65rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .view-toggle {
+    order: -1;
+    width: 100%;
+  }
+  
+  .view-btn {
+    flex: 1;
+    justify-content: center;
+  }
+  
+  .week-grid {
+    grid-template-columns: 40px repeat(7, 1fr);
+    min-height: 400px;
+  }
+  
+  .time-slot-label {
+    font-size: 0.55rem;
+  }
+  
+  .week-day-header {
+    height: 50px;
+  }
+  
+  .week-day-name {
+    font-size: 0.55rem;
+  }
+  
+  .week-day-number {
+    font-size: 0.85rem;
+    width: 24px;
+    height: 24px;
+  }
+  
+  .time-slot {
+    height: 40px;
+  }
+  
+  .day-slots {
+    height: calc(15 * 40px);
+  }
+  
+  .week-event {
+    left: 2px;
+    right: 2px;
+    padding: 2px 3px;
+    border-left-width: 2px;
+  }
+  
+  .week-event-time {
+    font-size: 0.55rem;
+  }
+  
+  .week-event-title {
+    font-size: 0.6rem;
+  }
+  
+  .week-event-service {
+    display: none;
   }
 }
