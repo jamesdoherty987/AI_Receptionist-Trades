@@ -1233,6 +1233,13 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         day_slots = worker_available_slots
                         logger.debug(f"   After worker filter: {len(day_slots)} slots with available workers")
                     
+                    # For full-day services (8+ hours), only keep ONE slot per day (start of business day)
+                    # This prevents offering hourly slots that can't actually be booked
+                    if day_slots and service_duration >= 480:
+                        # Keep only the first slot (start of business day)
+                        day_slots = [day_slots[0]]
+                        logger.info(f"[CHECK_AVAIL] Full-day service - reduced to 1 slot per day: {day_slots[0].strftime('%I:%M %p')}")
+                    
                     if day_slots:
                         day_key = current_date.strftime('%Y-%m-%d')
                         slots_by_day[day_key] = day_slots
@@ -1270,10 +1277,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 first_time = day_slots[0].strftime('%I %p').lstrip('0').lower().replace(' 0', ' ')
                 last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower().replace(' 0', ' ')
                 
-                # Note: For jobs requiring multiple hours, the last bookable slot is earlier
-                # than last_time. The AI should clarify this when confirming bookings.
-                
-                if len(day_slots) >= 6:
+                # For full-day services (8+ hours), describe as "full day" instead of time range
+                if service_duration >= 480:  # 8 hours or more
+                    summary = f"{day_name}: full day available"
+                elif len(day_slots) >= 6:
                     # Many slots available - describe as a range
                     # Use trades-friendly language: "free from X to Y" instead of "appointments starting from"
                     summary = f"{day_name}: free from {first_time} to {last_time}"
@@ -2255,11 +2262,29 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             service_duration = matched_service.get('duration_minutes', 60)
             logger.info(f"[BOOK_JOB] Matched service: {matched_service_name}, Duration: {service_duration} mins")
             
+            # CRITICAL: For full-day services (8+ hours), auto-adjust to start of business day
+            # This prevents the confusing loop of "5pm not available, try 4pm, 4pm not available..."
+            if service_duration >= 480:  # 8 hours or more (full day job)
+                original_time = parsed_time
+                parsed_time = parsed_time.replace(hour=start_hour, minute=0, second=0, microsecond=0)
+                logger.info(f"[BOOK_JOB] Full-day service ({service_duration} mins) - auto-adjusted time from {original_time.strftime('%I:%M %p')} to {parsed_time.strftime('%I:%M %p')} (start of business day)")
+            
             # CRITICAL: Check if the job can be completed before closing time
-            job_end_time = parsed_time + timedelta(minutes=service_duration)
+            # For full-day services (8+ hours = 480 mins), we only need to check if the DAY is free
+            # The duration is meant to BLOCK the whole day, not require that many hours of work
+            if service_duration >= 480:
+                # Full-day job - just needs the business day to be free
+                # The job "ends" at closing time for booking purposes
+                job_end_time = parsed_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
+                logger.info(f"[BOOK_JOB] Full-day job ({service_duration} mins) - checking if day is free (blocks {start_hour}:00 - {end_hour}:00)")
+            else:
+                job_end_time = parsed_time + timedelta(minutes=service_duration)
+            
             closing_time = parsed_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
             
+            # For non-full-day jobs, check if job extends past closing time
             if job_end_time > closing_time:
+                
                 # Calculate the latest possible start time
                 latest_start_hour = end_hour - (service_duration // 60)
                 latest_start_minute = 60 - (service_duration % 60) if service_duration % 60 > 0 else 0

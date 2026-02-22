@@ -62,7 +62,8 @@ def format_for_tts_spelling(text: str) -> str:
     Examples:
         "D-O-2-W-R-9-7" -> "D - O - 2 - W - R - 9 - 7"
         "J-O-H-N" -> "J - O - H - N"
-        "085 263 5954" -> "0 8 5,  2 6 3,  5 9 5 4"
+        "085 263 5954" -> "0 8 5 ... 2 6 3 ... 5 9 5 4"
+        "V95H5P2" -> "V 9 5 H 5 P 2"
     """
     if not text:
         return text
@@ -78,14 +79,38 @@ def format_for_tts_spelling(text: str) -> str:
     
     result = spelled_pattern.sub(add_spaces_to_spelled, text)
     
-    # Also handle phone numbers - add slight pauses between digit groups
-    # Pattern: 3+ digits together (phone number segments)
+    # Handle Irish phone numbers (085 263 5954 format) - space out each digit group
+    # Pattern: digit groups separated by spaces that look like phone numbers
+    irish_phone_pattern = re.compile(r'\b(0\d{2})\s+(\d{3})\s+(\d{4})\b')
+    
+    def space_irish_phone(match):
+        g1, g2, g3 = match.groups()
+        # Space out each digit with pauses between groups
+        spaced_g1 = ' '.join(g1)
+        spaced_g2 = ' '.join(g2)
+        spaced_g3 = ' '.join(g3)
+        return f"{spaced_g1} ... {spaced_g2} ... {spaced_g3}"
+    
+    result = irish_phone_pattern.sub(space_irish_phone, result)
+    
+    # Handle eircodes (V95H5P2 or V95 H5P2 format) - space out each character
+    # Pattern: letter + 2 digits + optional space + 4 alphanumeric
+    eircode_pattern = re.compile(r'\b([A-Z]\d{2})\s?([A-Z0-9]{4})\b', re.IGNORECASE)
+    
+    def space_eircode(match):
+        part1, part2 = match.groups()
+        # Space out each character
+        spaced_part1 = ' '.join(part1.upper())
+        spaced_part2 = ' '.join(part2.upper())
+        return f"{spaced_part1} ... {spaced_part2}"
+    
+    result = eircode_pattern.sub(space_eircode, result)
+    
+    # Handle any remaining digit sequences (3+ digits together)
     phone_pattern = re.compile(r'\b(\d{3,})\b')
     
     def space_out_digits(match):
         digits = match.group(0)
-        # Add spaces between digits for clearer reading
-        # Group in 3s with commas for natural pauses
         if len(digits) >= 7:  # Likely a phone number
             spaced = ' '.join(digits)
             return spaced

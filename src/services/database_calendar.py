@@ -112,10 +112,17 @@ class DatabaseCalendarService:
             if appt_time and day_start <= appt_time < day_end:
                 # Get the booking's duration (use stored duration or default)
                 booking_duration = booking.get('duration_minutes', default_duration)
+                
+                # For full-day bookings (8+ hours = 480 mins), the booking blocks until closing time
+                if booking_duration >= 480:
+                    booking_end = appt_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
+                else:
+                    booking_end = appt_time + timedelta(minutes=booking_duration)
+                
                 day_bookings.append({
                     'start': appt_time,
                     'duration': booking_duration,
-                    'end': appt_time + timedelta(minutes=booking_duration)
+                    'end': booking_end
                 })
         
         logger.info(f"[DB_CAL] Bookings on {day_start.strftime('%Y-%m-%d')}: {len(day_bookings)}")
@@ -132,7 +139,13 @@ class DatabaseCalendarService:
                 continue
             
             # Check if this slot would fit (service duration only, no buffer)
-            slot_end = current_slot + timedelta(minutes=slot_duration)
+            # For full-day services (8+ hours = 480 mins), the job blocks the whole business day
+            # but doesn't actually require that many continuous hours
+            if slot_duration >= 480:
+                # Full-day job - ends at closing time
+                slot_end = end_time
+            else:
+                slot_end = current_slot + timedelta(minutes=slot_duration)
             
             # Don't allow booking that extends past business hours
             if slot_end > end_time:
@@ -157,6 +170,14 @@ class DatabaseCalendarService:
             current_slot += timedelta(minutes=30)  # Check every 30 minutes for more granular slots
         
         logger.info(f"[DB_CAL] Available slots found: {len(available_slots)}")
+        
+        # For full-day services (8+ hours), only return ONE slot per day (start of business day)
+        # This prevents offering hourly slots that can't actually be booked
+        if slot_duration >= 480 and len(available_slots) > 0:
+            # Keep only the first slot (start of business day)
+            available_slots = [available_slots[0]]
+            logger.info(f"[DB_CAL] Full-day service ({slot_duration} mins) - reduced to 1 slot: {available_slots[0].strftime('%I:%M %p')}")
+        
         return available_slots
     
     def check_availability(self, start_time: datetime, duration_minutes: int = None) -> bool:
@@ -192,8 +213,20 @@ class DatabaseCalendarService:
         if duration_minutes is None:
             duration_minutes = default_duration
         
+        # Get business hours for full-day job handling
+        try:
+            business_hours = config.get_business_hours(company_id=self.company_id)
+            end_hour = business_hours.get('end', 17)
+        except Exception:
+            end_hour = 17
+        
         # Calculate slot end (no buffer)
-        slot_end = start_time + timedelta(minutes=duration_minutes)
+        # For full-day services (8+ hours = 480 mins), the job blocks until closing time
+        if duration_minutes >= 480:
+            slot_end = start_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
+            logger.info(f"[DB_CAL] Full-day job ({duration_minutes} mins) - checking if day is free until {end_hour}:00")
+        else:
+            slot_end = start_time + timedelta(minutes=duration_minutes)
         logger.info(f"[DB_CAL] Checking slot: {start_time} to {slot_end}")
         
         # Get all non-cancelled bookings - MUST filter by company_id for data isolation
@@ -216,7 +249,12 @@ class DatabaseCalendarService:
             
             # Get the booking's duration (use stored duration or default)
             booking_duration = booking.get('duration_minutes', default_duration)
-            booking_end = appt_time + timedelta(minutes=booking_duration)
+            
+            # For full-day bookings (8+ hours = 480 mins), the booking blocks until closing time
+            if booking_duration >= 480:
+                booking_end = appt_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
+            else:
+                booking_end = appt_time + timedelta(minutes=booking_duration)
             
             # Check for overlap
             if (start_time < booking_end and slot_end > appt_time):
