@@ -80,3 +80,23 @@ export const debounce = (func, wait) => {
     timeout = setTimeout(later, wait);
   };
 };
+
+/**
+ * Get proxied image URL to avoid CORS/ad-blocker issues with R2 storage.
+ * If the URL is from R2, routes it through our proxy endpoint.
+ * @param {string} url - The original image URL
+ * @returns {string} - The proxied URL or original if not R2
+ */
+export const getProxiedImageUrl = (url) => {
+  if (!url) return '';
+  
+  // Check if it's an R2 URL that needs proxying
+  if (url.includes('r2.dev') || url.includes('r2.cloudflarestorage.com')) {
+    // Use the proxy endpoint
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    return `${apiBase}/api/image-proxy?url=${encodeURIComponent(url)}`;
+  }
+  
+  // Return original URL for non-R2 images (base64, other CDNs, etc.)
+  return url;
+};

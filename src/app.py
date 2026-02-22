@@ -501,6 +501,47 @@ def health():
     return {"status": "healthy", "service": "AI Receptionist"}
 
 
+@app.route("/api/image-proxy", methods=["GET"])
+def image_proxy():
+    """
+    Proxy images from R2 storage to avoid CORS/ad-blocker issues.
+    Usage: /api/image-proxy?url=https://...r2.dev/path/to/image.jpg
+    """
+    import requests
+    from flask import Response
+    
+    image_url = request.args.get('url')
+    if not image_url:
+        return jsonify({"error": "Missing url parameter"}), 400
+    
+    # Only allow R2 URLs for security
+    allowed_domains = ['r2.dev', 'r2.cloudflarestorage.com']
+    if not any(domain in image_url for domain in allowed_domains):
+        return jsonify({"error": "Invalid image URL"}), 403
+    
+    try:
+        # Fetch the image from R2
+        resp = requests.get(image_url, timeout=10, stream=True)
+        if resp.status_code != 200:
+            return jsonify({"error": "Image not found"}), 404
+        
+        # Get content type from response or default to jpeg
+        content_type = resp.headers.get('Content-Type', 'image/jpeg')
+        
+        # Return the image with proper headers
+        return Response(
+            resp.content,
+            mimetype=content_type,
+            headers={
+                'Cache-Control': 'public, max-age=31536000',
+                'Access-Control-Allow-Origin': '*'
+            }
+        )
+    except Exception as e:
+        print(f"[IMAGE_PROXY] Error fetching image: {e}")
+        return jsonify({"error": "Failed to fetch image"}), 500
+
+
 @app.route("/api/config-check", methods=["GET"])
 @login_required
 def config_check():

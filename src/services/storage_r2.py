@@ -85,14 +85,16 @@ class R2Storage:
                 content_type = 'application/octet-stream'
         
         try:
-            # Upload to R2
+            # Upload to R2 with CORS-friendly headers
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
                 Key=key,
                 Body=file_data,
                 ContentType=content_type,
                 # Make object publicly readable
-                ACL='public-read'
+                ACL='public-read',
+                # Add cache control for better browser handling
+                CacheControl='public, max-age=31536000',
             )
             
             # Return public URL
