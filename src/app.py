@@ -2850,7 +2850,8 @@ def add_service_api():
         'duration_minutes': duration,
         'image_url': image_url if image_url else None,
         'category': data.get('category', 'General'),
-        'description': data.get('description', '').strip() if data.get('description') else None
+        'description': data.get('description', '').strip() if data.get('description') else None,
+        'workers_required': max(1, int(data.get('workers_required', 1)) if data.get('workers_required') else 1)
     }
     
     success = settings_mgr.add_service(sanitized_data, company_id=company_id)
@@ -2892,6 +2893,14 @@ def manage_service_api(service_id):
                 data['duration_minutes'] = duration if duration > 0 else 1440
             except (ValueError, TypeError):
                 data['duration_minutes'] = 1440
+        
+        # Sanitize workers_required if provided
+        if 'workers_required' in data:
+            try:
+                workers = int(data.get('workers_required', 1)) if data.get('workers_required') else 1
+                data['workers_required'] = max(1, workers)
+            except (ValueError, TypeError):
+                data['workers_required'] = 1
         
         # Upload image to R2 if it's base64
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):

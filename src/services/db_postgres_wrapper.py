@@ -281,6 +281,7 @@ class PostgreSQLDatabaseWrapper:
                     active INTEGER DEFAULT 1,
                     image_url TEXT,
                     sort_order INTEGER DEFAULT 0,
+                    workers_required INTEGER DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -578,6 +579,20 @@ class PostgreSQLDatabaseWrapper:
                     print(f"[SUCCESS] Added {column_name} column to companies table")
                 except Exception as e:
                     print(f"[WARNING] Could not add {column_name} column: {e}")
+        
+        # ============================================
+        # Add workers_required column to services table
+        # ============================================
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_name = 'services' AND column_name = 'workers_required'
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE services ADD COLUMN workers_required INTEGER DEFAULT 1")
+                print("[SUCCESS] Added workers_required column to services table")
+            except Exception as e:
+                print(f"[WARNING] Could not add workers_required to services: {e}")
         
         # ============================================
         # Ensure all companies have a General Service
@@ -2588,18 +2603,22 @@ class PostgreSQLDatabaseWrapper:
                    price: float = 0, emergency_price: float = None,
                    currency: str = 'EUR', active: bool = True,
                    image_url: str = None, sort_order: int = 0,
+                   workers_required: int = 1,
                    company_id: int = None) -> bool:
         """Add a new service for a specific company (default 1 day duration for trades)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         
+        # Ensure workers_required is at least 1
+        workers_required = max(1, workers_required or 1)
+        
         try:
             cursor.execute("""
                 INSERT INTO services (id, category, name, description, duration_minutes,
-                                    price, emergency_price, currency, active, image_url, sort_order, company_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    price, emergency_price, currency, active, image_url, sort_order, workers_required, company_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (service_id, category, name, description, duration_minutes,
-                  price, emergency_price, currency, 1 if active else 0, image_url, sort_order, company_id))
+                  price, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, company_id))
             
             conn.commit()
             return True
@@ -2659,7 +2678,7 @@ class PostgreSQLDatabaseWrapper:
         try:
             allowed_fields = ['category', 'name', 'description', 'duration_minutes',
                              'price', 'emergency_price', 'currency', 'active',
-                             'image_url', 'sort_order']
+                             'image_url', 'sort_order', 'workers_required']
             
             fields = []
             values = []

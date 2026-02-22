@@ -1132,13 +1132,19 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             logger.info(f"[CHECK_AVAIL] start_date={start_date_str}, end_date={end_date_str}, service_type={service_type}, job_description={job_description}")
             
-            # Get service duration - prefer job_description over service_type for trades
+            # Get service duration and workers_required - prefer job_description over service_type for trades
             if job_description:
-                service_duration = get_service_duration(job_description, company_id=company_id)
-                logger.info(f"[CHECK_AVAIL] Service duration from job_description '{job_description}': {service_duration} mins")
+                match_result = match_service(job_description, company_id=company_id)
+                matched_service = match_result['service']
+                service_duration = matched_service.get('duration_minutes', 60)
+                workers_required = matched_service.get('workers_required', 1) or 1
+                logger.info(f"[CHECK_AVAIL] Service from job_description '{job_description}': {service_duration} mins, {workers_required} worker(s)")
             else:
-                service_duration = get_service_duration(service_type, company_id=company_id)
-                logger.info(f"[CHECK_AVAIL] Service duration from service_type: {service_duration} mins")
+                match_result = match_service(service_type, company_id=company_id)
+                matched_service = match_result['service']
+                service_duration = matched_service.get('duration_minutes', 60)
+                workers_required = matched_service.get('workers_required', 1) or 1
+                logger.info(f"[CHECK_AVAIL] Service from service_type: {service_duration} mins, {workers_required} worker(s)")
             
             # Special handling for "this week" - today through Friday
             if start_date_str and 'this week' in start_date_str.lower():
@@ -1217,7 +1223,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         # Re-raise so retry logic in google_calendar handles it
                         raise
                     
-                    # If company has workers, filter slots to only those where a worker is available
+                    # If company has workers, filter slots to only those where enough workers are available
                     if day_slots and has_workers and db:
                         worker_available_slots = []
                         for slot in day_slots:
@@ -1227,11 +1233,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 company_id=company_id
                             )
                             # None means error - include slot (fail open for availability check)
-                            # Empty list means no workers - exclude slot
-                            if available_workers is None or len(available_workers) > 0:
+                            # Check if enough workers are available for this service
+                            if available_workers is None or len(available_workers) >= workers_required:
                                 worker_available_slots.append(slot)
                         day_slots = worker_available_slots
-                        logger.debug(f"   After worker filter: {len(day_slots)} slots with available workers")
+                        logger.debug(f"   After worker filter (need {workers_required}): {len(day_slots)} slots with enough workers")
                     
                     # For full-day services (8+ hours), only keep ONE slot per day (start of business day)
                     # This prevents offering hourly slots that can't actually be booked
@@ -2320,9 +2326,13 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "error": f"That time slot is already booked or doesn't have enough time for this service ({service_duration} mins). Please check availability and suggest another time."
                 }
             
+            # Get workers_required from matched service (default 1)
+            workers_required = matched_service.get('workers_required', 1) or 1
+            logger.info(f"[BOOK_JOB] Service requires {workers_required} worker(s)")
+            
             # Check if company has workers configured
             has_workers = db.has_workers(company_id) if db else False
-            assigned_worker = None
+            assigned_workers = []
             logger.info(f"[BOOK_JOB] Company has workers: {has_workers}")
             
             if has_workers:
@@ -2339,17 +2349,24 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     # Database error - log warning but proceed without worker assignment
                     # Better to book without worker than fail the booking entirely
                     logger.warning(f"[BOOK_JOB] Worker lookup failed due to database error - proceeding without worker assignment")
-                elif len(available_workers) == 0:
-                    # No workers available at this time (not an error, just busy)
-                    logger.warning(f"[BOOK_JOB] No workers available at this time")
-                    return {
-                        "success": False,
-                        "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time when a worker is free."
-                    }
+                elif len(available_workers) < workers_required:
+                    # Not enough workers available at this time
+                    logger.warning(f"[BOOK_JOB] Not enough workers available: need {workers_required}, have {len(available_workers)}")
+                    if len(available_workers) == 0:
+                        return {
+                            "success": False,
+                            "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time when a worker is free."
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "error": f"This job requires {workers_required} workers but only {len(available_workers)} {'is' if len(available_workers) == 1 else 'are'} available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time."
+                        }
                 else:
-                    # Select the first available worker (could be enhanced to pick by specialty)
-                    assigned_worker = available_workers[0]
-                    logger.info(f"[BOOK_JOB] Auto-assigning worker: {assigned_worker['name']} (ID: {assigned_worker['id']})")
+                    # Select the required number of workers
+                    assigned_workers = available_workers[:workers_required]
+                    worker_names = ', '.join([w['name'] for w in assigned_workers])
+                    logger.info(f"[BOOK_JOB] Auto-assigning {len(assigned_workers)} worker(s): {worker_names}")
             
             # Create calendar event with trades details
             summary = f"{urgency_level.upper()}: {job_description[:50]} - {customer_name}"
@@ -2429,17 +2446,18 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         created_by="system"
                     )
                     
-                    # Auto-assign worker if one was selected
-                    if assigned_worker:
-                        try:
-                            logger.info(f"[BOOK_JOB] Assigning worker {assigned_worker['name']} to booking {booking_id}")
-                            assignment_result = db.assign_worker_to_job(booking_id, assigned_worker['id'])
-                            if assignment_result.get('success'):
-                                logger.info(f"[BOOK_JOB] ✅ Worker assigned successfully")
-                            else:
-                                logger.warning(f"[BOOK_JOB] ⚠️ Failed to assign worker: {assignment_result.get('error')}")
-                        except Exception as worker_err:
-                            logger.warning(f"[BOOK_JOB] ⚠️ Could not assign worker: {worker_err}")
+                    # Auto-assign workers if any were selected
+                    if assigned_workers:
+                        for worker in assigned_workers:
+                            try:
+                                logger.info(f"[BOOK_JOB] Assigning worker {worker['name']} to booking {booking_id}")
+                                assignment_result = db.assign_worker_to_job(booking_id, worker['id'])
+                                if assignment_result.get('success'):
+                                    logger.info(f"[BOOK_JOB] ✅ Worker {worker['name']} assigned successfully")
+                                else:
+                                    logger.warning(f"[BOOK_JOB] ⚠️ Failed to assign worker {worker['name']}: {assignment_result.get('error')}")
+                            except Exception as worker_err:
+                                logger.warning(f"[BOOK_JOB] ⚠️ Could not assign worker {worker['name']}: {worker_err}")
                     
                     # Update client description
                     try:
@@ -2474,7 +2492,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 logger.warning(f"[BOOK_JOB] No database available - booking not saved to DB")
             
             # Build response message
-            worker_msg = f" Assigned to {assigned_worker['name']}." if assigned_worker else ""
+            if assigned_workers:
+                if len(assigned_workers) == 1:
+                    worker_msg = f" Assigned to {assigned_workers[0]['name']}."
+                else:
+                    worker_names = ', '.join([w['name'] for w in assigned_workers])
+                    worker_msg = f" Assigned to {worker_names}."
+            else:
+                worker_msg = ""
             
             logger.info(f"[BOOK_JOB] ========== JOB BOOKING COMPLETE ==========")
             return {
@@ -2493,8 +2518,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "email": email,
                     "property_type": property_type,
                     "eircode": extracted_eircode,
-                    "assigned_worker": assigned_worker['name'] if assigned_worker else None,
-                    "assigned_worker_id": assigned_worker['id'] if assigned_worker else None
+                    "assigned_workers": [{'name': w['name'], 'id': w['id']} for w in assigned_workers] if assigned_workers else [],
+                    "workers_required": workers_required
                 }
             }
         

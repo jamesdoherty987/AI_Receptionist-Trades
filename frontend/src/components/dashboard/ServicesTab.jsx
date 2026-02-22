@@ -21,7 +21,7 @@ function ServicesTab() {
   const { addToast } = useToast();
   const [editingId, setEditingId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', price: '', duration: '1440', image_url: '' });
+  const [formData, setFormData] = useState({ name: '', price: '', duration: '1440', image_url: '', workers_required: '1' });
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, service: null });
 
   // Handle escape key to close delete confirmation
@@ -59,7 +59,7 @@ function ServicesTab() {
       queryClient.invalidateQueries({ queryKey: ['services-menu'] });
       addToast('Service added!', 'success');
       setShowAddForm(false);
-      setFormData({ name: '', price: '', duration: '1440', image_url: '' });
+      setFormData({ name: '', price: '', duration: '1440', image_url: '', workers_required: '1' });
     },
     onError: () => addToast('Failed to add service', 'error'),
   });
@@ -98,6 +98,7 @@ function ServicesTab() {
       price: parseFloat(formData.price) || 0,
       duration_minutes: parseInt(formData.duration) || 60,
       image_url: formData.image_url,
+      workers_required: parseInt(formData.workers_required) || 1,
     });
   };
 
@@ -109,6 +110,7 @@ function ServicesTab() {
         price: parseFloat(service.price) || 0,
         duration_minutes: parseInt(service.duration_minutes) || 60,
         image_url: service.image_url,
+        workers_required: parseInt(service.workers_required) || 1,
       },
     });
   };
@@ -192,6 +194,17 @@ function ServicesTab() {
                   </optgroup>
                 ))}
               </select>
+            </div>
+            <div className="form-group">
+              <label>Workers Required</label>
+              <input
+                type="number"
+                className="form-input"
+                value={formData.workers_required}
+                onChange={(e) => setFormData({ ...formData, workers_required: e.target.value })}
+                min="1"
+                max="10"
+              />
             </div>
           </div>
           <div className="form-group">
@@ -325,6 +338,16 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
                 </optgroup>
               ))}
             </select>
+            <input
+              type="number"
+              className="form-input"
+              value={editData.workers_required || 1}
+              onChange={(e) => setEditData({ ...editData, workers_required: parseInt(e.target.value) || 1 })}
+              placeholder="Workers"
+              min="1"
+              max="10"
+              title="Workers required"
+            />
           </div>
           <ImageUpload
             value={editData.image_url || ''}
@@ -360,6 +383,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           {(service.duration_minutes || service.duration) && (
             <span className="meta-item duration">
               <i className="fas fa-clock"></i> {formatDuration(service.duration_minutes || service.duration)}
+            </span>
+          )}
+          {service.workers_required > 1 && (
+            <span className="meta-item workers">
+              <i className="fas fa-users"></i> {service.workers_required} workers
             </span>
           )}
         </div>

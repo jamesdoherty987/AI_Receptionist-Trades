@@ -357,6 +357,7 @@ class SettingsManager:
                 active=service.get('active', True),
                 image_url=service.get('image_url'),
                 sort_order=service.get('sort_order', 0),
+                workers_required=service.get('workers_required', 1),
                 company_id=company_id
             )
         except Exception as e:
