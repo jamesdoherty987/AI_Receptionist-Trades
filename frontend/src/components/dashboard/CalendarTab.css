@@ -69,6 +69,119 @@
   transform: translateY(-1px);
 }
 
+/* Calendar Actions */
+.calendar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Worker Filter */
+.worker-filter-select {
+  padding: 0.625rem 1rem;
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: white;
+  cursor: pointer;
+  min-width: 150px;
+  transition: all 0.2s;
+}
+
+.worker-filter-select:hover {
+  border-color: var(--accent-blue);
+}
+
+.worker-filter-select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Worker Legend */
+.worker-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  flex-wrap: wrap;
+}
+
+.legend-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.legend-items {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border: 2px solid var(--border-color);
+  border-radius: 20px;
+  background: white;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.legend-item:hover {
+  border-color: var(--worker-color);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.legend-item.active {
+  border-color: var(--worker-color);
+  background: var(--worker-color);
+  color: white;
+}
+
+.legend-item.active .legend-dot {
+  background: white !important;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-clear {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.625rem;
+  border: none;
+  border-radius: 20px;
+  background: var(--bg-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.legend-clear:hover {
+  background: var(--danger);
+  color: white;
+}
+
 /* Calendar Main Layout */
 .calendar-main {
   display: grid;
@@ -181,6 +294,10 @@
   background: var(--accent-blue);
 }
 
+.event-dot.worker-colored {
+  background: currentColor;
+}
+
 .event-dot.scheduled,
 .event-dot.pending {
   background: var(--accent-blue);
@@ -273,6 +390,7 @@
   margin-bottom: 0.5rem;
   transition: all 0.2s;
   border: 1px solid transparent;
+  border-left: 4px solid var(--accent-blue);
 }
 
 .event-card.clickable {
@@ -357,6 +475,22 @@
   font-size: 0.7rem;
 }
 
+.event-worker {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.worker-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* Badge */
 .badge-sm {
   font-size: 0.7rem;
@@ -389,6 +523,15 @@
     justify-content: space-between;
   }
 
+  .calendar-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .worker-filter-select {
+    width: 100%;
+  }
+
   .nav-btn {
     width: 36px;
     height: 36px;
@@ -404,6 +547,25 @@
     justify-content: center;
     padding: 0.5rem 1rem;
     font-size: 0.85rem;
+  }
+
+  .worker-legend {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .legend-label {
+    font-size: 0.75rem;
+    width: 100%;
+  }
+
+  .legend-item {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
   }
 
   .calendar-grid-container {
@@ -475,6 +637,15 @@
 
   .event-service {
     font-size: 0.75rem;
+  }
+
+  .event-worker {
+    font-size: 0.7rem;
+  }
+
+  .worker-indicator {
+    width: 6px;
+    height: 6px;
   }
 
   .event-location {
