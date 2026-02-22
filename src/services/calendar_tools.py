@@ -1208,29 +1208,53 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Check if company has workers - if so, we need to filter by worker availability
             has_workers = db.has_workers(company_id) if db else False
             if has_workers:
-                logger.info(f"[CHECK_AVAIL] Company has workers, will filter slots by worker availability")
+                logger.info(f"[CHECK_AVAIL] Company has workers, will check WORKER availability (not calendar)")
+            
+            # Get business hours for slot generation
+            try:
+                business_hours = config.get_business_hours(company_id=company_id)
+                biz_start_hour = business_hours.get('start', 9)
+                biz_end_hour = business_hours.get('end', 17)
+            except:
+                biz_start_hour = 9
+                biz_end_hour = 17
             
             # Check all days in range (no early exit - we want full picture)
             while current_date <= end_search:
                 # Only check business days (configured in config.BUSINESS_DAYS)
                 if current_date.weekday() in business_days:
                     logger.info(f"[CHECK_AVAIL] Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
-                    try:
-                        day_slots = google_calendar.get_available_slots_for_day(current_date, service_duration=service_duration)
-                        logger.info(f"[CHECK_AVAIL] Found {len(day_slots) if day_slots else 0} slots")
-                    except Exception as e:
-                        logger.error(f"[CHECK_AVAIL] Error checking {current_date.strftime('%A, %B %d')}: {e}")
-                        import traceback
-                        traceback.print_exc()
-                        # Re-raise so retry logic in google_calendar handles it
-                        raise
                     
-                    # If company has workers, filter slots to only those where enough workers are available
-                    if day_slots and has_workers and db:
-                        worker_available_slots = []
-                        for slot in day_slots:
+                    if has_workers and db:
+                        # WORKER-BASED AVAILABILITY: Generate all possible slots and check worker availability
+                        # This is the correct approach for multi-worker businesses
+                        day_slots = []
+                        now = datetime.now()
+                        
+                        # Generate time slots for the day
+                        slot_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                        day_end = current_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+                        
+                        while slot_time < day_end:
+                            # Skip past time slots
+                            if slot_time <= now:
+                                slot_time += timedelta(minutes=30)
+                                continue
+                            
+                            # For full-day services, check if slot + duration fits in business hours
+                            if service_duration >= 480:
+                                slot_end = day_end  # Full day ends at closing
+                            else:
+                                slot_end = slot_time + timedelta(minutes=service_duration)
+                            
+                            # Skip if job would extend past closing
+                            if slot_end > day_end:
+                                slot_time += timedelta(minutes=30)
+                                continue
+                            
+                            # Check if any qualified worker is available at this slot
                             available_workers = db.find_available_workers_for_slot(
-                                appointment_time=slot,
+                                appointment_time=slot_time,
                                 duration_minutes=service_duration,
                                 company_id=company_id
                             )
@@ -1245,12 +1269,23 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 elif restriction_type == 'except' and restricted_ids:
                                     available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
                             
-                            # None means error - include slot (fail open for availability check)
-                            # Check if enough workers are available for this service
+                            # Slot is available if enough workers are free
                             if available_workers is None or len(available_workers) >= workers_required:
-                                worker_available_slots.append(slot)
-                        day_slots = worker_available_slots
-                        logger.debug(f"   After worker filter (need {workers_required}): {len(day_slots)} slots with enough workers")
+                                day_slots.append(slot_time)
+                            
+                            slot_time += timedelta(minutes=30)
+                        
+                        logger.info(f"[CHECK_AVAIL] Worker-based check found {len(day_slots)} slots")
+                    else:
+                        # NO WORKERS: Use calendar-based availability (any booking blocks the slot)
+                        try:
+                            day_slots = google_calendar.get_available_slots_for_day(current_date, service_duration=service_duration)
+                            logger.info(f"[CHECK_AVAIL] Calendar-based check found {len(day_slots) if day_slots else 0} slots")
+                        except Exception as e:
+                            logger.error(f"[CHECK_AVAIL] Error checking {current_date.strftime('%A, %B %d')}: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            raise
                     
                     # For full-day services (8+ hours), only keep ONE slot per day (start of business day)
                     # This prevents offering hourly slots that can't actually be booked
@@ -1749,19 +1784,59 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             match_result = match_service(reason, company_id=company_id)
             matched_service_name = match_result['matched_name']
             appointment_duration = match_result['service'].get('duration_minutes', 60)
-            logger.info(f"[BOOK_APPT] Matched service: {matched_service_name}, Duration: {appointment_duration} mins")
+            workers_required = match_result['service'].get('workers_required', 1) or 1
+            worker_restrictions = match_result['service'].get('worker_restrictions')
+            logger.info(f"[BOOK_APPT] Matched service: {matched_service_name}, Duration: {appointment_duration} mins, Workers: {workers_required}")
             
-            # Check if slot is available with the correct duration
-            logger.info(f"[BOOK_APPT] Checking availability at {parsed_time} for {appointment_duration} mins")
-            is_available = google_calendar.check_availability(parsed_time, duration_minutes=appointment_duration)
-            logger.info(f"[BOOK_APPT] Availability check result: {is_available}")
+            # Check if company has workers configured
+            has_workers = db.has_workers(company_id) if db else False
+            assigned_workers = []
             
-            if not is_available:
-                logger.warning(f"[BOOK_APPT] Time slot not available")
-                return {
-                    "success": False,
-                    "error": f"That time slot is already booked or doesn't have enough time for this appointment ({appointment_duration} mins). Please check availability and suggest another time."
-                }
+            # AVAILABILITY CHECK: Different logic depending on whether company has workers
+            if has_workers:
+                # Worker-based availability: check if any qualified worker is free
+                logger.info(f"[BOOK_APPT] Checking WORKER availability at {parsed_time} for {appointment_duration} mins")
+                available_workers = db.find_available_workers_for_slot(
+                    appointment_time=parsed_time,
+                    duration_minutes=appointment_duration,
+                    company_id=company_id
+                )
+                
+                # Apply worker restrictions if any
+                if available_workers and worker_restrictions:
+                    restriction_type = worker_restrictions.get('type', 'all')
+                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                    
+                    if restriction_type == 'only' and restricted_ids:
+                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                    elif restriction_type == 'except' and restricted_ids:
+                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                
+                logger.info(f"[BOOK_APPT] Available workers: {available_workers}")
+                
+                if available_workers is None:
+                    logger.warning(f"[BOOK_APPT] Worker lookup failed - proceeding without worker assignment")
+                elif len(available_workers) < workers_required:
+                    logger.warning(f"[BOOK_APPT] Not enough workers: need {workers_required}, have {len(available_workers)}")
+                    return {
+                        "success": False,
+                        "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time."
+                    }
+                else:
+                    assigned_workers = available_workers[:workers_required]
+                    logger.info(f"[BOOK_APPT] Auto-assigning worker(s): {[w['name'] for w in assigned_workers]}")
+            else:
+                # No workers - use simple calendar availability check
+                logger.info(f"[BOOK_APPT] Checking CALENDAR availability at {parsed_time} for {appointment_duration} mins")
+                is_available = google_calendar.check_availability(parsed_time, duration_minutes=appointment_duration)
+                logger.info(f"[BOOK_APPT] Availability check result: {is_available}")
+                
+                if not is_available:
+                    logger.warning(f"[BOOK_APPT] Time slot not available")
+                    return {
+                        "success": False,
+                        "error": f"That time slot is already booked or doesn't have enough time for this appointment ({appointment_duration} mins). Please check availability and suggest another time."
+                    }
             
             # Create calendar event with correct duration
             summary = f"{matched_service_name} - {customer_name}"
@@ -1827,6 +1902,19 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     
                     # Add note with original customer request
                     db.add_appointment_note(booking_id, f"Booked via AI receptionist.\nService: {matched_service_name}\nCustomer Request: {reason}\nDuration: {appointment_duration} mins", created_by="system")
+                    
+                    # Auto-assign workers if any were selected
+                    if assigned_workers:
+                        for worker in assigned_workers:
+                            try:
+                                logger.info(f"[BOOK_APPT] Assigning worker {worker['name']} to booking {booking_id}")
+                                assignment_result = db.assign_worker_to_job(booking_id, worker['id'])
+                                if assignment_result.get('success'):
+                                    logger.info(f"[BOOK_APPT] ✅ Worker {worker['name']} assigned successfully")
+                                else:
+                                    logger.warning(f"[BOOK_APPT] ⚠️ Failed to assign worker {worker['name']}: {assignment_result.get('error')}")
+                            except Exception as worker_err:
+                                logger.warning(f"[BOOK_APPT] ⚠️ Could not assign worker {worker['name']}: {worker_err}")
                     
                     # Update client description
                     try:
@@ -2033,8 +2121,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "error": f"No appointment found for {customer_name} at {current_time.strftime('%B %d at %I:%M %p')}"
                 }
             
-            # Get the booking's duration from database
+            # Get the booking's duration from database and assigned workers
             booking_duration = 1440  # Default 1 day for trades
+            assigned_worker_ids = []
             event_id = event.get('id')
             if db:
                 try:
@@ -2042,19 +2131,52 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     for booking in bookings:
                         if booking.get('calendar_event_id') == event_id:
                             booking_duration = booking.get('duration_minutes', 1440)
-                            logger.debug(f"Duration: Found booking duration: {booking_duration} mins")
+                            assigned_worker_ids = booking.get('assigned_worker_ids', [])
+                            logger.debug(f"Duration: Found booking duration: {booking_duration} mins, workers: {assigned_worker_ids}")
                             break
                 except Exception as e:
                     logger.warning(f" Could not get booking duration: {e}")
             
-            # Check if new time is available with the correct duration
-            is_available = google_calendar.check_availability(new_time, duration_minutes=booking_duration)
-            if not is_available:
-                return {
-                    "success": False,
-                    "error": f"That time slot is already booked or doesn't have enough time ({booking_duration} mins). Please suggest another available time.",
-                    "new_time_unavailable": True
-                }
+            # Check if new time is available
+            # If booking has assigned workers, check if THOSE workers are available at new time
+            # Otherwise, fall back to calendar availability check
+            has_workers = db.has_workers(company_id) if db else False
+            
+            if has_workers and assigned_worker_ids:
+                # Check if the assigned workers are available at the new time
+                logger.info(f"[RESCHEDULE] Checking if assigned workers {assigned_worker_ids} are available at {new_time}")
+                all_workers_available = True
+                unavailable_workers = []
+                
+                for worker_id in assigned_worker_ids:
+                    availability = db.check_worker_availability(
+                        worker_id=worker_id,
+                        appointment_time=new_time,
+                        duration_minutes=booking_duration,
+                        exclude_booking_id=event.get('booking_id'),  # Exclude current booking from conflict check
+                        company_id=company_id
+                    )
+                    if not availability.get('available', False):
+                        all_workers_available = False
+                        worker = db.get_worker(worker_id, company_id=company_id)
+                        worker_name = worker.get('name', f'Worker {worker_id}') if worker else f'Worker {worker_id}'
+                        unavailable_workers.append(worker_name)
+                
+                if not all_workers_available:
+                    return {
+                        "success": False,
+                        "error": f"The assigned worker ({', '.join(unavailable_workers)}) is not available at {new_time.strftime('%I:%M %p on %A, %B %d')}. Please suggest another time.",
+                        "new_time_unavailable": True
+                    }
+            else:
+                # No workers or no assigned workers - use simple calendar check
+                is_available = google_calendar.check_availability(new_time, duration_minutes=booking_duration)
+                if not is_available:
+                    return {
+                        "success": False,
+                        "error": f"That time slot is already booked or doesn't have enough time ({booking_duration} mins). Please suggest another available time.",
+                        "new_time_unavailable": True
+                    }
             
             # Reschedule the appointment
             updated_event = google_calendar.reschedule_appointment(event_id, new_time)
@@ -2348,22 +2470,6 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "latest_start_time": f"{latest_hour_12}:{latest_start_minute:02d} {latest_period}"
                 }
             
-            # ALWAYS check calendar availability first (prevents double-booking)
-            logger.info(f"[BOOK_JOB] Checking availability at {parsed_time} for {service_duration} mins")
-            is_available = google_calendar.check_availability(parsed_time, duration_minutes=service_duration)
-            logger.info(f"[BOOK_JOB] Availability check result: {is_available}")
-            
-            if not is_available:
-                logger.warning(f"[BOOK_JOB] Time slot not available")
-                day_name = parsed_time.strftime('%A')
-                return {
-                    "success": False,
-                    "error": f"That time slot on {day_name} is already booked. If multiple times on {day_name} have failed, suggest trying a different day instead. Use check_availability to find available times on other days.",
-                    "failed_day": day_name,
-                    "failed_time": parsed_time.strftime('%I:%M %p'),
-                    "service_duration": service_duration
-                }
-            
             # Get workers_required from matched service (default 1)
             workers_required = matched_service.get('workers_required', 1) or 1
             worker_restrictions = matched_service.get('worker_restrictions')
@@ -2374,15 +2480,17 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             assigned_workers = []
             logger.info(f"[BOOK_JOB] Company has workers: {has_workers}")
             
+            # AVAILABILITY CHECK: Different logic depending on whether company has workers
+            # If company has workers, we check WORKER availability (a slot is available if a qualified worker is free)
+            # If no workers, we check CALENDAR availability (any booking blocks the slot)
             if has_workers:
-                # Find available workers for this time slot
-                logger.info(f"[BOOK_JOB] Finding available workers...")
+                # Worker-based availability: check if any qualified worker is free
+                logger.info(f"[BOOK_JOB] Checking WORKER availability at {parsed_time} for {service_duration} mins")
                 available_workers = db.find_available_workers_for_slot(
                     appointment_time=parsed_time,
                     duration_minutes=service_duration,
                     company_id=company_id
                 )
-                logger.info(f"[BOOK_JOB] Available workers: {available_workers}")
                 
                 # Apply worker restrictions if any
                 if available_workers and worker_restrictions:
@@ -2398,13 +2506,15 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
                         logger.info(f"[BOOK_JOB] After 'except' restriction: {len(available_workers)} workers")
                 
+                logger.info(f"[BOOK_JOB] Available workers: {available_workers}")
+                
                 if available_workers is None:
                     # Database error - log warning but proceed without worker assignment
-                    # Better to book without worker than fail the booking entirely
                     logger.warning(f"[BOOK_JOB] Worker lookup failed due to database error - proceeding without worker assignment")
                 elif len(available_workers) < workers_required:
                     # Not enough workers available at this time
                     logger.warning(f"[BOOK_JOB] Not enough workers available: need {workers_required}, have {len(available_workers)}")
+                    day_name = parsed_time.strftime('%A')
                     
                     # Provide more helpful error message based on whether restrictions are in play
                     has_restrictions = worker_restrictions and worker_restrictions.get('type') in ['only', 'except']
@@ -2413,23 +2523,48 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         if has_restrictions:
                             return {
                                 "success": False,
-                                "error": f"No qualified workers are available for this type of job at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time."
+                                "error": f"No qualified workers are available for this type of job at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
+                                "failed_day": day_name,
+                                "failed_time": parsed_time.strftime('%I:%M %p'),
+                                "service_duration": service_duration
                             }
                         else:
                             return {
                                 "success": False,
-                                "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time when a worker is free."
+                                "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time when a worker is free.",
+                                "failed_day": day_name,
+                                "failed_time": parsed_time.strftime('%I:%M %p'),
+                                "service_duration": service_duration
                             }
                     else:
                         return {
                             "success": False,
-                            "error": f"This job requires {workers_required} workers but only {len(available_workers)} {'is' if len(available_workers) == 1 else 'are'} available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time."
+                            "error": f"This job requires {workers_required} workers but only {len(available_workers)} {'is' if len(available_workers) == 1 else 'are'} available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
+                            "failed_day": day_name,
+                            "failed_time": parsed_time.strftime('%I:%M %p'),
+                            "service_duration": service_duration
                         }
                 else:
                     # Select the required number of workers
                     assigned_workers = available_workers[:workers_required]
                     worker_names = ', '.join([w['name'] for w in assigned_workers])
                     logger.info(f"[BOOK_JOB] Auto-assigning {len(assigned_workers)} worker(s): {worker_names}")
+            else:
+                # No workers configured - use simple calendar availability check
+                logger.info(f"[BOOK_JOB] Checking CALENDAR availability at {parsed_time} for {service_duration} mins")
+                is_available = google_calendar.check_availability(parsed_time, duration_minutes=service_duration)
+                logger.info(f"[BOOK_JOB] Availability check result: {is_available}")
+                
+                if not is_available:
+                    logger.warning(f"[BOOK_JOB] Time slot not available")
+                    day_name = parsed_time.strftime('%A')
+                    return {
+                        "success": False,
+                        "error": f"That time slot on {day_name} is already booked. If multiple times on {day_name} have failed, suggest trying a different day instead. Use check_availability to find available times on other days.",
+                        "failed_day": day_name,
+                        "failed_time": parsed_time.strftime('%I:%M %p'),
+                        "service_duration": service_duration
+                    }
             
             # Create calendar event with trades details
             summary = f"{urgency_level.upper()}: {job_description[:50]} - {customer_name}"
