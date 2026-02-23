@@ -298,7 +298,7 @@ def get_filler_id_from_message(message: str) -> Optional[str]:
         return None
 
 
-async def send_prerecorded_audio(websocket, stream_sid: str, audio_data: bytes):
+async def send_prerecorded_audio(websocket, stream_sid: str, audio_data: bytes, wait_for_playback: bool = False):
     """
     Send pre-recorded mulaw audio directly to Twilio - INSTANT playback
     This bypasses TTS entirely for zero latency
@@ -307,6 +307,8 @@ async def send_prerecorded_audio(websocket, stream_sid: str, audio_data: bytes):
         websocket: Twilio websocket connection
         stream_sid: Twilio stream ID
         audio_data: Raw mulaw 8kHz audio bytes
+        wait_for_playback: If True, wait for audio to finish playing before returning
+                          Use this for greetings/responses where we need to hear the caller after
     
     Never raises - errors are logged and ignored (TTS fallback will handle it)
     """
@@ -335,6 +337,15 @@ async def send_prerecorded_audio(websocket, stream_sid: str, audio_data: bytes):
         
         send_duration = time.time() - send_start
         print(f"[AUDIO] ✅ Sent {chunk_count} chunks in {send_duration:.3f}s (audio will play for {audio_duration_ms:.0f}ms)")
+        
+        # Wait for audio to actually play on caller's end
+        # This prevents the system from "listening" while still speaking
+        if wait_for_playback:
+            # Add small buffer for network latency (200ms)
+            wait_time = (audio_duration_ms / 1000.0) + 0.2
+            print(f"[AUDIO] ⏳ Waiting {wait_time:.2f}s for audio playback...")
+            await asyncio.sleep(wait_time)
+            print(f"[AUDIO] ✅ Playback wait complete")
         
     except Exception as e:
         # Log but don't raise - TTS fallback will handle it

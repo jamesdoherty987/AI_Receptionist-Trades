@@ -39,6 +39,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
 
     MAX_TTS_SECONDS = 30.0  # Increased to prevent cutting off longer responses
     first_audio_time = None  # Track time to first audio
+    total_audio_bytes = 0  # Track total audio sent for playback wait
 
     for attempt in (1, 2):
         try:
@@ -105,7 +106,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
 
                 async def receiver():
                     """Receive audio from Deepgram and forward to Twilio"""
-                    nonlocal got_audio, first_audio_time
+                    nonlocal got_audio, first_audio_time, total_audio_bytes
                     quiet_timeouts = 0
                     last_audio_time = asyncio.get_event_loop().time()
 
@@ -144,6 +145,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                             
                             got_audio = True
                             last_audio_time = asyncio.get_event_loop().time()
+                            total_audio_bytes += len(msg)
                             
                             # Split into 20ms chunks (160 bytes for mulaw 8kHz)
                             chunk_size = 160
@@ -163,6 +165,19 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                 await asyncio.gather(sender(), receiver())
                 
                 total_tts_time = time.time() - tts_start
+                
+                # Calculate and wait for audio playback
+                # Audio is sent instantly but takes time to play on caller's end
+                if total_audio_bytes > 0:
+                    audio_duration_ms = total_audio_bytes / 8  # 8 bytes per ms at 8kHz mulaw
+                    # Subtract time already elapsed since we started sending audio
+                    time_since_first_audio = (time.time() - first_audio_time) if first_audio_time else 0
+                    remaining_playback = (audio_duration_ms / 1000.0) - time_since_first_audio
+                    
+                    if remaining_playback > 0.1:  # Only wait if significant time remaining
+                        print(f"[TTS_TIMING] ⏳ Waiting {remaining_playback:.2f}s for audio playback ({audio_duration_ms:.0f}ms total)")
+                        await asyncio.sleep(remaining_playback)
+                
                 print(f"[TTS_TIMING] ✅ TTS complete in {total_tts_time:.3f}s")
                 return
 

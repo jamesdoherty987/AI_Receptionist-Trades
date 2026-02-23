@@ -708,11 +708,12 @@ async def media_handler(ws):
                 if greeting_audio and len(greeting_audio) > 0 and stream_sid:
                     send_start = time_module.time()
                     print(f"[GREETING] Using pre-recorded greeting ({len(greeting_audio)} bytes)")
-                    await send_prerecorded_audio(ws, stream_sid, greeting_audio)
+                    # Wait for playback so we don't start listening while greeting is still playing
+                    await send_prerecorded_audio(ws, stream_sid, greeting_audio, wait_for_playback=True)
                     send_time = time_module.time() - send_start
                     total_greet_time = time_module.time() - greet_start
                     print(f"[GREETING] ✅ Pre-recorded send took {send_time:.3f}s, total greeting time: {total_greet_time:.3f}s")
-                    speaking = False  # Ready to listen immediately
+                    speaking = False  # Ready to listen after playback complete
                     return
         except Exception as e:
             print(f"[GREETING] Pre-recorded greeting failed, falling back to TTS: {e}")
