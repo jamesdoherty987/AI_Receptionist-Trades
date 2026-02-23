@@ -55,46 +55,68 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                 ping_timeout=20,
                 max_size=2**20,
             ) as tts:
+                print(f"[TTS] ✅ Connected to ElevenLabs WebSocket")
+                print(f"[TTS] 🔗 Voice ID: {voice_id}")
+                print(f"[TTS] 🔗 Stream SID: {stream_sid}")
 
                 start_time = asyncio.get_event_loop().time()
 
                 # Initialize connection
+                print(f"[TTS] 📤 Sending initialization message...")
                 await tts.send(json.dumps({
                     "text": " ",
                     "voice_settings": {"stability": 0.5, "similarity_boost": 0.8},
                 }))
+                print(f"[TTS] ✅ Initialization sent")
 
                 sender_done = asyncio.Event()
 
                 async def sender():
                     """Send text tokens to ElevenLabs"""
+                    tokens_sent = 0
+                    full_text = ""
                     try:
+                        print(f"[TTS] 📤 Sender started, streaming text to ElevenLabs...")
                         async for token in _aiter(text_stream):
                             if interrupt_fn():
+                                print(f"[TTS] ⚠️ Sender interrupted after {tokens_sent} tokens")
                                 return
+                            tokens_sent += 1
+                            full_text += token
+                            if tokens_sent == 1:
+                                print(f"[TTS] 📤 First token sent: '{token[:50]}'")
                             await tts.send(json.dumps({
                                 "text": token,
                                 "try_trigger_generation": True
                             }))
+                        print(f"[TTS] 📤 All {tokens_sent} tokens sent. Full text: '{full_text[:100]}...'")
                     finally:
                         # Signal end of text
                         try:
                             await tts.send(json.dumps({"text": ""}))
-                        except Exception:
-                            pass
+                            print(f"[TTS] 📤 End-of-text signal sent to ElevenLabs")
+                        except Exception as e:
+                            print(f"[TTS] ⚠️ Failed to send end-of-text: {e}")
                         sender_done.set()
 
                 async def receiver():
                     """Receive audio from ElevenLabs and forward to Twilio"""
                     quiet_timeouts = 0
                     got_any_audio = False
+                    audio_chunks_received = 0
+                    audio_chunks_sent = 0
+                    total_audio_bytes = 0
+
+                    print(f"[TTS] 📥 Receiver started, waiting for audio from ElevenLabs...")
 
                     while True:
                         if interrupt_fn():
+                            print(f"[TTS] ⚠️ Interrupted! Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
                             return
 
                         # Hard max duration check
                         if (asyncio.get_event_loop().time() - start_time) > MAX_TTS_SECONDS:
+                            print(f"[TTS] ⚠️ Max duration reached! Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
                             return
 
                         try:
@@ -104,31 +126,56 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                             if sender_done.is_set():
                                 quiet_timeouts += 1
                                 if got_any_audio and quiet_timeouts >= 2:
+                                    print(f"[TTS] ✅ Done (quiet timeout). Received {audio_chunks_received} chunks ({total_audio_bytes} bytes), sent {audio_chunks_sent} to Twilio")
                                     return
                                 if quiet_timeouts >= 4:
+                                    print(f"[TTS] ⚠️ No audio received after 4 timeouts. Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
                                     return
                             continue
-                        except websockets.ConnectionClosed:
+                        except websockets.ConnectionClosed as e:
                             # ElevenLabs connection closed
-                            print("   ℹ️ ElevenLabs connection closed")
+                            print(f"   ℹ️ ElevenLabs connection closed: {e}")
+                            print(f"[TTS] 📊 Final stats: Received {audio_chunks_received} chunks ({total_audio_bytes} bytes), sent {audio_chunks_sent} to Twilio")
                             return
 
                         data = json.loads(msg)
+                        
+                        # Log non-audio messages for debugging
+                        if not data.get("audio"):
+                            msg_keys = list(data.keys())
+                            if "error" in data:
+                                print(f"[TTS] ❌ ElevenLabs error: {data.get('error')}")
+                            elif "message" in data:
+                                print(f"[TTS] 📨 ElevenLabs message: {data.get('message')}")
+                            elif msg_keys != ['isFinal']:
+                                print(f"[TTS] 📨 ElevenLabs response keys: {msg_keys}")
 
                         if data.get("audio"):
                             got_any_audio = True
+                            audio_chunks_received += 1
+                            audio_bytes = len(data["audio"])
+                            total_audio_bytes += audio_bytes
+                            
+                            if audio_chunks_received == 1:
+                                print(f"[TTS] 🔊 First audio chunk received! Size: {audio_bytes} bytes")
+                            elif audio_chunks_received % 20 == 0:
+                                print(f"[TTS] 🔊 Audio chunk #{audio_chunks_received}, total: {total_audio_bytes} bytes")
+                            
                             try:
                                 await websocket.send(json.dumps({
                                     "event": "media",
                                     "streamSid": stream_sid,
                                     "media": {"payload": data["audio"]},
                                 }))
+                                audio_chunks_sent += 1
                             except (websockets.ConnectionClosed, RuntimeError) as send_err:
                                 # Twilio connection closed (caller hung up) - this is normal
                                 print(f"   ℹ️ Twilio connection closed during TTS (caller likely hung up)")
+                                print(f"[TTS] 📊 Final stats: Received {audio_chunks_received} chunks, sent {audio_chunks_sent} to Twilio before disconnect")
                                 return
 
                         if data.get("isFinal"):
+                            print(f"[TTS] ✅ isFinal received. Total: {audio_chunks_received} chunks ({total_audio_bytes} bytes), sent {audio_chunks_sent} to Twilio")
                             return
 
                 await asyncio.gather(sender(), receiver())
