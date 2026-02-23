@@ -1,5 +1,6 @@
 """
 Deepgram TTS (Text-to-Speech) service
+Rewritten to match ElevenLabs' proven streaming pattern
 """
 import asyncio
 import base64
@@ -21,7 +22,6 @@ async def _aiter(text_stream):
 async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
     """
     Stream Deepgram TTS audio to Twilio in mulaw format
-    Optimized for speed and reliability - typically 150-300ms latency
     
     Args:
         text_stream: Async iterator of text tokens
@@ -31,158 +31,169 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
     """
     import time
     tts_start = time.time()
-    print(f"\n[TTS_TIMING] 🎤 stream_tts started at {tts_start:.3f}")
+    print(f"[TTS] 🎤 Starting Deepgram TTS at {tts_start:.3f}")
     
-    # Use faster model and optimized settings for speed
-    # aura-luna-en is a natural female voice optimized for conversational use
-    uri = f"wss://api.deepgram.com/v1/speak?model=aura-luna-en&encoding={config.AUDIO_ENCODING}&sample_rate={config.AUDIO_SAMPLE_RATE}&container=none"
+    # Deepgram Aura TTS - aura-asteria-en is a natural conversational voice
+    uri = (
+        f"wss://api.deepgram.com/v1/speak"
+        f"?model=aura-asteria-en"
+        f"&encoding={config.AUDIO_ENCODING}"
+        f"&sample_rate={config.AUDIO_SAMPLE_RATE}"
+        f"&container=none"
+    )
 
-    MAX_TTS_SECONDS = 30.0  # Increased to prevent cutting off longer responses
-    first_audio_time = None  # Track time to first audio
-    total_audio_bytes = 0  # Track total audio sent for playback wait
+    # Max timeout (safety limit)
+    MAX_TTS_SECONDS = 20.0
 
     for attempt in (1, 2):
         try:
-            ws_connect_start = time.time()
             async with websockets.connect(
                 uri,
                 extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
-                open_timeout=8,   # Faster connection timeout
-                close_timeout=3,  # Faster close
-                ping_interval=15, # More frequent pings for stability
-                ping_timeout=10,  # Shorter ping timeout
+                open_timeout=12,
+                close_timeout=5,
+                ping_interval=20,
+                ping_timeout=20,
                 max_size=2**20,
             ) as tts:
-                ws_connect_time = time.time() - ws_connect_start
-                print(f"[TTS_TIMING] Deepgram TTS WebSocket connected in {ws_connect_time:.3f}s")
+                print(f"[TTS] ✅ Connected to Deepgram TTS WebSocket")
+                print(f"[TTS] 🔗 Stream SID: {stream_sid}")
 
                 start_time = asyncio.get_event_loop().time()
-                got_audio = False
                 sender_done = asyncio.Event()
-                flush_requested = asyncio.Event()
-                flush_complete = asyncio.Event()
 
                 async def sender():
                     """Send text tokens to Deepgram"""
-                    nonlocal first_audio_time
-                    token_sent_count = 0
-                    first_token_sent_time = None
+                    tokens_sent = 0
+                    full_text = ""
                     try:
+                        print(f"[TTS] 📤 Sender started, streaming text to Deepgram...")
                         async for token in _aiter(text_stream):
                             if interrupt_fn():
-                                print(f"   🛑 TTS interrupted after {token_sent_count} tokens")
+                                print(f"[TTS] ⚠️ Sender interrupted after {tokens_sent} tokens")
                                 return
-                            
-                            # Check for flush marker - forces Deepgram to speak NOW
-                            if token == "<<<FLUSH>>>":
-                                print(f"   💧 FLUSH marker detected - forcing TTS output and waiting for audio to finish...")
-                                await tts.send(json.dumps({"type": "Flush"}))
-                                flush_requested.set()
-                                # Wait for receiver to confirm all audio has been sent
-                                try:
-                                    await asyncio.wait_for(flush_complete.wait(), timeout=5.0)
-                                    print(f"   ✅ FLUSH complete - audio fully sent")
-                                except asyncio.TimeoutError:
-                                    print(f"   ⚠️ FLUSH timeout - continuing anyway")
-                                flush_requested.clear()
-                                flush_complete.clear()
-                                continue  # Don't count or send this as a real token
-                            
-                            token_sent_count += 1
-                            if token_sent_count == 1:
-                                first_token_sent_time = time.time()
-                                time_to_first_token = first_token_sent_time - tts_start
-                                print(f"[TTS_TIMING] 📤 First token sent to TTS: '{token[:30]}...' ({time_to_first_token:.3f}s from start)")
+                            tokens_sent += 1
+                            full_text += token
+                            if tokens_sent == 1:
+                                print(f"[TTS] 📤 First token sent: '{token[:50]}'")
                             # Send text to Deepgram
                             await tts.send(json.dumps({"type": "Speak", "text": token}))
+                        print(f"[TTS] 📤 All {tokens_sent} tokens sent. Full text: '{full_text[:100]}...'")
                     finally:
-                        print(f"   ✅ TTS sender done - sent {token_sent_count} tokens")
-                        # Signal end of text
+                        # Signal end of text with Flush
                         try:
                             await tts.send(json.dumps({"type": "Flush"}))
-                        except Exception:
-                            pass
+                            print(f"[TTS] 📤 Flush signal sent to Deepgram")
+                        except Exception as e:
+                            print(f"[TTS] ⚠️ Failed to send flush: {e}")
                         sender_done.set()
 
                 async def receiver():
                     """Receive audio from Deepgram and forward to Twilio"""
-                    nonlocal got_audio, first_audio_time, total_audio_bytes
                     quiet_timeouts = 0
-                    last_audio_time = asyncio.get_event_loop().time()
+                    got_any_audio = False
+                    audio_chunks_received = 0
+                    audio_chunks_sent = 0
+                    total_audio_bytes = 0
+
+                    print(f"[TTS] 📥 Receiver started, waiting for audio from Deepgram...")
 
                     while True:
                         if interrupt_fn():
+                            print(f"[TTS] ⚠️ Interrupted! Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
                             return
 
                         # Hard max duration check
                         if (asyncio.get_event_loop().time() - start_time) > MAX_TTS_SECONDS:
+                            print(f"[TTS] ⚠️ Max duration reached! Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
                             return
 
                         try:
-                            msg = await asyncio.wait_for(tts.recv(), timeout=0.3)  # Shorter timeout for flush detection
+                            # Use same timeout as ElevenLabs (1.5s)
+                            msg = await asyncio.wait_for(tts.recv(), timeout=1.5)
                         except asyncio.TimeoutError:
-                            # Check if we're waiting for a flush to complete
-                            if flush_requested.is_set():
-                                # No audio for 300ms after flush = audio finished playing
-                                if (asyncio.get_event_loop().time() - last_audio_time) > 0.3:
-                                    print(f"   💧 Flush audio complete - signaling sender")
-                                    flush_complete.set()
-                            
+                            # If we already sent all text and we've been quiet, exit
                             if sender_done.is_set():
                                 quiet_timeouts += 1
-                                if got_audio and quiet_timeouts >= 1:  # Exit faster
+                                # Same exit logic as ElevenLabs
+                                if got_any_audio and quiet_timeouts >= 2:
+                                    print(f"[TTS] ✅ Done (quiet timeout). Received {audio_chunks_received} chunks ({total_audio_bytes} bytes), sent {audio_chunks_sent} to Twilio")
                                     return
-                                if quiet_timeouts >= 3:  # Reduced from 4
+                                if quiet_timeouts >= 4:
+                                    print(f"[TTS] ⚠️ No audio received after 4 timeouts. Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
                                     return
                             continue
+                        except websockets.ConnectionClosed as e:
+                            print(f"   ℹ️ Deepgram connection closed: {e}")
+                            print(f"[TTS] 📊 Final stats: Received {audio_chunks_received} chunks ({total_audio_bytes} bytes), sent {audio_chunks_sent} to Twilio")
+                            return
 
-                        # Deepgram sends binary audio directly
+                        # Deepgram sends binary audio directly (not JSON like ElevenLabs)
                         if isinstance(msg, bytes):
-                            if not got_audio:
-                                first_audio_time = time.time()
-                                time_to_first_audio = first_audio_time - tts_start
-                                print(f"[TTS_TIMING] 🔊 First audio received from Deepgram: {time_to_first_audio:.3f}s from start")
+                            got_any_audio = True
+                            audio_chunks_received += 1
+                            audio_bytes = len(msg)
+                            total_audio_bytes += audio_bytes
                             
-                            got_audio = True
-                            last_audio_time = asyncio.get_event_loop().time()
-                            total_audio_bytes += len(msg)
+                            if audio_chunks_received == 1:
+                                print(f"[TTS] 🔊 First audio chunk received! Size: {audio_bytes} bytes")
+                            elif audio_chunks_received % 20 == 0:
+                                print(f"[TTS] 🔊 Audio chunk #{audio_chunks_received}, total: {total_audio_bytes} bytes")
                             
-                            # Split into 20ms chunks (160 bytes for mulaw 8kHz)
-                            chunk_size = 160
-                            for i in range(0, len(msg), chunk_size):
-                                if interrupt_fn():
-                                    return
-                                
-                                chunk = msg[i:i+chunk_size]
-                                payload = base64.b64encode(chunk).decode('utf-8')
-                                
+                            # Convert to base64 and send to Twilio
+                            # ElevenLabs sends pre-encoded base64, Deepgram sends raw bytes
+                            try:
+                                payload = base64.b64encode(msg).decode('utf-8')
                                 await websocket.send(json.dumps({
                                     "event": "media",
                                     "streamSid": stream_sid,
                                     "media": {"payload": payload},
                                 }))
+                                audio_chunks_sent += 1
+                            except (websockets.ConnectionClosed, RuntimeError) as send_err:
+                                print(f"   ℹ️ Twilio connection closed during TTS (caller likely hung up)")
+                                print(f"[TTS] 📊 Final stats: Received {audio_chunks_received} chunks, sent {audio_chunks_sent} to Twilio before disconnect")
+                                return
+                        
+                        # Deepgram may send JSON messages for metadata
+                        elif isinstance(msg, str):
+                            try:
+                                data = json.loads(msg)
+                                if "error" in data:
+                                    print(f"[TTS] ❌ Deepgram error: {data.get('error')}")
+                                # Deepgram doesn't have isFinal like ElevenLabs, 
+                                # it just stops sending audio
+                            except json.JSONDecodeError:
+                                pass
 
                 await asyncio.gather(sender(), receiver())
                 
                 total_tts_time = time.time() - tts_start
-                
-                # Calculate and wait for audio playback
-                # Audio is sent instantly but takes time to play on caller's end
-                if total_audio_bytes > 0:
-                    audio_duration_ms = total_audio_bytes / 8  # 8 bytes per ms at 8kHz mulaw
-                    # Subtract time already elapsed since we started sending audio
-                    time_since_first_audio = (time.time() - first_audio_time) if first_audio_time else 0
-                    remaining_playback = (audio_duration_ms / 1000.0) - time_since_first_audio
-                    
-                    if remaining_playback > 0.1:  # Only wait if significant time remaining
-                        print(f"[TTS_TIMING] ⏳ Waiting {remaining_playback:.2f}s for audio playback ({audio_duration_ms:.0f}ms total)")
-                        await asyncio.sleep(remaining_playback)
-                
-                print(f"[TTS_TIMING] ✅ TTS complete in {total_tts_time:.3f}s")
+                print(f"[TTS] ✅ TTS complete in {total_tts_time:.3f}s")
                 return
 
+        except websockets.ConnectionClosed as e:
+            print(f"   ℹ️ Deepgram TTS connection closed (attempt {attempt}): {e}")
+            return  # Don't retry, just exit gracefully
+            
+        except RuntimeError as e:
+            if "close message" in str(e).lower() or "closed" in str(e).lower():
+                print(f"   ℹ️ Twilio connection closed during TTS (caller hung up)")
+                return
+            raise
+            
         except Exception as e:
-            print(f"⚠️ Deepgram TTS error (attempt {attempt}): {e}")
+            error_msg = str(e)
+            print(f"   ⚠️ Deepgram TTS error (attempt {attempt}): {e}")
+            print(f"   📋 Error type: {type(e).__name__}")
+            
+            if "Unauthorized" in error_msg or "401" in error_msg:
+                print(f"   ❌ API KEY ISSUE: Check DEEPGRAM_API_KEY in .env")
+            
+            import traceback
+            print(f"   📋 Traceback:\n{traceback.format_exc()}")
+            
             if attempt == 2:
+                print(f"   ❌ Deepgram TTS failed after {attempt} attempts")
                 raise
             await asyncio.sleep(config.TTS_CHUNK_DELAY)
