@@ -2526,29 +2526,29 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
             ])
             print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CONFIRMED (will lookup customer)")
         elif is_phone_address_confirmation:
-            # User confirmed phone/address - play a short acknowledgment filler
-            # This helps fill the gap while LLM processes
-            likely_needs_tool = True
+            # User confirmed phone/address - this is a simple acknowledgment
+            # DON'T set likely_needs_tool because no tool call is needed
+            # The LLM will just continue the conversation naturally
+            # Setting likely_needs_tool here causes misfires where filler plays but no tool executes
+            likely_needs_tool = False  # Changed from True - no tool needed for simple confirmation
             detected_intent = "PHONE_ADDRESS_CONFIRMED"
-            checking_msg = random.choice([
-                "Grand.",
-                "Perfect.",
-                "Great.",
-            ])
-            print(f"   ✅ [PRE-CHECK] Detected: PHONE/ADDRESS CONFIRMED (short acknowledgment)")
+            checking_msg = None  # Don't play filler for simple confirmations
+            print(f"   ✅ [PRE-CHECK] Detected: PHONE/ADDRESS CONFIRMED (no filler needed)")
     
     # Detect service/job description (when user describes what they need done)
     # When user describes a problem like "I have a leak", the LLM needs time to process
-    # Play a filler to acknowledge and buy time for the response
-    service_indicators = ["leak", "blocked", "leaking", "broken", "not working", "burst", "flooding", 
-                          "no power", "no hot water", "no heating", "dripping", "clogged", "emergency",
-                          "urgent", "water damage", "pipe", "drain", "toilet", "sink", "tap", "boiler"]
-    if not likely_needs_tool and any(indicator in user_message for indicator in service_indicators):
-        likely_needs_tool = True
-        detected_intent = "SERVICE_DESCRIPTION"
-        # Use a short acknowledgment that won't overlap with LLM response
-        checking_msg = "Sure, one moment."
-        print(f"   ✅ [PRE-CHECK] Detected: SERVICE DESCRIPTION (will acknowledge)")
+    # NOTE: SERVICE_DESCRIPTION filler disabled - it causes misfires
+    # When user describes a problem like "I have a leak", the LLM usually asks follow-up questions
+    # rather than calling tools, which causes the filler to play but no tool to execute
+    # This creates awkward UX where filler plays then there's a pause
+    # service_indicators = ["leak", "blocked", "leaking", "broken", "not working", "burst", "flooding", 
+    #                       "no power", "no hot water", "no heating", "dripping", "clogged", "emergency",
+    #                       "urgent", "water damage", "pipe", "drain", "toilet", "sink", "tap", "boiler"]
+    # if not likely_needs_tool and any(indicator in user_message for indicator in service_indicators):
+    #     likely_needs_tool = True
+    #     detected_intent = "SERVICE_DESCRIPTION"
+    #     checking_msg = "Sure, one moment."
+    #     print(f"   ✅ [PRE-CHECK] Detected: SERVICE DESCRIPTION (will acknowledge)")
     
     precheck_duration = time.time() - precheck_start
     
@@ -2748,21 +2748,58 @@ When customer wants to reschedule:
         print(f"[LLM_TIMING] Time since stream_llm start: {time_since_llm_start:.3f}s")
         print(f"[LLM_TIMING] Messages count: {len(final_messages)}, company_id={company_id}")
         print(f"[LLM_TIMING] Last user message: {final_messages[-1].get('content', '')[:100] if final_messages else 'N/A'}...")
-        stream = client.chat.completions.create(
-            model=config.CHAT_MODEL,
-            stream=True,
-            temperature=0.1,  # Very low for speed and consistency, but not zero to avoid stiffness  
-            max_tokens=180,   # Reduced for faster responses while maintaining completeness
-            presence_penalty=0.1,  # Reduced to prevent excessive avoidance
-            frequency_penalty=0.1, # Reduced to prevent excessive avoidance
-            messages=[{"role": "system", "content": system_prompt_with_time}, *final_messages],
-            tools=CALENDAR_TOOLS,
-            tool_choice="auto",
-            parallel_tool_calls=True,  # Enable parallel tool execution for speed
-            # Additional optimization parameters
-            top_p=0.9,  # Focus on most likely tokens for speed
-            stream_options={"include_usage": False}  # Disable usage tracking for speed
-        )
+        
+        # Use ThreadPoolExecutor with timeout to prevent infinite hangs
+        import concurrent.futures
+        import threading
+        
+        def create_stream():
+            return client.chat.completions.create(
+                model=config.CHAT_MODEL,
+                stream=True,
+                temperature=0.1,  # Very low for speed and consistency, but not zero to avoid stiffness  
+                max_tokens=180,   # Reduced for faster responses while maintaining completeness
+                presence_penalty=0.1,  # Reduced to prevent excessive avoidance
+                frequency_penalty=0.1, # Reduced to prevent excessive avoidance
+                messages=[{"role": "system", "content": system_prompt_with_time}, *final_messages],
+                tools=CALENDAR_TOOLS,
+                tool_choice="auto",
+                parallel_tool_calls=True,  # Enable parallel tool execution for speed
+                # Additional optimization parameters
+                top_p=0.9,  # Focus on most likely tokens for speed
+                stream_options={"include_usage": False}  # Disable usage tracking for speed
+            )
+        
+        # Heartbeat to show we're still waiting
+        heartbeat_stop = threading.Event()
+        def heartbeat():
+            count = 0
+            while not heartbeat_stop.is_set():
+                heartbeat_stop.wait(3.0)  # Wait 3 seconds
+                if not heartbeat_stop.is_set():
+                    count += 1
+                    print(f"   💓 [HEARTBEAT] Still waiting for OpenAI... ({count * 3}s)")
+        
+        heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
+        heartbeat_thread.start()
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(create_stream)
+            try:
+                stream = future.result(timeout=15.0)  # 15 second timeout for stream creation
+                heartbeat_stop.set()
+            except concurrent.futures.TimeoutError:
+                heartbeat_stop.set()
+                print(f"❌ [LLM_ERROR] OpenAI stream creation timed out after 15s!")
+                print(f"[LLM_ERROR] Message roles: {[m.get('role') for m in final_messages]}")
+                # Log the actual messages for debugging
+                for i, msg in enumerate(final_messages[-5:]):  # Last 5 messages
+                    role = msg.get('role')
+                    content = msg.get('content', '')[:100] if msg.get('content') else '[no content]'
+                    print(f"[LLM_ERROR] Msg[-{5-i}] {role}: {content}...")
+                yield "I apologize, I'm having a brief delay. Could you repeat that?"
+                return
+        
         openai_create_time = time_module.time() - openai_call_start
         print(f"[LLM_TIMING] ✅ OpenAI stream created in {openai_create_time:.3f}s")
     except Exception as e:
@@ -3079,19 +3116,32 @@ When customer wants to reschedule:
                 else:
                     follow_up_final.append(msg)
             
-            follow_up_stream = client.chat.completions.create(
-                model=config.CHAT_MODEL,
-                stream=True,
-                temperature=0.2,  # Optimal balance for natural but fast responses
-                max_tokens=200,   # Reduced for faster completion  
-                presence_penalty=0.1,
-                frequency_penalty=0.1,
-                messages=[{"role": "system", "content": system_prompt_with_time}, *follow_up_final],
-                tools=CALENDAR_TOOLS,
-                tool_choice="none",  # Prevent nested tool calls
-                top_p=0.9,  # Focus on most likely tokens
-                stream_options={"include_usage": False}  # Disable usage tracking for speed
-            )
+            # Use ThreadPoolExecutor with timeout to prevent infinite hangs
+            import concurrent.futures
+            def create_follow_up_stream():
+                return client.chat.completions.create(
+                    model=config.CHAT_MODEL,
+                    stream=True,
+                    temperature=0.2,  # Optimal balance for natural but fast responses
+                    max_tokens=200,   # Reduced for faster completion  
+                    presence_penalty=0.1,
+                    frequency_penalty=0.1,
+                    messages=[{"role": "system", "content": system_prompt_with_time}, *follow_up_final],
+                    tools=CALENDAR_TOOLS,
+                    tool_choice="none",  # Prevent nested tool calls
+                    top_p=0.9,  # Focus on most likely tokens
+                    stream_options={"include_usage": False}  # Disable usage tracking for speed
+                )
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(create_follow_up_stream)
+                try:
+                    follow_up_stream = future.result(timeout=15.0)  # 15 second timeout
+                except concurrent.futures.TimeoutError:
+                    print(f"❌ [FOLLOW_UP] Stream creation timed out after 15s!")
+                    print(f"[FOLLOW_UP] Message roles: {[m.get('role') for m in follow_up_final]}")
+                    yield "I apologize for the delay. Could you repeat your question?"
+                    return
             
             follow_up_response = ""
             follow_up_token_count = 0

@@ -4244,7 +4244,8 @@ def notifications_api():
     conn = None
     try:
         conn = db.get_connection()
-        cursor = conn.cursor()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         # Get recent bookings with their status changes
         if since:

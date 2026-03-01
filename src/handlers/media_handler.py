@@ -463,11 +463,13 @@ async def media_handler(ws):
                                 print(f"   ✅ [TTS_FALLBACK] Ready to listen (text streaming)")
                     
                     print(f"   📢 [TTS_FALLBACK] Starting TTS stream...")
+                    tts_stream_start = time_module.time()
                     await asyncio.wait_for(
                         stream_tts(simple_stream_with_prefetch(), ws, stream_sid, lambda: interrupt),
                         timeout=config.TTS_TIMEOUT
                     )
-                    print(f"   📢 [TTS_FALLBACK] TTS stream complete")
+                    tts_stream_duration = time_module.time() - tts_stream_start
+                    print(f"   📢 [TTS_FALLBACK] TTS stream complete in {tts_stream_duration:.3f}s")
                     print(f"   ✅ [FLOW] First TTS session complete")
                 
                 # If we need continuation (due to SPLIT_TTS or pre-recorded), start a second TTS session
@@ -605,17 +607,22 @@ async def media_handler(ws):
                 import traceback
                 traceback.print_exc()
             finally:
+                finally_start = time_module.time()
                 # Cancel prefetch task if still running (cleanup on interrupt/error)
                 if prefetch_task and not prefetch_task.done():
+                    print(f"   🧹 [CLEANUP] Cancelling prefetch task...")
                     prefetch_task.cancel()
                     try:
                         await prefetch_task
                     except asyncio.CancelledError:
                         pass
-                    print(f"   🧹 Prefetch task cleaned up")
+                    cleanup_duration = time_module.time() - finally_start
+                    print(f"   🧹 Prefetch task cleaned up in {cleanup_duration:.3f}s")
                 
                 tts_ended_at = asyncio.get_event_loop().time()
                 duration = tts_ended_at - tts_started_at
+                finally_duration = time_module.time() - finally_start
+                print(f"   🧹 [CLEANUP] Finally block took {finally_duration:.3f}s")
                 speaking = False
                 interrupt = False  # Reset interrupt flag
                 llm_processing = False  # LLM response complete
