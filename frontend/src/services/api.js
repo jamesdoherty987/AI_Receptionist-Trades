@@ -173,4 +173,8 @@ export const getConnectPayouts = () => api.get('/api/connect/payouts');
 export const saveBankDetails = (data) => api.post('/api/settings/business', data);
 export const getBankDetails = () => api.get('/api/settings/business');
 
+// Notifications
+export const getNotifications = (since = null) => 
+  api.get('/api/notifications', { params: since ? { since } : {} });
+
 export default api;

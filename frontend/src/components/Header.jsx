@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { getBusinessSettings } from '../services/api';
+import NotificationBell from './NotificationBell';
 import './Header.css';
 
 function Header() {
@@ -78,6 +79,9 @@ function Header() {
               <i className="fas fa-cog"></i>
               Settings
             </Link>
+            
+            {/* Notification Bell */}
+            <NotificationBell />
             
             {/* User Menu */}
             <div className="user-menu-container" ref={menuRef}>

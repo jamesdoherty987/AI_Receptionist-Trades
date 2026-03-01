@@ -2629,7 +2629,7 @@ def business_settings_api():
             'business_address': company.get('address'),
             'logo_url': company.get('logo_url'),
             'country_code': '+353',  # Default, could be added to schema if needed
-            'business_hours': company.get('business_hours') or '8 AM - 6 PM Mon-Sat',
+            'business_hours': company.get('business_hours', ''),
             'twilio_phone_number': company.get('twilio_phone_number'),  # Read-only, assigned from pool
             'ai_enabled': company.get('ai_enabled', True),
             # Bank details for invoice bank transfer option
@@ -4225,6 +4225,90 @@ def config_api():
         "max_booking_days_ahead": config.MAX_BOOKING_DAYS_AHEAD,
         "appointment_slot_duration": config.APPOINTMENT_SLOT_DURATION
     })
+
+
+@app.route("/api/notifications", methods=["GET"])
+@login_required
+def notifications_api():
+    """Get recent booking activity for notifications"""
+    db = get_database()
+    company_id = session.get('company_id')
+    
+    # Get 'since' parameter (ISO timestamp) to only fetch new notifications
+    since = request.args.get('since')
+    try:
+        limit = min(int(request.args.get('limit', 20)), 50)
+    except (ValueError, TypeError):
+        limit = 20
+    
+    conn = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        # Get recent bookings with their status changes
+        if since:
+            cursor.execute("""
+                SELECT b.id, b.service_type, b.status, b.appointment_time, b.created_at,
+                       c.name as client_name
+                FROM bookings b
+                LEFT JOIN clients c ON b.client_id = c.id
+                WHERE b.company_id = %s AND b.created_at > %s
+                ORDER BY b.created_at DESC
+                LIMIT %s
+            """, (company_id, since, limit))
+        else:
+            # Get recent activity from last 24 hours
+            cursor.execute("""
+                SELECT b.id, b.service_type, b.status, b.appointment_time, b.created_at,
+                       c.name as client_name
+                FROM bookings b
+                LEFT JOIN clients c ON b.client_id = c.id
+                WHERE b.company_id = %s AND b.created_at > NOW() - INTERVAL '24 hours'
+                ORDER BY b.created_at DESC
+                LIMIT %s
+            """, (company_id, limit))
+        
+        rows = cursor.fetchall()
+        
+        notifications = []
+        for row in rows:
+            status = row['status'] or 'scheduled'
+            
+            # Determine notification type and message
+            if status == 'cancelled':
+                notif_type = 'cancelled'
+                message = f"Job cancelled: {row['service_type'] or 'Appointment'}"
+            elif status == 'completed':
+                notif_type = 'completed'
+                message = f"Job completed: {row['service_type'] or 'Appointment'}"
+            elif status == 'rescheduled':
+                notif_type = 'rescheduled'
+                message = f"Job rescheduled: {row['service_type'] or 'Appointment'}"
+            else:
+                notif_type = 'new_booking'
+                message = f"New booking: {row['service_type'] or 'Appointment'}"
+            
+            notifications.append({
+                'id': row['id'],
+                'type': notif_type,
+                'message': message,
+                'client_name': row['client_name'] or 'Unknown',
+                'appointment_time': row['appointment_time'].isoformat() if row['appointment_time'] else None,
+                'created_at': row['created_at'].isoformat() if row['created_at'] else None
+            })
+        
+        return jsonify({
+            'notifications': notifications,
+            'count': len(notifications)
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to get notifications: {e}")
+        return jsonify({'notifications': [], 'count': 0})
+    finally:
+        if conn:
+            db.return_connection(conn)
 
 
 @app.route("/api/workers", methods=["GET", "POST"])

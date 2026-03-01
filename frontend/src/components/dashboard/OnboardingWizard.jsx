@@ -13,6 +13,13 @@ const STEPS = [
     description: 'Where do you provide services?'
   },
   {
+    id: 'company-details',
+    title: 'Company Details',
+    icon: 'fa-info-circle',
+    iconClass: '',
+    description: 'Help your AI receptionist know your business'
+  },
+  {
     id: 'payment',
     title: 'Payment Details',
     icon: 'fa-university',
@@ -36,6 +43,7 @@ function OnboardingWizard({ onComplete }) {
     address: '',
     coverage_area: '',
     business_hours: '',
+    company_context: '',
     bank_iban: '',
     bank_bic: '',
     bank_name: '',
@@ -60,6 +68,7 @@ function OnboardingWizard({ onComplete }) {
         address: settings?.address || '',
         coverage_area: settings?.coverage_area || '',
         business_hours: settings?.business_hours || '',
+        company_context: settings?.company_context || '',
         bank_iban: settings?.bank_iban || '',
         bank_bic: settings?.bank_bic || '',
         bank_name: settings?.bank_name || '',
@@ -70,6 +79,9 @@ function OnboardingWizard({ onComplete }) {
       const completed = [];
       if (settings.address || settings.coverage_area || settings.business_hours) {
         completed.push('service-area');
+      }
+      if (settings.company_context) {
+        completed.push('company-details');
       }
       if (settings.bank_iban || settings.bank_account_holder) {
         completed.push('payment');
@@ -98,8 +110,30 @@ function OnboardingWizard({ onComplete }) {
     setSaving(true);
     setError('');
     try {
-      await saveMutation.mutateAsync(formData);
       const currentStep = STEPS[currentStepIndex];
+      
+      // Only send fields relevant to the current step
+      let dataToSave = {};
+      if (currentStep.id === 'service-area') {
+        dataToSave = {
+          address: formData.address,
+          coverage_area: formData.coverage_area,
+          business_hours: formData.business_hours
+        };
+      } else if (currentStep.id === 'company-details') {
+        dataToSave = {
+          company_context: formData.company_context
+        };
+      } else if (currentStep.id === 'payment') {
+        dataToSave = {
+          bank_iban: formData.bank_iban,
+          bank_bic: formData.bank_bic,
+          bank_name: formData.bank_name,
+          bank_account_holder: formData.bank_account_holder
+        };
+      }
+      
+      await saveMutation.mutateAsync(dataToSave);
       if (!completedSteps.includes(currentStep.id)) {
         setCompletedSteps(prev => [...prev, currentStep.id]);
       }
@@ -133,6 +167,7 @@ function OnboardingWizard({ onComplete }) {
   const isStepComplete = (stepId) => {
     if (stepId === 'phone') return !!settings?.twilio_phone_number;
     if (stepId === 'service-area') return !!(settings?.address || settings?.coverage_area || settings?.business_hours);
+    if (stepId === 'company-details') return !!settings?.company_context;
     if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder);
     return completedSteps.includes(stepId);
   };
@@ -213,6 +248,36 @@ function OnboardingWizard({ onComplete }) {
                     onChange={handleChange}
                     placeholder="e.g., Mon-Fri 9am-5pm"
                   />
+                </div>
+                <div className="step-actions">
+                  <button className="btn btn-secondary" onClick={handleSkipStep}>
+                    Skip for now
+                  </button>
+                  <button 
+                    className="btn btn-primary"
+                    onClick={handleSaveStep}
+                    disabled={saving}
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {currentStep.id === 'company-details' && (
+              <div className="onboarding-form">
+                <div className="form-group">
+                  <label htmlFor="ob_company_context">Tell your AI receptionist about your business</label>
+                  <textarea
+                    id="ob_company_context"
+                    name="company_context"
+                    value={formData.company_context}
+                    onChange={handleChange}
+                    rows={6}
+                    placeholder={"Examples:\n- Free parking available behind the building\n- Family-run business since 2005\n- All technicians are fully insured\n- 12-month warranty on all work"}
+                    style={{ minHeight: '140px', resize: 'vertical' }}
+                  />
+                  <small>This helps your AI answer customer questions accurately - parking info, policies, certifications, etc.</small>
                 </div>
                 <div className="step-actions">
                   <button className="btn btn-secondary" onClick={handleSkipStep}>
