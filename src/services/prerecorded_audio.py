@@ -59,6 +59,8 @@ FILLER_PHRASES = {
     "right": "Right.",
     "sure": "Sure.",
     "no_problem": "No problem.",
+    "absolutely": "Absolutely.",
+    "of_course": "Of course.",
     # Acknowledgment + one moment (for name introductions and service descriptions)
     "got_it_one_moment": "Got it, one moment.",
     "okay_one_moment": "Okay, one moment.",
@@ -83,7 +85,7 @@ GENERIC_FILLERS = ["one_moment", "let_me_check", "bear_with_me", "just_a_moment"
                    "sure_one_sec", "okay_let_me_see", "right_one_moment", "give_me_a_sec", "let_me_pull_that_up"]
 NAME_CONFIRMATION_FILLERS = ["got_it_checking", "perfect_one_moment", "grand_let_me_check", "grand_one_moment"]
 NUMBER_CONFIRMATION_FILLERS = ["thanks_checking", "okay_checking", "one_moment", "let_me_check"]
-SHORT_ACKNOWLEDGMENT_FILLERS = ["grand", "perfect", "great", "got_it", "okay", "right", "sure", "no_problem"]
+SHORT_ACKNOWLEDGMENT_FILLERS = ["grand", "perfect", "great", "got_it", "okay", "right", "sure", "no_problem", "absolutely", "of_course"]
 # Acknowledgment + one moment fillers (for name introductions and service descriptions)
 ACKNOWLEDGMENT_ONE_MOMENT_FILLERS = ["got_it_one_moment", "okay_one_moment", "right_one_moment", "sure_one_moment", "no_problem_one_moment"]
 TRANSFER_FILLERS = ["transferring", "connecting", "let_me_connect"]
@@ -311,14 +313,28 @@ def get_filler_id_from_message(message: str) -> Optional[str]:
     try:
         # Normalize the message for comparison
         normalized_msg = message.strip().lower()
+        print(f"[FILLER_DEBUG] Looking for match: '{normalized_msg}'")
         
         for phrase_id, phrase_text in FILLER_PHRASES.items():
-            if phrase_text.strip().lower() == normalized_msg:
+            phrase_normalized = phrase_text.strip().lower()
+            if phrase_normalized == normalized_msg:
                 # Only return if we have this audio cached
                 if phrase_id in _audio_cache:
+                    print(f"[FILLER_DEBUG] ✓ Found exact match: '{phrase_id}' -> '{phrase_text}'")
                     return phrase_id
+                else:
+                    print(f"[FILLER_DEBUG] ✗ Match found but not in cache: '{phrase_id}'")
+        
+        # Log near-matches for debugging
+        for phrase_id, phrase_text in FILLER_PHRASES.items():
+            phrase_normalized = phrase_text.strip().lower()
+            if normalized_msg in phrase_normalized or phrase_normalized in normalized_msg:
+                print(f"[FILLER_DEBUG] Near-match: '{phrase_id}' -> '{phrase_text}'")
+        
+        print(f"[FILLER_DEBUG] No exact match found for: '{normalized_msg}'")
         return None
-    except Exception:
+    except Exception as e:
+        print(f"[FILLER_DEBUG] Error in get_filler_id_from_message: {e}")
         return None
 
 
@@ -368,8 +384,14 @@ async def send_prerecorded_audio(websocket, stream_sid: str, audio_data: bytes):
 def has_prerecorded_fillers() -> bool:
     """Check if any pre-recorded fillers are available"""
     try:
-        return len(_audio_cache) > 0
-    except Exception:
+        count = len(_audio_cache)
+        if count > 0:
+            # Log available fillers for debugging
+            available = list(_audio_cache.keys())[:5]  # First 5
+            print(f"[FILLER_DEBUG] Cache has {count} fillers. Sample: {available}")
+        return count > 0
+    except Exception as e:
+        print(f"[FILLER_DEBUG] Error checking cache: {e}")
         return False
 
 

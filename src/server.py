@@ -159,26 +159,31 @@ async def warmup_openai():
     """
     Warmup OpenAI API connection to avoid cold start delay on first real call.
     Makes a minimal API call to establish the HTTPS connection and warm up the client.
+    IMPORTANT: Uses tools to match actual call path - tool definitions affect latency.
     """
     import time
     from src.services.llm_stream import get_openai_client
+    from src.services.calendar_tools import CALENDAR_TOOLS
     from src.utils.config import config
     
-    print("[STARTUP] Warming up OpenAI connection...")
+    print("[STARTUP] Warming up OpenAI connection (with tools)...")
     start = time.time()
     
     try:
         client = get_openai_client()
         # Run sync OpenAI call in thread pool to avoid blocking event loop
+        # CRITICAL: Include tools to warm up the same path as actual calls
         await asyncio.to_thread(
             client.chat.completions.create,
             model=config.CHAT_MODEL,
             messages=[{"role": "user", "content": "hi"}],
             max_tokens=1,
-            stream=False
+            stream=True,  # Use streaming to match actual calls
+            tools=CALENDAR_TOOLS,  # Include tools to warm up full path
+            tool_choice="none",  # Don't actually call tools
         )
         elapsed = time.time() - start
-        print(f"[STARTUP] OpenAI warmup complete in {elapsed:.2f}s")
+        print(f"[STARTUP] OpenAI warmup complete in {elapsed:.2f}s (with {len(CALENDAR_TOOLS)} tools)")
     except Exception as e:
         elapsed = time.time() - start
         print(f"[STARTUP] OpenAI warmup failed after {elapsed:.2f}s: {e}")
@@ -193,15 +198,16 @@ async def openai_keepalive_loop():
     Background task that pings OpenAI periodically to keep the connection warm.
     Prevents cold start delays after idle periods.
     
-    IMPORTANT: Uses stream=True to match actual LLM calls - streaming and non-streaming
+    IMPORTANT: Uses stream=True AND tools to match actual LLM calls - streaming and non-streaming
     may use different connection paths in OpenAI's infrastructure.
     
     Cost: ~$0.01/month (negligible)
     """
     from src.services.llm_stream import get_openai_client
+    from src.services.calendar_tools import CALENDAR_TOOLS
     from src.utils.config import config
     
-    print(f"[KEEPALIVE] Started OpenAI keepalive (every {OPENAI_KEEPALIVE_INTERVAL}s)")
+    print(f"[KEEPALIVE] Started OpenAI keepalive (every {OPENAI_KEEPALIVE_INTERVAL}s, with tools)")
     
     consecutive_failures = 0
     max_failures_before_warning = 3
@@ -217,8 +223,8 @@ async def openai_keepalive_loop():
             client = get_openai_client()
             start = time.time()
             
-            # Use stream=True to match actual LLM calls - this warms up the streaming path
-            # which is what we actually use for responses
+            # Use stream=True AND tools to match actual LLM calls
+            # This warms up the exact same path used for responses
             def do_streaming_ping():
                 stream = client.chat.completions.create(
                     model=config.CHAT_MODEL,
@@ -226,6 +232,8 @@ async def openai_keepalive_loop():
                     max_tokens=1,
                     stream=True,  # CRITICAL: Match actual LLM calls
                     temperature=0.1,
+                    tools=CALENDAR_TOOLS,  # CRITICAL: Include tools
+                    tool_choice="none",  # Don't actually call tools
                 )
                 # Consume the stream to complete the request
                 for _ in stream:

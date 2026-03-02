@@ -246,11 +246,20 @@ def load_system_prompt(company_id=None):
     
     print(f"\n[PROMPT_DEBUG] load_system_prompt called with company_id={company_id}")
     
+    # Check if we should use minimal prompt for debugging
+    use_minimal = config.USE_MINIMAL_PROMPT
+    if use_minimal:
+        print(f"[PROMPT_DEBUG] ⚡ USING MINIMAL PROMPT (USE_MINIMAL_PROMPT=true)")
+        prompt_file = 'receptionist_prompt_minimal.txt'
+    else:
+        prompt_file = 'receptionist_prompt_fast.txt'
+    
     # Use fast/condensed prompt for better performance
     prompt_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-        'prompts', 'receptionist_prompt_fast.txt'  # Using condensed version for speed
+        'prompts', prompt_file
     )
+    print(f"[PROMPT_DEBUG] Loading prompt from: {prompt_file}")
     
     # Load business info (for specific company if ID provided) and services menu
     biz_info_start = time_module.time()
@@ -712,151 +721,158 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         print(f"[PHONE] Caller phone automatically captured: {caller_phone}")
     
     # PRE-CHECK: Detect if user message likely requires a tool call
-    # PRE-CHECK: Detect if user message likely requires a tool call
     # If so, speak acknowledgment IMMEDIATELY before calling OpenAI
     # SIMPLIFIED: Only trigger for HIGH-CONFIDENCE tool call scenarios
     # Misfires (filler plays but no tool) are worse than no filler at all
     
-    precheck_start = time.time()
-    user_message = messages[-1]["content"].lower() if messages and messages[-1].get("role") == "user" else ""
-    likely_needs_tool = False
-    checking_msg = None
-    detected_intent = None
-    
-    print(f"\n{'='*60}")
-    print(f"🔍 [PRE-CHECK] === FILLER PRE-CHECK ANALYSIS ===")
-    print(f"🔍 [PRE-CHECK] User message: '{user_message[:80]}...'")
-    print(f"{'='*60}")
-    
-    # Get previous assistant message for context
-    prev_assistant_msg = ""
-    for msg in reversed(messages[:-1]):
-        if msg.get("role") == "assistant":
-            prev_assistant_msg = msg.get("content", "").lower()
-            break
-    
-    # Check if lookup_customer was already called
-    already_did_lookup = any(
-        msg.get("role") == "tool" and msg.get("name") == "lookup_customer"
-        for msg in messages
-    )
-    
-    # Generic fillers - safe for any tool call
-    generic_fillers = ["One moment.", "Let me check that for you.", "Bear with me one second."]
-    
-    # === HIGH-CONFIDENCE TRIGGERS (tool call is almost certain) ===
-    
-    # 1. TRANSFER REQUEST - always triggers transfer_to_human tool
-    transfer_phrases = ["transfer", "speak to a", "talk to a", "real person", "a human", "the manager"]
-    if any(phrase in user_message for phrase in transfer_phrases):
-        likely_needs_tool = True
-        detected_intent = "TRANSFER"
-        checking_msg = "Connecting you now."
-        print(f"   ✅ [PRE-CHECK] Detected: TRANSFER REQUEST")
-    
-    # 2. CANCEL/RESCHEDULE - always triggers cancel_appointment or reschedule_appointment
-    if not likely_needs_tool:
-        if "cancel" in user_message and ("appointment" in user_message or "booking" in user_message):
-            likely_needs_tool = True
-            detected_intent = "CANCELLATION"
-            checking_msg = random.choice(generic_fillers)
-            print(f"   ✅ [PRE-CHECK] Detected: CANCELLATION REQUEST")
-        elif "reschedule" in user_message or "move my appointment" in user_message:
-            likely_needs_tool = True
-            detected_intent = "RESCHEDULE"
-            checking_msg = random.choice(generic_fillers)
-            print(f"   ✅ [PRE-CHECK] Detected: RESCHEDULE REQUEST")
-    
-    # 3. NAME SPELLING CONFIRMED - triggers lookup_customer (only if not already done)
-    if not likely_needs_tool and not already_did_lookup:
-        # Check if AI just spelled back a name (e.g., "J-A-M-E-S")
-        name_spelling_indicators = ["-a-", "-b-", "-c-", "-d-", "-e-", "-f-", "-g-", "-h-", "-i-", 
-                                    "-j-", "-k-", "-l-", "-m-", "-n-", "-o-", "-p-", "-r-", "-s-", 
-                                    "-t-", "-u-", "-v-", "-w-", "-y-", "-z-"]
-        is_name_spelling = any(ind in prev_assistant_msg for ind in name_spelling_indicators)
-        is_confirmation = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "correct", "that's right"])
-        
-        # Make sure it's not an eircode/address confirmation
-        is_eircode_context = any(phrase in prev_assistant_msg for phrase in ["eircode", "postcode", "address"])
-        
-        if is_name_spelling and is_confirmation and not is_eircode_context:
-            likely_needs_tool = True
-            detected_intent = "NAME_SPELLING_CONFIRMED"
-            checking_msg = "Grand, one moment."
-            print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CONFIRMED")
-    
-    # 4. EXPLICIT AVAILABILITY CHECK - triggers check_availability
-    if not likely_needs_tool:
-        availability_phrases = ["what times are available", "when are you available", "any slots", "check availability"]
-        if any(phrase in user_message for phrase in availability_phrases):
-            likely_needs_tool = True
-            detected_intent = "AVAILABILITY_CHECK"
-            checking_msg = random.choice(generic_fillers)
-            print(f"   ✅ [PRE-CHECK] Detected: AVAILABILITY CHECK")
-    
-    # 5. BOOKING CONFIRMATION - user confirms booking after AI asked "ready to book?"
-    if not likely_needs_tool:
-        # Check if AI just asked about booking confirmation
-        booking_confirmation_phrases = ["ready to book", "shall i book", "want me to book", "confirm the booking", "go ahead and book"]
-        ai_asked_to_book = any(phrase in prev_assistant_msg for phrase in booking_confirmation_phrases)
-        user_confirms = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "please", "go ahead", "book it", "that's perfect", "sounds good"])
-        
-        if ai_asked_to_book and user_confirms:
-            likely_needs_tool = True
-            detected_intent = "BOOKING_CONFIRMED"
-            checking_msg = "Booking that now."
-            print(f"   ✅ [PRE-CHECK] Detected: BOOKING CONFIRMED")
-    
-    # === FIRST TURN ACKNOWLEDGMENT ===
-    # On the FIRST user message (turn 1), OpenAI cold start can take 3-4 seconds
-    # Play a quick acknowledgment so caller doesn't wait in silence
-    # This is safe because we're just acknowledging, not claiming to do anything
-    if not likely_needs_tool:
-        is_first_turn = len([m for m in messages if m.get("role") == "user"]) == 1
-        has_substance = len(user_message.split()) >= 4  # At least 4 words (not just "hi")
-        
-        if is_first_turn and has_substance:
-            likely_needs_tool = True  # Not really, but triggers the filler mechanism
-            detected_intent = "FIRST_TURN_ACK"
-            # Natural acknowledgments that work for any first message
-            first_turn_acks = ["Sure!", "Absolutely!", "No problem!", "Of course!"]
-            checking_msg = random.choice(first_turn_acks)
-            print(f"   ✅ [PRE-CHECK] Detected: FIRST TURN (playing acknowledgment to cover OpenAI latency)")
-    
-    # === MEDIUM-CONFIDENCE (might trigger tool, but not certain) ===
-    # These are logged but DON'T trigger fillers to avoid misfires
-    
-    if not likely_needs_tool:
-        # Booking request - LLM will ask for details first, no immediate tool call
-        if any(phrase in user_message for phrase in ["book", "appointment", "schedule"]):
-            detected_intent = "BOOKING_INTENT"
-            print(f"   ℹ️ [PRE-CHECK] Detected: BOOKING INTENT (no filler - LLM will gather details)")
-        
-        # Service description - LLM will ask for name, no immediate tool call
-        elif any(phrase in user_message for phrase in ["leak", "broken", "fix", "repair", "build"]):
-            detected_intent = "SERVICE_DESCRIPTION"
-            print(f"   ℹ️ [PRE-CHECK] Detected: SERVICE DESCRIPTION (no filler - LLM will ask for name)")
-        
-        # Name introduction - LLM will spell back name, no immediate tool call
-        elif "my name is" in user_message or "name's" in user_message:
-            detected_intent = "NAME_INTRODUCTION"
-            print(f"   ℹ️ [PRE-CHECK] Detected: NAME INTRODUCTION (no filler - LLM will spell back)")
-    
-    precheck_duration = time.time() - precheck_start
-    
-    if likely_needs_tool and checking_msg:
-        print(f"\n   {'─'*50}")
-        print(f"   🎯 [PRE-CHECK] FILLER WILL BE TRIGGERED!")
-        print(f"   🎯 [PRE-CHECK] Intent: {detected_intent}")
-        print(f"   🎯 [PRE-CHECK] Filler message: '{checking_msg}'")
-        print(f"   🎯 [PRE-CHECK] Analysis took: {precheck_duration*1000:.1f}ms")
-        print(f"   {'─'*50}\n")
-        yield f"<<<TIMING:precheck_ms={precheck_duration*1000:.1f},intent={detected_intent}>>>"
-        yield f"<<<SPLIT_TTS:{checking_msg}>>>"
+    # Check if pre-check is disabled for debugging
+    if config.DISABLE_FILLER_PRECHECK:
+        print(f"\n{'='*60}")
+        print(f"🔍 [PRE-CHECK] ⚠️ DISABLED (DISABLE_FILLER_PRECHECK=true)")
+        print(f"{'='*60}")
+        yield f"<<<TIMING:precheck_ms=0,intent=DISABLED>>>"
     else:
-        print(f"   ❌ [PRE-CHECK] No filler trigger detected")
-        print(f"   ❌ [PRE-CHECK] Analysis took: {precheck_duration*1000:.1f}ms\n")
-        yield f"<<<TIMING:precheck_ms={precheck_duration*1000:.1f},intent={detected_intent or 'NONE'}>>>"
+        precheck_start = time.time()
+        user_message = messages[-1]["content"].lower() if messages and messages[-1].get("role") == "user" else ""
+        likely_needs_tool = False
+        checking_msg = None
+        detected_intent = None
+        
+        print(f"\n{'='*60}")
+        print(f"🔍 [PRE-CHECK] === FILLER PRE-CHECK ANALYSIS ===")
+        print(f"🔍 [PRE-CHECK] User message: '{user_message[:80]}...'")
+        print(f"{'='*60}")
+    
+        # Get previous assistant message for context
+        prev_assistant_msg = ""
+        for msg in reversed(messages[:-1]):
+            if msg.get("role") == "assistant":
+                prev_assistant_msg = msg.get("content", "").lower()
+                break
+        
+        # Check if lookup_customer was already called
+        already_did_lookup = any(
+            msg.get("role") == "tool" and msg.get("name") == "lookup_customer"
+            for msg in messages
+        )
+        
+        # Generic fillers - safe for any tool call
+        generic_fillers = ["One moment.", "Let me check that for you.", "Bear with me one second."]
+        
+        # === HIGH-CONFIDENCE TRIGGERS (tool call is almost certain) ===
+        
+        # 1. TRANSFER REQUEST - always triggers transfer_to_human tool
+        transfer_phrases = ["transfer", "speak to a", "talk to a", "real person", "a human", "the manager"]
+        if any(phrase in user_message for phrase in transfer_phrases):
+            likely_needs_tool = True
+            detected_intent = "TRANSFER"
+            checking_msg = "Connecting you now."
+            print(f"   ✅ [PRE-CHECK] Detected: TRANSFER REQUEST")
+        
+        # 2. CANCEL/RESCHEDULE - always triggers cancel_appointment or reschedule_appointment
+        if not likely_needs_tool:
+            if "cancel" in user_message and ("appointment" in user_message or "booking" in user_message):
+                likely_needs_tool = True
+                detected_intent = "CANCELLATION"
+                checking_msg = random.choice(generic_fillers)
+                print(f"   ✅ [PRE-CHECK] Detected: CANCELLATION REQUEST")
+            elif "reschedule" in user_message or "move my appointment" in user_message:
+                likely_needs_tool = True
+                detected_intent = "RESCHEDULE"
+                checking_msg = random.choice(generic_fillers)
+                print(f"   ✅ [PRE-CHECK] Detected: RESCHEDULE REQUEST")
+        
+        # 3. NAME SPELLING CONFIRMED - triggers lookup_customer (only if not already done)
+        if not likely_needs_tool and not already_did_lookup:
+            # Check if AI just spelled back a name (e.g., "J-A-M-E-S")
+            name_spelling_indicators = ["-a-", "-b-", "-c-", "-d-", "-e-", "-f-", "-g-", "-h-", "-i-", 
+                                        "-j-", "-k-", "-l-", "-m-", "-n-", "-o-", "-p-", "-r-", "-s-", 
+                                        "-t-", "-u-", "-v-", "-w-", "-y-", "-z-"]
+            is_name_spelling = any(ind in prev_assistant_msg for ind in name_spelling_indicators)
+            is_confirmation = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "correct", "that's right"])
+            
+            # Make sure it's not an eircode/address confirmation
+            is_eircode_context = any(phrase in prev_assistant_msg for phrase in ["eircode", "postcode", "address"])
+            
+            if is_name_spelling and is_confirmation and not is_eircode_context:
+                likely_needs_tool = True
+                detected_intent = "NAME_SPELLING_CONFIRMED"
+                checking_msg = "Grand, one moment."
+                print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CONFIRMED")
+        
+        # 4. EXPLICIT AVAILABILITY CHECK - triggers check_availability
+        if not likely_needs_tool:
+            availability_phrases = ["what times are available", "when are you available", "any slots", "check availability"]
+            if any(phrase in user_message for phrase in availability_phrases):
+                likely_needs_tool = True
+                detected_intent = "AVAILABILITY_CHECK"
+                checking_msg = random.choice(generic_fillers)
+                print(f"   ✅ [PRE-CHECK] Detected: AVAILABILITY CHECK")
+        
+        # 5. BOOKING CONFIRMATION - user confirms booking after AI asked "ready to book?"
+        if not likely_needs_tool:
+            # Check if AI just asked about booking confirmation
+            booking_confirmation_phrases = ["ready to book", "shall i book", "want me to book", "confirm the booking", "go ahead and book"]
+            ai_asked_to_book = any(phrase in prev_assistant_msg for phrase in booking_confirmation_phrases)
+            user_confirms = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "please", "go ahead", "book it", "that's perfect", "sounds good"])
+            
+            if ai_asked_to_book and user_confirms:
+                likely_needs_tool = True
+                detected_intent = "BOOKING_CONFIRMED"
+                checking_msg = "Booking that now."
+                print(f"   ✅ [PRE-CHECK] Detected: BOOKING CONFIRMED")
+        
+        # === FIRST TURN ACKNOWLEDGMENT ===
+        # On the FIRST user message (turn 1), OpenAI cold start can take 3-4 seconds
+        # Play a quick acknowledgment so caller doesn't wait in silence
+        # This is safe because we're just acknowledging, not claiming to do anything
+        if not likely_needs_tool:
+            is_first_turn = len([m for m in messages if m.get("role") == "user"]) == 1
+            has_substance = len(user_message.split()) >= 4  # At least 4 words (not just "hi")
+            
+            if is_first_turn and has_substance:
+                likely_needs_tool = True  # Not really, but triggers the filler mechanism
+                detected_intent = "FIRST_TURN_ACK"
+                # Natural acknowledgments that work for any first message
+                # NOTE: These must match FILLER_PHRASES in prerecorded_audio.py (without exclamation marks)
+                first_turn_acks = ["Sure.", "No problem.", "Grand.", "Okay.", "Absolutely.", "Of course."]
+                checking_msg = random.choice(first_turn_acks)
+                print(f"   ✅ [PRE-CHECK] Detected: FIRST TURN (playing acknowledgment to cover OpenAI latency)")
+        
+        # === MEDIUM-CONFIDENCE (might trigger tool, but not certain) ===
+        # These are logged but DON'T trigger fillers to avoid misfires
+        
+        if not likely_needs_tool:
+            # Booking request - LLM will ask for details first, no immediate tool call
+            if any(phrase in user_message for phrase in ["book", "appointment", "schedule"]):
+                detected_intent = "BOOKING_INTENT"
+                print(f"   ℹ️ [PRE-CHECK] Detected: BOOKING INTENT (no filler - LLM will gather details)")
+            
+            # Service description - LLM will ask for name, no immediate tool call
+            elif any(phrase in user_message for phrase in ["leak", "broken", "fix", "repair", "build"]):
+                detected_intent = "SERVICE_DESCRIPTION"
+                print(f"   ℹ️ [PRE-CHECK] Detected: SERVICE DESCRIPTION (no filler - LLM will ask for name)")
+            
+            # Name introduction - LLM will spell back name, no immediate tool call
+            elif "my name is" in user_message or "name's" in user_message:
+                detected_intent = "NAME_INTRODUCTION"
+                print(f"   ℹ️ [PRE-CHECK] Detected: NAME INTRODUCTION (no filler - LLM will spell back)")
+        
+        precheck_duration = time.time() - precheck_start
+        
+        if likely_needs_tool and checking_msg:
+            print(f"\n   {'─'*50}")
+            print(f"   🎯 [PRE-CHECK] FILLER WILL BE TRIGGERED!")
+            print(f"   🎯 [PRE-CHECK] Intent: {detected_intent}")
+            print(f"   🎯 [PRE-CHECK] Filler message: '{checking_msg}'")
+            print(f"   🎯 [PRE-CHECK] Analysis took: {precheck_duration*1000:.1f}ms")
+            print(f"   {'─'*50}\n")
+            yield f"<<<TIMING:precheck_ms={precheck_duration*1000:.1f},intent={detected_intent}>>>"
+            yield f"<<<SPLIT_TTS:{checking_msg}>>>"
+        else:
+            print(f"   ❌ [PRE-CHECK] No filler trigger detected")
+            print(f"   ❌ [PRE-CHECK] Analysis took: {precheck_duration*1000:.1f}ms\n")
+            yield f"<<<TIMING:precheck_ms={precheck_duration*1000:.1f},intent={detected_intent or 'NONE'}>>>"
     
     # Stream from OpenAI with optimized settings
     client = get_openai_client()
@@ -1041,26 +1057,60 @@ When customer wants to reschedule:
         print(f"[LLM_TIMING] Messages count: {len(final_messages)}, company_id={company_id}")
         print(f"[LLM_TIMING] Last user message: {final_messages[-1].get('content', '')[:100] if final_messages else 'N/A'}...")
         
+        # DEBUG: Log prompt and message sizes
+        system_prompt_chars = len(system_prompt_with_time)
+        total_message_chars = sum(len(m.get('content', '')) for m in final_messages)
+        tools_count = len(CALENDAR_TOOLS)
+        print(f"[LLM_DEBUG] 📊 System prompt: {system_prompt_chars} chars (~{system_prompt_chars//4} tokens)")
+        print(f"[LLM_DEBUG] 📊 Messages total: {total_message_chars} chars (~{total_message_chars//4} tokens)")
+        print(f"[LLM_DEBUG] 📊 Tools count: {tools_count}")
+        
         # Use ThreadPoolExecutor with timeout to prevent infinite hangs
         import concurrent.futures
         import threading
         
+        # Determine if tools should be used
+        use_tools = not config.DISABLE_LLM_TOOLS
+        if not use_tools:
+            print(f"[LLM_DEBUG] ⚠️ TOOLS DISABLED (DISABLE_LLM_TOOLS=true)")
+        
         def create_stream():
-            return client.chat.completions.create(
-                model=config.CHAT_MODEL,
-                stream=True,
-                temperature=0.1,  # Very low for speed and consistency, but not zero to avoid stiffness  
-                max_tokens=180,   # Reduced for faster responses while maintaining completeness
-                presence_penalty=0.1,  # Reduced to prevent excessive avoidance
-                frequency_penalty=0.1, # Reduced to prevent excessive avoidance
-                messages=[{"role": "system", "content": system_prompt_with_time}, *final_messages],
-                tools=CALENDAR_TOOLS,
-                tool_choice="auto",
-                parallel_tool_calls=True,  # Enable parallel tool execution for speed
-                # Additional optimization parameters
-                top_p=0.9,  # Focus on most likely tokens for speed
-                stream_options={"include_usage": False}  # Disable usage tracking for speed
-            )
+            import time as inner_time
+            api_start = inner_time.time()
+            print(f"[LLM_DEBUG] 🚀 Calling OpenAI API at {api_start:.3f}...")
+            print(f"[LLM_DEBUG] 🔧 Model: {config.CHAT_MODEL}")
+            print(f"[LLM_DEBUG] 🔧 API Key present: {bool(config.OPENAI_API_KEY)}")
+            print(f"[LLM_DEBUG] 🔧 API Key prefix: {config.OPENAI_API_KEY[:8] if config.OPENAI_API_KEY else 'None'}...")
+            print(f"[LLM_DEBUG] 🔧 Tools enabled: {use_tools}")
+            
+            try:
+                # Build API call params
+                api_params = {
+                    "model": config.CHAT_MODEL,
+                    "stream": True,
+                    "temperature": 0.1,
+                    "max_tokens": 180,
+                    "presence_penalty": 0.1,
+                    "frequency_penalty": 0.1,
+                    "messages": [{"role": "system", "content": system_prompt_with_time}, *final_messages],
+                    "top_p": 0.9,
+                    "stream_options": {"include_usage": False}
+                }
+                
+                # Only add tools if enabled
+                if use_tools:
+                    api_params["tools"] = CALENDAR_TOOLS
+                    api_params["tool_choice"] = "auto"
+                    api_params["parallel_tool_calls"] = True
+                
+                result = client.chat.completions.create(**api_params)
+                api_done = inner_time.time()
+                print(f"[LLM_DEBUG] ✅ OpenAI API returned stream object in {(api_done - api_start)*1000:.0f}ms")
+                return result
+            except Exception as e:
+                api_done = inner_time.time()
+                print(f"[LLM_DEBUG] ❌ OpenAI API failed after {(api_done - api_start)*1000:.0f}ms: {e}")
+                raise
         
         # Heartbeat to show we're still waiting
         heartbeat_stop = threading.Event()

@@ -322,13 +322,20 @@ async def media_handler(ws):
                         has_fillers = has_prerecorded_fillers()
                         print(f"   📊 [FILLER] Checking pre-recorded fillers...")
                         print(f"   📊 [FILLER] has_prerecorded_fillers() = {has_fillers}")
+                        print(f"   📊 [FILLER] Requested filler message: '{split_msg}'")
                         
                         if has_fillers:
                             # Try to match the exact filler message first
                             filler_id = get_filler_id_from_message(split_msg)
+                            print(f"   📊 [FILLER] get_filler_id_from_message('{split_msg}') = {filler_id}")
+                            
                             if not filler_id:
                                 # Fall back to random filler if no exact match
                                 filler_id = get_random_filler_id()
+                                print(f"   📊 [FILLER] No exact match, using random filler: '{filler_id}'")
+                            else:
+                                print(f"   📊 [FILLER] Exact match found: '{filler_id}'")
+                            
                             filler_audio = get_filler_audio(filler_id)
                             audio_size = len(filler_audio) if filler_audio else 0
                             audio_duration_ms = audio_size / 8 if audio_size > 0 else 0  # 8 bytes per ms
@@ -336,6 +343,9 @@ async def media_handler(ws):
                             print(f"   📊 [FILLER] Selected filler: '{filler_id}'")
                             print(f"   📊 [FILLER] Audio size: {audio_size} bytes")
                             print(f"   📊 [FILLER] Audio duration: {audio_duration_ms:.0f}ms")
+                            
+                            if not filler_audio:
+                                print(f"   ⚠️ [FILLER] get_filler_audio('{filler_id}') returned None/empty!")
                             
                             if filler_audio and len(filler_audio) > 0:
                                 parallel_start = time_module.time()

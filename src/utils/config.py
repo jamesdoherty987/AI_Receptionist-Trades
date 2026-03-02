@@ -16,6 +16,10 @@ class Config:
     
     # Feature Flags
     USE_GOOGLE_CALENDAR = False  # Database-only by default (scalable for SaaS)
+    USE_MINIMAL_PROMPT = os.getenv("USE_MINIMAL_PROMPT", "false").lower() == "true"  # Use minimal prompt for debugging
+    DEBUG_LLM_TIMING = os.getenv("DEBUG_LLM_TIMING", "true").lower() == "true"  # Extra LLM timing logs
+    DISABLE_LLM_TOOLS = os.getenv("DISABLE_LLM_TOOLS", "false").lower() == "true"  # Disable tools for testing latency
+    DISABLE_FILLER_PRECHECK = os.getenv("DISABLE_FILLER_PRECHECK", "false").lower() == "true"  # Skip filler pre-check
     
     # URLs
     PUBLIC_URL = os.getenv("PUBLIC_URL")
