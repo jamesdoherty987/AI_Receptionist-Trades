@@ -128,7 +128,7 @@ def get_openai_client():
     global _client
     if _client is None:
         import httpx
-        # Create client with reasonable timeouts (not too aggressive)
+        # Create client with reasonable timeouts
         _client = OpenAI(
             api_key=config.OPENAI_API_KEY,
             timeout=httpx.Timeout(60.0, connect=10.0),  # 10s connect, 60s total
@@ -2438,10 +2438,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         checking_msg = random.choice(generic_fillers)
         print(f"   ✅ [PRE-CHECK] Detected: APPOINTMENT LOOKUP")
     
-    # Detect when user gives their name - play acknowledgment filler with "one moment"
-    # The LLM will spell back the name for confirmation, but this takes time to generate
-    # "Got it, one moment" tells caller to wait while LLM generates spelling confirmation
-    # NOTE: This runs in PARALLEL - filler plays while LLM generates response
+    # Detect when user gives their name
+    # Use SHORT acknowledgment - LLM will spell back name (takes ~0.5-1s to generate)
+    # "Got it" is quick and natural, doesn't promise to "check" anything
     name_intro_patterns = ["my name is ", "the name is ", "name's ", "i'm ", "this is "]
     # Exclude if it's clearly not a name introduction (e.g., "I'm looking for..." or "I'm calling about...")
     name_exclusions = ["looking", "calling", "trying", "wondering", "hoping", "interested", "having"]
@@ -2449,15 +2448,16 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     has_exclusion = any(excl in user_message for excl in name_exclusions)
     
     if not likely_needs_tool and is_name_intro and not has_exclusion:
-        likely_needs_tool = True  # Will trigger filler
+        # NAME_INTRODUCTION: Play short filler while LLM generates response
+        # Filler runs IN PARALLEL with OpenAI - doesn't add time, just fills the gap
+        likely_needs_tool = True
         detected_intent = "NAME_INTRODUCTION"
-        # Use acknowledgment + "one moment" so caller knows to wait
         checking_msg = random.choice([
             "Got it, one moment.",
             "Okay, one moment.",
             "Right, one moment.",
         ])
-        print(f"   ✅ [PRE-CHECK] Detected: NAME INTRODUCTION (acknowledgment filler)")
+        print(f"   ✅ [PRE-CHECK] Detected: NAME INTRODUCTION (filler while LLM responds)")
     
     # Detect pricing/quote requests (requires service matching which can take time)
     pricing_phrases = ["how much", "what's the price", "what's the cost", "price for", "cost of", 
@@ -2511,11 +2511,19 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
         
         # Name spelling confirmation - AI spelled back name like "J-A-M-E-S", user says "yes"
         # This triggers lookup_customer tool call
+        # BUT: Only if we haven't already done a lookup (check conversation history)
         name_spelling_indicators = ["j-", "k-", "l-", "m-", "n-", "o-", "p-", "s-", "t-", "a-", "b-", "c-", "d-", "e-", "f-", "g-", "h-", "i-", "r-", "u-", "v-", "w-", "y-", "z-"]
         is_name_spelling_confirmation = any(indicator in prev_assistant_msg for indicator in name_spelling_indicators)
         
+        # Check if lookup_customer was already called in this conversation
+        # If so, don't trigger filler for subsequent confirmations (eircode, address, etc.)
+        already_did_lookup = any(
+            msg.get("role") == "tool" and msg.get("name") == "lookup_customer"
+            for msg in messages
+        )
+        
         # Phone/address confirmations - these are quick, no filler needed
-        phone_address_indicators = ["is that the best number", "is that still", "same location", "same address", "reach you"]
+        phone_address_indicators = ["is that the best number", "is that still", "same location", "same address", "reach you", "eircode", "air code", "postcode"]
         is_phone_address_confirmation = any(indicator in prev_assistant_msg for indicator in phone_address_indicators)
         
         is_booking_confirmation = any(prompt in prev_assistant_msg for prompt in booking_confirmation_prompts)
@@ -2525,8 +2533,9 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
             detected_intent = "CONFIRMATION_RESPONSE"
             checking_msg = random.choice(generic_fillers)
             print(f"   ✅ [PRE-CHECK] Detected: CONFIRMATION RESPONSE (booking action)")
-        elif is_name_spelling_confirmation and not is_phone_address_confirmation:
+        elif is_name_spelling_confirmation and not is_phone_address_confirmation and not already_did_lookup:
             # User confirmed name spelling - LLM will call lookup_customer
+            # Only trigger if we haven't already done a lookup
             likely_needs_tool = True
             detected_intent = "NAME_SPELLING_CONFIRMED"
             checking_msg = random.choice([
@@ -2536,19 +2545,22 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
                 "Grand, let me check that.",
             ])
             print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CONFIRMED (will lookup customer)")
+        elif is_name_spelling_confirmation and already_did_lookup:
+            # Spelled-out confirmation but we already did lookup - probably eircode/address
+            print(f"   ℹ️ [PRE-CHECK] Spelled confirmation but lookup already done - no filler needed")
+            detected_intent = "POST_LOOKUP_CONFIRMATION"
         elif is_phone_address_confirmation:
             # User confirmed phone/address - this is a simple acknowledgment
             # DON'T set likely_needs_tool because no tool call is needed
             # The LLM will just continue the conversation naturally
             # Setting likely_needs_tool here causes misfires where filler plays but no tool executes
-            likely_needs_tool = False  # Changed from True - no tool needed for simple confirmation
+            likely_needs_tool = False
             detected_intent = "PHONE_ADDRESS_CONFIRMED"
-            checking_msg = None  # Don't play filler for simple confirmations
-            print(f"   ✅ [PRE-CHECK] Detected: PHONE/ADDRESS CONFIRMED (no filler needed)")
+            # Don't set checking_msg - no filler for simple confirmations
+            print(f"   ℹ️ [PRE-CHECK] Detected: PHONE/ADDRESS CONFIRMED (no filler needed)")
     
     # Detect service/job description (when user describes what they need done)
-    # Use SHORT acknowledgment fillers ("Sure", "Okay") - NOT "let me check" since no tool is called
-    # This fills the gap while LLM generates follow-up questions
+    # Use SHORT acknowledgment - LLM will ask for name/details (takes ~0.5-1s to generate)
     service_indicators = ["leak", "blocked", "leaking", "broken", "not working", "burst", "flooding", 
                           "no power", "no hot water", "no heating", "dripping", "clogged", "emergency",
                           "urgent", "water damage", "pipe", "drain", "toilet", "sink", "tap", "boiler",
@@ -2562,17 +2574,16 @@ async def stream_llm(messages, process_appointment_callback=None, caller_phone=N
     has_action = any(indicator in user_message for indicator in action_indicators)
     
     if not likely_needs_tool and has_service and has_action:
+        # SERVICE_DESCRIPTION: Play short filler while LLM generates response
+        # Filler runs IN PARALLEL with OpenAI - doesn't add time, just fills the gap
         likely_needs_tool = True
         detected_intent = "SERVICE_DESCRIPTION"
-        # Use acknowledgment + "one moment" so caller knows to wait
-        # This runs in PARALLEL - filler plays while LLM generates follow-up questions
         checking_msg = random.choice([
-            "Sure, one moment.",
-            "Okay, one moment.",
-            "Right, one moment.",
-            "No problem, one moment.",
+            "Sure, no problem.",
+            "Okay, no problem.",
+            "Right, no problem.",
         ])
-        print(f"   ✅ [PRE-CHECK] Detected: SERVICE DESCRIPTION (acknowledgment filler)")
+        print(f"   ✅ [PRE-CHECK] Detected: SERVICE DESCRIPTION (filler while LLM responds)")
     
     precheck_duration = time.time() - precheck_start
     
@@ -3136,74 +3147,82 @@ When customer wants to reschedule:
         direct_response = None
         
         try:
-            result_content = json.loads(tool_results[0]["content"]) if tool_results else {}
-            
-            if tool_name == "lookup_customer" and result_content.get("success"):
-                # Customer lookup - generate response directly
-                customer_info = result_content.get("customer_info", {})
-                customer_name = customer_info.get("name", "")
-                phone = customer_info.get("phone", "")
-                last_address = customer_info.get("last_address", "")
+            # Safety check - ensure we have tool results
+            if not tool_results:
+                print(f"   ⚠️ [DIRECT_RESPONSE] No tool results available")
+                direct_response = None
+            else:
+                result_content = json.loads(tool_results[0]["content"]) if tool_results[0].get("content") else {}
                 
-                if result_content.get("customer_exists"):
-                    # Returning customer
-                    if result_content.get("multiple_matches"):
-                        # Multiple customers with same name
-                        count = result_content.get("match_count", 2)
-                        if phone:
-                            direct_response = f"I found {count} customers named {customer_name}. I have your number as {phone}. Is that the best number to reach you?"
+                if tool_name == "lookup_customer" and result_content.get("success"):
+                    # Customer lookup - generate response directly
+                    customer_info = result_content.get("customer_info", {})
+                    customer_name = customer_info.get("name", "")
+                    phone = customer_info.get("phone", "")
+                    last_address = customer_info.get("last_address", "")
+                    
+                    if result_content.get("customer_exists"):
+                        # Returning customer
+                        if result_content.get("multiple_matches"):
+                            # Multiple customers with same name
+                            count = result_content.get("match_count", 2)
+                            if phone:
+                                direct_response = f"I found {count} customers named {customer_name}. I have your number as {phone}. Is that the best number to reach you?"
+                            else:
+                                direct_response = f"I found {count} customers named {customer_name}. Can I get your phone number to confirm which one you are?"
                         else:
-                            direct_response = f"I found {count} customers named {customer_name}. Can I get your phone number to confirm which one you are?"
+                            # Single match - returning customer
+                            if phone:
+                                direct_response = f"Great to hear from you again, {customer_name.split()[0]}! I have your number as {phone}. Is that the best number to reach you?"
+                            else:
+                                direct_response = f"Great to hear from you again, {customer_name.split()[0]}! What can I help you with today?"
                     else:
-                        # Single match - returning customer
-                        if phone:
-                            direct_response = f"Great to hear from you again, {customer_name.split()[0]}! I have your number as {phone}. Is that the best number to reach you?"
+                        # New customer
+                        first_name = customer_name.split()[0] if customer_name else "there"
+                        direct_response = f"Great to have you, {first_name}! I have your number as {phone}. Is that the best number to reach you?" if phone else f"Welcome, {first_name}! What's the best phone number to reach you?"
+                    
+                    print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for lookup_customer")
+                    print(f"   ⚡ [DIRECT_RESPONSE] Generated: '{direct_response}'")
+                
+                elif tool_name == "check_availability" and result_content.get("success"):
+                    # Availability check - generate response directly
+                    available_times = result_content.get("available_times", [])
+                    natural_summary = result_content.get("natural_summary", "")
+                    
+                    if available_times:
+                        if natural_summary:
+                            direct_response = f"I have {natural_summary}. Which time works best for you?"
                         else:
-                            direct_response = f"Great to hear from you again, {customer_name.split()[0]}! What can I help you with today?"
-                else:
-                    # New customer
-                    direct_response = f"Welcome, {customer_name.split()[0]}! I'll get you set up. What's the best phone number to reach you?"
-                
-                print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for lookup_customer")
-                print(f"   ⚡ [DIRECT_RESPONSE] Generated: '{direct_response}'")
-            
-            elif tool_name == "check_availability" and result_content.get("success"):
-                # Availability check - generate response directly
-                available_times = result_content.get("available_times", [])
-                natural_summary = result_content.get("natural_summary", "")
-                
-                if available_times:
-                    if natural_summary:
-                        direct_response = f"I have {natural_summary}. Which time works best for you?"
+                            times_str = ", ".join(available_times[:4])
+                            direct_response = f"I have {times_str} available. Which works best for you?"
                     else:
-                        times_str = ", ".join(available_times[:4])
-                        direct_response = f"I have {times_str} available. Which works best for you?"
-                else:
-                    date_ref = result_content.get("date_reference", "that day")
-                    direct_response = f"Unfortunately {date_ref} is fully booked. Would you like to try a different day?"
+                        date_ref = result_content.get("date_reference", "that day")
+                        direct_response = f"Unfortunately {date_ref} is fully booked. Would you like to try a different day?"
+                    
+                    print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for check_availability")
+                    print(f"   ⚡ [DIRECT_RESPONSE] Generated: '{direct_response}'")
                 
-                print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for check_availability")
-                print(f"   ⚡ [DIRECT_RESPONSE] Generated: '{direct_response}'")
-            
-            elif tool_name in ["book_appointment", "book_job"] and result_content.get("success"):
-                # Booking confirmation - generate response directly
-                booking_time = result_content.get("booking_time", "")
-                direct_response = f"You're all booked{' for ' + booking_time if booking_time else ''}! Is there anything else I can help you with?"
+                elif tool_name in ["book_appointment", "book_job"] and result_content.get("success"):
+                    # Booking confirmation - generate response directly
+                    booking_time = result_content.get("booking_time", "")
+                    direct_response = f"You're all booked{' for ' + booking_time if booking_time else ''}! Is there anything else I can help you with?"
+                    
+                    print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for booking")
+                    print(f"   ⚡ [DIRECT_RESPONSE] Generated: '{direct_response}'")
                 
-                print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for booking")
-                print(f"   ⚡ [DIRECT_RESPONSE] Generated: '{direct_response}'")
-            
-            elif tool_name in ["cancel_appointment", "cancel_job"] and result_content.get("success"):
-                # Cancellation confirmation
-                direct_response = "That's cancelled for you. Is there anything else I can help with?"
-                print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for cancellation")
-            
-            elif tool_name == "transfer_to_human":
-                # Transfer - don't need second call
-                direct_response = None  # Let the transfer marker handle it
+                elif tool_name in ["cancel_appointment", "cancel_job"] and result_content.get("success"):
+                    # Cancellation confirmation
+                    direct_response = "That's cancelled for you. Is there anything else I can help with?"
+                    print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for cancellation")
+                
+                elif tool_name == "transfer_to_human":
+                    # Transfer - don't need second call
+                    direct_response = None  # Let the transfer marker handle it
                 
         except Exception as e:
             print(f"   ⚠️ [DIRECT_RESPONSE] Error generating direct response: {e}")
+            import traceback
+            traceback.print_exc()
             direct_response = None
         
         # If we have a direct response, yield it and skip the second OpenAI call
@@ -3286,7 +3305,7 @@ When customer wants to reschedule:
             yield f"<<<TIMING:follow_up_call_started=1>>>"
             
             # Add timeout protection to prevent infinite hangs
-            timeout_seconds = 20  # Increased to prevent cutting off longer responses
+            timeout_seconds = 20
             
             for part in follow_up_stream:
                 # Check timeout

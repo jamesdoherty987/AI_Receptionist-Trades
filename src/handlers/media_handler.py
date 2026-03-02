@@ -368,12 +368,13 @@ async def media_handler(ws):
                                 parallel_start = time_module.time()
                                 
                                 # --- RECORD FIRST AUDIO TIMING ---
-                                if current_response_timing:
+                                # Only record if we have valid timing data (response_start_at must exist)
+                                if current_response_timing and current_response_timing.get("response_start_at"):
                                     current_response_timing["first_audio_at"] = parallel_start
                                     current_response_timing["filler_played"] = True
                                     current_response_timing["filler_message"] = split_msg
                                     current_response_timing["filler_id"] = filler_id
-                                    time_to_filler = parallel_start - current_response_timing.get("response_start_at", parallel_start)
+                                    time_to_filler = parallel_start - current_response_timing["response_start_at"]
                                     print(f"   ⏱️ [TIMING] Time from speech_final to filler: {time_to_filler:.3f}s")
                                 
                                 print(f"\n   {'─'*50}")
@@ -444,17 +445,26 @@ async def media_handler(ws):
                 
                 # If we didn't use pre-recorded, fall back to TTS streaming
                 if not used_prerecorded:
-                    print(f"\n   {'─'*50}")
-                    print(f"   📢 [TTS_FALLBACK] Using TTS for filler (no pre-recorded audio)")
-                    print(f"   📢 [TTS_FALLBACK] This is slower but still works")
-                    print(f"   📢 [TTS_FALLBACK] Filler + LLM work will run IN PARALLEL")
-                    print(f"   {'─'*50}\n")
+                    # Check if this is a filler fallback or just regular streaming
+                    is_filler_fallback = first_token and first_token.startswith("<<<SPLIT_TTS:")
                     
-                    # Record timing for TTS fallback
-                    if current_response_timing:
-                        current_response_timing["first_audio_at"] = time_module.time()
-                        current_response_timing["filler_played"] = True
-                        current_response_timing["filler_via_tts"] = True
+                    if is_filler_fallback:
+                        print(f"\n   {'─'*50}")
+                        print(f"   📢 [TTS_FALLBACK] Using TTS for filler (no pre-recorded audio)")
+                        print(f"   📢 [TTS_FALLBACK] This is slower but still works")
+                        print(f"   📢 [TTS_FALLBACK] Filler + LLM work will run IN PARALLEL")
+                        print(f"   {'─'*50}\n")
+                        
+                        # Record timing for TTS fallback
+                        if current_response_timing:
+                            current_response_timing["first_audio_at"] = time_module.time()
+                            current_response_timing["filler_played"] = True
+                            current_response_timing["filler_via_tts"] = True
+                    else:
+                        # Regular streaming - no filler, just stream response directly
+                        print(f"   📢 [STREAM] Streaming response directly to TTS (no filler)")
+                        if current_response_timing:
+                            current_response_timing["first_audio_at"] = time_module.time()
                     
                     async def simple_stream_with_prefetch():
                         nonlocal token_count, speaking, transfer_number, full_text, needs_continuation, prefetch_task, first_token, current_response_timing
@@ -736,25 +746,30 @@ async def media_handler(ws):
                 # --- RECORD RESPONSE TIMING ---
                 if current_response_timing and label == "respond":
                     response_end_time = time_module.time()
+                    response_start = current_response_timing.get("response_start_at", response_end_time)
                     current_response_timing["response_end_at"] = response_end_time
-                    current_response_timing["total_response_time"] = response_end_time - current_response_timing.get("response_start_at", response_end_time)
+                    current_response_timing["total_response_time"] = response_end_time - response_start
                     current_response_timing["tts_duration"] = duration
                     
                     # Calculate time to first audio (filler or actual response)
-                    if current_response_timing.get("first_audio_at"):
-                        current_response_timing["time_to_first_audio"] = current_response_timing["first_audio_at"] - current_response_timing["response_start_at"]
+                    first_audio = current_response_timing.get("first_audio_at")
+                    if first_audio and response_start:
+                        current_response_timing["time_to_first_audio"] = first_audio - response_start
                     
-                    response_timing_details.append(current_response_timing.copy())
-                    response_times.append(current_response_timing["total_response_time"])
+                    # Only append if we have valid timing data
+                    if current_response_timing.get("turn"):
+                        response_timing_details.append(current_response_timing.copy())
+                        response_times.append(current_response_timing.get("total_response_time", 0))
+                        
+                        print(f"\n⏱️ [RESPONSE_TIMING] Turn {current_response_timing.get('turn', '?')} COMPLETE:")
+                        print(f"   📝 User said: '{current_response_timing.get('user_text', 'N/A')}'")
+                        print(f"   ⏱️ Total response time: {current_response_timing.get('total_response_time', 0):.3f}s")
+                        if current_response_timing.get("time_to_first_audio"):
+                            print(f"   🔊 Time to first audio: {current_response_timing['time_to_first_audio']:.3f}s")
+                        if current_response_timing.get("filler_played"):
+                            print(f"   💬 Filler played: '{current_response_timing.get('filler_message', 'N/A')}'")
+                        print(f"   🗣️ TTS duration: {duration:.2f}s")
                     
-                    print(f"\n⏱️ [RESPONSE_TIMING] Turn {current_response_timing['turn']} COMPLETE:")
-                    print(f"   📝 User said: '{current_response_timing.get('user_text', 'N/A')}'")
-                    print(f"   ⏱️ Total response time: {current_response_timing['total_response_time']:.3f}s")
-                    if current_response_timing.get("time_to_first_audio"):
-                        print(f"   🔊 Time to first audio: {current_response_timing['time_to_first_audio']:.3f}s")
-                    if current_response_timing.get("filler_played"):
-                        print(f"   💬 Filler played: '{current_response_timing.get('filler_message', 'N/A')}'")
-                    print(f"   🗣️ TTS duration: {duration:.2f}s")
                     current_response_timing.clear()  # Use .clear() instead of reassignment
                 # Small delay to ensure audio actually finished playing
                 await asyncio.sleep(0.1)
