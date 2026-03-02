@@ -755,7 +755,7 @@ async def media_handler(ws):
                     if current_response_timing.get("filler_played"):
                         print(f"   💬 Filler played: '{current_response_timing.get('filler_message', 'N/A')}'")
                     print(f"   🗣️ TTS duration: {duration:.2f}s")
-                    current_response_timing = {}
+                    current_response_timing.clear()  # Use .clear() instead of reassignment
                 # Small delay to ensure audio actually finished playing
                 await asyncio.sleep(0.1)
 
@@ -1260,12 +1260,14 @@ async def media_handler(ws):
                                 print(f"📝 Trimmed conversation to {len(conversation)} messages")
                             
                             # --- START RESPONSE TIMING ---
-                            current_response_timing = {
+                            # Use .clear() and .update() instead of reassignment to preserve nonlocal binding
+                            current_response_timing.clear()
+                            current_response_timing.update({
                                 "turn": len(response_timing_details) + 1,
                                 "user_text": text[:50] + "..." if len(text) > 50 else text,
                                 "speech_final_at": now,
                                 "response_start_at": time_module.time(),
-                            }
+                            })
                             
                             # Start LLM response
                             print(f"🔊 Starting LLM response")
