@@ -4859,7 +4859,7 @@ def run_tests():
 def chat():
     """Chat with the AI receptionist"""
     import asyncio
-    from src.services.llm_stream import stream_llm, process_appointment_with_calendar, SYSTEM_PROMPT
+    from src.services.llm_stream import stream_llm, SYSTEM_PROMPT
     from src.services.call_state import create_call_state
     
     data = request.json
@@ -4896,7 +4896,7 @@ def chat():
             # Note: Web chat is stateless, so state doesn't persist between requests
             chat_call_state = create_call_state()
             # Don't pass caller_phone since this is web chat
-            async for token in stream_llm(conversation, process_appointment_with_calendar, caller_phone=None, call_state=chat_call_state):
+            async for token in stream_llm(conversation, caller_phone=None, call_state=chat_call_state):
                 # Filter out special markers that are meant for TTS only
                 if token != "<<<FLUSH>>>":
                     response_text += token

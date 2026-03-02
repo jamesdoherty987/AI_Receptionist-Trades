@@ -107,7 +107,6 @@ AI-Receptionist-Trades/
 │   ├── handlers/                # Request handlers
 │   │   └── media_handler.py    # Real-time audio processing
 │   ├── services/                # Core services
-│   │   ├── appointment_detector.py  # Intent classification
 │   │   ├── asr_deepgram.py         # Speech-to-text
 │   │   ├── google_calendar.py      # Calendar operations
 │   │   ├── llm_stream.py           # AI conversation

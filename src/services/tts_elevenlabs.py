@@ -120,16 +120,17 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                             return
 
                         try:
-                            msg = await asyncio.wait_for(tts.recv(), timeout=1.5)
+                            msg = await asyncio.wait_for(tts.recv(), timeout=0.5)
                         except asyncio.TimeoutError:
                             # If we already sent all text and we've been quiet, exit
                             if sender_done.is_set():
                                 quiet_timeouts += 1
-                                if got_any_audio and quiet_timeouts >= 2:
+                                # Exit quickly after audio done
+                                if got_any_audio and quiet_timeouts >= 1:
                                     print(f"[TTS] ✅ Done (quiet timeout). Received {audio_chunks_received} chunks ({total_audio_bytes} bytes), sent {audio_chunks_sent} to Twilio")
                                     return
-                                if quiet_timeouts >= 4:
-                                    print(f"[TTS] ⚠️ No audio received after 4 timeouts. Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
+                                if quiet_timeouts >= 2:
+                                    print(f"[TTS] ⚠️ No audio received after 2 timeouts. Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
                                     return
                             continue
                         except websockets.ConnectionClosed as e:

@@ -100,14 +100,16 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                             return
 
                         try:
-                            msg = await asyncio.wait_for(tts.recv(), timeout=1.5)
+                            # Reduced timeout from 1.5s to 0.5s for faster exit
+                            msg = await asyncio.wait_for(tts.recv(), timeout=0.5)
                         except asyncio.TimeoutError:
                             if sender_done.is_set():
                                 quiet_timeouts += 1
-                                if got_any_audio and quiet_timeouts >= 2:
+                                # Reduced from 2/4 to 1/2 for faster exit after audio done
+                                if got_any_audio and quiet_timeouts >= 1:
                                     print(f"[TTS] ✅ Done. Sent {chunks_sent} chunks")
                                     return
-                                if quiet_timeouts >= 4:
+                                if quiet_timeouts >= 2:
                                     return
                             continue
                         except websockets.ConnectionClosed:
@@ -136,6 +138,10 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                                 data = json.loads(msg)
                                 if "error" in data:
                                     print(f"[TTS] ❌ Error: {data.get('error')}")
+                                # Check for Deepgram's flushed signal (indicates audio complete)
+                                if data.get("type") == "Flushed":
+                                    print(f"[TTS] ✅ Flushed signal received. Sent {chunks_sent} chunks")
+                                    return
                             except json.JSONDecodeError:
                                 pass
 

@@ -12,7 +12,7 @@ import websockets
 from src.utils.audio_utils import ulaw_energy
 from src.utils.config import config
 from src.services.asr_deepgram import DeepgramASR
-from src.services.llm_stream import stream_llm, process_appointment_with_calendar
+from src.services.llm_stream import stream_llm
 from src.services.call_state import CallState, create_call_state
 
 # Import pre-recorded audio service with safe fallback
@@ -228,93 +228,57 @@ async def media_handler(ws):
                 prefetch_task = None
                 
                 async def prefetch_remaining():
-                    """Pre-fetch remaining tokens while TTS/audio plays the filler"""
+                    """Pre-fetch remaining tokens while filler audio plays"""
                     nonlocal transfer_number, current_response_timing
                     prefetch_start = time_module.time()
                     try:
-                        token_received = False
                         token_count_local = 0
-                        print(f"\n   {'─'*50}")
-                        print(f"   ⚡ [PREFETCH] === PREFETCH TASK STARTED ===")
-                        print(f"   ⚡ [PREFETCH] Start time: {prefetch_start:.3f}")
-                        print(f"   ⚡ [PREFETCH] This runs IN PARALLEL with audio playback")
-                        print(f"   {'─'*50}")
+                        print(f"   ⚡ [PREFETCH] Started (parallel with audio)")
                         
                         async for token in text_stream:
-                            token_received = True
                             token_count_local += 1
-                            token_time = time_module.time() - prefetch_start
                             
+                            # Handle control markers
                             if token.startswith("<<<TRANSFER:"):
                                 transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
-                                print(f"   📞 [PREFETCH] TRANSFER MARKER at {token_time:.3f}s: {transfer_number}")
                                 continue
-                            
-                            # Parse timing markers
                             if token.startswith("<<<TIMING:"):
                                 timing_data = token.replace("<<<TIMING:", "").replace(">>>", "")
-                                print(f"   ⏱️ [PREFETCH] TIMING MARKER: {timing_data}")
-                                # Parse timing data and add to current_response_timing
                                 for pair in timing_data.split(","):
                                     if "=" in pair:
                                         key, value = pair.split("=", 1)
                                         try:
-                                            # Convert ms to seconds for consistency
                                             if key.endswith("_ms"):
                                                 current_response_timing[key.replace("_ms", "_time")] = float(value) / 1000
                                             else:
                                                 current_response_timing[key] = value
                                         except:
-                                            current_response_timing[key] = value
+                                            pass
                                 continue
-                            
-                            if token.startswith("<<<") and token.endswith(">>>"):
-                                print(f"   🏷️ [PREFETCH] Control marker at {token_time:.3f}s: {token[:50]}")
+                            if token.startswith("<<<"):
                                 continue
                             
                             prefetch_buffer.append(token)
-                            
-                            # Log first few tokens and then periodically
-                            if token_count_local <= 5:
-                                print(f"   ⚡ [PREFETCH] Token #{token_count_local} at {token_time:.3f}s: '{token[:40]}'")
-                            elif token_count_local % 10 == 0:
-                                print(f"   ⚡ [PREFETCH] Token #{token_count_local} at {token_time:.3f}s (buffered: {len(prefetch_buffer)})")
                         
-                        if not token_received:
-                            print(f"   ⚠️ [PREFETCH] WARNING: Received NO tokens from stream!")
-                            print(f"   ⚠️ [PREFETCH] This means the LLM didn't generate any follow-up response")
-                            # Add a fallback response so caller doesn't hear silence
+                        if not prefetch_buffer:
+                            print(f"   ⚠️ [PREFETCH] No tokens received - adding fallback")
                             prefetch_buffer.append("How can I help you with that?")
                             
                     except asyncio.CancelledError:
-                        print(f"   ⚠️ [PREFETCH] Task cancelled (likely interrupted)")
-                        raise  # Re-raise to properly handle cancellation
+                        raise
                     except Exception as e:
-                        print(f"   ❌ [PREFETCH] ERROR: {e}")
-                        import traceback
-                        traceback.print_exc()
-                        # Add fallback on error so caller doesn't hear silence
+                        print(f"   ❌ [PREFETCH] Error: {e}")
                         if not prefetch_buffer:
                             prefetch_buffer.append("Sorry, could you repeat that?")
                     finally:
-                        # ALWAYS set prefetch_done to prevent deadlock
                         prefetch_done.set()
                         total_time = time_module.time() - prefetch_start
-                        print(f"\n   {'─'*50}")
-                        print(f"   ⚡ [PREFETCH] === PREFETCH TASK COMPLETE ===")
-                        print(f"   ⚡ [PREFETCH] Duration: {total_time:.3f}s")
-                        print(f"   ⚡ [PREFETCH] Tokens buffered: {len(prefetch_buffer)}")
-                        if prefetch_buffer:
-                            preview = ''.join(prefetch_buffer)[:100]
-                            print(f"   ⚡ [PREFETCH] Preview: '{preview}...'")
-                        print(f"   {'─'*50}\n")
+                        print(f"   ⚡ [PREFETCH] Done in {total_time:.2f}s ({len(prefetch_buffer)} tokens)")
                 
                 # FAST PATH: Check for SPLIT_TTS marker FIRST, before any TTS
-                # This allows us to send pre-recorded audio IMMEDIATELY
                 first_token = None
                 get_token_start = time_module.time()
                 try:
-                    print(f"   📍 [FLOW] Waiting for first token from LLM stream...")
                     async for token in text_stream:
                         # Skip timing markers, but parse them
                         if token.startswith("<<<TIMING:"):
@@ -568,8 +532,29 @@ async def media_handler(ws):
                             wait_start = time_module.time()
                             print(f"   ⏳ [CONTINUATION] Waiting for prefetch task to complete...")
                             print(f"   ⏳ [CONTINUATION] (Tool execution should be finishing now)")
-                            # Reduced timeout from 15s to 10s - if tools take longer, something is wrong
-                            await asyncio.wait_for(prefetch_done.wait(), timeout=10.0)
+                            
+                            # OPTIMIZATION: If prefetch takes longer than 1.5s, play a secondary filler
+                            # This prevents awkward silence after the first filler
+                            try:
+                                await asyncio.wait_for(prefetch_done.wait(), timeout=1.5)
+                            except asyncio.TimeoutError:
+                                # Prefetch is taking too long - play secondary filler
+                                wait_so_far = time_module.time() - wait_start
+                                print(f"   ⏳ [CONTINUATION] Prefetch taking {wait_so_far:.1f}s - playing secondary filler...")
+                                
+                                # Try pre-recorded secondary filler
+                                try:
+                                    if has_prerecorded_fillers():
+                                        secondary_audio = get_filler_audio("bear_with_me")
+                                        if secondary_audio and len(secondary_audio) > 0:
+                                            await send_prerecorded_audio(ws, stream_sid, secondary_audio)
+                                            print(f"   🔊 [CONTINUATION] Secondary filler played")
+                                except Exception as e:
+                                    print(f"   ⚠️ [CONTINUATION] Secondary filler failed: {e}")
+                                
+                                # Now wait for the rest of the timeout (up to 8.5s more)
+                                await asyncio.wait_for(prefetch_done.wait(), timeout=8.5)
+                            
                             wait_duration = time_module.time() - wait_start
                             
                             print(f"\n   {'─'*50}")
@@ -597,6 +582,7 @@ async def media_handler(ws):
                         print(f"   ⚠️ [CONTINUATION] Adding fallback response to prevent silence")
                         # Natural fallback that doesn't sound like an error
                         prefetch_buffer.append("What would you like to do?")
+                    
                     
                     async def continuation_stream():
                         nonlocal token_count, speaking, transfer_number, full_text
@@ -1312,7 +1298,7 @@ async def media_handler(ws):
                             
                             try:
                                 await start_tts(
-                                    stream_llm(conversation, process_appointment_with_calendar, 
+                                    stream_llm(conversation, 
                                               caller_phone=caller_phone, company_id=company_id, call_state=call_state),
                                     label="respond"
                                 )
