@@ -2930,13 +2930,21 @@ When customer wants to reschedule:
                 
                 # Only yield content if:
                 # 1. We're NOT making tool calls (tool calls suppress content)
-                # 2. We haven't yielded a split marker (split marker means content comes in continuation)
-                if not tool_calls and not has_yielded_split_marker:
+                # 2. If we yielded a split marker, we STILL yield content so prefetch_remaining() can capture it
+                #    (The filler plays while these tokens are being buffered)
+                if not tool_calls:
                     # Strip markdown formatting to prevent TTS reading "**" as "star star"
                     cleaned_token = delta.content.replace('**', '').replace('__', '').replace('~~', '')
                     # Add pauses for spelled-out content (letters/numbers separated by dashes)
                     cleaned_token = format_for_tts_spelling(cleaned_token)
+                    # Debug: Log token yielding
+                    if token_count <= 3:
+                        print(f"   📤 [YIELD] Token #{token_count}: '{cleaned_token[:30]}...'")
                     yield cleaned_token  # Send cleaned version to TTS
+                else:
+                    # Debug: Log suppressed tokens
+                    if token_count <= 3:
+                        print(f"   🚫 [SUPPRESSED] Token #{token_count} suppressed (tool_calls={len(tool_calls)})")
                 
     except Exception as e:
         print(f"❌ [LLM_ERROR] Error during LLM streaming: {e}")
@@ -2956,16 +2964,15 @@ When customer wants to reschedule:
         print(f"   Full response length: {len(full_response)}")
     
     # SAFETY CHECK: If we yielded a split marker in pre-check but OpenAI didn't actually call tools
+    # Note: The response tokens were already yielded during streaming (captured by prefetch_remaining)
+    # so we just need to log the misfire and update conversation history
     if has_yielded_split_marker and not tool_calls:
         if full_response:
             print(f"\n⚠️ [PRE-CHECK MISFIRE] Filler was played but LLM didn't call any tools!")
             print(f"⚠️ [PRE-CHECK MISFIRE] User message was: '{user_message[:80]}...'")
             print(f"⚠️ [PRE-CHECK MISFIRE] LLM response: '{full_response[:100]}...'")
-            print(f"⚠️ [PRE-CHECK MISFIRE] This creates awkward UX - consider disabling this pre-check trigger\n")
-            # Yield the response that was collected but suppressed
-            # Strip markdown formatting
-            cleaned_response = full_response.replace('**', '').replace('__', '').replace('~~', '')
-            yield cleaned_response
+            print(f"⚠️ [PRE-CHECK MISFIRE] Response tokens were already yielded to prefetch buffer")
+            # Don't yield again - tokens were already yielded during streaming
             messages.append({"role": "assistant", "content": full_response})
         else:
             # Edge case: Pre-check fired but OpenAI returned nothing - provide fallback
