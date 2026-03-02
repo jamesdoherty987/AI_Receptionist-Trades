@@ -1593,6 +1593,24 @@ When customer wants to reschedule:
             yield direct_response
             return
         
+        # Check if we should force direct response for debugging
+        if config.FORCE_DIRECT_RESPONSE:
+            print(f"   ⚠️ [FORCE_DIRECT_RESPONSE] Flag enabled - generating fallback response")
+            # Generate a generic but natural response based on tool type
+            if tool_name == "check_availability":
+                fallback = "I've checked that for you. What time would work best?"
+            elif tool_name == "lookup_customer":
+                fallback = "Thanks for that. What can I help you with today?"
+            elif tool_name in ["book_appointment", "book_job"]:
+                fallback = "You're all booked! Anything else I can help with?"
+            else:
+                fallback = "I've got that. What else can I help you with?"
+            
+            yield f"<<<TIMING:forced_direct_response=1>>>"
+            messages.append({"role": "assistant", "content": fallback})
+            yield fallback
+            return
+        
         # ============================================================
         # FALLBACK: Use second OpenAI call for complex responses
         # ============================================================

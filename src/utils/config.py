@@ -20,6 +20,7 @@ class Config:
     DEBUG_LLM_TIMING = os.getenv("DEBUG_LLM_TIMING", "true").lower() == "true"  # Extra LLM timing logs
     DISABLE_LLM_TOOLS = os.getenv("DISABLE_LLM_TOOLS", "false").lower() == "true"  # Disable tools for testing latency
     DISABLE_FILLER_PRECHECK = os.getenv("DISABLE_FILLER_PRECHECK", "false").lower() == "true"  # Skip filler pre-check
+    FORCE_DIRECT_RESPONSE = os.getenv("FORCE_DIRECT_RESPONSE", "false").lower() == "true"  # Always use direct response (skip 2nd OpenAI)
     
     # URLs
     PUBLIC_URL = os.getenv("PUBLIC_URL")
