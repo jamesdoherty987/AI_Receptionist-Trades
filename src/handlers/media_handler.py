@@ -110,6 +110,11 @@ async def media_handler(ws):
     # Conversation logging
     conversation_log = []  # Full conversation transcript
     response_times = []  # Track response times
+    
+    # --- DETAILED RESPONSE TIMING TRACKER ---
+    # Tracks breakdown of each response: ASR -> Pre-check -> OpenAI -> Tool -> TTS
+    response_timing_details = []  # List of dicts with timing breakdown per response
+    current_response_timing = {}  # Current response being timed
 
     # --- TTS / turn state ---
     speaking = False
@@ -224,7 +229,7 @@ async def media_handler(ws):
                 
                 async def prefetch_remaining():
                     """Pre-fetch remaining tokens while TTS/audio plays the filler"""
-                    nonlocal transfer_number
+                    nonlocal transfer_number, current_response_timing
                     prefetch_start = time_module.time()
                     try:
                         token_received = False
@@ -244,6 +249,25 @@ async def media_handler(ws):
                                 transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
                                 print(f"   📞 [PREFETCH] TRANSFER MARKER at {token_time:.3f}s: {transfer_number}")
                                 continue
+                            
+                            # Parse timing markers
+                            if token.startswith("<<<TIMING:"):
+                                timing_data = token.replace("<<<TIMING:", "").replace(">>>", "")
+                                print(f"   ⏱️ [PREFETCH] TIMING MARKER: {timing_data}")
+                                # Parse timing data and add to current_response_timing
+                                for pair in timing_data.split(","):
+                                    if "=" in pair:
+                                        key, value = pair.split("=", 1)
+                                        try:
+                                            # Convert ms to seconds for consistency
+                                            if key.endswith("_ms"):
+                                                current_response_timing[key.replace("_ms", "_time")] = float(value) / 1000
+                                            else:
+                                                current_response_timing[key] = value
+                                        except:
+                                            current_response_timing[key] = value
+                                continue
+                            
                             if token.startswith("<<<") and token.endswith(">>>"):
                                 print(f"   🏷️ [PREFETCH] Control marker at {token_time:.3f}s: {token[:50]}")
                                 continue
@@ -283,6 +307,21 @@ async def media_handler(ws):
                 try:
                     print(f"   📍 [FLOW] Waiting for first token from LLM stream...")
                     async for token in text_stream:
+                        # Skip timing markers, but parse them
+                        if token.startswith("<<<TIMING:"):
+                            timing_data = token.replace("<<<TIMING:", "").replace(">>>", "")
+                            print(f"   ⏱️ [FLOW] TIMING MARKER: {timing_data}")
+                            for pair in timing_data.split(","):
+                                if "=" in pair:
+                                    key, value = pair.split("=", 1)
+                                    try:
+                                        if key.endswith("_ms"):
+                                            current_response_timing[key.replace("_ms", "_time")] = float(value) / 1000
+                                        else:
+                                            current_response_timing[key] = value
+                                    except:
+                                        current_response_timing[key] = value
+                            continue
                         first_token = token
                         break
                     get_token_time = time_module.time() - get_token_start
@@ -327,6 +366,15 @@ async def media_handler(ws):
                             
                             if filler_audio and len(filler_audio) > 0:
                                 parallel_start = time_module.time()
+                                
+                                # --- RECORD FIRST AUDIO TIMING ---
+                                if current_response_timing:
+                                    current_response_timing["first_audio_at"] = parallel_start
+                                    current_response_timing["filler_played"] = True
+                                    current_response_timing["filler_message"] = split_msg
+                                    current_response_timing["filler_id"] = filler_id
+                                    time_to_filler = parallel_start - current_response_timing.get("response_start_at", parallel_start)
+                                    print(f"   ⏱️ [TIMING] Time from speech_final to filler: {time_to_filler:.3f}s")
                                 
                                 print(f"\n   {'─'*50}")
                                 print(f"   ⚡ [PARALLEL] === STARTING PARALLEL EXECUTION ===")
@@ -399,10 +447,17 @@ async def media_handler(ws):
                     print(f"\n   {'─'*50}")
                     print(f"   📢 [TTS_FALLBACK] Using TTS for filler (no pre-recorded audio)")
                     print(f"   📢 [TTS_FALLBACK] This is slower but still works")
+                    print(f"   📢 [TTS_FALLBACK] Filler + LLM work will run IN PARALLEL")
                     print(f"   {'─'*50}\n")
                     
+                    # Record timing for TTS fallback
+                    if current_response_timing:
+                        current_response_timing["first_audio_at"] = time_module.time()
+                        current_response_timing["filler_played"] = True
+                        current_response_timing["filler_via_tts"] = True
+                    
                     async def simple_stream_with_prefetch():
-                        nonlocal token_count, speaking, transfer_number, full_text, needs_continuation, prefetch_task, first_token
+                        nonlocal token_count, speaking, transfer_number, full_text, needs_continuation, prefetch_task, first_token, current_response_timing
                         
                         # Yield the first token if we have one (and it wasn't a pre-recorded marker)
                         if first_token:
@@ -410,6 +465,10 @@ async def media_handler(ws):
                                 # TTS fallback for filler
                                 split_msg = first_token.replace("<<<SPLIT_TTS:", "").replace(">>>", "").strip()
                                 print(f"   📢 [TTS_FALLBACK] Filler message: '{split_msg}'")
+                                
+                                # Record filler message for timing
+                                if current_response_timing:
+                                    current_response_timing["filler_message"] = split_msg
                                 
                                 # CRITICAL: Start prefetch BEFORE yielding to TTS
                                 # This allows tool execution to happen in parallel with TTS
@@ -673,6 +732,30 @@ async def media_handler(ws):
                 # Signal end immediately so user can speak
                 print(f"🛑 TTS end ({label}) - duration: {duration:.2f}s")
                 print(f"👂 Ready to receive audio again (speaking={speaking}, llm_processing={llm_processing})")
+                
+                # --- RECORD RESPONSE TIMING ---
+                if current_response_timing and label == "respond":
+                    response_end_time = time_module.time()
+                    current_response_timing["response_end_at"] = response_end_time
+                    current_response_timing["total_response_time"] = response_end_time - current_response_timing.get("response_start_at", response_end_time)
+                    current_response_timing["tts_duration"] = duration
+                    
+                    # Calculate time to first audio (filler or actual response)
+                    if current_response_timing.get("first_audio_at"):
+                        current_response_timing["time_to_first_audio"] = current_response_timing["first_audio_at"] - current_response_timing["response_start_at"]
+                    
+                    response_timing_details.append(current_response_timing.copy())
+                    response_times.append(current_response_timing["total_response_time"])
+                    
+                    print(f"\n⏱️ [RESPONSE_TIMING] Turn {current_response_timing['turn']} COMPLETE:")
+                    print(f"   📝 User said: '{current_response_timing.get('user_text', 'N/A')}'")
+                    print(f"   ⏱️ Total response time: {current_response_timing['total_response_time']:.3f}s")
+                    if current_response_timing.get("time_to_first_audio"):
+                        print(f"   🔊 Time to first audio: {current_response_timing['time_to_first_audio']:.3f}s")
+                    if current_response_timing.get("filler_played"):
+                        print(f"   💬 Filler played: '{current_response_timing.get('filler_message', 'N/A')}'")
+                    print(f"   🗣️ TTS duration: {duration:.2f}s")
+                    current_response_timing = {}
                 # Small delay to ensure audio actually finished playing
                 await asyncio.sleep(0.1)
 
@@ -1176,8 +1259,17 @@ async def media_handler(ws):
                                 conversation[:] = [conversation[0]] + conversation[-(MAX_HISTORY):]
                                 print(f"📝 Trimmed conversation to {len(conversation)} messages")
                             
+                            # --- START RESPONSE TIMING ---
+                            current_response_timing = {
+                                "turn": len(response_timing_details) + 1,
+                                "user_text": text[:50] + "..." if len(text) > 50 else text,
+                                "speech_final_at": now,
+                                "response_start_at": time_module.time(),
+                            }
+                            
                             # Start LLM response
                             print(f"🔊 Starting LLM response")
+                            print(f"⏱️ [RESPONSE_TIMING] Turn {current_response_timing['turn']} started at {current_response_timing['response_start_at']:.3f}")
                             llm_processing = True
                             llm_started_at = now
                             queued_speech.clear()
@@ -1248,6 +1340,45 @@ async def media_handler(ws):
             print(f"   Average: {avg_response:.2f}s")
             print(f"   Fastest: {min(response_times):.2f}s")
             print(f"   Slowest: {max(response_times):.2f}s")
+        
+        # --- DETAILED TIMING BREAKDOWN ---
+        if response_timing_details:
+            print(f"\n{'='*80}")
+            print(f"⏱️ DETAILED RESPONSE TIMING BREAKDOWN")
+            print(f"{'='*80}")
+            for timing in response_timing_details:
+                print(f"\n📍 Turn {timing.get('turn', '?')}: \"{timing.get('user_text', 'N/A')}\"")
+                print(f"   ├─ Total response time: {timing.get('total_response_time', 0):.3f}s")
+                if timing.get('time_to_first_audio'):
+                    print(f"   ├─ Time to first audio: {timing.get('time_to_first_audio', 0):.3f}s")
+                if timing.get('filler_played'):
+                    print(f"   ├─ Filler played: '{timing.get('filler_message', 'N/A')}' (ID: {timing.get('filler_id', 'N/A')})")
+                if timing.get('precheck_time'):
+                    print(f"   ├─ Pre-check analysis: {timing.get('precheck_time', 0)*1000:.1f}ms")
+                if timing.get('openai_first_token_time'):
+                    print(f"   ├─ OpenAI first token: {timing.get('openai_first_token_time', 0):.3f}s")
+                if timing.get('tool_execution_time'):
+                    print(f"   ├─ Tool execution: {timing.get('tool_execution_time', 0):.3f}s")
+                if timing.get('tts_duration'):
+                    print(f"   └─ TTS duration: {timing.get('tts_duration', 0):.2f}s")
+            
+            # Identify slowest components
+            print(f"\n🔍 PERFORMANCE ANALYSIS:")
+            slow_responses = [t for t in response_timing_details if t.get('total_response_time', 0) > 2.0]
+            if slow_responses:
+                print(f"   ⚠️ {len(slow_responses)} responses took >2s:")
+                for t in slow_responses:
+                    print(f"      - Turn {t.get('turn')}: {t.get('total_response_time', 0):.2f}s - \"{t.get('user_text', 'N/A')}\"")
+            else:
+                print(f"   ✅ All responses under 2s - good performance!")
+            
+            # Check for missing fillers
+            no_filler_responses = [t for t in response_timing_details if not t.get('filler_played') and t.get('total_response_time', 0) > 1.0]
+            if no_filler_responses:
+                print(f"   ⚠️ {len(no_filler_responses)} slow responses had NO filler:")
+                for t in no_filler_responses:
+                    print(f"      - Turn {t.get('turn')}: {t.get('total_response_time', 0):.2f}s - \"{t.get('user_text', 'N/A')}\"")
+            print(f"{'='*80}")
         
         # Generate and save call summary to job card
         if conversation_log and caller_phone:

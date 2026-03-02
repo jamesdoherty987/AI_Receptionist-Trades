@@ -50,10 +50,21 @@ FILLER_PHRASES = {
     # Number/eircode confirmation fillers  
     "thanks_checking": "Thanks, just checking.",
     "okay_checking": "Okay, checking that now.",
-    # Short acknowledgment fillers (for quick confirmations)
+    # Short acknowledgment fillers (for quick confirmations and name introductions)
     "grand": "Grand.",
     "perfect": "Perfect.",
     "great": "Great.",
+    "got_it": "Got it.",
+    "okay": "Okay.",
+    "right": "Right.",
+    "sure": "Sure.",
+    "no_problem": "No problem.",
+    # Acknowledgment + one moment (for name introductions and service descriptions)
+    "got_it_one_moment": "Got it, one moment.",
+    "okay_one_moment": "Okay, one moment.",
+    "right_one_moment": "Right, one moment.",
+    "sure_one_moment": "Sure, one moment.",
+    "no_problem_one_moment": "No problem, one moment.",
     # Booking-specific fillers
     "let_me_book": "Let me book that for you, one moment.",
     "let_me_confirm": "Let me confirm that for you, one moment.",
@@ -72,7 +83,9 @@ GENERIC_FILLERS = ["one_moment", "let_me_check", "bear_with_me", "just_a_moment"
                    "sure_one_sec", "okay_let_me_see", "right_one_moment", "give_me_a_sec", "let_me_pull_that_up"]
 NAME_CONFIRMATION_FILLERS = ["got_it_checking", "perfect_one_moment", "grand_let_me_check", "grand_one_moment"]
 NUMBER_CONFIRMATION_FILLERS = ["thanks_checking", "okay_checking", "one_moment", "let_me_check"]
-SHORT_ACKNOWLEDGMENT_FILLERS = ["grand", "perfect", "great"]
+SHORT_ACKNOWLEDGMENT_FILLERS = ["grand", "perfect", "great", "got_it", "okay", "right", "sure", "no_problem"]
+# Acknowledgment + one moment fillers (for name introductions and service descriptions)
+ACKNOWLEDGMENT_ONE_MOMENT_FILLERS = ["got_it_one_moment", "okay_one_moment", "right_one_moment", "sure_one_moment", "no_problem_one_moment"]
 TRANSFER_FILLERS = ["transferring", "connecting", "let_me_connect"]
 
 # R2 folder for filler audio
@@ -229,6 +242,8 @@ def get_random_filler_id(tool_name: str = None, context: str = None) -> str:
         context: Optional context hint for filler selection
                  - "name_confirmed": User confirmed name spelling
                  - "number_confirmed": User confirmed phone/eircode
+                 - "name_introduction": User gave their name (acknowledgment + one moment)
+                 - "service_description": User described their issue (acknowledgment + one moment)
     """
     try:
         # Select appropriate filler group based on context hint first
@@ -238,6 +253,15 @@ def get_random_filler_id(tool_name: str = None, context: str = None) -> str:
                 return random.choice(available)
         elif context == "number_confirmed":
             available = [f for f in NUMBER_CONFIRMATION_FILLERS if f in _audio_cache]
+            if available:
+                return random.choice(available)
+        elif context in ["name_introduction", "service_description"]:
+            # Use acknowledgment + one moment fillers for these contexts
+            available = [f for f in ACKNOWLEDGMENT_ONE_MOMENT_FILLERS if f in _audio_cache]
+            if available:
+                return random.choice(available)
+            # Fall back to generic fillers if acknowledgment ones not available
+            available = [f for f in GENERIC_FILLERS if f in _audio_cache]
             if available:
                 return random.choice(available)
         
