@@ -201,7 +201,7 @@ async def media_handler(ws):
         nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at, llm_processing, queued_speech
 
         async def run():
-            nonlocal speaking, tts_started_at, tts_ended_at, call_sid, conversation_log, llm_processing, queued_speech, conversation, tool_execution_in_progress, continuation_window_start, continuation_original_text, continuation_energy_since, continuation_recovery_mode, continuation_base_text
+            nonlocal speaking, tts_started_at, tts_ended_at, call_sid, conversation_log, llm_processing, queued_speech, conversation, tool_execution_in_progress, continuation_window_start, continuation_original_text, continuation_energy_since, continuation_recovery_mode, continuation_base_text, current_response_timing, response_timing_details, response_times
             speaking = True
             interrupt = False
             tts_started_at = asyncio.get_event_loop().time()
