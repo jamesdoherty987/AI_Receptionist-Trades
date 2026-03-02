@@ -283,12 +283,21 @@ async def media_handler(ws):
                         if not token_received:
                             print(f"   ⚠️ [PREFETCH] WARNING: Received NO tokens from stream!")
                             print(f"   ⚠️ [PREFETCH] This means the LLM didn't generate any follow-up response")
+                            # Add a fallback response so caller doesn't hear silence
+                            prefetch_buffer.append("How can I help you with that?")
                             
+                    except asyncio.CancelledError:
+                        print(f"   ⚠️ [PREFETCH] Task cancelled (likely interrupted)")
+                        raise  # Re-raise to properly handle cancellation
                     except Exception as e:
                         print(f"   ❌ [PREFETCH] ERROR: {e}")
                         import traceback
                         traceback.print_exc()
+                        # Add fallback on error so caller doesn't hear silence
+                        if not prefetch_buffer:
+                            prefetch_buffer.append("Sorry, could you repeat that?")
                     finally:
+                        # ALWAYS set prefetch_done to prevent deadlock
                         prefetch_done.set()
                         total_time = time_module.time() - prefetch_start
                         print(f"\n   {'─'*50}")
@@ -559,7 +568,8 @@ async def media_handler(ws):
                             wait_start = time_module.time()
                             print(f"   ⏳ [CONTINUATION] Waiting for prefetch task to complete...")
                             print(f"   ⏳ [CONTINUATION] (Tool execution should be finishing now)")
-                            await asyncio.wait_for(prefetch_done.wait(), timeout=15.0)
+                            # Reduced timeout from 15s to 10s - if tools take longer, something is wrong
+                            await asyncio.wait_for(prefetch_done.wait(), timeout=10.0)
                             wait_duration = time_module.time() - wait_start
                             
                             print(f"\n   {'─'*50}")
@@ -572,8 +582,11 @@ async def media_handler(ws):
                             print(f"   {'─'*50}\n")
                             
                         except asyncio.TimeoutError:
-                            print(f"   ⚠️ [CONTINUATION] Prefetch timeout after 15s!")
+                            print(f"   ⚠️ [CONTINUATION] Prefetch timeout after 10s!")
                             print(f"   ⚠️ [CONTINUATION] Continuing with {len(prefetch_buffer)} tokens available")
+                            # Cancel the stuck prefetch task
+                            if prefetch_task and not prefetch_task.done():
+                                prefetch_task.cancel()
                     else:
                         print(f"   ⚠️ [CONTINUATION] No prefetch task was created!")
                     
@@ -582,7 +595,8 @@ async def media_handler(ws):
                     if not prefetch_buffer:
                         print(f"   ⚠️ [CONTINUATION] EMPTY PREFETCH BUFFER!")
                         print(f"   ⚠️ [CONTINUATION] Adding fallback response to prevent silence")
-                        prefetch_buffer.append("I've checked that for you. What would you like to do?")
+                        # Natural fallback that doesn't sound like an error
+                        prefetch_buffer.append("What would you like to do?")
                     
                     async def continuation_stream():
                         nonlocal token_count, speaking, transfer_number, full_text
@@ -1268,7 +1282,8 @@ async def media_handler(ws):
                             conversation.append({"role": "user", "content": text})
                             
                             # Trim conversation history if needed
-                            MAX_HISTORY = 40
+                            # Keep it short to maintain fast OpenAI response times
+                            MAX_HISTORY = 20  # Reduced from 40 - keeps OpenAI fast
                             if len(conversation) > MAX_HISTORY + 1:
                                 # Keep system message + recent messages
                                 conversation[:] = [conversation[0]] + conversation[-(MAX_HISTORY):]
