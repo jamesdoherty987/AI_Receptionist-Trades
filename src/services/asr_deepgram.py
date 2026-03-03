@@ -78,6 +78,7 @@ class DeepgramASR:
             except asyncio.TimeoutError:
                 # No audio for 30s - connection may be stale, but don't close
                 # Just continue waiting (call may be on hold)
+                print(f"[ASR] ⚠️ TIMEOUT: No audio received for 30s - connection may be idle")
                 continue
             if self.closed:
                 break
@@ -136,7 +137,7 @@ class DeepgramASR:
                             self.interim_text = self.interim_text + " " + transcript.strip()
                         else:
                             self.interim_text = transcript.strip()
-                        print(f"[ASR] Segment: '{transcript}' (interim: '{self.interim_text[:50]}...')")
+                        print(f"[ASR] Segment: '{transcript}' (accumulated: '{self.interim_text[:80]}...')")
                         
                 else:
                     # Interim result - real-time feedback
