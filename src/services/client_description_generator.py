@@ -10,10 +10,14 @@ from src.utils.config import config
 _client = None
 
 def get_openai_client():
-    """Get or create OpenAI client instance"""
+    """Get or create OpenAI client instance with timeout"""
     global _client
     if _client is None:
-        _client = OpenAI(api_key=config.OPENAI_API_KEY)
+        import httpx
+        _client = OpenAI(
+            api_key=config.OPENAI_API_KEY,
+            timeout=httpx.Timeout(20.0, connect=5.0)  # 5s connect, 20s total for description generation
+        )
     return _client
 
 

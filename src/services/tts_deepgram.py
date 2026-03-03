@@ -90,6 +90,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                     quiet_timeouts = 0
                     got_any_audio = False
                     chunks_sent = 0
+                    receiver_start = asyncio.get_event_loop().time()
 
                     while True:
                         if interrupt_fn():
@@ -97,6 +98,11 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
 
                         if (asyncio.get_event_loop().time() - start_time) > MAX_TTS_SECONDS:
                             print(f"[TTS] ⚠️ Max duration reached")
+                            return
+                        
+                        # SAFETY: Absolute receiver timeout to prevent infinite hang
+                        if (asyncio.get_event_loop().time() - receiver_start) > 25.0:
+                            print(f"[TTS] ⚠️ Receiver absolute timeout (25s)")
                             return
 
                         try:
@@ -110,9 +116,11 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                                     print(f"[TTS] ✅ Done. Sent {chunks_sent} chunks")
                                     return
                                 if quiet_timeouts >= 2:
+                                    print(f"[TTS] ⚠️ TIMEOUT: No audio after 2 quiet timeouts (1s total). Sent {chunks_sent} chunks")
                                     return
                             continue
                         except websockets.ConnectionClosed:
+                            print(f"[TTS] ⚠️ TIMEOUT/DISCONNECT: Deepgram TTS connection closed")
                             return
 
                         if isinstance(msg, bytes):

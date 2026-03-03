@@ -1123,24 +1123,26 @@ When customer wants to reschedule:
         heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
         heartbeat_thread.start()
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(create_stream)
-            try:
-                # 8 second timeout - if OpenAI takes longer, we need to respond quickly
-                stream = future.result(timeout=8.0)
-                heartbeat_stop.set()
-            except concurrent.futures.TimeoutError:
-                heartbeat_stop.set()
-                print(f"❌ [LLM_ERROR] OpenAI stream creation timed out after 8s!")
-                print(f"[LLM_ERROR] Message roles: {[m.get('role') for m in final_messages]}")
-                # Log the actual messages for debugging
-                for i, msg in enumerate(final_messages[-5:]):  # Last 5 messages
-                    role = msg.get('role')
-                    content = msg.get('content', '')[:100] if msg.get('content') else '[no content]'
-                    print(f"[LLM_ERROR] Msg[-{5-i}] {role}: {content}...")
-                # Quick, natural fallback response
-                yield "Sorry, could you say that again?"
-                return
+        # CRITICAL FIX: Use asyncio.to_thread to avoid blocking the event loop
+        # The old code used future.result() which blocks synchronously
+        try:
+            stream = await asyncio.wait_for(
+                asyncio.to_thread(create_stream),
+                timeout=8.0
+            )
+            heartbeat_stop.set()
+        except asyncio.TimeoutError:
+            heartbeat_stop.set()
+            print(f"❌ [LLM_ERROR] OpenAI stream creation timed out after 8s!")
+            print(f"[LLM_ERROR] Message roles: {[m.get('role') for m in final_messages]}")
+            # Log the actual messages for debugging
+            for i, msg in enumerate(final_messages[-5:]):  # Last 5 messages
+                role = msg.get('role')
+                content = msg.get('content', '')[:100] if msg.get('content') else '[no content]'
+                print(f"[LLM_ERROR] Msg[-{5-i}] {role}: {content}...")
+            # Quick, natural fallback response
+            yield "Sorry, could you say that again?"
+            return
         
         openai_create_time = time_module.time() - openai_call_start
         print(f"[LLM_TIMING] ✅ OpenAI stream created in {openai_create_time:.3f}s")
@@ -1162,6 +1164,7 @@ When customer wants to reschedule:
     try:
         print(f"[LLM_TIMING] Starting to iterate over stream...")
         stream_iter_start = time_module.time()
+        STREAM_TIMEOUT = 15.0  # Max seconds to wait for stream to complete
         
         # Wrap synchronous OpenAI stream iteration in a thread to avoid blocking event loop
         import queue
@@ -1181,10 +1184,25 @@ When customer wants to reschedule:
         stream_thread.start()
         
         # Process tokens from queue (non-blocking)
+        last_activity = time_module.time()
+        IDLE_TIMEOUT = 5.0  # Max seconds without any queue activity
         while True:
+            # SAFETY: Check overall timeout
+            elapsed = time_module.time() - stream_iter_start
+            if elapsed > STREAM_TIMEOUT:
+                print(f"⚠️ [LLM_TIMEOUT] First stream timed out after {elapsed:.1f}s")
+                break
+            
+            # SAFETY: Check idle timeout (no activity from thread)
+            idle_time = time_module.time() - last_activity
+            if idle_time > IDLE_TIMEOUT and not stream_thread.is_alive():
+                print(f"⚠️ [LLM_TIMEOUT] Stream thread died, idle for {idle_time:.1f}s")
+                break
+            
             # Check queue without blocking, yield control if empty
             try:
                 msg_type, msg_data = token_queue.get_nowait()
+                last_activity = time_module.time()  # Reset idle timer on activity
             except queue.Empty:
                 # Queue empty, yield control to event loop and try again
                 await asyncio.sleep(0.01)
@@ -1310,6 +1328,16 @@ When customer wants to reschedule:
         print(f"   Tool calls: {len(tool_calls)}")
         print(f"   Full response length: {len(full_response)}")
     
+    # FAST PATH: If no tool calls, return immediately after yielding content
+    # This prevents blocking the TTS stream while doing post-processing
+    if not tool_calls and not has_yielded_split_marker:
+        # Store response in conversation history
+        if full_response:
+            cleaned = remove_repetition(full_response.strip())
+            messages.append({"role": "assistant", "content": cleaned})
+        print(f"[LLM_TIMING] ✅ No tool calls - returning immediately (fast path)")
+        return
+    
     # SAFETY CHECK: If we yielded a split marker in pre-check but OpenAI didn't actually call tools
     # Note: The response tokens were already yielded during streaming (captured by prefetch_remaining)
     # so we just need to log the misfire and update conversation history
@@ -1410,10 +1438,19 @@ When customer wants to reschedule:
                     
                     # Run tool execution in thread pool to not block event loop
                     # This allows audio playback to continue during tool execution
-                    result = await asyncio.get_event_loop().run_in_executor(
-                        None,  # Use default thread pool
-                        lambda: execute_tool_call(tool_name, arguments, services)
-                    )
+                    # CRITICAL: Add timeout to prevent infinite hang
+                    TOOL_TIMEOUT = 10.0  # Max seconds for tool execution
+                    try:
+                        result = await asyncio.wait_for(
+                            asyncio.get_event_loop().run_in_executor(
+                                None,  # Use default thread pool
+                                lambda: execute_tool_call(tool_name, arguments, services)
+                            ),
+                            timeout=TOOL_TIMEOUT
+                        )
+                    except asyncio.TimeoutError:
+                        print(f"   ⚠️ [TOOL_EXEC] Tool timed out after {TOOL_TIMEOUT}s!")
+                        result = {"success": False, "error": f"Tool execution timed out after {TOOL_TIMEOUT}s"}
                     
                     tool_duration = time.time() - tool_start
                     print(f"   🔧 [TOOL_EXEC] ✅ Tool completed in {tool_duration:.3f}s")
@@ -1492,35 +1529,18 @@ When customer wants to reschedule:
                 
                 if tool_name == "lookup_customer" and result_content.get("success"):
                     # Customer lookup - generate response directly
+                    # SIMPLIFIED: Don't ask about phone - we have it from Twilio and it's reliable
+                    # Just acknowledge the customer and move forward
                     customer_info = result_content.get("customer_info", {})
                     customer_name = customer_info.get("name", "")
-                    # Use phone from customer_info, or fall back to caller_phone
-                    phone = customer_info.get("phone", "") or caller_phone or ""
-                    last_address = customer_info.get("last_address", "")
+                    first_name = customer_name.split()[0] if customer_name else "there"
                     
                     if result_content.get("customer_exists"):
-                        # Returning customer
-                        if result_content.get("multiple_matches"):
-                            # Multiple customers with same name
-                            count = result_content.get("match_count", 2)
-                            if phone:
-                                direct_response = f"I found {count} customers named {customer_name}. I have your number as {phone}. Is that the best number to reach you?"
-                            else:
-                                direct_response = f"I found {count} customers named {customer_name}. Can I get your phone number to confirm which one you are?"
-                        else:
-                            # Single match - returning customer
-                            if phone:
-                                direct_response = f"Great to hear from you again, {customer_name.split()[0]}! I have your number as {phone}. Is that the best number to reach you?"
-                            else:
-                                direct_response = f"Great to hear from you again, {customer_name.split()[0]}! What can I help you with today?"
+                        # Returning customer - welcome back and ask what they need
+                        direct_response = f"Great to hear from you again, {first_name}! What can I help you with today?"
                     else:
-                        # New customer - always use caller_phone since we have it from Twilio
-                        first_name = customer_name.split()[0] if customer_name else "there"
-                        if phone:
-                            direct_response = f"Welcome, {first_name}! I have your number as {phone}. Is that the best number to reach you?"
-                        else:
-                            # This should rarely happen since caller_phone comes from Twilio
-                            direct_response = f"Welcome, {first_name}! What can I help you with today?"
+                        # New customer - welcome and ask for address/eircode
+                        direct_response = f"Welcome, {first_name}! Do you know your eircode?"
                     
                     print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for lookup_customer")
                     print(f"   ⚡ [DIRECT_RESPONSE] Generated: '{direct_response}'")
@@ -1645,8 +1665,7 @@ When customer wants to reschedule:
                 else:
                     follow_up_final.append(msg)
             
-            # Use ThreadPoolExecutor with timeout to prevent infinite hangs
-            import concurrent.futures
+            # Use asyncio.to_thread to avoid blocking the event loop
             def create_follow_up_stream():
                 return client.chat.completions.create(
                     model=config.CHAT_MODEL,
@@ -1662,17 +1681,17 @@ When customer wants to reschedule:
                     stream_options={"include_usage": False}  # Disable usage tracking for speed
                 )
             
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(create_follow_up_stream)
-                try:
-                    # Reduced timeout from 15s to 8s - must be fast for 4-second target
-                    follow_up_stream = future.result(timeout=8.0)
-                except concurrent.futures.TimeoutError:
-                    print(f"❌ [FOLLOW_UP] Stream creation timed out after 8s!")
-                    print(f"[FOLLOW_UP] Message roles: {[m.get('role') for m in follow_up_final]}")
-                    # Natural fallback
-                    yield "Sorry, could you repeat that?"
-                    return
+            try:
+                follow_up_stream = await asyncio.wait_for(
+                    asyncio.to_thread(create_follow_up_stream),
+                    timeout=8.0
+                )
+            except asyncio.TimeoutError:
+                print(f"❌ [FOLLOW_UP] Stream creation timed out after 8s!")
+                print(f"[FOLLOW_UP] Message roles: {[m.get('role') for m in follow_up_final]}")
+                # Natural fallback
+                yield "Sorry, could you repeat that?"
+                return
             
             follow_up_response = ""
             follow_up_token_count = 0
@@ -1686,12 +1705,51 @@ When customer wants to reschedule:
             # Add timeout protection to prevent infinite hangs
             timeout_seconds = 12  # Reduced from 20s for faster failure detection
             
-            for part in follow_up_stream:
+            # CRITICAL FIX: Use async iteration to avoid blocking event loop
+            # Same pattern as first stream - use background thread with queue
+            follow_up_queue = queue.Queue()
+            
+            def iterate_follow_up_stream():
+                """Run in thread to avoid blocking event loop"""
+                try:
+                    for part in follow_up_stream:
+                        follow_up_queue.put(("token", part))
+                    follow_up_queue.put(("done", None))
+                except Exception as e:
+                    follow_up_queue.put(("error", e))
+            
+            follow_up_thread = threading.Thread(target=iterate_follow_up_stream, daemon=True)
+            follow_up_thread.start()
+            
+            last_follow_up_activity = time.time()
+            FOLLOW_UP_IDLE_TIMEOUT = 5.0  # Max seconds without queue activity
+            while True:
                 # Check timeout
                 if time.time() - follow_up_start > timeout_seconds:
                     print(f"⚠️ WARNING: Follow-up stream timed out after {timeout_seconds}s")
                     break
-                    
+                
+                # Check idle timeout (thread may have died)
+                idle_time = time.time() - last_follow_up_activity
+                if idle_time > FOLLOW_UP_IDLE_TIMEOUT and not follow_up_thread.is_alive():
+                    print(f"⚠️ [FOLLOW_UP] Thread died, idle for {idle_time:.1f}s")
+                    break
+                
+                # Check queue without blocking
+                try:
+                    msg_type, msg_data = follow_up_queue.get_nowait()
+                    last_follow_up_activity = time.time()  # Reset idle timer
+                except queue.Empty:
+                    await asyncio.sleep(0.01)
+                    continue
+                
+                if msg_type == "done":
+                    break
+                elif msg_type == "error":
+                    print(f"❌ [FOLLOW_UP] Stream error: {msg_data}")
+                    break
+                
+                part = msg_data
                 delta = part.choices[0].delta.content
                 if delta:
                     follow_up_token_count += 1

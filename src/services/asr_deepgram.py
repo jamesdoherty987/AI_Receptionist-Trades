@@ -37,26 +37,33 @@ class DeepgramASR:
         """Connect to Deepgram websocket"""
         connect_start = time.time()
         
-        self.ws = await websockets.connect(
-            "wss://api.deepgram.com/v1/listen"
-            f"?encoding={config.AUDIO_ENCODING}"
-            f"&sample_rate={config.AUDIO_SAMPLE_RATE}"
-            f"&channels={config.AUDIO_CHANNELS}"
-            "&interim_results=true"
-            "&model=nova-2-phonecall"
-            "&punctuate=true"
-            "&smart_format=true"
-            "&filler_words=false"
-            "&numerals=true"
-            "&language=en"
-            "&utterances=true"       # Enable utterance detection
-            "&endpointing=900",     # 900ms silence = end of utterance (balanced: 800ms was cutting off, 1200ms too slow)
-            extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
-            open_timeout=5,
-            close_timeout=2,
-            ping_interval=20,
-            ping_timeout=10,
-        )
+        try:
+            self.ws = await asyncio.wait_for(
+                websockets.connect(
+                    "wss://api.deepgram.com/v1/listen"
+                    f"?encoding={config.AUDIO_ENCODING}"
+                    f"&sample_rate={config.AUDIO_SAMPLE_RATE}"
+                    f"&channels={config.AUDIO_CHANNELS}"
+                    "&interim_results=true"
+                    "&model=nova-2-phonecall"
+                    "&punctuate=true"
+                    "&smart_format=true"
+                    "&filler_words=false"
+                    "&numerals=true"
+                    "&language=en"
+                    "&utterances=true"       # Enable utterance detection
+                    "&endpointing=900",     # 900ms silence = end of utterance (balanced: 800ms was cutting off, 1200ms too slow)
+                    extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
+                    open_timeout=5,
+                    close_timeout=2,
+                    ping_interval=20,
+                    ping_timeout=10,
+                ),
+                timeout=10.0  # Overall connection timeout
+            )
+        except asyncio.TimeoutError:
+            print(f"[ASR] ❌ TIMEOUT: Deepgram connection timed out after 10s")
+            raise
         
         print(f"[ASR] Connected in {time.time() - connect_start:.3f}s")
         
@@ -66,12 +73,18 @@ class DeepgramASR:
     async def _send(self):
         """Send audio data to Deepgram"""
         while not self.closed:
-            data = await self.queue.get()
+            try:
+                data = await asyncio.wait_for(self.queue.get(), timeout=30.0)
+            except asyncio.TimeoutError:
+                # No audio for 30s - connection may be stale, but don't close
+                # Just continue waiting (call may be on hold)
+                continue
             if self.closed:
                 break
             try:
                 await self.ws.send(data)
             except websockets.exceptions.ConnectionClosed:
+                print(f"[ASR] ⚠️ TIMEOUT/DISCONNECT: WebSocket closed during send")
                 break
 
     async def _recv(self):

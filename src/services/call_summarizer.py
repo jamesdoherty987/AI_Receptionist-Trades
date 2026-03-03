@@ -16,10 +16,14 @@ _client = None
 
 
 def get_openai_client():
-    """Get or create OpenAI client instance"""
+    """Get or create OpenAI client instance with timeout"""
     global _client
     if _client is None:
-        _client = OpenAI(api_key=config.OPENAI_API_KEY)
+        import httpx
+        _client = OpenAI(
+            api_key=config.OPENAI_API_KEY,
+            timeout=httpx.Timeout(30.0, connect=10.0)  # 10s connect, 30s total for summarization
+        )
     return _client
 
 

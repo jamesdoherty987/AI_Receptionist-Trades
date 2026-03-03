@@ -51,24 +51,33 @@ class PostgreSQLDatabaseWrapper:
         self.init_database()
     
     def get_connection(self):
-        """Get connection from pool"""
-        try:
-            conn = self.connection_pool.getconn()
-            # Test connection is still alive
+        """Get connection from pool with timeout to prevent indefinite blocking"""
+        import time as time_module
+        max_wait = 5.0  # Max seconds to wait for a connection
+        start_time = time_module.time()
+        
+        while True:
             try:
-                conn.cursor().execute("SELECT 1")
-            except (psycopg2.OperationalError, psycopg2.InterfaceError):
-                # Connection is dead, close and get fresh one
-                try:
-                    self.connection_pool.putconn(conn, close=True)
-                except Exception:
-                    pass
                 conn = self.connection_pool.getconn()
-            return conn
-        except psycopg2_pool.PoolError as e:
-            # Pool exhausted - create direct connection as fallback
-            print(f"[WARNING] Connection pool exhausted, creating direct connection: {e}")
-            return psycopg2.connect(self.database_url, connect_timeout=10)
+                # Test connection is still alive
+                try:
+                    conn.cursor().execute("SELECT 1")
+                except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                    # Connection is dead, close and get fresh one
+                    try:
+                        self.connection_pool.putconn(conn, close=True)
+                    except Exception:
+                        pass
+                    conn = self.connection_pool.getconn()
+                return conn
+            except psycopg2_pool.PoolError as e:
+                elapsed = time_module.time() - start_time
+                if elapsed > max_wait:
+                    # Pool exhausted and timeout reached - create direct connection as fallback
+                    print(f"[WARNING] Connection pool exhausted after {elapsed:.1f}s, creating direct connection: {e}")
+                    return psycopg2.connect(self.database_url, connect_timeout=10)
+                # Brief sleep before retry
+                time_module.sleep(0.1)
     
     def return_connection(self, conn):
         """Return connection to pool"""

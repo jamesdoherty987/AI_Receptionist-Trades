@@ -458,6 +458,7 @@ async def generate_filler_audio_elevenlabs(phrase_id: str, text: str) -> bytes:
                     break
                     
             except asyncio.TimeoutError:
+                print(f"[AUDIO] ⚠️ TIMEOUT: ElevenLabs filler generation timed out after 5s")
                 break
     
     if not audio_chunks:

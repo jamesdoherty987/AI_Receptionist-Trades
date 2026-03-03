@@ -130,7 +130,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                                     print(f"[TTS] ✅ Done (quiet timeout). Received {audio_chunks_received} chunks ({total_audio_bytes} bytes), sent {audio_chunks_sent} to Twilio")
                                     return
                                 if quiet_timeouts >= 2:
-                                    print(f"[TTS] ⚠️ No audio received after 2 timeouts. Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
+                                    print(f"[TTS] ⚠️ TIMEOUT: No audio received after 2 quiet timeouts (1s). Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
                                     return
                             continue
                         except websockets.ConnectionClosed as e:
