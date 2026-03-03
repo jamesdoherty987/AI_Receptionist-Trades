@@ -135,8 +135,12 @@ class DeepgramASR:
                         # Don't overwrite - Deepgram will send the full text on speech_final
                         pass  # Let accumulated interim_text from is_final events persist
                         
-        except websockets.exceptions.ConnectionClosed:
-            pass
+        except websockets.exceptions.ConnectionClosed as e:
+            print(f"[ASR] ⚠️ Deepgram connection closed: {e}")
+            self.closed = True
+        except Exception as e:
+            print(f"[ASR] ❌ Receive error: {e}")
+            self.closed = True
 
     async def feed(self, audio: bytes):
         """Feed audio data to ASR"""
@@ -157,6 +161,27 @@ class DeepgramASR:
     def is_speech_finished(self) -> bool:
         """Check if Deepgram signaled end of utterance"""
         return self.speech_final
+
+    def is_closed(self) -> bool:
+        """Check if ASR connection is closed"""
+        return self.closed
+
+    async def reconnect(self):
+        """Reconnect to Deepgram if connection was lost"""
+        if not self.closed:
+            return True
+        
+        print("[ASR] 🔄 Attempting to reconnect...")
+        self.closed = False
+        
+        try:
+            await self.connect()
+            print("[ASR] ✅ Reconnected successfully")
+            return True
+        except Exception as e:
+            print(f"[ASR] ❌ Reconnect failed: {e}")
+            self.closed = True
+            return False
 
     def clear(self):
         """Clear state for next utterance"""

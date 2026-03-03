@@ -75,13 +75,6 @@ class Config:
     DUPLICATE_WINDOW = float(os.getenv("DUPLICATE_WINDOW", 3.0))
     MIN_SPEECH_DURATION = float(os.getenv("MIN_SPEECH_DURATION", 0.3))
     
-    # COMPLETION_WAIT - allows caller to continue speaking after SILENCE_HOLD
-    # Flow: Caller speaks -> silence -> SILENCE_HOLD (0.7s) -> start generating response
-    # COMPLETION_WAIT (2s) runs IN PARALLEL with response generation
-    # If caller speaks within COMPLETION_WAIT, cancel response, combine texts, restart
-    # Example: "I need to book..." [0.7s pause] -> AI starts generating -> "...for Tuesday" -> cancel & combine
-    COMPLETION_WAIT = float(os.getenv("COMPLETION_WAIT", 2.0))
-    
     # Media Handler - TTS Settings
     MIN_TOKENS_BEFORE_INTERRUPT = int(os.getenv("MIN_TOKENS_BEFORE_INTERRUPT", 8))
     TTS_TIMEOUT = float(os.getenv("TTS_TIMEOUT", 20.0))

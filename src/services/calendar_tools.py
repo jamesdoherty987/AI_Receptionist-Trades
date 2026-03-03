@@ -1653,6 +1653,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         return {
                             "success": True,
                             "customer_exists": False,
+                            "customer_info": {
+                                "name": customer_name,
+                                "phone": phone  # Pass through caller's phone for new customers
+                            },
                             "message": f"No existing customer found for {customer_name}. This is a new customer."
                         }
                 except Exception as e:

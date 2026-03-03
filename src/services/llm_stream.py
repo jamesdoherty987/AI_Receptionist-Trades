@@ -822,22 +822,20 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
                 checking_msg = "Booking that now."
                 print(f"   ✅ [PRE-CHECK] Detected: BOOKING CONFIRMED")
         
-        # === FIRST TURN ACKNOWLEDGMENT ===
-        # On the FIRST user message (turn 1), OpenAI cold start can take 3-4 seconds
-        # Play a quick acknowledgment so caller doesn't wait in silence
-        # This is safe because we're just acknowledging, not claiming to do anything
-        if not likely_needs_tool:
-            is_first_turn = len([m for m in messages if m.get("role") == "user"]) == 1
-            has_substance = len(user_message.split()) >= 4  # At least 4 words (not just "hi")
-            
-            if is_first_turn and has_substance:
-                likely_needs_tool = True  # Not really, but triggers the filler mechanism
-                detected_intent = "FIRST_TURN_ACK"
-                # Natural acknowledgments that work for any first message
-                # NOTE: These must match FILLER_PHRASES in prerecorded_audio.py (without exclamation marks)
-                first_turn_acks = ["Sure.", "No problem.", "Grand.", "Okay.", "Absolutely.", "Of course."]
-                checking_msg = random.choice(first_turn_acks)
-                print(f"   ✅ [PRE-CHECK] Detected: FIRST TURN (playing acknowledgment to cover OpenAI latency)")
+        # === FIRST TURN ACKNOWLEDGMENT - DISABLED ===
+        # Previously played acknowledgment on first turn to cover OpenAI latency
+        # DISABLED because it causes misfires - the acknowledgment plays but LLM
+        # doesn't call any tools, making the filler feel disconnected from the response.
+        # Better to let the user wait 1-2s for a coherent response than play a filler
+        # that doesn't match what the AI actually says.
+        # if not likely_needs_tool:
+        #     is_first_turn = len([m for m in messages if m.get("role") == "user"]) == 1
+        #     has_substance = len(user_message.split()) >= 4
+        #     if is_first_turn and has_substance:
+        #         likely_needs_tool = True
+        #         detected_intent = "FIRST_TURN_ACK"
+        #         first_turn_acks = ["Sure.", "No problem.", "Grand.", "Okay."]
+        #         checking_msg = random.choice(first_turn_acks)
         
         # === MEDIUM-CONFIDENCE (might trigger tool, but not certain) ===
         # These are logged but DON'T trigger fillers to avoid misfires
@@ -1496,7 +1494,8 @@ When customer wants to reschedule:
                     # Customer lookup - generate response directly
                     customer_info = result_content.get("customer_info", {})
                     customer_name = customer_info.get("name", "")
-                    phone = customer_info.get("phone", "")
+                    # Use phone from customer_info, or fall back to caller_phone
+                    phone = customer_info.get("phone", "") or caller_phone or ""
                     last_address = customer_info.get("last_address", "")
                     
                     if result_content.get("customer_exists"):
@@ -1515,9 +1514,13 @@ When customer wants to reschedule:
                             else:
                                 direct_response = f"Great to hear from you again, {customer_name.split()[0]}! What can I help you with today?"
                     else:
-                        # New customer
+                        # New customer - always use caller_phone since we have it from Twilio
                         first_name = customer_name.split()[0] if customer_name else "there"
-                        direct_response = f"Great to have you, {first_name}! I have your number as {phone}. Is that the best number to reach you?" if phone else f"Welcome, {first_name}! What's the best phone number to reach you?"
+                        if phone:
+                            direct_response = f"Welcome, {first_name}! I have your number as {phone}. Is that the best number to reach you?"
+                        else:
+                            # This should rarely happen since caller_phone comes from Twilio
+                            direct_response = f"Welcome, {first_name}! What can I help you with today?"
                     
                     print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for lookup_customer")
                     print(f"   ⚡ [DIRECT_RESPONSE] Generated: '{direct_response}'")
