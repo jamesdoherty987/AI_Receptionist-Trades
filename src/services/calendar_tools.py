@@ -796,6 +796,9 @@ class AIServiceMatcher:
             return cls._cache[cache_key]
         
         try:
+            import time as time_module
+            ai_match_start = time_module.time()
+            
             from openai import OpenAI
             from src.utils.config import config
             import json
@@ -840,6 +843,9 @@ class AIServiceMatcher:
             service_index = result.get('idx', result.get('service_index', 0))
             confidence = result.get('conf', result.get('confidence', 0))
             
+            ai_match_duration = time_module.time() - ai_match_start
+            print(f"[SERVICE_TIMING] ⏱️ AI service match took {ai_match_duration:.3f}s")
+            
             # Valid match found
             if service_index > 0 and service_index <= len(matching_services) and confidence >= 40:
                 matched_service = matching_services[service_index - 1]
@@ -865,6 +871,8 @@ class AIServiceMatcher:
             return ServiceMatcher._create_general_fallback(services, default_duration, f"ai_low_conf:{confidence}")
             
         except Exception as e:
+            ai_match_duration = time_module.time() - ai_match_start
+            print(f"[SERVICE_TIMING] ❌ AI service match FAILED after {ai_match_duration:.3f}s: {e}")
             logger.warning(f"AI matching failed: {e}")
             return ServiceMatcher._create_general_fallback(services, default_duration, f"ai_error")
 
@@ -1100,12 +1108,15 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     Returns:
         Dictionary with success status and result data
     """
+    import time as time_module
     from datetime import datetime, timedelta
     from ..utils.date_parser import parse_datetime
     from src.utils.config import config
     
+    tool_start_time = time_module.time()
     logger.info(f"[TOOL_EXEC] ========== EXECUTING TOOL: {tool_name} ==========")
     logger.info(f"[TOOL_EXEC] Arguments: {arguments}")
+    print(f"[TOOL_TIMING] ⏱️ {tool_name} started at {tool_start_time:.3f}")
     
     google_calendar = services.get('google_calendar')
     db = services.get('db') or services.get('database')  # Support both keys
@@ -1377,6 +1388,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Determine appropriate time reference for message
             time_reference = "Next week" if (start_date_str and 'next week' in start_date_str.lower()) else "This week"
             
+            tool_duration = time_module.time() - tool_start_time
+            print(f"[TOOL_TIMING] ✅ check_availability completed in {tool_duration:.3f}s ({len(all_slots)} slots found)")
+            
             return {
                 "success": True,
                 "available_slots": formatted_slots,
@@ -1429,6 +1443,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             if enhanced_data.get('address_confirmation_needed'):
                                 address_confirmation_msg = enhanced_data['suggested_response']
                             msg_parts.append(f"last address {last_address}")
+                        
+                        tool_duration = time_module.time() - tool_start_time
+                        print(f"[TOOL_TIMING] ✅ lookup_customer completed in {tool_duration:.3f}s (returning customer)")
                         
                         return {
                             "success": True,
@@ -1650,6 +1667,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 "message": ", ".join(msg_parts)
                             }
                         
+                        tool_duration = time_module.time() - tool_start_time
+                        print(f"[TOOL_TIMING] ✅ lookup_customer completed in {tool_duration:.3f}s (new customer)")
+                        
                         return {
                             "success": True,
                             "customer_exists": False,
@@ -1660,12 +1680,16 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             "message": f"No existing customer found for {customer_name}. This is a new customer."
                         }
                 except Exception as e:
+                    tool_duration = time_module.time() - tool_start_time
+                    print(f"[TOOL_TIMING] ❌ lookup_customer failed after {tool_duration:.3f}s: {e}")
                     logger.error(f" Error looking up customer: {e}")
                     return {
                         "success": False,
                         "error": f"Database error: {str(e)}"
                     }
             
+            tool_duration = time_module.time() - tool_start_time
+            print(f"[TOOL_TIMING] ⚠️ lookup_customer - no DB after {tool_duration:.3f}s")
             return {
                 "success": False,
                 "error": "Database not available"
@@ -2711,6 +2735,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             else:
                 worker_msg = ""
             
+            tool_duration = time_module.time() - tool_start_time
+            print(f"[TOOL_TIMING] ✅ book_job completed in {tool_duration:.3f}s")
             logger.info(f"[BOOK_JOB] ========== JOB BOOKING COMPLETE ==========")
             return {
                 "success": True,
@@ -3019,6 +3045,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             logger.info(f"Transfer: TRANSFER REQUEST: {reason}")
             logger.info(f"Transfer: Transferring to business phone: {transfer_number}")
             
+            tool_duration = time_module.time() - tool_start_time
+            print(f"[TOOL_TIMING] ✅ {tool_name} completed in {tool_duration:.3f}s")
+            
             return {
                 "success": True,
                 "transfer": True,
@@ -3028,12 +3057,16 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             }
         
         else:
+            tool_duration = time_module.time() - tool_start_time
+            print(f"[TOOL_TIMING] ⚠️ Unknown tool {tool_name} after {tool_duration:.3f}s")
             return {
                 "success": False,
                 "error": f"Unknown tool: {tool_name}"
             }
     
     except Exception as e:
+        tool_duration = time_module.time() - tool_start_time
+        print(f"[TOOL_TIMING] ❌ {tool_name} FAILED after {tool_duration:.3f}s: {e}")
         logger.error(f"[TOOL_ERROR] ========== TOOL EXECUTION FAILED ==========")
         logger.error(f"[TOOL_ERROR] Tool: {tool_name}")
         logger.error(f"[TOOL_ERROR] Arguments: {arguments}")

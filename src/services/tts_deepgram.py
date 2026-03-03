@@ -33,7 +33,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
     """
     import time
     tts_start = time.time()
-    print(f"[TTS] 🎤 Starting Deepgram TTS")
+    print(f"[TTS] 🎤 Starting Deepgram TTS at {tts_start:.3f}")
     
     # Deepgram Aura TTS - aura-asteria-en is a natural conversational voice
     uri = (
@@ -48,6 +48,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
 
     for attempt in (1, 2):
         try:
+            connect_start = time.time()
             async with websockets.connect(
                 uri,
                 extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
@@ -57,7 +58,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                 ping_timeout=20,
                 max_size=2**20,
             ) as tts:
-                connect_time = time.time() - tts_start
+                connect_time = time.time() - connect_start
                 print(f"[TTS] ✅ Connected in {connect_time:.3f}s")
 
                 start_time = asyncio.get_event_loop().time()
@@ -106,8 +107,8 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                             return
 
                         try:
-                            # Reduced timeout from 1.5s to 0.5s for faster exit
-                            msg = await asyncio.wait_for(tts.recv(), timeout=0.5)
+                            # Reduced timeout from 1.5s to 0.3s for faster exit
+                            msg = await asyncio.wait_for(tts.recv(), timeout=0.3)
                         except asyncio.TimeoutError:
                             if sender_done.is_set():
                                 quiet_timeouts += 1

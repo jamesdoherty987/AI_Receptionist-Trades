@@ -107,9 +107,10 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
     text = text.strip()
     now = datetime.now()
     
-    # FAST PATH: Check for ISO format dates (YYYY-MM-DD) - no need for AI
-    # This saves ~500ms per date parse when LLM already provides ISO format
+    # FAST PATH: Handle common patterns without AI to save ~500ms per call
     import re
+    
+    # Fast path 1: ISO format dates (YYYY-MM-DD)
     iso_date_match = re.match(r'^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$', text)
     if iso_date_match:
         year = int(iso_date_match.group(1))
@@ -120,13 +121,78 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
         
         try:
             result = datetime(year, month, day, hour, minute)
-            print(f"[DATE] Fast path: parsed ISO date '{text}' -> {result}")
+            print(f"[DATE] Fast path ISO: '{text}' -> {result}")
             return result
         except ValueError as e:
             print(f"[DATE] Invalid ISO date '{text}': {e}")
             # Fall through to AI parsing
     
+    # Fast path 2: "tomorrow at Xam/pm" or "today at Xam/pm"
+    text_lower = text.lower().strip()
+    relative_time_match = re.match(r'^(today|tomorrow)\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$', text_lower)
+    if relative_time_match:
+        rel_day = relative_time_match.group(1)
+        hour = int(relative_time_match.group(2))
+        minute = int(relative_time_match.group(3) or 0)
+        am_pm = relative_time_match.group(4)
+        
+        # Handle AM/PM or default based on hour
+        if am_pm == 'pm' and hour != 12:
+            hour += 12
+        elif am_pm == 'am' and hour == 12:
+            hour = 0
+        elif am_pm is None:
+            # Default: 1-7 = PM, 8-11 = AM, 12 = noon
+            if 1 <= hour <= 7:
+                hour += 12
+        
+        days_ahead = 1 if rel_day == 'tomorrow' else 0
+        result = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(days=days_ahead)
+        if days_ahead == 0 and result <= now:
+            result += timedelta(days=1)
+        print(f"[DATE] Fast path relative: '{text}' -> {result}")
+        return result
+    
+    # Fast path 3: "[weekday] at Xam/pm" (e.g., "Monday at 2pm", "next Friday at 10am")
+    weekday_names = {
+        "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+        "friday": 4, "saturday": 5, "sunday": 6
+    }
+    weekday_match = re.match(r'^(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$', text_lower)
+    if weekday_match:
+        day_name = weekday_match.group(1)
+        hour = int(weekday_match.group(2))
+        minute = int(weekday_match.group(3) or 0)
+        am_pm = weekday_match.group(4)
+        has_next = text_lower.startswith('next ')
+        
+        # Handle AM/PM or default
+        if am_pm == 'pm' and hour != 12:
+            hour += 12
+        elif am_pm == 'am' and hour == 12:
+            hour = 0
+        elif am_pm is None:
+            if 1 <= hour <= 7:
+                hour += 12
+        
+        target_day = weekday_names[day_name]
+        days_ahead = (target_day - now.weekday()) % 7
+        
+        if days_ahead == 0:
+            # Today is the requested day
+            requested_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if has_next or requested_time <= now:
+                days_ahead = 7
+        elif has_next:
+            days_ahead += 7
+        
+        result = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(days=days_ahead)
+        print(f"[DATE] Fast path weekday: '{text}' -> {result}")
+        return result
+    
     try:
+        import time as time_module
+        parse_start = time_module.time()
         client = get_openai_client()
         
         # Get current day of week for better context
@@ -185,6 +251,9 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
         
         import json
         parsed = json.loads(tool_calls[0].function.arguments)
+        
+        parse_duration = time_module.time() - parse_start
+        print(f"[DATE_TIMING] ⏱️ AI date parse took {parse_duration:.3f}s for '{text[:50]}'")
         
         print(f"[AI] AI parsed '{text}': {parsed}")
         
@@ -363,6 +432,8 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
         return result
         
     except Exception as e:
+        parse_duration = time_module.time() - parse_start
+        print(f"[DATE_TIMING] ❌ AI date parse FAILED after {parse_duration:.3f}s")
         print(f"[DATE_PARSER_ERROR] ========== AI DATE PARSING FAILED ==========")
         print(f"[DATE_PARSER_ERROR] Input text: '{text}'")
         print(f"[DATE_PARSER_ERROR] Exception type: {type(e).__name__}")

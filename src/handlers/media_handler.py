@@ -143,9 +143,11 @@ async def media_handler(ws):
             transfer_number = None
             
             print(f"\n🗣️ [TTS] Starting response stream: {label}")
+            print(f"[PIPELINE] ⏱️ TTS run() started at {run_start:.3f}")
 
             try:
                 # Get first token to check for SPLIT_TTS marker
+                first_token_wait_start = time_module.time()
                 first_token = None
                 async for token in text_stream:
                     # Skip timing markers
@@ -153,6 +155,9 @@ async def media_handler(ws):
                         continue
                     first_token = token
                     break
+                
+                first_token_wait = time_module.time() - first_token_wait_start
+                print(f"[PIPELINE] ⏱️ First token received after {first_token_wait:.3f}s")
                 
                 if not first_token:
                     print(f"   ⚠️ No tokens from LLM")
@@ -164,6 +169,7 @@ async def media_handler(ws):
                 if first_token.startswith("<<<SPLIT_TTS:"):
                     filler_msg = first_token.replace("<<<SPLIT_TTS:", "").replace(">>>", "").strip()
                     print(f"   🔀 SPLIT_TTS detected: '{filler_msg}'")
+                    print(f"[PIPELINE] ⏱️ SPLIT_TTS - starting parallel filler + LLM")
                     full_text += filler_msg + " "
                     
                     # Create a queue to buffer tokens from LLM while filler plays
@@ -196,29 +202,34 @@ async def media_handler(ws):
                     
                     async def play_filler():
                         """Play filler audio"""
+                        filler_start = time_module.time()
                         if has_prerecorded_fillers():
                             filler_id = get_filler_id_from_message(filler_msg) or get_random_filler_id()
                             filler_audio = get_filler_audio(filler_id)
                             if filler_audio:
                                 print(f"   🔊 Playing filler: {filler_id}")
                                 await send_prerecorded_audio(ws, stream_sid, filler_audio)
+                                print(f"[PIPELINE] ⏱️ Filler audio sent in {time_module.time() - filler_start:.3f}s")
                                 return True
                         # TTS fallback
                         print(f"   📢 TTS filler: '{filler_msg}'")
                         async def filler_tokens():
                             yield filler_msg
                         await stream_tts(filler_tokens(), ws, stream_sid, lambda: interrupt)
+                        print(f"[PIPELINE] ⏱️ TTS filler done in {time_module.time() - filler_start:.3f}s")
                         return True
                     
                     # START BOTH IN PARALLEL - this is the key fix!
                     # LLM work (OpenAI call, tool execution) happens while filler plays
+                    parallel_start = time_module.time()
                     print(f"   ⚡ Starting filler + LLM in parallel...")
                     llm_task = asyncio.create_task(consume_llm())
                     filler_task = asyncio.create_task(play_filler())
                     
                     # Wait for filler to finish (LLM continues in background)
                     await filler_task
-                    print(f"   🔊 Filler done, streaming LLM response...")
+                    filler_done_time = time_module.time() - parallel_start
+                    print(f"   🔊 Filler done in {filler_done_time:.3f}s, streaming LLM response...")
                     
                     # Now stream tokens from queue to TTS
                     # CRITICAL: Add overall timeout to prevent infinite hang
@@ -268,7 +279,10 @@ async def media_handler(ws):
                                     print(f"   ⏳ Still waiting for LLM tokens... ({elapsed:.1f}s)")
                                 continue
                     
+                    tts_stream_start = time_module.time()
                     await stream_tts(queued_stream(), ws, stream_sid, lambda: interrupt)
+                    tts_stream_time = time_module.time() - tts_stream_start
+                    print(f"[PIPELINE] ⏱️ TTS streaming took {tts_stream_time:.3f}s")
                     
                     # Make sure LLM task is done (with timeout to prevent hang)
                     try:
@@ -280,11 +294,15 @@ async def media_handler(ws):
                             await llm_task
                         except asyncio.CancelledError:
                             pass
+                    
+                    total_parallel_time = time_module.time() - parallel_start
+                    print(f"[PIPELINE] ⏱️ Total parallel flow: {total_parallel_time:.3f}s")
                     print(f"   ✅ Response complete")
                 
                 else:
                     # No SPLIT_TTS - stream everything directly to TTS
                     print(f"   📢 Direct streaming to TTS")
+                    direct_start = time_module.time()
                     
                     async def direct_stream():
                         nonlocal transfer_number, full_text
@@ -304,11 +322,20 @@ async def media_handler(ws):
                             yield token
                     
                     await stream_tts(direct_stream(), ws, stream_sid, lambda: interrupt)
+                    direct_time = time_module.time() - direct_start
+                    print(f"[PIPELINE] ⏱️ Direct TTS flow took {direct_time:.3f}s")
                 
                 # Log response
                 total_time = time_module.time() - run_start
                 response_times.append(total_time)
+                
+                # Detailed timing breakdown
+                print(f"\n   {'─'*50}")
+                print(f"   📊 RESPONSE TIMING BREAKDOWN:")
                 print(f"   ⏱️ Total response time: {total_time:.3f}s")
+                if total_time > 5.0:
+                    print(f"   ⚠️ SLOW RESPONSE - check [PIPELINE], [LLM_TIMING], [TOOL_TIMING] logs above")
+                print(f"   {'─'*50}\n")
                 
                 if full_text.strip():
                     conversation_log.append({
@@ -453,10 +480,16 @@ async def media_handler(ws):
 
                 # ASR health check
                 if asr.is_closed():
+                    print(f"[ASR] ⚠️ Connection closed, attempting reconnect...")
                     if await asr.reconnect():
                         print("✅ ASR reconnected")
                     else:
+                        print(f"[ASR] ❌ Reconnect failed")
                         continue
+
+                # ALWAYS feed audio to keep Deepgram connection alive
+                # This prevents the "did not receive audio" timeout
+                await asr.feed(audio)
 
                 # Barge-in while speaking
                 if speaking:
@@ -467,7 +500,6 @@ async def media_handler(ws):
                         if bargein_since == 0.0:
                             bargein_since = now
                         elif (now - bargein_since) >= BARGEIN_HOLD:
-                            await asr.feed(audio)
                             interim = asr.get_interim()
                             if len(interim.strip().split()) >= 1:
                                 interrupt = True
@@ -485,12 +517,10 @@ async def media_handler(ws):
                 # Ignore tail after TTS
                 if (now - tts_ended_at) < POST_TTS_IGNORE:
                     continue
-
-                # Feed audio to ASR
-                await asr.feed(audio)
                 
                 # Check for speech_final
                 if asr.is_speech_finished():
+                    speech_detected_at = time_module.time()
                     text = asr.get_text().strip()
                     asr.clear()
                     
@@ -511,9 +541,10 @@ async def media_handler(ws):
                         print(f"🤫 Ignoring filler: '{text}'")
                         continue
                     
-                    # Log user speech
+                    # Log user speech with timing
                     print(f"\n{'='*60}")
                     print(f"👤 CALLER: {text}")
+                    print(f"[PIPELINE] 📍 Speech detected at {speech_detected_at:.3f}")
                     print(f"{'='*60}\n")
                     
                     conversation_log.append({"role": "user", "content": text, "timestamp": now})
@@ -527,6 +558,8 @@ async def media_handler(ws):
                     # Start response
                     llm_processing = True
                     llm_started_at = now
+                    
+                    print(f"[PIPELINE] 🚀 Starting LLM response...")
                     
                     try:
                         await start_tts(

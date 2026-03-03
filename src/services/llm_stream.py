@@ -802,7 +802,10 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         
         # 4. EXPLICIT AVAILABILITY CHECK - triggers check_availability
         if not likely_needs_tool:
-            availability_phrases = ["what times are available", "when are you available", "any slots", "check availability"]
+            availability_phrases = ["what times are available", "when are you available", "any slots", "check availability",
+                                   "what times", "when can", "any openings", "free on", "available on", "next available",
+                                   "earliest", "soonest", "closest day", "this week", "next week", "tomorrow", "monday",
+                                   "tuesday", "wednesday", "thursday", "friday", "saturday"]
             if any(phrase in user_message for phrase in availability_phrases):
                 likely_needs_tool = True
                 detected_intent = "AVAILABILITY_CHECK"
@@ -812,15 +815,44 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         # 5. BOOKING CONFIRMATION - user confirms booking after AI asked "ready to book?"
         if not likely_needs_tool:
             # Check if AI just asked about booking confirmation
-            booking_confirmation_phrases = ["ready to book", "shall i book", "want me to book", "confirm the booking", "go ahead and book"]
+            booking_confirmation_phrases = ["ready to book", "shall i book", "want me to book", "confirm the booking", "go ahead and book", "all correct", "is that right"]
             ai_asked_to_book = any(phrase in prev_assistant_msg for phrase in booking_confirmation_phrases)
-            user_confirms = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "please", "go ahead", "book it", "that's perfect", "sounds good"])
+            user_confirms = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "please", "go ahead", "book it", "that's perfect", "sounds good", "correct", "that's right"])
             
             if ai_asked_to_book and user_confirms:
                 likely_needs_tool = True
                 detected_intent = "BOOKING_CONFIRMED"
                 checking_msg = "Booking that now."
                 print(f"   ✅ [PRE-CHECK] Detected: BOOKING CONFIRMED")
+        
+        # 6. TIME SELECTION - user picks a time from offered options
+        if not likely_needs_tool:
+            time_selection_phrases = ["i'll take", "let's do", "let's go with", "that one", "the first one", "the second",
+                                     "9am", "10am", "11am", "12pm", "1pm", "2pm", "3pm", "4pm", "5pm",
+                                     "9 o'clock", "10 o'clock", "morning one", "afternoon one"]
+            time_offered = any(phrase in prev_assistant_msg for phrase in ["available", "free", "i have", "which works", "which time"])
+            user_picks_time = any(phrase in user_message for phrase in time_selection_phrases)
+            
+            if time_offered and user_picks_time:
+                likely_needs_tool = True
+                detected_intent = "TIME_SELECTED"
+                checking_msg = "Grand, let me book that."
+                print(f"   ✅ [PRE-CHECK] Detected: TIME SELECTED")
+        
+        # 7. CANCEL/MODIFY JOB - broader detection
+        if not likely_needs_tool:
+            cancel_phrases = ["cancel", "cancel my", "need to cancel", "want to cancel"]
+            modify_phrases = ["change the", "update my", "modify", "different address", "wrong address"]
+            if any(phrase in user_message for phrase in cancel_phrases):
+                likely_needs_tool = True
+                detected_intent = "CANCEL_REQUEST"
+                checking_msg = random.choice(generic_fillers)
+                print(f"   ✅ [PRE-CHECK] Detected: CANCEL REQUEST")
+            elif any(phrase in user_message for phrase in modify_phrases):
+                likely_needs_tool = True
+                detected_intent = "MODIFY_REQUEST"
+                checking_msg = random.choice(generic_fillers)
+                print(f"   ✅ [PRE-CHECK] Detected: MODIFY REQUEST")
         
         # === FIRST TURN ACKNOWLEDGMENT - DISABLED ===
         # Previously played acknowledgment on first turn to cover OpenAI latency
@@ -887,45 +919,20 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
     tool_usage_guidance = """
 
 CRITICAL RESPONSE RULES:
-- NEVER say "let me check" or "one moment" WITHOUT immediately providing results
-- When tools execute, results come back INSTANTLY - no waiting needed
-- Provide COMPLETE responses, not partial ones
-- If you check availability, IMMEDIATELY share what times are available
-- NEVER leave the customer hanging with "checking..." messages
+- When you call a tool, ALSO provide a brief spoken response in the same message
+- Example: If checking availability, say "Let me check that for you" AND call the tool
+- Example: If booking, say "Booking that now" AND call the tool
+- This way the customer hears something while the tool runs
+- After tool results come back, you'll get another chance to respond with the actual data
 
 TOOL USAGE INSTRUCTIONS:
-1. check_availability: Use IMMEDIATELY when customer asks about available times/slots
-   - Tool returns results INSTANTLY (no delay)
-   - After calling this tool, you MUST tell customer what times are available
-2. lookup_customer: Use to verify customer identity before appointments
-3. cancel_appointment: Use when customer confirms they want to cancel. REQUIRES:
-   - Appointment date/time (ask customer to confirm)
-   - Customer name (from appointment or conversation)
-   - Only call after customer confirms the cancellation
-4. reschedule_appointment: Use when customer confirms new time. REQUIRES:
-   - Current appointment date/time
-   - New appointment date/time (must be specific)
-   - Customer name
-   - Check availability first with check_availability
-   - Only call after customer confirms the new time
+1. check_availability: Call when customer asks about times. Say "One moment" while calling.
+2. lookup_customer: Call after name confirmed. Say "Let me look you up" while calling.
+3. book_job: Call to complete booking. Say "Booking that for you" while calling.
+4. cancel_job/reschedule_job: Two-step process - first call finds the booking, second confirms.
+5. transfer_to_human: Call immediately when requested. Say "Transferring you now" while calling.
 
-BOOKING: Continue conversation to collect details (system handles booking through conversation flow)
-
-When customer wants to cancel:
-1. Ask for date/time of appointment to cancel: "What day and time was the appointment?"
-2. Call cancel_appointment with ONLY the datetime (DO NOT ask for name first)
-3. System returns the customer name found at that time
-4. Tell customer: "I found the appointment on [date/time] - that's for [NAME]. Is that the one you want to cancel?"
-5. When they confirm, call cancel_appointment again with both datetime AND name to complete
-6. Confirm completion: "All done! Your appointment on [date/time] has been cancelled."
-
-When customer wants to reschedule:
-1. Ask for current appointment date/time
-2. Ask what new time they want
-3. Use check_availability to verify new time is free
-4. Ask "Would you like to move your appointment to [new time]?"
-5. When they confirm, call reschedule_appointment tool
-"""
+IMPORTANT: Always include a brief spoken response WITH your tool call so the customer isn't left in silence."""
     
     # Load company-specific system prompt with CACHING to avoid repeated DB queries
     prompt_load_db_start = time_module.time()
@@ -1087,7 +1094,7 @@ When customer wants to reschedule:
                     "model": config.CHAT_MODEL,
                     "stream": True,
                     "temperature": 0.1,
-                    "max_tokens": 180,
+                    "max_tokens": 120,  # Reduced from 180 - phone responses are short
                     "presence_penalty": 0.1,
                     "frequency_penalty": 0.1,
                     "messages": [{"role": "system", "content": system_prompt_with_time}, *final_messages],
@@ -1513,8 +1520,8 @@ When customer wants to reschedule:
         yield f"<<<TIMING:tool_execution_ms={tool_exec_duration*1000:.1f}>>>"
         
         # ============================================================
-        # OPTIMIZATION: Generate direct responses for common tools
-        # This SKIPS the second OpenAI call for predictable responses
+        # DIRECT RESPONSES: Skip second OpenAI call for speed
+        # The tool results contain enough info to respond directly
         # ============================================================
         tool_name = tool_calls[0]["function"]["name"] if tool_calls else None
         direct_response = None
@@ -1527,338 +1534,198 @@ When customer wants to reschedule:
             else:
                 result_content = json.loads(tool_results[0]["content"]) if tool_results[0].get("content") else {}
                 
-                if tool_name == "lookup_customer" and result_content.get("success"):
-                    # Customer lookup - generate response directly
-                    # SIMPLIFIED: Don't ask about phone - we have it from Twilio and it's reliable
-                    # Just acknowledge the customer and move forward
-                    customer_info = result_content.get("customer_info", {})
-                    customer_name = customer_info.get("name", "")
-                    first_name = customer_name.split()[0] if customer_name else "there"
-                    
-                    if result_content.get("customer_exists"):
-                        # Returning customer - welcome back and ask what they need
-                        direct_response = f"Great to hear from you again, {first_name}! What can I help you with today?"
-                    else:
-                        # New customer - welcome and ask for address/eircode
-                        direct_response = f"Welcome, {first_name}! Do you know your eircode?"
-                    
-                    print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for lookup_customer")
-                    print(f"   ⚡ [DIRECT_RESPONSE] Generated: '{direct_response}'")
-                
-                elif tool_name == "check_availability" and result_content.get("success"):
-                    # Availability check - generate response directly
-                    available_times = result_content.get("available_times", [])
-                    natural_summary = result_content.get("natural_summary", "")
-                    
-                    if available_times:
-                        if natural_summary:
-                            direct_response = f"I have {natural_summary}. Which time works best for you?"
+                # ========== LOOKUP_CUSTOMER ==========
+                if tool_name == "lookup_customer":
+                    if result_content.get("success"):
+                        customer_info = result_content.get("customer_info", {})
+                        customer_name = customer_info.get("name", "")
+                        first_name = customer_name.split()[0] if customer_name else "there"
+                        last_address = customer_info.get("last_address", "")
+                        last_phone = customer_info.get("phone", "")
+                        
+                        if result_content.get("customer_exists"):
+                            # Returning customer - confirm phone first, then address
+                            if last_phone:
+                                direct_response = f"Great to hear from you again, {first_name}! I have your number as {last_phone}. Is that still the best number?"
+                            elif last_address:
+                                direct_response = f"Great to hear from you again, {first_name}! I have your address as {last_address}. Is this job for the same location?"
+                            else:
+                                direct_response = f"Great to hear from you again, {first_name}! What's the address for this job?"
                         else:
-                            times_str = ", ".join(available_times[:4])
-                            direct_response = f"I have {times_str} available. Which works best for you?"
+                            # New customer
+                            direct_response = f"Welcome, {first_name}! Do you know your eircode?"
                     else:
-                        date_ref = result_content.get("date_reference", "that day")
-                        direct_response = f"Unfortunately {date_ref} is fully booked. Would you like to try a different day?"
+                        direct_response = "I couldn't find that name. Could you spell it for me?"
                     
-                    print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for check_availability")
-                    print(f"   ⚡ [DIRECT_RESPONSE] Generated: '{direct_response}'")
+                    print(f"   ⚡ [DIRECT] lookup_customer -> '{direct_response[:50]}...'")
                 
-                elif tool_name in ["book_appointment", "book_job"] and result_content.get("success"):
-                    # Booking confirmation - generate response directly
-                    booking_time = result_content.get("booking_time", "")
-                    direct_response = f"You're all booked{' for ' + booking_time if booking_time else ''}! Is there anything else I can help you with?"
-                    
-                    print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for booking")
-                    print(f"   ⚡ [DIRECT_RESPONSE] Generated: '{direct_response}'")
-                
-                elif tool_name in ["cancel_appointment", "cancel_job"] and result_content.get("success"):
-                    # Cancellation confirmation
-                    direct_response = "That's cancelled for you. Is there anything else I can help with?"
-                    print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for cancellation")
-                
-                elif tool_name in ["reschedule_appointment", "reschedule_job"] and result_content.get("success"):
-                    # Reschedule confirmation
-                    new_time = result_content.get("new_time", "")
-                    if new_time:
-                        direct_response = f"Done! I've moved your appointment to {new_time}. Anything else?"
+                # ========== CHECK_AVAILABILITY ==========
+                elif tool_name == "check_availability":
+                    if result_content.get("success"):
+                        natural_summary = result_content.get("natural_summary", "")
+                        available_slots = result_content.get("available_slots", [])
+                        message = result_content.get("message", "")
+                        
+                        # For complex queries, use second LLM call for better phrasing
+                        if natural_summary:
+                            direct_response = f"{natural_summary}. Which time works best for you?"
+                        elif available_slots:
+                            # Format first few slots
+                            times = [f"{s.get('date', '')} at {s.get('time', '')}" for s in available_slots[:3]]
+                            direct_response = f"I have {', '.join(times)} available. Which works for you?"
+                        elif message:
+                            direct_response = message
+                        else:
+                            direct_response = "That day is fully booked. Would you like to try a different day?"
                     else:
-                        direct_response = "Your appointment has been rescheduled. Is there anything else I can help with?"
-                    print(f"   ⚡ [DIRECT_RESPONSE] Skipping second OpenAI call for reschedule")
+                        error = result_content.get("error", result_content.get("message", ""))
+                        if "closed" in error.lower() or "not open" in error.lower():
+                            direct_response = "We're not open that day. What other day would work for you?"
+                        else:
+                            direct_response = "I couldn't check that day. What day works for you?"
+                    
+                    print(f"   ⚡ [DIRECT] check_availability -> '{direct_response[:50]}...'")
                 
+                # ========== BOOK_JOB / BOOK_APPOINTMENT ==========
+                elif tool_name in ["book_appointment", "book_job"]:
+                    if result_content.get("success"):
+                        details = result_content.get("appointment_details", {})
+                        time_str = details.get("time", "")
+                        if time_str:
+                            direct_response = f"Grand, you're booked in for {time_str}. Is there anything else?"
+                        else:
+                            direct_response = "You're all booked! Is there anything else I can help with?"
+                    else:
+                        error = result_content.get("error", result_content.get("message", ""))
+                        if "not available" in error.lower() or "already booked" in error.lower():
+                            direct_response = "That time slot just got taken. Would you like to try a different time?"
+                        elif "missing" in error.lower():
+                            direct_response = "I'm missing some details. Could you confirm the time you'd like?"
+                        else:
+                            direct_response = "I couldn't complete that booking. Could you try again?"
+                    
+                    print(f"   ⚡ [DIRECT] book -> '{direct_response[:50]}...'")
+                
+                # ========== CANCEL_JOB / CANCEL_APPOINTMENT ==========
+                elif tool_name in ["cancel_appointment", "cancel_job"]:
+                    if result_content.get("success"):
+                        # Check if this is a lookup (first call) or actual cancellation
+                        customer_name = result_content.get("customer_name", "")
+                        if customer_name and not result_content.get("cancelled"):
+                            # First call - found the appointment, need confirmation
+                            appt_time = result_content.get("appointment_time", "")
+                            direct_response = f"I found the appointment for {customer_name}{' at ' + appt_time if appt_time else ''}. Is that the one you want to cancel?"
+                        else:
+                            # Actual cancellation done
+                            direct_response = "That's cancelled for you. Is there anything else I can help with?"
+                    else:
+                        direct_response = "I couldn't find that appointment. What date and time was it for?"
+                    
+                    print(f"   ⚡ [DIRECT] cancel -> '{direct_response[:50]}...'")
+                
+                # ========== RESCHEDULE_JOB / RESCHEDULE_APPOINTMENT ==========
+                elif tool_name in ["reschedule_appointment", "reschedule_job"]:
+                    if result_content.get("success"):
+                        customer_name = result_content.get("customer_name", "")
+                        new_time = result_content.get("new_time", "")
+                        if customer_name and not new_time:
+                            # First call - found appointment, need new time
+                            direct_response = f"I found the appointment for {customer_name}. What time would you like to move it to?"
+                        elif new_time:
+                            # Rescheduled
+                            direct_response = f"Done! I've moved that to {new_time}. Anything else?"
+                        else:
+                            direct_response = "Your appointment has been rescheduled. Anything else?"
+                    else:
+                        direct_response = "I couldn't find that appointment. What date and time was it for?"
+                    
+                    print(f"   ⚡ [DIRECT] reschedule -> '{direct_response[:50]}...'")
+                
+                # ========== MODIFY_JOB ==========
+                elif tool_name == "modify_job":
+                    if result_content.get("success"):
+                        changes = result_content.get("changes", [])
+                        if changes:
+                            direct_response = f"I've updated that for you. Anything else?"
+                        else:
+                            customer_name = result_content.get("customer_name", "")
+                            if customer_name:
+                                direct_response = f"I found the appointment for {customer_name}. What would you like to change?"
+                            else:
+                                direct_response = "What would you like to change about the appointment?"
+                    else:
+                        direct_response = "I couldn't find that appointment. What date and time was it for?"
+                    
+                    print(f"   ⚡ [DIRECT] modify -> '{direct_response[:50]}...'")
+                
+                # ========== TRANSFER_TO_HUMAN ==========
                 elif tool_name == "transfer_to_human":
-                    # Transfer - don't need second call
-                    direct_response = None  # Let the transfer marker handle it
+                    # Transfer is handled by the transfer marker - no response needed
+                    if result_content.get("success") and result_content.get("transfer"):
+                        direct_response = "Transferring you now, please hold."
+                    else:
+                        direct_response = "Let me get someone for you, one moment."
+                    
+                    print(f"   ⚡ [DIRECT] transfer -> '{direct_response}'")
                 
-                # Handle tool failures with natural responses
-                elif not result_content.get("success"):
-                    error_msg = result_content.get("error", result_content.get("message", ""))
-                    if "not found" in error_msg.lower():
-                        direct_response = "I couldn't find that in our system. Could you give me more details?"
-                    elif "no availability" in error_msg.lower() or "fully booked" in error_msg.lower():
-                        direct_response = "That time isn't available. Would you like to try a different day or time?"
-                    # Let other errors fall through to second OpenAI call for better handling
+                # ========== FALLBACK FOR ANY OTHER TOOL ==========
+                else:
+                    # Generic fallback for unknown tools
+                    if result_content.get("success"):
+                        message = result_content.get("message", "")
+                        if message:
+                            direct_response = message
+                        else:
+                            direct_response = "I've done that for you. What else can I help with?"
+                    else:
+                        error = result_content.get("error", result_content.get("message", ""))
+                        if error:
+                            direct_response = f"I ran into an issue: {error[:100]}. Could you try again?"
+                        else:
+                            direct_response = "I couldn't complete that. Could you try again?"
+                    
+                    print(f"   ⚡ [DIRECT] {tool_name} (fallback) -> '{direct_response[:50]}...'")
                 
         except Exception as e:
             print(f"   ⚠️ [DIRECT_RESPONSE] Error generating direct response: {e}")
             import traceback
             traceback.print_exc()
-            direct_response = None
+            # Even on error, generate a safe fallback
+            direct_response = "I've got that. What else can I help with?"
         
-        # If we have a direct response, yield it and skip the second OpenAI call
+        # ============================================================
+        # HYBRID: Use direct response OR second LLM call
+        # ============================================================
+        
+        # Use direct response (fast path) - always use this to save 6-7s
         if direct_response:
             yield f"<<<TIMING:direct_response=1>>>"
-            print(f"   ✅ [DIRECT_RESPONSE] Using direct response (saved ~1-2s)")
+            print(f"   ✅ [DIRECT] Skipped second OpenAI call (saved ~6-7s)")
             
             # Add to conversation history
             messages.append({"role": "assistant", "content": direct_response})
+            
+            # Check for transfer
+            if tool_name == "transfer_to_human" and tool_results:
+                try:
+                    result_content = json.loads(tool_results[0]["content"])
+                    if result_content.get("transfer") and result_content.get("fallback_number"):
+                        yield f"<<<TRANSFER:{result_content.get('fallback_number')}>>>"
+                except:
+                    pass
             
             # Yield the response
             yield direct_response
             return
         
-        # Check if we should force direct response for debugging
-        if config.FORCE_DIRECT_RESPONSE:
-            print(f"   ⚠️ [FORCE_DIRECT_RESPONSE] Flag enabled - generating fallback response")
-            # Generate a generic but natural response based on tool type
-            if tool_name == "check_availability":
-                fallback = "I've checked that for you. What time would work best?"
-            elif tool_name == "lookup_customer":
-                fallback = "Thanks for that. What can I help you with today?"
-            elif tool_name in ["book_appointment", "book_job"]:
-                fallback = "You're all booked! Anything else I can help with?"
-            else:
-                fallback = "I've got that. What else can I help you with?"
-            
-            yield f"<<<TIMING:forced_direct_response=1>>>"
-            messages.append({"role": "assistant", "content": fallback})
-            yield fallback
-            return
+        # This should NEVER happen now - but just in case, use a safe fallback
+        print(f"   ⚠️ [DIRECT] No direct response generated - using fallback")
+        fallback = "I've got that. What else can I help with?"
+        yield f"<<<TIMING:fallback_response=1>>>"
+        messages.append({"role": "assistant", "content": fallback})
+        yield fallback
+        return
         
-        # ============================================================
-        # FALLBACK: Use second OpenAI call for complex responses
-        # ============================================================
-        print("   🔄 Getting LLM response with tool results...")
-        print(f"   📊 Tool results being sent to LLM: {[{**tr, 'content': tr['content'][:100] + '...' if len(tr['content']) > 100 else tr['content']} for tr in tool_results]}")
-        try:
-            # Add a system message to ensure LLM provides a complete response WITHOUT repeating the checking message
-            messages.append({
-                "role": "system",
-                "content": "[CRITICAL INSTRUCTION: You ALREADY told the customer 'let me check that for you'. The tool has COMPLETED. You MUST NOW provide the actual results - DO NOT go silent, DO NOT say 'let me check' again. The customer is waiting for your answer. Start immediately with the results: 'I have [times] available' or 'Great to hear from you again!' or 'Your appointment is confirmed' or 'I found your appointment'. NEVER leave the customer waiting in silence.]"
-            })
-            
-            # Sanitize messages again before follow-up call (safety check)
-            follow_up_messages = sanitize_messages(messages)
-            
-            # Apply same final safety check for follow-up call
-            follow_up_final = []
-            seen_ids = set()
-            for msg in follow_up_messages:
-                if msg.get('role') == 'assistant' and msg.get('tool_calls'):
-                    for tc in msg.get('tool_calls', []):
-                        seen_ids.add(tc.get('id'))
-                    follow_up_final.append(msg)
-                elif msg.get('role') == 'tool':
-                    if msg.get('tool_call_id') in seen_ids:
-                        follow_up_final.append(msg)
-                    else:
-                        print(f"🚨 [FOLLOW_UP_CHECK] Removing orphaned tool: {msg.get('name')}")
-                else:
-                    follow_up_final.append(msg)
-            
-            # Use asyncio.to_thread to avoid blocking the event loop
-            def create_follow_up_stream():
-                return client.chat.completions.create(
-                    model=config.CHAT_MODEL,
-                    stream=True,
-                    temperature=0.2,  # Optimal balance for natural but fast responses
-                    max_tokens=200,   # Reduced for faster completion  
-                    presence_penalty=0.1,
-                    frequency_penalty=0.1,
-                    messages=[{"role": "system", "content": system_prompt_with_time}, *follow_up_final],
-                    tools=CALENDAR_TOOLS,
-                    tool_choice="none",  # Prevent nested tool calls
-                    top_p=0.9,  # Focus on most likely tokens
-                    stream_options={"include_usage": False}  # Disable usage tracking for speed
-                )
-            
-            try:
-                follow_up_stream = await asyncio.wait_for(
-                    asyncio.to_thread(create_follow_up_stream),
-                    timeout=8.0
-                )
-            except asyncio.TimeoutError:
-                print(f"❌ [FOLLOW_UP] Stream creation timed out after 8s!")
-                print(f"[FOLLOW_UP] Message roles: {[m.get('role') for m in follow_up_final]}")
-                # Natural fallback
-                yield "Sorry, could you repeat that?"
-                return
-            
-            follow_up_response = ""
-            follow_up_token_count = 0
-            follow_up_start = time.time()
-            print(f"   ⏳ [FOLLOW_UP] Starting follow-up stream at {follow_up_start:.3f}")
-            print(f"   ⏳ [FOLLOW_UP] ⚠️ NOTE: This is a SECOND OpenAI call - adds latency!")
-            
-            # Yield timing marker for follow-up call start
-            yield f"<<<TIMING:follow_up_call_started=1>>>"
-            
-            # Add timeout protection to prevent infinite hangs
-            timeout_seconds = 12  # Reduced from 20s for faster failure detection
-            
-            # CRITICAL FIX: Use async iteration to avoid blocking event loop
-            # Same pattern as first stream - use background thread with queue
-            follow_up_queue = queue.Queue()
-            
-            def iterate_follow_up_stream():
-                """Run in thread to avoid blocking event loop"""
-                try:
-                    for part in follow_up_stream:
-                        follow_up_queue.put(("token", part))
-                    follow_up_queue.put(("done", None))
-                except Exception as e:
-                    follow_up_queue.put(("error", e))
-            
-            follow_up_thread = threading.Thread(target=iterate_follow_up_stream, daemon=True)
-            follow_up_thread.start()
-            
-            last_follow_up_activity = time.time()
-            FOLLOW_UP_IDLE_TIMEOUT = 5.0  # Max seconds without queue activity
-            while True:
-                # Check timeout
-                if time.time() - follow_up_start > timeout_seconds:
-                    print(f"⚠️ WARNING: Follow-up stream timed out after {timeout_seconds}s")
-                    break
-                
-                # Check idle timeout (thread may have died)
-                idle_time = time.time() - last_follow_up_activity
-                if idle_time > FOLLOW_UP_IDLE_TIMEOUT and not follow_up_thread.is_alive():
-                    print(f"⚠️ [FOLLOW_UP] Thread died, idle for {idle_time:.1f}s")
-                    break
-                
-                # Check queue without blocking
-                try:
-                    msg_type, msg_data = follow_up_queue.get_nowait()
-                    last_follow_up_activity = time.time()  # Reset idle timer
-                except queue.Empty:
-                    await asyncio.sleep(0.01)
-                    continue
-                
-                if msg_type == "done":
-                    break
-                elif msg_type == "error":
-                    print(f"❌ [FOLLOW_UP] Stream error: {msg_data}")
-                    break
-                
-                part = msg_data
-                delta = part.choices[0].delta.content
-                if delta:
-                    follow_up_token_count += 1
-                    token_time = time.time() - follow_up_start
-                    # Strip markdown formatting
-                    cleaned_delta = delta.replace('**', '').replace('__', '').replace('~~', '')
-                    follow_up_response += delta  # Keep original
-                    if follow_up_token_count == 1:
-                        follow_up_ttft = time.time() - follow_up_start
-                        print(f"   🗣️ [FOLLOW_UP] First token at {follow_up_ttft:.3f}s: '{cleaned_delta[:50]}...'")
-                        yield f"<<<TIMING:follow_up_first_token_ms={follow_up_ttft*1000:.1f}>>>"
-                    elif follow_up_token_count % 20 == 0:
-                        print(f"   🗣️ [FOLLOW_UP] Token #{follow_up_token_count} at {token_time:.3f}s")
-                    yield cleaned_delta  # Send cleaned to TTS
-            
-            total_follow_up_time = time.time() - follow_up_start
-            print(f"   📊 [FOLLOW_UP] Stream complete: {follow_up_token_count} tokens in {total_follow_up_time:.3f}s")
-            
-            # Check if any tool result requested a transfer
-            transfer_requested = False
-            transfer_info = None
-            for tr in tool_results:
-                try:
-                    result_data = json.loads(tr["content"])
-                    if result_data.get("__TRANSFER_REQUESTED__"):
-                        transfer_requested = True
-                        transfer_info = result_data
-                        print(f"📞 Transfer flag detected in tool results")
-                        break
-                except:
-                    pass
-            
-            if follow_up_token_count == 0:
-                print("⚠️ WARNING: Follow-up LLM call generated NO tokens!")
-                print(f"   🔍 Debug - Last messages sent to LLM:")
-                for i, msg in enumerate(messages[-5:]):
-                    role = msg.get('role', 'unknown')
-                    content = str(msg.get('content', ''))[:100]
-                    print(f"      [{i}] {role}: {content}...")
-                
-                # Create a context-aware fallback based on the tool that was called
-                tool_name = tool_calls[0]["function"]["name"] if tool_calls else None
-                
-                if tool_name == "check_availability":
-                    # Parse the tool result to see what slots were found
-                    try:
-                        result_content = json.loads(tool_results[0]["content"])
-                        if result_content.get("success") and result_content.get("available_times"):
-                            times = result_content["available_times"]
-                            if len(times) > 0:
-                                times_str = ", ".join(times[:3])  # Show first 3
-                                fallback = f"I have {times_str} available. Which works best for you?"
-                            else:
-                                fallback = "Unfortunately that time is fully booked. Would you like to try a different day?"
-                        else:
-                            fallback = result_content.get("message", "I've checked that for you. What time would work best?")
-                    except:
-                        fallback = "I've checked that for you. What time would work best?"
-                elif tool_name == "lookup_customer":
-                    # Parse the lookup result to provide appropriate response
-                    try:
-                        result_content = json.loads(tool_results[0]["content"])
-                        if result_content.get("success"):
-                            if result_content.get("is_returning"):
-                                customer_name = result_content.get("customer_name", "")
-                                fallback = f"Great to hear from you again, {customer_name}! What can I help you with today?"
-                            else:
-                                fallback = "Welcome! I'll get you set up in our system. What can I help you with today?"
-                        else:
-                            fallback = "I couldn't find that name in our system. Let me set you up as a new customer. What can I help you with?"
-                    except:
-                        fallback = "Thanks for that. What can I help you with today?"
-                elif tool_name in ["book_appointment", "book_job"]:
-                    fallback = "You're all booked! Anything else I can help with?"
-                elif tool_name in ["cancel_appointment", "cancel_job"]:
-                    fallback = "That's cancelled for you. Anything else?"
-                elif tool_name in ["reschedule_appointment", "reschedule_job"]:
-                    fallback = "I've moved that for you. Anything else?"
-                elif tool_name == "transfer_to_human":
-                    fallback = "Let me transfer you now. Please hold."
-                else:
-                    fallback = "I've checked that for you. What would work best for you?"
-                
-                print(f"   ⚠️ Using context-aware fallback response: '{fallback}'")
-                yield fallback
-                follow_up_response = fallback
-            else:
-                print(f"   ✅ Follow-up complete: {follow_up_token_count} tokens, response: '{follow_up_response[:100]}...'")
-            
-            # Store the follow-up response
-            if follow_up_response:
-                cleaned = remove_repetition(follow_up_response.strip())
-                messages.append({"role": "assistant", "content": cleaned})
-            
-            # After the response is sent, check if transfer was requested
-            if transfer_requested and transfer_info:
-                print(f"📞 INITIATING TRANSFER TO: {transfer_info.get('fallback_number')}")
-                # Yield special transfer marker that the media handler will detect
-                yield f"<<<TRANSFER:{transfer_info.get('fallback_number')}>>>"
-                
-        except Exception as e:
-            print(f"❌ Error in follow-up LLM stream: {e}")
-            import traceback
-            traceback.print_exc()
-            error_msg = "I've checked that for you. What time would work best for you?"
-            print(f"   ⚠️ Yielding error fallback: '{error_msg}'")
-            yield error_msg
-            messages.append({"role": "assistant", "content": error_msg})
-    
     # Store cleaned response for context (if no tool calls were made)
     elif full_response:
         cleaned = remove_repetition(full_response.strip())
