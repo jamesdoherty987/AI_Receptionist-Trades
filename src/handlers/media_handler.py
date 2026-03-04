@@ -328,9 +328,12 @@ async def media_handler(ws):
                             full_text += token
                             yield token
                     
+                    tts_call_start = time_module.time()
                     await stream_tts(direct_stream(), ws, stream_sid, lambda: interrupt)
-                    direct_time = time_module.time() - direct_start
-                    print(f"[PIPELINE] ⏱️ Direct TTS flow took {direct_time:.3f}s")
+                    tts_call_end = time_module.time()
+                    direct_time = tts_call_end - direct_start
+                    tts_only_time = tts_call_end - tts_call_start
+                    print(f"[PIPELINE] ⏱️ Direct TTS flow took {direct_time:.3f}s (TTS call: {tts_only_time:.3f}s)")
                 
                 # Log response
                 total_time = time_module.time() - run_start

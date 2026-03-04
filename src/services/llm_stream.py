@@ -800,6 +800,20 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
                 checking_msg = "Grand, one moment."
                 print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CONFIRMED")
         
+        # 3b. NAME SPELLING CORRECTION - user spells out their name letter by letter
+        # This triggers lookup_customer after AI confirms the corrected spelling
+        if not likely_needs_tool and not already_did_lookup:
+            # Detect if user is spelling out letters (e.g., "d o n n a c h a" or "D-O-N-N-A-C-H-A")
+            # Look for space-separated single letters or dash-separated letters
+            words = user_message.replace("-", " ").split()
+            single_letters = [w for w in words if len(w) == 1 and w.isalpha()]
+            # If more than 3 single letters, user is likely spelling something
+            if len(single_letters) >= 3:
+                likely_needs_tool = True
+                detected_intent = "NAME_SPELLING_CORRECTION"
+                checking_msg = "Let me look you up."
+                print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CORRECTION (user spelled {len(single_letters)} letters)")
+        
         # 4. EXPLICIT AVAILABILITY CHECK - triggers check_availability
         if not likely_needs_tool:
             availability_phrases = ["what times are available", "when are you available", "any slots", "check availability",
@@ -927,10 +941,12 @@ CRITICAL RESPONSE RULES:
 
 TOOL USAGE INSTRUCTIONS:
 1. check_availability: Call when customer asks about times. Say "One moment" while calling.
-2. lookup_customer: Call after name confirmed. Say "Let me look you up" while calling.
+2. lookup_customer: MUST call IMMEDIATELY after name spelling is confirmed. Say "Let me look you up" AND call the tool in the SAME response.
 3. book_job: Call to complete booking. Say "Booking that for you" while calling.
 4. cancel_job/reschedule_job: Two-step process - first call finds the booking, second confirms.
 5. transfer_to_human: Call immediately when requested. Say "Transferring you now" while calling.
+
+CRITICAL: NEVER say "let me look you up" or "let me check" without ACTUALLY calling the tool. If you say you're going to do something, you MUST call the tool in the same response. Saying you'll do something without calling the tool leaves the customer waiting in silence.
 
 IMPORTANT: Always include a brief spoken response WITH your tool call so the customer isn't left in silence."""
     
@@ -1566,9 +1582,17 @@ IMPORTANT: Always include a brief spoken response WITH your tool call so the cus
                         available_slots = result_content.get("available_slots", [])
                         message = result_content.get("message", "")
                         
+                        # Check if this is a full-day job (contains "full day available")
+                        is_full_day = "full day" in natural_summary.lower() if natural_summary else False
+                        
                         # For complex queries, use second LLM call for better phrasing
                         if natural_summary:
-                            direct_response = f"{natural_summary}. Which time works best for you?"
+                            if is_full_day:
+                                # Full-day jobs: Don't ask for time, just confirm the day
+                                direct_response = f"{natural_summary}. Does that day work for you?"
+                            else:
+                                # Regular jobs: Ask for time preference
+                                direct_response = f"{natural_summary}. Which time works best for you?"
                         elif available_slots:
                             # Format first few slots
                             times = [f"{s.get('date', '')} at {s.get('time', '')}" for s in available_slots[:3]]
