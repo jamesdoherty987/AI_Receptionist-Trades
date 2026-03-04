@@ -1391,13 +1391,20 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             tool_duration = time_module.time() - tool_start_time
             print(f"[TOOL_TIMING] ✅ check_availability completed in {tool_duration:.3f}s ({len(all_slots)} slots found)")
             
+            # Add special instruction for full-day services
+            if service_duration >= 480:
+                voice_instruction = "Say the natural_summary naturally. For full-day jobs, ask which DAY works - DO NOT ask for a specific time. Just confirm the day."
+            else:
+                voice_instruction = "Say the natural_summary naturally and conversationally. Then ask which day/time works for them."
+            
             return {
                 "success": True,
                 "available_slots": formatted_slots,
                 "total_count": len(all_slots),
                 "natural_summary": natural_summary,
                 "message": f"{time_reference} I have: {natural_summary}",
-                "voice_instruction": "Say the natural_summary naturally and conversationally. Then ask which day/time works for them."
+                "voice_instruction": voice_instruction,
+                "is_full_day_service": service_duration >= 480
             }
         
         elif tool_name == "lookup_customer":
@@ -1418,15 +1425,17 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     clients = db.get_clients_by_name(customer_name.lower(), company_id=company_id)
                     if len(clients) == 1:
                         client = clients[0]
-                        # Get most recent booking to find last used address - filter by company_id
-                        bookings = db.get_client_bookings(client['id'], company_id=company_id)
-                        last_address = None
-                        if bookings:
-                            # Get most recent booking with an address
-                            for booking in bookings:
-                                if booking.get('address'):
-                                    last_address = booking['address']
-                                    break
+                        
+                        # Get address - prioritize client's stored address, fall back to last booking
+                        last_address = client.get('address') or client.get('eircode')
+                        if not last_address:
+                            # Fall back to most recent booking address
+                            bookings = db.get_client_bookings(client['id'], company_id=company_id)
+                            if bookings:
+                                for booking in bookings:
+                                    if booking.get('address'):
+                                        last_address = booking['address']
+                                        break
                         
                         # Build the message with all available info and address confirmation
                         msg_parts = [f"Found returning customer: {client['name']}"]
@@ -1472,14 +1481,15 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             if len(phone_matches) == 1:
                                 client = phone_matches[0]
                                 logger.info(f"[LOOKUP] Matched by name + phone: {client['name']} (ID: {client['id']})")
-                                # Get most recent booking address
-                                bookings = db.get_client_bookings(client['id'], company_id=company_id)
-                                last_address = None
-                                if bookings:
-                                    for booking in bookings:
-                                        if booking.get('address'):
-                                            last_address = booking['address']
-                                            break
+                                # Get address - prioritize client's stored address, fall back to last booking
+                                last_address = client.get('address') or client.get('eircode')
+                                if not last_address:
+                                    bookings = db.get_client_bookings(client['id'], company_id=company_id)
+                                    if bookings:
+                                        for booking in bookings:
+                                            if booking.get('address'):
+                                                last_address = booking['address']
+                                                break
                                 
                                 msg_parts = [f"Found returning customer: {client['name']}"]
                                 if client.get('phone'):
@@ -1516,13 +1526,15 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             if len(email_matches) == 1:
                                 client = email_matches[0]
                                 logger.info(f"[LOOKUP] Matched by name + email: {client['name']} (ID: {client['id']})")
-                                bookings = db.get_client_bookings(client['id'], company_id=company_id)
-                                last_address = None
-                                if bookings:
-                                    for booking in bookings:
-                                        if booking.get('address'):
-                                            last_address = booking['address']
-                                            break
+                                # Get address - prioritize client's stored address, fall back to last booking
+                                last_address = client.get('address') or client.get('eircode')
+                                if not last_address:
+                                    bookings = db.get_client_bookings(client['id'], company_id=company_id)
+                                    if bookings:
+                                        for booking in bookings:
+                                            if booking.get('address'):
+                                                last_address = booking['address']
+                                                break
                                 
                                 msg_parts = [f"Found returning customer: {client['name']}"]
                                 if client.get('phone'):
@@ -1633,14 +1645,15 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         
                         if best_match:
                             logger.info(f"[LOOKUP] ✅ Fuzzy match: '{customer_name}' -> '{best_match['name']}' ({best_match_reason})")
-                            # Get most recent booking address - filter by company_id
-                            bookings = db.get_client_bookings(best_match['id'], company_id=company_id)
-                            last_address = None
-                            if bookings:
-                                for booking in bookings:
-                                    if booking.get('address'):
-                                        last_address = booking['address']
-                                        break
+                            # Get address - prioritize client's stored address, fall back to last booking
+                            last_address = best_match.get('address') or best_match.get('eircode')
+                            if not last_address:
+                                bookings = db.get_client_bookings(best_match['id'], company_id=company_id)
+                                if bookings:
+                                    for booking in bookings:
+                                        if booking.get('address'):
+                                            last_address = booking['address']
+                                            break
                             
                             # Build the message with all available info
                             msg_parts = [f"Found returning customer: {best_match['name']} (I heard {customer_name}, but found a close match)"]
@@ -2700,15 +2713,17 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     except Exception:
                         pass
                     
-                    # Update client's address/eircode/email if not already set
+                    # Update client's address/eircode to most recent, email only if not set
                     try:
                         existing_client = db.get_client(client_id, company_id=company_id)
                         if existing_client:
                             update_fields = {}
-                            if not existing_client.get('address') and validated_address:
+                            # Always update address/eircode to keep profile current
+                            if validated_address:
                                 update_fields['address'] = validated_address
-                            if not existing_client.get('eircode') and extracted_eircode:
+                            if extracted_eircode:
                                 update_fields['eircode'] = extracted_eircode
+                            # Only update email if not already set
                             if not existing_client.get('email') and email:
                                 update_fields['email'] = email
                             if update_fields:

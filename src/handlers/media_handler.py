@@ -612,9 +612,10 @@ async def media_handler(ws):
                     last_committed = text
                     conversation.append({"role": "user", "content": text})
                     
-                    # Trim history
-                    if len(conversation) > 21:
-                        conversation[:] = [conversation[0]] + conversation[-20:]
+                    # Trim history - keep more context to prevent AI from forgetting
+                    # Keep system message + last 50 messages
+                    if len(conversation) > 51:
+                        conversation[:] = [conversation[0]] + conversation[-50:]
                     
                     # Start response
                     llm_processing = True
