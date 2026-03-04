@@ -807,12 +807,19 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
             # Look for space-separated single letters or dash-separated letters
             words = user_message.replace("-", " ").split()
             single_letters = [w for w in words if len(w) == 1 and w.isalpha()]
-            # If more than 3 single letters, user is likely spelling something
-            if len(single_letters) >= 3:
-                likely_needs_tool = True
-                detected_intent = "NAME_SPELLING_CORRECTION"
-                checking_msg = "Let me look you up."
-                print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CORRECTION (user spelled {len(single_letters)} letters)")
+            # If more than 5 single letters AND they're consecutive, user is likely spelling something
+            # This avoids false positives from phrases like "I want a new wall"
+            if len(single_letters) >= 5:
+                # Check if letters are mostly consecutive (not scattered through sentence)
+                word_positions = [i for i, w in enumerate(words) if len(w) == 1 and w.isalpha()]
+                if len(word_positions) >= 5:
+                    # Check if at least 5 letters are within a 7-word span
+                    max_span = max(word_positions) - min(word_positions) + 1
+                    if max_span <= 7:
+                        likely_needs_tool = True
+                        detected_intent = "NAME_SPELLING_CORRECTION"
+                        checking_msg = "Let me look you up."
+                        print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CORRECTION (user spelled {len(single_letters)} letters)")
         
         # 4. EXPLICIT AVAILABILITY CHECK - triggers check_availability
         if not likely_needs_tool:

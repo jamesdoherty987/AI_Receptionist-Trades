@@ -155,6 +155,16 @@ class AddressValidator:
                 'suggestions': []  # No suggestions needed - eircode uniquely identifies location
             })
         
+        # Check if it's a short numeric code that might be an eircode (e.g., "123")
+        # Accept it as-is without validation - user confirmed it's their eircode
+        elif re.match(r'^\d{1,7}$', cleaned_input):
+            result.update({
+                'type': 'eircode',
+                'eircode': cleaned_input,  # Keep as-is, don't try to normalize
+                'needs_clarification': False,  # Accept user's eircode without questioning
+                'suggestions': []
+            })
+        
         # Check if it's a legacy postcode
         elif self.is_postcode(cleaned_input):
             result.update({
