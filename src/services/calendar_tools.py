@@ -1316,10 +1316,24 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 current_date += timedelta(days=1)
             
             if not slots_by_day:
+                # Natural language for no availability
+                if start_date.date() == end_date.date():
+                    # Same day - use natural language
+                    day_name = start_date.strftime('%A')
+                    if start_date.date() == datetime.now().date():
+                        no_avail_msg = "Today is fully booked"
+                    elif (start_date.date() - datetime.now().date()).days == 1:
+                        no_avail_msg = "Tomorrow is fully booked"
+                    else:
+                        no_avail_msg = f"{day_name} is fully booked"
+                else:
+                    # Date range
+                    no_avail_msg = f"No openings between {start_date.strftime('%A')} and {end_date.strftime('%A')}"
+                
                 return {
                     "success": True,
                     "available_slots": [],
-                    "message": f"No available slots between {start_date.strftime('%A, %B %d')} and {end_date.strftime('%A, %B %d')}"
+                    "message": no_avail_msg
                 }
             
             # Sort days by weekday order (Mon-Fri), not chronological date

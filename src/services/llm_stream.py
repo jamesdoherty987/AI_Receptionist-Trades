@@ -1605,7 +1605,9 @@ IMPORTANT: Always include a brief spoken response WITH your tool call so the cus
                             times = [f"{s.get('date', '')} at {s.get('time', '')}" for s in available_slots[:3]]
                             direct_response = f"I have {', '.join(times)} available. Which works for you?"
                         elif message:
-                            direct_response = message
+                            # Use the natural language message from calendar_tools
+                            # Add suggestion to try another day
+                            direct_response = f"{message}. Would you like to try a different day?"
                         else:
                             direct_response = "That day is fully booked. Would you like to try a different day?"
                     else:
