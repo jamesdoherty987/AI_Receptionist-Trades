@@ -442,7 +442,7 @@ async def media_handler(ws):
                 if caller_phone:
                     phone_instruction = (
                         f"PHONE NUMBER: Caller's number is {formatted_phone} (from caller ID). "
-                        "DO NOT ask to confirm - we have it. Only ask if they want a different number."
+                        f"Confirm this number with them: 'Is {formatted_phone} a good number to reach you?'"
                     )
                 else:
                     phone_instruction = "PHONE NUMBER: Not detected. Ask for their number."

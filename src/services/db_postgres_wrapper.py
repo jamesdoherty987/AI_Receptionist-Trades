@@ -1444,10 +1444,11 @@ class PostgreSQLDatabaseWrapper:
         try:
             name = name.lower().strip()
             # CRITICAL: Filter by company_id for proper multi-tenant data isolation
+            # Exact match only - "Doherty" should NOT match "James Doherty"
             if company_id:
-                cursor.execute("SELECT * FROM clients WHERE company_id = %s AND name = %s", (company_id, name))
+                cursor.execute("SELECT * FROM clients WHERE company_id = %s AND LOWER(name) = %s", (company_id, name))
             else:
-                cursor.execute("SELECT * FROM clients WHERE name = %s", (name,))
+                cursor.execute("SELECT * FROM clients WHERE LOWER(name) = %s", (name,))
             rows = cursor.fetchall()
             
             return [{

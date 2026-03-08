@@ -57,13 +57,13 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "lookup_customer",
-            "description": "Look up existing customer information by name or phone. Call this right after spelling back the name and getting confirmation. CRITICAL: Use the CORRECTED spelling you confirmed with the customer, NOT the original ASR transcription. Example: If you spelled 'D-O-H-E-R-T-Y' and they said yes, use 'Doherty' not 'Dorothy'.",
+            "description": "Look up existing customer information by name or phone. Call this right after spelling back the name and getting confirmation. CRITICAL: Use the FULL NAME (first AND last name) that you confirmed with the customer. Example: If you spelled 'J-A-M-E-S D-O-H-E-R-T-Y' and they said yes, use 'James Doherty' NOT just 'Doherty'.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "customer_name": {
                         "type": "string",
-                        "description": "Customer's full name - USE THE SPELLING YOU CONFIRMED, not the original transcription"
+                        "description": "Customer's FULL NAME (first name + last name) - e.g., 'James Doherty' NOT just 'Doherty'"
                     },
                     "phone": {
                         "type": "string",
@@ -153,13 +153,13 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "book_job",
-            "description": "Book a new trade job/appointment for a customer. CRITICAL: You MUST have a SPECIFIC date and time before calling this (e.g., 'tomorrow at 2pm', 'Monday at 9am'). DO NOT call this with vague times like 'within 2 hours', 'as soon as possible', or 'ASAP'. Required info: customer name, phone (mandatory), job address or eircode, job description, SPECIFIC datetime, and urgency level.",
+            "description": "Book a new trade job/appointment for a customer. CRITICAL: You MUST have a SPECIFIC date and time before calling this (e.g., 'tomorrow at 2pm', 'Monday at 9am'). DO NOT call this with vague times like 'within 2 hours', 'as soon as possible', or 'ASAP'. Required info: FULL customer name (first + last), phone (mandatory), job address or eircode, job description, SPECIFIC datetime, and urgency level.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "customer_name": {
                         "type": "string",
-                        "description": "Customer's full name"
+                        "description": "Customer's FULL NAME (first name + last name) - e.g., 'James Doherty' NOT just 'Doherty'"
                     },
                     "phone": {
                         "type": "string",
@@ -353,12 +353,18 @@ def naturalize_availability_summary(day_summaries: list, is_full_day: bool = Fal
         # Build the raw data
         raw_summary = "; ".join(day_summaries)
         
+        # Different prompts for full-day vs short jobs
+        if is_full_day:
+            system_prompt = "Convert availability into ONE natural sentence. ALWAYS mention 2-4 specific days. Example: 'I've got a full day open on Tuesday, Wednesday, and Thursday'. Be brief. Max 20 words."
+        else:
+            system_prompt = "Convert availability into ONE natural sentence. ALWAYS mention 2-4 specific days with times. Example: 'I have Tuesday morning, Wednesday at 2, and Thursday afternoon free'. Be brief. Max 25 words."
+        
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": "Convert availability data into ONE natural spoken sentence. Be brief and conversational like a friendly receptionist. Don't list every time - summarize. Example: 'I've got Monday and Tuesday pretty open, and a few slots on Wednesday afternoon' or 'Most of the week looks good, especially mornings'. Max 25 words."
+                    "content": system_prompt
                 },
                 {
                     "role": "user", 

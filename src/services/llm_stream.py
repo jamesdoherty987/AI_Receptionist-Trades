@@ -936,26 +936,13 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
     current_time_str = current_time.strftime('%I:%M %p on %A, %B %d, %Y')
     time_context = f"\n\n[CURRENT TIME: {current_time_str}]\nUse this when discussing appointment times and availability. Times that have already passed today cannot be booked."
     
-    # Enhanced prompt for tool usage
+    # Enhanced prompt for tool usage - keep SHORT for speed
     tool_usage_guidance = """
 
-CRITICAL RESPONSE RULES:
-- When you call a tool, ALSO provide a brief spoken response in the same message
-- Example: If checking availability, say "Let me check that for you" AND call the tool
-- Example: If booking, say "Booking that now" AND call the tool
-- This way the customer hears something while the tool runs
-- After tool results come back, you'll get another chance to respond with the actual data
-
-TOOL USAGE INSTRUCTIONS:
-1. check_availability: Call when customer asks about times. Say "One moment" while calling.
-2. lookup_customer: MUST call IMMEDIATELY after name spelling is confirmed. Say "Let me look you up" AND call the tool in the SAME response.
-3. book_job: Call to complete booking. Say "Booking that for you" while calling.
-4. cancel_job/reschedule_job: Two-step process - first call finds the booking, second confirms.
-5. transfer_to_human: Call immediately when requested. Say "Transferring you now" while calling.
-
-CRITICAL: NEVER say "let me look you up" or "let me check" without ACTUALLY calling the tool. If you say you're going to do something, you MUST call the tool in the same response. Saying you'll do something without calling the tool leaves the customer waiting in silence.
-
-IMPORTANT: Always include a brief spoken response WITH your tool call so the customer isn't left in silence."""
+TOOL RULES:
+• NEVER say "let me check" without calling a tool - system plays fillers automatically
+• Just call tools directly - no announcements needed
+• If not calling a tool, ask a question instead"""
     
     # Load company-specific system prompt with CACHING to avoid repeated DB queries
     prompt_load_db_start = time_module.time()
@@ -1361,6 +1348,24 @@ IMPORTANT: Always include a brief spoken response WITH your tool call so the cus
     # FAST PATH: If no tool calls, return immediately after yielding content
     # This prevents blocking the TTS stream while doing post-processing
     if not tool_calls and not has_yielded_split_marker:
+        # SAFETY: Detect if LLM said "let me check" without calling a tool
+        # This is a dangerous pattern that causes silence/freeze
+        dangerous_phrases = [
+            "let me check", "one moment", "let me look", "bear with me",
+            "let me see", "checking now", "looking that up", "let me find"
+        ]
+        response_lower = full_response.lower() if full_response else ""
+        said_checking_phrase = any(phrase in response_lower for phrase in dangerous_phrases)
+        
+        if said_checking_phrase:
+            print(f"\n🚨 [SAFETY] LLM said checking phrase but didn't call tool!")
+            print(f"🚨 [SAFETY] Response: '{full_response[:100]}...'")
+            print(f"🚨 [SAFETY] Appending follow-up question to prevent silence")
+            # Append a follow-up question to prevent silence
+            followup = " What details can you give me about the job?"
+            full_response = full_response.rstrip('.!?,') + "." + followup
+            yield followup
+        
         # Store response in conversation history
         if full_response:
             cleaned = remove_repetition(full_response.strip())
@@ -1609,11 +1614,17 @@ IMPORTANT: Always include a brief spoken response WITH your tool call so the cus
                         # Check if this is a full-day job (contains "full day available")
                         is_full_day = "full day" in natural_summary.lower() if natural_summary else False
                         
+                        # Check if multiple days are mentioned
+                        has_multiple_days = natural_summary and any(word in natural_summary.lower() for word in [" and ", ", "])
+                        
                         # For complex queries, use second LLM call for better phrasing
                         if natural_summary:
                             if is_full_day:
-                                # Full-day jobs: Don't ask for time, just confirm the day
-                                direct_response = f"{natural_summary}. Does that day work for you?"
+                                # Full-day jobs: Don't ask for time, just confirm the day(s)
+                                if has_multiple_days:
+                                    direct_response = f"{natural_summary}. Which day works best for you?"
+                                else:
+                                    direct_response = f"{natural_summary}. Does that day work for you?"
                             else:
                                 # Regular jobs: Ask for time preference
                                 direct_response = f"{natural_summary}. Which time works best for you?"
