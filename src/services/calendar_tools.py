@@ -433,7 +433,7 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                         'event_id': booking.get('calendar_event_id'),
                         'duration_minutes': duration,
                         'assigned_workers': worker_names,
-                        'appointment_time': appt_time
+                        'appointment_time': appt_time.strftime('%Y-%m-%d %H:%M:%S')  # Convert to string for JSON
                     })
         except Exception as e:
             logger.error(f"[FIND_JOBS] Database error: {e}")
@@ -492,15 +492,15 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                             'event_id': event_id,
                             'duration_minutes': duration,
                             'assigned_workers': [],
-                            'appointment_time': event_start
+                            'appointment_time': event_start.strftime('%Y-%m-%d %H:%M:%S')  # Convert to string for JSON
                         })
                     except Exception as e:
                         logger.warning(f"[FIND_JOBS] Could not parse event time: {e}")
         except Exception as e:
             logger.warning(f"[FIND_JOBS] Google Calendar error: {e}")
     
-    # Sort by time
-    jobs_on_day.sort(key=lambda x: x.get('appointment_time') or datetime.min)
+    # Sort by time (appointment_time is now a string)
+    jobs_on_day.sort(key=lambda x: x.get('appointment_time') or '0000-00-00 00:00:00')
     
     logger.info(f"[FIND_JOBS] Found {len(jobs_on_day)} jobs on {target_date.strftime('%Y-%m-%d')}: {[j['name'] for j in jobs_on_day]}")
     return jobs_on_day
