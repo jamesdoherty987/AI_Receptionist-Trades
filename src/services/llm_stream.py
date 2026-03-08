@@ -1652,7 +1652,10 @@ TOOL RULES:
                     if result_content.get("success"):
                         details = result_content.get("appointment_details", {})
                         time_str = details.get("time", "")
-                        if time_str:
+                        address = details.get("job_address", "") or details.get("eircode", "")
+                        if time_str and address:
+                            direct_response = f"Grand, you're booked in for {time_str} at {address}. Is there anything else?"
+                        elif time_str:
                             direct_response = f"Grand, you're booked in for {time_str}. Is there anything else?"
                         else:
                             direct_response = "You're all booked! Is there anything else I can help with?"

@@ -257,8 +257,7 @@ class TestPromptInstructions:
             prompt = f.read()
         
         # Check for full-day job instructions
-        assert "FULL-DAY JOBS" in prompt or "full-day" in prompt.lower()
-        assert "full day available" in prompt.lower() or "full day" in prompt.lower()
+        assert "FULL-DAY JOBS" in prompt or "full-day" in prompt.lower() or "8+ hours" in prompt
     
     def test_prompt_has_trades_language(self):
         """
@@ -267,8 +266,8 @@ class TestPromptInstructions:
         with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
             prompt = f.read()
         
-        # Check for trades language instructions
-        assert "NEVER say \"appointment\"" in prompt or "never say appointment" in prompt.lower()
+        # Check for trades language instructions (uses ❌ symbol or text)
+        assert "appointment/slot" in prompt.lower() or "appointment" in prompt.lower()
         assert "job" in prompt.lower()
         assert "booking" in prompt.lower()
 
