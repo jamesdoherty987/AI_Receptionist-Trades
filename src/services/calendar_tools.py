@@ -107,20 +107,20 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "cancel_appointment",
-            "description": "Cancel an existing appointment. WORKFLOW: 1) Get the date/time from the user. 2) Call this function with ONLY the appointment_datetime (do NOT ask for customer name). 3) The system will look up the appointment and return the customer name. 4) Confirm with the user: 'Just to confirm, that appointment on [date/time] is for [name]. Is that correct?' 5) If they confirm, call this function again with both datetime and customer_name to complete the cancellation.",
+            "description": "Cancel an existing appointment. WORKFLOW: 1) Ask customer what DAY the booking is for (not time - there may be multiple jobs or full-day jobs). 2) Call this with ONLY appointment_date (the day). 3) System returns ALL jobs on that day with customer names. 4) Read the names to the caller and ask them to confirm which one is theirs. 5) Listen to their response and call again with appointment_date AND customer_name to complete cancellation.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "appointment_datetime": {
+                    "appointment_date": {
                         "type": "string",
-                        "description": "Date and time of the appointment to cancel in natural language (e.g., 'Thursday at 3pm', 'January 15th at 3:00pm')"
+                        "description": "The DAY of the appointment to cancel (e.g., 'Monday', 'Thursday', 'January 15th'). Do NOT include time - we look up all jobs on that day first."
                     },
                     "customer_name": {
                         "type": "string",
-                        "description": "Name of the customer whose appointment is being cancelled. ONLY provide this AFTER the user has confirmed the name. On first call, omit this to look up the appointment."
+                        "description": "Customer name - ONLY provide this AFTER the caller confirms which name is theirs from the list of jobs on that day."
                     }
                 },
-                "required": ["appointment_datetime"]
+                "required": ["appointment_date"]
             }
         }
     },
@@ -128,24 +128,24 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "reschedule_appointment",
-            "description": "Reschedule an existing appointment to a new time. WORKFLOW: 1) Get the current appointment date/time from the user. 2) Call this function with ONLY current_datetime (do NOT ask for customer name). 3) The system will return the customer name. 4) Confirm: 'Just to confirm, that appointment is for [name]. Is that correct?' 5) If confirmed, ask for new time. 6) Call this function again with all three parameters to complete the reschedule.",
+            "description": "Reschedule an existing appointment to a new time. WORKFLOW: 1) Ask customer what DAY the booking is for (not time - there may be multiple jobs or full-day jobs). 2) Call this with ONLY current_date (the day). 3) System returns ALL jobs on that day with customer names. 4) Read the names to the caller and ask them to confirm which one is theirs. 5) Listen to their response, then ask what day they want to reschedule to. 6) Call again with current_date, customer_name, AND new_datetime to complete.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "current_datetime": {
+                    "current_date": {
                         "type": "string",
-                        "description": "Current date and time of the appointment in natural language"
+                        "description": "The DAY of the current appointment (e.g., 'Monday', 'Thursday', 'January 15th'). Do NOT include time - we look up all jobs on that day first."
                     },
                     "new_datetime": {
                         "type": "string",
-                        "description": "New date and time for the appointment in natural language. ONLY provide this AFTER confirming the customer name."
+                        "description": "New date and time for the appointment. ONLY provide this AFTER confirming the customer name."
                     },
                     "customer_name": {
                         "type": "string",
-                        "description": "Name of the customer whose appointment is being rescheduled. ONLY provide this AFTER the user has confirmed. On first call, omit this to look up the appointment."
+                        "description": "Customer name - ONLY provide this AFTER the caller confirms which name is theirs from the list of jobs on that day."
                     }
                 },
-                "required": ["current_datetime"]
+                "required": ["current_date"]
             }
         }
     },
@@ -200,20 +200,20 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "cancel_job",
-            "description": "Cancel an existing job/appointment. Same workflow as cancel_appointment - get datetime first to look up, then confirm with customer name.",
+            "description": "Cancel an existing job/appointment. WORKFLOW: 1) Ask customer what DAY the booking is for (not time - there may be multiple jobs or full-day jobs). 2) Call this with ONLY appointment_date (the day). 3) System returns ALL jobs on that day with customer names. 4) Read the names to the caller and ask them to confirm which one is theirs. 5) Listen to their response and call again with appointment_date AND customer_name to complete cancellation.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "appointment_datetime": {
+                    "appointment_date": {
                         "type": "string",
-                        "description": "Date and time of the job to cancel"
+                        "description": "The DAY of the job to cancel (e.g., 'Monday', 'Thursday', 'January 15th'). Do NOT include time - we look up all jobs on that day first."
                     },
                     "customer_name": {
                         "type": "string",
-                        "description": "Customer name (provide after confirmation)"
+                        "description": "Customer name - ONLY provide this AFTER the caller confirms which name is theirs from the list of jobs on that day."
                     }
                 },
-                "required": ["appointment_datetime"]
+                "required": ["appointment_date"]
             }
         }
     },
@@ -221,24 +221,24 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "reschedule_job",
-            "description": "Reschedule an existing job to a new time. Same workflow as reschedule_appointment.",
+            "description": "Reschedule an existing job to a new time. WORKFLOW: 1) Ask customer what DAY the booking is for (not time - there may be multiple jobs or full-day jobs). 2) Call this with ONLY current_date (the day). 3) System returns ALL jobs on that day with customer names. 4) Read the names to the caller and ask them to confirm which one is theirs. 5) Listen to their response, then ask what day they want to reschedule to. 6) Call again with current_date, customer_name, AND new_datetime to complete.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "current_datetime": {
+                    "current_date": {
                         "type": "string",
-                        "description": "Current date and time of the job"
+                        "description": "The DAY of the current job (e.g., 'Monday', 'Thursday', 'January 15th'). Do NOT include time - we look up all jobs on that day first."
                     },
                     "new_datetime": {
                         "type": "string",
-                        "description": "New date and time (provide after customer confirmation)"
+                        "description": "New date and time for the job. ONLY provide this AFTER confirming the customer name."
                     },
                     "customer_name": {
                         "type": "string",
-                        "description": "Customer name (provide after confirmation)"
+                        "description": "Customer name - ONLY provide this AFTER the caller confirms which name is theirs from the list of jobs on that day."
                     }
                 },
-                "required": ["current_datetime"]
+                "required": ["current_date"]
             }
         }
     },
@@ -302,6 +302,208 @@ CALENDAR_TOOLS = [
         }
     }
 ]
+
+
+def fuzzy_match_name(spoken_name: str, candidate_names: list) -> tuple:
+    """
+    Fuzzy match a spoken name against a list of candidate names.
+    Handles common speech-to-text variations and partial matches.
+    
+    Args:
+        spoken_name: The name the caller said (may be partial or have STT errors)
+        candidate_names: List of actual customer names from bookings
+        
+    Returns:
+        Tuple of (best_match_name, confidence_score 0-100, matched_booking_index)
+    """
+    from difflib import SequenceMatcher
+    
+    if not spoken_name or not candidate_names:
+        return (None, 0, -1)
+    
+    spoken_lower = spoken_name.lower().strip()
+    best_match = None
+    best_score = 0
+    best_index = -1
+    
+    for idx, candidate in enumerate(candidate_names):
+        if not candidate:
+            continue
+        candidate_lower = candidate.lower().strip()
+        
+        # Strategy 1: Exact match (100%)
+        if spoken_lower == candidate_lower:
+            return (candidate, 100, idx)
+        
+        # Strategy 2: One contains the other (90%)
+        if spoken_lower in candidate_lower or candidate_lower in spoken_lower:
+            score = 90
+            if score > best_score:
+                best_score = score
+                best_match = candidate
+                best_index = idx
+            continue
+        
+        # Strategy 3: First name or last name match (85%)
+        spoken_parts = spoken_lower.split()
+        candidate_parts = candidate_lower.split()
+        for sp in spoken_parts:
+            if len(sp) >= 3:  # Ignore very short parts
+                for cp in candidate_parts:
+                    if sp == cp or (len(sp) >= 4 and sp in cp) or (len(cp) >= 4 and cp in sp):
+                        score = 85
+                        if score > best_score:
+                            best_score = score
+                            best_match = candidate
+                            best_index = idx
+        
+        # Strategy 4: Sequence matcher for typos/STT errors (scaled 0-80)
+        seq_score = SequenceMatcher(None, spoken_lower, candidate_lower).ratio() * 80
+        if seq_score > best_score:
+            best_score = seq_score
+            best_match = candidate
+            best_index = idx
+    
+    return (best_match, int(best_score), best_index)
+
+
+def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> list:
+    """
+    Find all jobs/bookings on a specific day.
+    Handles both full-day jobs and multiple shorter jobs.
+    
+    Args:
+        target_date: The date to search (datetime object)
+        db: Database instance
+        company_id: Company ID for filtering
+        google_calendar: Optional Google Calendar service
+        
+    Returns:
+        List of dicts with job info: [{name, time, service, is_full_day, booking_id, event_id}, ...]
+    """
+    from datetime import datetime, timedelta
+    
+    jobs_on_day = []
+    
+    # Get day boundaries
+    day_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+    
+    # First check database bookings
+    if db:
+        try:
+            all_bookings = db.get_all_bookings(company_id=company_id)
+            for booking in all_bookings:
+                if booking.get('status') in ['cancelled', 'completed']:
+                    continue
+                
+                appt_time = booking.get('appointment_time')
+                if not appt_time:
+                    continue
+                
+                # Parse appointment time
+                if isinstance(appt_time, str):
+                    try:
+                        appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00')).replace(tzinfo=None)
+                    except:
+                        continue
+                elif hasattr(appt_time, 'replace'):
+                    appt_time = appt_time.replace(tzinfo=None)
+                
+                # Check if on target day
+                if day_start <= appt_time < day_end:
+                    duration = booking.get('duration_minutes', 60)
+                    is_full_day = duration >= 480  # 8+ hours
+                    
+                    # Get worker names if assigned
+                    worker_names = []
+                    assigned_ids = booking.get('assigned_worker_ids', [])
+                    if assigned_ids and db:
+                        for wid in assigned_ids:
+                            worker = db.get_worker(wid, company_id=company_id)
+                            if worker:
+                                worker_names.append(worker.get('name', ''))
+                    
+                    jobs_on_day.append({
+                        'name': booking.get('client_name') or booking.get('customer_name') or 'Unknown',
+                        'time': appt_time.strftime('%I:%M %p') if not is_full_day else 'Full day',
+                        'service': booking.get('service_type') or booking.get('service') or 'Job',
+                        'is_full_day': is_full_day,
+                        'booking_id': booking.get('id'),
+                        'event_id': booking.get('calendar_event_id'),
+                        'duration_minutes': duration,
+                        'assigned_workers': worker_names,
+                        'appointment_time': appt_time
+                    })
+        except Exception as e:
+            logger.error(f"[FIND_JOBS] Database error: {e}")
+    
+    # Also check Google Calendar if available (for legacy/external bookings)
+    if google_calendar and hasattr(google_calendar, 'service') and google_calendar.service:
+        try:
+            time_min = day_start.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+            time_max = day_end.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+            
+            request = google_calendar.service.events().list(
+                calendarId=google_calendar.calendar_id,
+                timeMin=time_min,
+                timeMax=time_max,
+                singleEvents=True,
+                orderBy='startTime'
+            )
+            events_result = google_calendar._execute_with_retry(request)
+            events = events_result.get('items', [])
+            
+            for event in events:
+                event_id = event.get('id')
+                # Skip if already found in database
+                if any(j.get('event_id') == event_id for j in jobs_on_day):
+                    continue
+                
+                summary = event.get('summary', '')
+                # Extract name from summary (format: "Service - Name" or just name)
+                if ' - ' in summary:
+                    name = summary.split(' - ')[-1].strip()
+                    service = summary.split(' - ')[0].strip()
+                else:
+                    name = summary
+                    service = 'Appointment'
+                
+                # Get event time
+                event_start_str = event.get('start', {}).get('dateTime')
+                if event_start_str:
+                    try:
+                        event_start = datetime.fromisoformat(event_start_str.replace('Z', '+00:00')).replace(tzinfo=None)
+                        event_end_str = event.get('end', {}).get('dateTime')
+                        if event_end_str:
+                            event_end = datetime.fromisoformat(event_end_str.replace('Z', '+00:00')).replace(tzinfo=None)
+                            duration = int((event_end - event_start).total_seconds() / 60)
+                        else:
+                            duration = 60
+                        
+                        is_full_day = duration >= 480
+                        
+                        jobs_on_day.append({
+                            'name': name,
+                            'time': event_start.strftime('%I:%M %p') if not is_full_day else 'Full day',
+                            'service': service,
+                            'is_full_day': is_full_day,
+                            'booking_id': None,
+                            'event_id': event_id,
+                            'duration_minutes': duration,
+                            'assigned_workers': [],
+                            'appointment_time': event_start
+                        })
+                    except Exception as e:
+                        logger.warning(f"[FIND_JOBS] Could not parse event time: {e}")
+        except Exception as e:
+            logger.warning(f"[FIND_JOBS] Google Calendar error: {e}")
+    
+    # Sort by time
+    jobs_on_day.sort(key=lambda x: x.get('appointment_time') or datetime.min)
+    
+    logger.info(f"[FIND_JOBS] Found {len(jobs_on_day)} jobs on {target_date.strftime('%Y-%m-%d')}: {[j['name'] for j in jobs_on_day]}")
+    return jobs_on_day
 
 
 def naturalize_availability_summary(day_summaries: list, is_full_day: bool = False) -> str:
@@ -2097,198 +2299,235 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             }
         
         elif tool_name == "cancel_appointment":
-            appointment_datetime = arguments.get('appointment_datetime')
+            # New day-based lookup with fuzzy name matching
+            appointment_date = arguments.get('appointment_date') or arguments.get('appointment_datetime')
             customer_name = arguments.get('customer_name')
             
-            if not appointment_datetime:
+            if not appointment_date:
                 return {
                     "success": False,
-                    "error": "Appointment date/time is required"
+                    "error": "Please ask the customer what day their booking is for."
                 }
             
-            # Parse the appointment time
-            parsed_time = parse_datetime(appointment_datetime)
-            if not parsed_time:
+            # Parse the date (we only care about the day, not time)
+            # Use require_time=False since we're doing day-based lookup
+            parsed_date = parse_datetime(appointment_date, require_time=False, default_time=(9, 0))
+            if not parsed_date:
                 return {
                     "success": False,
-                    "error": f"Could not parse date/time: {appointment_datetime}"
+                    "error": f"Could not understand the date: '{appointment_date}'. Please ask for a clearer date like 'Monday' or 'January 15th'."
                 }
             
-            # If no customer name provided, look up by time only and return the name for confirmation
+            # Find all jobs on that day
+            jobs_on_day = find_jobs_on_day(parsed_date, db, company_id, google_calendar)
+            
+            if not jobs_on_day:
+                return {
+                    "success": False,
+                    "error": f"No bookings found on {parsed_date.strftime('%A, %B %d')}. Please verify the date with the customer."
+                }
+            
+            # If no customer name provided, return list of names for confirmation
             if not customer_name:
-                event = google_calendar.find_appointment_by_details(
-                    customer_name=None,  # Look up by time only
-                    appointment_time=parsed_time
-                )
+                # Build list of names with job info
+                names_list = []
+                for job in jobs_on_day:
+                    name = job.get('name', 'Unknown')
+                    time_str = job.get('time', '')
+                    service = job.get('service', '')
+                    if job.get('is_full_day'):
+                        names_list.append(f"{name} (full day - {service})")
+                    else:
+                        names_list.append(f"{name} ({time_str} - {service})")
                 
-                if not event:
+                # Format for AI to read out
+                if len(jobs_on_day) == 1:
                     return {
                         "success": False,
-                        "error": f"No appointment found at {parsed_time.strftime('%B %d at %I:%M %p')}. Please verify the date and time."
+                        "requires_confirmation": True,
+                        "jobs_on_day": jobs_on_day,
+                        "customer_names": [j['name'] for j in jobs_on_day],
+                        "appointment_date": parsed_date.strftime('%A, %B %d'),
+                        "message": f"I have one booking on {parsed_date.strftime('%A, %B %d')} for {names_list[0]}. Is that your booking?"
                     }
-                
-                # Extract customer name from the event
-                event_summary = event.get('summary', '')
-                if ' - ' in event_summary:
-                    extracted_name = event_summary.split(' - ')[-1].strip()
                 else:
-                    import re
-                    between_match = re.search(r'between\s+([^and]+)\s+and', event_summary, re.IGNORECASE)
-                    if between_match:
-                        extracted_name = between_match.group(1).strip()
-                    else:
-                        extracted_name = event_summary.strip()
-                
-                # Return the name for confirmation - NOT a success
+                    names_formatted = ", ".join(names_list[:-1]) + f", and {names_list[-1]}" if len(names_list) > 1 else names_list[0]
+                    return {
+                        "success": False,
+                        "requires_confirmation": True,
+                        "jobs_on_day": jobs_on_day,
+                        "customer_names": [j['name'] for j in jobs_on_day],
+                        "appointment_date": parsed_date.strftime('%A, %B %d'),
+                        "message": f"I have {len(jobs_on_day)} bookings on {parsed_date.strftime('%A, %B %d')}: {names_formatted}. Which name is yours?"
+                    }
+            
+            # Customer name provided - use fuzzy matching to find the right job
+            candidate_names = [j['name'] for j in jobs_on_day]
+            matched_name, confidence, matched_idx = fuzzy_match_name(customer_name, candidate_names)
+            
+            if confidence < 50 or matched_idx < 0:
                 return {
                     "success": False,
-                    "requires_confirmation": True,
-                    "customer_name": extracted_name,
-                    "appointment_time": parsed_time.strftime('%B %d at %I:%M %p'),
-                    "message": f"Found appointment at {parsed_time.strftime('%B %d at %I:%M %p')} for {extracted_name}. Please confirm with the customer before proceeding."
+                    "error": f"I couldn't find a booking for '{customer_name}' on {parsed_date.strftime('%A, %B %d')}. The bookings I have are for: {', '.join(candidate_names)}. Can you confirm which one is yours?"
                 }
             
-            # Customer name was provided (confirmation received), proceed with cancellation
-            # Find the appointment
-            event = google_calendar.find_appointment_by_details(
-                customer_name=customer_name,
-                appointment_time=parsed_time
-            )
+            matched_job = jobs_on_day[matched_idx]
+            logger.info(f"[CANCEL] Fuzzy matched '{customer_name}' to '{matched_name}' with {confidence}% confidence")
             
-            if not event:
-                return {
-                    "success": False,
-                    "error": f"No appointment found for {customer_name} at {parsed_time.strftime('%B %d at %I:%M %p')}"
-                }
+            # Proceed with cancellation
+            event_id = matched_job.get('event_id')
+            booking_id = matched_job.get('booking_id')
             
-            # Cancel the appointment
-            event_id = event.get('id')
-            event_summary = event.get('summary', 'Unknown')
+            # Cancel in Google Calendar if event_id exists
+            if event_id and google_calendar:
+                try:
+                    google_calendar.cancel_appointment(event_id)
+                except Exception as e:
+                    logger.warning(f"[CANCEL] Could not cancel in Google Calendar: {e}")
             
-            success = google_calendar.cancel_appointment(event_id)
+            # Delete from database
+            if booking_id and db:
+                try:
+                    db.delete_booking(booking_id, company_id=company_id)
+                    logger.info(f"[CANCEL] Deleted booking {booking_id} from database")
+                except Exception as e:
+                    logger.error(f"[CANCEL] Failed to delete booking from database: {e}")
             
-            if success:
-                # Delete from database - MUST filter by company_id for data isolation
-                if db:
-                    try:
-                        bookings = db.get_all_bookings(company_id=company_id)
-                        for booking in bookings:
-                            if booking.get('calendar_event_id') == event_id:
-                                db.delete_booking(booking['id'], company_id=company_id)
-                                logger.info(f" Deleted booking from database (ID: {booking['id']}, company_id: {company_id})")
-                                break
-                    except Exception as e:
-                        logger.error(f" Failed to delete booking from database: {e}")
-                
+            time_info = matched_job.get('time', '')
+            if matched_job.get('is_full_day'):
                 return {
                     "success": True,
-                    "message": f"Successfully cancelled appointment for {customer_name} at {parsed_time.strftime('%B %d at %I:%M %p')}"
+                    "message": f"Successfully cancelled the full-day booking for {matched_name} on {parsed_date.strftime('%A, %B %d')}."
                 }
             else:
                 return {
-                    "success": False,
-                    "error": "Failed to cancel appointment in calendar"
+                    "success": True,
+                    "message": f"Successfully cancelled the booking for {matched_name} at {time_info} on {parsed_date.strftime('%A, %B %d')}."
                 }
         
         elif tool_name == "reschedule_appointment":
-            current_datetime = arguments.get('current_datetime')
+            # New day-based lookup with fuzzy name matching
+            current_date = arguments.get('current_date') or arguments.get('current_datetime')
             new_datetime = arguments.get('new_datetime')
             customer_name = arguments.get('customer_name')
             
-            if not current_datetime:
+            if not current_date:
                 return {
                     "success": False,
-                    "error": "Current appointment date/time is required"
+                    "error": "Please ask the customer what day their current booking is for."
                 }
             
-            # Parse current time
-            current_time = parse_datetime(current_datetime)
-            if not current_time:
+            # Parse the date (we only care about the day, not time)
+            # Use require_time=False since we're doing day-based lookup
+            parsed_date = parse_datetime(current_date, require_time=False, default_time=(9, 0))
+            if not parsed_date:
                 return {
                     "success": False,
-                    "error": f"Could not parse current date/time: {current_datetime}"
+                    "error": f"Could not understand the date: '{current_date}'. Please ask for a clearer date like 'Monday' or 'January 15th'."
                 }
             
-            # If no customer name provided, look up by time only and return the name for confirmation
+            # Find all jobs on that day
+            jobs_on_day = find_jobs_on_day(parsed_date, db, company_id, google_calendar)
+            
+            if not jobs_on_day:
+                return {
+                    "success": False,
+                    "error": f"No bookings found on {parsed_date.strftime('%A, %B %d')}. Please verify the date with the customer."
+                }
+            
+            # If no customer name provided, return list of names for confirmation
             if not customer_name:
-                event = google_calendar.find_appointment_by_details(
-                    customer_name=None,  # Look up by time only
-                    appointment_time=current_time
-                )
+                # Build list of names with job info
+                names_list = []
+                for job in jobs_on_day:
+                    name = job.get('name', 'Unknown')
+                    time_str = job.get('time', '')
+                    service = job.get('service', '')
+                    if job.get('is_full_day'):
+                        names_list.append(f"{name} (full day - {service})")
+                    else:
+                        names_list.append(f"{name} ({time_str} - {service})")
                 
-                if not event:
+                # Format for AI to read out
+                if len(jobs_on_day) == 1:
                     return {
                         "success": False,
-                        "error": f"No appointment found at {current_time.strftime('%B %d at %I:%M %p')}. Please verify the date and time."
+                        "requires_confirmation": True,
+                        "jobs_on_day": jobs_on_day,
+                        "customer_names": [j['name'] for j in jobs_on_day],
+                        "appointment_date": parsed_date.strftime('%A, %B %d'),
+                        "message": f"I have one booking on {parsed_date.strftime('%A, %B %d')} for {names_list[0]}. Is that your booking?"
                     }
-                
-                # Extract customer name from the event
-                event_summary = event.get('summary', '')
-                if ' - ' in event_summary:
-                    extracted_name = event_summary.split(' - ')[-1].strip()
                 else:
-                    import re
-                    between_match = re.search(r'between\s+([^and]+)\s+and', event_summary, re.IGNORECASE)
-                    if between_match:
-                        extracted_name = between_match.group(1).strip()
-                    else:
-                        extracted_name = event_summary.strip()
-                
-                # Return the name for confirmation - NOT a success
+                    names_formatted = ", ".join(names_list[:-1]) + f", and {names_list[-1]}" if len(names_list) > 1 else names_list[0]
+                    return {
+                        "success": False,
+                        "requires_confirmation": True,
+                        "jobs_on_day": jobs_on_day,
+                        "customer_names": [j['name'] for j in jobs_on_day],
+                        "appointment_date": parsed_date.strftime('%A, %B %d'),
+                        "message": f"I have {len(jobs_on_day)} bookings on {parsed_date.strftime('%A, %B %d')}: {names_formatted}. Which name is yours?"
+                    }
+            
+            # Customer name provided - use fuzzy matching to find the right job
+            candidate_names = [j['name'] for j in jobs_on_day]
+            matched_name, confidence, matched_idx = fuzzy_match_name(customer_name, candidate_names)
+            
+            if confidence < 50 or matched_idx < 0:
                 return {
                     "success": False,
-                    "requires_confirmation": True,
-                    "customer_name": extracted_name,
-                    "appointment_time": current_time.strftime('%B %d at %I:%M %p'),
-                    "message": f"Found appointment at {current_time.strftime('%B %d at %I:%M %p')} for {extracted_name}. Please confirm with the customer before proceeding."
+                    "error": f"I couldn't find a booking for '{customer_name}' on {parsed_date.strftime('%A, %B %d')}. The bookings I have are for: {', '.join(candidate_names)}. Can you confirm which one is yours?"
                 }
+            
+            matched_job = jobs_on_day[matched_idx]
+            logger.info(f"[RESCHEDULE] Fuzzy matched '{customer_name}' to '{matched_name}' with {confidence}% confidence")
             
             # Customer name confirmed but no new time yet
             if not new_datetime:
                 return {
                     "success": False,
-                    "error": "New date/time is required to complete the reschedule. Please ask the customer what time they'd like to move the appointment to."
+                    "customer_name_confirmed": True,
+                    "matched_name": matched_name,
+                    "matched_job": matched_job,
+                    "error": f"Got it, that's the booking for {matched_name}. What day would you like to move it to?"
                 }
             
-            # Parse new time
-            new_time = parse_datetime(new_datetime)
+            # Get booking details first to check if it's a full-day job
+            event_id = matched_job.get('event_id')
+            booking_id = matched_job.get('booking_id')
+            booking_duration = matched_job.get('duration_minutes', 60)
+            is_full_day = matched_job.get('is_full_day', False)
+            
+            # Parse new time - allow date-only for full-day jobs
+            # Use require_time=False and default to business start time
+            new_time = parse_datetime(new_datetime, require_time=False, default_time=(9, 0))
             if not new_time:
                 return {
                     "success": False,
-                    "error": f"Could not parse new date/time: {new_datetime}"
+                    "error": f"Could not understand the new date: '{new_datetime}'. Please ask for a clearer date like 'next Monday' or 'January 20th'."
                 }
             
-            # Find the current appointment first to get its duration
-            event = google_calendar.find_appointment_by_details(
-                customer_name=customer_name,
-                appointment_time=current_time
-            )
+            # For full-day jobs, set time to start of business day
+            if is_full_day:
+                from src.utils.config import Config
+                business_hours = Config.get_business_hours(company_id=company_id)
+                start_hour = business_hours.get('start', 8)
+                new_time = new_time.replace(hour=start_hour, minute=0, second=0, microsecond=0)
+                logger.info(f"[RESCHEDULE] Full-day job - setting time to {start_hour}:00")
             
-            if not event:
-                return {
-                    "success": False,
-                    "error": f"No appointment found for {customer_name} at {current_time.strftime('%B %d at %I:%M %p')}"
-                }
-            
-            # Get the booking's duration from database and assigned workers
-            booking_duration = 1440  # Default 1 day for trades
+            # Check if new time is available
+            # Get assigned workers from the job
             assigned_worker_ids = []
-            event_id = event.get('id')
-            if db:
+            if booking_id and db:
                 try:
                     bookings = db.get_all_bookings(company_id=company_id)
                     for booking in bookings:
-                        if booking.get('calendar_event_id') == event_id:
-                            booking_duration = booking.get('duration_minutes', 1440)
+                        if booking.get('id') == booking_id:
                             assigned_worker_ids = booking.get('assigned_worker_ids', [])
-                            logger.debug(f"Duration: Found booking duration: {booking_duration} mins, workers: {assigned_worker_ids}")
                             break
                 except Exception as e:
-                    logger.warning(f" Could not get booking duration: {e}")
+                    logger.warning(f"[RESCHEDULE] Could not get assigned workers: {e}")
             
-            # Check if new time is available
-            # If booking has assigned workers, check if THOSE workers are available at new time
-            # Otherwise, fall back to calendar availability check
             has_workers = db.has_workers(company_id) if db else False
             
             if has_workers and assigned_worker_ids:
@@ -2302,7 +2541,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         worker_id=worker_id,
                         appointment_time=new_time,
                         duration_minutes=booking_duration,
-                        exclude_booking_id=event.get('booking_id'),  # Exclude current booking from conflict check
+                        exclude_booking_id=booking_id,
                         company_id=company_id
                     )
                     if not availability.get('available', False):
@@ -2314,67 +2553,43 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 if not all_workers_available:
                     return {
                         "success": False,
-                        "error": f"The assigned worker ({', '.join(unavailable_workers)}) is not available at {new_time.strftime('%I:%M %p on %A, %B %d')}. Please suggest another time.",
+                        "error": f"The assigned worker ({', '.join(unavailable_workers)}) is not available on {new_time.strftime('%A, %B %d')}. Please suggest another day.",
                         "new_time_unavailable": True
                     }
-            else:
+            elif google_calendar:
                 # No workers or no assigned workers - use simple calendar check
                 is_available = google_calendar.check_availability(new_time, duration_minutes=booking_duration)
                 if not is_available:
                     return {
                         "success": False,
-                        "error": f"That time slot is already booked or doesn't have enough time ({booking_duration} mins). Please suggest another available time.",
+                        "error": f"That day is already booked. Please suggest another available day.",
                         "new_time_unavailable": True
                     }
             
-            # Reschedule the appointment
-            updated_event = google_calendar.reschedule_appointment(event_id, new_time)
+            # Reschedule in Google Calendar if event_id exists
+            if event_id and google_calendar:
+                try:
+                    google_calendar.reschedule_appointment(event_id, new_time)
+                except Exception as e:
+                    logger.warning(f"[RESCHEDULE] Could not reschedule in Google Calendar: {e}")
             
-            if updated_event:
-                # Update database - MUST filter by company_id for data isolation
-                if db:
-                    try:
-                        bookings = db.get_all_bookings(company_id=company_id)
-                        logger.debug(f"Search: Looking for booking with calendar_event_id: {event_id} (company_id: {company_id})")
-                        logger.info(f" Total bookings for company: {len(bookings)}")
-                        
-                        found = False
-                        for booking in bookings:
-                            booking_event_id = booking.get('calendar_event_id')
-                            if booking_event_id:
-                                logger.debug(f"Checking booking {booking['id']}: calendar_event_id = {booking_event_id}")
-                                if booking_event_id == event_id:
-                                    # Update booking with new appointment time - pass company_id for security
-                                    success = db.update_booking(booking['id'], company_id=company_id, appointment_time=new_time.strftime('%Y-%m-%d %H:%M:%S'))
-                                    if success:
-                                        logger.info(f" Updated booking in database (ID: {booking['id']}) to {new_time.strftime('%Y-%m-%d %H:%M:%S')}")
-                                    else:
-                                        logger.warning(f" Database update returned False for booking {booking['id']}")
-                                    found = True
-                                    break
-                        
-                        if not found:
-                            logger.warning(f" No booking found with calendar_event_id matching: {event_id}")
-                            logger.debug(f"Customer: {customer_name}")
-                            logger.debug(f"Looking for bookings with similar names...")
-                            for booking in bookings:
-                                client_name = booking.get('client_name', '').lower()
-                                if customer_name.lower() in client_name or client_name in customer_name.lower():
-                                    logger.debug(f"Found potential match: Booking {booking['id']} for {booking.get('client_name')} at {booking.get('appointment_time')}")
-                                    logger.debug(f"   calendar_event_id: {booking.get('calendar_event_id')}")
-                    except Exception as e:
-                        logger.error(f" Failed to update booking in database: {e}")
-                        import traceback
-                        traceback.print_exc()
-                
+            # Update database
+            if booking_id and db:
+                try:
+                    db.update_booking(booking_id, company_id=company_id, appointment_time=new_time.strftime('%Y-%m-%d %H:%M:%S'))
+                    logger.info(f"[RESCHEDULE] Updated booking {booking_id} to {new_time}")
+                except Exception as e:
+                    logger.error(f"[RESCHEDULE] Failed to update booking in database: {e}")
+            
+            if is_full_day:
                 return {
                     "success": True,
-                    "message": f"Successfully rescheduled appointment for {customer_name} from {current_time.strftime('%B %d at %I:%M %p')} to {new_time.strftime('%B %d at %I:%M %p')}"
+                    "message": f"Successfully rescheduled the full-day booking for {matched_name} from {parsed_date.strftime('%A, %B %d')} to {new_time.strftime('%A, %B %d')}."
                 }
             else:
                 return {
-                    "success": False,
-                    "error": "Could not reschedule appointment. Please check the details."
+                    "success": True,
+                    "message": f"Successfully rescheduled the booking for {matched_name} to {new_time.strftime('%A, %B %d at %I:%M %p')}."
                 }
         
         elif tool_name == "book_job":
@@ -2883,14 +3098,23 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             }
         
         elif tool_name == "cancel_job":
-            logger.info(f"[CANCEL_JOB] Redirecting to cancel_appointment")
-            # Alias for cancel_appointment - same functionality
-            return execute_tool_call("cancel_appointment", arguments, services)
+            logger.info(f"[CANCEL_JOB] Processing cancel_job request")
+            # Map cancel_job arguments to cancel_appointment format
+            mapped_args = {
+                'appointment_date': arguments.get('appointment_date') or arguments.get('appointment_datetime'),
+                'customer_name': arguments.get('customer_name')
+            }
+            return execute_tool_call("cancel_appointment", mapped_args, services)
         
         elif tool_name == "reschedule_job":
-            logger.info(f"[RESCHEDULE_JOB] Redirecting to reschedule_appointment")
-            # Alias for reschedule_appointment - same functionality
-            return execute_tool_call("reschedule_appointment", arguments, services)
+            logger.info(f"[RESCHEDULE_JOB] Processing reschedule_job request")
+            # Map reschedule_job arguments to reschedule_appointment format
+            mapped_args = {
+                'current_date': arguments.get('current_date') or arguments.get('current_datetime'),
+                'new_datetime': arguments.get('new_datetime'),
+                'customer_name': arguments.get('customer_name')
+            }
+            return execute_tool_call("reschedule_appointment", mapped_args, services)
         
         elif tool_name == "modify_job":
             """Modify details of an existing job without changing the time"""

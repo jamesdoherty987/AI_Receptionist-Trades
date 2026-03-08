@@ -20,7 +20,8 @@ TOOLS:
 - lookup_customer: Check if customer exists (call after name confirmed)
 - check_availability: Get available times
 - book_job: Complete booking (need: name, phone, address, datetime, job description)
-- cancel_job: Cancel booking (call with datetime first to lookup)
+- cancel_job: Cancel booking (call with DAY first → system lists names → caller confirms which is theirs → call again with day AND name)
+- reschedule_job: Reschedule booking (same flow as cancel, then ask for new day)
 - transfer_to_human: Transfer to human when requested
 
 RETURNING CUSTOMERS: Use stored phone/address - just confirm it's correct.

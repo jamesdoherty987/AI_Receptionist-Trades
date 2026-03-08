@@ -1690,35 +1690,31 @@ TOOL RULES:
                 # ========== CANCEL_JOB / CANCEL_APPOINTMENT ==========
                 elif tool_name in ["cancel_appointment", "cancel_job"]:
                     if result_content.get("success"):
-                        # Check if this is a lookup (first call) or actual cancellation
-                        customer_name = result_content.get("customer_name", "")
-                        if customer_name and not result_content.get("cancelled"):
-                            # First call - found the appointment, need confirmation
-                            appt_time = result_content.get("appointment_time", "")
-                            direct_response = f"I found the appointment for {customer_name}{' at ' + appt_time if appt_time else ''}. Is that the one you want to cancel?"
-                        else:
-                            # Actual cancellation done
-                            direct_response = "That's cancelled for you. Is there anything else I can help with?"
+                        # Actual cancellation done
+                        direct_response = result_content.get("message", "That's cancelled for you. Is there anything else I can help with?")
+                    elif result_content.get("requires_confirmation"):
+                        # First call - found jobs on that day, need name confirmation
+                        direct_response = result_content.get("message", "")
                     else:
-                        direct_response = "I couldn't find that appointment. What date and time was it for?"
+                        # Error
+                        direct_response = result_content.get("error", "I couldn't find that booking. What day was it for?")
                     
                     print(f"   ⚡ [DIRECT] cancel -> '{direct_response[:50]}...'")
                 
                 # ========== RESCHEDULE_JOB / RESCHEDULE_APPOINTMENT ==========
                 elif tool_name in ["reschedule_appointment", "reschedule_job"]:
                     if result_content.get("success"):
-                        customer_name = result_content.get("customer_name", "")
-                        new_time = result_content.get("new_time", "")
-                        if customer_name and not new_time:
-                            # First call - found appointment, need new time
-                            direct_response = f"I found the appointment for {customer_name}. What time would you like to move it to?"
-                        elif new_time:
-                            # Rescheduled
-                            direct_response = f"Done! I've moved that to {new_time}. Anything else?"
-                        else:
-                            direct_response = "Your appointment has been rescheduled. Anything else?"
+                        # Rescheduled successfully
+                        direct_response = result_content.get("message", "Your booking has been rescheduled. Anything else?")
+                    elif result_content.get("requires_confirmation"):
+                        # First call - found jobs on that day, need name confirmation
+                        direct_response = result_content.get("message", "")
+                    elif result_content.get("customer_name_confirmed"):
+                        # Name confirmed, need new date
+                        direct_response = result_content.get("error", "What day would you like to move it to?")
                     else:
-                        direct_response = "I couldn't find that appointment. What date and time was it for?"
+                        # Error
+                        direct_response = result_content.get("error", "I couldn't find that booking. What day was it for?")
                     
                     print(f"   ⚡ [DIRECT] reschedule -> '{direct_response[:50]}...'")
                 
