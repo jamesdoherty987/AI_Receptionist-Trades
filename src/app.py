@@ -3019,6 +3019,8 @@ def business_hours_api():
 @rate_limit(max_requests=30, window_seconds=60)
 def clients_api():
     """Get all clients or create a new client"""
+    from src.utils.security import normalize_name_for_comparison, normalize_phone_for_comparison
+    
     db = get_database()
     company_id = session.get('company_id')
     
@@ -3046,6 +3048,25 @@ def clients_api():
         # Sanitize optional fields - convert empty strings to None
         phone = data.get('phone', '').strip() if data.get('phone') else None
         email = data.get('email', '').strip() if data.get('email') else None
+        
+        # Check for duplicate customer using normalized comparison
+        # (case-insensitive, ignores apostrophes/hyphens, normalized phone)
+        if phone:
+            normalized_name = normalize_name_for_comparison(name)
+            normalized_phone = normalize_phone_for_comparison(phone)
+            
+            existing_clients = db.get_all_clients(company_id=company_id)
+            for client in existing_clients:
+                client_normalized_name = normalize_name_for_comparison(client.get('name', ''))
+                client_normalized_phone = normalize_phone_for_comparison(client.get('phone') or '')
+                
+                if client_normalized_name == normalized_name and client_normalized_phone == normalized_phone:
+                    # Return existing client instead of creating duplicate
+                    return jsonify({
+                        "id": client['id'], 
+                        "message": "Existing customer found with matching name and phone",
+                        "merged": True
+                    }), 200
         
         client_id = db.add_client(
             name=name,

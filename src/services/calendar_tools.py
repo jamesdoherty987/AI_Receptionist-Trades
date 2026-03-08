@@ -304,6 +304,86 @@ CALENDAR_TOOLS = [
 ]
 
 
+def naturalize_availability_summary(day_summaries: list, is_full_day: bool = False) -> str:
+    """
+    Convert structured day availability into natural, conversational speech.
+    Uses GPT-4o-mini for fast, natural language generation.
+    
+    Args:
+        day_summaries: List of day summaries like ["Monday: free from 9 am to 5 pm", "Tuesday: 2 pm or 4 pm"]
+        is_full_day: Whether this is a full-day service
+        
+    Returns:
+        Natural language summary suitable for voice
+    """
+    import time as time_module
+    
+    if not day_summaries:
+        return "I don't have any availability for that time period."
+    
+    # For single day with simple availability, just clean it up without API call
+    if len(day_summaries) == 1:
+        summary = day_summaries[0]
+        # Simple cleanup for single day
+        if "full day available" in summary.lower():
+            day = summary.split(":")[0]
+            return f"I've got {day} wide open for you"
+        elif "free from" in summary.lower():
+            parts = summary.split(": ")
+            day = parts[0]
+            times = parts[1].replace("free from ", "")
+            return f"On {day}, I'm free {times}"
+        elif "only" in summary.lower():
+            parts = summary.split(": ")
+            day = parts[0]
+            time = parts[1].replace(" only", "")
+            return f"I've only got {time} on {day}"
+        else:
+            return summary.replace(": ", ", I have ")
+    
+    # For multiple days, use a quick LLM call to make it conversational
+    try:
+        from openai import OpenAI
+        from src.utils.config import config
+        
+        start_time = time_module.time()
+        
+        client = OpenAI(api_key=config.OPENAI_API_KEY)
+        
+        # Build the raw data
+        raw_summary = "; ".join(day_summaries)
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Convert availability data into ONE natural spoken sentence. Be brief and conversational like a friendly receptionist. Don't list every time - summarize. Example: 'I've got Monday and Tuesday pretty open, and a few slots on Wednesday afternoon' or 'Most of the week looks good, especially mornings'. Max 25 words."
+                },
+                {
+                    "role": "user", 
+                    "content": raw_summary
+                }
+            ],
+            max_tokens=60,
+            temperature=0.7
+        )
+        
+        result = response.choices[0].message.content.strip()
+        duration = time_module.time() - start_time
+        logger.info(f"[NATURALIZE] Converted availability in {duration:.2f}s: '{result[:50]}...'")
+        
+        return result
+        
+    except Exception as e:
+        logger.warning(f"[NATURALIZE] Failed to naturalize, using fallback: {e}")
+        # Fallback: simple join
+        if len(day_summaries) == 2:
+            return f"{day_summaries[0]}, and {day_summaries[1]}"
+        else:
+            return f"{', '.join(day_summaries[:-1])}, and {day_summaries[-1]}"
+
+
 class ServiceMatcher:
     """
     Intelligent service matching using multiple strategies.
@@ -1214,6 +1294,18 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             except:
                 business_days = config.BUSINESS_DAYS
             
+            # EDGE CASE: If asking for a single closed day (weekend), return "we're closed" message
+            is_single_day = start_date.date() == end_date.date()
+            if is_single_day and start_date.weekday() not in business_days:
+                day_name = start_date.strftime('%A')
+                return {
+                    "success": True,
+                    "available_slots": [],
+                    "message": f"We're not open on {day_name}s. Would you like to try a different day?",
+                    "is_closed_day": True
+                }
+            
+            
             logger.info(f"[CHECK_AVAIL] Business days: {business_days}")
             
             # Check if company has workers - if so, we need to filter by worker availability
@@ -1378,13 +1470,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 
                 day_summaries.append(summary)
             
-            # Create conversational message
-            if len(day_summaries) == 1:
-                natural_summary = day_summaries[0]
-            elif len(day_summaries) == 2:
-                natural_summary = f"{day_summaries[0]}, and {day_summaries[1]}"
-            else:
-                natural_summary = f"{', '.join(day_summaries[:-1])}, and {day_summaries[-1]}"
+            # Convert to natural conversational speech
+            is_full_day_service = service_duration >= 480
+            natural_summary = naturalize_availability_summary(day_summaries, is_full_day=is_full_day_service)
             
             # Also provide structured data for booking
             all_slots = []

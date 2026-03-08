@@ -1260,7 +1260,16 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
     
     def find_or_create_client(self, name: str, phone: str = None, email: str = None, date_of_birth: str = None, company_id: int = None) -> int:
-        """Find existing client or create new one"""
+        """Find existing client or create new one.
+        
+        Uses normalized comparison for name and phone to merge duplicates:
+        - Names: case-insensitive, ignores apostrophes, hyphens, extra spaces
+          e.g., "John O'Brien" matches "john obrien"
+        - Phones: normalized to digits only with country code
+          e.g., "085-123-4567" matches "+353851234567"
+        """
+        from src.utils.security import normalize_name_for_comparison, normalize_phone_for_comparison
+        
         print(f"[DB_CLIENT] ========== FIND OR CREATE CLIENT ==========")
         print(f"[DB_CLIENT] name={name}, phone={phone}, email={email}, dob={date_of_birth}, company_id={company_id}")
         
@@ -1271,60 +1280,61 @@ class PostgreSQLDatabaseWrapper:
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            name = name.lower().strip()
-            print(f"[DB_CLIENT] Normalized name: {name}")
+            # Normalize inputs for comparison
+            normalized_name = normalize_name_for_comparison(name)
+            normalized_phone = normalize_phone_for_comparison(phone) if phone else None
+            normalized_email = email.lower().strip() if email else None
             
-            # First priority: Try to find by name + DOB if DOB is provided
-            if date_of_birth:
-                print(f"[DB_CLIENT] Searching by name + DOB...")
-                if company_id:
-                    cursor.execute("""
-                        SELECT id FROM clients WHERE company_id = %s AND name = %s AND date_of_birth = %s
-                    """, (company_id, name, date_of_birth))
-                else:
-                    cursor.execute("""
-                        SELECT id FROM clients WHERE name = %s AND date_of_birth = %s
-                    """, (name, date_of_birth))
-                row = cursor.fetchone()
-                if row:
-                    print(f"[DB_CLIENT] ✅ Found existing client by name + DOB: {name} (ID: {row['id']})")
-                    return row['id']
-                else:
-                    # DOB provided but no match found - create new client
-                    print(f"[DB_CLIENT] Creating NEW client (same name, different DOB): {name} (DOB: {date_of_birth})")
-                    return self.add_client(name, phone, email, date_of_birth, company_id=company_id)
+            print(f"[DB_CLIENT] Normalized name: '{normalized_name}', phone: '{normalized_phone}'")
             
-            # No DOB provided - fall back to matching by name + contact info
-            print(f"[DB_CLIENT] Searching by name + contact info...")
-            if phone:
-                if company_id:
-                    cursor.execute("""
-                        SELECT id FROM clients WHERE company_id = %s AND name = %s AND phone = %s
-                    """, (company_id, name, phone))
-                else:
-                    cursor.execute("""
-                        SELECT id FROM clients WHERE name = %s AND phone = %s
-                    """, (name, phone))
-            elif email:
-                if company_id:
-                    cursor.execute("""
-                        SELECT id FROM clients WHERE company_id = %s AND name = %s AND email = %s
-                    """, (company_id, name, email))
-                else:
-                    cursor.execute("""
-                        SELECT id FROM clients WHERE name = %s AND email = %s
-                    """, (name, email))
-            
-            row = cursor.fetchone()
-            
-            if row:
-                print(f"[DB_CLIENT] ✅ Found existing client: ID={row['id']}")
-                return row['id']
+            # Fetch all clients for this company to do normalized comparison
+            if company_id:
+                cursor.execute("SELECT * FROM clients WHERE company_id = %s", (company_id,))
             else:
-                print(f"[DB_CLIENT] Creating new client...")
-                new_id = self.add_client(name, phone, email, date_of_birth, company_id=company_id)
-                print(f"[DB_CLIENT] ✅ Created new client: ID={new_id}")
-                return new_id
+                cursor.execute("SELECT * FROM clients")
+            
+            all_clients = cursor.fetchall()
+            
+            # First priority: Try to find by normalized name + DOB if DOB is provided
+            if date_of_birth:
+                print(f"[DB_CLIENT] Searching by normalized name + DOB...")
+                for client in all_clients:
+                    client_normalized_name = normalize_name_for_comparison(client['name'])
+                    if client_normalized_name == normalized_name and client.get('date_of_birth') == date_of_birth:
+                        print(f"[DB_CLIENT] ✅ Found existing client by name + DOB: {client['name']} (ID: {client['id']})")
+                        return client['id']
+                
+                # DOB provided but no match found - create new client
+                print(f"[DB_CLIENT] Creating NEW client (same name, different DOB): {name} (DOB: {date_of_birth})")
+                return self.add_client(name, phone, email, date_of_birth, company_id=company_id)
+            
+            # No DOB provided - fall back to matching by normalized name + contact info
+            print(f"[DB_CLIENT] Searching by normalized name + contact info...")
+            
+            for client in all_clients:
+                client_normalized_name = normalize_name_for_comparison(client['name'])
+                
+                # Check if names match (normalized)
+                if client_normalized_name != normalized_name:
+                    continue
+                
+                # Names match - now check phone or email
+                if normalized_phone:
+                    client_normalized_phone = normalize_phone_for_comparison(client.get('phone') or '')
+                    if client_normalized_phone == normalized_phone:
+                        print(f"[DB_CLIENT] ✅ Found existing client by normalized name + phone: {client['name']} (ID: {client['id']})")
+                        return client['id']
+                elif normalized_email:
+                    client_email = (client.get('email') or '').lower().strip()
+                    if client_email == normalized_email:
+                        print(f"[DB_CLIENT] ✅ Found existing client by normalized name + email: {client['name']} (ID: {client['id']})")
+                        return client['id']
+            
+            # No match found - create new client
+            print(f"[DB_CLIENT] Creating new client...")
+            new_id = self.add_client(name, phone, email, date_of_birth, company_id=company_id)
+            print(f"[DB_CLIENT] ✅ Created new client: ID={new_id}")
+            return new_id
         except Exception as e:
             print(f"[DB_CLIENT] ❌ Error in find_or_create_client: {e}")
             import traceback

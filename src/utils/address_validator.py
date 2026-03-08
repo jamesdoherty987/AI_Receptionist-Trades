@@ -48,15 +48,17 @@ class AddressValidator:
         """Validate eircode format"""
         if not eircode:
             return False
-        return bool(self.EIRCODE_PATTERN.match(eircode.strip()))
+        # Strip dashes and spaces before validation (AI often spells back with dashes)
+        cleaned = re.sub(r'[-\s]', '', eircode.strip())
+        return bool(self.EIRCODE_PATTERN.match(cleaned))
     
     def normalize_eircode(self, eircode: str) -> Optional[str]:
         """Normalize eircode to standard format (XXX XXXX)"""
         if not eircode:
             return None
         
-        # Remove all spaces and convert to uppercase
-        clean = re.sub(r'\s+', '', eircode.upper())
+        # Remove all spaces, dashes, and convert to uppercase
+        clean = re.sub(r'[-\s]', '', eircode.upper())
         
         # Fix common ASR errors: O -> 0 in second position (e.g., DO2 -> D02)
         if len(clean) >= 2 and clean[1] == 'O':
@@ -74,7 +76,8 @@ class AddressValidator:
     
     def is_postcode(self, address_input: str) -> bool:
         """Check if input appears to be just a postcode"""
-        cleaned = address_input.strip()
+        # Strip dashes and spaces (AI often spells back with dashes like A-V-9-5-H-5-P-2)
+        cleaned = re.sub(r'[-\s]', '', address_input.strip())
         
         # Check for eircode
         if self.validate_eircode(cleaned):
@@ -137,6 +140,10 @@ class AddressValidator:
             }
         
         cleaned_input = user_input.strip()
+        
+        # Strip dashes for eircode detection (AI often spells back like A-V-9-5-H-5-P-2)
+        cleaned_for_eircode = re.sub(r'[-\s]', '', cleaned_input)
+        
         result = {
             'type': 'unknown',
             'full_address': cleaned_input,
@@ -146,13 +153,24 @@ class AddressValidator:
             'suggestions': []
         }
         
-        # Check if it's just an eircode - EIRCODE IS ENOUGH, no need for full address
-        if self.is_postcode(cleaned_input) and self.validate_eircode(cleaned_input):
+        # Check if it's just an eircode (with or without dashes) - EIRCODE IS ENOUGH
+        if self.validate_eircode(cleaned_for_eircode):
             result.update({
                 'type': 'eircode',
                 'eircode': self.normalize_eircode(cleaned_input),
                 'needs_clarification': False,  # Eircode is sufficient - don't ask for more
                 'suggestions': []  # No suggestions needed - eircode uniquely identifies location
+            })
+        
+        # Check if it looks like an eircode with possible ASR error (6-8 alphanumeric chars)
+        # ASR sometimes adds extra characters (e.g., "AV95H5P2" instead of "V95H5P2")
+        # Must contain at least one digit to distinguish from words like "Dublin"
+        elif re.match(r'^[A-Z0-9]{6,8}$', cleaned_for_eircode, re.IGNORECASE) and re.search(r'\d', cleaned_for_eircode):
+            result.update({
+                'type': 'eircode',
+                'eircode': cleaned_for_eircode.upper(),  # Store cleaned version
+                'needs_clarification': False,  # Accept as eircode - don't question it
+                'suggestions': []
             })
         
         # Check if it's a short numeric code that might be an eircode (e.g., "123")

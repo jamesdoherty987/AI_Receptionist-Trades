@@ -357,6 +357,45 @@ def normalize_phone_for_comparison(phone: str) -> str:
     
     return cleaned
 
+def normalize_name_for_comparison(name: str) -> str:
+    """
+    Normalize a name for comparison purposes.
+    Removes apostrophes, hyphens, extra spaces, and converts to lowercase.
+
+    Args:
+        name: Customer name in any format
+
+    Returns:
+        Normalized name string for comparison
+
+    Examples:
+        "John O'Brien" -> "john obrien"
+        "Mary-Jane Smith" -> "maryjane smith"
+        "JOHN   DOE" -> "john doe"
+        "O'Connor" -> "oconnor"
+    """
+    if not name:
+        return ""
+
+    # Convert to lowercase
+    normalized = name.lower()
+
+    # Remove apostrophes, single quotes, and backticks
+    normalized = re.sub(r"[''`]", '', normalized)
+
+    # Remove hyphens (Mary-Jane -> MaryJane)
+    normalized = normalized.replace('-', '')
+
+    # Remove other special characters but keep spaces
+    normalized = re.sub(r'[^\w\s]', '', normalized)
+
+    # Collapse multiple spaces into one and strip
+    normalized = ' '.join(normalized.split())
+
+    return normalized
+
+
+
 
 def sanitize_filename(filename: str) -> str:
     """

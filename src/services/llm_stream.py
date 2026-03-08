@@ -1564,18 +1564,35 @@ IMPORTANT: Always include a brief spoken response WITH your tool call so the cus
                         customer_name = customer_info.get("name", "")
                         first_name = customer_name.split()[0] if customer_name else "there"
                         last_address = customer_info.get("last_address", "")
-                        last_phone = customer_info.get("phone", "")
+                        stored_phone = customer_info.get("phone", "")
                         
                         if result_content.get("customer_exists"):
-                            # Returning customer - confirm phone first, then address
-                            if last_phone:
-                                direct_response = f"Great to hear from you again, {first_name}! I have your number as {last_phone}. Is that still the best number?"
+                            # Returning customer - check what info we already have
+                            # Compare stored phone with caller's phone (if available)
+                            phone_matches = False
+                            if caller_phone and stored_phone:
+                                normalized_caller = normalize_phone_for_comparison(caller_phone)
+                                normalized_stored = normalize_phone_for_comparison(stored_phone)
+                                phone_matches = normalized_caller == normalized_stored
+                            
+                            # Build response based on what we need to confirm
+                            if phone_matches and last_address:
+                                # We have matching phone AND address - just confirm address
+                                direct_response = f"Great to hear from you again, {first_name}! Same address as before - {last_address}?"
+                            elif phone_matches and not last_address:
+                                # We have matching phone but no address - ask for address
+                                direct_response = f"Great to hear from you again, {first_name}! What's the address for this job?"
+                            elif stored_phone and not phone_matches:
+                                # Different phone - confirm which to use
+                                direct_response = f"Great to hear from you again, {first_name}! I have your number as {stored_phone}. Is that still the best number?"
                             elif last_address:
+                                # No stored phone but have address - confirm address
                                 direct_response = f"Great to hear from you again, {first_name}! I have your address as {last_address}. Is this job for the same location?"
                             else:
+                                # No phone or address on file
                                 direct_response = f"Great to hear from you again, {first_name}! What's the address for this job?"
                         else:
-                            # New customer
+                            # New customer - we already have their phone from caller ID
                             direct_response = f"Welcome, {first_name}! Do you know your eircode?"
                     else:
                         direct_response = "I couldn't find that name. Could you spell it for me?"
