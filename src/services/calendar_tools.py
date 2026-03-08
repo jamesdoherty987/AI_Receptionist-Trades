@@ -304,6 +304,84 @@ CALENDAR_TOOLS = [
 ]
 
 
+def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exclude_booking_id: int = None, company_id: int = None, days_to_check: int = 14) -> list:
+    """
+    Find available days for specific worker(s) in the next N days.
+    Used during rescheduling to suggest alternative days when the requested day isn't available.
+    
+    Args:
+        db: Database instance
+        worker_ids: List of worker IDs that must ALL be available
+        duration_minutes: Duration of the job in minutes
+        exclude_booking_id: Booking ID to exclude (the one being rescheduled)
+        company_id: Company ID for filtering
+        days_to_check: Number of days to look ahead (default 14)
+        
+    Returns:
+        List of day names like ["Wednesday", "Thursday", "Friday"]
+    """
+    from datetime import datetime, timedelta
+    from src.utils.config import config
+    
+    if not db or not worker_ids:
+        return []
+    
+    available_days = []
+    today = datetime.now()
+    
+    # Get business days and hours
+    try:
+        business_days = config.get_business_days_indices()
+    except:
+        business_days = [0, 1, 2, 3, 4]  # Mon-Fri default
+    
+    try:
+        business_hours = config.get_business_hours(company_id=company_id)
+        biz_start_hour = business_hours.get('start', 9)
+        biz_end_hour = business_hours.get('end', 17)
+    except:
+        biz_start_hour = 9
+        biz_end_hour = 17
+    
+    for day_offset in range(1, days_to_check + 1):
+        check_date = today + timedelta(days=day_offset)
+        
+        # Skip non-business days
+        if check_date.weekday() not in business_days:
+            continue
+        
+        # For full-day jobs, check if the whole day is available
+        if duration_minutes >= 480:
+            check_time = check_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+        else:
+            # For shorter jobs, check a few time slots throughout the day
+            check_time = check_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+        
+        # Check if ALL assigned workers are available on this day
+        all_available = True
+        for worker_id in worker_ids:
+            availability = db.check_worker_availability(
+                worker_id=worker_id,
+                appointment_time=check_time,
+                duration_minutes=duration_minutes,
+                exclude_booking_id=exclude_booking_id,
+                company_id=company_id
+            )
+            if not availability.get('available', False):
+                all_available = False
+                break
+        
+        if all_available:
+            day_name = check_date.strftime('%A')
+            # Include date for clarity (e.g., "Wednesday the 12th")
+            day_num = check_date.day
+            suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
+            available_days.append(f"{day_name} the {day_num}{suffix}")
+    
+    logger.info(f"[RESCHEDULE] Found {len(available_days)} available days for workers {worker_ids}: {available_days[:5]}")
+    return available_days
+
+
 def fuzzy_match_name(spoken_name: str, candidate_names: list) -> tuple:
     """
     Fuzzy match a spoken name against a list of candidate names.
@@ -2482,15 +2560,52 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             matched_job = jobs_on_day[matched_idx]
             logger.info(f"[RESCHEDULE] Fuzzy matched '{customer_name}' to '{matched_name}' with {confidence}% confidence")
             
-            # Customer name confirmed but no new time yet
+            # Customer name confirmed but no new time yet - find available days for the assigned worker
             if not new_datetime:
-                return {
-                    "success": False,
-                    "customer_name_confirmed": True,
-                    "matched_name": matched_name,
-                    "matched_job": matched_job,
-                    "error": f"Got it, that's the booking for {matched_name}. What day would you like to move it to?"
-                }
+                # Get booking details to find assigned workers
+                booking_id = matched_job.get('booking_id')
+                booking_duration = matched_job.get('duration_minutes', 60)
+                assigned_worker_ids = []
+                
+                if booking_id and db:
+                    try:
+                        bookings = db.get_all_bookings(company_id=company_id)
+                        for booking in bookings:
+                            if booking.get('id') == booking_id:
+                                assigned_worker_ids = booking.get('assigned_worker_ids', [])
+                                break
+                    except Exception as e:
+                        logger.warning(f"[RESCHEDULE] Could not get assigned workers: {e}")
+                
+                # Find available days for the assigned worker(s)
+                available_days = []
+                if assigned_worker_ids and db:
+                    available_days = _find_worker_available_days(
+                        db=db,
+                        worker_ids=assigned_worker_ids,
+                        duration_minutes=booking_duration,
+                        exclude_booking_id=booking_id,
+                        company_id=company_id
+                    )
+                
+                if available_days:
+                    days_str = ", ".join(available_days[:5])  # Limit to 5 days
+                    return {
+                        "success": False,
+                        "customer_name_confirmed": True,
+                        "matched_name": matched_name,
+                        "matched_job": matched_job,
+                        "available_days": available_days,
+                        "error": f"Got it, that's the booking for {matched_name}. I have availability on {days_str}. Which day works for you?"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "customer_name_confirmed": True,
+                        "matched_name": matched_name,
+                        "matched_job": matched_job,
+                        "error": f"Got it, that's the booking for {matched_name}. What day would you like to move it to?"
+                    }
             
             # Get booking details first to check if it's a full-day job
             event_id = matched_job.get('event_id')
@@ -2551,11 +2666,29 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         unavailable_workers.append(worker_name)
                 
                 if not all_workers_available:
-                    return {
-                        "success": False,
-                        "error": f"The assigned worker ({', '.join(unavailable_workers)}) is not available on {new_time.strftime('%A, %B %d')}. Please suggest another day.",
-                        "new_time_unavailable": True
-                    }
+                    # Find available days for the assigned worker(s) to suggest alternatives
+                    available_days = _find_worker_available_days(
+                        db=db,
+                        worker_ids=assigned_worker_ids,
+                        duration_minutes=booking_duration,
+                        exclude_booking_id=booking_id,
+                        company_id=company_id
+                    )
+                    
+                    if available_days:
+                        days_str = ", ".join(available_days[:5])  # Limit to 5 days
+                        return {
+                            "success": False,
+                            "error": f"The assigned worker ({', '.join(unavailable_workers)}) is not available on {new_time.strftime('%A, %B %d')}. They are available on: {days_str}. Which day works for you?",
+                            "new_time_unavailable": True,
+                            "available_days": available_days
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "error": f"The assigned worker ({', '.join(unavailable_workers)}) is not available on {new_time.strftime('%A, %B %d')} and has no availability in the next 2 weeks. Would you like to speak with someone about this?",
+                            "new_time_unavailable": True
+                        }
             elif google_calendar:
                 # No workers or no assigned workers - use simple calendar check
                 is_available = google_calendar.check_availability(new_time, duration_minutes=booking_duration)
