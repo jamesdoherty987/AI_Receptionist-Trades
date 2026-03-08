@@ -1611,8 +1611,12 @@ TOOL RULES:
                         available_slots = result_content.get("available_slots", [])
                         message = result_content.get("message", "")
                         
-                        # Check if this is a full-day job (contains "full day available")
-                        is_full_day = "full day" in natural_summary.lower() if natural_summary else False
+                        # Check if this is a full-day job
+                        is_full_day = result_content.get("is_full_day_service", False)
+                        
+                        # Also check natural_summary for "full day" or "wide open" as backup
+                        if not is_full_day and natural_summary:
+                            is_full_day = any(phrase in natural_summary.lower() for phrase in ["full day", "wide open"])
                         
                         # Check if multiple days are mentioned
                         has_multiple_days = natural_summary and any(word in natural_summary.lower() for word in [" and ", ", "])
@@ -1653,7 +1657,20 @@ TOOL RULES:
                         details = result_content.get("appointment_details", {})
                         time_str = details.get("time", "")
                         address = details.get("job_address", "") or details.get("eircode", "")
-                        if time_str and address:
+                        duration_mins = details.get("duration_minutes", 0)
+                        
+                        # Check if this is a full-day job (8+ hours)
+                        is_full_day = duration_mins >= 480
+                        
+                        # For full-day jobs, extract just the day (not the time)
+                        if is_full_day and time_str:
+                            # Extract day name from time_str like "Thursday, March 12 at 08:00 AM"
+                            day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
+                            if address:
+                                direct_response = f"Grand, you're booked in for {day_part} at {address}. We'll give you a call when we're on the way. Is there anything else?"
+                            else:
+                                direct_response = f"Grand, you're booked in for {day_part}. We'll give you a call when we're on the way. Is there anything else?"
+                        elif time_str and address:
                             direct_response = f"Grand, you're booked in for {time_str} at {address}. Is there anything else?"
                         elif time_str:
                             direct_response = f"Grand, you're booked in for {time_str}. Is there anything else?"
@@ -1668,7 +1685,7 @@ TOOL RULES:
                         else:
                             direct_response = "I couldn't complete that booking. Could you try again?"
                     
-                    print(f"   ⚡ [DIRECT] book -> '{direct_response[:50]}...'")
+                    print(f"   ⚡ [DIRECT] book -> '{direct_response[:50]}...')")
                 
                 # ========== CANCEL_JOB / CANCEL_APPOINTMENT ==========
                 elif tool_name in ["cancel_appointment", "cancel_job"]:

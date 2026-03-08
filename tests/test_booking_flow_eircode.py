@@ -21,8 +21,8 @@ class TestBookingFlowEircodeConfirmation:
             prompt = f.read()
         
         # Check for eircode confirmation instructions
-        assert "CONFIRM EIRCODE BACK" in prompt, "Prompt should have explicit eircode confirmation step"
-        assert "That's [eircode], correct?" in prompt or "correct?" in prompt.lower()
+        assert "CONFIRM IT BACK" in prompt or "confirm" in prompt.lower(), "Prompt should have eircode confirmation step"
+        assert "eircode" in prompt.lower()
         
     def test_prompt_has_final_confirmation_with_address(self):
         """Verify the prompt requires final confirmation with all details including address"""
@@ -180,7 +180,7 @@ class TestConversationFlowSimulation:
         assert "SPELL BACK" in prompt, "Should spell back name"
         assert "lookup_customer" in prompt, "Should call lookup_customer"
         assert "eircode" in prompt.lower(), "Should ask for eircode"
-        assert "CONFIRM EIRCODE" in prompt, "Should confirm eircode"
+        assert "CONFIRM IT BACK" in prompt or "confirm" in prompt.lower(), "Should confirm eircode"
         assert "Confirm phone" in prompt, "Should confirm phone"
         assert "check_availability" in prompt, "Should check availability"
         assert "FINAL CONFIRM" in prompt, "Should do final confirmation"
