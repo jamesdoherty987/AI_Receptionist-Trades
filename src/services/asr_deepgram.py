@@ -52,7 +52,7 @@ class DeepgramASR:
                     "&numerals=true"
                     "&language=en"
                     "&utterances=true"       # Enable utterance detection
-                    "&endpointing=900",     # 900ms silence = end of utterance (balanced: 800ms was cutting off, 1200ms too slow)
+                    "&endpointing=1200",    # 1200ms silence = end of utterance (was 900ms but split sentences too aggressively)
                     extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
                     open_timeout=5,
                     close_timeout=2,

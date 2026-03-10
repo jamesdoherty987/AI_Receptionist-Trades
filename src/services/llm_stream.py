@@ -791,10 +791,13 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
             is_name_spelling = any(ind in prev_assistant_msg for ind in name_spelling_indicators)
             is_confirmation = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "correct", "that's right"])
             
-            # Make sure it's not an eircode/address confirmation
+            # Make sure it's not an eircode/address/phone confirmation
+            # Eircodes have numbers (V-9-5-H-5-P-2), names don't (J-A-M-E-S)
             is_eircode_context = any(phrase in prev_assistant_msg for phrase in ["eircode", "postcode", "address"])
+            has_numbers_in_spelling = any(f"-{d}-" in prev_assistant_msg for d in "0123456789")
+            is_phone_context = any(phrase in prev_assistant_msg for phrase in ["phone", "number", "reach you", "contact"])
             
-            if is_name_spelling and is_confirmation and not is_eircode_context:
+            if is_name_spelling and is_confirmation and not is_eircode_context and not has_numbers_in_spelling and not is_phone_context:
                 likely_needs_tool = True
                 detected_intent = "NAME_SPELLING_CONFIRMED"
                 checking_msg = "Grand, one moment."
@@ -825,8 +828,10 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         if not likely_needs_tool:
             availability_phrases = ["what times are available", "when are you available", "any slots", "check availability",
                                    "what times", "when can", "any openings", "free on", "available on", "next available",
-                                   "earliest", "soonest", "closest day", "this week", "next week", "tomorrow", "monday",
-                                   "tuesday", "wednesday", "thursday", "friday", "saturday"]
+                                   "earliest", "soonest", "closest day", "this week", "next week", "tomorrow"]
+            # NOTE: Day names (monday, tuesday, etc.) intentionally excluded!
+            # Users say day names when PICKING a slot ("I'll take Wednesday") not just checking availability.
+            # Including them caused filler misfires where the LLM just confirms details instead of calling a tool.
             if any(phrase in user_message for phrase in availability_phrases):
                 likely_needs_tool = True
                 detected_intent = "AVAILABILITY_CHECK"
@@ -1319,6 +1324,7 @@ TOOL RULES:
                     cleaned_token = delta.content.replace('**', '').replace('__', '').replace('~~', '')
                     # Add pauses for spelled-out content (letters/numbers separated by dashes)
                     cleaned_token = format_for_tts_spelling(cleaned_token)
+                    
                     # Debug: Log token yielding
                     if token_count <= 3:
                         print(f"   📤 [YIELD] Token #{token_count}: '{cleaned_token[:30]}...'")
@@ -1352,7 +1358,8 @@ TOOL RULES:
         # This is a dangerous pattern that causes silence/freeze
         dangerous_phrases = [
             "let me check", "one moment", "let me look", "bear with me",
-            "let me see", "checking now", "looking that up", "let me find"
+            "let me see", "checking now", "looking that up", "let me find",
+            "i'll check", "i will check", "check availability", "check that"
         ]
         response_lower = full_response.lower() if full_response else ""
         said_checking_phrase = any(phrase in response_lower for phrase in dangerous_phrases)
@@ -1360,11 +1367,12 @@ TOOL RULES:
         if said_checking_phrase:
             print(f"\n🚨 [SAFETY] LLM said checking phrase but didn't call tool!")
             print(f"🚨 [SAFETY] Response: '{full_response[:100]}...'")
-            print(f"🚨 [SAFETY] Appending follow-up question to prevent silence")
-            # Append a follow-up question to prevent silence
-            followup = " What details can you give me about the job?"
-            full_response = full_response.rstrip('.!?,') + "." + followup
-            yield followup
+            print(f"🚨 [SAFETY] Replacing with a question to prevent silence")
+            # Replace the dangerous response with a question to keep conversation moving
+            # The original response promised to check but didn't - don't send it
+            replacement = "What day works best for you?"
+            full_response = replacement
+            yield replacement
         
         # Store response in conversation history
         if full_response:
@@ -1382,7 +1390,25 @@ TOOL RULES:
             print(f"⚠️ [PRE-CHECK MISFIRE] User message was: '{user_message[:80]}...'")
             print(f"⚠️ [PRE-CHECK MISFIRE] LLM response: '{full_response[:100]}...'")
             print(f"⚠️ [PRE-CHECK MISFIRE] Response tokens were already yielded to prefetch buffer")
-            # Don't yield again - tokens were already yielded during streaming
+            
+            # SAFETY: Check if the response promised to check something but didn't
+            # If so, we need to yield a follow-up question to prevent silence
+            dangerous_phrases = [
+                "let me check", "one moment", "let me look", "bear with me",
+                "let me see", "checking now", "looking that up", "let me find",
+                "i'll check", "i will check", "check availability", "check that"
+            ]
+            response_lower = full_response.lower()
+            said_checking_phrase = any(phrase in response_lower for phrase in dangerous_phrases)
+            
+            if said_checking_phrase:
+                print(f"🚨 [SAFETY] Response promised to check but didn't call tool!")
+                print(f"🚨 [SAFETY] Yielding follow-up question to prevent silence")
+                # The dangerous response was already yielded, so append a question
+                followup = " What day works best for you?"
+                yield followup
+                full_response += followup
+            
             messages.append({"role": "assistant", "content": full_response})
         else:
             # Edge case: Pre-check fired but OpenAI returned nothing - provide fallback

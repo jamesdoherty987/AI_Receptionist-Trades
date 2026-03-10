@@ -454,7 +454,7 @@ async def media_handler(ws):
                         "[SYSTEM: Greeting already sent. DO NOT re-introduce or ask 'how can I help' again. "
                         "Keep replies SHORT. After they describe their issue, ask for NAME (spell it back). "
                         f"{phone_instruction} "
-                        "After name confirmed, ask for eircode. Say things ONCE only.]"
+                        "After name confirmed, call lookup_customer BEFORE asking for eircode or address. Say things ONCE only.]"
                     )
                 })
                 
