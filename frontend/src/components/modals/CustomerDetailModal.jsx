@@ -64,9 +64,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
   });
 
   const clientBookings = allBookings?.filter(
-    booking => booking.client_id === clientId || 
-               booking.customer_name === client?.name ||
-               booking.phone === client?.phone
+    booking => booking.client_id === clientId
   ) || [];
 
   const updateMutation = useMutation({

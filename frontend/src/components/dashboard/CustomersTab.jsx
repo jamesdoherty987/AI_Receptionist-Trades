@@ -25,11 +25,7 @@ function CustomersTab({ clients, bookings = [] }) {
   // Calculate booking counts for each client
   const clientsWithBookings = useMemo(() => {
     return clients.map(client => {
-      const clientBookings = bookings.filter(
-        b => b.client_id === client.id || 
-             b.customer_name === client.name ||
-             b.phone === client.phone
-      );
+      const clientBookings = bookings.filter(b => b.client_id === client.id);
       return {
         ...client,
         total_bookings: clientBookings.length
