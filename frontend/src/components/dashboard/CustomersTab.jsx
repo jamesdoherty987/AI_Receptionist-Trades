@@ -23,9 +23,10 @@ function CustomersTab({ clients, bookings = [] }) {
   };
 
   // Calculate booking counts for each client
+  // Use == for comparison to handle potential type mismatches (string vs number)
   const clientsWithBookings = useMemo(() => {
     return clients.map(client => {
-      const clientBookings = bookings.filter(b => b.client_id === client.id);
+      const clientBookings = bookings.filter(b => b.client_id == client.id);
       return {
         ...client,
         total_bookings: clientBookings.length

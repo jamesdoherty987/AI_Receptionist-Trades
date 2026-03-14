@@ -63,8 +63,9 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
     placeholderData: (previousData) => previousData,
   });
 
+  // Use == for comparison to handle potential type mismatches (string vs number)
   const clientBookings = allBookings?.filter(
-    booking => booking.client_id === clientId
+    booking => booking.client_id == clientId
   ) || [];
 
   const updateMutation = useMutation({
