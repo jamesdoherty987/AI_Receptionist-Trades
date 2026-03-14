@@ -1623,19 +1623,9 @@ TOOL RULES:
                                 # No phone or address on file
                                 direct_response = f"Great to hear from you again, {first_name}! What's the address for this job?"
                         else:
-                            # New customer - confirm phone number from caller ID first (step 6b)
-                            if caller_phone:
-                                # Format phone for TTS spelling (e.g., +353852635954 -> 0-8-5-2-6-3-5-9-5-4)
-                                display_phone = caller_phone
-                                if display_phone.startswith("+353"):
-                                    display_phone = "0" + display_phone[4:]
-                                elif display_phone.startswith("353"):
-                                    display_phone = "0" + display_phone[3:]
-                                # Spell out as dashes for TTS (format_for_tts_spelling will add spaces)
-                                spelled_phone = "-".join(display_phone)
-                                direct_response = f"Welcome, {first_name}! Is {spelled_phone} a good number to reach you on?"
-                            else:
-                                direct_response = f"Welcome, {first_name}! What's the best number to reach you on?"
+                            # New customer - phone was already confirmed by LLM before lookup was called
+                            # Go straight to asking for eircode (step 6b in prompt)
+                            direct_response = f"Welcome, {first_name}! Do you know your eircode?"
                     else:
                         direct_response = "I couldn't find that name. Could you spell it for me?"
                     
