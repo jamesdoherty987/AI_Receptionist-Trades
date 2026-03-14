@@ -2090,7 +2090,17 @@ Return ONLY valid JSON, no explanation."""
                 )
                 
                 import json
-                parse_result = json.loads(parse_response.choices[0].message.content.strip())
+                response_content = parse_response.choices[0].message.content.strip()
+                
+                # Strip markdown code blocks if present (```json ... ```)
+                if response_content.startswith('```'):
+                    lines = response_content.split('\n')
+                    # Remove first line (```json) and last line (```)
+                    json_lines = [l for l in lines if not l.startswith('```')]
+                    response_content = '\n'.join(json_lines).strip()
+                
+                logger.info(f"[SEARCH_AVAIL] Raw response: {response_content[:200]}")
+                parse_result = json.loads(response_content)
                 logger.info(f"[SEARCH_AVAIL] Parsed query: {parse_result}")
                 
                 start_date_str = parse_result.get('start_date')
@@ -2104,8 +2114,26 @@ Return ONLY valid JSON, no explanation."""
                 
             except Exception as e:
                 logger.warning(f"[SEARCH_AVAIL] Failed to parse query, using defaults: {e}")
-                start_date = today
-                end_date = today + timedelta(days=14)
+                
+                # Smart fallback: detect "other/different/more" queries and search BEYOND initial dates
+                query_lower = query.lower()
+                wants_different = any(word in query_lower for word in ['other', 'different', 'else', 'more', 'another', 'alternative'])
+                
+                if wants_different:
+                    # User wants different dates than already shown - search 2-4 weeks out
+                    start_date = today + timedelta(days=14)  # Start AFTER the initial 2-week window
+                    end_date = today + timedelta(days=35)    # Search 3-5 weeks out
+                    logger.info(f"[SEARCH_AVAIL] User wants different dates - searching {start_date.date()} to {end_date.date()}")
+                elif 'next month' in query_lower or 'april' in query_lower or 'may' in query_lower:
+                    # User asking about next month
+                    next_month = today.replace(day=1) + timedelta(days=32)
+                    start_date = next_month.replace(day=1)
+                    end_date = start_date + timedelta(days=14)
+                    logger.info(f"[SEARCH_AVAIL] User wants next month - searching {start_date.date()} to {end_date.date()}")
+                else:
+                    start_date = today
+                    end_date = today + timedelta(days=14)
+                
                 time_filter = None
                 specific_days = None
             

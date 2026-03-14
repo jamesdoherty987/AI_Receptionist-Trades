@@ -26,7 +26,7 @@ TOOLS
 
 BOOKING FLOW
 1. Customer describes issue → ALWAYS repeat it back: "A [issue], is that corect?.(This catches transcription errors early - CRITICAL) → wait for confirmation
-2. Ask fro name - "What's your name"
+2. Ask fro name - "Can I get your name please?"
 3. Get name → SPELL BACK FULL NAME (e.g., "That's {Spell Name}, correct?") → wait YES
 4. If NO → ask "Can you spell that for me?" → they spell → confirm again
 5. Call lookup_customer with FULL NAME (first + last) — ALWAYS do this BEFORE asking for eircode/address

@@ -844,9 +844,9 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         
         # 4b. ADDRESS CONFIRMATION - user confirms address, next step is availability check
         if not likely_needs_tool:
-            address_confirmation_phrases = ["same address", "still your address", "your address", "still at", "at the same", "same location", "same place", "address as before", "address on file"]
+            address_confirmation_phrases = ["same address", "still your address", "your address", "still at", "at the same", "same location", "same place", "address as before", "address on file", "correct address", "the correct address", "is that correct", "is that right"]
             ai_asked_address = any(phrase in prev_assistant_msg for phrase in address_confirmation_phrases)
-            user_confirms = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "correct", "that's right", "it is", "that's it", "that's correct"])
+            user_confirms = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "correct", "that's right", "it is", "that's it", "that's correct", "correct address"])
             
             if ai_asked_address and user_confirms:
                 likely_needs_tool = True
