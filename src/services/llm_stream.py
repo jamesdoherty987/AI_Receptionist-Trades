@@ -828,7 +828,11 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         if not likely_needs_tool:
             availability_phrases = ["what times are available", "when are you available", "any slots", "check availability",
                                    "what times", "when can", "any openings", "free on", "available on", "next available",
-                                   "earliest", "soonest", "closest day", "this week", "next week", "tomorrow"]
+                                   "earliest", "soonest", "closest day", "this week", "next week", "tomorrow",
+                                   # Additional phrases for search_availability queries
+                                   "week after", "in 2 weeks", "in two weeks", "after 4", "after 5", "after 3",
+                                   "morning", "afternoon", "evening", "do you have anything", "what about",
+                                   "any other", "different day", "another day", "other options", "what else"]
             # NOTE: Day names (monday, tuesday, etc.) intentionally excluded!
             # Users say day names when PICKING a slot ("I'll take Wednesday") not just checking availability.
             # Including them caused filler misfires where the LLM just confirms details instead of calling a tool.
@@ -1677,6 +1681,64 @@ TOOL RULES:
                             direct_response = "I couldn't check that day. What day works for you?"
                     
                     print(f"   ⚡ [DIRECT] check_availability -> '{direct_response[:50]}...'")
+                
+                # ========== GET_NEXT_AVAILABLE ==========
+                elif tool_name == "get_next_available":
+                    if result_content.get("success"):
+                        natural_summary = result_content.get("natural_summary", "")
+                        available_days = result_content.get("available_days", [])
+                        is_full_day = result_content.get("is_full_day_service", False)
+                        days_found = result_content.get("days_found", 0)
+                        
+                        if natural_summary:
+                            if is_full_day:
+                                # Full-day jobs: Ask which day, not time
+                                if days_found > 1:
+                                    direct_response = f"{natural_summary}. Which day suits you?"
+                                else:
+                                    direct_response = f"{natural_summary}. Does that day work for you?"
+                            else:
+                                # Regular jobs with times
+                                direct_response = f"{natural_summary}. Which day and time works for you?"
+                        elif available_days:
+                            # Fallback: list the days
+                            day_names = [d.get('day_name', '') for d in available_days[:3]]
+                            direct_response = f"I have {', '.join(day_names)} available. Which works for you?"
+                        else:
+                            direct_response = result_content.get("message", "I don't have any availability soon. Would you like me to check further out?")
+                    else:
+                        direct_response = "I couldn't check availability. What day would you like to try?"
+                    
+                    print(f"   ⚡ [DIRECT] get_next_available -> '{direct_response[:50]}...'")
+                
+                # ========== SEARCH_AVAILABILITY ==========
+                elif tool_name == "search_availability":
+                    if result_content.get("success"):
+                        natural_summary = result_content.get("natural_summary", "")
+                        available_slots = result_content.get("available_slots", [])
+                        message = result_content.get("message", "")
+                        is_full_day = result_content.get("is_full_day_service", False)
+                        days_found = result_content.get("days_found", 0)
+                        
+                        if natural_summary:
+                            if is_full_day:
+                                if days_found > 1:
+                                    direct_response = f"{natural_summary}. Which day works for you?"
+                                else:
+                                    direct_response = f"{natural_summary}. Does that day work?"
+                            else:
+                                direct_response = f"{natural_summary}. Which works best for you?"
+                        elif available_slots:
+                            times = [f"{s.get('date', '')} at {s.get('time', '')}" for s in available_slots[:3]]
+                            direct_response = f"I have {', '.join(times)} available. Which works for you?"
+                        elif message:
+                            direct_response = message
+                        else:
+                            direct_response = "I don't have anything available then. Would you like to try different dates?"
+                    else:
+                        direct_response = "I couldn't search that time period. What dates would you like to check?"
+                    
+                    print(f"   ⚡ [DIRECT] search_availability -> '{direct_response[:50]}...')")
                 
                 # ========== BOOK_JOB / BOOK_APPOINTMENT ==========
                 elif tool_name in ["book_appointment", "book_job"]:
