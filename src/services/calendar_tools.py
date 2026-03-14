@@ -2054,13 +2054,73 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             worker_restrictions = matched_service.get('worker_restrictions')
             is_full_day = service_duration >= 480
             
-            # Use AI to parse the natural language query
-            from openai import OpenAI
-            
-            client = OpenAI(api_key=config.OPENAI_API_KEY)
             today = datetime.now()
+            query_lower = query.lower().strip()
             
-            parse_prompt = f"""Parse this availability query and return JSON with search parameters.
+            # FAST PATH: Handle common patterns without AI to save ~1-2s
+            start_date = None
+            end_date = None
+            time_filter = None
+            specific_days = None
+            used_fast_path = False
+            
+            # Fast path: "next month" or specific month names
+            month_names = {
+                'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5, 'june': 6,
+                'july': 7, 'august': 8, 'september': 9, 'october': 10, 'november': 11, 'december': 12
+            }
+            
+            if 'next month' in query_lower:
+                # Next month from today
+                next_month = today.replace(day=1) + timedelta(days=32)
+                start_date = next_month.replace(day=1)
+                # Search first 2 weeks of next month
+                end_date = start_date + timedelta(days=14)
+                used_fast_path = True
+                logger.info(f"[SEARCH_AVAIL] Fast path: 'next month' -> {start_date.date()} to {end_date.date()}")
+            else:
+                # Check for specific month names
+                for month_name, month_num in month_names.items():
+                    if month_name in query_lower:
+                        # User mentioned a specific month
+                        year = today.year
+                        if month_num < today.month:
+                            year += 1  # Next year if month has passed
+                        start_date = datetime(year, month_num, 1)
+                        end_date = start_date + timedelta(days=14)
+                        used_fast_path = True
+                        logger.info(f"[SEARCH_AVAIL] Fast path: month '{month_name}' -> {start_date.date()} to {end_date.date()}")
+                        break
+            
+            # Fast path: "the week after next" or "in 2 weeks"
+            if not used_fast_path and ('week after' in query_lower or 'in 2 weeks' in query_lower or 'in two weeks' in query_lower):
+                # Find Monday 2 weeks from now
+                days_until_monday = (7 - today.weekday()) % 7
+                if days_until_monday == 0:
+                    days_until_monday = 7
+                next_monday = today + timedelta(days=days_until_monday + 7)  # +7 for "week after next"
+                start_date = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = start_date + timedelta(days=4)  # Monday to Friday
+                used_fast_path = True
+                logger.info(f"[SEARCH_AVAIL] Fast path: 'week after next' -> {start_date.date()} to {end_date.date()}")
+            
+            # Fast path: "next week"
+            if not used_fast_path and 'next week' in query_lower:
+                days_until_monday = (7 - today.weekday()) % 7
+                if days_until_monday == 0:
+                    days_until_monday = 7
+                next_monday = today + timedelta(days=days_until_monday)
+                start_date = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = start_date + timedelta(days=4)  # Monday to Friday
+                used_fast_path = True
+                logger.info(f"[SEARCH_AVAIL] Fast path: 'next week' -> {start_date.date()} to {end_date.date()}")
+            
+            # If fast path didn't match, use AI parsing
+            if not used_fast_path:
+                from openai import OpenAI
+                client = OpenAI(api_key=config.OPENAI_API_KEY)
+                
+                parse_prompt = f"""Parse this availability query and return JSON with search parameters.
 Today is {today.strftime('%A, %B %d, %Y')}.
 
 Query: "{query}"
@@ -2081,61 +2141,54 @@ Examples:
 
 Return ONLY valid JSON, no explanation."""
 
-            try:
-                parse_response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": parse_prompt}],
-                    max_tokens=200,
-                    temperature=0
-                )
-                
-                import json
-                response_content = parse_response.choices[0].message.content.strip()
-                
-                # Strip markdown code blocks if present (```json ... ```)
-                if response_content.startswith('```'):
-                    lines = response_content.split('\n')
-                    # Remove first line (```json) and last line (```)
-                    json_lines = [l for l in lines if not l.startswith('```')]
-                    response_content = '\n'.join(json_lines).strip()
-                
-                logger.info(f"[SEARCH_AVAIL] Raw response: {response_content[:200]}")
-                parse_result = json.loads(response_content)
-                logger.info(f"[SEARCH_AVAIL] Parsed query: {parse_result}")
-                
-                start_date_str = parse_result.get('start_date')
-                end_date_str = parse_result.get('end_date')
-                time_filter = parse_result.get('time_filter')
-                specific_days = parse_result.get('specific_days')
-                
-                # Parse dates
-                start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else today
-                end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else start_date + timedelta(days=14)
-                
-            except Exception as e:
-                logger.warning(f"[SEARCH_AVAIL] Failed to parse query, using defaults: {e}")
-                
-                # Smart fallback: detect "other/different/more" queries and search BEYOND initial dates
-                query_lower = query.lower()
-                wants_different = any(word in query_lower for word in ['other', 'different', 'else', 'more', 'another', 'alternative'])
-                
-                if wants_different:
-                    # User wants different dates than already shown - search 2-4 weeks out
-                    start_date = today + timedelta(days=14)  # Start AFTER the initial 2-week window
-                    end_date = today + timedelta(days=35)    # Search 3-5 weeks out
-                    logger.info(f"[SEARCH_AVAIL] User wants different dates - searching {start_date.date()} to {end_date.date()}")
-                elif 'next month' in query_lower or 'april' in query_lower or 'may' in query_lower:
-                    # User asking about next month
-                    next_month = today.replace(day=1) + timedelta(days=32)
-                    start_date = next_month.replace(day=1)
-                    end_date = start_date + timedelta(days=14)
-                    logger.info(f"[SEARCH_AVAIL] User wants next month - searching {start_date.date()} to {end_date.date()}")
-                else:
-                    start_date = today
-                    end_date = today + timedelta(days=14)
-                
-                time_filter = None
-                specific_days = None
+                try:
+                    parse_response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": parse_prompt}],
+                        max_tokens=200,
+                        temperature=0
+                    )
+                    
+                    import json
+                    response_content = parse_response.choices[0].message.content.strip()
+                    
+                    # Strip markdown code blocks if present (```json ... ```)
+                    if response_content.startswith('```'):
+                        lines = response_content.split('\n')
+                        # Remove first line (```json) and last line (```)
+                        json_lines = [l for l in lines if not l.startswith('```')]
+                        response_content = '\n'.join(json_lines).strip()
+                    
+                    logger.info(f"[SEARCH_AVAIL] Raw response: {response_content[:200]}")
+                    parse_result = json.loads(response_content)
+                    logger.info(f"[SEARCH_AVAIL] Parsed query: {parse_result}")
+                    
+                    start_date_str = parse_result.get('start_date')
+                    end_date_str = parse_result.get('end_date')
+                    time_filter = parse_result.get('time_filter')
+                    specific_days = parse_result.get('specific_days')
+                    
+                    # Parse dates
+                    start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else today
+                    end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else start_date + timedelta(days=14)
+                    
+                except Exception as e:
+                    logger.warning(f"[SEARCH_AVAIL] Failed to parse query, using defaults: {e}")
+                    
+                    # Smart fallback: detect "other/different/more" queries and search BEYOND initial dates
+                    wants_different = any(word in query_lower for word in ['other', 'different', 'else', 'more', 'another', 'alternative'])
+                    
+                    if wants_different:
+                        # User wants different dates than already shown - search 2-4 weeks out
+                        start_date = today + timedelta(days=14)  # Start AFTER the initial 2-week window
+                        end_date = today + timedelta(days=35)    # Search 3-5 weeks out
+                        logger.info(f"[SEARCH_AVAIL] User wants different dates - searching {start_date.date()} to {end_date.date()}")
+                    else:
+                        start_date = today
+                        end_date = today + timedelta(days=14)
+                    
+                    time_filter = None
+                    specific_days = None
             
             # Get business config
             try:

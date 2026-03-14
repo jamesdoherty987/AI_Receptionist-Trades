@@ -1516,7 +1516,8 @@ TOOL RULES:
                     # Run tool execution in thread pool to not block event loop
                     # This allows audio playback to continue during tool execution
                     # CRITICAL: Add timeout to prevent infinite hang
-                    TOOL_TIMEOUT = 10.0  # Max seconds for tool execution
+                    # Use longer timeout for search operations that may need to check many days
+                    TOOL_TIMEOUT = 15.0 if tool_name in ['search_availability', 'get_next_available', 'check_availability'] else 10.0
                     try:
                         result = await asyncio.wait_for(
                             asyncio.get_event_loop().run_in_executor(

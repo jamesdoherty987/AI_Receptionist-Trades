@@ -2576,26 +2576,36 @@ class PostgreSQLDatabaseWrapper:
             List of available worker dicts. Returns None on error (distinct from empty list).
         """
         if not company_id:
+            print(f"[WORKER_AVAIL] ❌ No company_id provided - returning empty list")
             return []
         
         try:
             # Get all workers for this company
             all_workers = self.get_all_workers(company_id=company_id)
             
+            print(f"[WORKER_AVAIL] Checking availability for company_id={company_id} at {appointment_time} for {duration_minutes} mins")
+            print(f"[WORKER_AVAIL] Total workers found: {len(all_workers) if all_workers else 0}")
+            
             if not all_workers:
+                print(f"[WORKER_AVAIL] ❌ No workers found for company_id={company_id}")
                 return []
             
             available_workers = []
             
             for worker in all_workers:
+                worker_name = worker.get('name', 'Unknown')
+                worker_status = worker.get('status', 'unknown')
+                
                 # Skip inactive workers
-                if worker.get('status') == 'inactive':
+                if worker_status == 'inactive':
+                    print(f"[WORKER_AVAIL] Skipping inactive worker: {worker_name}")
                     continue
                 
                 # Filter by trade specialty if specified
                 if trade_specialty:
                     worker_specialty = (worker.get('trade_specialty') or '').lower()
                     if trade_specialty.lower() not in worker_specialty and worker_specialty not in trade_specialty.lower():
+                        print(f"[WORKER_AVAIL] Skipping worker {worker_name} - specialty mismatch")
                         continue
                 
                 # Check availability
@@ -2606,6 +2616,8 @@ class PostgreSQLDatabaseWrapper:
                     company_id=company_id
                 )
                 
+                print(f"[WORKER_AVAIL] Worker {worker_name} (id={worker['id']}): available={availability['available']}, message={availability.get('message', '')}")
+                
                 if availability['available']:
                     available_workers.append({
                         'id': worker['id'],
@@ -2615,9 +2627,12 @@ class PostgreSQLDatabaseWrapper:
                         'trade_specialty': worker.get('trade_specialty')
                     })
             
+            print(f"[WORKER_AVAIL] ✅ Found {len(available_workers)} available workers")
             return available_workers
         except Exception as e:
-            print(f"Error finding available workers: {e}")
+            print(f"[WORKER_AVAIL] ❌ Error finding available workers: {e}")
+            import traceback
+            traceback.print_exc()
             # Return None on error to distinguish from "no workers available" (empty list)
             return None
     
