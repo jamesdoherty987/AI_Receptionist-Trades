@@ -842,6 +842,18 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
                 checking_msg = random.choice(generic_fillers)
                 print(f"   ✅ [PRE-CHECK] Detected: AVAILABILITY CHECK")
         
+        # 4b. ADDRESS CONFIRMATION - user confirms address, next step is availability check
+        if not likely_needs_tool:
+            address_confirmation_phrases = ["same address", "still your address", "your address", "still at", "at the same", "same location", "same place", "address as before", "address on file"]
+            ai_asked_address = any(phrase in prev_assistant_msg for phrase in address_confirmation_phrases)
+            user_confirms = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "correct", "that's right", "it is", "that's it", "that's correct"])
+            
+            if ai_asked_address and user_confirms:
+                likely_needs_tool = True
+                detected_intent = "ADDRESS_CONFIRMED"
+                checking_msg = random.choice(generic_fillers)
+                print(f"   ✅ [PRE-CHECK] Detected: ADDRESS CONFIRMED (will check availability)")
+        
         # 5. BOOKING CONFIRMATION - user confirms booking after AI asked "ready to book?"
         if not likely_needs_tool:
             # Check if AI just asked about booking confirmation
