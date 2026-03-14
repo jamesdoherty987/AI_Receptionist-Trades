@@ -278,11 +278,9 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
         
         # Check for day numbers like "the 23rd", "15th", "1st" - but NOT times like "at 9"
         day_number_match = re.search(r'\b(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b', text_lower)
-        has_explicit_date = (
-            any(month in text_lower for month in month_names) or  # Month name present
-            day_number_match or  # Day number like "the 23rd", "15th"
-            re.search(r'\b20\d{2}\b', text_lower)  # Year like 2026
-        )
+        has_month_name = any(month in text_lower for month in month_names)
+        has_year = bool(re.search(r'\b20\d{2}\b', text_lower))
+        has_explicit_date = has_month_name or day_number_match or has_year
         
         # Extract the explicit day number if present (for "Monday the 23rd" type inputs)
         explicit_day_num = int(day_number_match.group(1)) if day_number_match else None
@@ -295,8 +293,38 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
             parsed["month"] = None
             parsed["day"] = None
             parsed["year"] = None
-        elif detected_weekday and parsed.get("month") and parsed.get("day") and has_explicit_date:
-            print(f"[DATE] Weekday '{detected_weekday}' found but explicit date also present - trusting AI's month/day parsing")
+        elif detected_weekday and parsed.get("month") and parsed.get("day") and explicit_day_num and not has_month_name and not has_year:
+            # AI returned month/day but input is "Wednesday the 1st" (weekday + ordinal, no month name)
+            # We need to verify the weekday matches, or find the correct date
+            target_weekday = weekday_names[detected_weekday]
+            try:
+                ai_date = datetime(parsed.get("year", now.year), parsed["month"], parsed["day"])
+                if ai_date.weekday() != target_weekday:
+                    # AI's date doesn't match the weekday - find the correct date
+                    print(f"[DATE_FIX] AI date {ai_date.strftime('%B %d')} is {ai_date.strftime('%A')}, not {detected_weekday.capitalize()} - searching for correct date")
+                    search_date = now
+                    for _ in range(365):
+                        if search_date.day == explicit_day_num and search_date.weekday() == target_weekday:
+                            parsed["month"] = search_date.month
+                            parsed["year"] = search_date.year
+                            print(f"[DATE_FIX] Found matching date: {search_date.strftime('%B %d, %Y')} is a {detected_weekday.capitalize()}")
+                            break
+                        search_date += timedelta(days=1)
+                else:
+                    print(f"[DATE] Weekday '{detected_weekday}' matches AI's date - trusting AI's month/day parsing")
+            except ValueError:
+                print(f"[DATE_FIX] Invalid AI date - searching for {detected_weekday} the {explicit_day_num}")
+                search_date = now
+                for _ in range(365):
+                    if search_date.day == explicit_day_num and search_date.weekday() == target_weekday:
+                        parsed["month"] = search_date.month
+                        parsed["year"] = search_date.year
+                        print(f"[DATE_FIX] Found matching date: {search_date.strftime('%B %d, %Y')} is a {detected_weekday.capitalize()}")
+                        break
+                    search_date += timedelta(days=1)
+        elif detected_weekday and parsed.get("month") and parsed.get("day") and (has_month_name or has_year):
+            # Has explicit month name or year - trust AI's parsing but validate weekday
+            print(f"[DATE] Weekday '{detected_weekday}' found with explicit month/year - trusting AI's month/day parsing")
         elif detected_weekday and parsed.get("day_of_week") and explicit_day_num and not parsed.get("day"):
             # AI returned day_of_week but there's an explicit day number like "Monday the 23rd"
             # We need to find the next occurrence of that weekday that falls on that day number
@@ -314,6 +342,22 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
                     print(f"[DATE_FIX] Found matching date: {search_date.strftime('%B %d, %Y')} is a {detected_weekday.capitalize()}")
                     break
                 search_date += timedelta(days=1)
+        elif detected_weekday and explicit_day_num and parsed.get("day") and not parsed.get("month") and not parsed.get("day_of_week"):
+            # AI returned just day number without month or day_of_week (e.g., "Wednesday the 25th" -> {day: 25})
+            # We need to find the next occurrence of that weekday that falls on that day number
+            print(f"[DATE_FIX] AI returned day={parsed.get('day')} without month - finding {detected_weekday} the {explicit_day_num}")
+            target_weekday = weekday_names[detected_weekday]
+            search_date = now
+            for _ in range(365):  # Search up to a year ahead
+                if search_date.day == explicit_day_num and search_date.weekday() == target_weekday:
+                    parsed["month"] = search_date.month
+                    parsed["year"] = search_date.year
+                    print(f"[DATE_FIX] Found matching date: {search_date.strftime('%B %d, %Y')} is a {detected_weekday.capitalize()}")
+                    break
+                search_date += timedelta(days=1)
+            else:
+                # No match found in next year - this shouldn't happen but handle gracefully
+                print(f"[DATE_FIX] WARNING: Could not find {detected_weekday} the {explicit_day_num} in next year")
         
         # Check if it's a birth date
         if parsed.get("is_birth_date"):
