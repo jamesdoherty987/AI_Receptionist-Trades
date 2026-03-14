@@ -1561,6 +1561,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 
                 if end_date_str and end_date_str != start_date_str:
                     end_date = parse_datetime(end_date_str, require_time=False, default_time=(17, 0), allow_past=True)
+                    if not end_date:
+                        logger.warning(f"[CHECK_AVAIL] Could not parse end_date '{end_date_str}', defaulting to 7 days from start")
+                        end_date = start_date + timedelta(days=7)
+                        end_date = end_date.replace(hour=17, minute=0, second=0, microsecond=0)
                 else:
                     end_date = start_date.replace(hour=17, minute=0)
                 
