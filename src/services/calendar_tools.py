@@ -4120,7 +4120,7 @@ Return ONLY valid JSON, no explanation."""
             # Get business phone number for transfer
             from src.services.settings_manager import get_settings_manager
             settings_mgr = get_settings_manager()
-            transfer_number = settings_mgr.get_fallback_phone_number()  # Returns business phone
+            transfer_number = settings_mgr.get_fallback_phone_number(company_id=company_id)  # Returns business phone
             
             if not transfer_number:
                 return {
