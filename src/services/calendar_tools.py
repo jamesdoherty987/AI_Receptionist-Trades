@@ -2424,8 +2424,8 @@ Return ONLY valid JSON, no explanation."""
                             bookings = db.get_client_bookings(client['id'], company_id=company_id)
                             if bookings:
                                 for booking in bookings:
-                                    if booking.get('address'):
-                                        last_address = booking['address']
+                                    if booking.get('address') or booking.get('eircode'):
+                                        last_address = booking.get('address') or booking.get('eircode')
                                         break
                         
                         # Build the message with all available info and address confirmation
@@ -2478,8 +2478,8 @@ Return ONLY valid JSON, no explanation."""
                                     bookings = db.get_client_bookings(client['id'], company_id=company_id)
                                     if bookings:
                                         for booking in bookings:
-                                            if booking.get('address'):
-                                                last_address = booking['address']
+                                            if booking.get('address') or booking.get('eircode'):
+                                                last_address = booking.get('address') or booking.get('eircode')
                                                 break
                                 
                                 msg_parts = [f"Found returning customer: {client['name']}"]
@@ -2523,8 +2523,8 @@ Return ONLY valid JSON, no explanation."""
                                     bookings = db.get_client_bookings(client['id'], company_id=company_id)
                                     if bookings:
                                         for booking in bookings:
-                                            if booking.get('address'):
-                                                last_address = booking['address']
+                                            if booking.get('address') or booking.get('eircode'):
+                                                last_address = booking.get('address') or booking.get('eircode')
                                                 break
                                 
                                 msg_parts = [f"Found returning customer: {client['name']}"]
@@ -2642,8 +2642,8 @@ Return ONLY valid JSON, no explanation."""
                                 bookings = db.get_client_bookings(best_match['id'], company_id=company_id)
                                 if bookings:
                                     for booking in bookings:
-                                        if booking.get('address'):
-                                            last_address = booking['address']
+                                        if booking.get('address') or booking.get('eircode'):
+                                            last_address = booking.get('address') or booking.get('eircode')
                                             break
                             
                             # Build the message with all available info
@@ -3394,7 +3394,11 @@ Return ONLY valid JSON, no explanation."""
                 logger.info(f"[BOOK_JOB] Extracted eircode: {extracted_eircode}")
             
             # Use validated and potentially enhanced address
-            validated_address = address_data['full_address']
+            # If address type is 'eircode', don't duplicate it in the address field
+            if address_data.get('type') == 'eircode':
+                validated_address = None  # Eircode is stored separately
+            else:
+                validated_address = address_data['full_address']
             logger.info(f"[BOOK_JOB] Validated address: {validated_address}")
             
             if not job_description:

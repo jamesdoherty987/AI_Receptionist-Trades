@@ -155,9 +155,11 @@ class AddressValidator:
         
         # Check if it's just an eircode (with or without dashes) - EIRCODE IS ENOUGH
         if self.validate_eircode(cleaned_for_eircode):
+            normalized_eircode = self.normalize_eircode(cleaned_input)
             result.update({
                 'type': 'eircode',
-                'eircode': self.normalize_eircode(cleaned_input),
+                'full_address': normalized_eircode,  # Use normalized eircode as address (not duplicated)
+                'eircode': normalized_eircode,
                 'needs_clarification': False,  # Eircode is sufficient - don't ask for more
                 'suggestions': []  # No suggestions needed - eircode uniquely identifies location
             })
