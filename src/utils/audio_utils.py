@@ -83,3 +83,59 @@ def mulaw_to_wav(mulaw_data: bytes, sample_rate: int = 8000) -> bytes:
 
     return bytes(header) + bytes(pcm_samples)
 
+
+def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
+                       pad_packets: int = 10, sample_rate: int = 8000) -> bytes:
+    """
+    Trim leading and trailing silence from a list of mulaw audio packets.
+    
+    Uses per-packet energy detection to find where speech starts and ends,
+    then returns only the speech portion with a small padding on each side.
+    
+    Args:
+        packets: List of raw mulaw byte packets (e.g., from a deque)
+        energy_threshold: RMS energy below this is considered silence (default 100)
+        pad_packets: Number of silent packets to keep before/after speech (~20ms each)
+        sample_rate: Sample rate for duration calculation (default 8kHz)
+    
+    Returns:
+        Concatenated mulaw bytes containing only the speech portion.
+        Returns all packets joined if no speech boundary is found.
+    """
+    if not packets:
+        return b''
+    
+    n = len(packets)
+    
+    # Find first packet above threshold (speech start)
+    first_voice = -1
+    for i in range(n):
+        if ulaw_energy(packets[i]) >= energy_threshold:
+            first_voice = i
+            break
+    
+    if first_voice < 0:
+        # No speech detected at all — return everything (let caller decide)
+        return b''.join(packets)
+    
+    # Find last packet above threshold (speech end)
+    last_voice = first_voice
+    for i in range(n - 1, first_voice - 1, -1):
+        if ulaw_energy(packets[i]) >= energy_threshold:
+            last_voice = i
+            break
+    
+    # Add padding
+    start = max(0, first_voice - pad_packets)
+    end = min(n, last_voice + pad_packets + 1)
+    
+    trimmed = b''.join(packets[start:end])
+    total_bytes = sum(len(p) for p in packets)
+    trimmed_duration = len(trimmed) / sample_rate
+    original_duration = total_bytes / sample_rate
+    
+    print(f"🎙️ [ADDR_AUDIO] Trimmed: {original_duration:.1f}s → {trimmed_duration:.1f}s "
+          f"(packets {start}-{end-1} of {n}, threshold={energy_threshold})")
+    
+    return trimmed
+

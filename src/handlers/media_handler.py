@@ -18,7 +18,7 @@ import time as time_module
 import websockets
 from collections import deque
 
-from src.utils.audio_utils import ulaw_energy, mulaw_to_wav
+from src.utils.audio_utils import ulaw_energy, mulaw_to_wav, trim_silence_mulaw
 from src.utils.config import config
 from src.services.asr_deepgram import DeepgramASR
 from src.services.llm_stream import stream_llm
@@ -60,7 +60,7 @@ def content_fingerprint(s: str) -> str:
 
 
 # --- Address audio capture constants ---
-AUDIO_BUFFER_SECONDS = 10
+AUDIO_BUFFER_SECONDS = 17
 MULAW_SAMPLE_RATE = 8000
 MULAW_BYTES_PER_PACKET = 160  # 20ms packets
 MAX_BUFFER_PACKETS = (AUDIO_BUFFER_SECONDS * MULAW_SAMPLE_RATE) // MULAW_BYTES_PER_PACKET  # ~500
@@ -670,34 +670,16 @@ async def media_handler(ws):
                             # Don't capture, but the flag will be re-set when AI asks for address next
                         else:
                             print(f"🎙️ [ADDR_AUDIO] Capturing caller's address response: '{text}'")
-                            # Snapshot the buffer now (before it rolls over with new audio)
-                            buf_len = len(audio_buffer)
-                            captured_audio = b''.join(audio_buffer)
-                            cap_bytes = len(captured_audio)
-                            cap_duration = cap_bytes / MULAW_SAMPLE_RATE if cap_bytes else 0
+                            # Snapshot the buffer as a list (before it rolls over)
+                            buffer_snapshot = list(audio_buffer)
+                            buf_len = len(buffer_snapshot)
+                            raw_total = sum(len(p) for p in buffer_snapshot)
+                            print(f"🎙️ [ADDR_AUDIO] Buffer: {buf_len} packets, {raw_total} bytes, ~{raw_total / MULAW_SAMPLE_RATE:.1f}s")
                             
-                            # Check audio energy to see if it's silence
-                            if cap_bytes > 0:
-                                # Sample energy from middle of buffer (where caller speech likely is)
-                                mid = cap_bytes // 2
-                                chunk_size = min(1600, cap_bytes)  # ~200ms sample
-                                sample_start = max(0, mid - chunk_size // 2)
-                                sample_chunk = captured_audio[sample_start:sample_start + chunk_size]
-                                sample_energy = ulaw_energy(sample_chunk)
-                                # Also check last 2 seconds (most recent audio)
-                                tail_bytes = min(16000, cap_bytes)  # last 2s
-                                tail_chunk = captured_audio[-tail_bytes:]
-                                tail_energy = ulaw_energy(tail_chunk)
-                                # Check first 2 seconds
-                                head_chunk = captured_audio[:min(16000, cap_bytes)]
-                                head_energy = ulaw_energy(head_chunk)
-                                print(f"🎙️ [ADDR_AUDIO] Buffer: {buf_len} packets, {cap_bytes} bytes, ~{cap_duration:.1f}s")
-                                print(f"🎙️ [ADDR_AUDIO] Energy — head(first 2s)={head_energy:.0f}, mid={sample_energy:.0f}, tail(last 2s)={tail_energy:.0f}")
-                                # Check individual packet sizes
-                                pkt_sizes = set(len(p) for p in audio_buffer)
-                                print(f"🎙️ [ADDR_AUDIO] Packet sizes in buffer: {pkt_sizes}")
-                            else:
-                                print(f"⚠️ [ADDR_AUDIO] Buffer: {buf_len} packets but 0 bytes after join!")
+                            # Trim silence — only keep the portion with actual speech
+                            captured_audio = trim_silence_mulaw(buffer_snapshot, energy_threshold=100.0, pad_packets=15)
+                            cap_bytes = len(captured_audio)
+                            print(f"🎙️ [ADDR_AUDIO] After trim: {cap_bytes} bytes, ~{cap_bytes / MULAW_SAMPLE_RATE:.1f}s")
                             
                             # Use a unique filename with timestamp to avoid CDN cache collisions
                             import time as _time_mod
