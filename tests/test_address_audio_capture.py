@@ -112,29 +112,32 @@ class TestCallStateAddressAudioFields:
         assert cs.address_audio_url == "https://r2.example.com/audio/test.wav"
 
     def test_no_double_capture(self):
-        """Once captured, the guard prevents re-capture."""
+        """Even after capture, the flag can be re-set to allow overwrite."""
         cs = create_call_state()
         cs.address_audio_captured = True
         cs.awaiting_address_audio = True
-        should_capture = cs.awaiting_address_audio and not cs.address_audio_captured
-        assert should_capture is False
+        # In the new code, phase 2 just checks awaiting_address_audio (no captured guard)
+        should_capture = cs.awaiting_address_audio
+        assert should_capture is True  # Overwrite is allowed
 
 
 class TestTwoPhaseIntegration:
     """Integration-style tests simulating the two-phase approach."""
 
-    def test_phase1_only_triggers_when_not_already_captured(self):
+    def test_phase1_triggers_even_after_capture(self):
+        """Phase 1 should re-set the flag even if audio was already captured,
+        allowing overwrite (e.g., eircode fallback to street address)."""
         cs = create_call_state()
         cs.address_audio_captured = True
         text = "What's your address?"
-        if not cs.address_audio_captured and ai_asked_for_address(text):
+        if ai_asked_for_address(text):
             cs.awaiting_address_audio = True
-        assert cs.awaiting_address_audio is False
+        assert cs.awaiting_address_audio is True  # Re-set allowed
 
     def test_phase2_clears_flag_immediately(self):
         cs = create_call_state()
         cs.awaiting_address_audio = True
-        if cs.awaiting_address_audio and not cs.address_audio_captured:
+        if cs.awaiting_address_audio:
             cs.awaiting_address_audio = False
         assert cs.awaiting_address_audio is False
 
@@ -144,24 +147,24 @@ class TestTwoPhaseIntegration:
 
         # Turn 1: AI greets — no trigger
         ai_1 = "Hi, thank you for calling. How can I help you today?"
-        if not cs.address_audio_captured and ai_asked_for_address(ai_1):
+        if ai_asked_for_address(ai_1):
             cs.awaiting_address_audio = True
         assert cs.awaiting_address_audio is False
 
         # Turn 2: AI asks for name — no trigger
         ai_2 = "Sure, can I get your name please?"
-        if not cs.address_audio_captured and ai_asked_for_address(ai_2):
+        if ai_asked_for_address(ai_2):
             cs.awaiting_address_audio = True
         assert cs.awaiting_address_audio is False
 
         # Turn 3: AI asks for address — TRIGGERS phase 1
         ai_3 = "Great, and what's the address or eircode for the job?"
-        if not cs.address_audio_captured and ai_asked_for_address(ai_3):
+        if ai_asked_for_address(ai_3):
             cs.awaiting_address_audio = True
         assert cs.awaiting_address_audio is True
 
         # Turn 4: Caller says address — TRIGGERS phase 2
-        if cs.awaiting_address_audio and not cs.address_audio_captured:
+        if cs.awaiting_address_audio:
             cs.awaiting_address_audio = False
             cs.address_audio_url = "https://r2.example.com/audio/call123.wav"
             cs.address_audio_captured = True
@@ -169,11 +172,62 @@ class TestTwoPhaseIntegration:
         assert cs.address_audio_captured is True
         assert cs.address_audio_url is not None
 
-        # Turn 5: AI mentions address again — should NOT re-trigger
+        # Turn 5: AI mentions address again — flag re-sets (allows overwrite)
         ai_5 = "And what's the address again? Just to confirm."
-        if not cs.address_audio_captured and ai_asked_for_address(ai_5):
+        if ai_asked_for_address(ai_5):
             cs.awaiting_address_audio = True
+        assert cs.awaiting_address_audio is True  # Re-set is allowed now
+
+    def test_eircode_fallback_to_address(self):
+        """AI asks for eircode, caller doesn't know, AI asks for address instead.
+        Should end up with the address recording, not the 'I don't know' one."""
+        cs = create_call_state()
+
+        # AI asks for eircode
+        ai_1 = "Do you have an eircode for the property?"
+        if ai_asked_for_address(ai_1):
+            cs.awaiting_address_audio = True
+        assert cs.awaiting_address_audio is True
+
+        # Caller says "I don't know my eircode" — phase 2 fires, captures this
+        if cs.awaiting_address_audio:
+            cs.awaiting_address_audio = False
+            cs.address_audio_url = "https://r2.example.com/audio/useless.wav"
+            cs.address_audio_captured = True
+
+        assert cs.address_audio_url == "https://r2.example.com/audio/useless.wav"
+
+        # AI then asks for street address — flag re-sets (no captured guard)
+        ai_2 = "No problem, can you give me the street address instead?"
+        if ai_asked_for_address(ai_2):
+            cs.awaiting_address_audio = True
+        assert cs.awaiting_address_audio is True
+
+        # Caller gives actual address — phase 2 fires again, OVERWRITES
+        if cs.awaiting_address_audio:
+            cs.awaiting_address_audio = False
+            cs.address_audio_url = "https://r2.example.com/audio/real_address.wav"
+            cs.address_audio_captured = True
+
+        assert cs.address_audio_url == "https://r2.example.com/audio/real_address.wav"
+
+    def test_no_capture_when_ai_doesnt_ask(self):
+        """If AI never asks for address, nothing gets captured."""
+        cs = create_call_state()
+
+        ai_responses = [
+            "Hi, how can I help?",
+            "Can I get your name?",
+            "What time works for you?",
+            "Great, I've booked that for you.",
+        ]
+        for ai_text in ai_responses:
+            if ai_asked_for_address(ai_text):
+                cs.awaiting_address_audio = True
+
         assert cs.awaiting_address_audio is False
+        assert cs.address_audio_captured is False
+        assert cs.address_audio_url is None
 
 
 class TestPerformanceCharacteristics:

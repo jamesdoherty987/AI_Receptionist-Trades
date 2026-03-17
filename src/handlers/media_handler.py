@@ -376,8 +376,11 @@ async def media_handler(ws):
                     print(f"🤖 RECEPTIONIST: {full_text.strip()}")
                     print(f"{'='*60}\n")
                     
-                    # Two-phase address audio: if AI just asked for address/eircode, flag it
-                    if not call_state.address_audio_captured and ai_asked_for_address(full_text):
+                    # Two-phase address audio: if AI just asked for address/eircode, flag it.
+                    # We allow re-setting even if already captured — this handles the case
+                    # where AI asked for eircode, caller didn't know, AI then asks for
+                    # street address. The second capture overwrites the first (useless) one.
+                    if ai_asked_for_address(full_text):
                         call_state.awaiting_address_audio = True
                         print(f"🎙️ [ADDR_AUDIO] AI asked for address — will capture caller's next response")
                 
@@ -639,16 +642,23 @@ async def media_handler(ws):
                     last_committed = text
                     conversation.append({"role": "user", "content": text})
                     
-                    # Address audio capture: if we're awaiting the caller's address response, capture it now
-                    # This is the second phase of the two-phase approach:
-                    # Phase 1: AI asked for address → set awaiting_address_audio = True (in start_tts)
-                    # Phase 2: Caller's next speech_final → snapshot buffer, upload to R2
-                    if call_state.awaiting_address_audio and not call_state.address_audio_captured:
+                    # Address audio capture: two-phase approach
+                    # Phase 1 (in start_tts): AI asked for address → awaiting_address_audio = True
+                    # Phase 2 (here): Caller's next speech_final → snapshot buffer, upload to R2
+                    #
+                    # Key: we DON'T set address_audio_captured here. We only set it after
+                    # a successful upload. The flag awaiting_address_audio gets re-set each
+                    # time the AI asks for address/eircode, so if the caller says "I don't
+                    # know my eircode" and the AI then asks for the street address, the
+                    # capture will happen on the street address response instead — overwriting
+                    # the previous (useless) recording.
+                    if call_state.awaiting_address_audio:
                         call_state.awaiting_address_audio = False
                         print(f"🎙️ [ADDR_AUDIO] Capturing caller's address response: '{text[:60]}...'")
-                        async def _capture_address_audio():
+                        # Snapshot the buffer now (before it rolls over with new audio)
+                        captured_audio = b''.join(audio_buffer)
+                        async def _capture_address_audio(raw_audio):
                             try:
-                                raw_audio = b''.join(audio_buffer)
                                 if raw_audio:
                                     wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
                                     from src.services.storage_r2 import upload_company_file
@@ -676,7 +686,7 @@ async def media_handler(ws):
                                     print(f"⚠️ [ADDR_AUDIO] Buffer empty, nothing to capture")
                             except Exception as audio_err:
                                 print(f"⚠️ [ADDR_AUDIO] Capture failed: {audio_err}")
-                        asyncio.create_task(_capture_address_audio())
+                        asyncio.create_task(_capture_address_audio(captured_audio))
                     
                     # Trim history - keep more context to prevent AI from forgetting
                     # Keep system message + last 50 messages
