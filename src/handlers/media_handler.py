@@ -441,11 +441,6 @@ async def media_handler(ws):
                 tts_ended_at = asyncio.get_event_loop().time()
                 speaking = False
                 llm_processing = False
-                # Clear audio buffer when AI finishes speaking.
-                # Twilio's inbound stream can contain TTS echo/bleed,
-                # so any audio captured while speaking is contaminated.
-                # After clearing, the buffer only holds post-TTS caller audio.
-                audio_buffer.clear()
                 print(f"👂 Ready to listen")
 
         if respond_task and not respond_task.done():
@@ -687,7 +682,7 @@ async def media_handler(ws):
                     # the previous (useless) recording.
                     if call_state.awaiting_address_audio:
                         call_state.awaiting_address_audio = False
-                        phase1_time = getattr(call_state, '_addr_audio_phase1_time', 0)
+                        phase1_time = call_state._addr_audio_phase1_time
                         phase_gap = time_module.time() - phase1_time if phase1_time else -1
                         print(f"🎙️ [ADDR_AUDIO] Phase 2: speech_final received, gap since phase1={phase_gap:.1f}s")
                         print(f"🎙️ [ADDR_AUDIO] Phase 2: speaking={speaking}, tts_ended_at_delta={asyncio.get_event_loop().time() - tts_ended_at:.1f}s, buffer_packets={len(audio_buffer)}")
@@ -702,28 +697,51 @@ async def media_handler(ws):
                         else:
                             print(f"🎙️ [ADDR_AUDIO] Capturing caller's address response: '{text}'")
                             # Snapshot the buffer as a list (before it rolls over)
-                            buffer_snapshot = list(audio_buffer)
+                            # TIME-WINDOWED CAPTURE: Instead of using the entire rolling
+                            # buffer (which contains TTS echo from before the AI finished
+                            # speaking), only take packets from Phase 1 onwards. This
+                            # naturally excludes old TTS audio without needing to clear
+                            # the buffer (which would wipe caller speech that overlaps
+                            # with TTS playback).
+                            full_buffer = list(audio_buffer)
+                            total_packets = len(full_buffer)
+                            
+                            if phase1_time > 0:
+                                elapsed = time_module.time() - phase1_time
+                                # Each packet = 160 bytes = 20ms at 8kHz
+                                packets_since_phase1 = int(elapsed * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
+                                # Add 1s of padding before Phase 1 to catch early speech
+                                padding_packets = int(1.0 * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)  # 50 packets = 1s
+                                packets_to_take = min(packets_since_phase1 + padding_packets, total_packets)
+                                buffer_snapshot = full_buffer[-packets_to_take:] if packets_to_take > 0 else full_buffer
+                                print(f"🎙️ [ADDR_AUDIO] Time-window: elapsed={elapsed:.1f}s, "
+                                      f"packets_since_phase1={packets_since_phase1}, +padding={padding_packets}, "
+                                      f"taking={len(buffer_snapshot)}/{total_packets}")
+                            else:
+                                # No phase1 timestamp — fallback to full buffer
+                                buffer_snapshot = full_buffer
+                                print(f"🎙️ [ADDR_AUDIO] No phase1 timestamp — using full buffer")
+                            
                             buf_len = len(buffer_snapshot)
                             raw_total = sum(len(p) for p in buffer_snapshot)
                             print(f"🎙️ [ADDR_AUDIO] Buffer: {buf_len} packets, {raw_total} bytes, ~{raw_total / MULAW_SAMPLE_RATE:.1f}s")
                             
-                            # Trim silence — only keep the portion with actual speech
-                            # Buffer is cleared when AI finishes speaking, so it only
-                            # contains post-TTS caller audio (no echo contamination).
-                            # Threshold of 30 is very conservative — barely above dead
-                            # line noise (~10-20). Better to keep extra silence than
-                            # clip someone with a quiet/low voice.
-                            # Pad 25 packets (~500ms) on each side for safety.
+                            # Light trim — remove leading/trailing silence within the
+                            # time-windowed portion. Threshold 30 is very conservative,
+                            # barely above dead line noise (~10-20). Generous padding
+                            # of 25 packets (~500ms) on each side. Better to keep extra
+                            # silence than clip someone with a quiet/low voice.
                             captured_audio = trim_silence_mulaw(buffer_snapshot, energy_threshold=30.0, pad_packets=25)
                             cap_bytes = len(captured_audio)
                             cap_duration = cap_bytes / MULAW_SAMPLE_RATE
                             
                             # Safety net: if trim result is suspiciously short (<1.5s),
-                            # use the full buffer. An address takes at least 2-3s to say.
-                            # Better to have extra silence than a clipped recording.
+                            # use the full windowed buffer. An address takes at least
+                            # 2-3s to say. Better to have extra silence than a clipped
+                            # recording.
                             if cap_duration < 1.5 and buf_len > 0:
                                 raw_duration = raw_total / MULAW_SAMPLE_RATE
-                                print(f"🎙️ [ADDR_AUDIO] ⚠️ Trim too aggressive ({cap_duration:.1f}s) — using full buffer ({raw_duration:.1f}s)")
+                                print(f"🎙️ [ADDR_AUDIO] ⚠️ Trim too aggressive ({cap_duration:.1f}s) — using full windowed buffer ({raw_duration:.1f}s)")
                                 captured_audio = b''.join(buffer_snapshot)
                                 cap_bytes = len(captured_audio)
                             
