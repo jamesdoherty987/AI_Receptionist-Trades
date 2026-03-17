@@ -154,6 +154,19 @@ function JobsTab({ bookings }) {
                 ? `${job.job_address || job.address}${job.eircode ? ` (${job.eircode})` : ''}` 
                 : 'No address'}
             </span>
+            {job.address_audio_url && (
+              <button 
+                className="btn-audio-inline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const audio = new Audio(job.address_audio_url);
+                  audio.play();
+                }}
+                title="Listen to address"
+              >
+                <i className="fas fa-volume-up"></i>
+              </button>
+            )}
           </div>
           
           <div className="job-details">
@@ -277,6 +290,19 @@ function JobsTab({ bookings }) {
                           ? `${job.job_address || job.address}${job.eircode ? ` (${job.eircode})` : ''}` 
                           : 'No address'}
                       </span>
+                      {job.address_audio_url && (
+                        <button 
+                          className="btn-audio-inline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const audio = new Audio(job.address_audio_url);
+                            audio.play();
+                          }}
+                          title="Listen to address"
+                        >
+                          <i className="fas fa-volume-up"></i>
+                        </button>
+                      )}
                     </div>
                     
                     <div className="job-details">
@@ -330,6 +356,19 @@ function JobsTab({ bookings }) {
                           ? `${job.job_address || job.address}${job.eircode ? ` (${job.eircode})` : ''}` 
                           : 'No address'}
                       </span>
+                      {job.address_audio_url && (
+                        <button 
+                          className="btn-audio-inline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const audio = new Audio(job.address_audio_url);
+                            audio.play();
+                          }}
+                          title="Listen to address"
+                        >
+                          <i className="fas fa-volume-up"></i>
+                        </button>
+                      )}
                     </div>
                     
                     <div className="job-details">

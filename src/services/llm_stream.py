@@ -1482,7 +1482,8 @@ TOOL RULES:
             'google_calendar': calendar,
             'calendar': calendar,
             'db': db,
-            'company_id': company_id_int
+            'company_id': company_id_int,
+            'call_state': call_state
         }
         print(f"   📦 [TOOL_SETUP] Services ready: calendar={calendar is not None}, db={db is not None}")
         

@@ -656,6 +656,15 @@ class PostgreSQLDatabaseWrapper:
                         print(f"[WARNING] Could not create General Service for company {company_id}: {e}")
         except Exception as e:
             print(f"[WARNING] Could not run General Service migration: {e}")
+        
+        # Add address_audio_url column to bookings table
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='bookings' AND column_name='address_audio_url'")
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE bookings ADD COLUMN address_audio_url TEXT")
+                print("[SUCCESS] Added address_audio_url column to bookings table")
+            except Exception as e:
+                print(f"[WARNING] Could not add address_audio_url column: {e}")
     
     def _convert_query(self, query: str) -> str:
         """Convert ? placeholders to %s for parameterized queries"""
@@ -1130,6 +1139,7 @@ class PostgreSQLDatabaseWrapper:
                         b.service_type, b.status, b.phone_number, b.email, b.created_at,
                         b.charge, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
+                        b.address_audio_url,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
@@ -1140,6 +1150,7 @@ class PostgreSQLDatabaseWrapper:
                              b.service_type, b.status, b.phone_number, b.email, b.created_at,
                              b.charge, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
+                             b.address_audio_url,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """, (company_id,))
@@ -1150,6 +1161,7 @@ class PostgreSQLDatabaseWrapper:
                         b.service_type, b.status, b.phone_number, b.email, b.created_at,
                         b.charge, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
+                        b.address_audio_url,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
@@ -1159,6 +1171,7 @@ class PostgreSQLDatabaseWrapper:
                              b.service_type, b.status, b.phone_number, b.email, b.created_at,
                              b.charge, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
+                             b.address_audio_url,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """)
@@ -1189,7 +1202,8 @@ class PostgreSQLDatabaseWrapper:
                 'client_name': row['client_name'],  # Alias for compatibility
                 'notes': '',  # Will be fetched separately if needed
                 'duration_minutes': row['duration_minutes'],
-                'assigned_worker_ids': row['assigned_worker_ids'] or []  # List of assigned worker IDs
+                'assigned_worker_ids': row['assigned_worker_ids'] or [],  # List of assigned worker IDs
+                'address_audio_url': row.get('address_audio_url'),
             } for row in rows]
         finally:
             self.return_connection(conn)
@@ -1826,7 +1840,7 @@ class PostgreSQLDatabaseWrapper:
                 if db_field in ['calendar_event_id', 'appointment_time', 'service_type', 
                           'status', 'phone_number', 'email', 'charge', 'payment_status', 
                           'payment_method', 'urgency', 'address', 'eircode', 'property_type',
-                          'duration_minutes']:
+                          'duration_minutes', 'address_audio_url']:
                     fields.append(f"{db_field} = %s")
                     values.append(value)
             

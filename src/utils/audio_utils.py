@@ -39,3 +39,47 @@ def ulaw_energy(frame: bytes) -> float:
         s = MU_LAW_DECODE_TABLE[b]
         total += s * s
     return (total / len(frame)) ** 0.5
+
+def mulaw_to_wav(mulaw_data: bytes, sample_rate: int = 8000) -> bytes:
+    """
+    Convert raw mulaw audio bytes to WAV format for browser playback.
+
+    Args:
+        mulaw_data: Raw mulaw-encoded audio bytes
+        sample_rate: Sample rate (default 8kHz for Twilio)
+
+    Returns:
+        Complete WAV file as bytes (PCM 16-bit mono)
+    """
+    import struct
+
+    if not mulaw_data:
+        raise ValueError("mulaw_data cannot be empty")
+
+    num_samples = len(mulaw_data)
+
+    # Decode mulaw to 16-bit PCM
+    pcm_samples = bytearray(num_samples * 2)
+    for i in range(num_samples):
+        sample = MU_LAW_DECODE_TABLE[mulaw_data[i]]
+        struct.pack_into('<h', pcm_samples, i * 2, sample)
+
+    # Build WAV header (44 bytes)
+    data_size = len(pcm_samples)
+    file_size = 36 + data_size
+
+    header = struct.pack(
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF', file_size, b'WAVE',
+        b'fmt ', 16,           # fmt chunk size
+        1,                     # PCM format
+        1,                     # mono
+        sample_rate,           # sample rate
+        sample_rate * 2,       # byte rate (16-bit mono)
+        2,                     # block align
+        16,                    # bits per sample
+        b'data', data_size     # data chunk
+    )
+
+    return bytes(header) + bytes(pcm_samples)
+

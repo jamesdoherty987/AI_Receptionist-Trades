@@ -403,6 +403,22 @@
   font-weight: 500;
 }
 
+.btn-audio-inline {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent-blue);
+  padding: 2px 6px;
+  font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+  margin-left: auto;
+  transition: background 0.15s;
+}
+
+.btn-audio-inline:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
 /* Job Details */
 .job-details {
   display: flex;

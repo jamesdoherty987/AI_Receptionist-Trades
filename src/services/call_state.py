@@ -70,6 +70,10 @@ class CallState:
     cancel_name_confirmed: bool = False
     cancel_final_asked: bool = False
     
+    # --- Address audio capture ---
+    address_audio_url: Optional[str] = None
+    address_audio_captured: bool = False
+    
     # --- LLM response control ---
     skip_llm_response: bool = False
     
@@ -110,6 +114,8 @@ class CallState:
         self.cancel_name_confirmed = False
         self.cancel_final_asked = False
         self.skip_llm_response = False
+        self.address_audio_url = None
+        self.address_audio_captured = False
     
     def reset_reschedule(self):
         """Reset only reschedule-related state."""

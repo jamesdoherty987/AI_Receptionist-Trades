@@ -16,8 +16,9 @@ import base64
 import re
 import time as time_module
 import websockets
+from collections import deque
 
-from src.utils.audio_utils import ulaw_energy
+from src.utils.audio_utils import ulaw_energy, mulaw_to_wav
 from src.utils.config import config
 from src.services.asr_deepgram import DeepgramASR
 from src.services.llm_stream import stream_llm
@@ -58,6 +59,40 @@ def content_fingerprint(s: str) -> str:
     return re.sub(r'[^a-z0-9]', '', (s or "").lower())
 
 
+# --- Address audio capture constants ---
+AUDIO_BUFFER_SECONDS = 10
+MULAW_SAMPLE_RATE = 8000
+MULAW_BYTES_PER_PACKET = 160  # 20ms packets
+MAX_BUFFER_PACKETS = (AUDIO_BUFFER_SECONDS * MULAW_SAMPLE_RATE) // MULAW_BYTES_PER_PACKET  # ~500
+
+EIRCODE_PATTERN = re.compile(r'\b[A-Z]\d{2}\s?[A-Z0-9]{4}\b', re.IGNORECASE)
+ADDRESS_ASK_KEYWORDS = ['address', 'eircode', 'eir code', 'location', 'where']
+
+
+def is_address_speech(conversation: list, call_state, text: str) -> bool:
+    """Detect if caller just provided address/eircode based on conversation context."""
+    if not call_state.active_booking:
+        return False
+    if call_state.address_audio_captured:
+        return False
+    
+    # Check if text contains an eircode pattern
+    if EIRCODE_PATTERN.search(text):
+        return True
+    
+    # Check if the last assistant message asked for address/eircode
+    last_assistant_msg = None
+    for msg in reversed(conversation):
+        if msg.get('role') == 'assistant':
+            last_assistant_msg = (msg.get('content') or '').lower()
+            break
+    
+    if last_assistant_msg and any(kw in last_assistant_msg for kw in ADDRESS_ASK_KEYWORDS):
+        return True
+    
+    return False
+
+
 async def media_handler(ws):
     """Handle Twilio media stream WebSocket connection"""
     call_start_time = time_module.time()
@@ -67,6 +102,9 @@ async def media_handler(ws):
     
     # Per-call state
     call_state = create_call_state()
+    
+    # Rolling audio buffer for address capture (~10 seconds of caller audio)
+    audio_buffer = deque(maxlen=MAX_BUFFER_PACKETS)
     
     # Connect to Deepgram ASR
     asr = DeepgramASR()
@@ -487,6 +525,9 @@ async def media_handler(ws):
                 audio = base64.b64decode(data["media"]["payload"])
                 energy = ulaw_energy(audio)
                 now = asyncio.get_event_loop().time()
+                
+                # Append to rolling buffer for address audio capture
+                audio_buffer.append(audio)
 
                 # ASR health check
                 if asr.is_closed():
@@ -611,6 +652,35 @@ async def media_handler(ws):
                     conversation_log.append({"role": "user", "content": text, "timestamp": now})
                     last_committed = text
                     conversation.append({"role": "user", "content": text})
+                    
+                    # Address audio capture: check if caller just said their address/eircode
+                    # Runs as a background task so it doesn't delay the LLM response
+                    if is_address_speech(conversation, call_state, text):
+                        async def _capture_address_audio():
+                            try:
+                                raw_audio = b''.join(audio_buffer)
+                                if raw_audio:
+                                    wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
+                                    from src.services.storage_r2 import upload_company_file
+                                    import io
+                                    company_id_int = int(company_id) if company_id else None
+                                    if company_id_int:
+                                        filename = f"{call_sid or 'unknown'}.wav"
+                                        url = await asyncio.to_thread(
+                                            upload_company_file,
+                                            company_id_int,
+                                            io.BytesIO(wav_data),
+                                            filename,
+                                            'address_audio',
+                                            'audio/wav'
+                                        )
+                                        if url:
+                                            call_state.address_audio_url = url
+                                            call_state.address_audio_captured = True
+                                            print(f"🎙️ Address audio captured: {url}")
+                            except Exception as audio_err:
+                                print(f"⚠️ Address audio capture failed: {audio_err}")
+                        asyncio.create_task(_capture_address_audio())
                     
                     # Trim history - keep more context to prevent AI from forgetting
                     # Keep system message + last 50 messages

@@ -3756,6 +3756,15 @@ Return ONLY valid JSON, no explanation."""
                         created_by="system"
                     )
                     
+                    # Persist address audio URL if captured during the call
+                    call_state = services.get('call_state')
+                    if call_state and getattr(call_state, 'address_audio_url', None):
+                        try:
+                            db.update_booking(booking_id, address_audio_url=call_state.address_audio_url)
+                            logger.info(f"[BOOK_JOB] 🎙️ Address audio URL saved: {call_state.address_audio_url}")
+                        except Exception as audio_err:
+                            logger.warning(f"[BOOK_JOB] ⚠️ Could not save address audio URL: {audio_err}")
+                    
                     # Auto-assign workers if any were selected
                     if assigned_workers:
                         for worker in assigned_workers:

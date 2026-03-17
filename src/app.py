@@ -3738,7 +3738,8 @@ def booking_detail_api(booking_id):
             'property_type': booking.get('property_type'),
             'customer_name': booking.get('customer_name') or booking.get('client_name'),
             'client_name': booking.get('client_name') or booking.get('customer_name'),
-            'notes': notes_text
+            'notes': notes_text,
+            'address_audio_url': booking.get('address_audio_url'),
         }
         
         return jsonify(response_booking)

@@ -657,6 +657,14 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                       <div className="info-cell">
                         <span className="info-label">Address</span>
                         <span className="info-value">{job.job_address || job.address} {job.eircode && `(${job.eircode})`}</span>
+                        {job.address_audio_url && (
+                          <div className="address-audio-player" style={{ marginTop: '6px' }}>
+                            <audio controls preload="none" src={job.address_audio_url} style={{ height: '32px', width: '100%', maxWidth: '300px' }}>
+                              Your browser does not support audio playback.
+                            </audio>
+                            <span style={{ fontSize: '0.8em', color: '#888', marginLeft: '4px' }}>Listen to address</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

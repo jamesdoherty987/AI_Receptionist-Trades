@@ -467,6 +467,20 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
                             <i className="fas fa-calendar"></i>
                             {formatDateTime(booking.appointment_time)}
                           </span>
+                          {booking.address_audio_url && (
+                            <button 
+                              className="btn-audio-inline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const audio = new Audio(booking.address_audio_url);
+                                audio.play();
+                              }}
+                              title="Listen to address"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6', padding: '2px 6px', fontSize: '0.85em' }}
+                            >
+                              <i className="fas fa-volume-up"></i>
+                            </button>
+                          )}
                           {(booking.estimated_charge || booking.charge) && (
                             <span className="booking-price">{formatCurrency(booking.estimated_charge || booking.charge)}</span>
                           )}
