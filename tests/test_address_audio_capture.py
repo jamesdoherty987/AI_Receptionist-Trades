@@ -180,7 +180,8 @@ class TestTwoPhaseIntegration:
 
     def test_eircode_fallback_to_address(self):
         """AI asks for eircode, caller doesn't know, AI asks for address instead.
-        Should end up with the address recording, not the 'I don't know' one."""
+        With skip logic, the 'I don't know' response is NOT captured at all.
+        Only the actual address gets captured."""
         cs = create_call_state()
 
         # AI asks for eircode
@@ -189,27 +190,40 @@ class TestTwoPhaseIntegration:
             cs.awaiting_address_audio = True
         assert cs.awaiting_address_audio is True
 
-        # Caller says "I don't know my eircode" — phase 2 fires, captures this
+        # Caller says "No. I don't." — skip logic detects this is NOT an address
+        caller_text = "No. I don't."
         if cs.awaiting_address_audio:
             cs.awaiting_address_audio = False
-            cs.address_audio_url = "https://r2.example.com/audio/useless.wav"
-            cs.address_audio_captured = True
+            text_lower_check = caller_text.lower().strip().rstrip('.,!?')
+            skip_phrases = {'no', "no i don't", "no i dont", "i don't know", "i dont know",
+                            "i'm not sure", "im not sure", "not sure", "no idea"}
+            is_skip = text_lower_check in skip_phrases or (len(caller_text.split()) <= 3 and text_lower_check.startswith('no'))
+            if not is_skip:
+                cs.address_audio_url = "https://r2.example.com/audio/useless.wav"
+                cs.address_audio_captured = True
 
-        assert cs.address_audio_url == "https://r2.example.com/audio/useless.wav"
+        # Nothing should have been captured
+        assert cs.address_audio_url is None
+        assert cs.address_audio_captured is False
 
-        # AI then asks for street address — flag re-sets (no captured guard)
+        # AI then asks for street address — flag re-sets
         ai_2 = "No problem, can you give me the street address instead?"
         if ai_asked_for_address(ai_2):
             cs.awaiting_address_audio = True
         assert cs.awaiting_address_audio is True
 
-        # Caller gives actual address — phase 2 fires again, OVERWRITES
+        # Caller gives actual address — this one DOES get captured
+        caller_text_2 = "Yeah. It's 32 Silver Grove, Valley Big, Innis."
         if cs.awaiting_address_audio:
             cs.awaiting_address_audio = False
-            cs.address_audio_url = "https://r2.example.com/audio/real_address.wav"
-            cs.address_audio_captured = True
+            text_lower_check = caller_text_2.lower().strip().rstrip('.,!?')
+            is_skip = text_lower_check in skip_phrases or (len(caller_text_2.split()) <= 3 and text_lower_check.startswith('no'))
+            if not is_skip:
+                cs.address_audio_url = "https://r2.example.com/audio/real_address.wav"
+                cs.address_audio_captured = True
 
         assert cs.address_audio_url == "https://r2.example.com/audio/real_address.wav"
+        assert cs.address_audio_captured is True
 
     def test_no_capture_when_ai_doesnt_ask(self):
         """If AI never asks for address, nothing gets captured."""
@@ -244,3 +258,72 @@ class TestPerformanceCharacteristics:
     def test_no_blocking_operations_in_detection(self):
         import inspect
         assert not inspect.iscoroutinefunction(ai_asked_for_address)
+
+
+# --- Skip phrases logic (replicated from media_handler.py) ---
+SKIP_PHRASES = {'no', "no i don't", "no i dont", "i don't know", "i dont know",
+                "i'm not sure", "im not sure", "not sure", "no idea"}
+
+def should_skip_capture(text: str) -> bool:
+    """Replicate the skip logic from media_handler for testing."""
+    text_lower_check = text.lower().strip().rstrip('.,!?')
+    if text_lower_check in SKIP_PHRASES:
+        return True
+    if len(text.split()) <= 3 and text_lower_check.startswith('no'):
+        return True
+    return False
+
+
+class TestSkipCaptureLogic:
+    """Test that short negative responses are skipped (not captured as address audio)."""
+
+    def test_skip_no(self):
+        assert should_skip_capture("No.") is True
+
+    def test_skip_no_i_dont(self):
+        assert should_skip_capture("No. I don't.") is True
+
+    def test_skip_no_i_dont_no_punctuation(self):
+        assert should_skip_capture("No I don't") is True
+
+    def test_skip_i_dont_know(self):
+        assert should_skip_capture("I don't know.") is True
+
+    def test_skip_i_dont_know_no_apostrophe(self):
+        assert should_skip_capture("I dont know") is True
+
+    def test_skip_not_sure(self):
+        assert should_skip_capture("Not sure.") is True
+
+    def test_skip_im_not_sure(self):
+        assert should_skip_capture("I'm not sure.") is True
+
+    def test_skip_no_idea(self):
+        assert should_skip_capture("No idea.") is True
+
+    def test_skip_short_no_response(self):
+        """Any 1-3 word response starting with 'no' should be skipped."""
+        assert should_skip_capture("No thanks") is True
+        assert should_skip_capture("No sorry") is True
+        assert should_skip_capture("No I can't") is True
+
+    def test_no_skip_actual_address(self):
+        assert should_skip_capture("32 Silver Grove, Valley Big, Innis") is False
+
+    def test_no_skip_eircode(self):
+        assert should_skip_capture("V94 ABC1") is False
+
+    def test_no_skip_address_with_yeah(self):
+        assert should_skip_capture("Yeah. It's 32 Silver Grove, Valley Big Innis.") is False
+
+    def test_no_skip_long_response_starting_with_no(self):
+        """Longer responses starting with 'no' that contain address info should NOT be skipped."""
+        assert should_skip_capture("No wait, it's 15 Main Street, Limerick") is False
+
+    def test_no_skip_number_only(self):
+        assert should_skip_capture("D02 WR97") is False
+
+    def test_skip_is_case_insensitive(self):
+        assert should_skip_capture("NO") is True
+        assert should_skip_capture("I DON'T KNOW") is True
+        assert should_skip_capture("NO IDEA") is True

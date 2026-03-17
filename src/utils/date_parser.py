@@ -307,11 +307,13 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
                         if search_date.day == explicit_day_num and search_date.weekday() == target_weekday:
                             parsed["month"] = search_date.month
                             parsed["year"] = search_date.year
+                            parsed["relative_days"] = None
                             print(f"[DATE_FIX] Found matching date: {search_date.strftime('%B %d, %Y')} is a {detected_weekday.capitalize()}")
                             break
                         search_date += timedelta(days=1)
                 else:
                     print(f"[DATE] Weekday '{detected_weekday}' matches AI's date - trusting AI's month/day parsing")
+                    parsed["relative_days"] = None
             except ValueError:
                 print(f"[DATE_FIX] Invalid AI date - searching for {detected_weekday} the {explicit_day_num}")
                 search_date = now
@@ -319,6 +321,7 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
                     if search_date.day == explicit_day_num and search_date.weekday() == target_weekday:
                         parsed["month"] = search_date.month
                         parsed["year"] = search_date.year
+                        parsed["relative_days"] = None
                         print(f"[DATE_FIX] Found matching date: {search_date.strftime('%B %d, %Y')} is a {detected_weekday.capitalize()}")
                         break
                     search_date += timedelta(days=1)
@@ -339,6 +342,7 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
                     parsed["month"] = search_date.month
                     parsed["year"] = search_date.year
                     parsed["day_of_week"] = None  # Clear day_of_week so specific date logic is used
+                    parsed["relative_days"] = None  # Clear relative_days so specific date logic is used
                     print(f"[DATE_FIX] Found matching date: {search_date.strftime('%B %d, %Y')} is a {detected_weekday.capitalize()}")
                     break
                 search_date += timedelta(days=1)
@@ -352,6 +356,8 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
                 if search_date.day == explicit_day_num and search_date.weekday() == target_weekday:
                     parsed["month"] = search_date.month
                     parsed["year"] = search_date.year
+                    # Clear relative_days so the specific date logic is used
+                    parsed["relative_days"] = None
                     print(f"[DATE_FIX] Found matching date: {search_date.strftime('%B %d, %Y')} is a {detected_weekday.capitalize()}")
                     break
                 search_date += timedelta(days=1)

@@ -654,39 +654,51 @@ async def media_handler(ws):
                     # the previous (useless) recording.
                     if call_state.awaiting_address_audio:
                         call_state.awaiting_address_audio = False
-                        print(f"🎙️ [ADDR_AUDIO] Capturing caller's address response: '{text[:60]}...'")
-                        # Snapshot the buffer now (before it rolls over with new audio)
-                        captured_audio = b''.join(audio_buffer)
-                        async def _capture_address_audio(raw_audio):
-                            try:
-                                if raw_audio:
-                                    wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
-                                    from src.services.storage_r2 import upload_company_file
-                                    import io
-                                    company_id_int = int(company_id) if company_id else None
-                                    if company_id_int:
-                                        filename = f"{call_sid or 'unknown'}.wav"
-                                        url = await asyncio.to_thread(
-                                            upload_company_file,
-                                            company_id_int,
-                                            io.BytesIO(wav_data),
-                                            filename,
-                                            'address_audio',
-                                            'audio/wav'
-                                        )
-                                        if url:
-                                            call_state.address_audio_url = url
-                                            call_state.address_audio_captured = True
-                                            print(f"🎙️ [ADDR_AUDIO] Uploaded: {url}")
+                        # Skip capture if the caller clearly didn't give an address
+                        # (e.g., "No I don't", "I don't know", "No" — responses to eircode question)
+                        text_lower_check = text.lower().strip().rstrip('.,!?')
+                        skip_phrases = {'no', "no i don't", "no i dont", "i don't know", "i dont know",
+                                        "i'm not sure", "im not sure", "not sure", "no idea"}
+                        if text_lower_check in skip_phrases or (len(text.split()) <= 3 and text_lower_check.startswith('no')):
+                            print(f"🎙️ [ADDR_AUDIO] Skipping capture — caller declined/doesn't know: '{text}'")
+                            # Don't capture, but the flag will be re-set when AI asks for address next
+                        else:
+                            print(f"🎙️ [ADDR_AUDIO] Capturing caller's address response: '{text[:60]}...'")
+                            # Snapshot the buffer now (before it rolls over with new audio)
+                            captured_audio = b''.join(audio_buffer)
+                            # Use a unique filename with timestamp to avoid CDN cache collisions
+                            import time as _time_mod
+                            capture_ts = int(_time_mod.time())
+                            async def _capture_address_audio(raw_audio, ts=capture_ts):
+                                try:
+                                    if raw_audio:
+                                        wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
+                                        from src.services.storage_r2 import upload_company_file
+                                        import io
+                                        company_id_int = int(company_id) if company_id else None
+                                        if company_id_int:
+                                            filename = f"{call_sid or 'unknown'}_{ts}.wav"
+                                            url = await asyncio.to_thread(
+                                                upload_company_file,
+                                                company_id_int,
+                                                io.BytesIO(wav_data),
+                                                filename,
+                                                'address_audio',
+                                                'audio/wav'
+                                            )
+                                            if url:
+                                                call_state.address_audio_url = url
+                                                call_state.address_audio_captured = True
+                                                print(f"🎙️ [ADDR_AUDIO] Uploaded: {url}")
+                                            else:
+                                                print(f"⚠️ [ADDR_AUDIO] Upload returned None (R2 not configured?)")
                                         else:
-                                            print(f"⚠️ [ADDR_AUDIO] Upload returned None (R2 not configured?)")
+                                            print(f"⚠️ [ADDR_AUDIO] No company_id, skipping upload")
                                     else:
-                                        print(f"⚠️ [ADDR_AUDIO] No company_id, skipping upload")
-                                else:
-                                    print(f"⚠️ [ADDR_AUDIO] Buffer empty, nothing to capture")
-                            except Exception as audio_err:
-                                print(f"⚠️ [ADDR_AUDIO] Capture failed: {audio_err}")
-                        asyncio.create_task(_capture_address_audio(captured_audio))
+                                        print(f"⚠️ [ADDR_AUDIO] Buffer empty, nothing to capture")
+                                except Exception as audio_err:
+                                    print(f"⚠️ [ADDR_AUDIO] Capture failed: {audio_err}")
+                            asyncio.create_task(_capture_address_audio(captured_audio))
                     
                     # Trim history - keep more context to prevent AI from forgetting
                     # Keep system message + last 50 messages

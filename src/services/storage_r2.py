@@ -86,6 +86,10 @@ class R2Storage:
         
         try:
             # Upload to R2 with CORS-friendly headers
+            # Use short cache for audio files (may be overwritten), long cache for images
+            is_audio = content_type and content_type.startswith('audio/')
+            cache_control = 'no-cache, must-revalidate' if is_audio else 'public, max-age=31536000'
+            
             self.s3_client.put_object(
                 Bucket=self.bucket_name,
                 Key=key,
@@ -94,7 +98,7 @@ class R2Storage:
                 # Make object publicly readable
                 ACL='public-read',
                 # Add cache control for better browser handling
-                CacheControl='public, max-age=31536000',
+                CacheControl=cache_control,
             )
             
             # Return public URL
