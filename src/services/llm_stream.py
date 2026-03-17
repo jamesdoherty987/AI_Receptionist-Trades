@@ -1843,7 +1843,8 @@ TOOL RULES:
                     if result_content.get("success") and result_content.get("transfer"):
                         direct_response = "Transferring you now, please hold."
                     else:
-                        direct_response = "Let me get someone for you, one moment."
+                        # Transfer failed - use the actual error message instead of pretending to connect
+                        direct_response = result_content.get("message", "I'm sorry, I'm unable to transfer you right now. Is there anything else I can help you with?")
                     
                     print(f"   ⚡ [DIRECT] transfer -> '{direct_response}'")
                 

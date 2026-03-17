@@ -414,10 +414,20 @@ class SettingsManager:
             return False
     
     def get_fallback_phone_number(self, company_id: int = None) -> Optional[str]:
-        """Get business phone number for transfers and when AI is disabled"""
+        """Get business phone number for transfers and when AI is disabled.
+        Checks business_settings first, then falls back to companies table."""
         try:
             settings = self.get_business_settings(company_id=company_id)
             phone = settings.get('phone')
+            
+            # Fallback: check companies table if business_settings has no phone
+            if not phone and company_id:
+                from src.services.database import get_database
+                db = get_database()
+                company = db.get_company(company_id)
+                if company:
+                    phone = company.get('phone')
+            
             if phone:
                 # Return phone as-is if it already has country code
                 if phone.startswith('+'):
