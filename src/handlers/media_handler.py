@@ -708,11 +708,25 @@ async def media_handler(ws):
                             print(f"🎙️ [ADDR_AUDIO] Buffer: {buf_len} packets, {raw_total} bytes, ~{raw_total / MULAW_SAMPLE_RATE:.1f}s")
                             
                             # Trim silence — only keep the portion with actual speech
-                            # Note: buffer is cleared when AI finishes speaking, so it should
-                            # only contain post-TTS caller audio. Threshold of 150 filters
-                            # phone line noise while catching quiet speech.
-                            captured_audio = trim_silence_mulaw(buffer_snapshot, energy_threshold=150.0, pad_packets=15)
+                            # Buffer is cleared when AI finishes speaking, so it only
+                            # contains post-TTS caller audio (no echo contamination).
+                            # Threshold of 30 is very conservative — barely above dead
+                            # line noise (~10-20). Better to keep extra silence than
+                            # clip someone with a quiet/low voice.
+                            # Pad 25 packets (~500ms) on each side for safety.
+                            captured_audio = trim_silence_mulaw(buffer_snapshot, energy_threshold=30.0, pad_packets=25)
                             cap_bytes = len(captured_audio)
+                            cap_duration = cap_bytes / MULAW_SAMPLE_RATE
+                            
+                            # Safety net: if trim result is suspiciously short (<1.5s),
+                            # use the full buffer. An address takes at least 2-3s to say.
+                            # Better to have extra silence than a clipped recording.
+                            if cap_duration < 1.5 and buf_len > 0:
+                                raw_duration = raw_total / MULAW_SAMPLE_RATE
+                                print(f"🎙️ [ADDR_AUDIO] ⚠️ Trim too aggressive ({cap_duration:.1f}s) — using full buffer ({raw_duration:.1f}s)")
+                                captured_audio = b''.join(buffer_snapshot)
+                                cap_bytes = len(captured_audio)
+                            
                             print(f"🎙️ [ADDR_AUDIO] After trim: {cap_bytes} bytes, ~{cap_bytes / MULAW_SAMPLE_RATE:.1f}s")
                             
                             # Use a unique filename with timestamp to avoid CDN cache collisions

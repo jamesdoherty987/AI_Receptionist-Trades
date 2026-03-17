@@ -134,8 +134,17 @@ def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
     trimmed_duration = len(trimmed) / sample_rate
     original_duration = total_bytes / sample_rate
     
+    # Log energy distribution for debugging
+    energies = [ulaw_energy(p) for p in packets]
+    above_threshold = sum(1 for e in energies if e >= energy_threshold)
+    max_energy = max(energies) if energies else 0
+    min_energy = min(energies) if energies else 0
+    avg_energy = sum(energies) / len(energies) if energies else 0
+    
     print(f"🎙️ [ADDR_AUDIO] Trimmed: {original_duration:.1f}s → {trimmed_duration:.1f}s "
           f"(packets {start}-{end-1} of {n}, threshold={energy_threshold})")
+    print(f"🎙️ [ADDR_AUDIO] Energy: min={min_energy:.0f}, max={max_energy:.0f}, avg={avg_energy:.0f}, "
+          f"above_threshold={above_threshold}/{n}, first_voice={first_voice}, last_voice={last_voice}")
     
     return trimmed
 
