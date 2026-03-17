@@ -15,11 +15,17 @@ from src.services.call_state import CallState, create_call_state
 
 # Replicate the keywords and function from media_handler to avoid heavy import
 ADDRESS_ASK_KEYWORDS = ['address', 'eircode', 'eir code', 'location', 'where', 'job site', 'job location', 'work location']
+ADDRESS_CONFIRM_PATTERNS = ['confirm', 'correct?', 'right?', 'is it', 'is that', 'so the address is',
+                            'booked in for', 'booked for', 'job at', 'job for']
 
 def ai_asked_for_address(text: str) -> bool:
     """Local copy of the detection function to avoid importing media_handler."""
     lower = text.lower()
-    return any(kw in lower for kw in ADDRESS_ASK_KEYWORDS)
+    if not any(kw in lower for kw in ADDRESS_ASK_KEYWORDS):
+        return False
+    if any(cp in lower for cp in ADDRESS_CONFIRM_PATTERNS):
+        return False
+    return True
 
 
 class TestAiAskedForAddress:
@@ -67,14 +73,45 @@ class TestAiAskedForAddress:
         assert ai_asked_for_address(text) is True
 
     def test_address_in_confirmation(self):
+        """AI confirming an address should NOT trigger capture."""
         text = "So the address is 123 Main Street, Dublin?"
-        assert ai_asked_for_address(text) is True
+        assert ai_asked_for_address(text) is False
 
     def test_keyword_coverage(self):
         """Ensure all keywords are detected."""
         for kw in ADDRESS_ASK_KEYWORDS:
             text = f"Can you tell me the {kw}?"
             assert ai_asked_for_address(text) is True, f"Keyword '{kw}' not detected"
+
+    # --- Confirmation-skip tests ---
+    def test_no_trigger_on_confirm_address(self):
+        """AI confirming address back should NOT trigger."""
+        assert ai_asked_for_address("Just confirming your address: 32 Silver Grove, correct?") is False
+
+    def test_no_trigger_on_is_it_address(self):
+        assert ai_asked_for_address("Is it 32 Silver Grove, Balenbygan?") is False
+
+    def test_no_trigger_on_booked_for_address(self):
+        assert ai_asked_for_address("You're booked in for Thursday at 32 Silver Grove.") is False
+
+    def test_no_trigger_on_job_at_address(self):
+        assert ai_asked_for_address("Scheduled job at 32 Silver Grove, Balenbygan.") is False
+
+    def test_no_trigger_on_is_that_right(self):
+        assert ai_asked_for_address("The address is 32 Silver Grove, is that right?") is False
+
+    def test_still_triggers_genuine_ask(self):
+        """Genuine address questions should still trigger."""
+        assert ai_asked_for_address("What's your address?") is True
+        assert ai_asked_for_address("Can you give me the eircode?") is True
+        assert ai_asked_for_address("Where is the property?") is True
+        assert ai_asked_for_address("Can you provide your full address instead?") is True
+        assert ai_asked_for_address("Do you know your eircode?") is True
+
+    def test_no_trigger_on_real_world_confirm(self):
+        """Exact phrase from production logs that caused the bug."""
+        text = "I'm here! Just confirming your address: 32 Silver Grove, Balenbygan, correct?"
+        assert ai_asked_for_address(text) is False
 
 
 class TestCallStateAddressAudioFields:
@@ -172,11 +209,11 @@ class TestTwoPhaseIntegration:
         assert cs.address_audio_captured is True
         assert cs.address_audio_url is not None
 
-        # Turn 5: AI mentions address again — flag re-sets (allows overwrite)
+        # Turn 5: AI confirms address — should NOT re-trigger (it's a confirmation, not a question)
         ai_5 = "And what's the address again? Just to confirm."
         if ai_asked_for_address(ai_5):
             cs.awaiting_address_audio = True
-        assert cs.awaiting_address_audio is True  # Re-set is allowed now
+        assert cs.awaiting_address_audio is False  # Confirmation phrases don't re-trigger
 
     def test_eircode_fallback_to_address(self):
         """AI asks for eircode, caller doesn't know, AI asks for address instead.
@@ -242,6 +279,37 @@ class TestTwoPhaseIntegration:
         assert cs.awaiting_address_audio is False
         assert cs.address_audio_captured is False
         assert cs.address_audio_url is None
+
+    def test_confirm_does_not_overwrite_captured_audio(self):
+        """REGRESSION: Exact scenario from production logs.
+        AI asks for address → caller gives it → audio captured.
+        AI then confirms 'Just confirming your address: X, correct?' →
+        this should NOT re-trigger Phase 1, so 'Yes. Correct.' does NOT
+        overwrite the real address recording."""
+        cs = create_call_state()
+
+        # AI asks for address
+        ai_1 = "No problem! Can you provide your full address instead?"
+        if ai_asked_for_address(ai_1):
+            cs.awaiting_address_audio = True
+        assert cs.awaiting_address_audio is True
+
+        # Caller gives address → Phase 2 captures
+        if cs.awaiting_address_audio:
+            cs.awaiting_address_audio = False
+            cs.address_audio_url = "https://r2.example.com/audio/real_address.wav"
+            cs.address_audio_captured = True
+        assert cs.address_audio_url == "https://r2.example.com/audio/real_address.wav"
+
+        # AI confirms address — should NOT re-trigger Phase 1
+        ai_2 = "I'm here! Just confirming your address: 32 Silver Grove, Balenbygan, correct?"
+        if ai_asked_for_address(ai_2):
+            cs.awaiting_address_audio = True
+        assert cs.awaiting_address_audio is False  # NOT re-triggered
+
+        # Caller says "Yes. Correct." — Phase 2 should NOT fire
+        # (awaiting_address_audio is still False)
+        assert cs.address_audio_url == "https://r2.example.com/audio/real_address.wav"  # Unchanged
 
 
 class TestPerformanceCharacteristics:

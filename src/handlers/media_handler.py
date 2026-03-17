@@ -67,11 +67,27 @@ MAX_BUFFER_PACKETS = (AUDIO_BUFFER_SECONDS * MULAW_SAMPLE_RATE) // MULAW_BYTES_P
 
 ADDRESS_ASK_KEYWORDS = ['address', 'eircode', 'eir code', 'location', 'where', 'job site', 'job location', 'work location']
 
+# Phrases that indicate the AI is confirming/repeating an address, NOT asking for one.
+# These prevent Phase 1 from re-triggering when the AI says things like
+# "Just confirming your address: 32 Silver Grove, correct?"
+ADDRESS_CONFIRM_PATTERNS = ['confirm', 'correct?', 'right?', 'is it', 'is that', 'so the address is',
+                            'booked in for', 'booked for', 'job at', 'job for']
+
 
 def ai_asked_for_address(text: str) -> bool:
-    """Check if the AI's response is asking the caller for their address/eircode."""
+    """Check if the AI's response is asking the caller for their address/eircode.
+    
+    Returns False if the AI is merely confirming/repeating an address it already has,
+    to prevent Phase 1 from re-triggering on confirmation questions like
+    'Just confirming your address: 32 Silver Grove, correct?'
+    """
     lower = text.lower()
-    return any(kw in lower for kw in ADDRESS_ASK_KEYWORDS)
+    if not any(kw in lower for kw in ADDRESS_ASK_KEYWORDS):
+        return False
+    # If the AI is confirming/repeating back an address, don't trigger capture
+    if any(cp in lower for cp in ADDRESS_CONFIRM_PATTERNS):
+        return False
+    return True
 
 
 async def media_handler(ws):
@@ -259,13 +275,13 @@ async def media_handler(ws):
                     
                     # Now stream tokens from queue to TTS
                     # CRITICAL: Add overall timeout to prevent infinite hang
-                    MAX_WAIT_SECONDS = 15.0  # Max time to wait for LLM response
+                    MAX_WAIT_SECONDS = 30.0  # Max time to wait for LLM response (tools can take 10-15s)
                     queue_start_time = time_module.time()
                     
                     async def queued_stream():
                         nonlocal full_text
                         stream_start_time = time_module.time()
-                        MAX_STREAM_WAIT = 20.0  # Absolute max time for entire stream
+                        MAX_STREAM_WAIT = 35.0  # Absolute max time for entire stream
                         while True:
                             # SAFETY: Overall timeout check
                             elapsed = time_module.time() - queue_start_time
@@ -380,11 +396,21 @@ async def media_handler(ws):
                     # We allow re-setting even if already captured — this handles the case
                     # where AI asked for eircode, caller didn't know, AI then asks for
                     # street address. The second capture overwrites the first (useless) one.
+                    #
+                    # BUT: if the AI is just confirming/repeating an address back
+                    # (e.g., "Just confirming your address: 32 Silver Grove, correct?")
+                    # we do NOT re-trigger, because the caller's response will be
+                    # "Yes correct" — not the actual address.
                     if ai_asked_for_address(full_text):
                         call_state.awaiting_address_audio = True
                         call_state._addr_audio_phase1_time = time_module.time()
                         print(f"🎙️ [ADDR_AUDIO] Phase 1: AI asked for address — will capture caller's next response")
                         print(f"🎙️ [ADDR_AUDIO] Phase 1: speaking={speaking}, buffer_len={len(audio_buffer)}")
+                    else:
+                        # Log when address keywords are present but it's a confirmation
+                        full_lower = full_text.lower()
+                        if any(kw in full_lower for kw in ADDRESS_ASK_KEYWORDS):
+                            print(f"🎙️ [ADDR_AUDIO] Phase 1 SKIPPED: AI mentioned address but is confirming, not asking")
                 
                 # Handle transfer if requested
                 if transfer_number:
@@ -415,6 +441,11 @@ async def media_handler(ws):
                 tts_ended_at = asyncio.get_event_loop().time()
                 speaking = False
                 llm_processing = False
+                # Clear audio buffer when AI finishes speaking.
+                # Twilio's inbound stream can contain TTS echo/bleed,
+                # so any audio captured while speaking is contaminated.
+                # After clearing, the buffer only holds post-TTS caller audio.
+                audio_buffer.clear()
                 print(f"👂 Ready to listen")
 
         if respond_task and not respond_task.done():
@@ -659,7 +690,7 @@ async def media_handler(ws):
                         phase1_time = getattr(call_state, '_addr_audio_phase1_time', 0)
                         phase_gap = time_module.time() - phase1_time if phase1_time else -1
                         print(f"🎙️ [ADDR_AUDIO] Phase 2: speech_final received, gap since phase1={phase_gap:.1f}s")
-                        print(f"🎙️ [ADDR_AUDIO] Phase 2: speaking={speaking}, tts_ended_at_delta={asyncio.get_event_loop().time() - tts_ended_at:.1f}s")
+                        print(f"🎙️ [ADDR_AUDIO] Phase 2: speaking={speaking}, tts_ended_at_delta={asyncio.get_event_loop().time() - tts_ended_at:.1f}s, buffer_packets={len(audio_buffer)}")
                         # Skip capture if the caller clearly didn't give an address
                         # (e.g., "No I don't", "I don't know", "No" — responses to eircode question)
                         text_lower_check = text.lower().strip().rstrip('.,!?')
@@ -677,7 +708,10 @@ async def media_handler(ws):
                             print(f"🎙️ [ADDR_AUDIO] Buffer: {buf_len} packets, {raw_total} bytes, ~{raw_total / MULAW_SAMPLE_RATE:.1f}s")
                             
                             # Trim silence — only keep the portion with actual speech
-                            captured_audio = trim_silence_mulaw(buffer_snapshot, energy_threshold=100.0, pad_packets=15)
+                            # Note: buffer is cleared when AI finishes speaking, so it should
+                            # only contain post-TTS caller audio. Threshold of 150 filters
+                            # phone line noise while catching quiet speech.
+                            captured_audio = trim_silence_mulaw(buffer_snapshot, energy_threshold=150.0, pad_packets=15)
                             cap_bytes = len(captured_audio)
                             print(f"🎙️ [ADDR_AUDIO] After trim: {cap_bytes} bytes, ~{cap_bytes / MULAW_SAMPLE_RATE:.1f}s")
                             
