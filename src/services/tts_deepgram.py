@@ -21,7 +21,7 @@ async def _aiter(text_stream):
             yield x
 
 
-async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
+async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn, on_audio_done=None):
     """
     Stream Deepgram TTS audio to Twilio in mulaw format
     
@@ -30,6 +30,8 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
         websocket: Twilio websocket connection
         stream_sid: Twilio stream ID
         interrupt_fn: Function to check if interrupted
+        on_audio_done: Optional callback called when last audio chunk is sent
+                       (before waiting for sender to finish)
     """
     import time
     tts_start = time.time()
@@ -93,17 +95,27 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                     chunks_sent = 0
                     receiver_start = asyncio.get_event_loop().time()
 
+                    def _notify_audio_done():
+                        if on_audio_done and got_any_audio:
+                            try:
+                                on_audio_done()
+                            except Exception:
+                                pass
+
                     while True:
                         if interrupt_fn():
+                            _notify_audio_done()
                             return
 
                         if (asyncio.get_event_loop().time() - start_time) > MAX_TTS_SECONDS:
                             print(f"[TTS] ⚠️ Max duration reached")
+                            _notify_audio_done()
                             return
                         
                         # SAFETY: Absolute receiver timeout to prevent infinite hang
                         if (asyncio.get_event_loop().time() - receiver_start) > 25.0:
                             print(f"[TTS] ⚠️ Receiver absolute timeout (25s)")
+                            _notify_audio_done()
                             return
 
                         try:
@@ -115,13 +127,16 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                                 # Reduced from 2/4 to 1/2 for faster exit after audio done
                                 if got_any_audio and quiet_timeouts >= 1:
                                     print(f"[TTS] ✅ Done. Sent {chunks_sent} chunks")
+                                    _notify_audio_done()
                                     return
                                 if quiet_timeouts >= 2:
                                     print(f"[TTS] ⚠️ TIMEOUT: No audio after 2 quiet timeouts (1s total). Sent {chunks_sent} chunks")
+                                    _notify_audio_done()
                                     return
                             continue
                         except websockets.ConnectionClosed:
                             print(f"[TTS] ⚠️ TIMEOUT/DISCONNECT: Deepgram TTS connection closed")
+                            _notify_audio_done()
                             return
 
                         if isinstance(msg, bytes):
@@ -140,6 +155,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                                     "media": {"payload": payload},
                                 }))
                             except Exception:
+                                _notify_audio_done()
                                 return
                         
                         elif isinstance(msg, str):
@@ -150,6 +166,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                                 # Check for Deepgram's flushed signal (indicates audio complete)
                                 if data.get("type") == "Flushed":
                                     print(f"[TTS] ✅ Flushed signal received. Sent {chunks_sent} chunks")
+                                    _notify_audio_done()
                                     return
                             except json.JSONDecodeError:
                                 pass

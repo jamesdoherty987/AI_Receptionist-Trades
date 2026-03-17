@@ -17,7 +17,7 @@ async def _aiter(text_stream):
             yield x
 
 
-async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
+async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn, on_audio_done=None):
     """
     Stream ElevenLabs TTS audio to Twilio in ulaw_8000 format
     
@@ -26,6 +26,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
         websocket: Twilio websocket connection
         stream_sid: Twilio stream ID
         interrupt_fn: Function to check if interrupted
+        on_audio_done: Optional callback called when last audio chunk is sent
     """
     import time
     tts_start = time.time()
@@ -107,16 +108,25 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                     audio_chunks_sent = 0
                     total_audio_bytes = 0
 
+                    def _notify_audio_done():
+                        if on_audio_done and got_any_audio:
+                            try:
+                                on_audio_done()
+                            except Exception:
+                                pass
+
                     print(f"[TTS] 📥 Receiver started, waiting for audio from ElevenLabs...")
 
                     while True:
                         if interrupt_fn():
                             print(f"[TTS] ⚠️ Interrupted! Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
+                            _notify_audio_done()
                             return
 
                         # Hard max duration check
                         if (asyncio.get_event_loop().time() - start_time) > MAX_TTS_SECONDS:
                             print(f"[TTS] ⚠️ Max duration reached! Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
+                            _notify_audio_done()
                             return
 
                         try:
@@ -128,15 +138,18 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                                 # Exit quickly after audio done
                                 if got_any_audio and quiet_timeouts >= 1:
                                     print(f"[TTS] ✅ Done (quiet timeout). Received {audio_chunks_received} chunks ({total_audio_bytes} bytes), sent {audio_chunks_sent} to Twilio")
+                                    _notify_audio_done()
                                     return
                                 if quiet_timeouts >= 2:
                                     print(f"[TTS] ⚠️ TIMEOUT: No audio received after 2 quiet timeouts (1s). Received {audio_chunks_received} chunks, sent {audio_chunks_sent}")
+                                    _notify_audio_done()
                                     return
                             continue
                         except websockets.ConnectionClosed as e:
                             # ElevenLabs connection closed
                             print(f"   ℹ️ ElevenLabs connection closed: {e}")
                             print(f"[TTS] 📊 Final stats: Received {audio_chunks_received} chunks ({total_audio_bytes} bytes), sent {audio_chunks_sent} to Twilio")
+                            _notify_audio_done()
                             return
 
                         data = json.loads(msg)
@@ -173,10 +186,12 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn):
                                 # Twilio connection closed (caller hung up) - this is normal
                                 print(f"   ℹ️ Twilio connection closed during TTS (caller likely hung up)")
                                 print(f"[TTS] 📊 Final stats: Received {audio_chunks_received} chunks, sent {audio_chunks_sent} to Twilio before disconnect")
+                                _notify_audio_done()
                                 return
 
                         if data.get("isFinal"):
                             print(f"[TTS] ✅ isFinal received. Total: {audio_chunks_received} chunks ({total_audio_bytes} bytes), sent {audio_chunks_sent} to Twilio")
+                            _notify_audio_done()
                             return
 
                 await asyncio.gather(sender(), receiver())

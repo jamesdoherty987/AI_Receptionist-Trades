@@ -323,7 +323,10 @@ async def media_handler(ws):
                                 continue
                     
                     tts_stream_start = time_module.time()
-                    await stream_tts(queued_stream(), ws, stream_sid, lambda: interrupt)
+                    def _on_queued_audio_done():
+                        nonlocal last_tts_audio_done
+                        last_tts_audio_done = asyncio.get_event_loop().time()
+                    await stream_tts(queued_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_queued_audio_done)
                     last_tts_audio_done = asyncio.get_event_loop().time()
                     tts_stream_time = time_module.time() - tts_stream_start
                     print(f"[PIPELINE] ⏱️ TTS streaming took {tts_stream_time:.3f}s")
@@ -366,8 +369,11 @@ async def media_handler(ws):
                             yield token
                     
                     tts_call_start = time_module.time()
-                    await stream_tts(direct_stream(), ws, stream_sid, lambda: interrupt)
-                    last_tts_audio_done = asyncio.get_event_loop().time()
+                    def _on_direct_audio_done():
+                        nonlocal last_tts_audio_done
+                        last_tts_audio_done = asyncio.get_event_loop().time()
+                    await stream_tts(direct_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_direct_audio_done)
+                    last_tts_audio_done = asyncio.get_event_loop().time()  # fallback if callback didn't fire
                     tts_call_end = time_module.time()
                     direct_time = tts_call_end - direct_start
                     tts_only_time = tts_call_end - tts_call_start
