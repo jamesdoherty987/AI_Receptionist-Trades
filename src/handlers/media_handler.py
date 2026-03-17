@@ -696,31 +696,42 @@ async def media_handler(ws):
                             # Don't capture, but the flag will be re-set when AI asks for address next
                         else:
                             print(f"🎙️ [ADDR_AUDIO] Capturing caller's address response: '{text}'")
-                            # Snapshot the buffer as a list (before it rolls over)
-                            # TIME-WINDOWED CAPTURE: Instead of using the entire rolling
-                            # buffer (which contains TTS echo from before the AI finished
-                            # speaking), only take packets from Phase 1 onwards. This
-                            # naturally excludes old TTS audio without needing to clear
-                            # the buffer (which would wipe caller speech that overlaps
-                            # with TTS playback).
+                            # TIME-WINDOWED CAPTURE: Take audio from when TTS ended
+                            # (when the AI stopped speaking) until now. This excludes
+                            # old TTS echo without clearing the buffer.
+                            #
+                            # We add generous padding BEFORE TTS ended because callers
+                            # often start speaking their address while the AI is still
+                            # finishing its question. 3 seconds of pre-TTS-end padding
+                            # catches this overlap.
                             full_buffer = list(audio_buffer)
                             total_packets = len(full_buffer)
+                            now_mono = asyncio.get_event_loop().time()
                             
-                            if phase1_time > 0:
-                                elapsed = time_module.time() - phase1_time
-                                # Each packet = 160 bytes = 20ms at 8kHz
-                                packets_since_phase1 = int(elapsed * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
-                                # Add 1s of padding before Phase 1 to catch early speech
-                                padding_packets = int(1.0 * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)  # 50 packets = 1s
-                                packets_to_take = min(packets_since_phase1 + padding_packets, total_packets)
+                            # tts_ended_at is monotonic clock (asyncio event loop time)
+                            if tts_ended_at > 0:
+                                # Time from TTS end to now = caller's speech window
+                                since_tts_end = now_mono - tts_ended_at
+                                # Add 3s padding before TTS ended to catch overlapping speech
+                                # (caller starts talking while AI is still finishing)
+                                window_seconds = since_tts_end + 3.0
+                                packets_to_take = int(window_seconds * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
+                                packets_to_take = min(packets_to_take, total_packets)
                                 buffer_snapshot = full_buffer[-packets_to_take:] if packets_to_take > 0 else full_buffer
-                                print(f"🎙️ [ADDR_AUDIO] Time-window: elapsed={elapsed:.1f}s, "
-                                      f"packets_since_phase1={packets_since_phase1}, +padding={padding_packets}, "
+                                print(f"🎙️ [ADDR_AUDIO] Time-window: since_tts_end={since_tts_end:.1f}s, "
+                                      f"+3s overlap padding, window={window_seconds:.1f}s, "
+                                      f"taking={len(buffer_snapshot)}/{total_packets} packets")
+                            elif phase1_time > 0:
+                                # Fallback: use phase1 timestamp if tts_ended_at not set
+                                elapsed = time_module.time() - phase1_time
+                                packets_to_take = int((elapsed + 3.0) * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
+                                packets_to_take = min(packets_to_take, total_packets)
+                                buffer_snapshot = full_buffer[-packets_to_take:] if packets_to_take > 0 else full_buffer
+                                print(f"🎙️ [ADDR_AUDIO] Fallback time-window: elapsed={elapsed:.1f}s +3s, "
                                       f"taking={len(buffer_snapshot)}/{total_packets}")
                             else:
-                                # No phase1 timestamp — fallback to full buffer
                                 buffer_snapshot = full_buffer
-                                print(f"🎙️ [ADDR_AUDIO] No phase1 timestamp — using full buffer")
+                                print(f"🎙️ [ADDR_AUDIO] No timestamps — using full buffer")
                             
                             buf_len = len(buffer_snapshot)
                             raw_total = sum(len(p) for p in buffer_snapshot)
