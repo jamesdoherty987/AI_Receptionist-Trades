@@ -65,32 +65,13 @@ MULAW_SAMPLE_RATE = 8000
 MULAW_BYTES_PER_PACKET = 160  # 20ms packets
 MAX_BUFFER_PACKETS = (AUDIO_BUFFER_SECONDS * MULAW_SAMPLE_RATE) // MULAW_BYTES_PER_PACKET  # ~500
 
-EIRCODE_PATTERN = re.compile(r'\b[A-Z]\d{2}\s?[A-Z0-9]{4}\b', re.IGNORECASE)
-ADDRESS_ASK_KEYWORDS = ['address', 'eircode', 'eir code', 'location', 'where']
+ADDRESS_ASK_KEYWORDS = ['address', 'eircode', 'eir code', 'location', 'where', 'job site', 'job location', 'work location']
 
 
-def is_address_speech(conversation: list, call_state, text: str) -> bool:
-    """Detect if caller just provided address/eircode based on conversation context."""
-    if not call_state.active_booking:
-        return False
-    if call_state.address_audio_captured:
-        return False
-    
-    # Check if text contains an eircode pattern
-    if EIRCODE_PATTERN.search(text):
-        return True
-    
-    # Check if the last assistant message asked for address/eircode
-    last_assistant_msg = None
-    for msg in reversed(conversation):
-        if msg.get('role') == 'assistant':
-            last_assistant_msg = (msg.get('content') or '').lower()
-            break
-    
-    if last_assistant_msg and any(kw in last_assistant_msg for kw in ADDRESS_ASK_KEYWORDS):
-        return True
-    
-    return False
+def ai_asked_for_address(text: str) -> bool:
+    """Check if the AI's response is asking the caller for their address/eircode."""
+    lower = text.lower()
+    return any(kw in lower for kw in ADDRESS_ASK_KEYWORDS)
 
 
 async def media_handler(ws):
@@ -394,6 +375,11 @@ async def media_handler(ws):
                     print(f"\n{'='*60}")
                     print(f"🤖 RECEPTIONIST: {full_text.strip()}")
                     print(f"{'='*60}\n")
+                    
+                    # Two-phase address audio: if AI just asked for address/eircode, flag it
+                    if not call_state.address_audio_captured and ai_asked_for_address(full_text):
+                        call_state.awaiting_address_audio = True
+                        print(f"🎙️ [ADDR_AUDIO] AI asked for address — will capture caller's next response")
                 
                 # Handle transfer if requested
                 if transfer_number:
@@ -653,9 +639,13 @@ async def media_handler(ws):
                     last_committed = text
                     conversation.append({"role": "user", "content": text})
                     
-                    # Address audio capture: check if caller just said their address/eircode
-                    # Runs as a background task so it doesn't delay the LLM response
-                    if is_address_speech(conversation, call_state, text):
+                    # Address audio capture: if we're awaiting the caller's address response, capture it now
+                    # This is the second phase of the two-phase approach:
+                    # Phase 1: AI asked for address → set awaiting_address_audio = True (in start_tts)
+                    # Phase 2: Caller's next speech_final → snapshot buffer, upload to R2
+                    if call_state.awaiting_address_audio and not call_state.address_audio_captured:
+                        call_state.awaiting_address_audio = False
+                        print(f"🎙️ [ADDR_AUDIO] Capturing caller's address response: '{text[:60]}...'")
                         async def _capture_address_audio():
                             try:
                                 raw_audio = b''.join(audio_buffer)
@@ -677,9 +667,15 @@ async def media_handler(ws):
                                         if url:
                                             call_state.address_audio_url = url
                                             call_state.address_audio_captured = True
-                                            print(f"🎙️ Address audio captured: {url}")
+                                            print(f"🎙️ [ADDR_AUDIO] Uploaded: {url}")
+                                        else:
+                                            print(f"⚠️ [ADDR_AUDIO] Upload returned None (R2 not configured?)")
+                                    else:
+                                        print(f"⚠️ [ADDR_AUDIO] No company_id, skipping upload")
+                                else:
+                                    print(f"⚠️ [ADDR_AUDIO] Buffer empty, nothing to capture")
                             except Exception as audio_err:
-                                print(f"⚠️ Address audio capture failed: {audio_err}")
+                                print(f"⚠️ [ADDR_AUDIO] Capture failed: {audio_err}")
                         asyncio.create_task(_capture_address_audio())
                     
                     # Trim history - keep more context to prevent AI from forgetting
