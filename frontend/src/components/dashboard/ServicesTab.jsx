@@ -135,7 +135,7 @@ function ServicesTab() {
     
     createMutation.mutate({
       name: formData.name,
-      price: parseFloat(formData.price) || 0,
+      price: Math.round((parseFloat(formData.price) || 0) * 100) / 100,
       duration_minutes: parseInt(formData.duration) || 60,
       image_url: formData.image_url,
       workers_required: parseInt(formData.workers_required) || 1,
@@ -160,7 +160,7 @@ function ServicesTab() {
       id: service.id,
       data: {
         name: service.name,
-        price: parseFloat(service.price) || 0,
+        price: Math.round((parseFloat(service.price) || 0) * 100) / 100,
         duration_minutes: parseInt(service.duration_minutes) || 60,
         image_url: service.image_url,
         workers_required: parseInt(service.workers_required) || 1,
