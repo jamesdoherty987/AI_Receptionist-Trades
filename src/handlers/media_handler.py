@@ -382,7 +382,9 @@ async def media_handler(ws):
                     # street address. The second capture overwrites the first (useless) one.
                     if ai_asked_for_address(full_text):
                         call_state.awaiting_address_audio = True
-                        print(f"🎙️ [ADDR_AUDIO] AI asked for address — will capture caller's next response")
+                        call_state._addr_audio_phase1_time = time_module.time()
+                        print(f"🎙️ [ADDR_AUDIO] Phase 1: AI asked for address — will capture caller's next response")
+                        print(f"🎙️ [ADDR_AUDIO] Phase 1: speaking={speaking}, buffer_len={len(audio_buffer)}")
                 
                 # Handle transfer if requested
                 if transfer_number:
@@ -654,6 +656,10 @@ async def media_handler(ws):
                     # the previous (useless) recording.
                     if call_state.awaiting_address_audio:
                         call_state.awaiting_address_audio = False
+                        phase1_time = getattr(call_state, '_addr_audio_phase1_time', 0)
+                        phase_gap = time_module.time() - phase1_time if phase1_time else -1
+                        print(f"🎙️ [ADDR_AUDIO] Phase 2: speech_final received, gap since phase1={phase_gap:.1f}s")
+                        print(f"🎙️ [ADDR_AUDIO] Phase 2: speaking={speaking}, tts_ended_at_delta={asyncio.get_event_loop().time() - tts_ended_at:.1f}s")
                         # Skip capture if the caller clearly didn't give an address
                         # (e.g., "No I don't", "I don't know", "No" — responses to eircode question)
                         text_lower_check = text.lower().strip().rstrip('.,!?')
@@ -663,41 +669,82 @@ async def media_handler(ws):
                             print(f"🎙️ [ADDR_AUDIO] Skipping capture — caller declined/doesn't know: '{text}'")
                             # Don't capture, but the flag will be re-set when AI asks for address next
                         else:
-                            print(f"🎙️ [ADDR_AUDIO] Capturing caller's address response: '{text[:60]}...'")
+                            print(f"🎙️ [ADDR_AUDIO] Capturing caller's address response: '{text}'")
                             # Snapshot the buffer now (before it rolls over with new audio)
+                            buf_len = len(audio_buffer)
                             captured_audio = b''.join(audio_buffer)
+                            cap_bytes = len(captured_audio)
+                            cap_duration = cap_bytes / MULAW_SAMPLE_RATE if cap_bytes else 0
+                            
+                            # Check audio energy to see if it's silence
+                            if cap_bytes > 0:
+                                # Sample energy from middle of buffer (where caller speech likely is)
+                                mid = cap_bytes // 2
+                                chunk_size = min(1600, cap_bytes)  # ~200ms sample
+                                sample_start = max(0, mid - chunk_size // 2)
+                                sample_chunk = captured_audio[sample_start:sample_start + chunk_size]
+                                sample_energy = ulaw_energy(sample_chunk)
+                                # Also check last 2 seconds (most recent audio)
+                                tail_bytes = min(16000, cap_bytes)  # last 2s
+                                tail_chunk = captured_audio[-tail_bytes:]
+                                tail_energy = ulaw_energy(tail_chunk)
+                                # Check first 2 seconds
+                                head_chunk = captured_audio[:min(16000, cap_bytes)]
+                                head_energy = ulaw_energy(head_chunk)
+                                print(f"🎙️ [ADDR_AUDIO] Buffer: {buf_len} packets, {cap_bytes} bytes, ~{cap_duration:.1f}s")
+                                print(f"🎙️ [ADDR_AUDIO] Energy — head(first 2s)={head_energy:.0f}, mid={sample_energy:.0f}, tail(last 2s)={tail_energy:.0f}")
+                                # Check individual packet sizes
+                                pkt_sizes = set(len(p) for p in audio_buffer)
+                                print(f"🎙️ [ADDR_AUDIO] Packet sizes in buffer: {pkt_sizes}")
+                            else:
+                                print(f"⚠️ [ADDR_AUDIO] Buffer: {buf_len} packets but 0 bytes after join!")
+                            
                             # Use a unique filename with timestamp to avoid CDN cache collisions
                             import time as _time_mod
                             capture_ts = int(_time_mod.time())
                             async def _capture_address_audio(raw_audio, ts=capture_ts):
                                 try:
-                                    if raw_audio:
-                                        wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
-                                        from src.services.storage_r2 import upload_company_file
-                                        import io
-                                        company_id_int = int(company_id) if company_id else None
-                                        if company_id_int:
-                                            filename = f"{call_sid or 'unknown'}_{ts}.wav"
-                                            url = await asyncio.to_thread(
-                                                upload_company_file,
-                                                company_id_int,
-                                                io.BytesIO(wav_data),
-                                                filename,
-                                                'address_audio',
-                                                'audio/wav'
-                                            )
-                                            if url:
-                                                call_state.address_audio_url = url
-                                                call_state.address_audio_captured = True
-                                                print(f"🎙️ [ADDR_AUDIO] Uploaded: {url}")
-                                            else:
-                                                print(f"⚠️ [ADDR_AUDIO] Upload returned None (R2 not configured?)")
-                                        else:
-                                            print(f"⚠️ [ADDR_AUDIO] No company_id, skipping upload")
+                                    if not raw_audio:
+                                        print(f"⚠️ [ADDR_AUDIO] Upload skipped — raw_audio is empty")
+                                        return
+                                    
+                                    raw_len = len(raw_audio)
+                                    print(f"🎙️ [ADDR_AUDIO] Converting {raw_len} bytes mulaw → WAV")
+                                    wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
+                                    wav_len = len(wav_data)
+                                    wav_duration = (wav_len - 44) / (MULAW_SAMPLE_RATE * 2)  # 16-bit = 2 bytes/sample
+                                    print(f"🎙️ [ADDR_AUDIO] WAV: {wav_len} bytes, duration={wav_duration:.1f}s (header=44, PCM={wav_len-44})")
+                                    
+                                    from src.services.storage_r2 import upload_company_file
+                                    import io
+                                    company_id_int = int(company_id) if company_id else None
+                                    if not company_id_int:
+                                        print(f"⚠️ [ADDR_AUDIO] No company_id, skipping upload")
+                                        return
+                                    
+                                    filename = f"{call_sid or 'unknown'}_{ts}.wav"
+                                    print(f"🎙️ [ADDR_AUDIO] Uploading as: company_{company_id_int}/address_audio/{filename}")
+                                    url = await asyncio.to_thread(
+                                        upload_company_file,
+                                        company_id_int,
+                                        io.BytesIO(wav_data),
+                                        filename,
+                                        'address_audio',
+                                        'audio/wav'
+                                    )
+                                    if url:
+                                        call_state.address_audio_url = url
+                                        call_state.address_audio_captured = True
+                                        print(f"🎙️ [ADDR_AUDIO] ✅ Uploaded: {url}")
+                                        print(f"🎙️ [ADDR_AUDIO] ✅ WAV duration={wav_duration:.1f}s, call_state.address_audio_url set")
                                     else:
-                                        print(f"⚠️ [ADDR_AUDIO] Buffer empty, nothing to capture")
+                                        print(f"⚠️ [ADDR_AUDIO] Upload returned None (R2 not configured?)")
+                                except ValueError as ve:
+                                    print(f"⚠️ [ADDR_AUDIO] WAV conversion error: {ve}")
                                 except Exception as audio_err:
                                     print(f"⚠️ [ADDR_AUDIO] Capture failed: {audio_err}")
+                                    import traceback
+                                    traceback.print_exc()
                             asyncio.create_task(_capture_address_audio(captured_audio))
                     
                     # Trim history - keep more context to prevent AI from forgetting
@@ -750,6 +797,10 @@ async def media_handler(ws):
         print(f"Duration: {total_duration:.1f}s, Messages: {len(conversation_log)}")
         if response_times:
             print(f"Avg response: {sum(response_times)/len(response_times):.2f}s")
+        # Address audio final state
+        print(f"🎙️ Address audio: captured={call_state.address_audio_captured}, url={'set' if call_state.address_audio_url else 'None'}")
+        if call_state.address_audio_url:
+            print(f"🎙️ Audio URL: {call_state.address_audio_url}")
         print(f"{'#'*60}\n")
         
         # Save call summary

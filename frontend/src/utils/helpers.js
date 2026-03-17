@@ -100,3 +100,20 @@ export const getProxiedImageUrl = (url) => {
   // Return original URL for non-R2 images (base64, other CDNs, etc.)
   return url;
 };
+
+/**
+ * Get proxied media URL for audio files from R2 storage.
+ * Routes through our media-proxy endpoint to add CORS headers.
+ * @param {string} url - The original audio/media URL
+ * @returns {string} - The proxied URL or original if not R2
+ */
+export const getProxiedMediaUrl = (url) => {
+  if (!url) return '';
+  
+  if (url.includes('r2.dev') || url.includes('r2.cloudflarestorage.com')) {
+    const apiBase = import.meta.env.VITE_API_URL || '';
+    return `${apiBase}/api/media-proxy?url=${encodeURIComponent(url)}`;
+  }
+  
+  return url;
+};

@@ -542,6 +542,45 @@ def image_proxy():
         return jsonify({"error": "Failed to fetch image"}), 500
 
 
+@app.route("/api/media-proxy", methods=["GET"])
+def media_proxy():
+    """
+    Proxy audio/media files from R2 storage to avoid CORS issues.
+    Usage: /api/media-proxy?url=https://...r2.dev/path/to/audio.wav
+    """
+    import requests as req_lib
+    from flask import Response
+
+    media_url = request.args.get('url')
+    if not media_url:
+        return jsonify({"error": "Missing url parameter"}), 400
+
+    allowed_domains = ['r2.dev', 'r2.cloudflarestorage.com']
+    if not any(domain in media_url for domain in allowed_domains):
+        return jsonify({"error": "Invalid media URL"}), 403
+
+    try:
+        resp = req_lib.get(media_url, timeout=15, stream=True)
+        if resp.status_code != 200:
+            return jsonify({"error": "Media not found"}), 404
+
+        content_type = resp.headers.get('Content-Type', 'audio/wav')
+
+        return Response(
+            resp.content,
+            mimetype=content_type,
+            headers={
+                'Cache-Control': 'no-cache, must-revalidate',
+                'Access-Control-Allow-Origin': '*',
+                'Accept-Ranges': 'bytes',
+                'Content-Length': str(len(resp.content)),
+            }
+        )
+    except Exception as e:
+        print(f"[MEDIA_PROXY] Error fetching media: {e}")
+        return jsonify({"error": "Failed to fetch media"}), 500
+
+
 @app.route("/api/config-check", methods=["GET"])
 @login_required
 def config_check():

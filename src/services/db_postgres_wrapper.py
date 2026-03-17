@@ -513,7 +513,6 @@ class PostgreSQLDatabaseWrapper:
             WHERE table_name = 'companies'
         """)
         existing_columns = [row['column_name'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()]
-        print(f"[INFO] Companies table has {len(existing_columns)} columns")
         
         # New subscription-related columns to add to companies table
         # This ensures all columns used in the code exist in the database
@@ -815,11 +814,6 @@ class PostgreSQLDatabaseWrapper:
     
     def update_company(self, company_id: int, **kwargs) -> bool:
         """Update company information"""
-        print(f"[DB_UPDATE] ========== UPDATE COMPANY {company_id} ==========")
-        print(f"[DB_UPDATE] Fields to update: {list(kwargs.keys())}")
-        for key, value in kwargs.items():
-            print(f"[DB_UPDATE]   - {key}: {value}")
-        
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
@@ -856,27 +850,24 @@ class PostgreSQLDatabaseWrapper:
                     else:
                         skipped_fields.append(key)
                 else:
-                    print(f"[DB_UPDATE] WARNING: Field '{key}' not in allowed_fields!")
+                    pass  # Field not in allowed_fields
             
             if skipped_fields:
-                print(f"[DB_UPDATE] WARNING: Skipped fields not in database: {skipped_fields}")
+                print(f"[DB_UPDATE] Skipped fields not in database: {skipped_fields}")
             
             if fields:
                 values.append(datetime.now())
                 values.append(company_id)
                 query = f"UPDATE companies SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
-                print(f"[DB_UPDATE] Executing query with {len(fields)} fields")
                 try:
                     cursor.execute(query, values)
                     conn.commit()
                     success = cursor.rowcount > 0
-                    print(f"[DB_UPDATE] Query executed, rows affected: {cursor.rowcount}, success: {success}")
                 except Exception as e:
                     conn.rollback()
-                    print(f"[DB_UPDATE] ERROR executing query: {e}")
+                    print(f"[DB_UPDATE] ERROR: {e}")
                     raise
             else:
-                print(f"[DB_UPDATE] No valid fields to update!")
                 success = False
             
             return success
@@ -1284,11 +1275,7 @@ class PostgreSQLDatabaseWrapper:
         """
         from src.utils.security import normalize_name_for_comparison, normalize_phone_for_comparison
         
-        print(f"[DB_CLIENT] ========== FIND OR CREATE CLIENT ==========")
-        print(f"[DB_CLIENT] name={name}, phone={phone}, email={email}, dob={date_of_birth}, company_id={company_id}")
-        
         if not phone and not email:
-            print(f"[DB_CLIENT] ❌ Error: No phone or email provided")
             raise ValueError("Client must have either phone number or email address")
         
         conn = self.get_connection()
@@ -1298,8 +1285,6 @@ class PostgreSQLDatabaseWrapper:
             normalized_name = normalize_name_for_comparison(name)
             normalized_phone = normalize_phone_for_comparison(phone) if phone else None
             normalized_email = email.lower().strip() if email else None
-            
-            print(f"[DB_CLIENT] Normalized name: '{normalized_name}', phone: '{normalized_phone}'")
             
             # Fetch all clients for this company to do normalized comparison
             if company_id:
@@ -1311,20 +1296,15 @@ class PostgreSQLDatabaseWrapper:
             
             # First priority: Try to find by normalized name + DOB if DOB is provided
             if date_of_birth:
-                print(f"[DB_CLIENT] Searching by normalized name + DOB...")
                 for client in all_clients:
                     client_normalized_name = normalize_name_for_comparison(client['name'])
                     if client_normalized_name == normalized_name and client.get('date_of_birth') == date_of_birth:
-                        print(f"[DB_CLIENT] ✅ Found existing client by name + DOB: {client['name']} (ID: {client['id']})")
                         return client['id']
                 
                 # DOB provided but no match found - create new client
-                print(f"[DB_CLIENT] Creating NEW client (same name, different DOB): {name} (DOB: {date_of_birth})")
                 return self.add_client(name, phone, email, date_of_birth, company_id=company_id)
             
             # No DOB provided - fall back to matching by normalized name + contact info
-            print(f"[DB_CLIENT] Searching by normalized name + contact info...")
-            
             for client in all_clients:
                 client_normalized_name = normalize_name_for_comparison(client['name'])
                 
@@ -1336,21 +1316,17 @@ class PostgreSQLDatabaseWrapper:
                 if normalized_phone:
                     client_normalized_phone = normalize_phone_for_comparison(client.get('phone') or '')
                     if client_normalized_phone == normalized_phone:
-                        print(f"[DB_CLIENT] ✅ Found existing client by normalized name + phone: {client['name']} (ID: {client['id']})")
                         return client['id']
                 elif normalized_email:
                     client_email = (client.get('email') or '').lower().strip()
                     if client_email == normalized_email:
-                        print(f"[DB_CLIENT] ✅ Found existing client by normalized name + email: {client['name']} (ID: {client['id']})")
                         return client['id']
             
             # No match found - create new client
-            print(f"[DB_CLIENT] Creating new client...")
             new_id = self.add_client(name, phone, email, date_of_birth, company_id=company_id)
-            print(f"[DB_CLIENT] ✅ Created new client: ID={new_id}")
             return new_id
         except Exception as e:
-            print(f"[DB_CLIENT] ❌ Error in find_or_create_client: {e}")
+            print(f"[DB_CLIENT] ❌ Error: {e}")
             import traceback
             traceback.print_exc()
             raise
@@ -2590,18 +2566,13 @@ class PostgreSQLDatabaseWrapper:
             List of available worker dicts. Returns None on error (distinct from empty list).
         """
         if not company_id:
-            print(f"[WORKER_AVAIL] ❌ No company_id provided - returning empty list")
             return []
         
         try:
             # Get all workers for this company
             all_workers = self.get_all_workers(company_id=company_id)
             
-            print(f"[WORKER_AVAIL] Checking availability for company_id={company_id} at {appointment_time} for {duration_minutes} mins")
-            print(f"[WORKER_AVAIL] Total workers found: {len(all_workers) if all_workers else 0}")
-            
             if not all_workers:
-                print(f"[WORKER_AVAIL] ❌ No workers found for company_id={company_id}")
                 return []
             
             available_workers = []
@@ -2612,14 +2583,12 @@ class PostgreSQLDatabaseWrapper:
                 
                 # Skip inactive workers
                 if worker_status == 'inactive':
-                    print(f"[WORKER_AVAIL] Skipping inactive worker: {worker_name}")
                     continue
                 
                 # Filter by trade specialty if specified
                 if trade_specialty:
                     worker_specialty = (worker.get('trade_specialty') or '').lower()
                     if trade_specialty.lower() not in worker_specialty and worker_specialty not in trade_specialty.lower():
-                        print(f"[WORKER_AVAIL] Skipping worker {worker_name} - specialty mismatch")
                         continue
                 
                 # Check availability
@@ -2630,8 +2599,6 @@ class PostgreSQLDatabaseWrapper:
                     company_id=company_id
                 )
                 
-                print(f"[WORKER_AVAIL] Worker {worker_name} (id={worker['id']}): available={availability['available']}, message={availability.get('message', '')}")
-                
                 if availability['available']:
                     available_workers.append({
                         'id': worker['id'],
@@ -2641,10 +2608,9 @@ class PostgreSQLDatabaseWrapper:
                         'trade_specialty': worker.get('trade_specialty')
                     })
             
-            print(f"[WORKER_AVAIL] ✅ Found {len(available_workers)} available workers")
             return available_workers
         except Exception as e:
-            print(f"[WORKER_AVAIL] ❌ Error finding available workers: {e}")
+            print(f"[WORKER_AVAIL] ❌ Error: {e}")
             import traceback
             traceback.print_exc()
             # Return None on error to distinguish from "no workers available" (empty list)

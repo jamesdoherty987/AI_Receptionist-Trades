@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getClient, updateClient, deleteClient, getBookings, addClientNote } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
-import { formatPhone, formatDateTime, getStatusBadgeClass, formatCurrency } from '../../utils/helpers';
+import { formatPhone, formatDateTime, getStatusBadgeClass, formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
 import './CustomerDetailModal.css';
 
 function CustomerDetailModal({ isOpen, onClose, clientId }) {
@@ -472,7 +472,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
                               className="btn-audio-inline"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const audio = new Audio(booking.address_audio_url);
+                                const audio = new Audio(getProxiedMediaUrl(booking.address_audio_url));
                                 audio.play();
                               }}
                               title="Listen to address"

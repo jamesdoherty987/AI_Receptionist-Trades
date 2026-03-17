@@ -15,7 +15,7 @@ import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../Toast';
-import { formatDateTime, getStatusBadgeClass, formatCurrency, formatPhone } from '../../utils/helpers';
+import { formatDateTime, getStatusBadgeClass, formatCurrency, formatPhone, getProxiedMediaUrl } from '../../utils/helpers';
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
 import './JobDetailModal.css';
 
@@ -659,7 +659,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                         <span className="info-value">{job.job_address || job.address} {job.eircode && `(${job.eircode})`}</span>
                         {job.address_audio_url && (
                           <div className="address-audio-player" style={{ marginTop: '6px' }}>
-                            <audio controls preload="none" src={job.address_audio_url} style={{ height: '32px', width: '100%', maxWidth: '300px' }}>
+                            <audio controls preload="metadata" src={getProxiedMediaUrl(job.address_audio_url)} style={{ height: '32px', width: '100%', maxWidth: '300px' }}>
                               Your browser does not support audio playback.
                             </audio>
                             <span style={{ fontSize: '0.8em', color: '#888', marginLeft: '4px' }}>Listen to address</span>

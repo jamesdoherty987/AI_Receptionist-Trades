@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { formatDateTime, getStatusBadgeClass } from '../../utils/helpers';
+import { formatDateTime, getStatusBadgeClass, getProxiedMediaUrl } from '../../utils/helpers';
 import { useToast } from '../Toast';
 import AddJobModal from '../modals/AddJobModal';
 import JobDetailModal from '../modals/JobDetailModal';
@@ -159,7 +159,7 @@ function JobsTab({ bookings }) {
                 className="btn-audio-inline"
                 onClick={(e) => {
                   e.stopPropagation();
-                  const audio = new Audio(job.address_audio_url);
+                  const audio = new Audio(getProxiedMediaUrl(job.address_audio_url));
                   audio.play();
                 }}
                 title="Listen to address"
@@ -295,7 +295,7 @@ function JobsTab({ bookings }) {
                           className="btn-audio-inline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            const audio = new Audio(job.address_audio_url);
+                            const audio = new Audio(getProxiedMediaUrl(job.address_audio_url));
                             audio.play();
                           }}
                           title="Listen to address"
@@ -361,7 +361,7 @@ function JobsTab({ bookings }) {
                           className="btn-audio-inline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            const audio = new Audio(job.address_audio_url);
+                            const audio = new Audio(getProxiedMediaUrl(job.address_audio_url));
                             audio.play();
                           }}
                           title="Listen to address"
