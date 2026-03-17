@@ -129,7 +129,7 @@ CALENDAR_TOOLS = [
                     },
                     "appointment_datetime": {
                         "type": "string",
-                        "description": "Date and time for the appointment in natural language (e.g., 'Monday at 9am', 'January 20th at 2pm')"
+                        "description": "Date and time for the appointment. ALWAYS include the month name (e.g., 'Monday, March 31st at 9am', 'January 20th at 2pm'). Must be SPECIFIC. If the user says just a day like 'Tuesday the 31st', resolve the month from context before calling."
                     },
                     "reason": {
                         "type": "string",
@@ -216,7 +216,7 @@ CALENDAR_TOOLS = [
                     },
                     "appointment_datetime": {
                         "type": "string",
-                        "description": "Date and time for the job in natural language (e.g., 'Monday at 9am', 'tomorrow at 2pm'). Must be SPECIFIC - not 'within 2 hours' or 'ASAP'."
+                        "description": "Date and time for the job. ALWAYS include the month name (e.g., 'Monday, March 31st at 9am', 'Tuesday, January 14th at 2pm'). Must be SPECIFIC - not 'within 2 hours' or 'ASAP'. If the user says just a day like 'Tuesday the 31st', resolve the month from context before calling."
                     },
                     "urgency_level": {
                         "type": "string",

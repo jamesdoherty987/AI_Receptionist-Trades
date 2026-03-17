@@ -126,6 +126,7 @@ async def media_handler(ws):
     respond_task = None
     tts_started_at = 0.0
     tts_ended_at = 0.0
+    last_tts_audio_done = 0.0  # Monotonic time when TTS audio actually finished sending
     
     # LLM processing state
     llm_processing = False
@@ -172,10 +173,10 @@ async def media_handler(ws):
         
         Key insight: Don't wait for filler to finish before starting LLM work!
         """
-        nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at, llm_processing
+        nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at, llm_processing, last_tts_audio_done
 
         async def run():
-            nonlocal speaking, tts_started_at, tts_ended_at, llm_processing, conversation_log, response_times
+            nonlocal speaking, tts_started_at, tts_ended_at, llm_processing, conversation_log, response_times, last_tts_audio_done
             speaking = True
             interrupt = False
             tts_started_at = asyncio.get_event_loop().time()
@@ -323,6 +324,7 @@ async def media_handler(ws):
                     
                     tts_stream_start = time_module.time()
                     await stream_tts(queued_stream(), ws, stream_sid, lambda: interrupt)
+                    last_tts_audio_done = asyncio.get_event_loop().time()
                     tts_stream_time = time_module.time() - tts_stream_start
                     print(f"[PIPELINE] ⏱️ TTS streaming took {tts_stream_time:.3f}s")
                     
@@ -365,6 +367,7 @@ async def media_handler(ws):
                     
                     tts_call_start = time_module.time()
                     await stream_tts(direct_stream(), ws, stream_sid, lambda: interrupt)
+                    last_tts_audio_done = asyncio.get_event_loop().time()
                     tts_call_end = time_module.time()
                     direct_time = tts_call_end - direct_start
                     tts_only_time = tts_call_end - tts_call_start
@@ -685,7 +688,7 @@ async def media_handler(ws):
                         phase1_time = call_state._addr_audio_phase1_time
                         phase_gap = time_module.time() - phase1_time if phase1_time else -1
                         print(f"🎙️ [ADDR_AUDIO] Phase 2: speech_final received, gap since phase1={phase_gap:.1f}s")
-                        print(f"🎙️ [ADDR_AUDIO] Phase 2: speaking={speaking}, tts_ended_at_delta={asyncio.get_event_loop().time() - tts_ended_at:.1f}s, buffer_packets={len(audio_buffer)}")
+                        print(f"🎙️ [ADDR_AUDIO] Phase 2: speaking={speaking}, tts_ended_at_delta={asyncio.get_event_loop().time() - tts_ended_at:.1f}s, audio_done_delta={asyncio.get_event_loop().time() - last_tts_audio_done:.1f}s, buffer_packets={len(audio_buffer)}")
                         # Skip capture if the caller clearly didn't give an address
                         # (e.g., "No I don't", "I don't know", "No" — responses to eircode question)
                         text_lower_check = text.lower().strip().rstrip('.,!?')
@@ -708,21 +711,24 @@ async def media_handler(ws):
                             total_packets = len(full_buffer)
                             now_mono = asyncio.get_event_loop().time()
                             
-                            # tts_ended_at is monotonic clock (asyncio event loop time)
-                            if tts_ended_at > 0:
-                                # Time from TTS end to now = caller's speech window
-                                since_tts_end = now_mono - tts_ended_at
-                                # Add 3s padding before TTS ended to catch overlapping speech
+                            # last_tts_audio_done = when stream_tts() returned (actual
+                            # audio finished sending). This is different from tts_ended_at
+                            # which is set in the finally block after the entire pipeline
+                            # (including LLM streaming) completes — often 10+ seconds later.
+                            if last_tts_audio_done > 0:
+                                # Time from actual audio end to now = caller's speech window
+                                since_audio_end = now_mono - last_tts_audio_done
+                                # Add 3s padding before audio ended to catch overlapping speech
                                 # (caller starts talking while AI is still finishing)
-                                window_seconds = since_tts_end + 3.0
+                                window_seconds = since_audio_end + 3.0
                                 packets_to_take = int(window_seconds * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
                                 packets_to_take = min(packets_to_take, total_packets)
                                 buffer_snapshot = full_buffer[-packets_to_take:] if packets_to_take > 0 else full_buffer
-                                print(f"🎙️ [ADDR_AUDIO] Time-window: since_tts_end={since_tts_end:.1f}s, "
+                                print(f"🎙️ [ADDR_AUDIO] Time-window: since_audio_end={since_audio_end:.1f}s, "
                                       f"+3s overlap padding, window={window_seconds:.1f}s, "
                                       f"taking={len(buffer_snapshot)}/{total_packets} packets")
                             elif phase1_time > 0:
-                                # Fallback: use phase1 timestamp if tts_ended_at not set
+                                # Fallback: use phase1 timestamp if last_tts_audio_done not set
                                 elapsed = time_module.time() - phase1_time
                                 packets_to_take = int((elapsed + 3.0) * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
                                 packets_to_take = min(packets_to_take, total_packets)

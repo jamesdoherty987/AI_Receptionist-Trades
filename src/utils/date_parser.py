@@ -153,11 +153,56 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
         print(f"[DATE] Fast path relative: '{text}' -> {result}")
         return result
     
-    # Fast path 3: "[weekday] at Xam/pm" (e.g., "Monday at 2pm", "next Friday at 10am")
+    # Fast path 3: "[weekday] the [ordinal]" with optional time (e.g., "Tuesday the 31st at 8am", "Monday the 5th")
     weekday_names = {
         "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
         "friday": 4, "saturday": 5, "sunday": 6
     }
+    weekday_ordinal_match = re.match(
+        r'^(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+the\s+(\d{1,2})(?:st|nd|rd|th)(?:\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?$',
+        text_lower
+    )
+    if weekday_ordinal_match:
+        day_name = weekday_ordinal_match.group(1)
+        day_num = int(weekday_ordinal_match.group(2))
+        hour_str = weekday_ordinal_match.group(3)
+        minute_str = weekday_ordinal_match.group(4)
+        am_pm = weekday_ordinal_match.group(5)
+        
+        # Find the next occurrence of this weekday that falls on this day number
+        target_weekday = weekday_names[day_name]
+        search_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        found_date = None
+        for _ in range(365):
+            if search_date.day == day_num and search_date.weekday() == target_weekday and search_date.date() >= now.date():
+                found_date = search_date
+                break
+            search_date += timedelta(days=1)
+        
+        if found_date:
+            if hour_str:
+                hour = int(hour_str)
+                minute = int(minute_str or 0)
+                if am_pm == 'pm' and hour != 12:
+                    hour += 12
+                elif am_pm == 'am' and hour == 12:
+                    hour = 0
+                elif am_pm is None:
+                    if 1 <= hour <= 7:
+                        hour += 12
+            elif require_time:
+                print(f"[DATE] Fast path weekday+ordinal: '{text}' matched {found_date.strftime('%A, %B %d')} but no time specified - returning None")
+                return None
+            else:
+                hour, minute = default_time
+            
+            result = found_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            print(f"[DATE] Fast path weekday+ordinal: '{text}' -> {result.strftime('%A, %B %d, %Y %I:%M %p')}")
+            return result
+        else:
+            print(f"[DATE] Fast path weekday+ordinal: no {day_name} the {day_num} found in next year - falling through to AI")
+    
+    # Fast path 4: "[weekday] at Xam/pm" (e.g., "Monday at 2pm", "next Friday at 10am")
     weekday_match = re.match(r'^(?:next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$', text_lower)
     if weekday_match:
         day_name = weekday_match.group(1)
@@ -371,10 +416,20 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
             return now.replace(hour=14, minute=0, second=0, microsecond=0) + timedelta(days=1)
         
         # Check if clarification is needed
+        # BUT: if we already resolved a weekday+ordinal to a specific month/day above, 
+        # ignore the AI's needs_clarification flag since we've figured it out ourselves
         if parsed.get("needs_clarification"):
             missing = parsed["needs_clarification"]
-            print(f"[WARNING] {missing.title()} not specified in '{text}' - returning None to prompt")
-            return None
+            # If the AI said "date" needs clarification but we resolved month+day from weekday+ordinal, proceed
+            has_resolved_date = parsed.get("month") and parsed.get("day")
+            has_resolved_weekday = parsed.get("day_of_week") is not None
+            if missing == "date" and (has_resolved_date or has_resolved_weekday):
+                print(f"[DATE_FIX] AI said needs_clarification='date' but we resolved it - proceeding")
+            elif missing == "time" and parsed.get("hour") is not None:
+                print(f"[DATE_FIX] AI said needs_clarification='time' but hour is set - proceeding")
+            else:
+                print(f"[WARNING] {missing.title()} not specified in '{text}' - returning None to prompt")
+                return None
         
         # Build the datetime from parsed components
         result = None
