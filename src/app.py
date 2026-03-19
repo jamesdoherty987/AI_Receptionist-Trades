@@ -337,6 +337,14 @@ def start_scheduler_once():
         except Exception as e:
             print(f"[WARNING] Could not start auto-complete scheduler: {e}\\n")
         
+        # Start SMS day-before reminder scheduler (sends at 5 PM daily)
+        try:
+            from src.services.sms_reminder import start_sms_reminder_scheduler
+            start_sms_reminder_scheduler(check_hour=17)
+            print("✅ SMS day-before reminder scheduler started\\n")
+        except Exception as e:
+            print(f"[WARNING] Could not start SMS reminder scheduler: {e}\\n")
+        
         # Keep lock file open to maintain the lock
         # Don't close lock_fd - we want to keep the lock for the lifetime of this worker
         
@@ -1512,6 +1520,7 @@ def get_subscription_info(company: dict) -> dict:
         'trial_days_remaining': trial_days_remaining,
         'current_period_end': current_period_end.isoformat() if current_period_end else None,
         'cancel_at_period_end': cancel_at_period_end,
+        'has_used_trial': bool(company.get('has_used_trial', 0)),
         'stripe_customer_id': company.get('stripe_customer_id'),
         'stripe_subscription_id': company.get('stripe_subscription_id')
     }
@@ -1646,7 +1655,7 @@ def create_checkout():
 @login_required
 @rate_limit(max_requests=5, window_seconds=300)
 def start_trial():
-    """Start or restart a 14-day free trial"""
+    """Start a one-time 14-day free trial"""
     db = get_database()
     company = db.get_company(session['company_id'])
     
@@ -1661,6 +1670,10 @@ def start_trial():
     if subscription_info['is_active'] and subscription_info['tier'] == 'trial':
         return jsonify({"error": "You already have an active trial"}), 400
     
+    # Prevent re-use of the free trial
+    if company.get('has_used_trial'):
+        return jsonify({"error": "Free trial has already been used. Please subscribe to continue."}), 400
+    
     # Start 14-day trial
     from datetime import timedelta
     trial_start = datetime.now()
@@ -1671,7 +1684,8 @@ def start_trial():
         subscription_tier='trial',
         subscription_status='active',
         trial_start=trial_start,
-        trial_end=trial_end
+        trial_end=trial_end,
+        has_used_trial=1
     )
     
     print(f"[SUCCESS] Free trial started for company {company['id']} until {trial_end}")

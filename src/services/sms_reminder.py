@@ -124,7 +124,67 @@ class SMSReminderService:
         except Exception as e:
             print(f"❌ Error sending SMS reminder: {e}")
             return False
-    
+
+    def send_day_before_reminder(self, to_number: str, appointment_time: datetime,
+                                  customer_name: str, service_type: str = "appointment",
+                                  company_name: str = None,
+                                  worker_names: list = None) -> bool:
+        """
+        Send a day-before SMS reminder with company name and job details.
+
+        Args:
+            to_number: Recipient phone number
+            appointment_time: Appointment datetime
+            customer_name: Customer's name
+            service_type: Type of service/job
+            company_name: Business name
+            worker_names: List of assigned worker names
+
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        if not self.client:
+            print("SMS service not configured")
+            return False
+
+        to_number = normalize_phone_number(to_number)
+
+        try:
+            time_str = appointment_time.strftime('%I:%M %p')
+            date_str = appointment_time.strftime('%A, %B %d')
+            business = company_name or 'Your service provider'
+
+            lines = [
+                f"Hi {customer_name}, this is a reminder from {business}.",
+                f"",
+                f"You have a {service_type} appointment tomorrow ({date_str}) at {time_str}.",
+            ]
+
+            if worker_names:
+                names = ", ".join(worker_names)
+                lines.append(f"Assigned: {names}")
+
+            lines.append("")
+            lines.append("If you need to cancel or reschedule, please contact us as soon as possible.")
+
+            message_body = "\n".join(lines)
+
+            message = self.client.messages.create(
+                body=message_body,
+                from_=self.from_number,
+                to=to_number
+            )
+
+            print(f"Day-before SMS reminder sent to {to_number} (SID: {message.sid})")
+            return True
+
+        except TwilioRestException as e:
+            print(f"Failed to send day-before SMS reminder: {e}")
+            return False
+        except Exception as e:
+            print(f"Error sending day-before SMS reminder: {e}")
+            return False
+
     def send_confirmation_reply(self, to_number: str, message: str) -> bool:
         """
         Send a reply to user's SMS response
@@ -292,3 +352,132 @@ def get_sms_service() -> SMSReminderService:
     if _sms_service is None:
         _sms_service = SMSReminderService()
     return _sms_service
+
+
+def send_day_before_reminders() -> int:
+    """
+    Query all bookings scheduled for tomorrow and send SMS reminders.
+    Runs across all companies (multi-tenant).
+
+    Returns:
+        Number of reminders sent
+    """
+    from src.services.database import get_database
+
+    db = get_database()
+    sms = get_sms_service()
+
+    if not sms.client:
+        print("[SMS-REMINDER] Twilio not configured, skipping day-before reminders")
+        return 0
+
+    now = datetime.now()
+    tomorrow_start = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_end = tomorrow_start + timedelta(days=1)
+
+    print(f"\n{'='*60}")
+    print(f"[SMS-REMINDER] Checking for tomorrow's appointments ({tomorrow_start.strftime('%Y-%m-%d')})...")
+
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT
+                b.id, b.appointment_time, b.service_type,
+                b.phone_number, b.company_id,
+                c.name AS client_name, c.phone AS client_phone,
+                comp.company_name,
+                ARRAY_AGG(w.name) FILTER (WHERE w.name IS NOT NULL) AS worker_names
+            FROM bookings b
+            LEFT JOIN clients c ON b.client_id = c.id
+            LEFT JOIN companies comp ON b.company_id = comp.id
+            LEFT JOIN worker_assignments wa ON b.id = wa.booking_id
+            LEFT JOIN workers w ON wa.worker_id = w.id
+            WHERE b.appointment_time >= %s
+              AND b.appointment_time < %s
+              AND b.status = 'scheduled'
+            GROUP BY b.id, b.appointment_time, b.service_type,
+                     b.phone_number, b.company_id,
+                     c.name, c.phone, comp.company_name
+            ORDER BY b.appointment_time
+        """, (tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
+              tomorrow_end.strftime("%Y-%m-%d %H:%M:%S")))
+        bookings = cursor.fetchall()
+    finally:
+        db.return_connection(conn)
+
+    if not bookings:
+        print("[SMS-REMINDER] No appointments found for tomorrow")
+        print(f"{'='*60}\n")
+        return 0
+
+    print(f"[SMS-REMINDER] Found {len(bookings)} appointment(s) for tomorrow")
+
+    sent_count = 0
+    for booking in bookings:
+        phone = booking.get('phone_number') or booking.get('client_phone')
+        if not phone:
+            print(f"  [SKIP] Booking {booking['id']}: no phone number")
+            continue
+
+        customer_name = booking.get('client_name') or 'Customer'
+        service_type = booking.get('service_type') or 'appointment'
+        company_name = booking.get('company_name')
+        worker_names = booking.get('worker_names') or []
+        appt_time = booking['appointment_time']
+
+        if isinstance(appt_time, str):
+            appt_time = datetime.strptime(appt_time, "%Y-%m-%d %H:%M:%S")
+
+        success = sms.send_day_before_reminder(
+            to_number=phone,
+            appointment_time=appt_time,
+            customer_name=customer_name,
+            service_type=service_type,
+            company_name=company_name,
+            worker_names=worker_names,
+        )
+        if success:
+            sent_count += 1
+
+    print(f"[SMS-REMINDER] Sent {sent_count}/{len(bookings)} day-before reminders")
+    print(f"{'='*60}\n")
+    return sent_count
+
+
+
+def start_sms_reminder_scheduler(check_hour: int = 17):
+    """
+    Start a background thread that sends day-before SMS reminders once per day.
+    Defaults to running at 5 PM so customers get the reminder the evening before.
+
+    Args:
+        check_hour: Hour of day (0-23) to send reminders (default: 17 = 5 PM)
+    """
+    import threading
+    import time as time_module
+
+    def scheduler_loop():
+        print(f"[SMS-REMINDER] Scheduler started (will send reminders daily at {check_hour}:00)")
+        last_run_date = None
+
+        while True:
+            now = datetime.now()
+            today = now.date()
+
+            # Run once per day at or after check_hour
+            if now.hour >= check_hour and last_run_date != today:
+                try:
+                    send_day_before_reminders()
+                except Exception as e:
+                    print(f"[SMS-REMINDER] Error in scheduler: {e}")
+                last_run_date = today
+
+            # Sleep 15 minutes between checks
+            time_module.sleep(15 * 60)
+
+    thread = threading.Thread(target=scheduler_loop, daemon=True)
+    thread.start()
+    return thread
+

@@ -180,6 +180,7 @@ function SubscriptionManager() {
   // Expired: trial that ran out, or explicitly expired tier (but NOT pro users)
   const isExpired = !isActive && !isPro && (isTrial || subscription.tier === 'expired' || isNone);
   const cancelAtPeriodEnd = subscription.cancel_at_period_end;
+  const hasUsedTrial = subscription.has_used_trial;
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -285,7 +286,7 @@ function SubscriptionManager() {
               <i className="fas fa-times-circle"></i>
               <div>
                 <strong>Subscription Expired</strong>
-                <p>Your subscription has ended. Resubscribe or start a trial to continue.</p>
+                <p>Your subscription has ended. Resubscribe to continue.</p>
               </div>
             </div>
           )}
@@ -295,7 +296,10 @@ function SubscriptionManager() {
               <i className="fas fa-info-circle"></i>
               <div>
                 <strong>No Active Subscription</strong>
-                <p>Start a free 14-day trial to explore all features, or subscribe to get started right away.</p>
+                <p>{hasUsedTrial
+                  ? 'Subscribe to get started with BookedForYou Pro.'
+                  : 'Start a free 14-day trial to explore all features, or subscribe to get started right away.'
+                }</p>
               </div>
             </div>
           )}
@@ -315,8 +319,8 @@ function SubscriptionManager() {
         </div>
 
         <div className="subscription-actions">
-          {/* Show Start Trial for users with no plan OR expired trial - never for pro users */}
-          {(isNone || (isTrial && !isActive)) && !isPro && (
+          {/* Show Start Trial for users with no plan OR expired trial - never for pro users or users who already used trial */}
+          {(isNone || (isTrial && !isActive)) && !isPro && !hasUsedTrial && (
             <button
               className="btn btn-success btn-subscribe"
               onClick={() => trialMutation.mutate()}

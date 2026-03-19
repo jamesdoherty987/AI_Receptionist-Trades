@@ -150,7 +150,7 @@ CALENDAR_TOOLS = [
                 "properties": {
                     "appointment_date": {
                         "type": "string",
-                        "description": "The DAY of the appointment to cancel (e.g., 'Monday', 'Thursday', 'January 15th'). Do NOT include time - we look up all jobs on that day first."
+                        "description": "The DAY of the appointment to cancel. IMPORTANT: Pass the FULL date expression the caller used, including any relative context like 'Monday 2 weeks', 'Monday the 30th', 'next next Monday', 'in 2 weeks'. Do NOT strip relative context - e.g., if caller says 'Monday in 2 weeks', pass 'Monday in 2 weeks', NOT just 'Monday'. Examples: 'Monday', 'Thursday the 30th', 'Monday in 2 weeks', 'January 15th'. Do NOT include time."
                     },
                     "customer_name": {
                         "type": "string",
@@ -171,7 +171,7 @@ CALENDAR_TOOLS = [
                 "properties": {
                     "current_date": {
                         "type": "string",
-                        "description": "The DAY of the current appointment (e.g., 'Monday', 'Thursday', 'January 15th'). Do NOT include time - we look up all jobs on that day first."
+                        "description": "The DAY of the current appointment. IMPORTANT: Pass the FULL date expression the caller used, including any relative context like 'Monday 2 weeks', 'Monday the 30th', 'in 2 weeks'. Do NOT strip relative context. Examples: 'Monday', 'Thursday the 30th', 'Monday in 2 weeks', 'January 15th'. Do NOT include time."
                     },
                     "new_datetime": {
                         "type": "string",
@@ -243,7 +243,7 @@ CALENDAR_TOOLS = [
                 "properties": {
                     "appointment_date": {
                         "type": "string",
-                        "description": "The DAY of the job to cancel (e.g., 'Monday', 'Thursday', 'January 15th'). Do NOT include time - we look up all jobs on that day first."
+                        "description": "The DAY of the job to cancel. IMPORTANT: Pass the FULL date expression the caller used, including any relative context like 'Monday 2 weeks', 'Monday the 30th', 'next next Monday', 'in 2 weeks'. Do NOT strip relative context - e.g., if caller says 'Monday in 2 weeks', pass 'Monday in 2 weeks', NOT just 'Monday'. Examples: 'Monday', 'Thursday the 30th', 'Monday in 2 weeks', 'January 15th'. Do NOT include time."
                     },
                     "customer_name": {
                         "type": "string",
@@ -264,7 +264,7 @@ CALENDAR_TOOLS = [
                 "properties": {
                     "current_date": {
                         "type": "string",
-                        "description": "The DAY of the current job (e.g., 'Monday', 'Thursday', 'January 15th'). Do NOT include time - we look up all jobs on that day first."
+                        "description": "The DAY of the current job. IMPORTANT: Pass the FULL date expression the caller used, including any relative context like 'Monday 2 weeks', 'Monday the 30th', 'in 2 weeks'. Do NOT strip relative context. Examples: 'Monday', 'Thursday the 30th', 'Monday in 2 weeks', 'January 15th'. Do NOT include time."
                     },
                     "new_datetime": {
                         "type": "string",

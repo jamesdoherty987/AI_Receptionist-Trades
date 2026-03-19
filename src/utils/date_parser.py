@@ -235,6 +235,75 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
         print(f"[DATE] Fast path weekday: '{text}' -> {result}")
         return result
     
+    # Fast path 5: "[weekday] in X weeks" / "[weekday] X weeks" / "in X weeks" / "X weeks time"
+    # Handles: "Monday 2 weeks", "Monday in 2 weeks", "in 2 weeks", "2 weeks time", "2 weeks' time"
+    weeks_match = re.search(r"(?:in\s+)?(\d+)\s+weeks?(?:['\u2019]?\s*time)?", text_lower)
+    if weeks_match:
+        num_weeks = int(weeks_match.group(1))
+        
+        # Check if a weekday was also mentioned
+        detected_day = None
+        for day_name, day_idx in weekday_names.items():
+            if day_name in text_lower:
+                detected_day = (day_name, day_idx)
+                break
+        
+        if detected_day:
+            day_name, target_day = detected_day
+            # "Monday 2 weeks" = the Monday that falls roughly 2 weeks from now
+            # Strategy: jump forward num_weeks * 7 days, then find the nearest occurrence
+            # of the target weekday (same week or up to 6 days prior)
+            future_date = now + timedelta(days=num_weeks * 7)
+            # Find the target weekday in the same week as future_date
+            days_offset = (target_day - future_date.weekday()) % 7
+            # If offset would push us more than 3 days forward, go back instead
+            # This keeps us centered around the "X weeks from now" point
+            if days_offset > 3:
+                days_offset -= 7
+            days_ahead = num_weeks * 7 + days_offset
+            
+            # Check for time component
+            time_match = re.search(r'(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)', text_lower)
+            if time_match:
+                hour = int(time_match.group(1))
+                minute = int(time_match.group(2) or 0)
+                am_pm = time_match.group(3)
+                if am_pm == 'pm' and hour != 12:
+                    hour += 12
+                elif am_pm == 'am' and hour == 12:
+                    hour = 0
+            elif require_time:
+                print(f"[DATE] Fast path weeks: '{text}' matched {day_name} in {num_weeks} weeks but no time - returning None")
+                return None
+            else:
+                hour, minute = default_time
+            
+            result = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(days=days_ahead)
+            print(f"[DATE] Fast path weeks: '{text}' -> {day_name} in {num_weeks} weeks = {result.strftime('%A, %B %d, %Y')}")
+            return result
+        else:
+            # No weekday, just "in 2 weeks" / "2 weeks time"
+            days_ahead = num_weeks * 7
+            
+            time_match = re.search(r'(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)', text_lower)
+            if time_match:
+                hour = int(time_match.group(1))
+                minute = int(time_match.group(2) or 0)
+                am_pm = time_match.group(3)
+                if am_pm == 'pm' and hour != 12:
+                    hour += 12
+                elif am_pm == 'am' and hour == 12:
+                    hour = 0
+            elif require_time:
+                print(f"[DATE] Fast path weeks: '{text}' matched in {num_weeks} weeks but no time - returning None")
+                return None
+            else:
+                hour, minute = default_time
+            
+            result = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(days=days_ahead)
+            print(f"[DATE] Fast path weeks: '{text}' -> in {num_weeks} weeks = {result.strftime('%A, %B %d, %Y')}")
+            return result
+    
     try:
         import time as time_module
         parse_start = time_module.time()

@@ -118,6 +118,7 @@ class PostgreSQLDatabaseWrapper:
                     stripe_connect_onboarding_complete INTEGER DEFAULT 0,
                     trial_start TIMESTAMP,
                     trial_end TIMESTAMP,
+                    has_used_trial INTEGER DEFAULT 0,
                     subscription_current_period_end TIMESTAMP,
                     subscription_cancel_at_period_end INTEGER DEFAULT 0,
                     is_verified INTEGER DEFAULT 0,
@@ -525,6 +526,7 @@ class PostgreSQLDatabaseWrapper:
             # Trial and subscription dates
             'trial_start': 'TIMESTAMP',
             'trial_end': 'TIMESTAMP',
+            'has_used_trial': 'INTEGER DEFAULT 0',
             'subscription_current_period_end': 'TIMESTAMP',
             'subscription_cancel_at_period_end': 'INTEGER DEFAULT 0',
             # Bank/payment details for invoices
