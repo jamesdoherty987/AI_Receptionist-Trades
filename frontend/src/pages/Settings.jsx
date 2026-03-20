@@ -251,16 +251,6 @@ function Settings() {
     }
   }, [settings]);
 
-  // Track unsaved changes by comparing formData to settings
-  useEffect(() => {
-    if (!settings) return;
-    const changed = Object.keys(formData).some(key => {
-      if (key === 'business_hours') return false; // handled separately via hoursConfig
-      return formData[key] !== settings[key];
-    });
-    setHasUnsavedChanges(changed);
-  }, [formData, settings]);
-
   // Warn on browser tab close / refresh with unsaved changes
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -310,7 +300,7 @@ function Settings() {
     mutationFn: updateBusinessSettings,
     onSuccess: async () => {
       queryClient.invalidateQueries(['business-settings']);
-      await checkAuth(); // Refresh user context to update logo
+      await checkAuth();
       setHasUnsavedChanges(false);
       setSaveMessage('Settings saved successfully!');
       setTimeout(() => setSaveMessage(''), 3000);
@@ -365,6 +355,7 @@ function Settings() {
       ...prev,
       [name]: value
     }));
+    setHasUnsavedChanges(true);
   };
 
   const handleHoursChange = (field, value) => {
@@ -372,6 +363,7 @@ function Settings() {
       ...prev,
       [field]: value
     }));
+    setHasUnsavedChanges(true);
   };
 
   const handleDayToggle = (day) => {
@@ -382,6 +374,7 @@ function Settings() {
         [day]: !prev.days[day]
       }
     }));
+    setHasUnsavedChanges(true);
   };
 
   const formatBusinessHours = () => {
@@ -934,7 +927,7 @@ function Settings() {
                       <input
                         type="checkbox"
                         checked={formData.show_finances_tab !== false}
-                        onChange={(e) => setFormData(prev => ({ ...prev, show_finances_tab: e.target.checked }))}
+                        onChange={(e) => { setFormData(prev => ({ ...prev, show_finances_tab: e.target.checked })); setHasUnsavedChanges(true); }}
                       />
                       <span className="toggle-slider"></span>
                     </label>
@@ -948,7 +941,7 @@ function Settings() {
                       <input
                         type="checkbox"
                         checked={formData.show_invoice_buttons !== false}
-                        onChange={(e) => setFormData(prev => ({ ...prev, show_invoice_buttons: e.target.checked }))}
+                        onChange={(e) => { setFormData(prev => ({ ...prev, show_invoice_buttons: e.target.checked })); setHasUnsavedChanges(true); }}
                       />
                       <span className="toggle-slider"></span>
                     </label>
@@ -1009,7 +1002,7 @@ function Settings() {
                 <div className="logo-upload-section">
                   <ImageUpload
                     value={formData.logo_url}
-                    onChange={(value) => setFormData(prev => ({ ...prev, logo_url: value }))}
+                    onChange={(value) => { setFormData(prev => ({ ...prev, logo_url: value })); setHasUnsavedChanges(true); }}
                     placeholder="Upload Your Company Logo"
                   />
                   <small className="form-help" style={{ display: 'block', marginTop: '10px', color: '#666' }}>
