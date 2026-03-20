@@ -8,8 +8,6 @@ import ImageUpload from '../components/ImageUpload';
 import PhoneConfigModal from '../components/modals/PhoneConfigModal';
 import SubscriptionManager from '../components/dashboard/SubscriptionManager';
 import PaymentSetup from '../components/dashboard/PaymentSetup';
-// Global flag to remove Stripe Connect from UI
-const REMOVE_STRIPE_CONNECT = true;
 import { 
   getBusinessSettings, 
   updateBusinessSettings,
@@ -22,6 +20,9 @@ import {
   disconnectGoogleCalendar
 } from '../services/api';
 import './Settings.css';
+
+// Global flag to remove Stripe Connect from UI
+const REMOVE_STRIPE_CONNECT = true;
 
 function Settings() {
   const queryClient = useQueryClient();
