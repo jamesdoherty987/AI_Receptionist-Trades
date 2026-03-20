@@ -1454,11 +1454,32 @@ TOOL RULES:
         print(f"   📦 [TOOL_SETUP] Preparing services...")
         
         # Prepare services for tool execution
-        # Use database calendar by default (scalable for SaaS)
-        # Optional: Use Google Calendar if company has connected their account
+        # ARCHITECTURE: Database calendar is ALWAYS the primary scheduling engine.
+        # It handles workers, availability, overlapping jobs, etc.
+        # Google Calendar is a SYNC TARGET — events are pushed there after booking
+        # for visibility and third-party integrations (e.g., Tradify).
         calendar = None
+        google_calendar_sync = None
         
-        # Check if this company has Google Calendar connected (per-company OAuth)
+        # Always use database calendar as the primary scheduler
+        if company_id:
+            try:
+                from src.services.database_calendar import get_database_calendar_service
+                calendar_company_id = int(company_id)
+                calendar = get_database_calendar_service(company_id=calendar_company_id)
+                print(f"   📦 [TOOL_SETUP] Using Database Calendar (company_id={calendar_company_id})")
+            except Exception as e:
+                print(f"   ❌ [TOOL_SETUP] Could not load database calendar: {e}")
+        
+        if calendar is None:
+            try:
+                from src.services.database_calendar import get_database_calendar_service
+                calendar = get_database_calendar_service(company_id=None)
+                print(f"   📦 [TOOL_SETUP] Using Database Calendar (no company_id)")
+            except Exception as e:
+                print(f"   ❌ [TOOL_SETUP] Could not load database calendar fallback: {e}")
+        
+        # Check if Google Calendar is connected for sync (secondary)
         if company_id:
             try:
                 from src.services.google_calendar_oauth import get_company_google_calendar
@@ -1466,20 +1487,10 @@ TOOL RULES:
                 gcal_db = get_db_for_gcal()
                 gcal = get_company_google_calendar(int(company_id), gcal_db)
                 if gcal:
-                    calendar = gcal
-                    print(f"   📦 [TOOL_SETUP] Using Google Calendar (per-company OAuth, company_id={company_id})")
+                    google_calendar_sync = gcal
+                    print(f"   📦 [TOOL_SETUP] Google Calendar sync enabled (company_id={company_id})")
             except Exception as e:
-                print(f"   ⚠️ [TOOL_SETUP] Could not load company Google Calendar: {e}")
-        
-        # Always use database calendar as fallback (or primary if Google disabled)
-        if calendar is None:
-            try:
-                from src.services.database_calendar import get_database_calendar_service
-                calendar_company_id = int(company_id) if company_id else None
-                calendar = get_database_calendar_service(company_id=calendar_company_id)
-                print(f"   📦 [TOOL_SETUP] Using Database Calendar (company_id={calendar_company_id})")
-            except Exception as e:
-                print(f"   ❌ [TOOL_SETUP] Could not load database calendar: {e}")
+                print(f"   ⚠️ [TOOL_SETUP] Could not load company Google Calendar for sync: {e}")
         
         db = get_database()
         
@@ -1487,11 +1498,12 @@ TOOL RULES:
         services = {
             'google_calendar': calendar,
             'calendar': calendar,
+            'google_calendar_sync': google_calendar_sync,
             'db': db,
             'company_id': company_id_int,
             'call_state': call_state
         }
-        print(f"   📦 [TOOL_SETUP] Services ready: calendar={calendar is not None}, db={db is not None}")
+        print(f"   📦 [TOOL_SETUP] Services ready: calendar={calendar is not None}, db={db is not None}, gcal_sync={google_calendar_sync is not None}")
         
         # Execute each tool call and collect results
         tool_results = []

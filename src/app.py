@@ -5150,6 +5150,59 @@ def google_calendar_callback():
 
         handle_oauth_callback(authorization_response, company_id, db)
 
+        # Sync existing bookings to Google Calendar (non-blocking best-effort)
+        try:
+            from src.services.google_calendar_oauth import get_company_google_calendar
+            gcal = get_company_google_calendar(company_id, db)
+            if gcal:
+                all_bookings = db.get_all_bookings(company_id=company_id)
+                synced = 0
+                from datetime import datetime as dt
+                now = dt.now()
+                for booking in all_bookings:
+                    if booking.get('status') in ['cancelled', 'completed']:
+                        continue
+                    appt_time = booking.get('appointment_time')
+                    if not appt_time:
+                        continue
+                    if isinstance(appt_time, str):
+                        try:
+                            appt_time = dt.fromisoformat(appt_time.replace('Z', '+00:00')).replace(tzinfo=None)
+                        except:
+                            continue
+                    elif hasattr(appt_time, 'replace'):
+                        appt_time = appt_time.replace(tzinfo=None)
+                    # Only sync future bookings
+                    if appt_time <= now:
+                        continue
+                    # Skip if already has a Google Calendar event ID (not a db_ prefix)
+                    existing_event_id = booking.get('calendar_event_id', '')
+                    if existing_event_id and not str(existing_event_id).startswith('db_'):
+                        continue
+                    customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
+                    service = booking.get('service_type') or 'Job'
+                    duration = booking.get('duration_minutes', 60)
+                    phone = booking.get('phone_number') or ''
+                    address = booking.get('address') or ''
+                    summary = f"{service} - {customer_name}"
+                    desc = f"Synced from BookedForYou\nCustomer: {customer_name}\nPhone: {phone}\nAddress: {address}"
+                    try:
+                        gcal_event = gcal.book_appointment(
+                            summary=summary,
+                            start_time=appt_time,
+                            duration_minutes=duration,
+                            description=desc,
+                            phone_number=phone
+                        )
+                        if gcal_event and booking.get('id'):
+                            db.update_booking(booking['id'], calendar_event_id=gcal_event.get('id'), company_id=company_id)
+                            synced += 1
+                    except Exception:
+                        pass
+                safe_print(f"[GCAL] Synced {synced} existing bookings to Google Calendar for company {company_id}")
+        except Exception as sync_err:
+            safe_print(f"[GCAL] Initial sync failed (non-critical): {sync_err}")
+
         # Redirect to settings page with success message
         frontend_url = os.getenv('FRONTEND_URL', config.PUBLIC_URL or 'http://localhost:5173')
         return f"""

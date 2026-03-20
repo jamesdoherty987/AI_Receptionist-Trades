@@ -1558,6 +1558,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     print(f"[TOOL_TIMING] ⏱️ {tool_name} started at {tool_start_time:.3f}")
     
     google_calendar = services.get('google_calendar')
+    google_calendar_sync = services.get('google_calendar_sync')
     db = services.get('db') or services.get('database')  # Support both keys
     # CRITICAL: Extract company_id for proper multi-tenant data isolation
     company_id = services.get('company_id')
@@ -2898,10 +2899,6 @@ Return ONLY valid JSON, no explanation."""
                     "success": False,
                     "error": "Failed to create calendar event"
                 }
-                return {
-                    "success": False,
-                    "error": "Failed to create calendar event"
-                }
             
             # Save to database
             if db:
@@ -2964,6 +2961,24 @@ Return ONLY valid JSON, no explanation."""
                 logger.warning(f"[BOOK_APPT] No database available - booking not saved to DB")
             
             logger.info(f"[BOOK_APPT] ========== BOOKING COMPLETE ==========")
+            
+            # Sync to Google Calendar if connected (non-blocking)
+            if google_calendar_sync:
+                try:
+                    summary = f"{matched_service_name} - {customer_name}"
+                    gcal_event = google_calendar_sync.book_appointment(
+                        summary=summary,
+                        start_time=parsed_time,
+                        duration_minutes=appointment_duration,
+                        description=f"Booked via AI receptionist\nCustomer: {customer_name}\nService: {matched_service_name}\nPhone: {phone}\nDuration: {appointment_duration} mins",
+                        phone_number=phone
+                    )
+                    if gcal_event and db and booking_id:
+                        db.update_booking(booking_id, calendar_event_id=gcal_event.get('id'), company_id=company_id)
+                    logger.info(f"[BOOK_APPT] ✅ Synced to Google Calendar")
+                except Exception as gcal_err:
+                    logger.warning(f"[BOOK_APPT] ⚠️ Google Calendar sync failed (booking still saved): {gcal_err}")
+            
             return {
                 "success": True,
                 "message": f"Appointment booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({format_duration(appointment_duration)})",
@@ -3059,10 +3074,11 @@ Return ONLY valid JSON, no explanation."""
             event_id = matched_job.get('event_id')
             booking_id = matched_job.get('booking_id')
             
-            # Cancel in Google Calendar if event_id exists
-            if event_id and google_calendar:
+            # Cancel in Google Calendar sync if event_id exists
+            if event_id and google_calendar_sync:
                 try:
-                    google_calendar.cancel_appointment(event_id)
+                    google_calendar_sync.cancel_appointment(event_id)
+                    logger.info(f"[CANCEL] ✅ Cancelled in Google Calendar")
                 except Exception as e:
                     logger.warning(f"[CANCEL] Could not cancel in Google Calendar: {e}")
             
@@ -3302,10 +3318,11 @@ Return ONLY valid JSON, no explanation."""
                         "new_time_unavailable": True
                     }
             
-            # Reschedule in Google Calendar if event_id exists
-            if event_id and google_calendar:
+            # Reschedule in Google Calendar sync if event_id exists
+            if event_id and google_calendar_sync:
                 try:
-                    google_calendar.reschedule_appointment(event_id, new_time)
+                    google_calendar_sync.reschedule_appointment(event_id, new_time)
+                    logger.info(f"[RESCHEDULE] ✅ Rescheduled in Google Calendar")
                 except Exception as e:
                     logger.warning(f"[RESCHEDULE] Could not reschedule in Google Calendar: {e}")
             
@@ -3831,6 +3848,24 @@ Return ONLY valid JSON, no explanation."""
             tool_duration = time_module.time() - tool_start_time
             print(f"[TOOL_TIMING] ✅ book_job completed in {tool_duration:.3f}s")
             logger.info(f"[BOOK_JOB] ========== JOB BOOKING COMPLETE ==========")
+            
+            # Sync to Google Calendar if connected (non-blocking)
+            if google_calendar_sync:
+                try:
+                    summary = f"{matched_service_name} - {customer_name}"
+                    gcal_event = google_calendar_sync.book_appointment(
+                        summary=summary,
+                        start_time=parsed_time,
+                        duration_minutes=service_duration,
+                        description=f"Booked via AI receptionist\nCustomer: {customer_name}\nService: {matched_service_name}\nAddress: {validated_address}\nPhone: {phone}\nUrgency: {urgency_level}\nDuration: {service_duration} mins",
+                        phone_number=phone
+                    )
+                    if gcal_event and db and booking_id:
+                        db.update_booking(booking_id, calendar_event_id=gcal_event.get('id'), company_id=company_id)
+                    logger.info(f"[BOOK_JOB] ✅ Synced to Google Calendar")
+                except Exception as gcal_err:
+                    logger.warning(f"[BOOK_JOB] ⚠️ Google Calendar sync failed (booking still saved): {gcal_err}")
+            
             return {
                 "success": True,
                 "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({format_duration(service_duration)}). {urgency_level.title()} job at {validated_address}.{worker_msg}",
