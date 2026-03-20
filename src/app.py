@@ -2696,6 +2696,9 @@ def business_settings_api():
             'company_context': company.get('company_context', ''),
             # Coverage area for AI receptionist
             'coverage_area': company.get('coverage_area', ''),
+            # Dashboard feature toggles
+            'show_finances_tab': company.get('show_finances_tab', True) if company.get('show_finances_tab') is not None else True,
+            'show_invoice_buttons': company.get('show_invoice_buttons', True) if company.get('show_invoice_buttons') is not None else True,
         }
         return jsonify(settings)
     
@@ -2748,6 +2751,8 @@ def business_settings_api():
             'revolut_phone': 'revolut_phone',
             'company_context': 'company_context',
             'coverage_area': 'coverage_area',
+            'show_finances_tab': 'show_finances_tab',
+            'show_invoice_buttons': 'show_invoice_buttons',
         }
         
         for frontend_field, db_field in field_mapping.items():
@@ -5053,18 +5058,25 @@ def get_finances():
                     'payment_method': booking.get('payment_method')
                 })
         
-        # Group by month for chart (only count paid jobs)
+        # Group by month for chart (include all charged bookings, not just paid)
         from collections import defaultdict
         from datetime import datetime
         monthly = defaultdict(float)
         for booking in bookings:
-            is_paid = booking.get('status') in ['completed', 'paid'] or booking.get('payment_status') == 'paid'
-            if is_paid and booking.get('appointment_time'):
+            if booking.get('charge') and float(booking.get('charge', 0) or 0) > 0 and booking.get('appointment_time'):
+                if booking.get('status') == 'cancelled':
+                    continue
                 try:
-                    date = datetime.fromisoformat(booking['appointment_time'].replace('Z', '+00:00'))
+                    appt_time = booking['appointment_time']
+                    if isinstance(appt_time, datetime):
+                        date = appt_time
+                    elif isinstance(appt_time, str):
+                        date = datetime.fromisoformat(appt_time.replace('Z', '+00:00'))
+                    else:
+                        continue
                     month_key = date.strftime('%b %Y')  # e.g., "Jan 2024"
                     monthly[month_key] += float(booking.get('charge', 0) or 0)
-                except:
+                except Exception:
                     pass
         
         # Get last 6 months of data, sorted chronologically
@@ -5082,6 +5094,86 @@ def get_finances():
         })
     except Exception as e:
         print(f"Finances error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/finances/mark-paid", methods=["POST"])
+@login_required
+def mark_bookings_paid():
+    """Bulk mark past bookings as paid.
+    
+    Body: { "scope": "all" | "today" | "week" }
+    - all: all past bookings
+    - today: bookings from today and earlier
+    - week: bookings from this week (Mon-Sun) and earlier
+    """
+    from datetime import datetime, timedelta
+    
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.json or {}
+    scope = data.get('scope', 'all')
+    
+    if scope not in ('all', 'today', 'week'):
+        return jsonify({"error": "Invalid scope. Use 'all', 'today', or 'week'."}), 400
+    
+    try:
+        now = datetime.now()
+        
+        if scope == 'today':
+            cutoff = now.replace(hour=23, minute=59, second=59, microsecond=0)
+        elif scope == 'week':
+            # End of current week (Sunday 23:59)
+            days_until_sunday = 6 - now.weekday()
+            cutoff = (now + timedelta(days=days_until_sunday)).replace(hour=23, minute=59, second=59, microsecond=0)
+        else:
+            cutoff = now
+        
+        bookings = db.get_all_bookings(company_id=company_id)
+        updated = 0
+        
+        for booking in bookings:
+            # Skip already paid/cancelled
+            if booking.get('status') in ['completed', 'paid', 'cancelled']:
+                continue
+            if booking.get('payment_status') == 'paid':
+                continue
+            # Skip bookings with no charge
+            if not booking.get('charge') or float(booking.get('charge', 0) or 0) <= 0:
+                continue
+            
+            appt_time = booking.get('appointment_time')
+            if not appt_time:
+                continue
+            
+            # Parse appointment time
+            if isinstance(appt_time, str):
+                try:
+                    appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00')).replace(tzinfo=None)
+                except Exception:
+                    continue
+            elif hasattr(appt_time, 'replace'):
+                appt_time = appt_time.replace(tzinfo=None)
+            
+            # Only mark past bookings (up to cutoff)
+            if appt_time <= cutoff:
+                try:
+                    db.update_booking(booking['id'], company_id=company_id,
+                                      status='completed', payment_status='paid')
+                    updated += 1
+                except Exception as e:
+                    print(f"[MARK_PAID] Failed to update booking {booking['id']}: {e}")
+        
+        scope_label = {'all': 'all past', 'today': "today's and earlier", 'week': "this week's and earlier"}
+        return jsonify({
+            "success": True,
+            "updated": updated,
+            "message": f"Marked {updated} {scope_label[scope]} booking(s) as paid"
+        })
+    except Exception as e:
+        print(f"[MARK_PAID] Error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500

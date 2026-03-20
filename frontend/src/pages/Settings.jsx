@@ -857,6 +857,53 @@ function Settings() {
                     </button>
                   )}
                 </div>
+                {!gcalStatus?.connected && (
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.5rem', lineHeight: '1.4' }}>
+                    <i className="fas fa-info-circle" style={{ marginRight: '4px' }}></i>
+                    Google will show a "Google hasn't verified this app" warning. Click <strong>Advanced</strong>, then <strong>Go to ai-receptionist-backend... (unsafe)</strong> at the bottom to continue. This is normal for new apps awaiting verification.
+                  </p>
+                )}
+              </div>
+
+              {/* Dashboard Feature Toggles */}
+              <div className="form-section">
+                <h3>
+                  <i className="fas fa-sliders-h" style={{ marginRight: '8px', color: '#6366f1' }}></i>
+                  Dashboard Features
+                </h3>
+                <p className="section-description">
+                  Choose which features to show on your dashboard.
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0' }}>
+                    <div>
+                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Finances Tab</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Show the Finances tab on the dashboard</div>
+                    </div>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={formData.show_finances_tab !== false}
+                        onChange={(e) => setFormData(prev => ({ ...prev, show_finances_tab: e.target.checked }))}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
+                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0' }}>
+                    <div>
+                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Send Invoice Buttons</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Show invoice buttons on jobs and finances</div>
+                    </div>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={formData.show_invoice_buttons !== false}
+                        onChange={(e) => setFormData(prev => ({ ...prev, show_invoice_buttons: e.target.checked }))}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
               </div>
 
               <div className="form-section">

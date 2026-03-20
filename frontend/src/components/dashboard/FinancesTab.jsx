@@ -1,17 +1,19 @@
 import { useState, useMemo } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDateTime } from '../../utils/helpers';
-import { getFinances, sendInvoice } from '../../services/api';
+import { getFinances, sendInvoice, markBookingsPaid } from '../../services/api';
 import { useToast } from '../Toast';
 import LoadingSpinner from '../LoadingSpinner';
 import './FinancesTab.css';
 
-function FinancesTab() {
+function FinancesTab({ showInvoiceButtons = true }) {
+  const queryClient = useQueryClient();
   const { hasActiveSubscription } = useAuth();
   const isSubscriptionActive = hasActiveSubscription();
   const [filterMode, setFilterMode] = useState('unpaid');
   const [sendingInvoice, setSendingInvoice] = useState(null);
+  const [confirmScope, setConfirmScope] = useState(null);
   const { addToast } = useToast();
 
   // Fetch finances data directly from the dedicated endpoint
@@ -100,6 +102,27 @@ function FinancesTab() {
     invoiceMutation.mutate(bookingId);
   };
 
+  const markPaidMutation = useMutation({
+    mutationFn: (scope) => markBookingsPaid(scope),
+    onSuccess: (response) => {
+      const { updated, message } = response.data;
+      addToast(message || `Marked ${updated} booking(s) as paid`, 'success');
+      setConfirmScope(null);
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (error) => {
+      addToast(error.response?.data?.error || 'Failed to mark bookings as paid', 'error');
+      setConfirmScope(null);
+    }
+  });
+
+  const scopeLabels = {
+    today: "today's and earlier",
+    week: "this week's and earlier",
+    all: "all past"
+  };
+
   if (isLoading) {
     return <LoadingSpinner message="Loading finances..." />;
   }
@@ -136,6 +159,52 @@ function FinancesTab() {
           </div>
         </div>
       </div>
+
+      {/* Mark as Paid Actions */}
+      {unpaid_revenue > 0 && (
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+          <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
+            onClick={() => setConfirmScope('today')} disabled={markPaidMutation.isPending}>
+            <i className="fas fa-check"></i> Mark Today as Paid
+          </button>
+          <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
+            onClick={() => setConfirmScope('week')} disabled={markPaidMutation.isPending}>
+            <i className="fas fa-check-double"></i> Mark This Week as Paid
+          </button>
+          <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
+            onClick={() => setConfirmScope('all')} disabled={markPaidMutation.isPending}>
+            <i className="fas fa-check-circle"></i> Mark All Past as Paid
+          </button>
+        </div>
+      )}
+
+      {/* Confirmation Dialog */}
+      {confirmScope && (
+        <div style={{
+          background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '8px',
+          padding: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#92400e' }}>
+            <i className="fas fa-exclamation-triangle"></i>
+            <span style={{ fontSize: '0.85rem' }}>
+              This will mark {scopeLabels[confirmScope]} unpaid bookings as paid. This can't be undone easily.
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+              onClick={() => setConfirmScope(null)}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
+              onClick={() => markPaidMutation.mutate(confirmScope)}
+              disabled={markPaidMutation.isPending}>
+              <i className={`fas ${markPaidMutation.isPending ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
+              {markPaidMutation.isPending ? 'Updating...' : 'Confirm'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Monthly Revenue Chart - always show, even if empty */}
       <div className="chart-section">
@@ -251,7 +320,7 @@ function FinancesTab() {
                           : transaction.payment_status || transaction.status || 'Pending'
                         }
                       </span>
-                      {isUnpaid && transaction.amount > 0 && (
+                      {isUnpaid && transaction.amount > 0 && showInvoiceButtons && (
                         <button
                           className="btn-send-invoice"
                           onClick={(e) => handleSendInvoice(transaction, e)}

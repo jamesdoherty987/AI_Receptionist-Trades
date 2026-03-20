@@ -67,7 +67,7 @@ function Dashboard() {
     {
       label: 'Jobs',
       icon: 'fas fa-briefcase',
-      content: isLoading ? <LoadingSpinner /> : <JobsTab bookings={bookings} />
+      content: isLoading ? <LoadingSpinner /> : <JobsTab bookings={bookings} showInvoiceButtons={settings?.show_invoice_buttons !== false} />
     },
     {
       label: 'Customers',
@@ -79,11 +79,11 @@ function Dashboard() {
       icon: 'fas fa-hard-hat',
       content: isLoading ? <LoadingSpinner /> : <WorkersTab workers={workers} bookings={bookings} />
     },
-    {
+    ...(settings?.show_finances_tab !== false ? [{
       label: 'Finances',
       icon: 'fas fa-dollar-sign',
-      content: <FinancesTab />
-    },
+      content: <FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} />
+    }] : []),
     {
       label: 'Services',
       icon: 'fas fa-concierge-bell',

@@ -131,6 +131,7 @@ export const getAvailableWorkersForJob = (jobId) => api.get(`/api/bookings/${job
 // Finances
 export const getFinances = () => api.get('/api/finances');
 export const getFinanceStats = () => api.get('/api/finances/stats');
+export const markBookingsPaid = (scope) => api.post('/api/finances/mark-paid', { scope });
 
 // Invoices
 export const sendInvoice = (bookingId, invoiceData = null) => 

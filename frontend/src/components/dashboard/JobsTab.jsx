@@ -6,7 +6,7 @@ import AddJobModal from '../modals/AddJobModal';
 import JobDetailModal from '../modals/JobDetailModal';
 import './JobsTab.css';
 
-function JobsTab({ bookings }) {
+function JobsTab({ bookings, showInvoiceButtons = true }) {
   const { hasActiveSubscription } = useAuth();
   const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
@@ -405,6 +405,7 @@ function JobsTab({ bookings }) {
         isOpen={!!selectedJobId}
         onClose={() => setSelectedJobId(null)}
         jobId={selectedJobId}
+        showInvoiceButtons={showInvoiceButtons}
       />
     </div>
   );

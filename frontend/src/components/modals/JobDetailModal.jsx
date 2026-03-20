@@ -19,7 +19,7 @@ import { formatDateTime, getStatusBadgeClass, formatCurrency, formatPhone, getPr
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
 import './JobDetailModal.css';
 
-function JobDetailModal({ isOpen, onClose, jobId }) {
+function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const queryClient = useQueryClient();
   const { hasActiveSubscription } = useAuth();
   const isSubscriptionActive = hasActiveSubscription();
@@ -433,7 +433,7 @@ function JobDetailModal({ isOpen, onClose, jobId }) {
                 >
                   <i className="fas fa-edit"></i> Edit
                 </button>
-                {(job.estimated_charge || job.charge) && (
+                {(job.estimated_charge || job.charge) && showInvoiceButtons && (
                   <button 
                     className={`btn btn-invoice ${(invoiceConfig && !invoiceConfig.can_send_invoice) || !isSubscriptionActive ? 'btn-disabled' : ''}`}
                     onClick={handleSendInvoice}
