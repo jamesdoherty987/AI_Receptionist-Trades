@@ -5079,9 +5079,17 @@ def get_finances():
                 except Exception:
                     pass
         
-        # Get last 6 months of data, sorted chronologically
-        monthly_revenue = [{"month": k, "revenue": v} for k, v in sorted(monthly.items(), 
-                          key=lambda x: datetime.strptime(x[0], '%b %Y'))][-6:]
+        # Sort chronologically and apply range filter
+        all_monthly = [{"month": k, "revenue": v} for k, v in sorted(monthly.items(), 
+                       key=lambda x: datetime.strptime(x[0], '%b %Y'))]
+        
+        chart_range = request.args.get('range', 'year')
+        if chart_range == 'month':
+            monthly_revenue = all_monthly[-1:] if all_monthly else []
+        elif chart_range == 'all':
+            monthly_revenue = all_monthly
+        else:  # 'year' default
+            monthly_revenue = all_monthly[-12:]
         
         return jsonify({
             "total_revenue": total_revenue,

@@ -14,13 +14,14 @@ function FinancesTab({ showInvoiceButtons = true }) {
   const [filterMode, setFilterMode] = useState('unpaid');
   const [sendingInvoice, setSendingInvoice] = useState(null);
   const [confirmScope, setConfirmScope] = useState(null);
+  const [chartRange, setChartRange] = useState('year');
   const { addToast } = useToast();
 
-  // Fetch finances data directly from the dedicated endpoint
+  // Fetch finances data with chart range
   const { data: finances, isLoading } = useQuery({
-    queryKey: ['finances'],
+    queryKey: ['finances', chartRange],
     queryFn: async () => {
-      const response = await getFinances();
+      const response = await getFinances(chartRange);
       return response.data;
     },
     staleTime: 30 * 1000,
@@ -59,7 +60,6 @@ function FinancesTab({ showInvoiceButtons = true }) {
     else if (filterMode === 'paid') displayed = paid;
     else displayed = transactions.filter(t => t.status !== 'cancelled');
 
-    // Sort by date descending
     displayed.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
     return { unpaidTransactions: unpaid, paidTransactions: paid, displayedTransactions: displayed };
@@ -123,6 +123,59 @@ function FinancesTab({ showInvoiceButtons = true }) {
     all: "all past"
   };
 
+  // Build SVG line/area chart
+  const renderChart = () => {
+    if (!monthly_revenue || monthly_revenue.length === 0) {
+      return (
+        <div className="chart-empty">
+          <i className="fas fa-chart-line"></i>
+          <p>Revenue data will appear here as jobs are completed</p>
+        </div>
+      );
+    }
+
+    const padding = { top: 20, right: 15, bottom: 30, left: 10 };
+    const width = 600;
+    const height = 200;
+    const chartW = width - padding.left - padding.right;
+    const chartH = height - padding.top - padding.bottom;
+
+    const points = monthly_revenue.map((item, i) => {
+      const x = padding.left + (monthly_revenue.length === 1 ? chartW / 2 : (i / (monthly_revenue.length - 1)) * chartW);
+      const y = padding.top + chartH - (maxRevenue > 0 ? (item.revenue / maxRevenue) * chartH : 0);
+      return { x, y, ...item };
+    });
+
+    const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+    const areaPath = `${linePath} L${points[points.length - 1].x},${padding.top + chartH} L${points[0].x},${padding.top + chartH} Z`;
+
+    return (
+      <div className="chart-svg-container">
+        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="chart-svg">
+          <defs>
+            <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+          <path d={areaPath} fill="url(#areaGradient)" />
+          <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+          {points.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="white" stroke="#3b82f6" strokeWidth="2" />
+          ))}
+        </svg>
+        <div className="chart-labels">
+          {points.map((p, i) => (
+            <div key={i} className="chart-label-item" style={{ left: `${(p.x / width) * 100}%` }}>
+              <span className="chart-label-value">{formatCurrency(p.revenue)}</span>
+              <span className="chart-label-month">{p.month}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return <LoadingSpinner message="Loading finances..." />;
   }
@@ -160,9 +213,32 @@ function FinancesTab({ showInvoiceButtons = true }) {
         </div>
       </div>
 
-      {/* Mark as Paid Actions */}
+      {/* Monthly Revenue Chart */}
+      <div className="chart-section">
+        <div className="chart-header">
+          <h3><i className="fas fa-chart-line"></i> Revenue</h3>
+          <div className="chart-range-toggle">
+            {[
+              { key: 'month', label: 'Past Month' },
+              { key: 'year', label: 'Past Year' },
+              { key: 'all', label: 'All Time' }
+            ].map(opt => (
+              <button
+                key={opt.key}
+                className={`chart-range-btn ${chartRange === opt.key ? 'active' : ''}`}
+                onClick={() => setChartRange(opt.key)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {renderChart()}
+      </div>
+
+      {/* Mark as Paid Actions - between chart and jobs list */}
       {unpaid_revenue > 0 && (
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
             onClick={() => setConfirmScope('today')} disabled={markPaidMutation.isPending}>
             <i className="fas fa-check"></i> Mark Today as Paid
@@ -182,7 +258,7 @@ function FinancesTab({ showInvoiceButtons = true }) {
       {confirmScope && (
         <div style={{
           background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '8px',
-          padding: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center',
+          padding: '1rem', display: 'flex', alignItems: 'center',
           justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#92400e' }}>
@@ -205,35 +281,6 @@ function FinancesTab({ showInvoiceButtons = true }) {
           </div>
         </div>
       )}
-
-      {/* Monthly Revenue Chart - always show, even if empty */}
-      <div className="chart-section">
-        <h3><i className="fas fa-chart-bar"></i> Monthly Revenue</h3>
-        {monthly_revenue && monthly_revenue.length > 0 ? (
-          <div className="chart-container">
-            {monthly_revenue.map((item, index) => {
-              const heightPercent = maxRevenue > 0 ? (item.revenue / maxRevenue) * 100 : 0;
-              return (
-                <div key={index} className="chart-bar-wrapper">
-                  <div className="chart-bar-value">{formatCurrency(item.revenue)}</div>
-                  <div className="chart-bar-container">
-                    <div
-                      className="chart-bar"
-                      style={{ height: `${Math.max(heightPercent, 3)}%` }}
-                    ></div>
-                  </div>
-                  <div className="chart-bar-label">{item.month}</div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="chart-empty">
-            <i className="fas fa-chart-line"></i>
-            <p>Revenue data will appear here as jobs are completed</p>
-          </div>
-        )}
-      </div>
 
       {/* Jobs / Transactions List */}
       <div className="transactions-section">

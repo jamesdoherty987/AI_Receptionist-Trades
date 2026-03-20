@@ -37,6 +37,7 @@ function Settings() {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [gcalConnecting, setGcalConnecting] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   // Flag to hide Stripe Connect component
   const hideStripeConnect = REMOVE_STRIPE_CONNECT;
   
@@ -243,11 +244,22 @@ function Settings() {
   useEffect(() => {
     if (settings) {
       setFormData(settings);
+      setHasUnsavedChanges(false);
       if (settings.business_hours) {
         parseBusinessHours(settings.business_hours);
       }
     }
   }, [settings]);
+
+  // Track unsaved changes by comparing formData to settings
+  useEffect(() => {
+    if (!settings) return;
+    const changed = Object.keys(formData).some(key => {
+      if (key === 'business_hours') return false; // handled separately via hoursConfig
+      return formData[key] !== settings[key];
+    });
+    setHasUnsavedChanges(changed);
+  }, [formData, settings]);
 
   const { data: aiStatus } = useQuery({
     queryKey: ['ai-status'],
@@ -270,6 +282,7 @@ function Settings() {
     onSuccess: async () => {
       queryClient.invalidateQueries(['business-settings']);
       await checkAuth(); // Refresh user context to update logo
+      setHasUnsavedChanges(false);
       setSaveMessage('Settings saved successfully!');
       setTimeout(() => setSaveMessage(''), 3000);
     },
@@ -993,6 +1006,12 @@ function Settings() {
           
           {/* Floating Save Button */}
           <div className="floating-save-container">
+            {hasUnsavedChanges && (
+              <div className="unsaved-changes-hint">
+                <i className="fas fa-exclamation-circle"></i>
+                You have unsaved changes
+              </div>
+            )}
             <button 
               type="button"
               className="btn btn-primary floating-save-btn"

@@ -129,7 +129,7 @@ export const getJobWorkers = (jobId) => api.get(`/api/bookings/${jobId}/workers`
 export const getAvailableWorkersForJob = (jobId) => api.get(`/api/bookings/${jobId}/available-workers`);
 
 // Finances
-export const getFinances = () => api.get('/api/finances');
+export const getFinances = (range = 'year') => api.get('/api/finances', { params: { range } });
 export const getFinanceStats = () => api.get('/api/finances/stats');
 export const markBookingsPaid = (scope) => api.post('/api/finances/mark-paid', { scope });
 
