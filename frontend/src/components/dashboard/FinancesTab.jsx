@@ -147,7 +147,7 @@ function FinancesTab({ showInvoiceButtons = true }) {
     }
   });
 
-  // Build SVG line/area chart
+  // Build smooth SVG area chart with cubic bezier curves
   const renderChart = () => {
     if (!daily_revenue || daily_revenue.length === 0) {
       return (
@@ -158,42 +158,65 @@ function FinancesTab({ showInvoiceButtons = true }) {
       );
     }
 
-    const padding = { top: 20, right: 15, bottom: 30, left: 10 };
+    const padding = { top: 10, right: 10, bottom: 4, left: 10 };
     const width = 600;
-    const height = 200;
+    const height = 180;
     const chartW = width - padding.left - padding.right;
     const chartH = height - padding.top - padding.bottom;
 
     const points = daily_revenue.map((item, i) => {
       const x = padding.left + (daily_revenue.length === 1 ? chartW / 2 : (i / (daily_revenue.length - 1)) * chartW);
-      const y = padding.top + chartH - (maxRevenue > 0 ? (item.revenue / maxRevenue) * chartH : 0);
+      const y = padding.top + chartH - (maxRevenue > 0 ? (item.revenue / maxRevenue) * chartH * 0.9 : 0);
       return { x, y, ...item };
     });
 
-    const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-    const areaPath = `${linePath} L${points[points.length - 1].x},${padding.top + chartH} L${points[0].x},${padding.top + chartH} Z`;
+    // Build smooth cubic bezier path
+    const smoothLine = (pts) => {
+      if (pts.length < 2) return `M${pts[0].x},${pts[0].y}`;
+      let d = `M${pts[0].x},${pts[0].y}`;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(i - 1, 0)];
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const p3 = pts[Math.min(i + 2, pts.length - 1)];
+        const tension = 0.3;
+        const cp1x = p1.x + (p2.x - p0.x) * tension;
+        const cp1y = p1.y + (p2.y - p0.y) * tension;
+        const cp2x = p2.x - (p3.x - p1.x) * tension;
+        const cp2y = p2.y - (p3.y - p1.y) * tension;
+        d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+      }
+      return d;
+    };
 
-    // Show labels for a reasonable subset of points to avoid clutter
-    const maxLabels = 10;
+    const linePath = smoothLine(points);
+    const bottomY = padding.top + chartH;
+    const areaPath = `${linePath} L${points[points.length - 1].x},${bottomY} L${points[0].x},${bottomY} Z`;
+
+    // Subtle horizontal grid lines
+    const gridLines = [0.25, 0.5, 0.75].map(pct => padding.top + chartH * (1 - pct * 0.9));
+
+    // Show labels for a reasonable subset
+    const maxLabels = 8;
     const step = Math.max(1, Math.ceil(points.length / maxLabels));
     const labelIndices = new Set();
     for (let i = 0; i < points.length; i += step) labelIndices.add(i);
-    labelIndices.add(points.length - 1); // always show last
+    labelIndices.add(points.length - 1);
 
     return (
       <div className="chart-svg-container">
         <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="chart-svg">
           <defs>
             <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.18" />
+              <stop offset="100%" stopColor="#6366f1" stopOpacity="0.01" />
             </linearGradient>
           </defs>
-          <path d={areaPath} fill="url(#areaGradient)" />
-          <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-          {points.map((p, i) => (
-            <circle key={i} cx={p.x} cy={p.y} r="3" fill="white" stroke="#3b82f6" strokeWidth="2" />
+          {gridLines.map((y, i) => (
+            <line key={i} x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="#e5e7eb" strokeWidth="0.5" strokeDasharray="4 4" />
           ))}
+          <path d={areaPath} fill="url(#areaGradient)" />
+          <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" />
         </svg>
         <div className="chart-labels">
           {points.filter((_, i) => labelIndices.has(i)).map((p, i) => (

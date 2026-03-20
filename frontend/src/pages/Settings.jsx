@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams, useNavigate, useBlocker } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -272,12 +272,23 @@ function Settings() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [hasUnsavedChanges]);
 
-  // Block in-app navigation (react-router) with unsaved changes
-  const blocker = useBlocker(
-    useCallback(({ currentLocation, nextLocation }) => 
-      hasUnsavedChanges && currentLocation.pathname !== nextLocation.pathname,
-    [hasUnsavedChanges])
-  );
+  // Block in-app navigation with unsaved changes via popstate (browser back button)
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handler = (e) => {
+      // Push state back so the user stays on the page
+      window.history.pushState(null, '', window.location.href);
+      if (!window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+        return;
+      }
+      // User confirmed — actually navigate back
+      setHasUnsavedChanges(false);
+      window.history.back();
+    };
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, [hasUnsavedChanges]);
 
   const { data: aiStatus } = useQuery({
     queryKey: ['ai-status'],
@@ -506,10 +517,18 @@ function Settings() {
 
           {/* Navigation Buttons */}
           <div className="settings-nav">
-            <Link to="/dashboard" className="btn btn-secondary">
+            <button 
+              className="btn btn-secondary"
+              onClick={() => {
+                if (hasUnsavedChanges && !window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+                  return;
+                }
+                navigate('/dashboard');
+              }}
+            >
               <i className="fas fa-arrow-left"></i>
               Back to Dashboard
-            </Link>
+            </button>
           </div>
           
           {/* Success/Error Message */}
@@ -1052,36 +1071,6 @@ function Settings() {
         onSuccess={handlePhoneConfigSuccess}
         allowSkip={false}
       />
-
-      {/* Unsaved Changes Navigation Blocker */}
-      {blocker.state === 'blocked' && (
-        <div className="modal-overlay" onClick={() => blocker.reset()}>
-          <div className="modal-content delete-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
-            <div className="modal-header">
-              <h2>
-                <i className="fas fa-exclamation-triangle" style={{ color: '#f59e0b', marginRight: '10px' }}></i>
-                Unsaved Changes
-              </h2>
-              <button className="modal-close" onClick={() => blocker.reset()}>
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-            <div className="modal-body">
-              <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
-                You have unsaved changes. Are you sure you want to leave? Your changes will be lost.
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => blocker.reset()}>
-                Stay on Page
-              </button>
-              <button className="btn btn-danger" onClick={() => blocker.proceed()}>
-                Leave Without Saving
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Delete Account Confirmation Modal */}
       {showDeleteModal && (
