@@ -1,18 +1,39 @@
 import { useState, useMemo } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
-import { formatDateTime, getStatusBadgeClass, getProxiedMediaUrl } from '../../utils/helpers';
+import { formatDateTime, getStatusBadgeClass, formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
+import { updateBooking } from '../../services/api';
 import { useToast } from '../Toast';
 import AddJobModal from '../modals/AddJobModal';
 import JobDetailModal from '../modals/JobDetailModal';
 import './JobsTab.css';
 
 function JobsTab({ bookings, showInvoiceButtons = true }) {
+  const queryClient = useQueryClient();
   const { hasActiveSubscription } = useAuth();
   const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
+  const [markingPaidJobId, setMarkingPaidJobId] = useState(null);
+
+  const markPaidMutation = useMutation({
+    mutationFn: (jobId) => updateBooking(jobId, { status: 'completed', payment_status: 'paid' }),
+    onMutate: (jobId) => {
+      setMarkingPaidJobId(jobId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      addToast('Job marked as paid', 'success');
+      setMarkingPaidJobId(null);
+    },
+    onError: () => {
+      addToast('Failed to mark job as paid', 'error');
+      setMarkingPaidJobId(null);
+    }
+  });
 
   const handleAddClick = () => {
     if (!isSubscriptionActive) {
@@ -178,6 +199,20 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
               <i className="fas fa-phone"></i>
               <span>{job.phone || job.phone_number || 'No phone'}</span>
             </div>
+            {job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled' && (job.charge || job.estimated_charge) && (
+              <button
+                className="btn-mark-paid-inline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  markPaidMutation.mutate(job.id);
+                }}
+                disabled={markingPaidJobId === job.id}
+                title="Mark as paid"
+              >
+                <i className={`fas ${markingPaidJobId === job.id ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
+                {formatCurrency(job.charge || job.estimated_charge)} — Mark Paid
+              </button>
+            )}
           </div>
         </div>
       </div>

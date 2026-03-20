@@ -5058,10 +5058,10 @@ def get_finances():
                     'payment_method': booking.get('payment_method')
                 })
         
-        # Group by month for chart (include all charged bookings, not just paid)
+        # Group by day for chart (include all charged bookings, not just paid)
         from collections import defaultdict
-        from datetime import datetime
-        monthly = defaultdict(float)
+        from datetime import datetime, timedelta
+        daily = defaultdict(float)
         for booking in bookings:
             if booking.get('charge') and float(booking.get('charge', 0) or 0) > 0 and booking.get('appointment_time'):
                 if booking.get('status') == 'cancelled':
@@ -5074,22 +5074,24 @@ def get_finances():
                         date = datetime.fromisoformat(appt_time.replace('Z', '+00:00'))
                     else:
                         continue
-                    month_key = date.strftime('%b %Y')  # e.g., "Jan 2024"
-                    monthly[month_key] += float(booking.get('charge', 0) or 0)
+                    day_key = date.strftime('%Y-%m-%d')
+                    daily[day_key] += float(booking.get('charge', 0) or 0)
                 except Exception:
                     pass
         
         # Sort chronologically and apply range filter
-        all_monthly = [{"month": k, "revenue": v} for k, v in sorted(monthly.items(), 
-                       key=lambda x: datetime.strptime(x[0], '%b %Y'))]
+        all_daily = [{"day": k, "revenue": v} for k, v in sorted(daily.items())]
         
         chart_range = request.args.get('range', 'year')
+        now = datetime.now()
         if chart_range == 'month':
-            monthly_revenue = all_monthly[-1:] if all_monthly else []
+            cutoff = (now - timedelta(days=30)).strftime('%Y-%m-%d')
+            daily_revenue = [d for d in all_daily if d['day'] >= cutoff]
         elif chart_range == 'all':
-            monthly_revenue = all_monthly
+            daily_revenue = all_daily
         else:  # 'year' default
-            monthly_revenue = all_monthly[-12:]
+            cutoff = (now - timedelta(days=365)).strftime('%Y-%m-%d')
+            daily_revenue = [d for d in all_daily if d['day'] >= cutoff]
         
         return jsonify({
             "total_revenue": total_revenue,
@@ -5097,7 +5099,8 @@ def get_finances():
             "unpaid_revenue": unpaid_revenue,
             "pending_revenue": unpaid_revenue,  # For backwards compatibility
             "completed_revenue": paid_revenue,  # For backwards compatibility
-            "monthly_revenue": monthly_revenue,
+            "daily_revenue": daily_revenue,
+            "monthly_revenue": daily_revenue,  # backwards compat key
             "transactions": transactions
         })
     except Exception as e:

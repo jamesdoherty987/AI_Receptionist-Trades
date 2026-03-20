@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDateTime } from '../../utils/helpers';
-import { getFinances, sendInvoice, markBookingsPaid } from '../../services/api';
+import { getFinances, sendInvoice, markBookingsPaid, updateBooking } from '../../services/api';
 import { useToast } from '../Toast';
 import LoadingSpinner from '../LoadingSpinner';
 import './FinancesTab.css';
@@ -15,6 +15,7 @@ function FinancesTab({ showInvoiceButtons = true }) {
   const [sendingInvoice, setSendingInvoice] = useState(null);
   const [confirmScope, setConfirmScope] = useState(null);
   const [chartRange, setChartRange] = useState('year');
+  const [markingPaidId, setMarkingPaidId] = useState(null);
   const { addToast } = useToast();
 
   // Fetch finances data with chart range
@@ -33,7 +34,7 @@ function FinancesTab({ showInvoiceButtons = true }) {
     paid_revenue = 0,
     unpaid_revenue = 0,
     transactions = [],
-    monthly_revenue = []
+    daily_revenue = []
   } = finances || {};
 
   // Filter transactions based on selected mode
@@ -67,9 +68,15 @@ function FinancesTab({ showInvoiceButtons = true }) {
 
   // Calculate max revenue for chart scaling
   const maxRevenue = useMemo(() => {
-    if (!monthly_revenue || monthly_revenue.length === 0) return 0;
-    return Math.max(...monthly_revenue.map(m => m.revenue));
-  }, [monthly_revenue]);
+    if (!daily_revenue || daily_revenue.length === 0) return 0;
+    return Math.max(...daily_revenue.map(m => m.revenue));
+  }, [daily_revenue]);
+
+  // Format a YYYY-MM-DD string to a short label
+  const formatDayLabel = (dayStr) => {
+    const d = new Date(dayStr + 'T00:00:00');
+    return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' });
+  };
 
   const invoiceMutation = useMutation({
     mutationFn: (bookingId) => sendInvoice(bookingId),
@@ -123,9 +130,26 @@ function FinancesTab({ showInvoiceButtons = true }) {
     all: "all past"
   };
 
+  const singleMarkPaidMutation = useMutation({
+    mutationFn: (bookingId) => updateBooking(bookingId, { status: 'completed', payment_status: 'paid' }),
+    onMutate: (bookingId) => {
+      setMarkingPaidId(bookingId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      addToast('Job marked as paid', 'success');
+      setMarkingPaidId(null);
+    },
+    onError: () => {
+      addToast('Failed to mark job as paid', 'error');
+      setMarkingPaidId(null);
+    }
+  });
+
   // Build SVG line/area chart
   const renderChart = () => {
-    if (!monthly_revenue || monthly_revenue.length === 0) {
+    if (!daily_revenue || daily_revenue.length === 0) {
       return (
         <div className="chart-empty">
           <i className="fas fa-chart-line"></i>
@@ -140,14 +164,21 @@ function FinancesTab({ showInvoiceButtons = true }) {
     const chartW = width - padding.left - padding.right;
     const chartH = height - padding.top - padding.bottom;
 
-    const points = monthly_revenue.map((item, i) => {
-      const x = padding.left + (monthly_revenue.length === 1 ? chartW / 2 : (i / (monthly_revenue.length - 1)) * chartW);
+    const points = daily_revenue.map((item, i) => {
+      const x = padding.left + (daily_revenue.length === 1 ? chartW / 2 : (i / (daily_revenue.length - 1)) * chartW);
       const y = padding.top + chartH - (maxRevenue > 0 ? (item.revenue / maxRevenue) * chartH : 0);
       return { x, y, ...item };
     });
 
     const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
     const areaPath = `${linePath} L${points[points.length - 1].x},${padding.top + chartH} L${points[0].x},${padding.top + chartH} Z`;
+
+    // Show labels for a reasonable subset of points to avoid clutter
+    const maxLabels = 10;
+    const step = Math.max(1, Math.ceil(points.length / maxLabels));
+    const labelIndices = new Set();
+    for (let i = 0; i < points.length; i += step) labelIndices.add(i);
+    labelIndices.add(points.length - 1); // always show last
 
     return (
       <div className="chart-svg-container">
@@ -161,14 +192,14 @@ function FinancesTab({ showInvoiceButtons = true }) {
           <path d={areaPath} fill="url(#areaGradient)" />
           <path d={linePath} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
           {points.map((p, i) => (
-            <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="white" stroke="#3b82f6" strokeWidth="2" />
+            <circle key={i} cx={p.x} cy={p.y} r="3" fill="white" stroke="#3b82f6" strokeWidth="2" />
           ))}
         </svg>
         <div className="chart-labels">
-          {points.map((p, i) => (
+          {points.filter((_, i) => labelIndices.has(i)).map((p, i) => (
             <div key={i} className="chart-label-item" style={{ left: `${(p.x / width) * 100}%` }}>
               <span className="chart-label-value">{formatCurrency(p.revenue)}</span>
-              <span className="chart-label-month">{p.month}</span>
+              <span className="chart-label-month">{formatDayLabel(p.day)}</span>
             </div>
           ))}
         </div>
@@ -367,6 +398,19 @@ function FinancesTab({ showInvoiceButtons = true }) {
                           : transaction.payment_status || transaction.status || 'Pending'
                         }
                       </span>
+                      {isUnpaid && transaction.amount > 0 && (
+                        <button
+                          className="btn-mark-paid-single"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            singleMarkPaidMutation.mutate(bookingId);
+                          }}
+                          disabled={markingPaidId === bookingId}
+                        >
+                          <i className={`fas ${markingPaidId === bookingId ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
+                          Mark Paid
+                        </button>
+                      )}
                       {isUnpaid && transaction.amount > 0 && showInvoiceButtons && (
                         <button
                           className="btn-send-invoice"

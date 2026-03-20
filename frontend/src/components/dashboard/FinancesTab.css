@@ -403,6 +403,37 @@
   box-shadow: 0 2px 6px rgba(139, 92, 246, 0.3);
 }
 
+/* Mark Paid Single Button */
+.btn-mark-paid-single {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.65rem;
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-mark-paid-single:hover:not(:disabled) {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+
+.btn-mark-paid-single:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-mark-paid-single i {
+  font-size: 0.6rem;
+}
+
 .btn-send-invoice:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 10px rgba(139, 92, 246, 0.4);

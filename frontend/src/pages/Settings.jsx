@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate, useBlocker } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -260,6 +260,24 @@ function Settings() {
     });
     setHasUnsavedChanges(changed);
   }, [formData, settings]);
+
+  // Warn on browser tab close / refresh with unsaved changes
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsavedChanges]);
+
+  // Block in-app navigation (react-router) with unsaved changes
+  const blocker = useBlocker(
+    useCallback(({ currentLocation, nextLocation }) => 
+      hasUnsavedChanges && currentLocation.pathname !== nextLocation.pathname,
+    [hasUnsavedChanges])
+  );
 
   const { data: aiStatus } = useQuery({
     queryKey: ['ai-status'],
@@ -1034,6 +1052,36 @@ function Settings() {
         onSuccess={handlePhoneConfigSuccess}
         allowSkip={false}
       />
+
+      {/* Unsaved Changes Navigation Blocker */}
+      {blocker.state === 'blocked' && (
+        <div className="modal-overlay" onClick={() => blocker.reset()}>
+          <div className="modal-content delete-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h2>
+                <i className="fas fa-exclamation-triangle" style={{ color: '#f59e0b', marginRight: '10px' }}></i>
+                Unsaved Changes
+              </h2>
+              <button className="modal-close" onClick={() => blocker.reset()}>
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="modal-body">
+              <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+                You have unsaved changes. Are you sure you want to leave? Your changes will be lost.
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => blocker.reset()}>
+                Stay on Page
+              </button>
+              <button className="btn btn-danger" onClick={() => blocker.proceed()}>
+                Leave Without Saving
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Account Confirmation Modal */}
       {showDeleteModal && (

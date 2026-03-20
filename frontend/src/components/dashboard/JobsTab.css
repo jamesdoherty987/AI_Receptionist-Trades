@@ -419,6 +419,38 @@
   background: rgba(59, 130, 246, 0.1);
 }
 
+/* Inline Mark Paid Button */
+.btn-mark-paid-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.6rem;
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.btn-mark-paid-inline:hover:not(:disabled) {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+
+.btn-mark-paid-inline:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-mark-paid-inline i {
+  font-size: 0.65rem;
+}
+
 /* Job Details */
 .job-details {
   display: flex;
