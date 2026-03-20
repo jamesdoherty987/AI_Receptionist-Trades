@@ -55,7 +55,7 @@ function Settings() {
     const gcalParam = searchParams.get('gcal');
     if (gcalParam === 'connected') {
       setActiveTab('business');
-      refetchGcalStatus();
+      queryClient.invalidateQueries({ queryKey: ['gcal-status'] });
       setSaveMessage('Google Calendar connected successfully!');
       window.history.replaceState({}, '', '/settings');
       setTimeout(() => setSaveMessage(''), 5000);
@@ -159,7 +159,7 @@ function Settings() {
         clearTimeout(pollTimeoutId);
       }
     };
-  }, [searchParams, checkAuth, queryClient, refetchGcalStatus]);
+  }, [searchParams, checkAuth, queryClient]);
   
   // Business hours breakdown state
   const [hoursConfig, setHoursConfig] = useState({
