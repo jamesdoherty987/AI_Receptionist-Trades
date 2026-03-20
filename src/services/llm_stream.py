@@ -1455,15 +1455,21 @@ TOOL RULES:
         
         # Prepare services for tool execution
         # Use database calendar by default (scalable for SaaS)
-        # Optional: Use Google Calendar if USE_GOOGLE_CALENDAR = True
+        # Optional: Use Google Calendar if company has connected their account
         calendar = None
-        if config.USE_GOOGLE_CALENDAR:
+        
+        # Check if this company has Google Calendar connected (per-company OAuth)
+        if company_id:
             try:
-                from src.services.google_calendar import get_calendar_service as get_cal_service
-                calendar = get_cal_service()
-                print(f"   📦 [TOOL_SETUP] Using Google Calendar (OAuth-based)")
+                from src.services.google_calendar_oauth import get_company_google_calendar
+                from src.services.database import get_database as get_db_for_gcal
+                gcal_db = get_db_for_gcal()
+                gcal = get_company_google_calendar(int(company_id), gcal_db)
+                if gcal:
+                    calendar = gcal
+                    print(f"   📦 [TOOL_SETUP] Using Google Calendar (per-company OAuth, company_id={company_id})")
             except Exception as e:
-                print(f"   ⚠️ [TOOL_SETUP] Could not load Google Calendar: {e}")
+                print(f"   ⚠️ [TOOL_SETUP] Could not load company Google Calendar: {e}")
         
         # Always use database calendar as fallback (or primary if Google disabled)
         if calendar is None:

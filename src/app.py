@@ -5094,6 +5094,103 @@ def get_calendar_events():
     return jsonify([])
 
 
+# ==========================================
+# Google Calendar OAuth Integration
+# ==========================================
+
+@app.route("/api/google-calendar/status", methods=["GET"])
+@login_required
+def google_calendar_status():
+    """Check if Google Calendar is connected for this company."""
+    try:
+        from src.services.google_calendar_oauth import get_company_calendar_status
+        db = get_database()
+        company_id = session.get('company_id')
+        status = get_company_calendar_status(company_id, db)
+        return jsonify(status)
+    except Exception as e:
+        safe_print(f"[GCAL] Status check error: {e}")
+        return jsonify({'connected': False, 'error': str(e)})
+
+
+@app.route("/api/google-calendar/connect", methods=["POST"])
+@login_required
+def google_calendar_connect():
+    """Start the Google Calendar OAuth flow — returns the auth URL."""
+    try:
+        from src.services.google_calendar_oauth import start_oauth_flow
+        company_id = session.get('company_id')
+        auth_url = start_oauth_flow(company_id)
+        return jsonify({'auth_url': auth_url})
+    except ValueError as e:
+        safe_print(f"[GCAL] OAuth config error: {e}")
+        return jsonify({'error': 'Google Calendar OAuth is not configured on the server'}), 500
+    except Exception as e:
+        safe_print(f"[GCAL] Connect error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/google-calendar/callback", methods=["GET"])
+def google_calendar_callback():
+    """OAuth callback from Google — exchanges code for tokens."""
+    try:
+        from src.services.google_calendar_oauth import handle_oauth_callback
+        company_id = request.args.get('state')
+        if not company_id:
+            return "Missing state parameter", 400
+
+        company_id = int(company_id)
+        db = get_database()
+
+        # Build the full authorization response URL
+        authorization_response = request.url
+        # Ensure it uses https in production (Render terminates TLS at the proxy)
+        if config.PUBLIC_URL and config.PUBLIC_URL.startswith('https'):
+            authorization_response = authorization_response.replace('http://', 'https://', 1)
+
+        handle_oauth_callback(authorization_response, company_id, db)
+
+        # Redirect to settings page with success message
+        frontend_url = os.getenv('FRONTEND_URL', config.PUBLIC_URL or 'http://localhost:5173')
+        return f"""
+        <html><body>
+        <script>
+            window.opener ? window.opener.postMessage('google-calendar-connected', '*') : null;
+            window.location.href = '{frontend_url}/settings?tab=business&gcal=connected';
+        </script>
+        <p>Google Calendar connected! Redirecting...</p>
+        </body></html>
+        """
+    except Exception as e:
+        safe_print(f"[GCAL] Callback error: {e}")
+        import traceback
+        traceback.print_exc()
+        frontend_url = os.getenv('FRONTEND_URL', config.PUBLIC_URL or 'http://localhost:5173')
+        return f"""
+        <html><body>
+        <script>
+            window.location.href = '{frontend_url}/settings?tab=business&gcal=error';
+        </script>
+        <p>Error connecting Google Calendar: {str(e)}</p>
+        </body></html>
+        """
+
+
+@app.route("/api/google-calendar/disconnect", methods=["POST"])
+@login_required
+def google_calendar_disconnect():
+    """Disconnect Google Calendar for this company."""
+    try:
+        from src.services.google_calendar_oauth import disconnect_google_calendar
+        db = get_database()
+        company_id = session.get('company_id')
+        disconnect_google_calendar(company_id, db)
+        return jsonify({'success': True, 'message': 'Google Calendar disconnected'})
+    except Exception as e:
+        safe_print(f"[GCAL] Disconnect error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 # Global error handlers
 @app.errorhandler(404)
 def not_found(e):

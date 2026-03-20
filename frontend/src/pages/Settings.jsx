@@ -16,7 +16,10 @@ import {
   getAIReceptionistStatus,
   toggleAIReceptionist,
   syncSubscription,
-  deleteAccount
+  deleteAccount,
+  getGoogleCalendarStatus,
+  connectGoogleCalendar,
+  disconnectGoogleCalendar
 } from '../services/api';
 import './Settings.css';
 
@@ -32,6 +35,7 @@ function Settings() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteError, setDeleteError] = useState('');
+  const [gcalConnecting, setGcalConnecting] = useState(false);
   // Flag to hide Stripe Connect component
   const hideStripeConnect = REMOVE_STRIPE_CONNECT;
   
@@ -45,6 +49,20 @@ function Settings() {
     if (tabParam === 'subscription') {
       setActiveTab('subscription');
       window.history.replaceState({}, '', '/settings');
+    }
+    
+    const gcalParam = searchParams.get('gcal');
+    if (gcalParam === 'connected') {
+      setActiveTab('business');
+      refetchGcalStatus();
+      setSaveMessage('Google Calendar connected successfully!');
+      window.history.replaceState({}, '', '/settings');
+      setTimeout(() => setSaveMessage(''), 5000);
+    } else if (gcalParam === 'error') {
+      setActiveTab('business');
+      setSaveMessage('Failed to connect Google Calendar. Please try again.');
+      window.history.replaceState({}, '', '/settings');
+      setTimeout(() => setSaveMessage(''), 5000);
     }
     
     if (subscriptionStatus === 'success') {
@@ -140,7 +158,7 @@ function Settings() {
         clearTimeout(pollTimeoutId);
       }
     };
-  }, [searchParams, checkAuth, queryClient]);
+  }, [searchParams, checkAuth, queryClient, refetchGcalStatus]);
   
   // Business hours breakdown state
   const [hoursConfig, setHoursConfig] = useState({
@@ -234,6 +252,14 @@ function Settings() {
     queryKey: ['ai-status'],
     queryFn: async () => {
       const response = await getAIReceptionistStatus();
+      return response.data;
+    },
+  });
+
+  const { data: gcalStatus, refetch: refetchGcalStatus } = useQuery({
+    queryKey: ['gcal-status'],
+    queryFn: async () => {
+      const response = await getGoogleCalendarStatus();
       return response.data;
     },
   });
@@ -370,6 +396,59 @@ function Settings() {
     queryClient.invalidateQueries(['business-settings']);
     setSaveMessage('Phone number configured successfully!');
     setTimeout(() => setSaveMessage(''), 3000);
+  };
+
+  const handleConnectGoogleCalendar = async () => {
+    setGcalConnecting(true);
+    try {
+      const response = await connectGoogleCalendar();
+      const { auth_url } = response.data;
+      // Open Google OAuth in a popup
+      const popup = window.open(auth_url, 'google-calendar-auth', 'width=600,height=700,scrollbars=yes');
+      
+      // Listen for the callback message
+      const handleMessage = (event) => {
+        if (event.data === 'google-calendar-connected') {
+          window.removeEventListener('message', handleMessage);
+          if (popup) popup.close();
+          refetchGcalStatus();
+          setSaveMessage('Google Calendar connected successfully!');
+          setTimeout(() => setSaveMessage(''), 3000);
+          setGcalConnecting(false);
+        }
+      };
+      window.addEventListener('message', handleMessage);
+      
+      // Also poll in case popup message doesn't work (e.g. cross-origin)
+      const pollInterval = setInterval(() => {
+        if (popup && popup.closed) {
+          clearInterval(pollInterval);
+          window.removeEventListener('message', handleMessage);
+          refetchGcalStatus();
+          setGcalConnecting(false);
+        }
+      }, 1000);
+    } catch (error) {
+      const errorMsg = error?.response?.data?.error || 'Failed to start Google Calendar connection';
+      setSaveMessage(errorMsg);
+      setTimeout(() => setSaveMessage(''), 5000);
+      setGcalConnecting(false);
+    }
+  };
+
+  const handleDisconnectGoogleCalendar = async () => {
+    if (!window.confirm('Are you sure you want to disconnect Google Calendar? Bookings will still be saved in the app, but will no longer sync to Google Calendar.')) {
+      return;
+    }
+    try {
+      await disconnectGoogleCalendar();
+      refetchGcalStatus();
+      setSaveMessage('Google Calendar disconnected');
+      setTimeout(() => setSaveMessage(''), 3000);
+    } catch (error) {
+      setSaveMessage('Failed to disconnect Google Calendar');
+      setTimeout(() => setSaveMessage(''), 5000);
+    }
   };
 
   if (isLoading) {
@@ -716,6 +795,66 @@ function Settings() {
                         : 'You need to configure a phone number to receive calls.'}
                     </small>
                   </div>
+                </div>
+              </div>
+
+              {/* Google Calendar Integration */}
+              <div className="form-section">
+                <h3>
+                  <i className="fab fa-google" style={{ marginRight: '8px', color: '#4285f4' }}></i>
+                  Google Calendar
+                </h3>
+                <p className="section-description">
+                  Connect your Google Calendar so bookings made by the AI receptionist automatically appear in your calendar.
+                  {' '}This also enables sync with tools like Tradify.
+                </p>
+                <div className="gcal-status-card" style={{
+                  padding: '1rem 1.25rem',
+                  background: gcalStatus?.connected ? '#f0fdf4' : 'var(--bg-secondary)',
+                  border: `1px solid ${gcalStatus?.connected ? '#86efac' : 'var(--border-color)'}`,
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  flexWrap: 'wrap'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <i className={`fas ${gcalStatus?.connected ? 'fa-check-circle' : 'fa-circle'}`} 
+                       style={{ color: gcalStatus?.connected ? '#16a34a' : '#9ca3af', fontSize: '1.25rem' }}></i>
+                    <div>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {gcalStatus?.connected ? 'Connected' : 'Not connected'}
+                      </div>
+                      {gcalStatus?.connected && gcalStatus?.calendar_email && (
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                          {gcalStatus.calendar_email}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {gcalStatus?.connected ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleDisconnectGoogleCalendar}
+                      style={{ fontSize: '0.875rem' }}
+                    >
+                      <i className="fas fa-unlink"></i>
+                      Disconnect
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleConnectGoogleCalendar}
+                      disabled={gcalConnecting}
+                      style={{ fontSize: '0.875rem' }}
+                    >
+                      <i className="fab fa-google"></i>
+                      {gcalConnecting ? 'Connecting...' : 'Connect Google Calendar'}
+                    </button>
+                  )}
                 </div>
               </div>
 

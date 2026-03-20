@@ -832,7 +832,8 @@ class PostgreSQLDatabaseWrapper:
                               'subscription_current_period_end', 'subscription_cancel_at_period_end',
                               'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
                               'revolut_phone', 'company_context', 'coverage_area', 'remove_stripe_connect',
-                              'twilio_phone_number']
+                              'twilio_phone_number',
+                              'google_credentials_json', 'google_calendar_id']
             
             # Get actual columns that exist in the database
             cursor.execute("""
