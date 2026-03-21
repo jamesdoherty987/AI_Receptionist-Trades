@@ -49,8 +49,14 @@ class MockDeepgramASR:
         elif is_final:
             if transcript.strip():
                 self.interim_text = transcript.strip()
-                self.last_segment_text = transcript.strip()
-                self.last_segment_time = self._mock_time
+                # Only set fallback segment if we don't already have one pending.
+                # This preserves the FIRST meaningful segment even if the caller
+                # later says "Hello?" out of frustration. New segments are appended.
+                if not self.last_segment_text:
+                    self.last_segment_text = transcript.strip()
+                    self.last_segment_time = self._mock_time
+                else:
+                    self.last_segment_text += " " + transcript.strip()
                 
         else:
             if transcript.strip():
@@ -529,10 +535,11 @@ class TestFallbackWhenSpeechFinalMissing:
         Exact scenario from production logs:
         1. Caller says "I have a burst pipe..." → is_final segment
         2. Deepgram never sends speech_final
-        3. Caller waits, then says "Hello?" → that gets speech_final
+        3. Caller waits, then says "Hello?" → that gets appended to pending segment
         4. Without fallback, LLM only sees "Hello?" and ignores the burst pipe
         
-        With fallback: after 5s, the burst pipe segment gets promoted.
+        With fallback + accumulation: after 5s, the full accumulated text gets promoted.
+        The timer starts from the FIRST segment, so "Hello?" doesn't reset it.
         """
         asr = MockDeepgramASR()
         
@@ -552,6 +559,72 @@ class TestFallbackWhenSpeechFinalMissing:
         asr.promote_segment()
         assert asr.is_speech_finished() is True
         assert asr.get_text() == "Hi. I just have a burst pipe. Can you help with that?"
+    
+    def test_new_segments_dont_reset_timer(self):
+        """
+        Critical fix: When caller says their name, then "Hello?" out of frustration,
+        the timer should NOT reset. The original segment should be preserved and
+        new segments appended.
+        """
+        asr = MockDeepgramASR()
+        
+        # Caller spells name
+        asr.process_message({
+            'is_final': True, 'speech_final': False,
+            'channel': {'alternatives': [{'transcript': "It's p e t e r r o n a n."}]}
+        }, current_time=10.0)
+        
+        assert asr.last_segment_text == "It's p e t e r r o n a n."
+        assert asr.last_segment_time == 10.0
+        
+        # Caller says "Hello?" at t=20 — should NOT overwrite or reset timer
+        asr.process_message({
+            'is_final': True, 'speech_final': False,
+            'channel': {'alternatives': [{'transcript': 'Hello?'}]}
+        }, current_time=20.0)
+        
+        # Timer should still be from original segment (t=10), not reset to t=20
+        assert asr.last_segment_time == 10.0
+        # Text should be accumulated
+        assert asr.last_segment_text == "It's p e t e r r o n a n. Hello?"
+        
+        # At t=15 (5s after first segment) — should trigger
+        asr._mock_time = 15.0
+        assert asr.has_pending_segment(timeout=5.0) is True
+        
+        # Promote — should get the full accumulated text
+        asr.promote_segment()
+        assert asr.get_text() == "It's p e t e r r o n a n. Hello?"
+    
+    def test_accumulation_preserves_full_utterance(self):
+        """
+        When Deepgram sends multiple is_final segments without speech_final,
+        all segments should be accumulated so the full utterance is preserved.
+        """
+        asr = MockDeepgramASR()
+        
+        # First part of sentence
+        asr.process_message({
+            'is_final': True, 'speech_final': False,
+            'channel': {'alternatives': [{'transcript': 'Hi. I, have a burst'}]}
+        }, current_time=10.0)
+        
+        # Second part arrives
+        asr.process_message({
+            'is_final': True, 'speech_final': False,
+            'channel': {'alternatives': [{'transcript': 'pipe in my room, and I need help'}]}
+        }, current_time=12.0)
+        
+        # Timer still from first segment
+        assert asr.last_segment_time == 10.0
+        assert asr.last_segment_text == "Hi. I, have a burst pipe in my room, and I need help"
+        
+        # After 5s from first segment
+        asr._mock_time = 15.0
+        assert asr.has_pending_segment(timeout=5.0) is True
+        
+        asr.promote_segment()
+        assert asr.get_text() == "Hi. I, have a burst pipe in my room, and I need help"
 
 
 if __name__ == "__main__":

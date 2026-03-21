@@ -2782,8 +2782,27 @@ Return ONLY valid JSON, no explanation."""
                     }
                 logger.info(f"[BOOK_APPT] Day of week validated: {day_name} matches {parsed_time.strftime('%A')}")
             
-            # Validate business hours - MUST pass company_id for correct company-specific hours
+            # Validate business day — reject bookings on days the business is closed
             from src.utils.config import Config
+            try:
+                business_days = Config.get_business_days_indices(company_id=company_id)
+            except:
+                business_days = Config.BUSINESS_DAYS
+            
+            if parsed_time.weekday() not in business_days:
+                closed_day_name = parsed_time.strftime('%A')
+                all_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                open_days = [all_days[i] for i in sorted(business_days)]
+                open_days_str = ', '.join(open_days[:-1]) + f' and {open_days[-1]}' if len(open_days) > 1 else open_days[0]
+                logger.warning(f"[BOOK_APPT] Closed day: {closed_day_name} (business days: {business_days})")
+                return {
+                    "success": False,
+                    "error": f"We're not open on {closed_day_name}s. Our working days are {open_days_str}. Please check availability using check_availability and suggest a day we're open.",
+                    "needs_clarification": "datetime",
+                    "is_closed_day": True
+                }
+            
+            # Validate business hours - MUST pass company_id for correct company-specific hours
             business_hours = Config.get_business_hours(company_id=company_id)
             requested_hour = parsed_time.hour
             start_hour = business_hours.get('start', 9)
@@ -3265,6 +3284,25 @@ Return ONLY valid JSON, no explanation."""
                     "error": f"Could not understand the new date: '{new_datetime}'. Please ask for a clearer date like 'next Monday' or 'January 20th'."
                 }
             
+            # Validate business day — reject rescheduling to days the business is closed
+            from src.utils.config import Config as ReschedConfig
+            try:
+                business_days_resched = ReschedConfig.get_business_days_indices(company_id=company_id)
+            except:
+                business_days_resched = ReschedConfig.BUSINESS_DAYS
+            
+            if new_time.weekday() not in business_days_resched:
+                closed_day_name = new_time.strftime('%A')
+                all_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                open_days = [all_days[i] for i in sorted(business_days_resched)]
+                open_days_str = ', '.join(open_days[:-1]) + f' and {open_days[-1]}' if len(open_days) > 1 else open_days[0]
+                logger.warning(f"[RESCHEDULE] Closed day: {closed_day_name} (business days: {business_days_resched})")
+                return {
+                    "success": False,
+                    "error": f"We're not open on {closed_day_name}s. Our working days are {open_days_str}. What other day would work for you?",
+                    "is_closed_day": True
+                }
+            
             # For full-day jobs, set time to start of business day
             if is_full_day:
                 from src.utils.config import Config
@@ -3530,8 +3568,27 @@ Return ONLY valid JSON, no explanation."""
                     }
                 logger.info(f"[BOOK_JOB] Day of week validated: {day_name} matches {parsed_time.strftime('%A')}")
             
-            # Validate business hours - MUST pass company_id for correct company-specific hours
+            # Validate business day — reject bookings on days the business is closed
             from src.utils.config import Config
+            try:
+                business_days = Config.get_business_days_indices(company_id=company_id)
+            except:
+                business_days = Config.BUSINESS_DAYS
+            
+            if parsed_time.weekday() not in business_days:
+                closed_day_name = parsed_time.strftime('%A')
+                all_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                open_days = [all_days[i] for i in sorted(business_days)]
+                open_days_str = ', '.join(open_days[:-1]) + f' and {open_days[-1]}' if len(open_days) > 1 else open_days[0]
+                logger.warning(f"[BOOK_JOB] Closed day: {closed_day_name} (business days: {business_days})")
+                return {
+                    "success": False,
+                    "error": f"We're not open on {closed_day_name}s. Our working days are {open_days_str}. Please check availability using check_availability and suggest a day we're open.",
+                    "needs_clarification": "datetime",
+                    "is_closed_day": True
+                }
+            
+            # Validate business hours - MUST pass company_id for correct company-specific hours
             business_hours = Config.get_business_hours(company_id=company_id)
             requested_hour = parsed_time.hour
             start_hour = business_hours.get('start', 9)

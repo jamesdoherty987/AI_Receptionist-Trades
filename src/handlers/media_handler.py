@@ -449,6 +449,11 @@ async def media_handler(ws):
                 tts_ended_at = asyncio.get_event_loop().time()
                 speaking = False
                 llm_processing = False
+                # Clear any stale ASR state that accumulated during TTS playback.
+                # Without this, a speech_final that arrived while the AI was talking
+                # would be immediately consumed as the "answer" to the AI's question,
+                # causing the domino effect.
+                asr.clear()
                 print(f"👂 Ready to listen")
 
         if respond_task and not respond_task.done():
@@ -597,7 +602,9 @@ async def media_handler(ws):
                 # Fallback: If Deepgram sent an is_final segment but never sent
                 # speech_final, promote it after 5 seconds of silence.
                 # This handles a real Deepgram bug where speech_final never arrives.
-                if not asr.is_speech_finished() and asr.has_pending_segment(timeout=3.0):
+                # Using 5s (not 3s) to avoid promoting partial segments while
+                # the caller is still mid-sentence.
+                if not asr.is_speech_finished() and asr.has_pending_segment(timeout=5.0):
                     asr.promote_segment()
                 
                 # Check for speech_final — trust Deepgram's signal
