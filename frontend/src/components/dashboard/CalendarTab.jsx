@@ -20,24 +20,46 @@ const WORKER_COLORS = [
   '#14b8a6', // teal
 ];
 
+// Convert duration_minutes to business days, matching backend duration_to_business_days().
+// "1 week" (10080 mins) = daysPerWeek biz days (a work week).
+const durationToBusinessDays = (durationMinutes, daysPerWeek = 5) => {
+  if (durationMinutes <= 1440) return 1;
+  const calendarDays = durationMinutes / 1440;
+  // Week-based durations: 7 cal days = daysPerWeek biz days
+  if (calendarDays >= 7 && Math.round(calendarDays) % 7 === 0) {
+    const weeks = Math.round(calendarDays) / 7;
+    return weeks * daysPerWeek;
+  }
+  // Sub-week multi-day: calendar days = business days
+  return Math.ceil(calendarDays);
+};
+
+// Map day names from backend (days_open) to JS getDay() indices (0=Sun, 6=Sat)
+const DAY_NAME_TO_JS_INDEX = {
+  'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
+  'Thursday': 4, 'Friday': 5, 'Saturday': 6,
+};
+
 // Calculate the business-day end date for multi-day jobs.
-// 1440 mins = 1 biz day, 2880 = 2, etc. Skips weekends (Sat=6, Sun=0).
-const getMultiDayJobEnd = (startDate, durationMinutes) => {
-  const bizDaysNeeded = Math.ceil(durationMinutes / 1440);
+// openDayIndices: JS getDay() values the company is open (e.g. [1,2,3,4,5] for Mon-Fri).
+// Falls back to Mon-Fri if not provided.
+const getMultiDayJobEnd = (startDate, durationMinutes, openDayIndices, closingHour = 17) => {
+  const daysPerWeek = openDayIndices ? openDayIndices.length : 5;
+  const bizDaysNeeded = durationToBusinessDays(durationMinutes, daysPerWeek);
+  const openSet = new Set(openDayIndices || [1, 2, 3, 4, 5]);
   let cur = new Date(startDate);
   cur.setHours(0, 0, 0, 0);
   let counted = 0;
   let lastBiz = new Date(cur);
   for (let i = 0; i < 365; i++) {
-    const dow = cur.getDay(); // 0=Sun, 6=Sat
-    if (dow !== 0 && dow !== 6) {
+    if (openSet.has(cur.getDay())) {
       counted++;
       lastBiz = new Date(cur);
       if (counted >= bizDaysNeeded) break;
     }
     cur.setDate(cur.getDate() + 1);
   }
-  lastBiz.setHours(17, 0, 0, 0); // closing time
+  lastBiz.setHours(closingHour, 0, 0, 0);
   return lastBiz;
 };
 
@@ -108,8 +130,17 @@ function CalendarTab() {
   });
 
   // Get business hours with fallbacks
-  const openingHour = businessHours?.start || 8;
-  const closingHour = businessHours?.end || 18;
+  const openingHour = businessHours?.start_hour ?? businessHours?.start ?? 8;
+  const closingHour = businessHours?.end_hour ?? businessHours?.end ?? 18;
+
+  // Derive open day indices (JS getDay: 0=Sun..6=Sat) from settings
+  const openDayIndices = useMemo(() => {
+    const daysOpen = businessHours?.days_open;
+    if (Array.isArray(daysOpen) && daysOpen.length > 0) {
+      return daysOpen.map(name => DAY_NAME_TO_JS_INDEX[name]).filter(v => v !== undefined);
+    }
+    return [1, 2, 3, 4, 5]; // Mon-Fri default
+  }, [businessHours]);
 
   // Create worker color map
   const workerColorMap = useMemo(() => {
@@ -208,7 +239,7 @@ function CalendarTab() {
       // Multi-day job: started before this date but duration extends into it
       const duration = booking.duration_minutes || 60;
       if (duration > 1440) {
-        const bookingEnd = getMultiDayJobEnd(bookingDate, duration);
+        const bookingEnd = getMultiDayJobEnd(bookingDate, duration, openDayIndices, closingHour);
         const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         if (bookingDate < dayStart && bookingEnd > dayStart) return true;
       }
@@ -225,14 +256,14 @@ function CalendarTab() {
         if (bookingDate.toDateString() === selectedDate.toDateString()) return true;
         const duration = booking.duration_minutes || 60;
         if (duration > 1440) {
-          const bookingEnd = getMultiDayJobEnd(bookingDate, duration);
+          const bookingEnd = getMultiDayJobEnd(bookingDate, duration, openDayIndices, closingHour);
           const dayStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
           if (bookingDate < dayStart && bookingEnd > dayStart) return true;
         }
         return false;
       })
       .sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
-  }, [selectedDate, filteredBookings]);
+  }, [selectedDate, filteredBookings, openDayIndices, closingHour]);
 
   // Get worker name by ID (just name, no specialty)
   const getWorkerName = (workerId) => {
