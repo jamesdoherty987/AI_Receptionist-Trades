@@ -1,10 +1,12 @@
 """
 Deepgram ASR (Automatic Speech Recognition) service
 
-Simple approach: Trust Deepgram's speech_final signal for utterance detection.
-Deepgram's VAD is trained on millions of conversations and handles:
-- End-of-speech detection (speech_final after endpointing silence)
-- Interim results for real-time feedback (used for barge-in)
+Three-layer end-of-speech detection:
+1. speech_final (endpointing) — VAD detects silence after speech (~1.2s)
+2. UtteranceEnd (utterance_end_ms) — word-timing gap detection, works in noisy
+   environments where VAD fails (~1.2s)
+3. Fallback timer — 3s safety net if Deepgram sends is_final but neither
+   speech_final nor UtteranceEnd ever arrives
 """
 import asyncio
 import json
@@ -29,10 +31,10 @@ class DeepgramASR:
         self.speech_final = False   # True when Deepgram signals end of utterance
         
         # Fallback tracking: Deepgram sometimes sends is_final segments
-        # but never sends speech_final. Accumulate all pending segments and
-        # reset the timer on each new one. The media handler uses this as a
-        # safety net — if 5s pass since the LAST segment with no speech_final,
-        # the accumulated text gets promoted.
+        # but never sends speech_final or UtteranceEnd. Accumulate all pending
+        # segments and reset the timer on each new one. The media handler uses
+        # this as a safety net — if 3s pass since the LAST segment with no
+        # speech_final/UtteranceEnd, the accumulated text gets promoted.
         self.last_segment_text = ""
         self.last_segment_time = 0.0
 
@@ -54,8 +56,8 @@ class DeepgramASR:
                     "&filler_words=false"
                     "&numerals=true"
                     "&language=en"
-                    "&utterances=true"
-                    "&endpointing=1200",
+                    "&endpointing=1200"
+                    "&utterance_end_ms=1200",
                     extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
                     open_timeout=5,
                     close_timeout=2,
@@ -95,6 +97,20 @@ class DeepgramASR:
             async for msg in self.ws:
                 data = json.loads(msg)
                 
+                # Handle UtteranceEnd — Deepgram detected a word-timing gap.
+                # This works even in noisy environments where speech_final
+                # (VAD-based) fails. Promote accumulated segments to final.
+                msg_type = data.get("type", "")
+                if msg_type == "UtteranceEnd":
+                    if self.last_segment_text and not self.speech_final:
+                        self.text = self.last_segment_text
+                        self.speech_final = True
+                        print(f"[ASR] ✅ UTTERANCE END: '{self.last_segment_text}'")
+                        self.last_segment_text = ""
+                        self.last_segment_time = 0.0
+                        self.interim_text = ""
+                    continue
+                
                 is_speech_final = data.get("speech_final", False)
                 is_final = data.get("is_final", False)
                 
@@ -124,8 +140,8 @@ class DeepgramASR:
                         # timer on each new one. This way:
                         # - Long utterances: timer keeps resetting as segments arrive,
                         #   fallback never fires prematurely
-                        # - Deepgram bug (no speech_final): 5s after the LAST segment,
-                        #   fallback fires with the full accumulated text
+                        # - Deepgram bug (no speech_final or UtteranceEnd): 3s after
+                        #   the LAST segment, fallback fires with full accumulated text
                         if not self.last_segment_text:
                             self.last_segment_text = transcript.strip()
                         else:
@@ -167,7 +183,7 @@ class DeepgramASR:
         """Check if Deepgram signaled end of utterance"""
         return self.speech_final
 
-    def has_pending_segment(self, timeout: float = 5.0) -> bool:
+    def has_pending_segment(self, timeout: float = 3.0) -> bool:
         """
         Check if there's a pending is_final segment that never got speech_final.
         

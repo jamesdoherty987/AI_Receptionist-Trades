@@ -621,11 +621,11 @@ async def media_handler(ws):
                     continue
                 
                 # Fallback: If Deepgram sent an is_final segment but never sent
-                # speech_final, promote it after 5 seconds of silence.
-                # This handles a real Deepgram bug where speech_final never arrives.
-                # Using 5s (not 3s) to avoid promoting partial segments while
-                # the caller is still mid-sentence.
-                if not asr.is_speech_finished() and asr.has_pending_segment(timeout=5.0):
+                # speech_final or UtteranceEnd, promote it after 3 seconds of silence.
+                # This is a last-resort safety net — with utterance_end_ms enabled,
+                # this should rarely fire. Using 3s because utterance_end_ms (1.2s)
+                # and endpointing (1.2s) should catch normal cases much faster.
+                if not asr.is_speech_finished() and asr.has_pending_segment(timeout=3.0):
                     asr.promote_segment()
                 
                 # Check for speech_final — trust Deepgram's signal
