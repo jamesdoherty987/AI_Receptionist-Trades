@@ -144,13 +144,6 @@ async def media_handler(ws):
     MIN_WORDS = config.MIN_WORDS
     LLM_PROCESSING_TIMEOUT = config.LLM_PROCESSING_TIMEOUT
     
-    # FALLBACK: If we have interim text but no speech_final after this many seconds, process anyway
-    # This prevents freezes when Deepgram's speech_final signal doesn't arrive
-    SPEECH_FINAL_FALLBACK_TIMEOUT = 3.0  # seconds - reduced from 4.0 for faster response
-    last_interim_text = ""
-    last_interim_time = 0.0
-    last_segment_time = 0.0  # Track when we last received ANY segment from Deepgram
-    
     FILLER_PHRASES = {"hello", "hi", "hey", "are you there", "you there", "hello?", "um", "uh"}
     bargein_since = 0.0
 
@@ -573,17 +566,6 @@ async def media_handler(ws):
                 # ALWAYS feed audio to keep Deepgram connection alive
                 # This prevents the "did not receive audio" timeout
                 await asr.feed(audio)
-                
-                # CRITICAL: Track interim text even while speaking
-                # This ensures the fallback timeout works correctly for barge-in scenarios
-                # where user speaks while AI is talking
-                current_interim = asr.get_interim()
-                if current_interim:
-                    if current_interim != last_interim_text:
-                        last_interim_text = current_interim
-                        last_interim_time = now
-                        if speaking:
-                            print(f"[ASR] 📝 Interim while speaking: '{current_interim[:50]}...'")
 
                 # Barge-in while speaking
                 if speaking:
@@ -612,51 +594,11 @@ async def media_handler(ws):
                 if (now - tts_ended_at) < POST_TTS_IGNORE:
                     continue
                 
-                # FALLBACK: If we have interim text but no speech_final after timeout, process it
-                # This prevents freezes when Deepgram's speech_final signal doesn't arrive
-                # 
-                # BUG FIX: The original issue was that Deepgram sent a Segment (is_final=true)
-                # but never sent speech_final=true. The user's eircode "DO2WR97" was captured
-                # but the system waited forever for speech_final that never came.
-                #
-                # We trigger fallback when:
-                # 1. We have accumulated interim text (from segments)
-                # 2. No speech_final has been received
-                # 3. The text hasn't changed for SPEECH_FINAL_FALLBACK_TIMEOUT seconds
-                #    (meaning user stopped speaking but Deepgram didn't send speech_final)
-                use_fallback = False
-                if (not asr.is_speech_finished() and 
-                    last_interim_text and 
-                    last_interim_time > 0 and
-                    (now - last_interim_time) >= SPEECH_FINAL_FALLBACK_TIMEOUT and
-                    len(last_interim_text.split()) >= MIN_WORDS):
-                    
-                    print(f"\n{'='*60}")
-                    print(f"[ASR] ⚠️ FALLBACK TRIGGERED!")
-                    print(f"[ASR] ⚠️ No speech_final after {SPEECH_FINAL_FALLBACK_TIMEOUT}s of silence")
-                    print(f"[ASR] ⚠️ Using accumulated interim text: '{last_interim_text}'")
-                    print(f"[ASR] ⚠️ Time since last text change: {now - last_interim_time:.2f}s")
-                    print(f"{'='*60}\n")
-                    
-                    use_fallback = True
-                    # Manually set the text and trigger speech_final
-                    asr.text = last_interim_text
-                    asr.speech_final = True
-                    # Reset fallback tracking
-                    last_interim_text = ""
-                    last_interim_time = 0.0
-                    last_segment_time = 0.0
-                
-                # Check for speech_final (or fallback)
+                # Check for speech_final — trust Deepgram's signal
                 if asr.is_speech_finished():
                     speech_detected_at = time_module.time()
                     text = asr.get_text().strip()
                     asr.clear()
-                    
-                    # Reset fallback tracking after processing
-                    last_interim_text = ""
-                    last_interim_time = 0.0
-                    last_segment_time = 0.0
                     
                     if not text or len(text.split()) < MIN_WORDS:
                         continue
@@ -847,16 +789,6 @@ async def media_handler(ws):
 
             elif event == "stop":
                 print("🛑 Call ended")
-                
-                # CRITICAL: Process any pending interim text before ending
-                # This handles the case where user spoke but speech_final never arrived
-                # (e.g., call disconnected right after they finished speaking)
-                pending_interim = asr.get_interim()
-                if pending_interim and len(pending_interim.split()) >= MIN_WORDS:
-                    print(f"[ASR] ⚠️ Call ended with pending interim text: '{pending_interim}'")
-                    print(f"[ASR] ⚠️ This text was NOT processed - speech_final never arrived")
-                    # Note: We can't process it now since the call is ending
-                    # But this log helps debug why the AI "froze" - it was waiting for speech_final
                 
                 break
 

@@ -1,11 +1,10 @@
 """
 Deepgram ASR (Automatic Speech Recognition) service
 
-Simplified approach: Trust Deepgram's speech_final signal for utterance detection.
+Simple approach: Trust Deepgram's speech_final signal for utterance detection.
 Deepgram's VAD is trained on millions of conversations and handles:
-- Multi-segment utterances (accumulates automatically)
 - End-of-speech detection (speech_final after endpointing silence)
-- Interim results for real-time feedback
+- Interim results for real-time feedback (used for barge-in)
 """
 import asyncio
 import json
@@ -26,12 +25,8 @@ class DeepgramASR:
         
         # Transcription state
         self.text = ""              # Final text when speech_final=true
-        self.interim_text = ""      # Current interim (in-progress) text
+        self.interim_text = ""      # Latest interim text (for barge-in detection)
         self.speech_final = False   # True when Deepgram signals end of utterance
-        
-        # Duplicate detection (prevents echo/feedback loops)
-        self._last_final_text = ""
-        self._last_final_time = 0.0
 
     async def connect(self):
         """Connect to Deepgram websocket"""
@@ -45,22 +40,21 @@ class DeepgramASR:
                     f"&sample_rate={config.AUDIO_SAMPLE_RATE}"
                     f"&channels={config.AUDIO_CHANNELS}"
                     "&interim_results=true"
-                    #"&model=nova-3"
                     "&model=nova-2-phonecall"
                     "&punctuate=true"
                     "&smart_format=true"
                     "&filler_words=false"
                     "&numerals=true"
                     "&language=en"
-                    "&utterances=true"       # Enable utterance detection
-                    "&endpointing=1200",    # 1200ms silence = end of utterance (was 900ms but split sentences too aggressively)
+                    "&utterances=true"
+                    "&endpointing=1200",
                     extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
                     open_timeout=5,
                     close_timeout=2,
                     ping_interval=20,
                     ping_timeout=10,
                 ),
-                timeout=10.0  # Overall connection timeout
+                timeout=10.0
             )
         except asyncio.TimeoutError:
             print(f"[ASR] ❌ TIMEOUT: Deepgram connection timed out after 10s")
@@ -77,20 +71,18 @@ class DeepgramASR:
             try:
                 data = await asyncio.wait_for(self.queue.get(), timeout=30.0)
             except asyncio.TimeoutError:
-                # No audio for 30s - connection may be stale, but don't close
-                # Just continue waiting (call may be on hold)
-                print(f"[ASR] ⚠️ TIMEOUT: No audio received for 30s - connection may be idle")
+                print(f"[ASR] ⚠️ No audio received for 30s - connection may be idle")
                 continue
             if self.closed:
                 break
             try:
                 await self.ws.send(data)
             except websockets.exceptions.ConnectionClosed:
-                print(f"[ASR] ⚠️ TIMEOUT/DISCONNECT: WebSocket closed during send")
+                print(f"[ASR] ⚠️ WebSocket closed during send")
                 break
 
     async def _recv(self):
-        """Receive transcription results from Deepgram"""
+        """Receive transcription results from Deepgram — trust Deepgram's output directly"""
         try:
             async for msg in self.ws:
                 data = json.loads(msg)
@@ -102,53 +94,28 @@ class DeepgramASR:
                 transcript = alt[0].get("transcript", "") if alt else ""
                 
                 if is_speech_final:
-                    # Deepgram says caller finished speaking
-                    # Use the utterance text if available, otherwise use transcript
-                    utterance = data.get("channel", {}).get("alternatives", [{}])[0].get("transcript", "")
-                    final_text = utterance.strip() if utterance else transcript.strip()
-                    
-                    # Also check interim_text in case it has more complete text
-                    if self.interim_text and len(self.interim_text) > len(final_text):
-                        final_text = self.interim_text.strip()
+                    # Deepgram says caller finished speaking — use its transcript directly
+                    final_text = transcript.strip()
                     
                     if final_text:
-                        # Simple duplicate check
-                        is_duplicate = (
-                            final_text == self._last_final_text and 
-                            (time.time() - self._last_final_time) < 3.0
-                        )
-                        
-                        if not is_duplicate:
-                            self.text = final_text
-                            self.speech_final = True
-                            self._last_final_text = final_text
-                            self._last_final_time = time.time()
-                            print(f"[ASR] ✅ SPEECH FINAL: '{final_text}'")
-                        else:
-                            print(f"[ASR] Duplicate ignored: '{final_text}'")
+                        self.text = final_text
+                        self.speech_final = True
+                        print(f"[ASR] ✅ SPEECH FINAL: '{final_text}'")
                     
                     # Clear interim for next utterance
                     self.interim_text = ""
                     
                 elif is_final:
                     # Segment finalized but caller may still be speaking
-                    # Update interim to show accumulated progress
+                    # Track latest for barge-in detection
                     if transcript.strip():
-                        if self.interim_text:
-                            self.interim_text = self.interim_text + " " + transcript.strip()
-                        else:
-                            self.interim_text = transcript.strip()
-                        print(f"[ASR] Segment: '{transcript}' (accumulated: '{self.interim_text[:80]}...')")
+                        self.interim_text = transcript.strip()
+                        print(f"[ASR] Segment: '{transcript}'")
                         
                 else:
-                    # Interim result - real-time feedback
-                    # These come frequently as the user speaks
-                    # We need to preserve any accumulated final segments
+                    # Interim result — update for barge-in detection
                     if transcript.strip():
-                        # Check if we have accumulated segments from is_final events
-                        # If so, the interim is just the current partial word/phrase
-                        # Don't overwrite - Deepgram will send the full text on speech_final
-                        pass  # Let accumulated interim_text from is_final events persist
+                        self.interim_text = transcript.strip()
                         
         except websockets.exceptions.ConnectionClosed as e:
             print(f"[ASR] ⚠️ Deepgram connection closed: {e}")
@@ -170,7 +137,7 @@ class DeepgramASR:
         return self.text.strip()
     
     def get_interim(self) -> str:
-        """Get interim (in-progress) text for real-time display"""
+        """Get interim (in-progress) text for barge-in detection"""
         return self.interim_text.strip()
     
     def is_speech_finished(self) -> bool:
@@ -203,7 +170,6 @@ class DeepgramASR:
         self.text = ""
         self.interim_text = ""
         self.speech_final = False
-        # Keep _last_final_text for duplicate detection across clears
 
     async def close(self):
         """Close ASR connection"""
