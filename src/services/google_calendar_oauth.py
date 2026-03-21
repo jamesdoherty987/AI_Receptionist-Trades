@@ -251,7 +251,46 @@ class CompanyGoogleCalendar:
                          description: str = '', phone_number: str = '') -> Optional[dict]:
         """Create a calendar event."""
         from datetime import timedelta
-        end_time = start_time + timedelta(minutes=duration_minutes)
+
+        # For multi-day jobs, calculate end time using business days (skip closed days)
+        if duration_minutes > 1440:
+            try:
+                from src.utils.duration_utils import duration_to_business_days
+                from src.utils.config import config
+                biz_days_needed = duration_to_business_days(duration_minutes, company_id=self.company_id)
+                try:
+                    biz_day_indices = config.get_business_days_indices(company_id=self.company_id)
+                except Exception:
+                    biz_day_indices = [0, 1, 2, 3, 4]
+                try:
+                    biz_hours = config.get_business_hours(company_id=self.company_id)
+                    biz_end_hour = biz_hours.get('end', 17)
+                except Exception:
+                    biz_end_hour = 17
+                # Walk forward counting only business days
+                cur = start_time.replace(hour=0, minute=0, second=0, microsecond=0)
+                counted = 0
+                for _ in range(365):
+                    if cur.weekday() in biz_day_indices:
+                        counted += 1
+                        if counted >= biz_days_needed:
+                            break
+                    cur += timedelta(days=1)
+                end_time = cur.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+            except Exception:
+                # Fallback to simple addition
+                end_time = start_time + timedelta(minutes=duration_minutes)
+        elif duration_minutes >= 480:
+            # Full-day job: end at closing time on the same day
+            try:
+                from src.utils.config import config
+                biz_hours = config.get_business_hours(company_id=self.company_id)
+                biz_end_hour = biz_hours.get('end', 17)
+            except Exception:
+                biz_end_hour = 17
+            end_time = start_time.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+        else:
+            end_time = start_time + timedelta(minutes=duration_minutes)
 
         full_description = description
         if phone_number:

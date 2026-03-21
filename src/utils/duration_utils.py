@@ -88,7 +88,7 @@ def is_multi_day_duration(minutes: int) -> bool:
     return minutes >= 1440  # 24 hours = 1440 minutes
 
 
-def duration_to_business_days(duration_minutes: int, days_per_week: int = None) -> int:
+def duration_to_business_days(duration_minutes: int, days_per_week: int = None, company_id: int = None) -> int:
     """
     Convert duration_minutes to the number of business days the job spans.
     
@@ -99,6 +99,7 @@ def duration_to_business_days(duration_minutes: int, days_per_week: int = None) 
         duration_minutes: Duration in minutes
         days_per_week: How many days the company works per week (e.g. 5 for Mon-Fri,
                        6 for Mon-Sat). If None, looked up from config; falls back to 5.
+        company_id: Company ID for looking up company-specific business days.
         
     Returns:
         Number of business days the job needs
@@ -112,7 +113,7 @@ def duration_to_business_days(duration_minutes: int, days_per_week: int = None) 
     if days_per_week is None:
         try:
             from src.utils.config import config
-            biz_indices = config.get_business_days_indices()
+            biz_indices = config.get_business_days_indices(company_id=company_id)
             days_per_week = len(biz_indices)
         except Exception:
             days_per_week = 5

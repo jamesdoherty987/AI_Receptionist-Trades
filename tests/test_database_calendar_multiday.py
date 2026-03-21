@@ -29,6 +29,7 @@ def patch_config():
     mock_settings.get_default_duration_minutes.return_value = 60
 
     with patch('src.services.database_calendar.config', mock_config), \
+         patch('src.utils.config.config', mock_config), \
          patch('src.services.database_calendar.get_settings_manager', return_value=mock_settings, create=True), \
          patch('src.services.settings_manager.get_settings_manager', return_value=mock_settings, create=True):
         yield

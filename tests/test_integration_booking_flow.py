@@ -425,15 +425,17 @@ class TestBusinessHoursPropagation:
         """A 1-week job (10080 mins) should span 5 business days from start."""
         from src.services.database_calendar import DatabaseCalendarService
         cal = DatabaseCalendarService.__new__(DatabaseCalendarService)
+        cal.company_id = 1  # Set company_id since __init__ was skipped
         monday = next_monday(hour=8)
 
-        end = cal._calculate_job_end_time(monday, 10080, biz_start_hour=8, biz_end_hour=17)
-        # 10080 / 1440 = 7 calendar days → ceil = 7 business days
-        # But a "week" in business terms = 5 working days (Mon-Fri)
-        # 10080 mins / 1440 = 7.0 → ceil(7.0) = 7 biz days
-        # Actually: the code does ceil(10080/1440) = 7 biz days
-        # Starting Monday, 7 biz days = next Tuesday (Mon-Fri = 5, +Mon+Tue = 7)
-        assert end.weekday() < 5  # Should end on a weekday
+        mock_cfg = _mock_config()
+        with patch('src.services.database_calendar.config', mock_cfg), \
+             patch('src.utils.config.config', mock_cfg):
+            end = cal._calculate_job_end_time(monday, 10080, biz_start_hour=8, biz_end_hour=17)
+        # 1 week = 5 business days (Mon-Fri work week)
+        # Starting Monday, 5 biz days = Friday
+        assert end.weekday() == 4  # Friday
+        assert end.hour == 17
 
     def test_db_wrapper_uses_company_hours(self):
         """PostgreSQLDatabaseWrapper._calculate_job_end_time uses passed hours."""

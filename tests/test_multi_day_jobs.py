@@ -400,7 +400,13 @@ class TestGoogleCalendarMultiDay:
         mock_insert = MagicMock()
         mock_events.insert.return_value = mock_insert
 
-        with patch.object(CompanyGoogleCalendar, '__init__', lambda *a, **kw: None):
+        mock_cfg = MagicMock()
+        mock_cfg.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
+        mock_cfg.get_business_hours.return_value = {'start': 9, 'end': 17}
+
+        with patch.object(CompanyGoogleCalendar, '__init__', lambda *a, **kw: None), \
+             patch('src.services.google_calendar_oauth.config', mock_cfg), \
+             patch('src.utils.config.config', mock_cfg):
             gcal = CompanyGoogleCalendar.__new__(CompanyGoogleCalendar)
             gcal.service = mock_service
             gcal.calendar_id = 'primary'
@@ -422,11 +428,18 @@ class TestGoogleCalendarMultiDay:
             # Verify the event was created
             assert result is not None
             # Verify the insert was called with correct end time
+            # 1 week = 5 business days (Mon-Fri). Starting Mon Mar 23,
+            # the job ends Fri Mar 27 at closing time.
             call_args = mock_events.insert.call_args
             event_body = call_args[1]['body'] if 'body' in call_args[1] else call_args[0][0] if call_args[0] else call_args[1].get('body')
             
-            expected_end = start + timedelta(minutes=duration)
-            assert expected_end.strftime('%Y-%m-%dT%H:%M:%S') in event_body['end']['dateTime']
+            end_dt_str = event_body['end']['dateTime']
+            from datetime import datetime as dt_parse
+            end_dt = dt_parse.fromisoformat(end_dt_str)
+            # Should end on Friday Mar 27 (not Monday Mar 30)
+            assert end_dt.month == 3
+            assert end_dt.day == 27
+            assert end_dt.weekday() == 4  # Friday
 
     def test_google_calendar_check_availability_multi_day(self):
         """check_availability should work for multi-day durations."""

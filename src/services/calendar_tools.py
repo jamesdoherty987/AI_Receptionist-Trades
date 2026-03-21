@@ -371,7 +371,7 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
     
     # Get business days and hours
     try:
-        business_days = config.get_business_days_indices()
+        business_days = config.get_business_days_indices(company_id=company_id)
     except:
         business_days = [0, 1, 2, 3, 4]  # Mon-Fri default
     
@@ -387,7 +387,7 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
     # "1 week" (10080 mins) = 5 business days, not 7
     if duration_minutes > 1440:
         from src.utils.duration_utils import duration_to_business_days
-        biz_days_needed = duration_to_business_days(duration_minutes)
+        biz_days_needed = duration_to_business_days(duration_minutes, company_id=company_id)
     else:
         biz_days_needed = 1
     
@@ -605,10 +605,10 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                     if duration > 1440:  # Multi-day job (> 24 hours)
                         # Use business-day calculation: "1 week" = 5 biz days, not 7
                         from src.utils.duration_utils import duration_to_business_days
-                        biz_days_needed = duration_to_business_days(duration)
+                        biz_days_needed = duration_to_business_days(duration, company_id=company_id)
                         try:
                             from src.utils.config import config as _cfg
-                            _biz_day_indices = _cfg.get_business_days_indices()
+                            _biz_day_indices = _cfg.get_business_days_indices(company_id=company_id)
                         except Exception:
                             _biz_day_indices = [0, 1, 2, 3, 4]
                         # Walk forward from start counting business days
@@ -623,7 +623,12 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                                     break
                             _cur += timedelta(days=1)
                         # Job ends at closing on the last business day
-                        job_end = _last_biz_day.replace(hour=17, minute=0, second=0, microsecond=0)
+                        try:
+                            _biz_hours = _cfg.get_business_hours(company_id=company_id)
+                            _closing_hour = _biz_hours.get('end', 17)
+                        except Exception:
+                            _closing_hour = 17
+                        job_end = _last_biz_day.replace(hour=_closing_hour, minute=0, second=0, microsecond=0)
                         if job_end > day_start:
                             # This multi-day job extends into the target day
                             worker_names = []
@@ -1777,7 +1782,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             # Get dynamic business days
             try:
-                business_days = config.get_business_days_indices()
+                business_days = config.get_business_days_indices(company_id=company_id)
             except:
                 business_days = config.BUSINESS_DAYS
             
@@ -2030,7 +2035,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             # Get business config
             try:
-                business_days = config.get_business_days_indices()
+                business_days = config.get_business_days_indices(company_id=company_id)
             except:
                 business_days = [0, 1, 2, 3, 4]  # Mon-Fri
             
@@ -2345,7 +2350,7 @@ Return ONLY valid JSON, no explanation."""
             
             # Get business config
             try:
-                business_days = config.get_business_days_indices()
+                business_days = config.get_business_days_indices(company_id=company_id)
             except:
                 business_days = [0, 1, 2, 3, 4]
             

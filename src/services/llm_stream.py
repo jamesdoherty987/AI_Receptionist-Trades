@@ -18,7 +18,6 @@ from src.utils.date_parser import parse_datetime
 from src.services.calendar_tools import CALENDAR_TOOLS, execute_tool_call
 from src.services.call_state import CallState, create_call_state
 from src.utils.security import normalize_phone_for_comparison
-from src.services.google_calendar import get_calendar_service
 from datetime import datetime, timedelta
 
 
@@ -223,15 +222,6 @@ def get_business_hours_from_menu():
             'days_open': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
             'notes': ''
         }
-
-
-def is_business_day(dt: datetime) -> bool:
-    """Check if a given datetime is on a business day"""
-    try:
-        business_hours = config.get_business_days_indices()
-        return dt.weekday() in business_hours
-    except:
-        return dt.weekday() in config.BUSINESS_DAYS
 
 
 def load_system_prompt(company_id=None):
@@ -445,50 +435,6 @@ def get_cached_system_prompt(company_id=None):
     print(f"[PROMPT_CACHE] Cached prompt for company_id={company_id} (loaded in {load_time*1000:.1f}ms)")
     
     return prompt
-
-
-def get_closed_day_message(dt: datetime) -> str:
-    """
-    Generate a message for when a requested day is closed.
-    Dynamically determines which day(s) are closed based on services menu.
-    """
-    day_name = dt.strftime('%A')
-    
-    # Get dynamic business hours from services menu
-    try:
-        business_hours = config.get_business_hours()
-        start_hour = business_hours['start']
-        end_hour = business_hours['end']
-        open_days = business_hours['days_open']
-    except:
-        start_hour = config.BUSINESS_HOURS_START
-        end_hour = config.BUSINESS_HOURS_END
-        all_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        open_days = [all_days[i] for i in config.BUSINESS_DAYS]
-    
-    # Find which days are closed
-    all_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    closed_days = [day for day in all_days if day not in open_days]
-    
-    # Format the open days string
-    if len(open_days) >= 2:
-        open_days_str = ', '.join(open_days[:-1]) + ' and ' + open_days[-1]
-    else:
-        open_days_str = open_days[0] if open_days else ''
-    
-    # Format the closed days string
-    if len(closed_days) == 1:
-        closed_days_str = closed_days[0] + 's'
-    elif len(closed_days) == 2:
-        closed_days_str = closed_days[0] + 's and ' + closed_days[1] + 's'
-    else:
-        closed_days_str = ', '.join([d + 's' for d in closed_days[:-1]]) + ' and ' + closed_days[-1] + 's'
-    
-    # Convert end hour to 12-hour format
-    end_hour_12 = end_hour if end_hour <= 12 else end_hour - 12
-    end_period = "AM" if end_hour < 12 else "PM"
-    
-    return f"[SYSTEM: We're not open on {closed_days_str}. Our hours are {open_days_str}, {start_hour}:00 AM to {end_hour_12}:00 {end_period}. Politely let them know and suggest checking availability on a working day instead. Ask when would work for them.]"
 
 
 def remove_repetition(text: str) -> str:
@@ -1565,7 +1511,7 @@ TOOL RULES:
                     # This allows audio playback to continue during tool execution
                     # CRITICAL: Add timeout to prevent infinite hang
                     # Use longer timeout for search operations that may need to check many days
-                    TOOL_TIMEOUT = 15.0 if tool_name in ['search_availability', 'get_next_available', 'check_availability'] else 10.0
+                    TOOL_TIMEOUT = 15.0 if tool_name in ['search_availability', 'get_next_available', 'check_availability', 'book_job'] else 10.0
                     try:
                         result = await asyncio.wait_for(
                             asyncio.get_event_loop().run_in_executor(

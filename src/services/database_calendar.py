@@ -60,10 +60,10 @@ class DatabaseCalendarService:
         # Multi-day job: walk forward counting business days
         # "1 week" (10080 mins) = 5 business days, not 7.
         from src.utils.duration_utils import duration_to_business_days
-        biz_days_needed = duration_to_business_days(duration_minutes)
+        biz_days_needed = duration_to_business_days(duration_minutes, company_id=self.company_id)
 
         try:
-            business_days = config.get_business_days_indices()
+            business_days = config.get_business_days_indices(company_id=self.company_id)
         except Exception:
             business_days = [0, 1, 2, 3, 4]
 
@@ -347,6 +347,19 @@ class DatabaseCalendarService:
                 logger.warning(f"[DB_CAL] Error getting default duration: {e}")
                 duration_minutes = 1440  # 1 day default for trades
         
+        # Calculate correct end time using business-day logic
+        try:
+            biz_hours = config.get_business_hours(company_id=self.company_id)
+            biz_start = biz_hours.get('start', 9)
+            biz_end = biz_hours.get('end', 17)
+        except Exception:
+            biz_start = 9
+            biz_end = 17
+        end_time = self._calculate_job_end_time(
+            start_time, duration_minutes,
+            biz_start_hour=biz_start, biz_end_hour=biz_end, buffer_minutes=0
+        )
+        
         # Generate a unique event ID using timestamp + random suffix to avoid collisions
         # when multiple bookings are made at the same time slot for different customers
         import random
@@ -360,7 +373,7 @@ class DatabaseCalendarService:
             'summary': summary,
             'description': description,
             'start': {'dateTime': start_time.isoformat()},
-            'end': {'dateTime': (start_time + timedelta(minutes=duration_minutes)).isoformat()},
+            'end': {'dateTime': end_time.isoformat()},
             'duration_minutes': duration_minutes,
             'htmlLink': '#'  # Placeholder
         }
