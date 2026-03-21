@@ -1380,12 +1380,41 @@ TOOL RULES:
         response_lower = full_response.lower() if full_response else ""
         said_checking_phrase = any(phrase in response_lower for phrase in dangerous_phrases)
         
-        if said_checking_phrase:
+        # SAFETY: Detect if LLM fabricated availability without calling a tool
+        # Bug: LLM sometimes says "We're available Monday or Tuesday" without calling
+        # get_next_available or search_availability first. This is dangerous because
+        # the dates may be wrong (e.g., offering Sunday, or a fully-booked day).
+        availability_keywords = [
+            "we're available", "we are available", "available to start",
+            "i have availability", "we have availability",
+            "available on monday", "available on tuesday", "available on wednesday",
+            "available on thursday", "available on friday",
+            "available tomorrow", "available next",
+            "start on monday", "start on tuesday", "start on wednesday",
+            "start on thursday", "start on friday", "start tomorrow",
+        ]
+        fabricated_availability = any(phrase in response_lower for phrase in availability_keywords)
+        
+        # Check if any availability tool was called in conversation history
+        # If not, the LLM is making up availability
+        avail_tools_called = any(
+            msg.get("role") == "tool" and msg.get("name") in ("get_next_available", "search_availability", "check_availability")
+            for msg in messages
+        )
+        
+        if fabricated_availability and not avail_tools_called:
+            print(f"\n🚨 [SAFETY] LLM fabricated availability without calling a tool!")
+            print(f"🚨 [SAFETY] Response: '{full_response[:150]}...'")
+            print(f"🚨 [SAFETY] Replacing with safe response to prevent wrong dates")
+            replacement = "Let me check what we have available for you."
+            full_response = replacement
+            # Don't yield replacement — the fabricated response was already streamed.
+            # Instead yield a follow-up that will trigger a tool call on the next turn.
+            yield " Let me just check the schedule."
+        elif said_checking_phrase:
             print(f"\n🚨 [SAFETY] LLM said checking phrase but didn't call tool!")
             print(f"🚨 [SAFETY] Response: '{full_response[:100]}...'")
             print(f"🚨 [SAFETY] Replacing with a question to prevent silence")
-            # Replace the dangerous response with a question to keep conversation moving
-            # The original response promised to check but didn't - don't send it
             replacement = "What day works best for you?"
             full_response = replacement
             yield replacement

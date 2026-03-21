@@ -1816,56 +1816,64 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     logger.info(f"[CHECK_AVAIL] Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
                     
                     if has_workers and db:
-                        # WORKER-BASED AVAILABILITY: Generate all possible slots and check worker availability
-                        # This is the correct approach for multi-worker businesses
+                        # WORKER-BASED AVAILABILITY
                         day_slots = []
                         now = datetime.now()
                         
-                        # Generate time slots for the day
-                        slot_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
-                        day_end = current_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
-                        
-                        while slot_time < day_end:
-                            # Skip past time slots
-                            if slot_time <= now:
-                                slot_time += timedelta(minutes=30)
-                                continue
+                        # PERFORMANCE: For full-day/multi-day jobs (>= 480 min), only check ONE slot
+                        # per day (start of business) instead of every 30-min slot.
+                        # This reduces DB calls from ~18/day to 1/day — critical for multi-day jobs.
+                        if service_duration >= 480:
+                            biz_open = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                            if biz_open > now:
+                                available_workers = db.find_available_workers_for_slot(
+                                    appointment_time=biz_open,
+                                    duration_minutes=service_duration,
+                                    company_id=company_id
+                                )
+                                if available_workers and worker_restrictions:
+                                    restriction_type = worker_restrictions.get('type', 'all')
+                                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                                    if restriction_type == 'only' and restricted_ids:
+                                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                    elif restriction_type == 'except' and restricted_ids:
+                                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                                if available_workers is None or len(available_workers) >= workers_required:
+                                    day_slots = [biz_open]
+                            logger.info(f"[CHECK_AVAIL] Full-day fast path: {'1 slot' if day_slots else 'no slots'}")
+                        else:
+                            # Short jobs: check every 30-min slot
+                            slot_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                            day_end = current_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
                             
-                            # For full-day services, check if slot + duration fits in business hours
-                            if service_duration >= 480:
-                                slot_end = day_end  # Full day ends at closing
-                            else:
-                                slot_end = slot_time + timedelta(minutes=service_duration)
-                            
-                            # Skip if job would extend past closing
-                            if slot_end > day_end:
-                                slot_time += timedelta(minutes=30)
-                                continue
-                            
-                            # Check if any qualified worker is available at this slot
-                            available_workers = db.find_available_workers_for_slot(
-                                appointment_time=slot_time,
-                                duration_minutes=service_duration,
-                                company_id=company_id
-                            )
-                            
-                            # Apply worker restrictions if any
-                            if available_workers and worker_restrictions:
-                                restriction_type = worker_restrictions.get('type', 'all')
-                                restricted_ids = worker_restrictions.get('worker_ids', [])
+                            while slot_time < day_end:
+                                if slot_time <= now:
+                                    slot_time += timedelta(minutes=30)
+                                    continue
                                 
-                                if restriction_type == 'only' and restricted_ids:
-                                    available_workers = [w for w in available_workers if w['id'] in restricted_ids]
-                                elif restriction_type == 'except' and restricted_ids:
-                                    available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                            
-                            # Slot is available if enough workers are free
-                            if available_workers is None or len(available_workers) >= workers_required:
-                                day_slots.append(slot_time)
-                            
-                            slot_time += timedelta(minutes=30)
-                        
-                        logger.info(f"[CHECK_AVAIL] Worker-based check found {len(day_slots)} slots")
+                                slot_end = slot_time + timedelta(minutes=service_duration)
+                                if slot_end > day_end:
+                                    slot_time += timedelta(minutes=30)
+                                    continue
+                                
+                                available_workers = db.find_available_workers_for_slot(
+                                    appointment_time=slot_time,
+                                    duration_minutes=service_duration,
+                                    company_id=company_id
+                                )
+                                if available_workers and worker_restrictions:
+                                    restriction_type = worker_restrictions.get('type', 'all')
+                                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                                    if restriction_type == 'only' and restricted_ids:
+                                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                    elif restriction_type == 'except' and restricted_ids:
+                                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                                
+                                if available_workers is None or len(available_workers) >= workers_required:
+                                    day_slots.append(slot_time)
+                                
+                                slot_time += timedelta(minutes=30)
+                            logger.info(f"[CHECK_AVAIL] Worker-based check found {len(day_slots)} slots")
                     else:
                         # NO WORKERS: Use calendar-based availability (any booking blocks the slot)
                         try:
@@ -1878,11 +1886,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             raise
                     
                     # For full-day services (8+ hours), only keep ONE slot per day (start of business day)
-                    # This prevents offering hourly slots that can't actually be booked
                     if day_slots and service_duration >= 480:
-                        # Keep only the first slot (start of business day)
                         day_slots = [day_slots[0]]
-                        logger.info(f"[CHECK_AVAIL] Full-day service - reduced to 1 slot per day: {day_slots[0].strftime('%I:%M %p')}")
+                        logger.info(f"[CHECK_AVAIL] Full-day service - 1 slot per day: {day_slots[0].strftime('%I:%M %p')}")
                     
                     if day_slots:
                         day_key = current_date.strftime('%Y-%m-%d')
@@ -2046,42 +2052,61 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     now = datetime.now()
                     
                     if has_workers and db:
-                        # Worker-based availability
-                        slot_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
-                        day_end = current_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
-                        
-                        while slot_time < day_end:
-                            if slot_time <= now:
-                                slot_time += timedelta(minutes=30)
-                                continue
+                        # PERFORMANCE: For full-day/multi-day jobs (>= 480 min), only check ONE slot
+                        # per day (start of business) instead of every 30-min slot.
+                        # This reduces DB calls from ~18/day to 1/day — critical for multi-day jobs
+                        # that were timing out at 15s.
+                        if is_full_day:
+                            biz_open = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                            if biz_open > now:
+                                available_workers = db.find_available_workers_for_slot(
+                                    appointment_time=biz_open,
+                                    duration_minutes=service_duration,
+                                    company_id=company_id
+                                )
+                                if available_workers and worker_restrictions:
+                                    restriction_type = worker_restrictions.get('type', 'all')
+                                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                                    if restriction_type == 'only' and restricted_ids:
+                                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                    elif restriction_type == 'except' and restricted_ids:
+                                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                                if available_workers is None or len(available_workers) >= workers_required:
+                                    day_slots = [biz_open]
+                        else:
+                            # Short jobs: check every 30-min slot
+                            slot_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                            day_end = current_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
                             
-                            if service_duration >= 480:
-                                slot_end = day_end
-                            else:
+                            while slot_time < day_end:
+                                if slot_time <= now:
+                                    slot_time += timedelta(minutes=30)
+                                    continue
+                                
                                 slot_end = slot_time + timedelta(minutes=service_duration)
-                            
-                            if slot_end > day_end:
+                                
+                                if slot_end > day_end:
+                                    slot_time += timedelta(minutes=30)
+                                    continue
+                                
+                                available_workers = db.find_available_workers_for_slot(
+                                    appointment_time=slot_time,
+                                    duration_minutes=service_duration,
+                                    company_id=company_id
+                                )
+                                
+                                if available_workers and worker_restrictions:
+                                    restriction_type = worker_restrictions.get('type', 'all')
+                                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                                    if restriction_type == 'only' and restricted_ids:
+                                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                    elif restriction_type == 'except' and restricted_ids:
+                                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                                
+                                if available_workers is None or len(available_workers) >= workers_required:
+                                    day_slots.append(slot_time)
+                                
                                 slot_time += timedelta(minutes=30)
-                                continue
-                            
-                            available_workers = db.find_available_workers_for_slot(
-                                appointment_time=slot_time,
-                                duration_minutes=service_duration,
-                                company_id=company_id
-                            )
-                            
-                            if available_workers and worker_restrictions:
-                                restriction_type = worker_restrictions.get('type', 'all')
-                                restricted_ids = worker_restrictions.get('worker_ids', [])
-                                if restriction_type == 'only' and restricted_ids:
-                                    available_workers = [w for w in available_workers if w['id'] in restricted_ids]
-                                elif restriction_type == 'except' and restricted_ids:
-                                    available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                            
-                            if available_workers is None or len(available_workers) >= workers_required:
-                                day_slots.append(slot_time)
-                            
-                            slot_time += timedelta(minutes=30)
                     else:
                         # Calendar-based availability
                         try:
@@ -2360,59 +2385,77 @@ Return ONLY valid JSON, no explanation."""
                 now = datetime.now()
                 
                 if has_workers and db:
-                    slot_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
-                    day_end = current_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
-                    
-                    while slot_time < day_end:
-                        if slot_time <= now:
-                            slot_time += timedelta(minutes=30)
-                            continue
+                    # PERFORMANCE: For full-day/multi-day jobs (>= 480 min), only check ONE slot
+                    # per day (start of business) instead of every 30-min slot.
+                    if is_full_day:
+                        biz_open = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                        if biz_open > now:
+                            available_workers = db.find_available_workers_for_slot(
+                                appointment_time=biz_open,
+                                duration_minutes=service_duration,
+                                company_id=company_id
+                            )
+                            if available_workers and worker_restrictions:
+                                restriction_type = worker_restrictions.get('type', 'all')
+                                restricted_ids = worker_restrictions.get('worker_ids', [])
+                                if restriction_type == 'only' and restricted_ids:
+                                    available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                elif restriction_type == 'except' and restricted_ids:
+                                    available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                            if available_workers is None or len(available_workers) >= workers_required:
+                                day_slots = [biz_open]
+                    else:
+                        # Short jobs: check every 30-min slot
+                        slot_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                        day_end = current_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
                         
-                        # Apply time filter
-                        if time_filter:
-                            slot_hour = slot_time.hour
-                            if time_filter == "morning" and slot_hour >= 12:
+                        while slot_time < day_end:
+                            if slot_time <= now:
                                 slot_time += timedelta(minutes=30)
                                 continue
-                            elif time_filter == "afternoon" and (slot_hour < 12 or slot_hour >= 17):
-                                slot_time += timedelta(minutes=30)
-                                continue
-                            elif time_filter == "evening" and slot_hour < 17:
-                                slot_time += timedelta(minutes=30)
-                                continue
-                            elif time_filter.startswith("after_"):
-                                after_hour = int(time_filter.split("_")[1])
-                                if slot_hour < after_hour:
+                            
+                            # Apply time filter
+                            if time_filter:
+                                slot_hour = slot_time.hour
+                                if time_filter == "morning" and slot_hour >= 12:
                                     slot_time += timedelta(minutes=30)
                                     continue
-                        
-                        if service_duration >= 480:
-                            slot_end = day_end
-                        else:
+                                elif time_filter == "afternoon" and (slot_hour < 12 or slot_hour >= 17):
+                                    slot_time += timedelta(minutes=30)
+                                    continue
+                                elif time_filter == "evening" and slot_hour < 17:
+                                    slot_time += timedelta(minutes=30)
+                                    continue
+                                elif time_filter.startswith("after_"):
+                                    after_hour = int(time_filter.split("_")[1])
+                                    if slot_hour < after_hour:
+                                        slot_time += timedelta(minutes=30)
+                                        continue
+                            
                             slot_end = slot_time + timedelta(minutes=service_duration)
-                        
-                        if slot_end > day_end:
+                            
+                            if slot_end > day_end:
+                                slot_time += timedelta(minutes=30)
+                                continue
+                            
+                            available_workers = db.find_available_workers_for_slot(
+                                appointment_time=slot_time,
+                                duration_minutes=service_duration,
+                                company_id=company_id
+                            )
+                            
+                            if available_workers and worker_restrictions:
+                                restriction_type = worker_restrictions.get('type', 'all')
+                                restricted_ids = worker_restrictions.get('worker_ids', [])
+                                if restriction_type == 'only' and restricted_ids:
+                                    available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                elif restriction_type == 'except' and restricted_ids:
+                                    available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                            
+                            if available_workers is None or len(available_workers) >= workers_required:
+                                day_slots.append(slot_time)
+                            
                             slot_time += timedelta(minutes=30)
-                            continue
-                        
-                        available_workers = db.find_available_workers_for_slot(
-                            appointment_time=slot_time,
-                            duration_minutes=service_duration,
-                            company_id=company_id
-                        )
-                        
-                        if available_workers and worker_restrictions:
-                            restriction_type = worker_restrictions.get('type', 'all')
-                            restricted_ids = worker_restrictions.get('worker_ids', [])
-                            if restriction_type == 'only' and restricted_ids:
-                                available_workers = [w for w in available_workers if w['id'] in restricted_ids]
-                            elif restriction_type == 'except' and restricted_ids:
-                                available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                        
-                        if available_workers is None or len(available_workers) >= workers_required:
-                            day_slots.append(slot_time)
-                        
-                        slot_time += timedelta(minutes=30)
                 else:
                     try:
                         day_slots = google_calendar.get_available_slots_for_day(current_date, service_duration=service_duration)
