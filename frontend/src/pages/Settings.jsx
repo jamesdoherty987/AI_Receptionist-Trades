@@ -251,7 +251,11 @@ function Settings() {
     }
   }, [settings]);
 
-  // Warn on browser tab close / refresh with unsaved changes
+  // Expose unsaved changes flag globally so Header can check it
+  useEffect(() => {
+    window.__settingsUnsavedChanges = hasUnsavedChanges;
+    return () => { window.__settingsUnsavedChanges = false; };
+  }, [hasUnsavedChanges]);
   useEffect(() => {
     if (!hasUnsavedChanges) return;
     const handler = (e) => {

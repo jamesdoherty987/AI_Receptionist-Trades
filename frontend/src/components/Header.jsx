@@ -31,6 +31,13 @@ function Header() {
   };
 
   const handleLogout = async () => {
+    if (window.__settingsUnsavedChanges) {
+      if (!window.confirm('You have unsaved changes. Are you sure you want to sign out?')) {
+        setShowUserMenu(false);
+        return;
+      }
+      window.__settingsUnsavedChanges = false;
+    }
     await logout();
     navigate('/');
     setShowUserMenu(false);
@@ -51,11 +58,22 @@ function Header() {
     };
   }, []);
 
+  // Guard navigation when Settings has unsaved changes
+  const guardNav = (e, path) => {
+    if (window.__settingsUnsavedChanges) {
+      e.preventDefault();
+      if (window.confirm('You have unsaved changes. Are you sure you want to leave?')) {
+        window.__settingsUnsavedChanges = false;
+        navigate(path);
+      }
+    }
+  };
+
   return (
     <header className="header">
       <div className="container">
         <div className="header-content">
-          <Link to="/dashboard" className="logo">
+          <Link to="/dashboard" className="logo" onClick={(e) => guardNav(e, '/dashboard')}>
             {logoUrl && (
               <img src={logoUrl} alt={businessName} className="header-logo-img" />
             )}
@@ -68,6 +86,7 @@ function Header() {
             <Link 
               to="/dashboard" 
               className={`nav-link ${isActive('/dashboard') ? 'active' : ''}`}
+              onClick={(e) => guardNav(e, '/dashboard')}
             >
               <i className="fas fa-home"></i>
               Dashboard
@@ -75,6 +94,7 @@ function Header() {
             <Link 
               to="/settings" 
               className={`nav-link ${isActive('/settings') ? 'active' : ''}`}
+              onClick={(e) => guardNav(e, '/settings')}
             >
               <i className="fas fa-cog"></i>
               Settings
@@ -108,7 +128,7 @@ function Header() {
                   <Link 
                     to="/settings" 
                     className="user-dropdown-item"
-                    onClick={() => setShowUserMenu(false)}
+                    onClick={(e) => { guardNav(e, '/settings'); setShowUserMenu(false); }}
                   >
                     <i className="fas fa-user-cog"></i>
                     Account Settings
