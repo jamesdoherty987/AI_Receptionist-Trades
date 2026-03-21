@@ -644,11 +644,13 @@ async def media_handler(ws):
                         print(f"[DEBUG] Pending segment: '{asr.last_segment_text[:50]}' age={seg_age:.1f}s speaking={speaking} llm_processing={llm_processing}")
                 
                 # Fallback: If Deepgram sent an is_final segment but never sent
-                # speech_final or UtteranceEnd, promote it after 3 seconds of silence.
+                # speech_final or UtteranceEnd, promote it after 5 seconds of silence.
                 # This is a last-resort safety net — with utterance_end_ms enabled,
-                # this should rarely fire. Using 3s because utterance_end_ms (1.2s)
-                # and endpointing (1.2s) should catch normal cases much faster.
-                if not asr.is_speech_finished() and asr.has_pending_segment(timeout=3.0):
+                # this should rarely fire. Using 5s to avoid cutting off the caller's
+                # first long utterance (Deepgram VAD calibration can be slow on the
+                # first sentence). utterance_end_ms (1.2s) and endpointing (1.2s)
+                # catch normal cases much faster.
+                if not asr.is_speech_finished() and asr.has_pending_segment(timeout=5.0):
                     asr.promote_segment()
                 
                 # Check for speech_final — trust Deepgram's signal

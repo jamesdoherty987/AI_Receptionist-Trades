@@ -5,7 +5,7 @@ Three-layer end-of-speech detection:
 1. speech_final (endpointing) — VAD detects silence after speech (~1.2s)
 2. UtteranceEnd (utterance_end_ms) — word-timing gap detection, works in noisy
    environments where VAD fails (~1.2s)
-3. Fallback timer — 3s safety net if Deepgram sends is_final but neither
+3. Fallback timer — 5s safety net if Deepgram sends is_final but neither
    speech_final nor UtteranceEnd ever arrives
 """
 import asyncio
@@ -33,7 +33,7 @@ class DeepgramASR:
         # Fallback tracking: Deepgram sometimes sends is_final segments
         # but never sends speech_final or UtteranceEnd. Accumulate all pending
         # segments and reset the timer on each new one. The media handler uses
-        # this as a safety net — if 3s pass since the LAST segment with no
+        # this as a safety net — if 5s pass since the LAST segment with no
         # speech_final/UtteranceEnd, the accumulated text gets promoted.
         self.last_segment_text = ""
         self.last_segment_time = 0.0
@@ -149,7 +149,7 @@ class DeepgramASR:
                         # timer on each new one. This way:
                         # - Long utterances: timer keeps resetting as segments arrive,
                         #   fallback never fires prematurely
-                        # - Deepgram bug (no speech_final or UtteranceEnd): 3s after
+                        # - Deepgram bug (no speech_final or UtteranceEnd): 5s after
                         #   the LAST segment, fallback fires with full accumulated text
                         if not self.last_segment_text:
                             self.last_segment_text = transcript.strip()
