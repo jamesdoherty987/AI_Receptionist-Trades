@@ -318,17 +318,25 @@ async def media_handler(ws):
                     tts_stream_start = time_module.time()
                     _queued_audio_done_fired = False
                     def _on_queued_audio_done():
-                        nonlocal last_tts_audio_done, _queued_audio_done_fired
+                        nonlocal last_tts_audio_done, _queued_audio_done_fired, speaking, tts_ended_at
                         last_tts_audio_done = asyncio.get_event_loop().time()
                         _queued_audio_done_fired = True
                         # Clear stale ASR state NOW — the audio just finished sending.
                         asr.clear()
-                        print(f"[AUDIO_DONE] 🧹 ASR cleared at audio finish")
+                        # CRITICAL: Mark speaking as done NOW, not when run() returns.
+                        # run() takes 4-5s after audio finishes (websocket close, etc).
+                        # If we wait, the caller's response gets stuck in barge-in mode
+                        # and the fallback check never runs — causing a freeze.
+                        speaking = False
+                        tts_ended_at = last_tts_audio_done
+                        print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False at audio finish")
                     await stream_tts(queued_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_queued_audio_done)
                     if not _queued_audio_done_fired:
                         last_tts_audio_done = asyncio.get_event_loop().time()
                         asr.clear()  # Fallback clear if callback didn't fire
-                        print(f"[AUDIO_DONE] 🧹 ASR cleared (fallback — callback didn't fire)")
+                        speaking = False
+                        tts_ended_at = last_tts_audio_done
+                        print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False (fallback — callback didn't fire)")
                     tts_stream_time = time_module.time() - tts_stream_start
                     print(f"[PIPELINE] ⏱️ TTS streaming took {tts_stream_time:.3f}s")
                     
@@ -372,19 +380,27 @@ async def media_handler(ws):
                     tts_call_start = time_module.time()
                     _direct_audio_done_fired = False
                     def _on_direct_audio_done():
-                        nonlocal last_tts_audio_done, _direct_audio_done_fired
+                        nonlocal last_tts_audio_done, _direct_audio_done_fired, speaking, tts_ended_at
                         last_tts_audio_done = asyncio.get_event_loop().time()
                         _direct_audio_done_fired = True
                         # Clear stale ASR state NOW — the audio just finished sending.
                         # Anything Deepgram captured during playback is stale echo.
                         # Anything the caller says AFTER this point is their real response.
                         asr.clear()
-                        print(f"[AUDIO_DONE] 🧹 ASR cleared at audio finish")
+                        # CRITICAL: Mark speaking as done NOW, not when run() returns.
+                        # run() takes 4-5s after audio finishes (websocket close, etc).
+                        # If we wait, the caller's response gets stuck in barge-in mode
+                        # and the fallback check never runs — causing a freeze.
+                        speaking = False
+                        tts_ended_at = last_tts_audio_done
+                        print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False at audio finish")
                     await stream_tts(direct_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_direct_audio_done)
                     if not _direct_audio_done_fired:
                         last_tts_audio_done = asyncio.get_event_loop().time()
                         asr.clear()  # Fallback clear if callback didn't fire
-                        print(f"[AUDIO_DONE] 🧹 ASR cleared (fallback — callback didn't fire)")
+                        speaking = False
+                        tts_ended_at = last_tts_audio_done
+                        print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False (fallback — callback didn't fire)")
                     tts_call_end = time_module.time()
                     direct_time = tts_call_end - direct_start
                     tts_only_time = tts_call_end - tts_call_start
@@ -461,16 +477,15 @@ async def media_handler(ws):
                 tts_ended_at = asyncio.get_event_loop().time()
                 speaking = False
                 llm_processing = False
-                # NOTE: We do NOT call asr.clear() here anymore.
-                # run() can take 10+ seconds longer than the actual audio playback
-                # (due to websocket close timeouts, LLM streaming overhead, etc).
-                # If we clear here, we wipe the caller's REAL response that arrived
-                # after the audio finished but before run() returned.
+                # NOTE: speaking and tts_ended_at are now ALSO set in the
+                # on_audio_done callbacks above (the primary path). This finally
+                # block is a safety net — if on_audio_done already fired, these
+                # are no-ops. If it didn't fire (error path), this ensures we
+                # don't get stuck in speaking=True forever.
                 #
-                # Instead, stale ASR state is cleared via the on_audio_done callback
-                # (set in both direct and queued TTS paths above), which fires when
-                # the last audio chunk is actually sent to Twilio.
-                # The POST_TTS_IGNORE window then handles ignoring any echo/tail.
+                # We do NOT call asr.clear() here — that's handled by on_audio_done.
+                # run() can take 5+ seconds after audio finishes (websocket close, etc).
+                # Clearing here would wipe the caller's real response.
                 print(f"👂 Ready to listen")
 
         if respond_task and not respond_task.done():
