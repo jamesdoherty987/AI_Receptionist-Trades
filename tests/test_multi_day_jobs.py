@@ -64,14 +64,14 @@ class TestCalculateJobEndTime:
 
     @patch('src.utils.config.config.get_business_days_indices', return_value=[0, 1, 2, 3, 4])
     def test_multi_day_1_week(self, mock_biz_days):
-        """1-week job (10080 mins): spans 7 business days, skips weekends"""
+        """1-week job (10080 mins): spans 5 business days (1 work week), skips weekends"""
         db = self._make_db()
         start = datetime(2026, 3, 23, 9, 0)  # Monday
         end = db._calculate_job_end_time(start, 10080, 9, 17, 15)
-        # 10080 / 1440 = 7 business days
-        # Mon(1), Tue(2), Wed(3), Thu(4), Fri(5), skip Sat/Sun, Mon(6), Tue(7)
-        # Ends Tue Mar 31 at closing
-        assert end == datetime(2026, 3, 31, 17, 15)
+        # 1 week = 5 business days (work week)
+        # Mon(1), Tue(2), Wed(3), Thu(4), Fri(5)
+        # Ends Fri Mar 27 at closing
+        assert end == datetime(2026, 3, 27, 17, 15)
 
     @patch('src.utils.config.config.get_business_days_indices', return_value=[0, 1, 2, 3, 4])
     def test_multi_day_skips_weekends(self, mock_biz_days):
@@ -502,13 +502,12 @@ class TestDurationEdgeCases:
 
     @patch('src.utils.config.config.get_business_days_indices', return_value=[0, 1, 2, 3, 4])
     def test_4_week_job(self, mock_biz_days):
-        """4-week (1 month) job should span 28 business days."""
+        """4-week (1 month) job should span 20 business days (4 work weeks)."""
         db = self._make_db()
         start = datetime(2026, 3, 23, 9, 0)  # Monday
         end = db._calculate_job_end_time(start, 40320, 9, 17, 15)
-        # 40320 / 1440 = 28 business days
-        # 28 business days = 5 weeks + 3 days (skipping weekends)
+        # 4 weeks = 20 business days (4 work weeks)
         # Week 1: Mon-Fri (5), Week 2: Mon-Fri (10), Week 3: Mon-Fri (15),
-        # Week 4: Mon-Fri (20), Week 5: Mon-Fri (25), Week 6: Mon-Wed (28)
-        # Start Mon Mar 23, end Wed Apr 29
-        assert end == datetime(2026, 4, 29, 17, 15)
+        # Week 4: Mon-Fri (20)
+        # Start Mon Mar 23, end Fri Apr 17
+        assert end == datetime(2026, 4, 17, 17, 15)

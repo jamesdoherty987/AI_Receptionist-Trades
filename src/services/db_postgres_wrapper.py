@@ -666,6 +666,15 @@ class PostgreSQLDatabaseWrapper:
                 print("[SUCCESS] Added address_audio_url column to bookings table")
             except Exception as e:
                 print(f"[WARNING] Could not add address_audio_url column: {e}")
+        
+        # Add reminder_sent column to bookings table (prevents duplicate SMS on redeploy)
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='bookings' AND column_name='reminder_sent'")
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE bookings ADD COLUMN reminder_sent BOOLEAN DEFAULT FALSE")
+                print("[SUCCESS] Added reminder_sent column to bookings table")
+            except Exception as e:
+                print(f"[WARNING] Could not add reminder_sent column: {e}")
     
     def _convert_query(self, query: str) -> str:
         """Convert ? placeholders to %s for parameterized queries"""
@@ -2500,11 +2509,9 @@ class PostgreSQLDatabaseWrapper:
             return end + timedelta(minutes=buffer_minutes)
         
         # Multi-day job (> 1 day): calculate how many business days it spans.
-        # Duration is in "calendar day" units: 1440 mins = 1 day, 2880 = 2 days, etc.
-        # We convert to business days needed (rounding up for partial days).
-        import math
-        calendar_days = duration_minutes / 1440.0
-        biz_days_needed = math.ceil(calendar_days)
+        # "1 week" (10080 mins) = 5 business days, not 7.
+        from src.utils.duration_utils import duration_to_business_days
+        biz_days_needed = duration_to_business_days(duration_minutes)
         
         # Get business days (Mon-Fri default)
         try:

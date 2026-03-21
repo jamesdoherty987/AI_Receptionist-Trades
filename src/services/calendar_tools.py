@@ -384,10 +384,10 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
         biz_end_hour = 17
     
     # Calculate how many business days this job needs
-    # Duration is in calendar-day units: 1440 mins = 1 day
+    # "1 week" (10080 mins) = 5 business days, not 7
     if duration_minutes > 1440:
-        import math
-        biz_days_needed = math.ceil(duration_minutes / 1440.0)
+        from src.utils.duration_utils import duration_to_business_days
+        biz_days_needed = duration_to_business_days(duration_minutes)
     else:
         biz_days_needed = 1
     
@@ -603,9 +603,9 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                     # Job started before this day — check if it spans into this day
                     duration = booking.get('duration_minutes', 60)
                     if duration > 1440:  # Multi-day job (> 24 hours)
-                        # Use business-day calculation: 1440 mins = 1 biz day, 2880 = 2, etc.
-                        import math
-                        biz_days_needed = math.ceil(duration / 1440.0)
+                        # Use business-day calculation: "1 week" = 5 biz days, not 7
+                        from src.utils.duration_utils import duration_to_business_days
+                        biz_days_needed = duration_to_business_days(duration)
                         try:
                             from src.utils.config import config as _cfg
                             _biz_day_indices = _cfg.get_business_days_indices()

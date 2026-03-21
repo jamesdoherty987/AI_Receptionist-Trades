@@ -64,9 +64,9 @@ class TestCalculateJobEndTime:
     def test_1_week_job(self):
         svc = make_service()
         start = datetime(2026, 3, 23, 9, 0)  # Monday
-        end = svc._calculate_job_end_time(start, 10080)  # 7 biz days
-        # 7 biz days from Monday: Mon(1),Tue(2),Wed(3),Thu(4),Fri(5),Mon(6),Tue(7) = Mar 31
-        assert end == datetime(2026, 3, 31, 17, 0)
+        end = svc._calculate_job_end_time(start, 10080)  # 1 week = 5 biz days
+        # 5 biz days from Monday: Mon(1),Tue(2),Wed(3),Thu(4),Fri(5) = Mar 27
+        assert end == datetime(2026, 3, 27, 17, 0)
 
     def test_2_day_job_thursday_skips_weekend(self):
         svc = make_service()

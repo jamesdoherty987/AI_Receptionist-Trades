@@ -3684,8 +3684,8 @@ def check_availability_api():
             booking_duration = booking.get('duration_minutes', default_duration)
             # Use business-day logic for multi-day jobs (> 1 day)
             if booking_duration > 1440:
-                import math as _math
-                _biz_days = _math.ceil(booking_duration / 1440.0)
+                from src.utils.duration_utils import duration_to_business_days
+                _biz_days = duration_to_business_days(booking_duration)
                 try:
                     from src.utils.config import config as _cfg
                     _biz_indices = _cfg.get_business_days_indices()

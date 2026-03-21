@@ -58,8 +58,9 @@ class DatabaseCalendarService:
             return end + timedelta(minutes=buffer_minutes)
 
         # Multi-day job: walk forward counting business days
-        calendar_days = duration_minutes / 1440.0
-        biz_days_needed = math.ceil(calendar_days)
+        # "1 week" (10080 mins) = 5 business days, not 7.
+        from src.utils.duration_utils import duration_to_business_days
+        biz_days_needed = duration_to_business_days(duration_minutes)
 
         try:
             business_days = config.get_business_days_indices()

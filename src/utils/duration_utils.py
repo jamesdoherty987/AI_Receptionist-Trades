@@ -86,3 +86,44 @@ def is_multi_day_duration(minutes: int) -> bool:
         True if duration is 1 day or more
     """
     return minutes >= 1440  # 24 hours = 1440 minutes
+
+
+def duration_to_business_days(duration_minutes: int) -> int:
+    """
+    Convert duration_minutes to the number of business days the job spans.
+    
+    The duration values use calendar-day units (1440 mins = 1 day, 10080 = 7 days = 1 week).
+    But "1 week" means a WORK week (5 business days), not 7 business days.
+    
+    Mapping:
+      - < 480 mins: not a full day (returns 0, caller handles short jobs)
+      - 480-1440 mins: 1 business day (full day)
+      - 1441-7200 mins (2-5 days): direct calendar-to-business (ceil(duration/1440))
+      - 10080 mins (1 week = 7 cal days): 5 business days
+      - 20160 mins (2 weeks = 14 cal days): 10 business days
+      - 30240 mins (3 weeks = 21 cal days): 15 business days
+      - 40320 mins (4 weeks = 28 cal days): 20 business days
+      - Other large values: convert using 5/7 ratio
+    
+    Args:
+        duration_minutes: Duration in minutes
+        
+    Returns:
+        Number of business days the job needs
+    """
+    import math
+    
+    if duration_minutes <= 1440:
+        return 1
+    
+    calendar_days = duration_minutes / 1440.0
+    
+    # For durations that are exact multiples of 7 (weeks), use work-week conversion
+    # 7 calendar days = 5 business days (1 work week)
+    if calendar_days >= 7 and (round(calendar_days) % 7 == 0):
+        weeks = round(calendar_days) / 7
+        return int(weeks * 5)
+    
+    # For sub-week multi-day durations (2-6 days), the calendar day count
+    # IS the business day count (e.g., "3 days" = 3 business days)
+    return math.ceil(calendar_days)

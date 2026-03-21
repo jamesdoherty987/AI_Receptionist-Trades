@@ -464,6 +464,7 @@ def send_day_before_reminders() -> int:
             WHERE b.appointment_time >= %s
               AND b.appointment_time < %s
               AND b.status = 'scheduled'
+              AND COALESCE(b.reminder_sent, FALSE) = FALSE
             GROUP BY b.id, b.appointment_time, b.service_type,
                      b.phone_number, b.company_id,
                      c.name, c.phone, comp.company_name
@@ -507,6 +508,18 @@ def send_day_before_reminders() -> int:
         )
         if success:
             sent_count += 1
+            # Mark reminder as sent so it won't be re-sent on redeploy
+            try:
+                mark_conn = db.get_connection()
+                mark_cursor = mark_conn.cursor()
+                mark_cursor.execute(
+                    "UPDATE bookings SET reminder_sent = TRUE WHERE id = %s",
+                    (booking['id'],)
+                )
+                mark_conn.commit()
+                db.return_connection(mark_conn)
+            except Exception as e:
+                print(f"  [WARNING] Could not mark booking {booking['id']} as reminder_sent: {e}")
 
     print(f"[SMS-REMINDER] Sent {sent_count}/{len(bookings)} day-before reminders")
     print(f"{'='*60}\n")
@@ -528,6 +541,13 @@ def start_sms_reminder_scheduler(check_hour: int = 17):
     def scheduler_loop():
         print(f"[SMS-REMINDER] Scheduler started (will send reminders daily at {check_hour}:00)")
         last_run_date = None
+
+        # On startup, if we're already past check_hour, assume today's
+        # reminders were already sent (prevents duplicate sends on redeploy).
+        now = datetime.now()
+        if now.hour >= check_hour:
+            last_run_date = now.date()
+            print(f"[SMS-REMINDER] Past {check_hour}:00 on startup — skipping today to avoid duplicate sends")
 
         while True:
             now = datetime.now()
