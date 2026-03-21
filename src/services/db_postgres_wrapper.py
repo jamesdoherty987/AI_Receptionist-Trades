@@ -1066,6 +1066,16 @@ class PostgreSQLDatabaseWrapper:
             
             from datetime import datetime as dt, timedelta
             
+            # Get business hours for accurate multi-day job end time calculation
+            try:
+                from src.utils.config import config
+                business_hours = config.get_business_hours(company_id=company_id)
+                biz_start = business_hours.get('start', 9)
+                biz_end = business_hours.get('end', 17)
+            except Exception:
+                biz_start = 9
+                biz_end = 17
+            
             # Parse the query range
             if isinstance(start_time, str):
                 try:
@@ -1087,8 +1097,8 @@ class PostgreSQLDatabaseWrapper:
                 
                 duration = row.get('duration_minutes') or 60
                 
-                # Use business-day end time for multi-day jobs
-                booking_end = self._calculate_job_end_time(appt_time, duration)
+                # Use business-day end time for multi-day jobs (with company-specific hours)
+                booking_end = self._calculate_job_end_time(appt_time, duration, biz_start, biz_end)
                 
                 # Check true overlap: booking overlaps range if booking_end > range_start
                 if booking_end > range_start:

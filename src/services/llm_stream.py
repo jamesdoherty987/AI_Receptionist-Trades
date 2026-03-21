@@ -1676,6 +1676,8 @@ TOOL RULES:
                         
                         # Check if this is a full-day job
                         is_full_day = result_content.get("is_full_day_service", False)
+                        duration_minutes = result_content.get("duration_minutes", 0)
+                        duration_label = result_content.get("duration_label", "")
                         
                         # Also check natural_summary for "full day" or "wide open" as backup
                         if not is_full_day and natural_summary:
@@ -1684,17 +1686,26 @@ TOOL RULES:
                         # Check if multiple days are mentioned
                         has_multiple_days = natural_summary and any(word in natural_summary.lower() for word in [" and ", ", "])
                         
+                        # ALWAYS prefix with job length context for ALL durations
+                        duration_prefix = ""
+                        if duration_minutes > 1440 and duration_label:
+                            duration_prefix = f"This job takes {duration_label}, but "
+                        elif duration_minutes >= 480 and duration_label:
+                            duration_prefix = f"This is {duration_label} job, and "
+                        elif duration_minutes > 0 and duration_label:
+                            duration_prefix = f"This is {duration_label} job. "
+                        
                         # For complex queries, use second LLM call for better phrasing
                         if natural_summary:
                             if is_full_day:
                                 # Full-day jobs: Don't ask for time, just confirm the day(s)
                                 if has_multiple_days:
-                                    direct_response = f"{natural_summary}. Which day works best for you?"
+                                    direct_response = f"{duration_prefix}{natural_summary}. Which day works best for you?"
                                 else:
-                                    direct_response = f"{natural_summary}. Does that day work for you?"
+                                    direct_response = f"{duration_prefix}{natural_summary}. Does that day work for you?"
                             else:
                                 # Regular jobs: Ask for time preference
-                                direct_response = f"{natural_summary}. Which time works best for you?"
+                                direct_response = f"{duration_prefix}{natural_summary}. Which time works best for you?"
                         elif available_slots:
                             # Format first few slots
                             times = [f"{s.get('date', '')} at {s.get('time', '')}" for s in available_slots[:3]]
@@ -1721,17 +1732,28 @@ TOOL RULES:
                         available_days = result_content.get("available_days", [])
                         is_full_day = result_content.get("is_full_day_service", False)
                         days_found = result_content.get("days_found", 0)
+                        duration_minutes = result_content.get("duration_minutes", 0)
+                        duration_label = result_content.get("duration_label", "")
+                        
+                        # ALWAYS prefix with job length context for ALL durations
+                        duration_prefix = ""
+                        if duration_minutes > 1440 and duration_label:
+                            duration_prefix = f"This job takes {duration_label}, but "
+                        elif duration_minutes >= 480 and duration_label:
+                            duration_prefix = f"This is {duration_label} job, and "
+                        elif duration_minutes > 0 and duration_label:
+                            duration_prefix = f"This is {duration_label} job. "
                         
                         if natural_summary:
                             if is_full_day:
                                 # Full-day jobs: Ask which day, not time
                                 if days_found > 1:
-                                    direct_response = f"{natural_summary}. Which day suits you?"
+                                    direct_response = f"{duration_prefix}{natural_summary}. Which day suits you?"
                                 else:
-                                    direct_response = f"{natural_summary}. Does that day work for you?"
+                                    direct_response = f"{duration_prefix}{natural_summary}. Does that day work for you?"
                             else:
                                 # Regular jobs with times
-                                direct_response = f"{natural_summary}. Which day and time works for you?"
+                                direct_response = f"{duration_prefix}{natural_summary}. Which day and time works for you?"
                         elif available_days:
                             # Fallback: list the days
                             day_names = [d.get('day_name', '') for d in available_days[:3]]
@@ -1751,15 +1773,26 @@ TOOL RULES:
                         message = result_content.get("message", "")
                         is_full_day = result_content.get("is_full_day_service", False)
                         days_found = result_content.get("days_found", 0)
+                        duration_minutes = result_content.get("duration_minutes", 0)
+                        duration_label = result_content.get("duration_label", "")
+                        
+                        # ALWAYS prefix with job length context for ALL durations
+                        duration_prefix = ""
+                        if duration_minutes > 1440 and duration_label:
+                            duration_prefix = f"This job takes {duration_label}, but "
+                        elif duration_minutes >= 480 and duration_label:
+                            duration_prefix = f"This is {duration_label} job, and "
+                        elif duration_minutes > 0 and duration_label:
+                            duration_prefix = f"This is {duration_label} job. "
                         
                         if natural_summary:
                             if is_full_day:
                                 if days_found > 1:
-                                    direct_response = f"{natural_summary}. Which day works for you?"
+                                    direct_response = f"{duration_prefix}{natural_summary}. Which day works for you?"
                                 else:
-                                    direct_response = f"{natural_summary}. Does that day work?"
+                                    direct_response = f"{duration_prefix}{natural_summary}. Does that day work?"
                             else:
-                                direct_response = f"{natural_summary}. Which works best for you?"
+                                direct_response = f"{duration_prefix}{natural_summary}. Which works best for you?"
                         elif available_slots:
                             times = [f"{s.get('date', '')} at {s.get('time', '')}" for s in available_slots[:3]]
                             direct_response = f"I have {', '.join(times)} available. Which works for you?"

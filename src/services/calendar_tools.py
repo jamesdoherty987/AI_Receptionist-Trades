@@ -717,6 +717,33 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
     return jobs_on_day
 
 
+def format_duration_label(duration_minutes: int) -> str:
+    """Convert duration in minutes to a human-readable label like '1 week' or '2 days'."""
+    if duration_minutes >= 40320:
+        return "about a month"
+    elif duration_minutes >= 30240:
+        return "about 3 weeks"
+    elif duration_minutes >= 20160:
+        return "about 2 weeks"
+    elif duration_minutes >= 10080:
+        return "about a week"
+    elif duration_minutes >= 5760:
+        days = round(duration_minutes / 1440)
+        return f"about {days} days"
+    elif duration_minutes >= 2880:
+        days = round(duration_minutes / 1440)
+        return f"about {days} days"
+    elif duration_minutes >= 1440:
+        return "a full day"
+    elif duration_minutes >= 480:
+        return "a full day"
+    else:
+        hours = duration_minutes / 60
+        if hours == int(hours):
+            return f"about {int(hours)} hour{'s' if hours != 1 else ''}"
+        return f"about {hours:.1f} hours"
+
+
 def naturalize_availability_summary(day_summaries: list, is_full_day: bool = False) -> str:
     """
     Convert structured day availability into natural, conversational speech.
@@ -740,7 +767,7 @@ def naturalize_availability_summary(day_summaries: list, is_full_day: bool = Fal
         # Simple cleanup for single day
         if "full day available" in summary.lower():
             day = summary.split(":")[0]
-            return f"I've got {day} wide open for you"
+            return f"We're available to start on {day}"
         elif "free from" in summary.lower():
             parts = summary.split(": ")
             day = parts[0]
@@ -764,11 +791,11 @@ def naturalize_availability_summary(day_summaries: list, is_full_day: bool = Fal
                 days.append(day)
             
             if len(days) == 2:
-                return f"I'm available all day on {days[0]} and {days[1]}"
+                return f"We're available to start on {days[0]} or {days[1]}"
             elif len(days) == 3:
-                return f"I'm available all day on {days[0]}, {days[1]}, and {days[2]}"
+                return f"We're available to start on {days[0]}, {days[1]}, or {days[2]}"
             else:
-                return f"I'm available all day on {days[0]}, {days[1]}, {days[2]}, and {days[3]}"
+                return f"We're available to start on {days[0]}, {days[1]}, {days[2]}, or {days[3]}"
         else:
             # For shorter jobs, include time info
             parts = []
@@ -1966,7 +1993,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 "natural_summary": natural_summary,
                 "message": f"{time_reference} I have: {natural_summary}",
                 "voice_instruction": voice_instruction,
-                "is_full_day_service": service_duration >= 480
+                "is_full_day_service": service_duration >= 480,
+                "duration_minutes": service_duration,
+                "duration_label": format_duration_label(service_duration)
             }
         
         elif tool_name == "get_next_available":
@@ -2131,7 +2160,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 "message": natural_summary,
                 "voice_instruction": voice_instruction,
                 "is_full_day_service": is_full_day,
-                "days_found": len(available_days)
+                "days_found": len(available_days),
+                "duration_minutes": service_duration,
+                "duration_label": format_duration_label(service_duration)
             }
         
         elif tool_name == "search_availability":
@@ -2492,7 +2523,9 @@ Return ONLY valid JSON, no explanation."""
                 "message": natural_summary,
                 "voice_instruction": voice_instruction,
                 "is_full_day_service": is_full_day,
-                "days_found": len(slots_by_day)
+                "days_found": len(slots_by_day),
+                "duration_minutes": service_duration,
+                "duration_label": format_duration_label(service_duration)
             }
         
         elif tool_name == "lookup_customer":
