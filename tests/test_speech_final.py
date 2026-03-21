@@ -54,9 +54,11 @@ class MockDeepgramASR:
                 # later says "Hello?" out of frustration. New segments are appended.
                 if not self.last_segment_text:
                     self.last_segment_text = transcript.strip()
-                    self.last_segment_time = self._mock_time
                 else:
                     self.last_segment_text += " " + transcript.strip()
+                # Always update time to the latest segment — measures
+                # silence since caller last spoke (matches production code)
+                self.last_segment_time = self._mock_time
                 
         else:
             if transcript.strip():
@@ -560,11 +562,11 @@ class TestFallbackWhenSpeechFinalMissing:
         assert asr.is_speech_finished() is True
         assert asr.get_text() == "Hi. I just have a burst pipe. Can you help with that?"
     
-    def test_new_segments_dont_reset_timer(self):
+    def test_new_segments_reset_timer(self):
         """
-        Critical fix: When caller says their name, then "Hello?" out of frustration,
-        the timer should NOT reset. The original segment should be preserved and
-        new segments appended.
+        Timer resets on each new segment — measures silence since caller last spoke.
+        This prevents premature promotion during long multi-segment utterances.
+        New segments are still appended to preserve the full text.
         """
         asr = MockDeepgramASR()
         
@@ -577,19 +579,23 @@ class TestFallbackWhenSpeechFinalMissing:
         assert asr.last_segment_text == "It's p e t e r r o n a n."
         assert asr.last_segment_time == 10.0
         
-        # Caller says "Hello?" at t=20 — should NOT overwrite or reset timer
+        # Caller says "Hello?" at t=20 — timer resets to t=20
         asr.process_message({
             'is_final': True, 'speech_final': False,
             'channel': {'alternatives': [{'transcript': 'Hello?'}]}
         }, current_time=20.0)
         
-        # Timer should still be from original segment (t=10), not reset to t=20
-        assert asr.last_segment_time == 10.0
+        # Timer should be from latest segment (t=20)
+        assert asr.last_segment_time == 20.0
         # Text should be accumulated
         assert asr.last_segment_text == "It's p e t e r r o n a n. Hello?"
         
-        # At t=15 (5s after first segment) — should trigger
-        asr._mock_time = 15.0
+        # At t=24 (4s after last segment) — not yet
+        asr._mock_time = 24.0
+        assert asr.has_pending_segment(timeout=5.0) is False
+        
+        # At t=25 (5s after last segment) — should trigger
+        asr._mock_time = 25.0
         assert asr.has_pending_segment(timeout=5.0) is True
         
         # Promote — should get the full accumulated text
@@ -615,12 +621,12 @@ class TestFallbackWhenSpeechFinalMissing:
             'channel': {'alternatives': [{'transcript': 'pipe in my room, and I need help'}]}
         }, current_time=12.0)
         
-        # Timer still from first segment
-        assert asr.last_segment_time == 10.0
+        # Timer resets to latest segment
+        assert asr.last_segment_time == 12.0
         assert asr.last_segment_text == "Hi. I, have a burst pipe in my room, and I need help"
         
-        # After 5s from first segment
-        asr._mock_time = 15.0
+        # After 5s from last segment (t=12)
+        asr._mock_time = 17.0
         assert asr.has_pending_segment(timeout=5.0) is True
         
         asr.promote_segment()

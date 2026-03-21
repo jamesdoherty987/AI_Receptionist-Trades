@@ -29,11 +29,10 @@ class DeepgramASR:
         self.speech_final = False   # True when Deepgram signals end of utterance
         
         # Fallback tracking: Deepgram sometimes sends is_final segments
-        # but never sends speech_final. Track the FIRST pending segment so the
-        # media handler can use it as a safety net after a long timeout.
-        # IMPORTANT: We track the first segment, not the latest, because
-        # new segments (like "Hello?" when caller gets frustrated) would
-        # otherwise overwrite the original meaningful segment and reset the timer.
+        # but never sends speech_final. Accumulate all pending segments and
+        # reset the timer on each new one. The media handler uses this as a
+        # safety net — if 5s pass since the LAST segment with no speech_final,
+        # the accumulated text gets promoted.
         self.last_segment_text = ""
         self.last_segment_time = 0.0
 
@@ -121,18 +120,20 @@ class DeepgramASR:
                     # Track for barge-in AND as fallback if speech_final never arrives
                     if transcript.strip():
                         self.interim_text = transcript.strip()
-                        # Only set fallback segment if we don't already have one pending.
-                        # This preserves the FIRST meaningful segment (e.g., the name spelling)
-                        # even if the caller later says "Hello?" out of frustration.
-                        # New segments still update interim_text for barge-in detection.
+                        # Accumulate text from all is_final segments, but reset the
+                        # timer on each new one. This way:
+                        # - Long utterances: timer keeps resetting as segments arrive,
+                        #   fallback never fires prematurely
+                        # - Deepgram bug (no speech_final): 5s after the LAST segment,
+                        #   fallback fires with the full accumulated text
                         if not self.last_segment_text:
                             self.last_segment_text = transcript.strip()
-                            self.last_segment_time = time.time()
-                            print(f"[ASR] Segment (tracking): '{transcript}'")
                         else:
-                            # Append to existing segment — caller is still talking
                             self.last_segment_text += " " + transcript.strip()
-                            print(f"[ASR] Segment (appended): '{transcript}' → full: '{self.last_segment_text}'")
+                        # Always update time to the latest segment — this is the
+                        # "silence timer" that measures how long since caller stopped
+                        self.last_segment_time = time.time()
+                        print(f"[ASR] Segment: '{transcript}' → accumulated: '{self.last_segment_text[:80]}'")
                         
                 else:
                     # Interim result — update for barge-in detection
@@ -173,11 +174,11 @@ class DeepgramASR:
         Returns True if:
         - We have accumulated segment text from is_final events
         - speech_final hasn't arrived
-        - The FIRST segment is older than `timeout` seconds (caller stopped speaking)
+        - The LAST segment is older than `timeout` seconds (caller stopped speaking)
         
         This is a safety net for when Deepgram sends is_final but never speech_final.
-        The timer starts from the FIRST segment, not the latest, so new segments
-        (like "Hello?" from a frustrated caller) don't reset the clock.
+        The timer resets on each new segment, so it measures silence since the caller
+        last spoke. This prevents premature promotion during long multi-segment utterances.
         Subsequent is_final segments are appended to preserve the full utterance.
         """
         if self.speech_final or not self.last_segment_text or self.last_segment_time == 0.0:
