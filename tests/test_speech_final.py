@@ -15,15 +15,22 @@ class MockDeepgramASR:
     """
     Mock ASR that mirrors the simplified DeepgramASR._recv logic.
     Trusts Deepgram's speech_final transcript directly.
+    Has fallback for when speech_final never arrives.
     """
     
     def __init__(self):
         self.text = ""
         self.interim_text = ""
         self.speech_final = False
+        self.last_segment_text = ""
+        self.last_segment_time = 0.0
+        self._mock_time = 0.0  # For testing time-based fallback
 
-    def process_message(self, data: dict):
+    def process_message(self, data: dict, current_time: float = None):
         """Process a Deepgram message - mirrors simplified _recv logic"""
+        if current_time is not None:
+            self._mock_time = current_time
+            
         is_speech_final = data.get("speech_final", False)
         is_final = data.get("is_final", False)
         
@@ -36,10 +43,14 @@ class MockDeepgramASR:
                 self.text = final_text
                 self.speech_final = True
             self.interim_text = ""
+            self.last_segment_text = ""
+            self.last_segment_time = 0.0
             
         elif is_final:
             if transcript.strip():
                 self.interim_text = transcript.strip()
+                self.last_segment_text = transcript.strip()
+                self.last_segment_time = self._mock_time
                 
         else:
             if transcript.strip():
@@ -54,10 +65,25 @@ class MockDeepgramASR:
     def is_speech_finished(self) -> bool:
         return self.speech_final
     
+    def has_pending_segment(self, timeout: float = 5.0) -> bool:
+        if self.speech_final or not self.last_segment_text or self.last_segment_time == 0.0:
+            return False
+        return (self._mock_time - self.last_segment_time) >= timeout
+    
+    def promote_segment(self):
+        if self.last_segment_text:
+            self.text = self.last_segment_text
+            self.speech_final = True
+            self.last_segment_text = ""
+            self.last_segment_time = 0.0
+            self.interim_text = ""
+    
     def clear(self):
         self.text = ""
         self.interim_text = ""
         self.speech_final = False
+        self.last_segment_text = ""
+        self.last_segment_time = 0.0
 
 
 class TestSpeechFinalDirect:
@@ -348,7 +374,7 @@ class TestRealWorldScenarios:
         asr.process_message({
             'is_final': True, 'speech_final': False,
             'channel': {'alternatives': [{'transcript': 'Hi. Can I book an appointment, please, for a leak'}]}
-        })
+        }, current_time=10.0)
         assert asr.is_speech_finished() is False
         
         # More interim as caller continues
@@ -374,7 +400,7 @@ class TestRealWorldScenarios:
         asr.process_message({
             'is_final': True, 'speech_final': False,
             'channel': {'alternatives': [{'transcript': "It's"}]}
-        })
+        }, current_time=10.0)
         assert asr.is_speech_finished() is False
         
         # Long pause while looking at letter... Deepgram waits (endpointing=1200ms)
@@ -413,6 +439,119 @@ class TestRealWorldScenarios:
             'channel': {'alternatives': [{'transcript': "That's correct, thanks"}]}
         })
         assert asr.get_text() == "That's correct, thanks"
+
+
+class TestFallbackWhenSpeechFinalMissing:
+    """
+    Test the fallback for when Deepgram sends is_final segments
+    but never sends speech_final. This is a real Deepgram bug.
+    """
+    
+    def test_fallback_triggers_after_timeout(self):
+        """
+        Segment arrives at t=10, no speech_final by t=15 → fallback fires.
+        """
+        asr = MockDeepgramASR()
+        
+        asr.process_message({
+            'is_final': True, 'speech_final': False,
+            'channel': {'alternatives': [{'transcript': 'I have a burst pipe and I need help'}]}
+        }, current_time=10.0)
+        
+        assert asr.is_speech_finished() is False
+        assert asr.last_segment_text == "I have a burst pipe and I need help"
+        
+        # At t=14 (4s later) — not yet
+        asr._mock_time = 14.0
+        assert asr.has_pending_segment(timeout=5.0) is False
+        
+        # At t=15 (5s later) — fallback should fire
+        asr._mock_time = 15.0
+        assert asr.has_pending_segment(timeout=5.0) is True
+        
+        # Promote it
+        asr.promote_segment()
+        assert asr.is_speech_finished() is True
+        assert asr.get_text() == "I have a burst pipe and I need help"
+        assert asr.last_segment_text == ""
+    
+    def test_fallback_does_not_trigger_if_speech_final_arrives(self):
+        """If speech_final arrives normally, fallback should not be needed."""
+        asr = MockDeepgramASR()
+        
+        asr.process_message({
+            'is_final': True, 'speech_final': False,
+            'channel': {'alternatives': [{'transcript': 'Hello there'}]}
+        }, current_time=10.0)
+        
+        # speech_final arrives before timeout
+        asr.process_message({
+            'is_final': True, 'speech_final': True,
+            'channel': {'alternatives': [{'transcript': 'Hello there, I need a plumber'}]}
+        }, current_time=11.0)
+        
+        # speech_final already arrived, so has_pending_segment should be False
+        asr._mock_time = 16.0
+        assert asr.has_pending_segment(timeout=5.0) is False
+        assert asr.is_speech_finished() is True
+        assert asr.get_text() == "Hello there, I need a plumber"
+    
+    def test_fallback_does_not_trigger_without_segment(self):
+        """No segment text → no fallback."""
+        asr = MockDeepgramASR()
+        asr._mock_time = 100.0
+        assert asr.has_pending_segment(timeout=5.0) is False
+    
+    def test_fallback_clears_after_promote(self):
+        """After promote, state should be clean for next utterance."""
+        asr = MockDeepgramASR()
+        
+        asr.process_message({
+            'is_final': True, 'speech_final': False,
+            'channel': {'alternatives': [{'transcript': 'Test message'}]}
+        }, current_time=10.0)
+        
+        asr._mock_time = 16.0
+        asr.promote_segment()
+        
+        assert asr.get_text() == "Test message"
+        assert asr.last_segment_text == ""
+        assert asr.last_segment_time == 0.0
+        assert asr.get_interim() == ""
+        
+        # Clear and verify clean state
+        asr.clear()
+        assert asr.get_text() == ""
+        assert asr.is_speech_finished() is False
+    
+    def test_real_scenario_burst_pipe_no_speech_final(self):
+        """
+        Exact scenario from production logs:
+        1. Caller says "I have a burst pipe..." → is_final segment
+        2. Deepgram never sends speech_final
+        3. Caller waits, then says "Hello?" → that gets speech_final
+        4. Without fallback, LLM only sees "Hello?" and ignores the burst pipe
+        
+        With fallback: after 5s, the burst pipe segment gets promoted.
+        """
+        asr = MockDeepgramASR()
+        
+        # Caller describes issue
+        asr.process_message({
+            'is_final': True, 'speech_final': False,
+            'channel': {'alternatives': [{'transcript': 'Hi. I just have a burst pipe. Can you help with that?'}]}
+        }, current_time=10.0)
+        
+        assert asr.is_speech_finished() is False
+        
+        # 5 seconds pass, no speech_final
+        asr._mock_time = 15.0
+        assert asr.has_pending_segment(timeout=5.0) is True
+        
+        # Promote before the caller says "Hello?"
+        asr.promote_segment()
+        assert asr.is_speech_finished() is True
+        assert asr.get_text() == "Hi. I just have a burst pipe. Can you help with that?"
 
 
 if __name__ == "__main__":

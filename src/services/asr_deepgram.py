@@ -27,6 +27,12 @@ class DeepgramASR:
         self.text = ""              # Final text when speech_final=true
         self.interim_text = ""      # Latest interim text (for barge-in detection)
         self.speech_final = False   # True when Deepgram signals end of utterance
+        
+        # Fallback tracking: Deepgram sometimes sends is_final segments
+        # but never sends speech_final. Track the last segment so the
+        # media handler can use it as a safety net after a long timeout.
+        self.last_segment_text = ""
+        self.last_segment_time = 0.0
 
     async def connect(self):
         """Connect to Deepgram websocket"""
@@ -102,14 +108,18 @@ class DeepgramASR:
                         self.speech_final = True
                         print(f"[ASR] ✅ SPEECH FINAL: '{final_text}'")
                     
-                    # Clear interim for next utterance
+                    # Clear interim and segment tracking for next utterance
                     self.interim_text = ""
+                    self.last_segment_text = ""
+                    self.last_segment_time = 0.0
                     
                 elif is_final:
                     # Segment finalized but caller may still be speaking
-                    # Track latest for barge-in detection
+                    # Track for barge-in AND as fallback if speech_final never arrives
                     if transcript.strip():
                         self.interim_text = transcript.strip()
+                        self.last_segment_text = transcript.strip()
+                        self.last_segment_time = time.time()
                         print(f"[ASR] Segment: '{transcript}'")
                         
                 else:
@@ -144,6 +154,34 @@ class DeepgramASR:
         """Check if Deepgram signaled end of utterance"""
         return self.speech_final
 
+    def has_pending_segment(self, timeout: float = 5.0) -> bool:
+        """
+        Check if there's a pending is_final segment that never got speech_final.
+        
+        Returns True if:
+        - We have segment text from an is_final event
+        - speech_final hasn't arrived
+        - The segment is older than `timeout` seconds (caller stopped speaking)
+        
+        This is a safety net for when Deepgram sends is_final but never speech_final.
+        """
+        if self.speech_final or not self.last_segment_text or self.last_segment_time == 0.0:
+            return False
+        return (time.time() - self.last_segment_time) >= timeout
+
+    def promote_segment(self):
+        """
+        Promote the pending segment to final text.
+        Call this when has_pending_segment() returns True.
+        """
+        if self.last_segment_text:
+            self.text = self.last_segment_text
+            self.speech_final = True
+            print(f"[ASR] ⚠️ FALLBACK: Promoting segment to final: '{self.last_segment_text}'")
+            self.last_segment_text = ""
+            self.last_segment_time = 0.0
+            self.interim_text = ""
+
     def is_closed(self) -> bool:
         """Check if ASR connection is closed"""
         return self.closed
@@ -170,6 +208,8 @@ class DeepgramASR:
         self.text = ""
         self.interim_text = ""
         self.speech_final = False
+        self.last_segment_text = ""
+        self.last_segment_time = 0.0
 
     async def close(self):
         """Close ASR connection"""
