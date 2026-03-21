@@ -89,8 +89,10 @@ def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
     """
     Trim leading and trailing silence from a list of mulaw audio packets.
     
-    Uses per-packet energy detection to find where speech starts and ends,
-    then returns only the speech portion with a small padding on each side.
+    Uses a sliding-window approach to detect speech onset/offset:
+    - Scans with a window of WINDOW_SIZE packets
+    - Speech starts when MIN_ACTIVE packets in the window exceed the threshold
+    - This catches the beginning of speech even if the first syllable is soft
     
     Args:
         packets: List of raw mulaw byte packets (e.g., from a deque)
@@ -106,23 +108,49 @@ def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
         return b''
     
     n = len(packets)
+    energies = [ulaw_energy(p) for p in packets]
     
-    # Find first packet above threshold (speech start)
+    # Sliding window parameters: look for 3+ active packets in a window of 5
+    # Each packet is ~20ms, so window = 100ms, need 60ms of energy = speech onset
+    WINDOW_SIZE = 5
+    MIN_ACTIVE = 3
+    
+    # Find speech start: first window where enough packets are above threshold
     first_voice = -1
-    for i in range(n):
-        if ulaw_energy(packets[i]) >= energy_threshold:
+    for i in range(n - WINDOW_SIZE + 1):
+        window = energies[i:i + WINDOW_SIZE]
+        active = sum(1 for e in window if e >= energy_threshold)
+        if active >= MIN_ACTIVE:
+            # Speech detected — but the actual start might be a few packets
+            # before this window. Walk backwards to find the first packet in
+            # this cluster that's above threshold (or a lower "onset" threshold).
+            onset_threshold = energy_threshold * 0.5  # Catch soft starts
             first_voice = i
+            for j in range(i, max(-1, i - pad_packets), -1):
+                if energies[j] >= onset_threshold:
+                    first_voice = j
+                else:
+                    break
             break
     
     if first_voice < 0:
         # No speech detected at all — return everything (let caller decide)
         return b''.join(packets)
     
-    # Find last packet above threshold (speech end)
+    # Find speech end: last window where enough packets are above threshold
     last_voice = first_voice
-    for i in range(n - 1, first_voice - 1, -1):
-        if ulaw_energy(packets[i]) >= energy_threshold:
-            last_voice = i
+    for i in range(n - WINDOW_SIZE, first_voice - 1, -1):
+        window = energies[i:i + WINDOW_SIZE]
+        active = sum(1 for e in window if e >= energy_threshold)
+        if active >= MIN_ACTIVE:
+            # Walk forward to find the last active packet in this cluster
+            onset_threshold = energy_threshold * 0.5
+            last_voice = i + WINDOW_SIZE - 1
+            for j in range(i + WINDOW_SIZE - 1, min(n, i + WINDOW_SIZE + pad_packets)):
+                if j < n and energies[j] >= onset_threshold:
+                    last_voice = j
+                else:
+                    break
             break
     
     # Add padding
@@ -135,7 +163,6 @@ def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
     original_duration = total_bytes / sample_rate
     
     # Log energy distribution for debugging
-    energies = [ulaw_energy(p) for p in packets]
     above_threshold = sum(1 for e in energies if e >= energy_threshold)
     max_energy = max(energies) if energies else 0
     min_energy = min(energies) if energies else 0

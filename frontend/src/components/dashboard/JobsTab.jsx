@@ -102,7 +102,8 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
         job.phone?.includes(term) ||
         job.email?.toLowerCase().includes(term) ||
         job.job_address?.toLowerCase().includes(term) ||
-        job.address?.toLowerCase().includes(term)
+        job.address?.toLowerCase().includes(term) ||
+        job.eircode?.toLowerCase().includes(term)
       );
     }
 
@@ -171,8 +172,8 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
           <div className="job-address-row">
             <i className="fas fa-map-marker-alt"></i>
             <span>
-              {(job.job_address || job.address) 
-                ? `${job.job_address || job.address}${job.eircode ? ` (${job.eircode})` : ''}` 
+              {(job.job_address || job.address || job.eircode) 
+                ? `${job.job_address || job.address || ''}${job.eircode ? `${job.job_address || job.address ? ' (' : ''}${job.eircode}${job.job_address || job.address ? ')' : ''}` : ''}`.trim()
                 : 'No address'}
             </span>
             {job.address_audio_url && (
@@ -321,8 +322,8 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                     <div className="job-address-row">
                       <i className="fas fa-map-marker-alt"></i>
                       <span>
-                        {(job.job_address || job.address) 
-                          ? `${job.job_address || job.address}${job.eircode ? ` (${job.eircode})` : ''}` 
+                        {(job.job_address || job.address || job.eircode) 
+                          ? `${job.job_address || job.address || ''}${job.eircode ? `${job.job_address || job.address ? ' (' : ''}${job.eircode}${job.job_address || job.address ? ')' : ''}` : ''}`.trim()
                           : 'No address'}
                       </span>
                       {job.address_audio_url && (
@@ -387,8 +388,8 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                     <div className="job-address-row">
                       <i className="fas fa-map-marker-alt"></i>
                       <span>
-                        {(job.job_address || job.address) 
-                          ? `${job.job_address || job.address}${job.eircode ? ` (${job.eircode})` : ''}` 
+                        {(job.job_address || job.address || job.eircode) 
+                          ? `${job.job_address || job.address || ''}${job.eircode ? `${job.job_address || job.address ? ' (' : ''}${job.eircode}${job.job_address || job.address ? ')' : ''}` : ''}`.trim()
                           : 'No address'}
                       </span>
                       {job.address_audio_url && (

@@ -3777,7 +3777,7 @@ Return ONLY valid JSON, no explanation."""
                     summary=summary,
                     start_time=parsed_time,
                     duration_minutes=service_duration,
-                    description=f"Booked via AI receptionist\n\nCustomer: {customer_name}\nPhone: {phone}\nEmail: {email}\n\nJob Address: {validated_address}\nJob Description: {job_description}\nMatched Service: {matched_service_name}\nUrgency: {urgency_level}\nProperty Type: {property_type}\nDuration: {service_duration} mins",
+                    description=f"Booked via AI receptionist\n\nCustomer: {customer_name}\nPhone: {phone}\nEmail: {email}\n\nJob Address: {validated_address or extracted_eircode or 'N/A'}\nJob Description: {job_description}\nMatched Service: {matched_service_name}\nUrgency: {urgency_level}\nProperty Type: {property_type}\nDuration: {service_duration} mins",
                     phone_number=phone
                 )
                 logger.info(f"[BOOK_JOB] Calendar event created: {event}")
@@ -3850,7 +3850,7 @@ Return ONLY valid JSON, no explanation."""
                     # Add note with job details including matched service and original description
                     db.add_appointment_note(
                         booking_id, 
-                        f"Booked via AI receptionist\n\nJob Address: {validated_address}\nCustomer Description: {job_description}\nMatched Service: {matched_service_name}\nUrgency: {urgency_level}\nProperty Type: {property_type}\nDuration: {service_duration} mins", 
+                        f"Booked via AI receptionist\n\nJob Address: {validated_address or extracted_eircode or 'N/A'}\nCustomer Description: {job_description}\nMatched Service: {matched_service_name}\nUrgency: {urgency_level}\nProperty Type: {property_type}\nDuration: {service_duration} mins", 
                         created_by="system"
                     )
                     
@@ -4248,7 +4248,7 @@ Return ONLY valid JSON, no explanation."""
                                 break
                         
                         if updated_booking and hasattr(google_calendar, 'update_event_description'):
-                            new_description = f"Booked via AI receptionist\n\nCustomer: {customer_name}\nPhone: {updated_booking.get('phone_number', '')}\nEmail: {updated_booking.get('email', '')}\n\nJob Address: {updated_booking.get('address', '')}\nService: {updated_booking.get('service_type', '')}\nUrgency: {updated_booking.get('urgency', '')}\n\n[Modified: {changes_summary}]"
+                            new_description = f"Booked via AI receptionist\n\nCustomer: {customer_name}\nPhone: {updated_booking.get('phone_number', '')}\nEmail: {updated_booking.get('email', '')}\n\nJob Address: {updated_booking.get('address') or updated_booking.get('eircode') or 'N/A'}\nService: {updated_booking.get('service_type', '')}\nUrgency: {updated_booking.get('urgency', '')}\n\n[Modified: {changes_summary}]"
                             google_calendar.update_event_description(event_id, new_description)
                     except Exception as cal_err:
                         logger.warning(f"[MODIFY_JOB] Could not update calendar description: {cal_err}")

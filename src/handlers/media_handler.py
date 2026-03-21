@@ -439,6 +439,7 @@ async def media_handler(ws):
                     # "Yes correct" — not the actual address.
                     if ai_asked_for_address(full_text):
                         call_state.awaiting_address_audio = True
+                        call_state._addr_audio_collecting = False  # Reset — new ask cycle
                         call_state._addr_audio_phase1_time = time_module.time()
                         print(f"🎙️ [ADDR_AUDIO] Phase 1: AI asked for address — will capture caller's next response")
                         print(f"🎙️ [ADDR_AUDIO] Phase 1: speaking={speaking}, buffer_len={len(audio_buffer)}")
@@ -688,144 +689,31 @@ async def media_handler(ws):
                     last_committed = text
                     conversation.append({"role": "user", "content": text})
                     
-                    # Address audio capture: two-phase approach
+                    # Address audio capture — DEFERRED approach
                     # Phase 1 (in start_tts): AI asked for address → awaiting_address_audio = True
-                    # Phase 2 (here): Caller's next speech_final → snapshot buffer, upload to R2
+                    # Phase 2 (here): First speech_final → start collecting (skip-check only)
+                    # Phase 3 (before start_tts below): Caller is done → snapshot buffer, upload
                     #
-                    # Key: we DON'T set address_audio_captured here. We only set it after
-                    # a successful upload. The flag awaiting_address_audio gets re-set each
-                    # time the AI asks for address/eircode, so if the caller says "I don't
-                    # know my eircode" and the AI then asks for the street address, the
-                    # capture will happen on the street address response instead — overwriting
-                    # the previous (useless) recording.
+                    # WHY DEFERRED: Deepgram can split a long address like
+                    # "32 Silver Grove, Ballybrack, D18 WR97" into multiple speech_final
+                    # events. If we captured on the first one, we'd only get "32 Silver Grove".
+                    # By waiting until the LLM is about to respond, we know the caller is
+                    # finished and we get the FULL address audio. This is fine because the
+                    # recording is for async playback — no real-time requirement.
                     if call_state.awaiting_address_audio:
                         call_state.awaiting_address_audio = False
                         phase1_time = call_state._addr_audio_phase1_time
                         phase_gap = time_module.time() - phase1_time if phase1_time else -1
                         print(f"🎙️ [ADDR_AUDIO] Phase 2: speech_final received, gap since phase1={phase_gap:.1f}s")
-                        print(f"🎙️ [ADDR_AUDIO] Phase 2: speaking={speaking}, tts_ended_at_delta={asyncio.get_event_loop().time() - tts_ended_at:.1f}s, audio_done_delta={asyncio.get_event_loop().time() - last_tts_audio_done:.1f}s, buffer_packets={len(audio_buffer)}")
                         # Skip capture if the caller clearly didn't give an address
-                        # (e.g., "No I don't", "I don't know", "No" — responses to eircode question)
                         text_lower_check = text.lower().strip().rstrip('.,!?')
                         skip_phrases = {'no', "no i don't", "no i dont", "i don't know", "i dont know",
                                         "i'm not sure", "im not sure", "not sure", "no idea"}
                         if text_lower_check in skip_phrases or (len(text.split()) <= 3 and text_lower_check.startswith('no')):
                             print(f"🎙️ [ADDR_AUDIO] Skipping capture — caller declined/doesn't know: '{text}'")
-                            # Don't capture, but the flag will be re-set when AI asks for address next
                         else:
-                            print(f"🎙️ [ADDR_AUDIO] Capturing caller's address response: '{text}'")
-                            # TIME-WINDOWED CAPTURE: Take audio from when TTS ended
-                            # (when the AI stopped speaking) until now. This excludes
-                            # old TTS echo without clearing the buffer.
-                            #
-                            # We add generous padding BEFORE TTS ended because callers
-                            # often start speaking their address while the AI is still
-                            # finishing its question. 3 seconds of pre-TTS-end padding
-                            # catches this overlap.
-                            full_buffer = list(audio_buffer)
-                            total_packets = len(full_buffer)
-                            now_mono = asyncio.get_event_loop().time()
-                            
-                            # last_tts_audio_done = when stream_tts() returned (actual
-                            # audio finished sending). This is different from tts_ended_at
-                            # which is set in the finally block after the entire pipeline
-                            # (including LLM streaming) completes — often 10+ seconds later.
-                            if last_tts_audio_done > 0:
-                                # Time from actual audio end to now = caller's speech window
-                                since_audio_end = now_mono - last_tts_audio_done
-                                # Add 3s padding before audio ended to catch overlapping speech
-                                # (caller starts talking while AI is still finishing)
-                                window_seconds = since_audio_end + 3.0
-                                packets_to_take = int(window_seconds * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
-                                packets_to_take = min(packets_to_take, total_packets)
-                                buffer_snapshot = full_buffer[-packets_to_take:] if packets_to_take > 0 else full_buffer
-                                print(f"🎙️ [ADDR_AUDIO] Time-window: since_audio_end={since_audio_end:.1f}s, "
-                                      f"+3s overlap padding, window={window_seconds:.1f}s, "
-                                      f"taking={len(buffer_snapshot)}/{total_packets} packets")
-                            elif phase1_time > 0:
-                                # Fallback: use phase1 timestamp if last_tts_audio_done not set
-                                elapsed = time_module.time() - phase1_time
-                                packets_to_take = int((elapsed + 3.0) * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
-                                packets_to_take = min(packets_to_take, total_packets)
-                                buffer_snapshot = full_buffer[-packets_to_take:] if packets_to_take > 0 else full_buffer
-                                print(f"🎙️ [ADDR_AUDIO] Fallback time-window: elapsed={elapsed:.1f}s +3s, "
-                                      f"taking={len(buffer_snapshot)}/{total_packets}")
-                            else:
-                                buffer_snapshot = full_buffer
-                                print(f"🎙️ [ADDR_AUDIO] No timestamps — using full buffer")
-                            
-                            buf_len = len(buffer_snapshot)
-                            raw_total = sum(len(p) for p in buffer_snapshot)
-                            print(f"🎙️ [ADDR_AUDIO] Buffer: {buf_len} packets, {raw_total} bytes, ~{raw_total / MULAW_SAMPLE_RATE:.1f}s")
-                            
-                            # Light trim — remove leading/trailing silence within the
-                            # time-windowed portion. Threshold 30 is very conservative,
-                            # barely above dead line noise (~10-20). Generous padding
-                            # of 25 packets (~500ms) on each side. Better to keep extra
-                            # silence than clip someone with a quiet/low voice.
-                            captured_audio = trim_silence_mulaw(buffer_snapshot, energy_threshold=30.0, pad_packets=25)
-                            cap_bytes = len(captured_audio)
-                            cap_duration = cap_bytes / MULAW_SAMPLE_RATE
-                            
-                            # Safety net: if trim result is suspiciously short (<1.5s),
-                            # use the full windowed buffer. An address takes at least
-                            # 2-3s to say. Better to have extra silence than a clipped
-                            # recording.
-                            if cap_duration < 1.5 and buf_len > 0:
-                                raw_duration = raw_total / MULAW_SAMPLE_RATE
-                                print(f"🎙️ [ADDR_AUDIO] ⚠️ Trim too aggressive ({cap_duration:.1f}s) — using full windowed buffer ({raw_duration:.1f}s)")
-                                captured_audio = b''.join(buffer_snapshot)
-                                cap_bytes = len(captured_audio)
-                            
-                            print(f"🎙️ [ADDR_AUDIO] After trim: {cap_bytes} bytes, ~{cap_bytes / MULAW_SAMPLE_RATE:.1f}s")
-                            
-                            # Use a unique filename with timestamp to avoid CDN cache collisions
-                            import time as _time_mod
-                            capture_ts = int(_time_mod.time())
-                            async def _capture_address_audio(raw_audio, ts=capture_ts):
-                                try:
-                                    if not raw_audio:
-                                        print(f"⚠️ [ADDR_AUDIO] Upload skipped — raw_audio is empty")
-                                        return
-                                    
-                                    raw_len = len(raw_audio)
-                                    print(f"🎙️ [ADDR_AUDIO] Converting {raw_len} bytes mulaw → WAV")
-                                    wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
-                                    wav_len = len(wav_data)
-                                    wav_duration = (wav_len - 44) / (MULAW_SAMPLE_RATE * 2)  # 16-bit = 2 bytes/sample
-                                    print(f"🎙️ [ADDR_AUDIO] WAV: {wav_len} bytes, duration={wav_duration:.1f}s (header=44, PCM={wav_len-44})")
-                                    
-                                    from src.services.storage_r2 import upload_company_file
-                                    import io
-                                    company_id_int = int(company_id) if company_id else None
-                                    if not company_id_int:
-                                        print(f"⚠️ [ADDR_AUDIO] No company_id, skipping upload")
-                                        return
-                                    
-                                    filename = f"{call_sid or 'unknown'}_{ts}.wav"
-                                    print(f"🎙️ [ADDR_AUDIO] Uploading as: company_{company_id_int}/address_audio/{filename}")
-                                    url = await asyncio.to_thread(
-                                        upload_company_file,
-                                        company_id_int,
-                                        io.BytesIO(wav_data),
-                                        filename,
-                                        'address_audio',
-                                        'audio/wav'
-                                    )
-                                    if url:
-                                        call_state.address_audio_url = url
-                                        call_state.address_audio_captured = True
-                                        print(f"🎙️ [ADDR_AUDIO] ✅ Uploaded: {url}")
-                                        print(f"🎙️ [ADDR_AUDIO] ✅ WAV duration={wav_duration:.1f}s, call_state.address_audio_url set")
-                                    else:
-                                        print(f"⚠️ [ADDR_AUDIO] Upload returned None (R2 not configured?)")
-                                except ValueError as ve:
-                                    print(f"⚠️ [ADDR_AUDIO] WAV conversion error: {ve}")
-                                except Exception as audio_err:
-                                    print(f"⚠️ [ADDR_AUDIO] Capture failed: {audio_err}")
-                                    import traceback
-                                    traceback.print_exc()
-                            asyncio.create_task(_capture_address_audio(captured_audio))
+                            call_state._addr_audio_collecting = True
+                            print(f"🎙️ [ADDR_AUDIO] Collecting — will capture full audio before LLM responds")
                     
                     # Trim history - keep more context to prevent AI from forgetting
                     # Keep system message + last 50 messages
@@ -835,6 +723,106 @@ async def media_handler(ws):
                     # Start response
                     llm_processing = True
                     llm_started_at = now
+                    
+                    # Phase 3: Deferred address audio capture — caller is done, LLM
+                    # is about to respond. Snapshot the buffer NOW so we get the
+                    # FULL address even if Deepgram split it across multiple speech_final
+                    # events. No rush — this uploads async in the background.
+                    if call_state._addr_audio_collecting:
+                        call_state._addr_audio_collecting = False
+                        phase1_time = call_state._addr_audio_phase1_time
+                        print(f"🎙️ [ADDR_AUDIO] Phase 3: Capturing full address audio before LLM responds")
+                        
+                        full_buffer = list(audio_buffer)
+                        total_packets = len(full_buffer)
+                        now_mono = asyncio.get_event_loop().time()
+                        
+                        # Time-window: from when TTS finished (AI stopped talking) to now
+                        # +3s padding before to catch overlap (caller starts while AI finishes)
+                        if last_tts_audio_done > 0:
+                            since_audio_end = now_mono - last_tts_audio_done
+                            window_seconds = since_audio_end + 3.0
+                            packets_to_take = int(window_seconds * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
+                            packets_to_take = min(packets_to_take, total_packets)
+                            buffer_snapshot = full_buffer[-packets_to_take:] if packets_to_take > 0 else full_buffer
+                            print(f"🎙️ [ADDR_AUDIO] Time-window: since_audio_end={since_audio_end:.1f}s, "
+                                  f"+3s padding, window={window_seconds:.1f}s, "
+                                  f"taking={len(buffer_snapshot)}/{total_packets} packets")
+                        elif phase1_time and phase1_time > 0:
+                            elapsed = time_module.time() - phase1_time
+                            packets_to_take = int((elapsed + 3.0) * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
+                            packets_to_take = min(packets_to_take, total_packets)
+                            buffer_snapshot = full_buffer[-packets_to_take:] if packets_to_take > 0 else full_buffer
+                            print(f"🎙️ [ADDR_AUDIO] Fallback time-window: elapsed={elapsed:.1f}s +3s, "
+                                  f"taking={len(buffer_snapshot)}/{total_packets}")
+                        else:
+                            buffer_snapshot = full_buffer
+                            print(f"🎙️ [ADDR_AUDIO] No timestamps — using full buffer")
+                        
+                        raw_total = sum(len(p) for p in buffer_snapshot)
+                        print(f"🎙️ [ADDR_AUDIO] Buffer: {len(buffer_snapshot)} packets, "
+                              f"{raw_total} bytes, ~{raw_total / MULAW_SAMPLE_RATE:.1f}s")
+                        
+                        # Light trim — only strip dead silence at edges. Very conservative:
+                        # threshold 30 (barely above line noise ~10-20), generous 25-packet
+                        # padding (~500ms). This is async playback, so extra silence is fine.
+                        captured_audio = trim_silence_mulaw(buffer_snapshot, energy_threshold=30.0, pad_packets=25)
+                        cap_bytes = len(captured_audio)
+                        cap_duration = cap_bytes / MULAW_SAMPLE_RATE
+                        
+                        # Safety net: if trim is too aggressive (<1.5s), use full buffer.
+                        # An address/eircode takes at least 2-3s to say.
+                        if cap_duration < 1.5 and len(buffer_snapshot) > 0:
+                            raw_duration = raw_total / MULAW_SAMPLE_RATE
+                            print(f"🎙️ [ADDR_AUDIO] ⚠️ Trim too short ({cap_duration:.1f}s) — using full buffer ({raw_duration:.1f}s)")
+                            captured_audio = b''.join(buffer_snapshot)
+                            cap_bytes = len(captured_audio)
+                        
+                        print(f"🎙️ [ADDR_AUDIO] Final: {cap_bytes} bytes, ~{cap_bytes / MULAW_SAMPLE_RATE:.1f}s")
+                        
+                        import time as _time_mod
+                        capture_ts = int(_time_mod.time())
+                        async def _capture_address_audio(raw_audio, ts=capture_ts):
+                            try:
+                                if not raw_audio:
+                                    print(f"⚠️ [ADDR_AUDIO] Upload skipped — empty audio")
+                                    return
+                                print(f"🎙️ [ADDR_AUDIO] Converting {len(raw_audio)} bytes mulaw → WAV")
+                                wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
+                                wav_len = len(wav_data)
+                                wav_duration = (wav_len - 44) / (MULAW_SAMPLE_RATE * 2)
+                                print(f"🎙️ [ADDR_AUDIO] WAV: {wav_len} bytes, {wav_duration:.1f}s")
+                                
+                                from src.services.storage_r2 import upload_company_file
+                                import io
+                                company_id_int = int(company_id) if company_id else None
+                                if not company_id_int:
+                                    print(f"⚠️ [ADDR_AUDIO] No company_id, skipping upload")
+                                    return
+                                
+                                filename = f"{call_sid or 'unknown'}_{ts}.wav"
+                                print(f"🎙️ [ADDR_AUDIO] Uploading: company_{company_id_int}/address_audio/{filename}")
+                                url = await asyncio.to_thread(
+                                    upload_company_file,
+                                    company_id_int,
+                                    io.BytesIO(wav_data),
+                                    filename,
+                                    'address_audio',
+                                    'audio/wav'
+                                )
+                                if url:
+                                    call_state.address_audio_url = url
+                                    call_state.address_audio_captured = True
+                                    print(f"🎙️ [ADDR_AUDIO] ✅ Uploaded: {url} ({wav_duration:.1f}s)")
+                                else:
+                                    print(f"⚠️ [ADDR_AUDIO] Upload returned None")
+                            except ValueError as ve:
+                                print(f"⚠️ [ADDR_AUDIO] WAV error: {ve}")
+                            except Exception as audio_err:
+                                print(f"⚠️ [ADDR_AUDIO] Capture failed: {audio_err}")
+                                import traceback
+                                traceback.print_exc()
+                        asyncio.create_task(_capture_address_audio(captured_audio))
                     
                     print(f"[PIPELINE] 🚀 Starting LLM response...")
                     

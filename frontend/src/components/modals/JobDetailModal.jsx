@@ -652,11 +652,13 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                       </div>
                     )}
                   </div>
-                  {(job.job_address || job.address) && (
+                  {(job.job_address || job.address || job.eircode) && (
                     <div className="info-row full">
                       <div className="info-cell">
                         <span className="info-label">Address</span>
-                        <span className="info-value">{job.job_address || job.address} {job.eircode && `(${job.eircode})`}</span>
+                        <span className="info-value">
+                          {[job.job_address || job.address, job.eircode && (job.job_address || job.address ? `(${job.eircode})` : job.eircode)].filter(Boolean).join(' ')}
+                        </span>
                         {job.address_audio_url && (
                           <div className="address-audio-player" style={{ marginTop: '6px' }}>
                             <audio controls preload="metadata" src={getProxiedMediaUrl(job.address_audio_url)} style={{ height: '32px', width: '100%', maxWidth: '300px' }}>
