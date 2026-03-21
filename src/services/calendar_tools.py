@@ -346,6 +346,9 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
     Find available days for specific worker(s) in the next N days.
     Used during rescheduling to suggest alternative days when the requested day isn't available.
     
+    For multi-day jobs (> 1 day), checks that ALL consecutive business days
+    needed are free for all workers.
+    
     Args:
         db: Database instance
         worker_ids: List of worker IDs that must ALL be available
@@ -380,6 +383,14 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
         biz_start_hour = 9
         biz_end_hour = 17
     
+    # Calculate how many business days this job needs
+    # Duration is in calendar-day units: 1440 mins = 1 day
+    if duration_minutes > 1440:
+        import math
+        biz_days_needed = math.ceil(duration_minutes / 1440.0)
+    else:
+        biz_days_needed = 1
+    
     for day_offset in range(1, days_to_check + 1):
         check_date = today + timedelta(days=day_offset)
         
@@ -394,25 +405,62 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
             # For shorter jobs, check a few time slots throughout the day
             check_time = check_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
         
-        # Check if ALL assigned workers are available on this day
-        all_available = True
-        for worker_id in worker_ids:
-            availability = db.check_worker_availability(
-                worker_id=worker_id,
-                appointment_time=check_time,
-                duration_minutes=duration_minutes,
-                exclude_booking_id=exclude_booking_id,
-                company_id=company_id
-            )
-            if not availability.get('available', False):
-                all_available = False
-                break
+        # For multi-day jobs, verify ALL consecutive business days are free
+        if biz_days_needed > 1:
+            all_days_free = True
+            span_date = check_date
+            days_checked = 0
+            while days_checked < biz_days_needed:
+                if span_date.weekday() not in business_days:
+                    span_date += timedelta(days=1)
+                    continue
+                
+                span_time = span_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                for worker_id in worker_ids:
+                    # Check each spanned day with a full-day duration (480 mins = 1 business day)
+                    availability = db.check_worker_availability(
+                        worker_id=worker_id,
+                        appointment_time=span_time,
+                        duration_minutes=480,  # Check one business day at a time
+                        exclude_booking_id=exclude_booking_id,
+                        company_id=company_id
+                    )
+                    if not availability.get('available', False):
+                        all_days_free = False
+                        break
+                
+                if not all_days_free:
+                    break
+                days_checked += 1
+                span_date += timedelta(days=1)
+            
+            if not all_days_free:
+                continue
+        else:
+            # Single-day job: check if ALL assigned workers are available on this day
+            all_available = True
+            for worker_id in worker_ids:
+                availability = db.check_worker_availability(
+                    worker_id=worker_id,
+                    appointment_time=check_time,
+                    duration_minutes=duration_minutes,
+                    exclude_booking_id=exclude_booking_id,
+                    company_id=company_id
+                )
+                if not availability.get('available', False):
+                    all_available = False
+                    break
+            
+            if not all_available:
+                continue
         
-        if all_available:
-            day_name = check_date.strftime('%A')
-            # Include date for clarity (e.g., "Wednesday the 12th")
-            day_num = check_date.day
-            suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
+        day_name = check_date.strftime('%A')
+        # Include date for clarity (e.g., "Wednesday the 12th")
+        day_num = check_date.day
+        suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
+        if biz_days_needed > 1:
+            available_days.append(f"{day_name} the {day_num}{suffix} ({biz_days_needed} days)")
+        else:
             available_days.append(f"{day_name} the {day_num}{suffix}")
     
     logger.info(f"[RESCHEDULE] Found {len(available_days)} available days for workers {worker_ids}: {available_days[:5]}")
@@ -525,8 +573,9 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                 elif hasattr(appt_time, 'replace'):
                     appt_time = appt_time.replace(tzinfo=None)
                 
-                # Check if on target day
+                # Check if on target day (including multi-day jobs that span into this day)
                 if day_start <= appt_time < day_end:
+                    # Job starts on this day
                     duration = booking.get('duration_minutes', 60)
                     is_full_day = duration >= 480  # 8+ hours
                     
@@ -550,6 +599,53 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                         'assigned_workers': worker_names,
                         'appointment_time': appt_time.strftime('%Y-%m-%d %H:%M:%S')  # Convert to string for JSON
                     })
+                elif appt_time < day_start:
+                    # Job started before this day — check if it spans into this day
+                    duration = booking.get('duration_minutes', 60)
+                    if duration > 1440:  # Multi-day job (> 24 hours)
+                        # Use business-day calculation: 1440 mins = 1 biz day, 2880 = 2, etc.
+                        import math
+                        biz_days_needed = math.ceil(duration / 1440.0)
+                        try:
+                            from src.utils.config import config as _cfg
+                            _biz_day_indices = _cfg.get_business_days_indices()
+                        except Exception:
+                            _biz_day_indices = [0, 1, 2, 3, 4]
+                        # Walk forward from start counting business days
+                        _cur = appt_time.replace(hour=0, minute=0, second=0, microsecond=0)
+                        _counted = 0
+                        _last_biz_day = _cur
+                        for _ in range(365):
+                            if _cur.weekday() in _biz_day_indices:
+                                _counted += 1
+                                _last_biz_day = _cur
+                                if _counted >= biz_days_needed:
+                                    break
+                            _cur += timedelta(days=1)
+                        # Job ends at closing on the last business day
+                        job_end = _last_biz_day.replace(hour=17, minute=0, second=0, microsecond=0)
+                        if job_end > day_start:
+                            # This multi-day job extends into the target day
+                            worker_names = []
+                            assigned_ids = booking.get('assigned_worker_ids', [])
+                            if assigned_ids and db:
+                                for wid in assigned_ids:
+                                    worker = db.get_worker(wid, company_id=company_id)
+                                    if worker:
+                                        worker_names.append(worker.get('name', ''))
+                            
+                            jobs_on_day.append({
+                                'name': booking.get('client_name') or booking.get('customer_name') or 'Unknown',
+                                'time': 'Full day (cont.)',
+                                'service': booking.get('service_type') or booking.get('service') or 'Job',
+                                'is_full_day': True,
+                                'booking_id': booking.get('id'),
+                                'event_id': booking.get('calendar_event_id'),
+                                'duration_minutes': duration,
+                                'assigned_workers': worker_names,
+                                'appointment_time': day_start.strftime('%Y-%m-%d %H:%M:%S'),  # Show as start of this day
+                                'is_continuation': True  # Flag that this is a continuation
+                            })
         except Exception as e:
             logger.error(f"[FIND_JOBS] Database error: {e}")
     

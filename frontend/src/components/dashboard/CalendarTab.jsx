@@ -20,13 +20,44 @@ const WORKER_COLORS = [
   '#14b8a6', // teal
 ];
 
-// Format time range for display (e.g., "8am - 10am" or "Full Day")
+// Calculate the business-day end date for multi-day jobs.
+// 1440 mins = 1 biz day, 2880 = 2, etc. Skips weekends (Sat=6, Sun=0).
+const getMultiDayJobEnd = (startDate, durationMinutes) => {
+  const bizDaysNeeded = Math.ceil(durationMinutes / 1440);
+  let cur = new Date(startDate);
+  cur.setHours(0, 0, 0, 0);
+  let counted = 0;
+  let lastBiz = new Date(cur);
+  for (let i = 0; i < 365; i++) {
+    const dow = cur.getDay(); // 0=Sun, 6=Sat
+    if (dow !== 0 && dow !== 6) {
+      counted++;
+      lastBiz = new Date(cur);
+      if (counted >= bizDaysNeeded) break;
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  lastBiz.setHours(17, 0, 0, 0); // closing time
+  return lastBiz;
+};
+
+// Format time range for display (e.g., "8am - 10am" or "Full Day" or "3 Days")
 const formatTimeRange = (appointmentTime, durationMinutes) => {
   if (!appointmentTime) return '';
   
   const start = new Date(appointmentTime);
   
-  // Full day job (8+ hours)
+  // Multi-day job (> 24 hours)
+  if (durationMinutes > 1440) {
+    const days = Math.round(durationMinutes / 1440);
+    if (durationMinutes >= 10080) {
+      const weeks = Math.round(durationMinutes / 10080);
+      return `${weeks} Week${weeks > 1 ? 's' : ''}`;
+    }
+    return `${days} Day${days > 1 ? 's' : ''}`;
+  }
+  
+  // Full day job (8+ hours up to 24 hours)
   if (durationMinutes >= 480) {
     return 'Full Day';
   }
@@ -167,22 +198,38 @@ function CalendarTab() {
     return days;
   }, [currentDate]);
 
-  // Get events for a specific date
+  // Get events for a specific date (including multi-day jobs that span into this date)
   const getEventsForDate = (date) => {
     if (!filteredBookings) return [];
     return filteredBookings.filter(booking => {
       const bookingDate = new Date(booking.appointment_time);
-      return bookingDate.toDateString() === date.toDateString();
+      // Job starts on this date
+      if (bookingDate.toDateString() === date.toDateString()) return true;
+      // Multi-day job: started before this date but duration extends into it
+      const duration = booking.duration_minutes || 60;
+      if (duration > 1440) {
+        const bookingEnd = getMultiDayJobEnd(bookingDate, duration);
+        const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        if (bookingDate < dayStart && bookingEnd > dayStart) return true;
+      }
+      return false;
     }).sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
   };
 
-  // Get events for selected date
+  // Get events for selected date (including multi-day continuations)
   const selectedDateEvents = useMemo(() => {
     if (!selectedDate || !filteredBookings) return [];
     return filteredBookings
       .filter(booking => {
         const bookingDate = new Date(booking.appointment_time);
-        return bookingDate.toDateString() === selectedDate.toDateString();
+        if (bookingDate.toDateString() === selectedDate.toDateString()) return true;
+        const duration = booking.duration_minutes || 60;
+        if (duration > 1440) {
+          const bookingEnd = getMultiDayJobEnd(bookingDate, duration);
+          const dayStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+          if (bookingDate < dayStart && bookingEnd > dayStart) return true;
+        }
+        return false;
       })
       .sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
   }, [selectedDate, filteredBookings]);

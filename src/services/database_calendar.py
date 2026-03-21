@@ -3,6 +3,7 @@ Database-based calendar/availability system
 No external dependencies - works for all customers out of the box
 """
 import logging
+import math
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 from src.utils.config import config
@@ -38,6 +39,49 @@ class DatabaseCalendarService:
         self.db = db
         self.company_id = company_id
     
+    def _calculate_job_end_time(self, start_time, duration_minutes: int,
+                                biz_start_hour: int = 9, biz_end_hour: int = 17,
+                                buffer_minutes: int = 0):
+        """
+        Calculate the true end time of a job, handling multi-day spans correctly.
+        
+        For jobs < 8 hours (480 mins): simple start + duration.
+        For full-day jobs (480-1440 mins): blocks until closing time on the same day.
+        For multi-day jobs (> 1440 mins): spans across multiple business days,
+          counting only business days (skipping weekends).
+        """
+        if duration_minutes < 480:
+            return start_time + timedelta(minutes=duration_minutes + buffer_minutes)
+
+        if duration_minutes <= 1440:
+            end = start_time.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+            return end + timedelta(minutes=buffer_minutes)
+
+        # Multi-day job: walk forward counting business days
+        calendar_days = duration_minutes / 1440.0
+        biz_days_needed = math.ceil(calendar_days)
+
+        try:
+            business_days = config.get_business_days_indices()
+        except Exception:
+            business_days = [0, 1, 2, 3, 4]
+
+        current_day = start_time.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+        days_counted = 0
+        max_iterations = 365
+
+        for _ in range(max_iterations):
+            if current_day.weekday() in business_days:
+                days_counted += 1
+                if days_counted >= biz_days_needed:
+                    end = current_day.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+                    return end + timedelta(minutes=buffer_minutes)
+            current_day += timedelta(days=1)
+            current_day = current_day.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+
+        # Fallback
+        return current_day.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+
     def _parse_booking_time(self, appt_time) -> Optional[datetime]:
         """Safely parse a booking time to a naive datetime."""
         if appt_time is None:
@@ -109,16 +153,21 @@ class DatabaseCalendarService:
                 continue  # Skip cancelled/completed bookings
             
             appt_time = self._parse_booking_time(booking.get('appointment_time'))
-            if appt_time and day_start <= appt_time < day_end:
-                # Get the booking's duration (use stored duration or default)
-                booking_duration = booking.get('duration_minutes', default_duration)
-                
-                # For full-day bookings (8+ hours = 480 mins), the booking blocks until closing time
-                if booking_duration >= 480:
-                    booking_end = appt_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
-                else:
-                    booking_end = appt_time + timedelta(minutes=booking_duration)
-                
+            if not appt_time:
+                continue
+            
+            # Get the booking's duration (use stored duration or default)
+            booking_duration = booking.get('duration_minutes', default_duration)
+            
+            # Calculate true end time using business-day logic
+            booking_end = self._calculate_job_end_time(
+                appt_time, booking_duration,
+                biz_start_hour=start_hour, biz_end_hour=end_hour
+            )
+            
+            # Include bookings that START on this day OR multi-day bookings
+            # from previous days that EXTEND into this day
+            if (day_start <= appt_time < day_end) or (appt_time < day_start and booking_end > day_start):
                 day_bookings.append({
                     'start': appt_time,
                     'duration': booking_duration,
@@ -216,17 +265,18 @@ class DatabaseCalendarService:
         # Get business hours for full-day job handling
         try:
             business_hours = config.get_business_hours(company_id=self.company_id)
+            start_hour = business_hours.get('start', 9)
             end_hour = business_hours.get('end', 17)
         except Exception:
+            start_hour = 9
             end_hour = 17
         
-        # Calculate slot end (no buffer)
-        # For full-day services (8+ hours = 480 mins), the job blocks until closing time
-        if duration_minutes >= 480:
-            slot_end = start_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
-            logger.info(f"[DB_CAL] Full-day job ({duration_minutes} mins) - checking if day is free until {end_hour}:00")
-        else:
-            slot_end = start_time + timedelta(minutes=duration_minutes)
+        # Calculate slot end using business-day logic
+        slot_end = self._calculate_job_end_time(
+            start_time, duration_minutes,
+            biz_start_hour=start_hour,
+            biz_end_hour=end_hour
+        )
         logger.info(f"[DB_CAL] Checking slot: {start_time} to {slot_end}")
         
         # Get all non-cancelled bookings - MUST filter by company_id for data isolation
@@ -250,11 +300,11 @@ class DatabaseCalendarService:
             # Get the booking's duration (use stored duration or default)
             booking_duration = booking.get('duration_minutes', default_duration)
             
-            # For full-day bookings (8+ hours = 480 mins), the booking blocks until closing time
-            if booking_duration >= 480:
-                booking_end = appt_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
-            else:
-                booking_end = appt_time + timedelta(minutes=booking_duration)
+            # Calculate true end time using business-day logic
+            booking_end = self._calculate_job_end_time(
+                appt_time, booking_duration,
+                biz_start_hour=start_hour, biz_end_hour=end_hour
+            )
             
             # Check for overlap
             if (start_time < booking_end and slot_end > appt_time):

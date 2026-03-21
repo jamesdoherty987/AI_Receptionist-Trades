@@ -3677,11 +3677,41 @@ def check_availability_api():
             appt_time = booking.get('appointment_time')
             if isinstance(appt_time, str):
                 appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00').replace('+00:00', ''))
-            if appt_time and day_start <= appt_time < day_end:
-                booking_duration = booking.get('duration_minutes', default_duration)
+            
+            if not appt_time:
+                continue
+            
+            booking_duration = booking.get('duration_minutes', default_duration)
+            # Use business-day logic for multi-day jobs (> 1 day)
+            if booking_duration > 1440:
+                import math as _math
+                _biz_days = _math.ceil(booking_duration / 1440.0)
+                try:
+                    from src.utils.config import config as _cfg
+                    _biz_indices = _cfg.get_business_days_indices()
+                except Exception:
+                    _biz_indices = [0, 1, 2, 3, 4]
+                _cur_day = appt_time.replace(hour=0, minute=0, second=0, microsecond=0)
+                _counted = 0
+                _last_biz = _cur_day
+                for _ in range(365):
+                    if _cur_day.weekday() in _biz_indices:
+                        _counted += 1
+                        _last_biz = _cur_day
+                        if _counted >= _biz_days:
+                            break
+                    _cur_day += timedelta(days=1)
+                booking_end = _last_biz.replace(hour=business_hours.get('end', 17), minute=0, second=0, microsecond=0)
+            else:
+                booking_end = appt_time + timedelta(minutes=booking_duration)
+            
+            # Check if this booking overlaps with the target day at all:
+            # 1. Booking starts on this day (original logic)
+            # 2. Booking started before but extends into this day (multi-day jobs)
+            if appt_time and ((day_start <= appt_time < day_end) or (appt_time < day_start and booking_end > day_start)):
                 day_bookings.append({
-                    'start': appt_time,
-                    'end': appt_time + timedelta(minutes=booking_duration),
+                    'start': max(appt_time, day_start),  # Clamp to day start for multi-day continuations
+                    'end': min(booking_end, day_end),     # Clamp to day end
                     'duration': booking_duration,
                     'booking': booking
                 })

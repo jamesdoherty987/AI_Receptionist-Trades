@@ -1028,7 +1028,12 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
     
     def get_conflicting_bookings(self, start_time: str, end_time: str, exclude_statuses: list = None, company_id: int = None) -> List[Dict]:
-        """Get bookings that conflict with a time range"""
+        """Get bookings that conflict with a time range.
+        
+        Handles multi-day jobs correctly: a booking conflicts if its time span
+        (appointment_time to appointment_time + duration) overlaps with the
+        query range (start_time to end_time).
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
@@ -1036,31 +1041,63 @@ class PostgreSQLDatabaseWrapper:
             if exclude_statuses is None:
                 exclude_statuses = ['cancelled', 'completed']
             
+            # Fetch bookings that could possibly overlap with the query range:
+            # 1. Bookings starting within the range (original logic)
+            # 2. Bookings starting BEFORE the range but with enough duration to extend into it
+            # We use a wide net: any booking starting before end_time that hasn't been completed/cancelled
             if company_id:
                 cursor.execute("""
-                    SELECT id, client_id, appointment_time, service_type
+                    SELECT id, client_id, appointment_time, service_type, duration_minutes
                     FROM bookings
                     WHERE status != ALL(%s)
-                    AND appointment_time BETWEEN %s AND %s
+                    AND appointment_time < %s
                     AND company_id = %s
-                """, (exclude_statuses, start_time, end_time, company_id))
+                """, (exclude_statuses, end_time, company_id))
             else:
                 cursor.execute("""
-                    SELECT id, client_id, appointment_time, service_type
+                    SELECT id, client_id, appointment_time, service_type, duration_minutes
                     FROM bookings
                     WHERE status != ALL(%s)
-                    AND appointment_time BETWEEN %s AND %s
-                """, (exclude_statuses, start_time, end_time))
+                    AND appointment_time < %s
+                """, (exclude_statuses, end_time))
             
             rows = cursor.fetchall()
             bookings = []
+            
+            from datetime import datetime as dt, timedelta
+            
+            # Parse the query range
+            if isinstance(start_time, str):
+                try:
+                    range_start = dt.fromisoformat(start_time.replace('Z', '+00:00')).replace(tzinfo=None)
+                except ValueError:
+                    range_start = dt.strptime(start_time, '%Y-%m-%d %H:%M:%S')
+            else:
+                range_start = start_time
+            
             for row in rows:
-                bookings.append({
-                    'id': row['id'],
-                    'client_id': row['client_id'],
-                    'appointment_time': row['appointment_time'],
-                    'service_type': row['service_type']
-                })
+                appt_time = row['appointment_time']
+                if isinstance(appt_time, str):
+                    try:
+                        appt_time = dt.fromisoformat(appt_time.replace('Z', '+00:00')).replace(tzinfo=None)
+                    except ValueError:
+                        appt_time = dt.strptime(appt_time, '%Y-%m-%d %H:%M:%S')
+                elif hasattr(appt_time, 'tzinfo') and appt_time.tzinfo is not None:
+                    appt_time = appt_time.replace(tzinfo=None)
+                
+                duration = row.get('duration_minutes') or 60
+                
+                # Use business-day end time for multi-day jobs
+                booking_end = self._calculate_job_end_time(appt_time, duration)
+                
+                # Check true overlap: booking overlaps range if booking_end > range_start
+                if booking_end > range_start:
+                    bookings.append({
+                        'id': row['id'],
+                        'client_id': row['client_id'],
+                        'appointment_time': row['appointment_time'],
+                        'service_type': row['service_type']
+                    })
             return bookings
         finally:
             cursor.close()
@@ -2427,10 +2464,73 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
+    def _calculate_job_end_time(self, start_time, duration_minutes: int, 
+                                 biz_start_hour: int = 9, biz_end_hour: int = 17,
+                                 buffer_minutes: int = 15):
+        """
+        Calculate the true end time of a job, handling multi-day spans correctly.
+        
+        For jobs < 8 hours (480 mins): simple start + duration + buffer.
+        For full-day jobs (480-1440 mins): blocks until closing time on the same day.
+        For multi-day jobs (> 1440 mins): spans across multiple business days.
+          Duration is interpreted as calendar-day equivalents (1440 mins = 1 day),
+          so a "2 day" job (2880 mins) blocks 2 business days, not 6.
+        
+        Returns a datetime representing when the job (plus buffer) actually ends.
+        """
+        from datetime import timedelta
+        
+        if duration_minutes < 480:
+            # Short job: exact duration + buffer
+            return start_time + timedelta(minutes=duration_minutes + buffer_minutes)
+        
+        if duration_minutes <= 1440:
+            # Single full-day job: blocks until closing time on the same day
+            end = start_time.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+            return end + timedelta(minutes=buffer_minutes)
+        
+        # Multi-day job (> 1 day): calculate how many business days it spans.
+        # Duration is in "calendar day" units: 1440 mins = 1 day, 2880 = 2 days, etc.
+        # We convert to business days needed (rounding up for partial days).
+        import math
+        calendar_days = duration_minutes / 1440.0
+        biz_days_needed = math.ceil(calendar_days)
+        
+        # Get business days (Mon-Fri default)
+        try:
+            from src.utils.config import config
+            business_days = config.get_business_days_indices()
+        except Exception:
+            business_days = [0, 1, 2, 3, 4]
+        
+        # Walk forward day by day, counting business days
+        current_day = start_time.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+        days_counted = 0
+        max_iterations = 365  # safety cap
+        iterations = 0
+        
+        while days_counted < biz_days_needed and iterations < max_iterations:
+            iterations += 1
+            if current_day.weekday() in business_days:
+                days_counted += 1
+                if days_counted >= biz_days_needed:
+                    # Job finishes on this day at closing time
+                    end = current_day.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+                    return end + timedelta(minutes=buffer_minutes)
+            current_day += timedelta(days=1)
+            current_day = current_day.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+        
+        # Fallback: if we exhausted iterations, return last day's closing
+        end = current_day.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+        return end + timedelta(minutes=buffer_minutes)
+    
     def check_worker_availability(self, worker_id: int, appointment_time, duration_minutes: int = 1440, 
                                    exclude_booking_id: int = None, company_id: int = None) -> Dict:
         """
         Check if a worker is available at a specific time.
+        
+        Handles all durations from 1 hour to 1 month. Multi-day jobs block
+        business hours on each spanned day. Single-day jobs use exact times.
         
         Args:
             worker_id: The worker to check
@@ -2462,19 +2562,19 @@ class PostgreSQLDatabaseWrapper:
             # Get business hours for full-day job handling
             try:
                 business_hours = config.get_business_hours(company_id=company_id)
+                start_hour = business_hours.get('start', 9)
                 end_hour = business_hours.get('end', 17)
             except Exception:
+                start_hour = 9
                 end_hour = 17
             
             # Calculate appointment end time with buffer
             buffer_minutes = 15  # Buffer between jobs
             
-            # For full-day services (8+ hours = 480 mins), the job blocks until closing time
-            if duration_minutes >= 480:
-                appointment_end = appointment_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
-                appointment_end = appointment_end + timedelta(minutes=buffer_minutes)
-            else:
-                appointment_end = appointment_time + timedelta(minutes=duration_minutes + buffer_minutes)
+            # Calculate the TRUE end time of the new appointment
+            appointment_end = self._calculate_job_end_time(
+                appointment_time, duration_minutes, start_hour, end_hour, buffer_minutes
+            )
             
             # Get all active jobs assigned to this worker
             query = """
@@ -2513,12 +2613,10 @@ class PostgreSQLDatabaseWrapper:
                 
                 job_duration = job.get('duration_minutes') or 60
                 
-                # For full-day jobs (8+ hours = 480 mins), the job blocks until closing time
-                if job_duration >= 480:
-                    job_end = job_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
-                    job_end = job_end + timedelta(minutes=buffer_minutes)
-                else:
-                    job_end = job_time + timedelta(minutes=job_duration + buffer_minutes)
+                # Calculate the TRUE end time of the existing job
+                job_end = self._calculate_job_end_time(
+                    job_time, job_duration, start_hour, end_hour, buffer_minutes
+                )
                 
                 # Check for overlap
                 if appointment_time < job_end and appointment_end > job_time:
