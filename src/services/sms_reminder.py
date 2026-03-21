@@ -216,6 +216,73 @@ class SMSReminderService:
         except TwilioRestException as e:
             print(f"❌ Failed to send SMS reply: {e}")
             return False
+
+    def send_booking_confirmation(self, to_number: str, appointment_time: datetime,
+                                   customer_name: str, service_type: str = "appointment",
+                                   company_name: str = None,
+                                   worker_names: list = None,
+                                   address: str = None) -> bool:
+        """
+        Send an SMS confirmation immediately after a booking is created.
+
+        Args:
+            to_number: Recipient phone number
+            appointment_time: Appointment datetime
+            customer_name: Customer's name
+            service_type: Type of service/job
+            company_name: Business name
+            worker_names: List of assigned worker names
+            address: Job address if applicable
+
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        if not self.client:
+            print("[SMS-CONFIRM] SMS service not configured")
+            return False
+
+        to_number = normalize_phone_number(to_number)
+
+        try:
+            time_str = appointment_time.strftime('%I:%M %p')
+            date_str = appointment_time.strftime('%A, %B %d')
+            business = company_name or 'Your service provider'
+
+            lines = [
+                f"Hi {customer_name}, your {service_type} booking with {business} is confirmed.",
+                f"",
+                f"Date: {date_str}",
+                f"Time: {time_str}",
+            ]
+
+            if address:
+                lines.append(f"Address: {address}")
+
+            if worker_names:
+                names = ", ".join(worker_names)
+                lines.append(f"Assigned: {names}")
+
+            lines.append("")
+            lines.append("If you need to cancel or reschedule, please contact us.")
+
+            message_body = "\n".join(lines)
+
+            message = self.client.messages.create(
+                body=message_body,
+                from_=self.from_number,
+                to=to_number
+            )
+
+            print(f"[SMS-CONFIRM] Booking confirmation sent to {to_number} (SID: {message.sid})")
+            return True
+
+        except TwilioRestException as e:
+            print(f"[SMS-CONFIRM] Failed to send booking confirmation: {e}")
+            return False
+        except Exception as e:
+            print(f"[SMS-CONFIRM] Error sending booking confirmation: {e}")
+            return False
+
     
     def send_invoice(self, to_number: str, customer_name: str, service_type: str,
                     charge: float, invoice_number: str = None,
