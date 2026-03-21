@@ -180,7 +180,11 @@ class TestStartTrialEndpoint:
         assert response.status_code == 400
         data = response.get_json()
         assert 'already been used' in data['error']
-        mock_db.update_company.assert_not_called()
+        # update_company may be called to fix stale subscription_status,
+        # but must NOT be called with trial-starting params
+        for call in mock_db.update_company.call_args_list:
+            kwargs = call[1] if call[1] else {}
+            assert kwargs.get('subscription_tier') != 'trial', "Trial should not be restarted"
 
     def test_active_pro_cannot_start_trial(self, app_client, mock_db):
         """A pro user should not be able to start a trial"""

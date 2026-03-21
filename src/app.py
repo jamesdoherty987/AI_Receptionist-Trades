@@ -1505,6 +1505,15 @@ def get_subscription_info(company: dict) -> dict:
     if subscription_tier == 'trial':
         is_active = bool(trial_end and trial_end > now)
         print(f"[GET_SUB_INFO] Trial check: trial_end={trial_end}, now={now}, is_active={is_active}")
+        # Fix stale subscription_status in DB when trial has expired
+        if not is_active and subscription_status == 'active' and company.get('id'):
+            try:
+                db = get_database()
+                db.update_company(company['id'], subscription_status='expired')
+                subscription_status = 'expired'
+                print(f"[GET_SUB_INFO] Updated stale subscription_status to 'expired' for company {company['id']}")
+            except Exception as e:
+                print(f"[GET_SUB_INFO] Failed to update stale status: {e}")
     elif subscription_tier == 'pro':
         # Pro is active if status is active, trialing, or past_due (grace period)
         is_active = subscription_status in ('active', 'trialing', 'past_due')

@@ -256,6 +256,8 @@ function Settings() {
     window.__settingsUnsavedChanges = hasUnsavedChanges;
     return () => { window.__settingsUnsavedChanges = false; };
   }, [hasUnsavedChanges]);
+
+  // Warn on browser tab close / refresh with unsaved changes
   useEffect(() => {
     if (!hasUnsavedChanges) return;
     const handler = (e) => {
