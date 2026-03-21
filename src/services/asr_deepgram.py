@@ -192,7 +192,7 @@ class DeepgramASR:
         """Check if Deepgram signaled end of utterance"""
         return self.speech_final
 
-    def has_pending_segment(self, timeout: float = 3.0) -> bool:
+    def has_pending_segment(self, timeout: float = 5.0) -> bool:
         """
         Check if there's a pending is_final segment that never got speech_final.
         
