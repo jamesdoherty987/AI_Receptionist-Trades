@@ -55,7 +55,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn, on_audio_
                 uri,
                 extra_headers={"Authorization": f"Token {config.DEEPGRAM_API_KEY}"},
                 open_timeout=10,
-                close_timeout=5,
+                close_timeout=2,
                 ping_interval=20,
                 ping_timeout=20,
                 max_size=2**20,

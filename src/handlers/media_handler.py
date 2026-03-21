@@ -321,9 +321,14 @@ async def media_handler(ws):
                         nonlocal last_tts_audio_done, _queued_audio_done_fired
                         last_tts_audio_done = asyncio.get_event_loop().time()
                         _queued_audio_done_fired = True
+                        # Clear stale ASR state NOW — the audio just finished sending.
+                        asr.clear()
+                        print(f"[AUDIO_DONE] 🧹 ASR cleared at audio finish")
                     await stream_tts(queued_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_queued_audio_done)
                     if not _queued_audio_done_fired:
-                        last_tts_audio_done = asyncio.get_event_loop().time()  # fallback only if callback didn't fire
+                        last_tts_audio_done = asyncio.get_event_loop().time()
+                        asr.clear()  # Fallback clear if callback didn't fire
+                        print(f"[AUDIO_DONE] 🧹 ASR cleared (fallback — callback didn't fire)")
                     tts_stream_time = time_module.time() - tts_stream_start
                     print(f"[PIPELINE] ⏱️ TTS streaming took {tts_stream_time:.3f}s")
                     
@@ -370,9 +375,16 @@ async def media_handler(ws):
                         nonlocal last_tts_audio_done, _direct_audio_done_fired
                         last_tts_audio_done = asyncio.get_event_loop().time()
                         _direct_audio_done_fired = True
+                        # Clear stale ASR state NOW — the audio just finished sending.
+                        # Anything Deepgram captured during playback is stale echo.
+                        # Anything the caller says AFTER this point is their real response.
+                        asr.clear()
+                        print(f"[AUDIO_DONE] 🧹 ASR cleared at audio finish")
                     await stream_tts(direct_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_direct_audio_done)
                     if not _direct_audio_done_fired:
-                        last_tts_audio_done = asyncio.get_event_loop().time()  # fallback only if callback didn't fire
+                        last_tts_audio_done = asyncio.get_event_loop().time()
+                        asr.clear()  # Fallback clear if callback didn't fire
+                        print(f"[AUDIO_DONE] 🧹 ASR cleared (fallback — callback didn't fire)")
                     tts_call_end = time_module.time()
                     direct_time = tts_call_end - direct_start
                     tts_only_time = tts_call_end - tts_call_start
@@ -449,11 +461,16 @@ async def media_handler(ws):
                 tts_ended_at = asyncio.get_event_loop().time()
                 speaking = False
                 llm_processing = False
-                # Clear any stale ASR state that accumulated during TTS playback.
-                # Without this, a speech_final that arrived while the AI was talking
-                # would be immediately consumed as the "answer" to the AI's question,
-                # causing the domino effect.
-                asr.clear()
+                # NOTE: We do NOT call asr.clear() here anymore.
+                # run() can take 10+ seconds longer than the actual audio playback
+                # (due to websocket close timeouts, LLM streaming overhead, etc).
+                # If we clear here, we wipe the caller's REAL response that arrived
+                # after the audio finished but before run() returned.
+                #
+                # Instead, stale ASR state is cleared via the on_audio_done callback
+                # (set in both direct and queued TTS paths above), which fires when
+                # the last audio chunk is actually sent to Twilio.
+                # The POST_TTS_IGNORE window then handles ignoring any echo/tail.
                 print(f"👂 Ready to listen")
 
         if respond_task and not respond_task.done():
@@ -591,6 +608,10 @@ async def media_handler(ws):
                                 speaking = False
                                 tts_ended_at = now
                                 bargein_since = 0.0
+                                # Clear stale ASR state from during TTS playback.
+                                # The caller is still speaking — Deepgram will send
+                                # fresh interim/is_final/speech_final events within ms.
+                                asr.clear()
                     else:
                         bargein_since = 0.0
                     continue
