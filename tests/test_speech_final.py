@@ -53,6 +53,10 @@ class MockDeepgramASR:
             if final_text:
                 self.text = final_text
                 self.speech_final = True
+            elif self.last_segment_text:
+                # Empty speech_final but we have accumulated segments — promote them
+                self.text = self.last_segment_text
+                self.speech_final = True
             self.interim_text = ""
             self.last_segment_text = ""
             self.last_segment_time = 0.0
@@ -182,24 +186,45 @@ class TestSpeechFinalDirect:
         assert asr.is_speech_finished() is False
     
     def test_speech_final_without_transcript(self):
-        """speech_final with empty transcript should not set text"""
+        """speech_final with empty transcript but accumulated segments should promote them.
+        
+        This is the key fix for the freeze bug: Deepgram sends is_final segments
+        with text, then speech_final with EMPTY transcript. Previously, the empty
+        speech_final would silently wipe last_segment_text without promoting it,
+        causing the caller's response to be lost.
+        """
         asr = MockDeepgramASR()
         
-        # Segment with text
+        # Segment with text (is_final, not speech_final)
         asr.process_message({
             'is_final': True,
             'speech_final': False,
             'channel': {'alternatives': [{'transcript': 'Yes, that is correct'}]}
-        })
+        }, current_time=10.0)
         
-        # speech_final with empty transcript (silence detected)
+        assert asr.last_segment_text == "Yes, that is correct"
+        
+        # speech_final with empty transcript — should promote accumulated text
         asr.process_message({
             'is_final': False,
             'speech_final': True,
             'channel': {'alternatives': [{'transcript': ''}]}
         })
         
-        # Should NOT set text since speech_final transcript was empty
+        assert asr.is_speech_finished() is True
+        assert asr.get_text() == "Yes, that is correct"
+    
+    def test_speech_final_empty_no_accumulated(self):
+        """speech_final with empty transcript and NO accumulated segments should be a no-op."""
+        asr = MockDeepgramASR()
+        
+        # speech_final with empty transcript, nothing accumulated
+        asr.process_message({
+            'is_final': False,
+            'speech_final': True,
+            'channel': {'alternatives': [{'transcript': ''}]}
+        })
+        
         assert asr.is_speech_finished() is False
         assert asr.get_text() == ""
     

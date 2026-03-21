@@ -125,6 +125,15 @@ class DeepgramASR:
                         self.text = final_text
                         self.speech_final = True
                         print(f"[ASR] ✅ SPEECH FINAL: '{final_text}'")
+                    elif self.last_segment_text:
+                        # speech_final arrived with empty transcript, but we have
+                        # accumulated is_final segments. This happens when Deepgram's
+                        # VAD detects silence after speech but the speech_final event
+                        # itself has no transcript (the text was in earlier is_final
+                        # segments). Promote the accumulated text instead of losing it.
+                        self.text = self.last_segment_text
+                        self.speech_final = True
+                        print(f"[ASR] ✅ SPEECH FINAL (empty, promoting accumulated): '{self.last_segment_text}'")
                     
                     # Clear interim and segment tracking for next utterance
                     self.interim_text = ""

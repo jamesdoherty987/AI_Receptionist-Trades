@@ -635,6 +635,14 @@ async def media_handler(ws):
                 if (now - tts_ended_at) < POST_TTS_IGNORE:
                     continue
                 
+                # DEBUG: Log ASR state periodically when there's a pending segment
+                # This helps diagnose freezes where segments aren't being promoted
+                if asr.last_segment_text and not asr.speech_final:
+                    seg_age = time_module.time() - asr.last_segment_time if asr.last_segment_time > 0 else -1
+                    # Log every ~2 seconds to avoid spam
+                    if seg_age > 0 and int(seg_age * 10) % 20 == 0:
+                        print(f"[DEBUG] Pending segment: '{asr.last_segment_text[:50]}' age={seg_age:.1f}s speaking={speaking} llm_processing={llm_processing}")
+                
                 # Fallback: If Deepgram sent an is_final segment but never sent
                 # speech_final or UtteranceEnd, promote it after 3 seconds of silence.
                 # This is a last-resort safety net — with utterance_end_ms enabled,
@@ -650,10 +658,12 @@ async def media_handler(ws):
                     asr.clear()
                     
                     if not text or len(text.split()) < MIN_WORDS:
+                        print(f"[DEBUG] Dropped (MIN_WORDS): '{text}' words={len(text.split())}")
                         continue
                     
                     # Duplicate check
                     if norm_text(text) == norm_text(last_committed):
+                        print(f"[DEBUG] Dropped (DUPLICATE): '{text}' == '{last_committed}'")
                         continue
                     
                     # LLM timeout check
