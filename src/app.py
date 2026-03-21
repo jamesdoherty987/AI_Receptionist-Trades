@@ -3702,6 +3702,9 @@ def check_availability_api():
                             break
                     _cur_day += timedelta(days=1)
                 booking_end = _last_biz.replace(hour=business_hours.get('end', 17), minute=0, second=0, microsecond=0)
+            elif booking_duration >= 480:
+                # Full-day job (8h to 24h): blocks until closing time on the same day
+                booking_end = appt_time.replace(hour=business_hours.get('end', 17), minute=0, second=0, microsecond=0)
             else:
                 booking_end = appt_time + timedelta(minutes=booking_duration)
             
