@@ -762,7 +762,7 @@ class PostgreSQLDatabaseWrapper:
                         category="General",
                         name="General Callout",
                         description="Default callout service — used when a job requires an initial site visit before the full work is scheduled",
-                        duration_minutes=1440,  # 1 day (24 hours)
+                        duration_minutes=240,  # 4 hours
                         price=0,
                         emergency_price=None,
                         currency='EUR',

@@ -2007,6 +2007,13 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 day_date = datetime.strptime(day_key, '%Y-%m-%d')
                 day_name = day_date.strftime('%A')
                 
+                # Use "tomorrow" or "today" for nearby dates
+                now = datetime.now()
+                if day_date.date() == now.date():
+                    day_name = "today"
+                elif day_date.date() == (now + timedelta(days=1)).date():
+                    day_name = "tomorrow"
+                
                 # Get first and last available times
                 first_time = day_slots[0].strftime('%I %p').lstrip('0').lower().replace(' 0', ' ')
                 last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower().replace(' 0', ' ')
@@ -2211,7 +2218,13 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 # Add date for clarity (e.g., "Monday the 16th")
                 day_num = day_date.day
                 suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
-                day_with_date = f"{day_name} the {day_num}{suffix}"
+                # Use "tomorrow" or "today" for nearby dates
+                if day_date.date() == today.date():
+                    day_with_date = "today"
+                elif day_date.date() == (today + timedelta(days=1)).date():
+                    day_with_date = "tomorrow"
+                else:
+                    day_with_date = f"{day_name} the {day_num}{suffix}"
                 
                 if is_full_day:
                     day_summaries.append(f"{day_with_date}: full day available")
@@ -2614,7 +2627,13 @@ Return ONLY valid JSON, no explanation."""
                 day_name = day_date.strftime('%A')
                 day_num = day_date.day
                 suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
-                day_with_date = f"{day_name} the {day_num}{suffix}"
+                # Use "tomorrow" or "today" for nearby dates
+                if day_date.date() == today.date():
+                    day_with_date = "today"
+                elif day_date.date() == (today + timedelta(days=1)).date():
+                    day_with_date = "tomorrow"
+                else:
+                    day_with_date = f"{day_name} the {day_num}{suffix}"
                 
                 if is_full_day:
                     day_summaries.append(f"{day_with_date}: full day available")
