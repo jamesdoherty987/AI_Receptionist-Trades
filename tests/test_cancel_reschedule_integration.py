@@ -35,6 +35,7 @@ class TestCancelFlowIntegration:
         
         mock_calendar = Mock()
         mock_calendar.cancel_appointment.return_value = True
+        mock_calendar.service = None
         
         return {
             'db': mock_db,
@@ -57,7 +58,7 @@ class TestCancelFlowIntegration:
         bookings = [{
             'id': 1,
             'client_name': 'John Smith',
-            'appointment_time': '2026-03-12 10:00:00',  # Thursday
+            'appointment_time': '2026-04-09 10:00:00',  # Thursday
             'service_type': 'Plumbing',
             'duration_minutes': 60,
             'status': 'scheduled',
@@ -70,7 +71,7 @@ class TestCancelFlowIntegration:
         # Step 1: First call with just the day
         result1 = execute_tool_call(
             'cancel_job',
-            {'appointment_date': 'Thursday March 12th'},
+            {'appointment_date': 'Thursday April 9th'},
             services
         )
         
@@ -81,7 +82,7 @@ class TestCancelFlowIntegration:
         # Step 2: Second call with confirmation
         result2 = execute_tool_call(
             'cancel_job',
-            {'appointment_date': 'Thursday March 12th', 'customer_name': 'John Smith'},
+            {'appointment_date': 'Thursday April 9th', 'customer_name': 'John Smith'},
             services
         )
         
@@ -96,7 +97,7 @@ class TestCancelFlowIntegration:
             {
                 'id': 1,
                 'client_name': 'John Smith',
-                'appointment_time': '2026-03-12 09:00:00',
+                'appointment_time': '2026-04-09 09:00:00',
                 'service_type': 'Plumbing',
                 'duration_minutes': 60,
                 'status': 'scheduled',
@@ -106,7 +107,7 @@ class TestCancelFlowIntegration:
             {
                 'id': 2,
                 'client_name': 'Jane Doe',
-                'appointment_time': '2026-03-12 11:00:00',
+                'appointment_time': '2026-04-09 11:00:00',
                 'service_type': 'Electrical',
                 'duration_minutes': 90,
                 'status': 'scheduled',
@@ -116,7 +117,7 @@ class TestCancelFlowIntegration:
             {
                 'id': 3,
                 'client_name': 'Mike Wilson',
-                'appointment_time': '2026-03-12 14:00:00',
+                'appointment_time': '2026-04-09 14:00:00',
                 'service_type': 'Painting',
                 'duration_minutes': 120,
                 'status': 'scheduled',
@@ -130,7 +131,7 @@ class TestCancelFlowIntegration:
         # First call - should list all 3 names
         result1 = execute_tool_call(
             'cancel_job',
-            {'appointment_date': 'Thursday March 12th'},
+            {'appointment_date': 'Thursday April 9th'},
             services
         )
         
@@ -144,7 +145,7 @@ class TestCancelFlowIntegration:
         # Customer says "Jane" - fuzzy match should work
         result2 = execute_tool_call(
             'cancel_job',
-            {'appointment_date': 'Thursday March 12th', 'customer_name': 'Jane'},
+            {'appointment_date': 'Thursday April 9th', 'customer_name': 'Jane'},
             services
         )
         
@@ -158,7 +159,7 @@ class TestCancelFlowIntegration:
         bookings = [{
             'id': 1,
             'client_name': 'John Smith',
-            'appointment_time': '2026-03-12 08:00:00',
+            'appointment_time': '2026-04-09 08:00:00',
             'service_type': 'Brick Work',
             'duration_minutes': 480,  # Full day
             'status': 'scheduled',
@@ -170,7 +171,7 @@ class TestCancelFlowIntegration:
         
         result1 = execute_tool_call(
             'cancel_job',
-            {'appointment_date': 'Thursday March 12th'},
+            {'appointment_date': 'Thursday April 9th'},
             services
         )
         
@@ -178,7 +179,7 @@ class TestCancelFlowIntegration:
         
         result2 = execute_tool_call(
             'cancel_job',
-            {'appointment_date': 'Thursday March 12th', 'customer_name': 'John Smith'},
+            {'appointment_date': 'Thursday April 9th', 'customer_name': 'John Smith'},
             services
         )
         
@@ -192,7 +193,7 @@ class TestCancelFlowIntegration:
         bookings = [{
             'id': 1,
             'client_name': 'Seán O\'Doherty',
-            'appointment_time': '2026-03-12 10:00:00',
+            'appointment_time': '2026-04-09 10:00:00',
             'service_type': 'Plumbing',
             'duration_minutes': 60,
             'status': 'scheduled',
@@ -205,7 +206,7 @@ class TestCancelFlowIntegration:
         # STT might hear "Sean Doherty" without the accent and O'
         result = execute_tool_call(
             'cancel_job',
-            {'appointment_date': 'Thursday March 12th', 'customer_name': 'Sean Doherty'},
+            {'appointment_date': 'Thursday April 9th', 'customer_name': 'Sean Doherty'},
             services
         )
         
@@ -226,6 +227,7 @@ class TestRescheduleFlowIntegration:
         mock_calendar = Mock()
         mock_calendar.reschedule_appointment.return_value = {'id': 'evt1'}
         mock_calendar.check_availability.return_value = True
+        mock_calendar.service = None
         
         return {
             'db': mock_db,
@@ -250,7 +252,7 @@ class TestRescheduleFlowIntegration:
         bookings = [{
             'id': 1,
             'client_name': 'John Smith',
-            'appointment_time': '2026-03-09 10:00:00',  # Monday
+            'appointment_time': '2026-04-13 10:00:00',  # Monday
             'service_type': 'Plumbing',
             'duration_minutes': 60,
             'status': 'scheduled',
@@ -263,7 +265,7 @@ class TestRescheduleFlowIntegration:
         # Step 1: First call - get jobs on day
         result1 = execute_tool_call(
             'reschedule_job',
-            {'current_date': 'Monday March 9th'},
+            {'current_date': 'Monday April 13th'},
             services
         )
         
@@ -273,7 +275,7 @@ class TestRescheduleFlowIntegration:
         # Step 2: Confirm name, no new date yet
         result2 = execute_tool_call(
             'reschedule_job',
-            {'current_date': 'Monday March 9th', 'customer_name': 'John Smith'},
+            {'current_date': 'Monday April 13th', 'customer_name': 'John Smith'},
             services
         )
         
@@ -285,9 +287,9 @@ class TestRescheduleFlowIntegration:
         result3 = execute_tool_call(
             'reschedule_job',
             {
-                'current_date': 'Monday March 9th',
+                'current_date': 'Monday April 13th',
                 'customer_name': 'John Smith',
-                'new_datetime': 'Wednesday March 11th at 2pm'
+                'new_datetime': 'Wednesday April 15th at 2pm'
             },
             services
         )
@@ -302,7 +304,7 @@ class TestRescheduleFlowIntegration:
         bookings = [{
             'id': 1,
             'client_name': 'John Smith',
-            'appointment_time': '2026-03-09 08:00:00',
+            'appointment_time': '2026-04-13 08:00:00',
             'service_type': 'Brick Work',
             'duration_minutes': 480,  # Full day
             'status': 'scheduled',
@@ -315,7 +317,7 @@ class TestRescheduleFlowIntegration:
         # First call
         result1 = execute_tool_call(
             'reschedule_job',
-            {'current_date': 'Monday March 9th'},
+            {'current_date': 'Monday April 13th'},
             services
         )
         
@@ -325,9 +327,9 @@ class TestRescheduleFlowIntegration:
         result2 = execute_tool_call(
             'reschedule_job',
             {
-                'current_date': 'Monday March 9th',
+                'current_date': 'Monday April 13th',
                 'customer_name': 'John Smith',
-                'new_datetime': 'Friday March 13th'  # No time
+                'new_datetime': 'Friday April 10th'  # No time
             },
             services
         )
@@ -351,6 +353,7 @@ class TestMixedJobsScenarios:
         mock_calendar.cancel_appointment.return_value = True
         mock_calendar.reschedule_appointment.return_value = {'id': 'evt1'}
         mock_calendar.check_availability.return_value = True
+        mock_calendar.service = None
         
         return {
             'db': mock_db,
@@ -367,7 +370,7 @@ class TestMixedJobsScenarios:
             {
                 'id': 1,
                 'client_name': 'John Smith',
-                'appointment_time': '2026-03-12 08:00:00',
+                'appointment_time': '2026-04-09 08:00:00',
                 'service_type': 'Brick Work',
                 'duration_minutes': 480,  # Full day
                 'status': 'scheduled',
@@ -377,7 +380,7 @@ class TestMixedJobsScenarios:
             {
                 'id': 2,
                 'client_name': 'Jane Doe',
-                'appointment_time': '2026-03-12 10:00:00',
+                'appointment_time': '2026-04-09 10:00:00',
                 'service_type': 'Consultation',
                 'duration_minutes': 30,
                 'status': 'scheduled',
@@ -390,7 +393,7 @@ class TestMixedJobsScenarios:
         
         result = execute_tool_call(
             'cancel_job',
-            {'appointment_date': 'Thursday March 12th'},
+            {'appointment_date': 'Thursday April 9th'},
             services
         )
         
@@ -408,7 +411,7 @@ class TestMixedJobsScenarios:
             {
                 'id': 1,
                 'client_name': 'John Smith',
-                'appointment_time': '2026-03-12 09:00:00',
+                'appointment_time': '2026-04-09 09:00:00',
                 'service_type': 'Plumbing',
                 'duration_minutes': 60,
                 'status': 'scheduled',
@@ -418,7 +421,7 @@ class TestMixedJobsScenarios:
             {
                 'id': 2,
                 'client_name': 'Jane Doe',
-                'appointment_time': '2026-03-12 11:00:00',
+                'appointment_time': '2026-04-09 11:00:00',
                 'service_type': 'Plumbing',
                 'duration_minutes': 60,
                 'status': 'scheduled',
@@ -428,7 +431,7 @@ class TestMixedJobsScenarios:
             {
                 'id': 3,
                 'client_name': 'Mike Wilson',
-                'appointment_time': '2026-03-12 14:00:00',
+                'appointment_time': '2026-04-09 14:00:00',
                 'service_type': 'Plumbing',
                 'duration_minutes': 60,
                 'status': 'scheduled',
@@ -441,7 +444,7 @@ class TestMixedJobsScenarios:
         
         result = execute_tool_call(
             'cancel_job',
-            {'appointment_date': 'Thursday March 12th'},
+            {'appointment_date': 'Thursday April 9th'},
             services
         )
         
@@ -465,6 +468,7 @@ class TestErrorScenarios:
         
         mock_calendar = Mock()
         mock_calendar.cancel_appointment.return_value = True
+        mock_calendar.service = None
         
         return {
             'db': mock_db,
@@ -478,7 +482,7 @@ class TestErrorScenarios:
         
         result = execute_tool_call(
             'cancel_job',
-            {'appointment_date': 'Saturday March 14th'},
+            {'appointment_date': 'Saturday April 11th'},
             services
         )
         
@@ -490,7 +494,7 @@ class TestErrorScenarios:
         bookings = [{
             'id': 1,
             'client_name': 'John Smith',
-            'appointment_time': '2026-03-12 10:00:00',
+            'appointment_time': '2026-04-09 10:00:00',
             'service_type': 'Plumbing',
             'duration_minutes': 60,
             'status': 'scheduled',
@@ -502,7 +506,7 @@ class TestErrorScenarios:
         
         result = execute_tool_call(
             'cancel_job',
-            {'appointment_date': 'Thursday March 12th', 'customer_name': 'Robert Williams'},
+            {'appointment_date': 'Thursday April 9th', 'customer_name': 'Robert Williams'},
             services
         )
         

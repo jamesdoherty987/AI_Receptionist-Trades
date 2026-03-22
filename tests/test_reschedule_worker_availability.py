@@ -136,6 +136,7 @@ class TestRescheduleWithWorkerAvailability:
         mock_calendar = Mock()
         mock_calendar.reschedule_appointment.return_value = {'id': 'evt1'}
         mock_calendar.check_availability.return_value = True
+        mock_calendar.service = None
         
         return {'db': mock_db, 'google_calendar': mock_calendar, 'company_id': 1}
     
@@ -189,6 +190,8 @@ class TestRescheduleWithWorkerAvailability:
         
         with patch('src.utils.config.Config') as MockConfig:
             MockConfig.get_business_hours.return_value = {'start': 9, 'end': 17}
+            MockConfig.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
+            MockConfig.BUSINESS_DAYS = [0, 1, 2, 3, 4]
             
             result = execute_tool_call(
                 'reschedule_job',
@@ -223,6 +226,8 @@ class TestRescheduleWithWorkerAvailability:
         
         with patch('src.utils.config.Config') as MockConfig:
             MockConfig.get_business_hours.return_value = {'start': 9, 'end': 17}
+            MockConfig.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
+            MockConfig.BUSINESS_DAYS = [0, 1, 2, 3, 4]
             
             result = execute_tool_call(
                 'reschedule_job',
@@ -254,6 +259,7 @@ class TestFullRescheduleConversationFlow:
         
         mock_calendar = Mock()
         mock_calendar.reschedule_appointment.return_value = {'id': 'evt1'}
+        mock_calendar.service = None
         
         return {'db': mock_db, 'google_calendar': mock_calendar, 'company_id': 1}
     
@@ -314,6 +320,8 @@ class TestFullRescheduleConversationFlow:
         
         with patch('src.utils.config.Config') as MockConfig:
             MockConfig.get_business_hours.return_value = {'start': 9, 'end': 17}
+            MockConfig.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
+            MockConfig.BUSINESS_DAYS = [0, 1, 2, 3, 4]
             
             # User tries Monday (worker not available)
             result = execute_tool_call(

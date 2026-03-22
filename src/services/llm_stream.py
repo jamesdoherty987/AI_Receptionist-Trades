@@ -790,22 +790,55 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         
         # 4b. ADDRESS CONFIRMATION - user confirms address, next step is availability check
         if not likely_needs_tool:
-            address_confirmation_phrases = ["same address", "still your address", "your address", "still at", "at the same", "same location", "same place", "address as before", "address on file", "correct address", "the correct address", "is that correct", "is that right"]
+            # Only match phrases that are SPECIFICALLY about address/location
+            # Removed "is that correct" and "is that right" - too generic, matches booking confirmations too
+            address_confirmation_phrases = ["same address", "still your address", "your address", "still at", "at the same", "same location", "same place", "address as before", "address on file", "correct address", "the correct address"]
             ai_asked_address = any(phrase in prev_assistant_msg for phrase in address_confirmation_phrases)
+            
+            # Extra guard: make sure the AI wasn't asking about a BOOKING confirmation
+            # Only block if the message looks like a booking confirmation (has day+time pattern)
+            booking_context_phrases = ["booked in for", "book for", "want to book"]
+            day_names_in_msg = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            time_patterns_in_msg = ["at 1 pm", "at 2 pm", "at 3 pm", "at 4 pm", "at 5 pm", "at 9 am", "at 10 am", "at 11 am", "at 12 pm"]
+            has_booking_phrase = any(phrase in prev_assistant_msg for phrase in booking_context_phrases)
+            has_day_and_time = any(d in prev_assistant_msg for d in day_names_in_msg) and any(t in prev_assistant_msg for t in time_patterns_in_msg)
+            ai_asking_about_booking = (has_booking_phrase or has_day_and_time) and not any(phrase in prev_assistant_msg for phrase in ["same address", "address as before", "address on file"])
+            
             user_confirms = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "correct", "that's right", "it is", "that's it", "that's correct", "correct address"])
             
-            if ai_asked_address and user_confirms:
+            if ai_asked_address and user_confirms and not ai_asking_about_booking:
                 likely_needs_tool = True
                 detected_intent = "ADDRESS_CONFIRMED"
                 checking_msg = random.choice(generic_fillers)
                 print(f"   ✅ [PRE-CHECK] Detected: ADDRESS CONFIRMED (will check availability)")
         
-        # 5. BOOKING CONFIRMATION - user confirms booking after AI asked "ready to book?"
+        # 5. BOOKING CONFIRMATION - user confirms booking after AI asked "ready to book?" or confirmed details
         if not likely_needs_tool:
             # Check if AI just asked about booking confirmation
-            booking_confirmation_phrases = ["ready to book", "shall i book", "want me to book", "confirm the booking", "go ahead and book", "all correct", "is that right"]
-            ai_asked_to_book = any(phrase in prev_assistant_msg for phrase in booking_confirmation_phrases)
-            user_confirms = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "please", "go ahead", "book it", "that's perfect", "sounds good", "correct", "that's right"])
+            booking_confirmation_phrases = ["ready to book", "shall i book", "want me to book", "confirm the booking", "go ahead and book", "all correct",
+                                           "for the tap replacement, correct", "for the tap replacement?",
+                                           "is that correct?", "correct?"]
+            # Only match "is that correct?" / "correct?" if the previous message is about a booking (has day+time)
+            day_names_lower = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            time_indicators = ["am", "pm", "o'clock"]
+            prev_has_day = any(d in prev_assistant_msg for d in day_names_lower)
+            prev_has_time = any(t in prev_assistant_msg for t in time_indicators)
+            prev_is_booking_context = prev_has_day and prev_has_time
+            
+            # Filter: generic "correct?" only counts if it's in a booking context
+            ai_asked_to_book = False
+            for phrase in booking_confirmation_phrases:
+                if phrase in prev_assistant_msg:
+                    if phrase in ["is that correct?", "correct?"]:
+                        # Only trigger if the AI was confirming a booking (day+time present)
+                        if prev_is_booking_context:
+                            ai_asked_to_book = True
+                            break
+                    else:
+                        ai_asked_to_book = True
+                        break
+            
+            user_confirms = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "please", "go ahead", "book it", "that's perfect", "sounds good", "correct", "that's right", "that's correct"])
             
             if ai_asked_to_book and user_confirms:
                 likely_needs_tool = True
@@ -813,15 +846,23 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
                 checking_msg = "Booking that now."
                 print(f"   ✅ [PRE-CHECK] Detected: BOOKING CONFIRMED")
         
-        # 6. TIME SELECTION - user picks a time from offered options
+        # 6. TIME SELECTION - user picks a time AND a day from offered options
+        # Only trigger if user specifies BOTH day and time (or uses "i'll take" style phrases)
+        # to avoid misfires where LLM just confirms details instead of booking
         if not likely_needs_tool:
-            time_selection_phrases = ["i'll take", "let's do", "let's go with", "that one", "the first one", "the second",
-                                     "9am", "10am", "11am", "12pm", "1pm", "2pm", "3pm", "4pm", "5pm",
-                                     "9 o'clock", "10 o'clock", "morning one", "afternoon one"]
-            time_offered = any(phrase in prev_assistant_msg for phrase in ["available", "free", "i have", "which works", "which time"])
-            user_picks_time = any(phrase in user_message for phrase in time_selection_phrases)
+            explicit_pick_phrases = ["i'll take", "let's do", "let's go with", "that one", "the first one", "the second",
+                                     "morning one", "afternoon one", "book me in for", "go with"]
+            day_names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            time_phrases = ["9am", "10am", "11am", "12pm", "1pm", "2pm", "3pm", "4pm", "5pm",
+                           "9 o'clock", "10 o'clock", "at 9", "at 10", "at 11", "at 12", "at 1", "at 2", "at 3", "at 4", "at 5"]
+            time_offered = any(phrase in prev_assistant_msg for phrase in ["available", "free", "i have", "which works", "which time", "which day"])
             
-            if time_offered and user_picks_time:
+            has_explicit_pick = any(phrase in user_message for phrase in explicit_pick_phrases)
+            has_day = any(day in user_message for day in day_names)
+            has_time = any(t in user_message for t in time_phrases)
+            
+            # Only trigger if user gives a clear pick (day+time, or explicit pick phrase with day or time)
+            if time_offered and (has_explicit_pick or (has_day and has_time)):
                 likely_needs_tool = True
                 detected_intent = "TIME_SELECTED"
                 checking_msg = "Grand, let me book that."

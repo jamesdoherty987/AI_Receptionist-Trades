@@ -48,13 +48,13 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_availability",
-            "description": "Search for availability based on customer's specific request. Use when customer asks about specific dates, times, or constraints like 'after 4pm', 'next week', 'in 2 weeks', 'do you have anything on Monday', 'what about mornings'. Understands natural language date/time queries.",
+            "description": "Search for availability based on customer's specific request. Use when customer asks about specific dates, times, or constraints like 'after 4pm', 'before 2pm', 'next week', 'in 2 weeks', 'do you have anything on Monday', 'what about mornings'. Understands natural language date/time queries.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The customer's availability request in natural language (e.g., 'next week', 'after 4pm on Thursday', 'in 2 weeks time', 'Monday or Tuesday', 'any morning slots')"
+                        "description": "The customer's availability request in natural language (e.g., 'next week', 'after 4pm on Thursday', 'before 2pm', 'in 2 weeks time', 'Monday or Tuesday', 'any morning slots')"
                     },
                     "job_description": {
                         "type": "string",
@@ -480,52 +480,90 @@ def fuzzy_match_name(spoken_name: str, candidate_names: list) -> tuple:
         Tuple of (best_match_name, confidence_score 0-100, matched_booking_index)
     """
     from difflib import SequenceMatcher
+    import unicodedata
     
     if not spoken_name or not candidate_names:
         return (None, 0, -1)
     
-    spoken_lower = spoken_name.lower().strip()
+    def strip_accents(s):
+        """Remove accents/diacritics so STT output matches accented names (e.g. Sean matches Seán)"""
+        return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+    
+    spoken_lower = strip_accents(spoken_name.lower().strip())
     best_match = None
     best_score = 0
     best_index = -1
     
+    spoken_parts = spoken_lower.split()
+    
     for idx, candidate in enumerate(candidate_names):
         if not candidate:
             continue
-        candidate_lower = candidate.lower().strip()
+        candidate_lower = strip_accents(candidate.lower().strip())
         
         # Strategy 1: Exact match (100%)
         if spoken_lower == candidate_lower:
             return (candidate, 100, idx)
         
-        # Strategy 2: One contains the other (90%)
-        if spoken_lower in candidate_lower or candidate_lower in spoken_lower:
-            score = 90
-            if score > best_score:
-                best_score = score
+        candidate_parts = candidate_lower.split()
+        
+        # Strategy 2: Both first AND last name match exactly (95%)
+        if len(spoken_parts) >= 2 and len(candidate_parts) >= 2:
+            if spoken_parts[0] == candidate_parts[0] and spoken_parts[-1] == candidate_parts[-1]:
+                score = 95
+                if score > best_score:
+                    best_score = score
+                    best_match = candidate
+                    best_index = idx
+                continue
+        
+        # Strategy 3: One name part matches exactly + other part is close
+        # BUT only if the non-matching part has high similarity (>= 0.80)
+        # This prevents "James Dorothy" matching "James Doherty" (Dorothy/Doherty = 0.67)
+        # and "Josh Smith" matching "John Smith" (Josh/John = 0.50)
+        strategy3_matched = False
+        if len(spoken_parts) >= 2 and len(candidate_parts) >= 2:
+            first_exact = spoken_parts[0] == candidate_parts[0]
+            last_exact = spoken_parts[-1] == candidate_parts[-1]
+            
+            if first_exact and not last_exact:
+                last_sim = SequenceMatcher(None, spoken_parts[-1], candidate_parts[-1]).ratio()
+                if last_sim >= 0.80:
+                    score = 80 + int(last_sim * 10)  # 80-90 range
+                    if score > best_score:
+                        best_score = score
+                        best_match = candidate
+                        best_index = idx
+                    strategy3_matched = True
+            elif last_exact and not first_exact:
+                first_sim = SequenceMatcher(None, spoken_parts[0], candidate_parts[0]).ratio()
+                if first_sim >= 0.80:
+                    score = 80 + int(first_sim * 10)  # 80-90 range
+                    if score > best_score:
+                        best_score = score
+                        best_match = candidate
+                        best_index = idx
+                    strategy3_matched = True
+        
+        # Strategy 4: Single-word name exact match against any part (75%)
+        if len(spoken_parts) == 1 and len(spoken_parts[0]) >= 3:
+            for cp in candidate_parts:
+                if spoken_parts[0] == cp:
+                    score = 75
+                    if score > best_score:
+                        best_score = score
+                        best_match = candidate
+                        best_index = idx
+        
+        # Strategy 5: Full name SequenceMatcher for close typos (scaled 0-75)
+        # Only consider if ratio >= 0.85 to avoid false positives
+        seq_ratio = SequenceMatcher(None, spoken_lower, candidate_lower).ratio()
+        if seq_ratio >= 0.85:
+            seq_score = int(seq_ratio * 75)
+            if seq_score > best_score:
+                best_score = seq_score
                 best_match = candidate
                 best_index = idx
-            continue
-        
-        # Strategy 3: First name or last name match (85%)
-        spoken_parts = spoken_lower.split()
-        candidate_parts = candidate_lower.split()
-        for sp in spoken_parts:
-            if len(sp) >= 3:  # Ignore very short parts
-                for cp in candidate_parts:
-                    if sp == cp or (len(sp) >= 4 and sp in cp) or (len(cp) >= 4 and cp in sp):
-                        score = 85
-                        if score > best_score:
-                            best_score = score
-                            best_match = candidate
-                            best_index = idx
-        
-        # Strategy 4: Sequence matcher for typos/STT errors (scaled 0-80)
-        seq_score = SequenceMatcher(None, spoken_lower, candidate_lower).ratio() * 80
-        if seq_score > best_score:
-            best_score = seq_score
-            best_match = candidate
-            best_index = idx
     
     return (best_match, int(best_score), best_index)
 
@@ -2291,16 +2329,20 @@ Query: "{query}"
 Return JSON with:
 - start_date: ISO date string (YYYY-MM-DD) for when to start searching
 - end_date: ISO date string for when to stop searching  
-- time_filter: "morning" (before 12pm), "afternoon" (12pm-5pm), "evening" (after 5pm), "after_X" (after specific hour), or null for any time
+- time_filter: "morning" (before 12pm), "afternoon" (12pm-5pm), "evening" (after 5pm), "after_X" (after specific hour), "before_X" (before specific hour), or null for any time
 - specific_days: list of day names if they asked for specific days (e.g., ["Monday", "Tuesday"]), or null
 
 Examples:
 - "next week" -> start_date: next Monday, end_date: next Friday, time_filter: null
 - "after 4pm next week" -> start_date: next Monday, end_date: next Friday, time_filter: "after_16"
+- "before 2pm" -> time_filter: "before_14", search next 2 weeks
+- "before 3pm on Wednesday" -> specific_days: ["Wednesday"], time_filter: "before_15"
 - "in 2 weeks" -> start_date: 2 weeks from today, end_date: 2.5 weeks from today
 - "Monday or Tuesday" -> specific_days: ["Monday", "Tuesday"], search next 2 weeks
 - "any morning slots" -> time_filter: "morning", search next 2 weeks
 - "the week after next" -> start_date: 2 Mondays from now, end_date: that Friday
+- "2PM or something" -> time_filter: "after_14", search next 2 weeks
+- "something starting at 2pm" -> time_filter: "after_14", search next 2 weeks
 
 Return ONLY valid JSON, no explanation."""
 
@@ -2441,6 +2483,11 @@ Return ONLY valid JSON, no explanation."""
                                     if slot_hour < after_hour:
                                         slot_time += timedelta(minutes=30)
                                         continue
+                                elif time_filter.startswith("before_"):
+                                    before_hour = int(time_filter.split("_")[1])
+                                    if slot_hour >= before_hour:
+                                        slot_time += timedelta(minutes=30)
+                                        continue
                             
                             slot_end = slot_time + timedelta(minutes=service_duration)
                             
@@ -2484,6 +2531,10 @@ Return ONLY valid JSON, no explanation."""
                                     after_hour = int(time_filter.split("_")[1])
                                     if slot_hour >= after_hour:
                                         filtered_slots.append(slot)
+                                elif time_filter.startswith("before_"):
+                                    before_hour = int(time_filter.split("_")[1])
+                                    if slot_hour < before_hour:
+                                        filtered_slots.append(slot)
                                 elif not time_filter:
                                     filtered_slots.append(slot)
                             day_slots = filtered_slots
@@ -2505,7 +2556,12 @@ Return ONLY valid JSON, no explanation."""
                 
                 # Provide helpful message based on what they asked for
                 if time_filter:
-                    filter_desc = {"morning": "morning", "afternoon": "afternoon", "evening": "evening"}.get(time_filter, f"after {time_filter.split('_')[1]}:00" if time_filter.startswith("after_") else "")
+                    if time_filter.startswith("after_"):
+                        filter_desc = f"after {time_filter.split('_')[1]}:00"
+                    elif time_filter.startswith("before_"):
+                        filter_desc = f"before {time_filter.split('_')[1]}:00"
+                    else:
+                        filter_desc = {"morning": "morning", "afternoon": "afternoon", "evening": "evening"}.get(time_filter, time_filter)
                     no_avail_msg = f"I don't have any {filter_desc} slots available in that time period. Would you like me to check other times?"
                 elif specific_days:
                     no_avail_msg = f"I don't have availability on {' or '.join(specific_days)} in that period. Would you like to try different days?"
@@ -2791,16 +2847,15 @@ Return ONLY valid JSON, no explanation."""
                             match_score = 0
                             match_reason = ""
                             
-                            # Strategy 1: Phone matches + first name exact/close + last name reasonable
-                            # Catches: "James Dorothy" vs "James Doherty" (ASR error on last name)
-                            if phone_matches and first_similarity >= 0.90 and last_similarity >= 0.65:
+                            # Strategy 1: Phone matches + first name exact/close + last name close
+                            # Tightened: last name needs 0.75+ to avoid Dorothy→Doherty (0.67)
+                            if phone_matches and first_similarity >= 0.90 and last_similarity >= 0.75:
                                 match_score = 0.95 + (last_similarity * 0.05)  # High confidence
                                 match_reason = f"phone+first_name (first:{first_similarity:.0%}, last:{last_similarity:.0%})"
                             
-                            # Strategy 2: Phone matches + full name 85%+ similar
-                            # Catches: minor ASR errors across the name
-                            # Note: 85% threshold prevents "Joe Smith" matching "John Smith" (84%)
-                            elif phone_matches and full_similarity >= 0.85:
+                            # Strategy 2: Phone matches + full name 91%+ similar
+                            # Tightened from 85% to avoid Josh Smith→John Smith (0.90)
+                            elif phone_matches and full_similarity >= 0.91:
                                 match_score = full_similarity + 0.10  # Boost for phone match
                                 match_reason = f"phone+name (full:{full_similarity:.0%})"
                             
@@ -3477,7 +3532,10 @@ Return ONLY valid JSON, no explanation."""
                 closed_day_name = new_time.strftime('%A')
                 all_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
                 open_days = [all_days[i] for i in sorted(business_days_resched)]
-                open_days_str = ', '.join(open_days[:-1]) + f' and {open_days[-1]}' if len(open_days) > 1 else open_days[0]
+                if open_days:
+                    open_days_str = ', '.join(open_days[:-1]) + f' and {open_days[-1]}' if len(open_days) > 1 else open_days[0]
+                else:
+                    open_days_str = 'weekdays'
                 logger.warning(f"[RESCHEDULE] Closed day: {closed_day_name} (business days: {business_days_resched})")
                 return {
                     "success": False,

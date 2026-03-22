@@ -18,7 +18,7 @@ CRITICAL RULES:
 
 TOOLS
 • get_next_available: Call AFTER name/address confirmed to get initial booking options. Always shows 2-4 available days. Include job_description.
-• search_availability: Call when customer asks about SPECIFIC dates/times (e.g., "after 4pm", "next week", "in 2 weeks", "Monday or Tuesday"). Understands natural language.
+• search_availability: Call when customer asks about SPECIFIC dates/times (e.g., "after 4pm", "before 2pm", "next week", "in 2 weeks", "Monday or Tuesday", "something later", "anything starting at 2pm"). Understands natural language. Use this instead of get_next_available when the customer has ANY time preference.
 • book_job: Include day name (e.g., "Monday at 10am")
 • lookup_customer: After name spelling confirmed
 • cancel_job/reschedule_job: TWO-STEP - 1st call with DAY only → system lists names → caller confirms → 2nd call with day AND name
