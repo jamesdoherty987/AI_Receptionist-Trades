@@ -68,6 +68,23 @@ def transcribe_address_audio(audio_url: str) -> Optional[str]:
         duration = time.time() - start
         text = transcript.text.strip() if transcript.text else None
         print(f"[ADDR_RETRANSCRIBE] gpt-4o-transcribe result ({duration:.1f}s): '{text}'")
+        
+        # Strip conversational prefixes the caller may have said before the address
+        # e.g. "Yeah, it's 13 Oceanview..." → "13 Oceanview..."
+        if text:
+            import re
+            text = re.sub(
+                r'^(?:yeah|yes|yep|sure|okay|ok|right|so|well|um|uh|eh|ah)'
+                r'[\s,.:;]*'
+                r"(?:it'?s|that'?s|the address is|my address is|i'?m at|we'?re at|it is|that is)?"
+                r'[\s,.:;]*',
+                '', text, count=1, flags=re.IGNORECASE
+            ).strip()
+            # If stripping removed everything, fall back to original
+            if not text:
+                text = transcript.text.strip()
+            print(f"[ADDR_RETRANSCRIBE] After prefix cleanup: '{text}'")
+        
         return text
 
     except Exception as e:

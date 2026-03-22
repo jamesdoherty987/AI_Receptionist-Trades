@@ -372,6 +372,15 @@ async def media_handler(ws):
                             if token.startswith("<<<TRANSFER:"):
                                 transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
                                 continue
+                            if token.startswith("<<<SPLIT_TTS:"):
+                                # SPLIT_TTS appeared mid-stream — a tool call is happening.
+                                # We're already in direct mode so we can't switch to parallel.
+                                # The filler text is lost, but the tool result tokens will
+                                # follow shortly. Log this so we can detect pre-check misses.
+                                filler_text = token.replace("<<<SPLIT_TTS:", "").replace(">>>", "").strip()
+                                print(f"   ⚠️ [DIRECT] SPLIT_TTS mid-stream (pre-check missed): '{filler_text}'")
+                                print(f"   ⚠️ [DIRECT] Tool is executing — tokens will resume after tool completes")
+                                continue
                             if token.startswith("<<<"):
                                 continue
                             full_text += token
@@ -862,8 +871,8 @@ async def media_handler(ws):
         print(f"{'#'*60}\n")
         
         # Post-call address re-transcription pipeline
-        # If address audio was captured and SMS was deferred, run the Whisper
-        # re-transcription → LLM validation → DB update → SMS pipeline.
+        # If address audio was captured and SMS was deferred, run the
+        # gpt-4o-transcribe re-transcription → DB update → SMS pipeline.
         _deferred_sms = getattr(call_state, '_deferred_sms_kwargs', None)
         if call_state.address_audio_url and _deferred_sms:
             try:

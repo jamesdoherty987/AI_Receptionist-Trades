@@ -844,6 +844,27 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
                 checking_msg = random.choice(generic_fillers)
                 print(f"   ✅ [PRE-CHECK] Detected: ADDRESS CONFIRMED (will check availability)")
         
+        # 4c. ADDRESS PROVIDED - caller gives their address/eircode, next step is get_next_available
+        # After the AI asks "what's your address?" or "can you provide your full address?",
+        # the caller responds with an actual address. The LLM will acknowledge and call
+        # get_next_available, so play a filler to cover the tool call latency.
+        if not likely_needs_tool:
+            ai_asked_for_address_phrases = ["full address", "your address", "eircode", "eir code", "where is the property", "where's the property", "where is the job", "where's the job"]
+            ai_asked_for_addr = any(phrase in prev_assistant_msg for phrase in ai_asked_for_address_phrases)
+            
+            # Caller declined (no, I don't know, etc.) — don't trigger filler
+            decline_phrases = ["no", "i don't", "i dont", "not sure", "no idea", "don't know", "dont know"]
+            caller_declined = len(user_message.split()) <= 5 and any(phrase in user_message for phrase in decline_phrases)
+            
+            # Caller gave something substantial (an actual address or eircode)
+            caller_gave_address = len(user_message.split()) >= 2 and not caller_declined
+            
+            if ai_asked_for_addr and caller_gave_address:
+                likely_needs_tool = True
+                detected_intent = "ADDRESS_PROVIDED"
+                checking_msg = random.choice(generic_fillers)
+                print(f"   ✅ [PRE-CHECK] Detected: ADDRESS PROVIDED (will check availability)")
+        
         # 5. BOOKING CONFIRMATION - user confirms booking after AI asked "ready to book?" or confirmed details
         if not likely_needs_tool:
             # Check if AI just asked about booking confirmation
@@ -1881,12 +1902,7 @@ TOOL RULES:
                             # Callout booking: tell the caller it's a call-out visit
                             if is_full_day and time_str:
                                 day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
-                                if address:
-                                    direct_response = f"Grand, I've booked a call-out visit for {day_part} at {address}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
-                                else:
-                                    direct_response = f"Grand, I've booked a call-out visit for {day_part}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
-                            elif time_str and address:
-                                direct_response = f"Grand, I've booked a call-out visit for {time_str} at {address}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                                direct_response = f"Grand, I've booked a call-out visit for {day_part}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
                             elif time_str:
                                 direct_response = f"Grand, I've booked a call-out visit for {time_str}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
                             else:
@@ -1895,12 +1911,7 @@ TOOL RULES:
                             # For full-day jobs, extract just the day (not the time)
                             # Extract day name from time_str like "Thursday, March 12 at 08:00 AM"
                             day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
-                            if address:
-                                direct_response = f"Grand, you're booked in for {day_part} at {address}. We'll give you a call when we're on the way. Is there anything else?"
-                            else:
-                                direct_response = f"Grand, you're booked in for {day_part}. We'll give you a call when we're on the way. Is there anything else?"
-                        elif time_str and address:
-                            direct_response = f"Grand, you're booked in for {time_str} at {address}. Is there anything else?"
+                            direct_response = f"Grand, you're booked in for {day_part}. We'll give you a call when we're on the way. Is there anything else?"
                         elif time_str:
                             direct_response = f"Grand, you're booked in for {time_str}. Is there anything else?"
                         else:

@@ -401,3 +401,106 @@ class TestPromptAddressChanges:
             prompt = f.read()
 
         assert "EXCEPT for addresses" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Prefix stripping from retranscribed address
+# ---------------------------------------------------------------------------
+
+class TestAddressPrefixStripping:
+    """Verify conversational prefixes are stripped from transcription results."""
+
+    @patch("src.services.address_retranscriber.httpx")
+    @patch("src.services.address_retranscriber._get_client")
+    def test_strips_yeah_its_prefix(self, mock_get_client, mock_httpx):
+        from src.services.address_retranscriber import transcribe_address_audio
+
+        mock_resp = MagicMock()
+        mock_resp.content = b"fake wav data"
+        mock_resp.raise_for_status = MagicMock()
+        mock_httpx.get.return_value = mock_resp
+
+        mock_client = MagicMock()
+        mock_transcript = MagicMock()
+        mock_transcript.text = "Yeah, it's 13 Oceanview Lahinch County Clare, Ireland."
+        mock_client.audio.transcriptions.create.return_value = mock_transcript
+        mock_get_client.return_value = mock_client
+
+        result = transcribe_address_audio("https://r2.example.com/audio.wav")
+        assert result == "13 Oceanview Lahinch County Clare, Ireland."
+
+    @patch("src.services.address_retranscriber.httpx")
+    @patch("src.services.address_retranscriber._get_client")
+    def test_strips_yes_the_address_is(self, mock_get_client, mock_httpx):
+        from src.services.address_retranscriber import transcribe_address_audio
+
+        mock_resp = MagicMock()
+        mock_resp.content = b"fake wav data"
+        mock_resp.raise_for_status = MagicMock()
+        mock_httpx.get.return_value = mock_resp
+
+        mock_client = MagicMock()
+        mock_transcript = MagicMock()
+        mock_transcript.text = "Yes, the address is 45 O'Connell Street, Limerick."
+        mock_client.audio.transcriptions.create.return_value = mock_transcript
+        mock_get_client.return_value = mock_client
+
+        result = transcribe_address_audio("https://r2.example.com/audio.wav")
+        assert result == "45 O'Connell Street, Limerick."
+
+    @patch("src.services.address_retranscriber.httpx")
+    @patch("src.services.address_retranscriber._get_client")
+    def test_strips_sure_im_at(self, mock_get_client, mock_httpx):
+        from src.services.address_retranscriber import transcribe_address_audio
+
+        mock_resp = MagicMock()
+        mock_resp.content = b"fake wav data"
+        mock_resp.raise_for_status = MagicMock()
+        mock_httpx.get.return_value = mock_resp
+
+        mock_client = MagicMock()
+        mock_transcript = MagicMock()
+        mock_transcript.text = "Sure, I'm at 7 Castletroy Drive, Limerick."
+        mock_client.audio.transcriptions.create.return_value = mock_transcript
+        mock_get_client.return_value = mock_client
+
+        result = transcribe_address_audio("https://r2.example.com/audio.wav")
+        assert result == "7 Castletroy Drive, Limerick."
+
+    @patch("src.services.address_retranscriber.httpx")
+    @patch("src.services.address_retranscriber._get_client")
+    def test_no_strip_when_no_prefix(self, mock_get_client, mock_httpx):
+        from src.services.address_retranscriber import transcribe_address_audio
+
+        mock_resp = MagicMock()
+        mock_resp.content = b"fake wav data"
+        mock_resp.raise_for_status = MagicMock()
+        mock_httpx.get.return_value = mock_resp
+
+        mock_client = MagicMock()
+        mock_transcript = MagicMock()
+        mock_transcript.text = "32 Silver Grove, Ballybrack, Dublin"
+        mock_client.audio.transcriptions.create.return_value = mock_transcript
+        mock_get_client.return_value = mock_client
+
+        result = transcribe_address_audio("https://r2.example.com/audio.wav")
+        assert result == "32 Silver Grove, Ballybrack, Dublin"
+
+    @patch("src.services.address_retranscriber.httpx")
+    @patch("src.services.address_retranscriber._get_client")
+    def test_strips_um_prefix(self, mock_get_client, mock_httpx):
+        from src.services.address_retranscriber import transcribe_address_audio
+
+        mock_resp = MagicMock()
+        mock_resp.content = b"fake wav data"
+        mock_resp.raise_for_status = MagicMock()
+        mock_httpx.get.return_value = mock_resp
+
+        mock_client = MagicMock()
+        mock_transcript = MagicMock()
+        mock_transcript.text = "Um, 15 Raheen Road, Limerick."
+        mock_client.audio.transcriptions.create.return_value = mock_transcript
+        mock_get_client.return_value = mock_client
+
+        result = transcribe_address_audio("https://r2.example.com/audio.wav")
+        assert result == "15 Raheen Road, Limerick."

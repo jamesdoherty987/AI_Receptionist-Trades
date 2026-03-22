@@ -34,32 +34,34 @@ class TestBookingFlowEircodeConfirmation:
         assert "eircode" in prompt.lower(), "Final confirmation should mention eircode"
         
     def test_prompt_booking_flow_order(self):
-        """Verify the booking flow has eircode before phone confirmation"""
+        """Verify the booking flow has phone before eircode/address for new customers"""
         with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
             prompt = f.read()
         
-        # Find positions of key steps
-        eircode_pos = prompt.find("eircode")
-        phone_confirm_pos = prompt.find("Confirm phone")
+        # In step 7b, phone comes before eircode/address
+        phone_pos = prompt.find("Phone: Confirm caller ID")
+        eircode_pos = prompt.find("Location: Ask for eircode")
         
-        # Eircode should come before phone confirmation in the flow
-        assert eircode_pos < phone_confirm_pos, "Eircode should be asked before phone confirmation"
+        assert phone_pos > 0, "Prompt should have phone confirmation step"
+        assert eircode_pos > 0, "Prompt should have eircode/address step"
+        assert phone_pos < eircode_pos, "Phone should be confirmed before asking for eircode/address"
         
     def test_new_customer_eircode_example(self):
-        """Verify the prompt has an example of eircode confirmation"""
+        """Verify the prompt has an example of spelling back eircode"""
         with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
             prompt = f.read()
         
-        # Check for eircode confirmation example
-        assert "D-0-2-W-R-9-7" in prompt or "D02WR97" in prompt, \
+        # Check for eircode example in the SPELLING OUT section
+        assert "V-9-4-A-B-C-1" in prompt, \
             "Prompt should have example of spelling back eircode"
 
 
 class TestDirectResponseBookingConfirmation:
-    """Test that the direct response includes address in booking confirmation"""
+    """Test that the direct response excludes address from booking confirmation.
+    Address is verified separately after the call via the retranscription pipeline."""
     
-    def test_booking_response_includes_address(self):
-        """Test that successful booking response includes the address"""
+    def test_booking_response_excludes_address(self):
+        """Test that successful booking response does NOT include the address"""
         # Simulate the result_content from book_job
         result_content = {
             "success": True,
@@ -72,24 +74,21 @@ class TestDirectResponseBookingConfirmation:
             }
         }
         
-        # Simulate the direct response logic from llm_stream.py
+        # Simulate the direct response logic from llm_stream.py (address excluded)
         details = result_content.get("appointment_details", {})
         time_str = details.get("time", "")
-        address = details.get("job_address", "") or details.get("eircode", "")
         
-        if time_str and address:
-            direct_response = f"Grand, you're booked in for {time_str} at {address}. Is there anything else?"
-        elif time_str:
+        if time_str:
             direct_response = f"Grand, you're booked in for {time_str}. Is there anything else?"
         else:
             direct_response = "You're all booked! Is there anything else I can help with?"
         
-        # Verify address is in the response
-        assert "D02 WR97" in direct_response, "Booking confirmation should include address"
+        # Address should NOT be in the response — system verifies it after the call
+        assert "D02 WR97" not in direct_response, "Booking confirmation should NOT include address"
         assert "Tuesday, March 10" in direct_response, "Booking confirmation should include time"
         
     def test_booking_response_without_address_fallback(self):
-        """Test booking response when address is missing"""
+        """Test booking response when address is missing — same behavior"""
         result_content = {
             "success": True,
             "appointment_details": {
@@ -102,11 +101,8 @@ class TestDirectResponseBookingConfirmation:
         
         details = result_content.get("appointment_details", {})
         time_str = details.get("time", "")
-        address = details.get("job_address", "") or details.get("eircode", "")
         
-        if time_str and address:
-            direct_response = f"Grand, you're booked in for {time_str} at {address}. Is there anything else?"
-        elif time_str:
+        if time_str:
             direct_response = f"Grand, you're booked in for {time_str}. Is there anything else?"
         else:
             direct_response = "You're all booked! Is there anything else I can help with?"
@@ -181,8 +177,8 @@ class TestConversationFlowSimulation:
         assert "lookup_customer" in prompt, "Should call lookup_customer"
         assert "eircode" in prompt.lower(), "Should ask for eircode"
         assert "CONFIRM IT BACK" in prompt or "confirm" in prompt.lower(), "Should confirm eircode"
-        assert "Confirm phone" in prompt, "Should confirm phone"
-        assert "check_availability" in prompt, "Should check availability"
+        assert "Confirm caller ID" in prompt or "good number" in prompt, "Should confirm phone"
+        assert "get_next_available" in prompt, "Should check availability"
         assert "FINAL CONFIRM" in prompt, "Should do final confirmation"
         assert "book_job" in prompt, "Should book job"
 
