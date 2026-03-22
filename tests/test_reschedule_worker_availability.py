@@ -235,6 +235,21 @@ class TestRescheduleWithWorkerAvailability:
                 services
             )
         
+        assert result.get('requires_reschedule_confirmation') == True
+        assert 'confirm' in result['message'].lower()
+        
+        # Now confirm
+        with patch('src.utils.config.Config') as MockConfig:
+            MockConfig.get_business_hours.return_value = {'start': 9, 'end': 17}
+            MockConfig.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
+            MockConfig.BUSINESS_DAYS = [0, 1, 2, 3, 4]
+            
+            result = execute_tool_call(
+                'reschedule_job',
+                {'current_date': 'Friday', 'customer_name': 'James Doherty', 'new_datetime': 'Wednesday', 'confirmed': True},
+                services
+            )
+        
         assert result['success'] == True
         assert 'rescheduled' in result['message'].lower()
 

@@ -206,15 +206,33 @@ class TestRescheduleWithGCalSync:
         services['db'].update_booking.assert_not_called()
 
     def test_reschedule_step3_moves_booking_and_syncs(self):
-        """Third call with new datetime UPDATES existing booking and syncs to gcal."""
+        """Third call with new datetime returns confirmation, fourth call with confirmed=true completes and syncs to gcal."""
         services = make_services(bookings=[THURSDAY_BOOKING])
 
+        # Step 3: provide new datetime - should get confirmation prompt
         result = execute_tool_call(
             'reschedule_job',
             {
                 'current_date': 'Thursday April 9th',
                 'customer_name': 'Donald Trump',
                 'new_datetime': 'Saturday April 11th at 8am'
+            },
+            services
+        )
+
+        assert result.get('requires_reschedule_confirmation') is True
+        assert 'confirm' in result['message'].lower()
+        # Nothing should be updated yet
+        services['db'].update_booking.assert_not_called()
+
+        # Step 4: confirm the reschedule
+        result = execute_tool_call(
+            'reschedule_job',
+            {
+                'current_date': 'Thursday April 9th',
+                'customer_name': 'Donald Trump',
+                'new_datetime': 'Saturday April 11th at 8am',
+                'confirmed': True
             },
             services
         )
@@ -245,12 +263,24 @@ class TestRescheduleWithGCalSync:
             {'current_date': 'Thursday April 9th', 'customer_name': 'Donald Trump'},
             services
         )
+        # Step 3: new_datetime without confirmed - gets confirmation prompt
         execute_tool_call(
             'reschedule_job',
             {
                 'current_date': 'Thursday April 9th',
                 'customer_name': 'Donald Trump',
                 'new_datetime': 'Monday April 13th at 10am'
+            },
+            services
+        )
+        # Step 4: confirmed=true - actually moves the booking
+        execute_tool_call(
+            'reschedule_job',
+            {
+                'current_date': 'Thursday April 9th',
+                'customer_name': 'Donald Trump',
+                'new_datetime': 'Monday April 13th at 10am',
+                'confirmed': True
             },
             services
         )
@@ -271,7 +301,8 @@ class TestRescheduleWithGCalSync:
             {
                 'current_date': 'Thursday April 9th',
                 'customer_name': 'Donald Trump',
-                'new_datetime': 'Monday April 13th at 10am'
+                'new_datetime': 'Monday April 13th at 10am',
+                'confirmed': True
             },
             services
         )
@@ -289,7 +320,8 @@ class TestRescheduleWithGCalSync:
             {
                 'current_date': 'Thursday April 9th',
                 'customer_name': 'Donald Trump',
-                'new_datetime': 'Monday April 13th at 10am'
+                'new_datetime': 'Monday April 13th at 10am',
+                'confirmed': True
             },
             services
         )
@@ -306,7 +338,8 @@ class TestRescheduleWithGCalSync:
             {
                 'current_date': 'Thursday April 9th',
                 'customer_name': 'Donald Trump',
-                'new_datetime': 'Monday April 13th at 10am'
+                'new_datetime': 'Monday April 13th at 10am',
+                'confirmed': True
             },
             services
         )

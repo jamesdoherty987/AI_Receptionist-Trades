@@ -283,7 +283,7 @@ class TestRescheduleFlowIntegration:
         assert result2.get('customer_name_confirmed') == True
         assert 'What day' in result2['error']
         
-        # Step 3: Provide new date
+        # Step 3: Provide new date - should get confirmation prompt
         result3 = execute_tool_call(
             'reschedule_job',
             {
@@ -294,8 +294,23 @@ class TestRescheduleFlowIntegration:
             services
         )
         
-        assert result3['success'] == True
-        assert 'rescheduled' in result3['message'].lower()
+        assert result3.get('requires_reschedule_confirmation') == True
+        assert 'confirm' in result3['message'].lower()
+        
+        # Step 4: Confirm the reschedule
+        result4 = execute_tool_call(
+            'reschedule_job',
+            {
+                'current_date': 'Monday April 13th',
+                'customer_name': 'John Smith',
+                'new_datetime': 'Wednesday April 15th at 2pm',
+                'confirmed': True
+            },
+            services
+        )
+        
+        assert result4['success'] == True
+        assert 'rescheduled' in result4['message'].lower()
     
     def test_reschedule_full_day_job(self):
         """
@@ -334,8 +349,23 @@ class TestRescheduleFlowIntegration:
             services
         )
         
-        assert result2['success'] == True
-        assert 'full-day' in result2['message'].lower()
+        assert result2.get('requires_reschedule_confirmation') == True
+        assert 'confirm' in result2['message'].lower()
+        
+        # Confirm the reschedule
+        result3 = execute_tool_call(
+            'reschedule_job',
+            {
+                'current_date': 'Monday April 13th',
+                'customer_name': 'John Smith',
+                'new_datetime': 'Friday April 10th',
+                'confirmed': True
+            },
+            services
+        )
+        
+        assert result3['success'] == True
+        assert 'full-day' in result3['message'].lower()
 
 
 class TestMixedJobsScenarios:

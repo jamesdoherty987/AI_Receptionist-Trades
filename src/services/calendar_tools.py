@@ -165,7 +165,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "reschedule_appointment",
-            "description": "Reschedule an existing appointment to a new time. WORKFLOW: 1) Ask customer what DAY the booking is for (not time - there may be multiple jobs or full-day jobs). 2) Call this with ONLY current_date (the day). 3) System returns ALL jobs on that day with customer names. 4) Read the names to the caller and ask them to confirm which one is theirs. 5) Listen to their response, then ask what day they want to reschedule to. 6) Call again with current_date, customer_name, AND new_datetime to complete.",
+            "description": "Reschedule an existing appointment to a new time. WORKFLOW: 1) Ask customer what DAY the booking is for (not time - there may be multiple jobs or full-day jobs). 2) Call this with ONLY current_date (the day). 3) System returns ALL jobs on that day with customer names. 4) Read the names to the caller and ask them to confirm which one is theirs. 5) Listen to their response, then ask what day they want to reschedule to. 6) Call again with current_date, customer_name, AND new_datetime to complete. IMPORTANT: If the customer asks for different/later/other availability options, use search_availability instead — do NOT pass new_datetime until the customer has explicitly chosen a specific day.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -175,11 +175,15 @@ CALENDAR_TOOLS = [
                     },
                     "new_datetime": {
                         "type": "string",
-                        "description": "New date and time for the appointment. ONLY provide this AFTER confirming the customer name."
+                        "description": "New date and time for the appointment. ONLY provide this AFTER the customer has explicitly chosen a specific day from the options presented."
                     },
                     "customer_name": {
                         "type": "string",
                         "description": "Customer name - ONLY provide this AFTER the caller confirms which name is theirs from the list of jobs on that day."
+                    },
+                    "confirmed": {
+                        "type": "boolean",
+                        "description": "Set to true ONLY after the customer has verbally confirmed the reschedule details (new date). The system will ask for confirmation first — then call again with confirmed=true."
                     }
                 },
                 "required": ["current_date"]
@@ -258,7 +262,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "reschedule_job",
-            "description": "Reschedule an existing job to a new time. ALWAYS use this for reschedules — NEVER use cancel_job + book_job instead (that creates duplicates). WORKFLOW: 1) Ask customer what DAY the booking is for. 2) Call this with ONLY current_date. 3) System returns ALL jobs on that day. 4) Read names to caller. 5) Call again with current_date + customer_name (NO new_datetime yet) — system confirms name and suggests available days. 6) Customer picks a day. 7) Call AGAIN with current_date + customer_name + new_datetime to complete the move.",
+            "description": "Reschedule an existing job to a new time. ALWAYS use this for reschedules — NEVER use cancel_job + book_job instead (that creates duplicates). WORKFLOW: 1) Ask customer what DAY the booking is for. 2) Call this with ONLY current_date. 3) System returns ALL jobs on that day. 4) Read names to caller. 5) Call again with current_date + customer_name (NO new_datetime yet) — system confirms name and suggests available days. 6) Customer picks a day. 7) Call AGAIN with current_date + customer_name + new_datetime to complete the move. System will ask for confirmation — then call one final time with confirmed=true. IMPORTANT: If the customer asks for different/later/other availability options instead of picking from the suggested days, use search_availability to find more options — do NOT pass new_datetime until the customer has explicitly chosen a specific day.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -268,11 +272,15 @@ CALENDAR_TOOLS = [
                     },
                     "new_datetime": {
                         "type": "string",
-                        "description": "New date and time for the job. ONLY provide this AFTER confirming the customer name."
+                        "description": "New date and time for the job. ONLY provide this AFTER the customer has explicitly chosen a specific day from the options presented."
                     },
                     "customer_name": {
                         "type": "string",
                         "description": "Customer name - ONLY provide this AFTER the caller confirms which name is theirs from the list of jobs on that day."
+                    },
+                    "confirmed": {
+                        "type": "boolean",
+                        "description": "Set to true ONLY after the customer has verbally confirmed the reschedule details (new date). The system will ask for confirmation first — then call again with confirmed=true."
                     }
                 },
                 "required": ["current_date"]
@@ -341,7 +349,7 @@ CALENDAR_TOOLS = [
 ]
 
 
-def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exclude_booking_id: int = None, company_id: int = None, days_to_check: int = 14) -> list:
+def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exclude_booking_id: int = None, company_id: int = None, days_to_check: int = 14, exclude_date=None) -> list:
     """
     Find available days for specific worker(s) in the next N days.
     Used during rescheduling to suggest alternative days when the requested day isn't available.
@@ -356,6 +364,7 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
         exclude_booking_id: Booking ID to exclude (the one being rescheduled)
         company_id: Company ID for filtering
         days_to_check: Number of days to look ahead (default 14)
+        exclude_date: Date to exclude from results (the day being moved FROM)
         
     Returns:
         List of day names like ["Wednesday", "Thursday", "Friday"]
@@ -396,6 +405,10 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
         
         # Skip non-business days
         if check_date.weekday() not in business_days:
+            continue
+        
+        # Skip the day being moved FROM (don't suggest the same day)
+        if exclude_date and check_date.date() == exclude_date.date():
             continue
         
         # For full-day jobs, check if the whole day is available
@@ -3526,7 +3539,8 @@ Return ONLY valid JSON, no explanation."""
                         worker_ids=assigned_worker_ids,
                         duration_minutes=booking_duration,
                         exclude_booking_id=booking_id,
-                        company_id=company_id
+                        company_id=company_id,
+                        exclude_date=parsed_date
                     )
                 
                 if available_days:
@@ -3635,7 +3649,8 @@ Return ONLY valid JSON, no explanation."""
                         worker_ids=assigned_worker_ids,
                         duration_minutes=booking_duration,
                         exclude_booking_id=booking_id,
-                        company_id=company_id
+                        company_id=company_id,
+                        exclude_date=parsed_date
                     )
                     
                     if available_days:
@@ -3661,6 +3676,25 @@ Return ONLY valid JSON, no explanation."""
                         "error": f"That day is already booked. Please suggest another available day.",
                         "new_time_unavailable": True
                     }
+            
+            # CONFIRMATION STEP: Ask the customer to confirm before actually rescheduling
+            # This runs AFTER availability checks pass, so we know the slot is free
+            confirmed = arguments.get('confirmed', False)
+            if not confirmed:
+                if is_full_day:
+                    confirm_msg = f"Just to confirm — you'd like to move {matched_name}'s booking from {parsed_date.strftime('%A, %B %d')} to {new_time.strftime('%A, %B %d')}. Is that right?"
+                else:
+                    confirm_msg = f"Just to confirm — you'd like to move {matched_name}'s booking from {parsed_date.strftime('%A, %B %d')} to {new_time.strftime('%A, %B %d at %I:%M %p')}. Is that right?"
+                logger.info(f"[RESCHEDULE] Awaiting confirmation: {confirm_msg}")
+                return {
+                    "success": False,
+                    "requires_reschedule_confirmation": True,
+                    "matched_name": matched_name,
+                    "matched_job": matched_job,
+                    "new_time": new_time.isoformat(),
+                    "new_time_display": new_time.strftime('%A, %B %d') if is_full_day else new_time.strftime('%A, %B %d at %I:%M %p'),
+                    "message": confirm_msg
+                }
             
             # Reschedule in Google Calendar sync if event_id exists
             if event_id and google_calendar_sync:
@@ -4349,7 +4383,8 @@ Return ONLY valid JSON, no explanation."""
             mapped_args = {
                 'current_date': arguments.get('current_date') or arguments.get('current_datetime'),
                 'new_datetime': arguments.get('new_datetime'),
-                'customer_name': arguments.get('customer_name')
+                'customer_name': arguments.get('customer_name'),
+                'confirmed': arguments.get('confirmed', False)
             }
             return execute_tool_call("reschedule_appointment", mapped_args, services)
         

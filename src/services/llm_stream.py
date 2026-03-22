@@ -2017,6 +2017,9 @@ TOOL RULES:
                     elif result_content.get("requires_confirmation"):
                         # First call - found jobs on that day, need name confirmation
                         direct_response = result_content.get("message", "")
+                    elif result_content.get("requires_reschedule_confirmation"):
+                        # New date chosen, need verbal confirmation before executing
+                        direct_response = result_content.get("message", "")
                     elif result_content.get("customer_name_confirmed"):
                         # Name confirmed, need new date
                         direct_response = result_content.get("error", "What day would you like to move it to?")

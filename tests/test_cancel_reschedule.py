@@ -530,7 +530,7 @@ class TestRescheduleAppointmentHandler:
         assert 'What day' in result['error']
     
     def test_third_call_completes_reschedule(self):
-        """Third call with all params should complete reschedule"""
+        """Third call with all params should return confirmation prompt, fourth call with confirmed=true completes"""
         bookings = [{
             'id': 1,
             'client_name': 'John Smith',
@@ -544,12 +544,29 @@ class TestRescheduleAppointmentHandler:
         
         services = self.create_mock_services(bookings)
         
+        # Third call - should return confirmation prompt
         result = execute_tool_call(
             'reschedule_appointment',
             {
                 'current_date': 'April 10th',
                 'customer_name': 'John Smith',
                 'new_datetime': 'April 15th at 2pm'
+            },
+            services
+        )
+        
+        assert result.get('requires_reschedule_confirmation') == True
+        assert 'confirm' in result['message'].lower()
+        assert 'John Smith' in result['message']
+        
+        # Fourth call - confirmed=true completes the reschedule
+        result = execute_tool_call(
+            'reschedule_appointment',
+            {
+                'current_date': 'April 10th',
+                'customer_name': 'John Smith',
+                'new_datetime': 'April 15th at 2pm',
+                'confirmed': True
             },
             services
         )
@@ -589,6 +606,21 @@ class TestRescheduleAppointmentHandler:
                 'current_date': 'April 10th',
                 'customer_name': 'John Smith',
                 'new_datetime': 'April 15th'  # No time specified
+            },
+            services
+        )
+        
+        assert result.get('requires_reschedule_confirmation') == True
+        assert 'confirm' in result['message'].lower()
+        
+        # Confirm the reschedule
+        result = execute_tool_call(
+            'reschedule_appointment',
+            {
+                'current_date': 'April 10th',
+                'customer_name': 'John Smith',
+                'new_datetime': 'April 15th',
+                'confirmed': True
             },
             services
         )
