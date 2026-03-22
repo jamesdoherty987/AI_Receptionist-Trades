@@ -811,6 +811,7 @@ def _simulate_phase1(cs, ai_text):
     if ai_asked_for_address(ai_text):
         cs.awaiting_address_audio = True
         cs._addr_audio_collecting = False  # Reset on new ask
+        cs._addr_audio_ever_asked = True  # Persistent — survives declines
         cs._addr_audio_phase1_time = time.time()
         return True
     return False
@@ -819,12 +820,28 @@ def _simulate_phase1(cs, ai_text):
 def _simulate_phase2(cs, caller_text):
     """Simulate Phase 2: Caller's speech_final → skip-check, set collecting."""
     if cs.awaiting_address_audio:
-        cs.awaiting_address_audio = False
         if _should_skip(caller_text):
+            # DON'T disarm — keep awaiting so the next response captures
             return 'skipped'
         else:
+            cs.awaiting_address_audio = False
             cs._addr_audio_collecting = True
             return 'collecting'
+    # Fallback: AI asked for address earlier but awaiting got cleared
+    # (e.g. AI said something unrelated in between)
+    elif (cs._addr_audio_ever_asked
+          and not cs.address_audio_captured
+          and not cs._addr_audio_collecting):
+        text_lower_check = caller_text.lower().strip().rstrip('.,!?')
+        fallback_skip = {'no', "no i don't", "no i dont", "i don't know", "i dont know",
+                         "i'm not sure", "im not sure", "not sure", "no idea",
+                         "okay", "ok", "yeah", "yes", "that's it", "thanks",
+                         "no that's it", "no thanks"}
+        is_short_non_address = text_lower_check in fallback_skip or len(caller_text.split()) <= 2
+        if not is_short_non_address and len(caller_text.split()) >= 3:
+            cs._addr_audio_phase1_time = time.time() - 5.0
+            cs._addr_audio_collecting = True
+            return 'fallback_collecting'
     return 'no_action'
 
 
@@ -833,6 +850,8 @@ def _simulate_phase3(cs):
     Returns True if capture happened."""
     if cs._addr_audio_collecting:
         cs._addr_audio_collecting = False
+        cs._addr_audio_ever_asked = False  # Disable fallbacks — we got the audio
+        cs.awaiting_address_audio = False  # Fully disarm
         # In real code this snapshots buffer + uploads. We just set the URL.
         cs.address_audio_url = f"https://r2.example.com/audio/capture_{time.time()}.wav"
         cs.address_audio_captured = True
@@ -1228,3 +1247,150 @@ class TestDeferredCaptureRealisticConversations:
         # This captures a non-address response, but that's OK — the recording
         # is just extra context for the business owner. Better safe than sorry.
         assert r['phase3_captured'] is True
+
+
+# ---------------------------------------------------------------------------
+# Fallback capture: AI asked for address earlier, unrelated turn in between,
+# then caller gives address. Tests the _addr_audio_ever_asked persistent flag.
+# ---------------------------------------------------------------------------
+
+class TestFallbackAddressCapture:
+    """Tests for the fallback capture when awaiting_address_audio gets cleared
+    by an unrelated AI message, but the caller eventually gives an address."""
+
+    def test_decline_keeps_awaiting_armed(self):
+        """When caller declines eircode, awaiting stays True for next speech."""
+        cs = create_call_state()
+        _simulate_phase1(cs, "Do you have an eircode?")
+        assert cs.awaiting_address_audio is True
+        assert cs._addr_audio_ever_asked is True
+
+        result = _simulate_phase2(cs, "No I don't")
+        assert result == 'skipped'
+        # Key change: awaiting stays True after decline
+        assert cs.awaiting_address_audio is True
+
+    def test_decline_then_address_same_awaiting_cycle(self):
+        """Caller declines eircode, then gives address on next speech.
+        Since awaiting is still armed, Phase 2 captures directly."""
+        cs = create_call_state()
+        _simulate_phase1(cs, "Do you have an eircode?")
+
+        # Caller declines
+        result1 = _simulate_phase2(cs, "No I don't")
+        assert result1 == 'skipped'
+        assert cs.awaiting_address_audio is True
+
+        # AI asks for full address — Phase 1 re-arms (no-op, already armed)
+        _simulate_phase1(cs, "No problem, can you give me the full address?")
+        assert cs.awaiting_address_audio is True
+
+        # Caller gives address
+        result2 = _simulate_phase2(cs, "32 Silver Grove, Ballybrack, Dublin")
+        assert result2 == 'collecting'
+        _simulate_phase3(cs)
+        assert cs.address_audio_captured is True
+
+    def test_live_call_scenario_unrelated_ai_message(self):
+        """Exact scenario from live call: AI asks for address, caller says
+        'okay', AI says 'I'm ready when you are!', caller gives address.
+        The fallback should capture the address."""
+        cs = create_call_state()
+
+        # AI asks for full address
+        _simulate_phase1(cs, "No problem! Can you provide your full address instead?")
+        assert cs._addr_audio_ever_asked is True
+
+        # Caller says "No. I don't." — Phase 2 skips, awaiting stays armed
+        result1 = _simulate_phase2(cs, "No. I don't.")
+        assert result1 == 'skipped'
+
+        # Phase 3 — nothing to capture
+        assert _simulate_phase3(cs) is False
+
+        # AI says something unrelated (doesn't ask for address)
+        _simulate_phase1(cs, "I'm ready when you are!")
+        # Phase 1 didn't trigger (no address keywords), but ever_asked is still True
+        assert cs._addr_audio_ever_asked is True
+
+        # Caller gives address — awaiting is still True from the decline
+        result2 = _simulate_phase2(cs, "Yes. 32 Silo Grove Valley, Vegas, County Clare")
+        assert result2 == 'collecting'
+
+        # Phase 3 captures
+        assert _simulate_phase3(cs) is True
+        assert cs.address_audio_captured is True
+
+    def test_fallback_captures_when_awaiting_cleared(self):
+        """If awaiting somehow gets cleared but ever_asked is True,
+        fallback captures address-like responses."""
+        cs = create_call_state()
+
+        # AI asks for address
+        _simulate_phase1(cs, "What's the address?")
+        assert cs._addr_audio_ever_asked is True
+
+        # Manually clear awaiting (simulating some edge case)
+        cs.awaiting_address_audio = False
+
+        # Caller gives address — fallback kicks in
+        result = _simulate_phase2(cs, "32 Silver Grove, Ballybrack, Dublin 18")
+        assert result == 'fallback_collecting'
+
+        assert _simulate_phase3(cs) is True
+        assert cs.address_audio_captured is True
+
+    def test_fallback_ignores_short_responses(self):
+        """Fallback should not capture short non-address responses."""
+        cs = create_call_state()
+        _simulate_phase1(cs, "What's the address?")
+        cs.awaiting_address_audio = False  # Simulate cleared
+
+        for short_response in ["okay", "yes", "yeah", "ok", "thanks"]:
+            cs2 = create_call_state()
+            cs2._addr_audio_ever_asked = True
+            result = _simulate_phase2(cs2, short_response)
+            assert result == 'no_action', f"Should not capture '{short_response}'"
+
+    def test_fallback_does_not_fire_after_capture(self):
+        """Once address is captured, fallback should not re-capture."""
+        cs = create_call_state()
+        _simulate_phase1(cs, "What's the address?")
+        _simulate_phase2(cs, "32 Silver Grove")
+        _simulate_phase3(cs)
+        assert cs.address_audio_captured is True
+        first_url = cs.address_audio_url
+
+        # Another substantial response — should NOT trigger fallback
+        cs.awaiting_address_audio = False
+        result = _simulate_phase2(cs, "Actually it's 33 Silver Grove, Ballybrack")
+        assert result == 'no_action'  # Already captured, no fallback
+
+    def test_ever_asked_survives_multiple_declines(self):
+        """Multiple declines don't clear ever_asked."""
+        cs = create_call_state()
+        _simulate_phase1(cs, "Do you have an eircode?")
+
+        _simulate_phase2(cs, "No")
+        assert cs._addr_audio_ever_asked is True
+        assert cs.awaiting_address_audio is True
+
+        _simulate_phase1(cs, "What about the full address?")
+        _simulate_phase2(cs, "Not sure")
+        assert cs._addr_audio_ever_asked is True
+        assert cs.awaiting_address_audio is True
+
+        # Finally gives address
+        _simulate_phase1(cs, "Can you try the address?")
+        result = _simulate_phase2(cs, "15 Main Street, Limerick")
+        assert result == 'collecting'
+        _simulate_phase3(cs)
+        assert cs.address_audio_captured is True
+
+    def test_reset_clears_ever_asked(self):
+        """Full reset should clear the persistent flag."""
+        cs = create_call_state()
+        _simulate_phase1(cs, "What's the address?")
+        assert cs._addr_audio_ever_asked is True
+        cs.reset()
+        assert cs._addr_audio_ever_asked is False

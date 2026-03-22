@@ -76,6 +76,7 @@ class CallState:
     awaiting_address_audio: bool = False
     _addr_audio_phase1_time: float = 0.0
     _addr_audio_collecting: bool = False  # True while caller is speaking their address (deferred capture)
+    _addr_audio_ever_asked: bool = False  # Stays True once AI asks for address — survives declines
     
     # --- LLM response control ---
     skip_llm_response: bool = False
@@ -122,6 +123,7 @@ class CallState:
         self.awaiting_address_audio = False
         self._addr_audio_phase1_time = 0.0
         self._addr_audio_collecting = False
+        self._addr_audio_ever_asked = False
     
     def reset_reschedule(self):
         """Reset only reschedule-related state."""

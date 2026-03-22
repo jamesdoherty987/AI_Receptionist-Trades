@@ -852,12 +852,20 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
             ai_asked_for_address_phrases = ["full address", "your address", "eircode", "eir code", "where is the property", "where's the property", "where is the job", "where's the job"]
             ai_asked_for_addr = any(phrase in prev_assistant_msg for phrase in ai_asked_for_address_phrases)
             
+            # Fallback: if the AI asked for address earlier but there was back-and-forth
+            # in between (e.g. caller said "okay", AI said "I'm ready when you are!"),
+            # prev_assistant_msg won't match. Use call_state to detect we're still
+            # in address-gathering mode.
+            if not ai_asked_for_addr and call_state and getattr(call_state, '_addr_audio_ever_asked', False):
+                if not getattr(call_state, 'address_audio_captured', False):
+                    ai_asked_for_addr = True
+            
             # Caller declined (no, I don't know, etc.) — don't trigger filler
             decline_phrases = ["no", "i don't", "i dont", "not sure", "no idea", "don't know", "dont know"]
             caller_declined = len(user_message.split()) <= 5 and any(phrase in user_message for phrase in decline_phrases)
             
             # Caller gave something substantial (an actual address or eircode)
-            caller_gave_address = len(user_message.split()) >= 2 and not caller_declined
+            caller_gave_address = len(user_message.split()) >= 3 and not caller_declined
             
             if ai_asked_for_addr and caller_gave_address:
                 likely_needs_tool = True

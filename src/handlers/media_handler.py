@@ -449,6 +449,7 @@ async def media_handler(ws):
                     if ai_asked_for_address(full_text):
                         call_state.awaiting_address_audio = True
                         call_state._addr_audio_collecting = False  # Reset — new ask cycle
+                        call_state._addr_audio_ever_asked = True  # Persistent — survives declines
                         call_state._addr_audio_phase1_time = time_module.time()
                         print(f"🎙️ [ADDR_AUDIO] Phase 1: AI asked for address — will capture caller's next response")
                         print(f"🎙️ [ADDR_AUDIO] Phase 1: speaking={speaking}, buffer_len={len(audio_buffer)}")
@@ -710,7 +711,6 @@ async def media_handler(ws):
                     # finished and we get the FULL address audio. This is fine because the
                     # recording is for async playback — no real-time requirement.
                     if call_state.awaiting_address_audio:
-                        call_state.awaiting_address_audio = False
                         phase1_time = call_state._addr_audio_phase1_time
                         phase_gap = time_module.time() - phase1_time if phase1_time else -1
                         print(f"🎙️ [ADDR_AUDIO] Phase 2: speech_final received, gap since phase1={phase_gap:.1f}s")
@@ -720,9 +720,31 @@ async def media_handler(ws):
                                         "i'm not sure", "im not sure", "not sure", "no idea"}
                         if text_lower_check in skip_phrases or (len(text.split()) <= 3 and text_lower_check.startswith('no')):
                             print(f"🎙️ [ADDR_AUDIO] Skipping capture — caller declined/doesn't know: '{text}'")
+                            # DON'T disarm — keep awaiting so the next response (after AI
+                            # re-asks for address) will be captured. Phase 1 will re-arm
+                            # with a fresh timestamp when the AI asks again.
                         else:
+                            call_state.awaiting_address_audio = False
                             call_state._addr_audio_collecting = True
                             print(f"🎙️ [ADDR_AUDIO] Collecting — will capture full audio before LLM responds")
+                    
+                    # Fallback: AI asked for address earlier in the call, but the
+                    # awaiting flag got cleared (e.g. AI said something unrelated in
+                    # between like "I'm ready when you are!"). If the caller now gives
+                    # something that looks like an address, capture it anyway.
+                    elif (call_state._addr_audio_ever_asked
+                          and not call_state.address_audio_captured
+                          and not call_state._addr_audio_collecting):
+                        text_lower_check = text.lower().strip().rstrip('.,!?')
+                        skip_phrases = {'no', "no i don't", "no i dont", "i don't know", "i dont know",
+                                        "i'm not sure", "im not sure", "not sure", "no idea",
+                                        "okay", "ok", "yeah", "yes", "that's it", "thanks",
+                                        "no that's it", "no thanks"}
+                        is_short_non_address = text_lower_check in skip_phrases or len(text.split()) <= 2
+                        if not is_short_non_address and len(text.split()) >= 3:
+                            print(f"🎙️ [ADDR_AUDIO] Phase 2 FALLBACK: Caller gave address-like response after earlier ask")
+                            call_state._addr_audio_phase1_time = time_module.time() - 5.0  # Approximate
+                            call_state._addr_audio_collecting = True
                     
                     # Trim history - keep more context to prevent AI from forgetting
                     # Keep system message + last 50 messages
@@ -739,6 +761,12 @@ async def media_handler(ws):
                     # events. No rush — this uploads async in the background.
                     if call_state._addr_audio_collecting:
                         call_state._addr_audio_collecting = False
+                        call_state._addr_audio_ever_asked = False  # Disable fallbacks — we got the audio
+                        call_state.awaiting_address_audio = False  # Fully disarm
+                        # Mark captured NOW (synchronously) so book_job defers the SMS.
+                        # The actual URL gets set after the async upload, but the deferral
+                        # decision must happen before book_job runs.
+                        call_state.address_audio_captured = True
                         phase1_time = call_state._addr_audio_phase1_time
                         print(f"🎙️ [ADDR_AUDIO] Phase 3: Capturing full address audio before LLM responds")
                         
@@ -898,6 +926,18 @@ async def media_handler(ws):
                     print(f"📨 Fallback: sent SMS with original address")
                 except Exception as sms_err:
                     print(f"⚠️ Fallback SMS also failed: {sms_err}")
+        elif _deferred_sms and not call_state.address_audio_url:
+            # SMS was deferred (address_audio_captured=True synchronously) but the
+            # async R2 upload failed so address_audio_url is None. Send SMS with
+            # the original ASR address — better than no SMS at all.
+            print(f"⚠️ Address audio upload failed but SMS was deferred — sending with original address")
+            try:
+                from src.services.sms_reminder import get_sms_service
+                sms = get_sms_service()
+                sms.send_booking_confirmation(**_deferred_sms)
+                print(f"📨 Sent deferred SMS with original address (upload failed)")
+            except Exception as sms_err:
+                print(f"⚠️ Deferred SMS fallback also failed: {sms_err}")
         elif call_state.address_audio_url and not _deferred_sms:
             # Address audio captured but no deferred SMS (no booking made, or SMS already sent)
             print(f"🎙️ Address audio captured but no deferred SMS — skipping retranscription pipeline")
