@@ -121,9 +121,10 @@ class TestLLMEircodeConfirmation:
 class TestLLMFinalConfirmation:
     """Test that the LLM does final confirmation with all details"""
     
-    def test_llm_final_confirmation_includes_address(self):
+    def test_llm_final_confirmation_excludes_address(self):
         """
-        Before booking, LLM should confirm all details including address/eircode.
+        Before booking, LLM should confirm name, day, and issue but NOT the address.
+        The system verifies the address separately after the call.
         """
         client = OpenAI()
         system_prompt = load_system_prompt()
@@ -156,11 +157,8 @@ class TestLLMFinalConfirmation:
         print(f"\nLLM Response: {response.choices[0].message.content}")
         
         # Final confirmation should include key details
-        # Note: LLM might ask for time first, or do final confirmation
         has_name = "josh" in reply
         has_day = "tuesday" in reply
-        has_address = "d02" in reply or "eircode" in reply or "address" in reply
-        has_job = "brick" in reply or "wall" in reply
         has_confirm = "correct" in reply or "confirm" in reply or "right" in reply
         
         # At minimum should mention the day and ask for confirmation
@@ -269,8 +267,8 @@ class TestLLMAddressHandling:
     
     def test_llm_does_not_ask_to_spell_address(self):
         """
-        When customer provides an address, LLM should NOT ask them to spell it.
-        It should just repeat it back for confirmation.
+        When customer provides an address, LLM should NOT ask them to spell it
+        and should NOT repeat it back. It should just acknowledge and move on.
         """
         client = OpenAI()
         system_prompt = load_system_prompt()
@@ -305,21 +303,31 @@ class TestLLMAddressHandling:
             "spell it" in reply,
         ])
         
-        # Should confirm the address back
-        confirms_address = any([
-            "123" in reply,
-            "main" in reply,
-            "limerick" in reply,
-            "correct" in reply,
+        # LLM should NOT repeat the address back for confirmation
+        repeats_address = "123 main" in reply or ("123" in reply and "limerick" in reply)
+        
+        # LLM should acknowledge and move on (e.g., to phone or availability)
+        moves_on = any([
+            "grand" in reply,
+            "got that" in reply,
+            "lovely" in reply,
+            "brilliant" in reply,
+            "phone" in reply,
+            "number" in reply,
+            "reach" in reply,
+            "available" in reply,
+            "good number" in reply,
         ])
         
         assert not asks_to_spell, f"LLM should NOT ask to spell address. Got: {reply}"
-        assert confirms_address, f"LLM should confirm address back. Got: {reply}"
+        assert not repeats_address, f"LLM should NOT repeat address back. Got: {reply}"
+        assert moves_on, f"LLM should acknowledge and move on. Got: {reply}"
     
     def test_llm_uses_actual_address_in_confirmation(self):
         """
-        When confirming booking, LLM should use the ACTUAL address,
-        not say "your eircode" or "your address" as a placeholder.
+        When confirming booking, LLM should NOT include the address —
+        the system verifies it separately after the call.
+        It should also NOT use placeholder text like "your eircode".
         """
         client = OpenAI()
         system_prompt = load_system_prompt()
@@ -360,16 +368,12 @@ class TestLLMAddressHandling:
             "at your location" in reply,
         ])
         
-        # Should use actual eircode in confirmation
-        uses_actual_address = "d02" in reply.replace("-", "").replace(" ", "")
-        
         assert not uses_placeholder, f"LLM should NOT use placeholder text. Got: {reply}"
-        # Note: LLM might not always include address in every response, so we just check no placeholder
     
     def test_llm_confirms_address_without_spelling(self):
         """
-        When customer gives address and LLM confirms it, should just repeat it,
-        not spell it out letter by letter.
+        When customer gives address, LLM should NOT spell it out letter by letter
+        and should NOT repeat it back. It should just acknowledge naturally.
         """
         client = OpenAI()
         system_prompt = load_system_prompt()
@@ -398,7 +402,6 @@ class TestLLMAddressHandling:
         print(f"\nLLM Response: {reply}")
         
         # Address should NOT be spelled out like "4-5 O-'-C-O-N-N-E-L-L"
-        # It should just be repeated normally
         spelled_out_address = any([
             "4-5" in reply,
             "O-'-C" in reply,
@@ -406,7 +409,11 @@ class TestLLMAddressHandling:
             "L-I-M-E-R-I-C-K" in reply,
         ])
         
+        # Should NOT repeat the address back
+        repeats_address = "45 o'connell" in reply.lower() or ("45" in reply and "connell" in reply.lower())
+        
         assert not spelled_out_address, f"LLM should NOT spell out address. Got: {reply}"
+        assert not repeats_address, f"LLM should NOT repeat address back — just acknowledge. Got: {reply}"
 
 
 

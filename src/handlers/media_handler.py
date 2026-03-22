@@ -861,6 +861,38 @@ async def media_handler(ws):
             print(f"🎙️ Audio URL: {call_state.address_audio_url}")
         print(f"{'#'*60}\n")
         
+        # Post-call address re-transcription pipeline
+        # If address audio was captured and SMS was deferred, run the Whisper
+        # re-transcription → LLM validation → DB update → SMS pipeline.
+        _deferred_sms = getattr(call_state, '_deferred_sms_kwargs', None)
+        if call_state.address_audio_url and _deferred_sms:
+            try:
+                from src.services.address_retranscriber import retranscribe_and_update
+                company_id_int = int(company_id) if company_id else None
+                await retranscribe_and_update(
+                    audio_url=call_state.address_audio_url,
+                    original_address=getattr(call_state, '_deferred_sms_original_address', None) or call_state.job_address or '',
+                    caller_phone=caller_phone,
+                    company_id=company_id_int,
+                    booking_id=getattr(call_state, '_deferred_sms_booking_id', None),
+                    client_id=getattr(call_state, '_deferred_sms_client_id', None),
+                    send_sms=True,
+                    sms_kwargs=_deferred_sms,
+                )
+            except Exception as e:
+                print(f"⚠️ Address retranscription error: {e}")
+                # Fallback: send SMS with original address
+                try:
+                    from src.services.sms_reminder import get_sms_service
+                    sms = get_sms_service()
+                    sms.send_booking_confirmation(**_deferred_sms)
+                    print(f"📨 Fallback: sent SMS with original address")
+                except Exception as sms_err:
+                    print(f"⚠️ Fallback SMS also failed: {sms_err}")
+        elif call_state.address_audio_url and not _deferred_sms:
+            # Address audio captured but no deferred SMS (no booking made, or SMS already sent)
+            print(f"🎙️ Address audio captured but no deferred SMS — skipping retranscription pipeline")
+        
         # Save call summary
         if conversation_log and caller_phone:
             try:

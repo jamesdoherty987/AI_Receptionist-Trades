@@ -4261,6 +4261,8 @@ Return ONLY valid JSON, no explanation."""
                 worker_msg = ""
             
             # Send booking confirmation SMS (non-blocking)
+            # If address audio was captured, DEFER the SMS — the post-call
+            # retranscriber will send it with the refined address instead.
             try:
                 from src.services.sms_reminder import get_sms_service
                 sms_service = get_sms_service()
@@ -4278,7 +4280,7 @@ Return ONLY valid JSON, no explanation."""
                             pass
                     if _send_confirmation:
                         _worker_name_list = [w['name'] for w in assigned_workers] if assigned_workers else None
-                        sms_service.send_booking_confirmation(
+                        _sms_kwargs = dict(
                             to_number=phone,
                             appointment_time=parsed_time,
                             customer_name=customer_name,
@@ -4287,6 +4289,18 @@ Return ONLY valid JSON, no explanation."""
                             worker_names=_worker_name_list,
                             address=validated_address,
                         )
+                        # Defer SMS if address audio was captured — retranscriber will send it
+                        _cs = services.get('call_state')
+                        _has_addr_audio = _cs and getattr(_cs, 'address_audio_captured', False)
+                        if _has_addr_audio:
+                            # Stash SMS kwargs + booking/client IDs on call_state for post-call pipeline
+                            _cs._deferred_sms_kwargs = _sms_kwargs
+                            _cs._deferred_sms_booking_id = booking_id
+                            _cs._deferred_sms_client_id = client_id
+                            _cs._deferred_sms_original_address = validated_address
+                            logger.info(f"[BOOK_JOB] 📨 SMS deferred — address audio captured, retranscriber will send after call")
+                        else:
+                            sms_service.send_booking_confirmation(**_sms_kwargs)
                     else:
                         logger.info(f"[BOOK_JOB] Confirmation SMS disabled for company {company_id}, skipping")
             except Exception as sms_err:
