@@ -232,18 +232,18 @@ class TestBookingConfirmedPhrasesInCode:
         assert callable(sanitize_for_tts)
 
     def test_sanitize_for_tts_used_in_direct_response(self):
-        """Verify sanitize_for_tts is called on direct responses."""
+        """Verify sanitize_for_tts is called on direct responses (complete strings only, NOT per-token)."""
         import inspect
         from src.services import llm_stream
         source = inspect.getsource(llm_stream)
         assert "sanitize_for_tts(direct_response)" in source
 
-    def test_sanitize_for_tts_used_in_token_stream(self):
-        """Verify sanitize_for_tts is called on streamed tokens."""
+    def test_sanitize_for_tts_not_used_on_streaming_tokens(self):
+        """sanitize_for_tts must NOT run on individual streaming tokens — it mangles partial content."""
         import inspect
         from src.services import llm_stream
         source = inspect.getsource(llm_stream)
-        assert "sanitize_for_tts(cleaned_token)" in source
+        assert "sanitize_for_tts(cleaned_token)" not in source
 
     def test_negative_guard_in_booking_confirmed(self):
         """Verify the negative guard for availability keywords exists."""

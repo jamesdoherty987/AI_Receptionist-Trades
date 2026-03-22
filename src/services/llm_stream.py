@@ -1357,8 +1357,6 @@ TOOL RULES:
                 if not tool_calls:
                     # Strip markdown formatting to prevent TTS reading "**" as "star star"
                     cleaned_token = delta.content.replace('**', '').replace('__', '').replace('~~', '')
-                    # Strip bullet/dash/newline formatting that causes TTS cutoff
-                    cleaned_token = sanitize_for_tts(cleaned_token)
                     # Add pauses for spelled-out content (letters/numbers separated by dashes)
                     cleaned_token = format_for_tts_spelling(cleaned_token)
                     
