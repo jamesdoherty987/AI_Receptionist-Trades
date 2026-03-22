@@ -496,6 +496,33 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
                 print(f"[DATE_FIX] AI said needs_clarification='date' but we resolved it - proceeding")
             elif missing == "time" and parsed.get("hour") is not None:
                 print(f"[DATE_FIX] AI said needs_clarification='time' but hour is set - proceeding")
+            elif missing == "month" and parsed.get("day"):
+                # Day number given without month (e.g., "the 27th", "the 5th")
+                # Infer: if that day hasn't passed this month, use this month; otherwise next month
+                day_num = parsed["day"]
+                try:
+                    candidate = now.replace(day=day_num, hour=default_time[0], minute=default_time[1], second=0, microsecond=0)
+                    if candidate.date() < now.date():
+                        # Day already passed this month — use next month
+                        if now.month == 12:
+                            candidate = candidate.replace(year=now.year + 1, month=1)
+                        else:
+                            candidate = candidate.replace(month=now.month + 1)
+                    parsed["month"] = candidate.month
+                    parsed["year"] = candidate.year
+                    print(f"[DATE_FIX] Inferred month for 'the {day_num}' → {candidate.strftime('%B %d, %Y')}")
+                except ValueError:
+                    # Invalid day for this month (e.g., Feb 31) — try next month
+                    try:
+                        next_month = now.month + 1 if now.month < 12 else 1
+                        next_year = now.year if now.month < 12 else now.year + 1
+                        candidate = datetime(next_year, next_month, day_num, default_time[0], default_time[1])
+                        parsed["month"] = candidate.month
+                        parsed["year"] = candidate.year
+                        print(f"[DATE_FIX] Day {day_num} invalid this month, using {candidate.strftime('%B %d, %Y')}")
+                    except ValueError:
+                        print(f"[WARNING] Cannot resolve day {day_num} to a valid date - returning None")
+                        return None
             else:
                 print(f"[WARNING] {missing.title()} not specified in '{text}' - returning None to prompt")
                 return None

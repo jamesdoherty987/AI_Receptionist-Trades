@@ -1650,20 +1650,6 @@ TOOL RULES:
                 })
                 continue
             
-            # BLOCK lookup_customer and search_availability during reschedule — reschedule_job handles everything
-            if tool_name in ("lookup_customer", "search_availability", "get_next_available") and user_wants_reschedule:
-                print(f"   🚫 [RESCHEDULE_INTERCEPT] BLOCKED {tool_name} during reschedule flow (reschedule_job handles this)")
-                tool_results.append({
-                    "tool_call_id": tool_call["id"],
-                    "role": "tool",
-                    "name": tool_name,
-                    "content": json.dumps({
-                        "success": False,
-                        "error": "Not needed during reschedule. Use reschedule_job — it finds the booking, checks availability, and moves it in one tool."
-                    })
-                })
-                continue
-            
             print(f"\n   {'─'*50}")
             print(f"   🔧 [TOOL_EXEC] === Executing Tool {i+1}/{len(tool_calls)} ===")
             print(f"   🔧 [TOOL_EXEC] Name: {tool_name}")
@@ -2012,8 +1998,14 @@ TOOL RULES:
                         # First call - found jobs on that day, need name confirmation
                         direct_response = result_content.get("message", "")
                     else:
-                        # Error
-                        direct_response = result_content.get("error", "I couldn't find that booking. What day was it for?")
+                        # Error — make date parsing failures sound natural
+                        error = result_content.get("error", "")
+                        if "could not understand the date" in error.lower():
+                            direct_response = "I didn't quite catch the date. Could you tell me the day and month, like March 27th?"
+                        elif "no bookings found" in error.lower():
+                            direct_response = "I don't see any bookings on that day. Could you double-check the date?"
+                        else:
+                            direct_response = error or "I couldn't find that booking. What day was it for?"
                     
                     print(f"   ⚡ [DIRECT] cancel -> '{direct_response[:50]}...'")
                 
@@ -2029,8 +2021,14 @@ TOOL RULES:
                         # Name confirmed, need new date
                         direct_response = result_content.get("error", "What day would you like to move it to?")
                     else:
-                        # Error
-                        direct_response = result_content.get("error", "I couldn't find that booking. What day was it for?")
+                        # Error — make date parsing failures sound natural
+                        error = result_content.get("error", "")
+                        if "could not understand the date" in error.lower():
+                            direct_response = "I didn't quite catch the date. Could you tell me the day and month, like March 27th?"
+                        elif "no bookings found" in error.lower():
+                            direct_response = "I don't see any bookings on that day. Could you double-check the date?"
+                        else:
+                            direct_response = error or "I couldn't find that booking. What day was it for?"
                     
                     print(f"   ⚡ [DIRECT] reschedule -> '{direct_response[:50]}...'")
                 
