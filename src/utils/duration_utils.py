@@ -45,10 +45,10 @@ def format_duration(minutes: int) -> str:
         5760: "4 days",
         7200: "5 days",
         8640: "6 days",
-        10080: "1 week",
-        20160: "2 weeks",
-        30240: "3 weeks",
-        40320: "4 weeks",
+        10080: "1 working week",
+        20160: "2 working weeks",
+        30240: "3 working weeks",
+        40320: "4 working weeks",
     }
     
     if minutes in duration_labels:
@@ -64,7 +64,7 @@ def format_duration(minutes: int) -> str:
     
     parts = []
     if weeks > 0:
-        parts.append(f"{weeks} week{'s' if weeks > 1 else ''}")
+        parts.append(f"{weeks} working week{'s' if weeks > 1 else ''}")
     if days > 0:
         parts.append(f"{days} day{'s' if days > 1 else ''}")
     if hours > 0:

@@ -29,11 +29,11 @@ export const DURATION_OPTIONS = [
   { value: 5760, label: '4 days' },
   { value: 7200, label: '5 days' },
   { value: 8640, label: '6 days' },
-  { value: 10080, label: '1 week' },
+  { value: 10080, label: '1 working week' },
   // Weeks (2-4 weeks)
-  { value: 20160, label: '2 weeks' },
-  { value: 30240, label: '3 weeks' },
-  { value: 40320, label: '4 weeks (1 month)' },
+  { value: 20160, label: '2 working weeks' },
+  { value: 30240, label: '3 working weeks' },
+  { value: 40320, label: '4 working weeks (1 month)' },
 ];
 
 /**
@@ -55,7 +55,7 @@ export const formatDuration = (minutes) => {
   const mins = minutes % 60;
   
   const parts = [];
-  if (weeks > 0) parts.push(`${weeks} week${weeks > 1 ? 's' : ''}`);
+  if (weeks > 0) parts.push(`${weeks} working week${weeks > 1 ? 's' : ''}`);
   if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
   if (hours > 0) parts.push(`${hours} hour${hours > 1 ? 's' : ''}`);
   if (mins > 0) parts.push(`${mins} min${mins > 1 ? 's' : ''}`);
@@ -103,14 +103,14 @@ export const isMultiDayDuration = (minutes) => {
 export const getDurationCategory = (minutes) => {
   if (minutes < 1440) return 'Hours';
   if (minutes < 10080) return 'Days';
-  return 'Weeks';
+  return 'Working Weeks';
 };
 
 // Grouped options for better UX in select dropdowns
 export const DURATION_OPTIONS_GROUPED = {
   'Hours': DURATION_OPTIONS.filter(opt => opt.value < 1440),
   'Days': DURATION_OPTIONS.filter(opt => opt.value >= 1440 && opt.value < 10080),
-  'Weeks': DURATION_OPTIONS.filter(opt => opt.value >= 10080),
+  'Working Weeks': DURATION_OPTIONS.filter(opt => opt.value >= 10080),
 };
 
 export default DURATION_OPTIONS;
