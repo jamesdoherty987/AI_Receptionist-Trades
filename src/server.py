@@ -22,6 +22,7 @@ from starlette.applications import Starlette
 from starlette.routing import WebSocketRoute, Mount
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from starlette.middleware.wsgi import WSGIMiddleware
+from contextlib import asynccontextmanager
 
 # Import websockets for exception compatibility with media_handler
 import websockets
@@ -283,6 +284,14 @@ async def shutdown_event():
     print("[SHUTDOWN] ✅ Cleanup complete")
 
 
+@asynccontextmanager
+async def lifespan(app):
+    """Lifespan handler: startup and shutdown logic."""
+    await startup_event()
+    yield
+    await shutdown_event()
+
+
 # Create the combined ASGI application
 # - /media -> WebSocket handler (Twilio media streams)
 # - everything else -> Flask HTTP API
@@ -291,8 +300,7 @@ app = Starlette(
         WebSocketRoute("/media", media_websocket_endpoint),
         Mount("/", app=flask_asgi),
     ],
-    on_startup=[startup_event],
-    on_shutdown=[shutdown_event],
+    lifespan=lifespan,
 )
 
 
