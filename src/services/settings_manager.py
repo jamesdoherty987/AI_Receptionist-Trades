@@ -359,6 +359,7 @@ class SettingsManager:
                 sort_order=service.get('sort_order', 0),
                 workers_required=service.get('workers_required', 1),
                 worker_restrictions=service.get('worker_restrictions'),
+                requires_callout=service.get('requires_callout', False),
                 company_id=company_id
             )
         except Exception as e:

@@ -28,7 +28,8 @@ function ServicesTab() {
     duration: '1440', 
     image_url: '', 
     workers_required: '1',
-    worker_restrictions: { type: 'all', worker_ids: [] }
+    worker_restrictions: { type: 'all', worker_ids: [] },
+    requires_callout: false
   });
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, service: null });
 
@@ -85,7 +86,8 @@ function ServicesTab() {
         duration: '1440', 
         image_url: '', 
         workers_required: '1',
-        worker_restrictions: { type: 'all', worker_ids: [] }
+        worker_restrictions: { type: 'all', worker_ids: [] },
+        requires_callout: false
       });
     },
     onError: () => addToast('Failed to add service', 'error'),
@@ -140,6 +142,7 @@ function ServicesTab() {
       image_url: formData.image_url,
       workers_required: parseInt(formData.workers_required) || 1,
       worker_restrictions: restrictions,
+      requires_callout: formData.requires_callout,
     });
   };
 
@@ -165,6 +168,7 @@ function ServicesTab() {
         image_url: service.image_url,
         workers_required: parseInt(service.workers_required) || 1,
         worker_restrictions: restrictions,
+        requires_callout: service.requires_callout || false,
       },
     });
   };
@@ -280,6 +284,27 @@ function ServicesTab() {
             onChange={(restrictions) => setFormData({ ...formData, worker_restrictions: restrictions })}
             workers={workers}
           />
+          
+          {/* Requires Callout Toggle */}
+          <div className="callout-toggle-group">
+            <label>Requires Initial Callout?</label>
+            <div className="callout-toggle-row">
+              <button
+                type="button"
+                className={`callout-toggle ${formData.requires_callout ? 'active' : ''}`}
+                onClick={() => setFormData({ ...formData, requires_callout: !formData.requires_callout })}
+                role="switch"
+                aria-checked={formData.requires_callout}
+              >
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">
+                {formData.requires_callout 
+                  ? 'Yes — AI will book a callout visit instead of the full job' 
+                  : 'No — book the full job directly'}
+              </span>
+            </div>
+          </div>
           
           <div className="form-group">
             <label>Image (optional)</label>
@@ -563,6 +588,27 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
             workers={workers}
           />
           
+          {/* Requires Callout Toggle */}
+          <div className="callout-toggle-group">
+            <label>Requires Initial Callout?</label>
+            <div className="callout-toggle-row">
+              <button
+                type="button"
+                className={`callout-toggle ${editData.requires_callout ? 'active' : ''}`}
+                onClick={() => setEditData({ ...editData, requires_callout: !editData.requires_callout })}
+                role="switch"
+                aria-checked={editData.requires_callout}
+              >
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">
+                {editData.requires_callout 
+                  ? 'Yes — AI will book a callout visit instead of the full job' 
+                  : 'No — book the full job directly'}
+              </span>
+            </div>
+          </div>
+          
           <ImageUpload
             value={editData.image_url || ''}
             onChange={(value) => setEditData({ ...editData, image_url: value })}
@@ -612,6 +658,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           {restrictionSummary && (
             <span className="meta-item restriction" title="Worker restrictions">
               <i className="fas fa-user-lock"></i> {restrictionSummary}
+            </span>
+          )}
+          {service.requires_callout && (
+            <span className="meta-item callout-badge" title="Requires initial callout visit">
+              <i className="fas fa-phone-alt"></i> Callout first
             </span>
           )}
         </div>

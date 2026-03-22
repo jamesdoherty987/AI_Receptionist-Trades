@@ -182,6 +182,7 @@ class PostgreSQLDatabaseWrapper:
                     charge REAL DEFAULT 0,
                     payment_status TEXT DEFAULT 'unpaid',
                     payment_method TEXT,
+                    requires_callout BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (client_id) REFERENCES clients (id)
                 )
@@ -293,6 +294,7 @@ class PostgreSQLDatabaseWrapper:
                     sort_order INTEGER DEFAULT 0,
                     workers_required INTEGER DEFAULT 1,
                     worker_restrictions JSONB DEFAULT NULL,
+                    requires_callout BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -307,6 +309,17 @@ class PostgreSQLDatabaseWrapper:
                         ALTER TABLE services ADD COLUMN worker_restrictions JSONB DEFAULT NULL;
                     END IF;
                 END $$;
+            """)
+            
+            # Add requires_callout column if it doesn't exist (migration)
+            cursor.execute("""
+                DO $ 
+                BEGIN 
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                   WHERE table_name='services' AND column_name='requires_callout') THEN
+                        ALTER TABLE services ADD COLUMN requires_callout BOOLEAN DEFAULT FALSE;
+                    END IF;
+                END $;
             """)
             
             # Business settings table
@@ -675,6 +688,15 @@ class PostgreSQLDatabaseWrapper:
                 print("[SUCCESS] Added reminder_sent column to bookings table")
             except Exception as e:
                 print(f"[WARNING] Could not add reminder_sent column: {e}")
+        
+        # Add requires_callout column to bookings table
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='bookings' AND column_name='requires_callout'")
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE bookings ADD COLUMN requires_callout BOOLEAN DEFAULT FALSE")
+                print("[SUCCESS] Added requires_callout column to bookings table")
+            except Exception as e:
+                print(f"[WARNING] Could not add requires_callout column: {e}")
     
     def _convert_query(self, query: str) -> str:
         """Convert ? placeholders to %s for parameterized queries"""
@@ -738,8 +760,8 @@ class PostgreSQLDatabaseWrapper:
                     self.add_service(
                         service_id=f"general_{company_id}",
                         category="General",
-                        name="General Service",
-                        description="Default service for general jobs and appointments that don't match a specific service category",
+                        name="General Callout",
+                        description="Default callout service — used when a job requires an initial site visit before the full work is scheduled",
                         duration_minutes=1440,  # 1 day (24 hours)
                         price=0,
                         emergency_price=None,
@@ -749,7 +771,7 @@ class PostgreSQLDatabaseWrapper:
                         sort_order=9999,  # Put at the end
                         company_id=company_id
                     )
-                    print(f"[SUCCESS] Created default 'General Service' for company {company_id}")
+                    print(f"[SUCCESS] Created default 'General Callout' for company {company_id}")
                 except Exception as e:
                     print(f"[WARNING] Could not create default service for company {company_id}: {e}")
             
@@ -1190,7 +1212,7 @@ class PostgreSQLDatabaseWrapper:
                         b.service_type, b.status, b.phone_number, b.email, b.created_at,
                         b.charge, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
-                        b.address_audio_url,
+                        b.address_audio_url, b.requires_callout,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
@@ -1201,7 +1223,7 @@ class PostgreSQLDatabaseWrapper:
                              b.service_type, b.status, b.phone_number, b.email, b.created_at,
                              b.charge, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
-                             b.address_audio_url,
+                             b.address_audio_url, b.requires_callout,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """, (company_id,))
@@ -1212,7 +1234,7 @@ class PostgreSQLDatabaseWrapper:
                         b.service_type, b.status, b.phone_number, b.email, b.created_at,
                         b.charge, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
-                        b.address_audio_url,
+                        b.address_audio_url, b.requires_callout,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
@@ -1222,7 +1244,7 @@ class PostgreSQLDatabaseWrapper:
                              b.service_type, b.status, b.phone_number, b.email, b.created_at,
                              b.charge, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
-                             b.address_audio_url,
+                             b.address_audio_url, b.requires_callout,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """)
@@ -1255,6 +1277,7 @@ class PostgreSQLDatabaseWrapper:
                 'duration_minutes': row['duration_minutes'],
                 'assigned_worker_ids': row['assigned_worker_ids'] or [],  # List of assigned worker IDs
                 'address_audio_url': row.get('address_audio_url'),
+                'requires_callout': row.get('requires_callout', False),
             } for row in rows]
         finally:
             self.return_connection(conn)
@@ -1768,7 +1791,7 @@ class PostgreSQLDatabaseWrapper:
                     service_type: str, phone_number: str = None, email: str = None,
                     urgency: str = None, address: str = None, eircode: str = None,
                     property_type: str = None, charge: float = None, company_id: int = None,
-                    duration_minutes: int = 1440) -> Optional[int]:
+                    duration_minutes: int = 1440, requires_callout: bool = False) -> Optional[int]:
         """Add a new booking (default 1 day duration for trades)"""
         print(f"[DB_BOOKING] ========== ADDING BOOKING ==========")
         print(f"[DB_BOOKING] client_id={client_id}, calendar_event_id={calendar_event_id}")
@@ -1776,6 +1799,7 @@ class PostgreSQLDatabaseWrapper:
         print(f"[DB_BOOKING] phone={phone_number}, email={email}, company_id={company_id}")
         print(f"[DB_BOOKING] urgency={urgency}, address={address}, eircode={eircode}")
         print(f"[DB_BOOKING] property_type={property_type}, charge={charge}, duration={duration_minutes}")
+        print(f"[DB_BOOKING] requires_callout={requires_callout}")
         
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -1796,21 +1820,21 @@ class PostgreSQLDatabaseWrapper:
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
-                                        eircode, property_type, charge, company_id, duration_minutes)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        eircode, property_type, charge, company_id, duration_minutes, requires_callout)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
-                      phone_number, email, urgency, address, eircode, property_type, charge, company_id, duration_minutes))
+                      phone_number, email, urgency, address, eircode, property_type, charge, company_id, duration_minutes, requires_callout))
             else:
                 print(f"[DB_BOOKING] Inserting booking without charge...")
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
-                                        eircode, property_type, company_id, duration_minutes)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        eircode, property_type, company_id, duration_minutes, requires_callout)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
-                      phone_number, email, urgency, address, eircode, property_type, company_id, duration_minutes))
+                      phone_number, email, urgency, address, eircode, property_type, company_id, duration_minutes, requires_callout))
             
             result = cursor.fetchone()
             booking_id = result['id'] if result else None
@@ -1876,7 +1900,7 @@ class PostgreSQLDatabaseWrapper:
                 if db_field in ['calendar_event_id', 'appointment_time', 'service_type', 
                           'status', 'phone_number', 'email', 'charge', 'payment_status', 
                           'payment_method', 'urgency', 'address', 'eircode', 'property_type',
-                          'duration_minutes', 'address_audio_url']:
+                          'duration_minutes', 'address_audio_url', 'requires_callout']:
                     fields.append(f"{db_field} = %s")
                     values.append(value)
             
@@ -2770,6 +2794,7 @@ class PostgreSQLDatabaseWrapper:
                    currency: str = 'EUR', active: bool = True,
                    image_url: str = None, sort_order: int = 0,
                    workers_required: int = 1, worker_restrictions: dict = None,
+                   requires_callout: bool = False,
                    company_id: int = None) -> bool:
         """Add a new service for a specific company (default 1 day duration for trades)"""
         import json
@@ -2785,10 +2810,10 @@ class PostgreSQLDatabaseWrapper:
         try:
             cursor.execute("""
                 INSERT INTO services (id, category, name, description, duration_minutes,
-                                    price, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, company_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    price, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, requires_callout, company_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (service_id, category, name, description, duration_minutes,
-                  price, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, company_id))
+                  price, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, requires_callout, company_id))
             
             conn.commit()
             return True
@@ -2849,7 +2874,8 @@ class PostgreSQLDatabaseWrapper:
         try:
             allowed_fields = ['category', 'name', 'description', 'duration_minutes',
                              'price', 'emergency_price', 'currency', 'active',
-                             'image_url', 'sort_order', 'workers_required', 'worker_restrictions']
+                             'image_url', 'sort_order', 'workers_required', 'worker_restrictions',
+                             'requires_callout']
             
             fields = []
             values = []

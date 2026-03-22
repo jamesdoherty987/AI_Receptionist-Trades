@@ -329,6 +329,8 @@ def load_system_prompt(company_id=None):
                 if service.get('emergency_price'):
                     service_line += f" (Emergency: €{service['emergency_price']})"
                 service_line += f" - {service['duration_minutes']} minutes"
+                if service.get('requires_callout'):
+                    service_line += " [CALLOUT REQUIRED]"
                 services_list.append(service_line)
         
         # Build business hours string

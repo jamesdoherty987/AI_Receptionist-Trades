@@ -21,7 +21,8 @@ function AddJobModal({ isOpen, onClose }) {
     estimated_charge: '',
     duration_minutes: 1440,
     notes: '',
-    worker_id: ''
+    worker_id: '',
+    requires_callout: false
   });
   
   const [selectedQuickDate, setSelectedQuickDate] = useState('');
@@ -104,7 +105,7 @@ function AddJobModal({ isOpen, onClose }) {
   });
 
   const resetForm = () => {
-    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', duration_minutes: 1440, notes: '', worker_id: '' });
+    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false });
     setSelectedQuickDate('');
     setSelectedDate('');
     setShowTimeSlots(false);
@@ -470,6 +471,25 @@ function AddJobModal({ isOpen, onClose }) {
           <div className="form-group">
             <label className="form-label">Estimated Charge (€)</label>
             <input type="number" name="estimated_charge" className="form-input" value={formData.estimated_charge} onChange={handleChange} step="0.01" min="0" placeholder="0.00" />
+          </div>
+
+          {/* Initial Callout Toggle */}
+          <div className="form-group">
+            <label className="form-label">Requires Initial Callout?</label>
+            <div className="callout-toggle-wrapper">
+              <button
+                type="button"
+                className={`callout-toggle ${formData.requires_callout ? 'active' : ''}`}
+                onClick={() => setFormData(prev => ({ ...prev, requires_callout: !prev.requires_callout }))}
+                role="switch"
+                aria-checked={formData.requires_callout}
+              >
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">
+                {formData.requires_callout ? 'Yes — callout visit needed before work begins' : 'No — go straight to the job'}
+              </span>
+            </div>
           </div>
           
           <div className="form-group">

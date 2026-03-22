@@ -2995,7 +2995,8 @@ def add_service_api():
         'category': data.get('category', 'General'),
         'description': data.get('description', '').strip() if data.get('description') else None,
         'workers_required': max(1, int(data.get('workers_required', 1)) if data.get('workers_required') else 1),
-        'worker_restrictions': restrictions
+        'worker_restrictions': restrictions,
+        'requires_callout': bool(data.get('requires_callout', False))
     }
     
     success = settings_mgr.add_service(sanitized_data, company_id=company_id)
@@ -3061,6 +3062,10 @@ def manage_service_api(service_id):
             else:
                 restrictions = None
             data['worker_restrictions'] = restrictions
+        
+        # Handle requires_callout if provided
+        if 'requires_callout' in data:
+            data['requires_callout'] = bool(data.get('requires_callout', False))
         
         # Upload image to R2 if it's base64
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
@@ -3577,7 +3582,8 @@ def bookings_api():
                 property_type=job_property_type,
                 charge=job_charge,
                 company_id=company_id,
-                duration_minutes=duration_minutes
+                duration_minutes=duration_minutes,
+                requires_callout=bool(data.get('requires_callout', False))
             )
             
             # Add initial note if provided

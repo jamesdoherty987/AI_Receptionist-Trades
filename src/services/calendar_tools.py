@@ -1334,7 +1334,7 @@ class ServiceMatcher:
                 return {
                     'service': service,
                     'score': 0,
-                    'matched_name': service.get('name', 'General Service'),
+                    'matched_name': service.get('name', 'General Callout'),
                     'match_details': {'type': 'fallback', 'reason': reason},
                     'is_general': True
                 }
@@ -1344,15 +1344,15 @@ class ServiceMatcher:
         return {
             'service': {
                 'id': 'general_default',
-                'name': 'General Service',
+                'name': 'General Callout',
                 'category': 'General',
-                'description': 'Default service',
+                'description': 'Default callout service',
                 'duration_minutes': default_duration,
                 'price': default_charge,
                 'emergency_price': default_charge * 1.5  # 50% more for emergency
             },
             'score': 0,
-            'matched_name': 'General Service (default)',
+            'matched_name': 'General Callout (default)',
             'match_details': {'type': 'virtual_fallback', 'reason': reason},
             'is_general': True
         }
@@ -1546,15 +1546,15 @@ def match_service(job_description: str, company_id: int = None, use_ai_fallback:
         return {
             'service': {
                 'id': 'general_default',
-                'name': 'General Service',
+                'name': 'General Callout',
                 'category': 'General',
-                'description': 'Default service',
+                'description': 'Default callout service',
                 'duration_minutes': 60,
                 'price': default_charge,
                 'emergency_price': default_charge * 1.5
             },
             'score': 0,
-            'matched_name': 'General Service (error fallback)',
+            'matched_name': 'General Callout (error fallback)',
             'match_details': {'type': 'error', 'error': str(e)},
             'is_general': True
         }
@@ -1706,6 +1706,24 @@ def get_matched_service_name(job_description: str, company_id: int = None) -> st
     return match_result['matched_name']
 
 
+def _resolve_callout_duration(matched_service: dict, company_id: int = None) -> int:
+    """If a service requires an initial callout, return the General Callout duration instead."""
+    if not matched_service.get('requires_callout'):
+        return matched_service.get('duration_minutes', 60)
+    
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    all_services = settings_mgr.get_services(company_id=company_id)
+    for svc in all_services:
+        svc_name = (svc.get('name') or '').lower()
+        if 'general callout' in svc_name or ('general' in svc_name and 'callout' in svc_name):
+            return svc.get('duration_minutes', 60)
+    for svc in all_services:
+        if 'callout' in (svc.get('name') or '').lower():
+            return svc.get('duration_minutes', 60)
+    return 60  # Default callout duration
+
+
 def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     """
     Execute a tool call and return the result.
@@ -1762,14 +1780,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             if job_description:
                 match_result = match_service(job_description, company_id=company_id)
                 matched_service = match_result['service']
-                service_duration = matched_service.get('duration_minutes', 60)
+                service_duration = _resolve_callout_duration(matched_service, company_id=company_id)
                 workers_required = matched_service.get('workers_required', 1) or 1
                 worker_restrictions = matched_service.get('worker_restrictions')
                 logger.info(f"[CHECK_AVAIL] Service from job_description '{job_description}': {service_duration} mins, {workers_required} worker(s)")
             else:
                 match_result = match_service(service_type, company_id=company_id)
                 matched_service = match_result['service']
-                service_duration = matched_service.get('duration_minutes', 60)
+                service_duration = _resolve_callout_duration(matched_service, company_id=company_id)
                 workers_required = matched_service.get('workers_required', 1) or 1
                 worker_restrictions = matched_service.get('worker_restrictions')
                 logger.info(f"[CHECK_AVAIL] Service from service_type: {service_duration} mins, {workers_required} worker(s)")
@@ -2052,6 +2070,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 "message": f"{time_reference} I have: {natural_summary}",
                 "voice_instruction": voice_instruction,
                 "is_full_day_service": service_duration >= 480,
+                "is_callout_service": matched_service.get('requires_callout', False),
                 "duration_minutes": service_duration,
                 "duration_label": format_duration_label(service_duration)
             }
@@ -2066,7 +2085,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Get service info
             match_result = match_service(job_description, company_id=company_id)
             matched_service = match_result['service']
-            service_duration = matched_service.get('duration_minutes', 60)
+            service_duration = _resolve_callout_duration(matched_service, company_id=company_id)
             workers_required = matched_service.get('workers_required', 1) or 1
             worker_restrictions = matched_service.get('worker_restrictions')
             is_full_day = service_duration >= 480
@@ -2230,6 +2249,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             else:
                 voice_instruction = "Present these options naturally. Ask which day and time works for them."
             
+            # Add callout instruction if this is a callout service
+            if matched_service.get('requires_callout'):
+                voice_instruction += " This service requires an initial callout visit. Let the customer know you're booking a callout to have a look first, and the full job will be scheduled after."
+            
             return {
                 "success": True,
                 "available_days": formatted_days,
@@ -2237,6 +2260,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 "message": natural_summary,
                 "voice_instruction": voice_instruction,
                 "is_full_day_service": is_full_day,
+                "is_callout_service": matched_service.get('requires_callout', False),
                 "days_found": len(available_days),
                 "duration_minutes": service_duration,
                 "duration_label": format_duration_label(service_duration)
@@ -2254,7 +2278,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Get service info
             match_result = match_service(job_description, company_id=company_id)
             matched_service = match_result['service']
-            service_duration = matched_service.get('duration_minutes', 60)
+            service_duration = _resolve_callout_duration(matched_service, company_id=company_id)
             workers_required = matched_service.get('workers_required', 1) or 1
             worker_restrictions = matched_service.get('worker_restrictions')
             is_full_day = service_duration >= 480
@@ -2628,6 +2652,9 @@ Return ONLY valid JSON, no explanation."""
             else:
                 voice_instruction = "Present these options naturally and ask which works for them."
             
+            if matched_service.get('requires_callout'):
+                voice_instruction += " This service requires an initial callout visit. Let the customer know you're booking a callout to have a look first, and the full job will be scheduled after."
+            
             return {
                 "success": True,
                 "available_slots": formatted_slots,
@@ -2636,6 +2663,7 @@ Return ONLY valid JSON, no explanation."""
                 "message": natural_summary,
                 "voice_instruction": voice_instruction,
                 "is_full_day_service": is_full_day,
+                "is_callout_service": matched_service.get('requires_callout', False),
                 "days_found": len(slots_by_day),
                 "duration_minutes": service_duration,
                 "duration_label": format_duration_label(service_duration)
@@ -3760,8 +3788,9 @@ Return ONLY valid JSON, no explanation."""
             
             # PRE-CHECK: For full-day services, auto-add start time if only day is provided
             # This prevents the "Could not parse date/time: 'Tuesday'" error for full-day jobs
+            # Use callout-resolved duration so callout services don't incorrectly trigger full-day logic
             match_result_precheck = match_service(job_description, company_id=company_id)
-            service_duration_precheck = match_result_precheck['service'].get('duration_minutes', 60)
+            service_duration_precheck = _resolve_callout_duration(match_result_precheck['service'], company_id=company_id)
             
             if service_duration_precheck >= 480:  # Full-day service (8+ hours)
                 # Check if appointment_datetime is just a day name without time
@@ -3876,6 +3905,39 @@ Return ONLY valid JSON, no explanation."""
             matched_service_name = match_result['matched_name']
             service_duration = matched_service.get('duration_minutes', 60)
             logger.info(f"[BOOK_JOB] Matched service: {matched_service_name}, Duration: {service_duration} mins")
+            
+            # CALLOUT LOGIC: If the matched service requires an initial callout,
+            # book using the "General Callout" service duration instead of the full job duration.
+            is_callout_booking = False
+            original_service_name = matched_service_name
+            if matched_service.get('requires_callout'):
+                logger.info(f"[BOOK_JOB] Service '{matched_service_name}' requires initial callout — looking for General Callout service")
+                from src.services.settings_manager import get_settings_manager
+                settings_mgr = get_settings_manager()
+                all_services = settings_mgr.get_services(company_id=company_id)
+                callout_service = None
+                for svc in all_services:
+                    svc_name = (svc.get('name') or '').lower()
+                    if 'general callout' in svc_name or ('general' in svc_name and 'callout' in svc_name):
+                        callout_service = svc
+                        break
+                if not callout_service:
+                    # Fallback: look for any service with 'callout' in the name
+                    for svc in all_services:
+                        if 'callout' in (svc.get('name') or '').lower():
+                            callout_service = svc
+                            break
+                if callout_service:
+                    service_duration = callout_service.get('duration_minutes', 60)
+                    matched_service_name = f"Callout for {original_service_name}"
+                    is_callout_booking = True
+                    logger.info(f"[BOOK_JOB] Using General Callout duration: {service_duration} mins (instead of full job)")
+                else:
+                    # No callout service found — default to 60 min callout
+                    service_duration = 60
+                    matched_service_name = f"Callout for {original_service_name}"
+                    is_callout_booking = True
+                    logger.info(f"[BOOK_JOB] No General Callout service found — defaulting to 60 min callout")
             
             # CRITICAL: For full-day services (8+ hours), auto-adjust to start of business day
             # This prevents the confusing loop of "5pm not available, try 4pm, 4pm not available..."
@@ -4086,7 +4148,8 @@ Return ONLY valid JSON, no explanation."""
                         property_type=property_type,
                         charge=job_charge,
                         company_id=company_id,
-                        duration_minutes=service_duration
+                        duration_minutes=service_duration,
+                        requires_callout=is_callout_booking
                     )
                     logger.info(f"[BOOK_JOB] Booking ID: {booking_id}")
                     
@@ -4099,9 +4162,10 @@ Return ONLY valid JSON, no explanation."""
                         }
                     
                     # Add note with job details including matched service and original description
+                    callout_note = f"\n⚠️ CALLOUT ONLY — Full {original_service_name} job to be scheduled after site visit" if is_callout_booking else ""
                     db.add_appointment_note(
                         booking_id, 
-                        f"Booked via AI receptionist\n\nJob Address: {validated_address or extracted_eircode or 'N/A'}\nCustomer Description: {job_description}\nMatched Service: {matched_service_name}\nUrgency: {urgency_level}\nProperty Type: {property_type}\nDuration: {service_duration} mins", 
+                        f"Booked via AI receptionist{callout_note}\n\nJob Address: {validated_address or extracted_eircode or 'N/A'}\nCustomer Description: {job_description}\nMatched Service: {matched_service_name}\nUrgency: {urgency_level}\nProperty Type: {property_type}\nDuration: {service_duration} mins", 
                         created_by="system"
                     )
                     

@@ -427,6 +427,51 @@
 }
 
 
+/* Callout Toggle */
+.callout-toggle-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.callout-toggle {
+  position: relative;
+  width: 48px;
+  height: 26px;
+  background: #d1d5db;
+  border: none;
+  border-radius: 13px;
+  cursor: pointer;
+  transition: background 0.25s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.callout-toggle.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+}
+
+.callout-toggle-slider {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.25s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.callout-toggle.active .callout-toggle-slider {
+  transform: translateX(22px);
+}
+
+.callout-toggle-label {
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
 /* Subscription Required Message */
 .subscription-required-message {
   padding: 3rem 2rem;
