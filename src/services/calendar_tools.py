@@ -4162,7 +4162,7 @@ Return ONLY valid JSON, no explanation."""
                         }
                     
                     # Add note with job details including matched service and original description
-                    callout_note = f"\n⚠️ CALLOUT ONLY — Full {original_service_name} job to be scheduled after site visit" if is_callout_booking else ""
+                    callout_note = f"\nCallout only - full {original_service_name} job to be scheduled after site visit" if is_callout_booking else ""
                     db.add_appointment_note(
                         booking_id, 
                         f"Booked via AI receptionist{callout_note}\n\nJob Address: {validated_address or extracted_eircode or 'N/A'}\nCustomer Description: {job_description}\nMatched Service: {matched_service_name}\nUrgency: {urgency_level}\nProperty Type: {property_type}\nDuration: {service_duration} mins", 
@@ -4297,6 +4297,8 @@ Return ONLY valid JSON, no explanation."""
             return {
                 "success": True,
                 "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({format_duration(service_duration)}). {urgency_level.title()} job at {validated_address}.{worker_msg}",
+                "is_callout_booking": is_callout_booking,
+                "original_service_name": original_service_name if is_callout_booking else None,
                 "appointment_details": {
                     "customer": customer_name,
                     "time": parsed_time.strftime('%A, %B %d at %I:%M %p'),

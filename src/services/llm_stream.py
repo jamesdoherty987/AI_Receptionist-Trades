@@ -1723,6 +1723,7 @@ TOOL RULES:
                         natural_summary = result_content.get("natural_summary", "")
                         available_slots = result_content.get("available_slots", [])
                         message = result_content.get("message", "")
+                        is_callout = result_content.get("is_callout_service", False)
                         
                         # Check if this is a full-day job
                         is_full_day = result_content.get("is_full_day_service", False)
@@ -1738,7 +1739,9 @@ TOOL RULES:
                         
                         # ALWAYS prefix with job length context for ALL durations
                         duration_prefix = ""
-                        if duration_minutes > 1440 and duration_label:
+                        if is_callout:
+                            duration_prefix = "This service requires a callout first so we can have a look before scheduling the full job. "
+                        elif duration_minutes > 1440 and duration_label:
                             duration_prefix = f"This job takes {duration_label}, but "
                         elif duration_minutes >= 480 and duration_label:
                             duration_prefix = f"This is {duration_label} job, and "
@@ -1784,10 +1787,13 @@ TOOL RULES:
                         days_found = result_content.get("days_found", 0)
                         duration_minutes = result_content.get("duration_minutes", 0)
                         duration_label = result_content.get("duration_label", "")
+                        is_callout = result_content.get("is_callout_service", False)
                         
                         # ALWAYS prefix with job length context for ALL durations
                         duration_prefix = ""
-                        if duration_minutes > 1440 and duration_label:
+                        if is_callout:
+                            duration_prefix = "This service requires a callout first so we can have a look before scheduling the full job. "
+                        elif duration_minutes > 1440 and duration_label:
                             duration_prefix = f"This job takes {duration_label}, but "
                         elif duration_minutes >= 480 and duration_label:
                             duration_prefix = f"This is {duration_label} job, and "
@@ -1825,10 +1831,13 @@ TOOL RULES:
                         days_found = result_content.get("days_found", 0)
                         duration_minutes = result_content.get("duration_minutes", 0)
                         duration_label = result_content.get("duration_label", "")
+                        is_callout = result_content.get("is_callout_service", False)
                         
                         # ALWAYS prefix with job length context for ALL durations
                         duration_prefix = ""
-                        if duration_minutes > 1440 and duration_label:
+                        if is_callout:
+                            duration_prefix = "This service requires a callout first so we can have a look before scheduling the full job. "
+                        elif duration_minutes > 1440 and duration_label:
                             duration_prefix = f"This job takes {duration_label}, but "
                         elif duration_minutes >= 480 and duration_label:
                             duration_prefix = f"This is {duration_label} job, and "
@@ -1862,12 +1871,28 @@ TOOL RULES:
                         time_str = details.get("time", "")
                         address = details.get("job_address", "") or details.get("eircode", "")
                         duration_mins = details.get("duration_minutes", 0)
+                        is_callout_booking = result_content.get("is_callout_booking", False)
+                        original_service = result_content.get("original_service_name", "")
                         
                         # Check if this is a full-day job (8+ hours)
                         is_full_day = duration_mins >= 480
                         
-                        # For full-day jobs, extract just the day (not the time)
-                        if is_full_day and time_str:
+                        if is_callout_booking:
+                            # Callout booking: tell the caller it's a callout visit
+                            if is_full_day and time_str:
+                                day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
+                                if address:
+                                    direct_response = f"Grand, I've booked a callout visit for {day_part} at {address}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                                else:
+                                    direct_response = f"Grand, I've booked a callout visit for {day_part}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                            elif time_str and address:
+                                direct_response = f"Grand, I've booked a callout visit for {time_str} at {address}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                            elif time_str:
+                                direct_response = f"Grand, I've booked a callout visit for {time_str}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                            else:
+                                direct_response = f"Grand, I've booked a callout visit for you. We'll come out and have a look, and then schedule the full job after that. Is there anything else?"
+                        elif is_full_day and time_str:
+                            # For full-day jobs, extract just the day (not the time)
                             # Extract day name from time_str like "Thursday, March 12 at 08:00 AM"
                             day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
                             if address:
