@@ -1740,7 +1740,7 @@ TOOL RULES:
                         # ALWAYS prefix with job length context for ALL durations
                         duration_prefix = ""
                         if is_callout:
-                            duration_prefix = "This service requires a callout first so we can have a look before scheduling the full job. "
+                            duration_prefix = "This service requires a call-out first so we can have a look before scheduling the full job. "
                         elif duration_minutes > 1440 and duration_label:
                             duration_prefix = f"This job takes {duration_label}, but "
                         elif duration_minutes >= 480 and duration_label:
@@ -1792,7 +1792,7 @@ TOOL RULES:
                         # ALWAYS prefix with job length context for ALL durations
                         duration_prefix = ""
                         if is_callout:
-                            duration_prefix = "This service requires a callout first so we can have a look before scheduling the full job. "
+                            duration_prefix = "This service requires a call-out first so we can have a look before scheduling the full job. "
                         elif duration_minutes > 1440 and duration_label:
                             duration_prefix = f"This job takes {duration_label}, but "
                         elif duration_minutes >= 480 and duration_label:
@@ -1836,7 +1836,7 @@ TOOL RULES:
                         # ALWAYS prefix with job length context for ALL durations
                         duration_prefix = ""
                         if is_callout:
-                            duration_prefix = "This service requires a callout first so we can have a look before scheduling the full job. "
+                            duration_prefix = "This service requires a call-out first so we can have a look before scheduling the full job. "
                         elif duration_minutes > 1440 and duration_label:
                             duration_prefix = f"This job takes {duration_label}, but "
                         elif duration_minutes >= 480 and duration_label:
@@ -1878,19 +1878,19 @@ TOOL RULES:
                         is_full_day = duration_mins >= 480
                         
                         if is_callout_booking:
-                            # Callout booking: tell the caller it's a callout visit
+                            # Callout booking: tell the caller it's a call-out visit
                             if is_full_day and time_str:
                                 day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
                                 if address:
-                                    direct_response = f"Grand, I've booked a callout visit for {day_part} at {address}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                                    direct_response = f"Grand, I've booked a call-out visit for {day_part} at {address}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
                                 else:
-                                    direct_response = f"Grand, I've booked a callout visit for {day_part}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                                    direct_response = f"Grand, I've booked a call-out visit for {day_part}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
                             elif time_str and address:
-                                direct_response = f"Grand, I've booked a callout visit for {time_str} at {address}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                                direct_response = f"Grand, I've booked a call-out visit for {time_str} at {address}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
                             elif time_str:
-                                direct_response = f"Grand, I've booked a callout visit for {time_str}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                                direct_response = f"Grand, I've booked a call-out visit for {time_str}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
                             else:
-                                direct_response = f"Grand, I've booked a callout visit for you. We'll come out and have a look, and then schedule the full job after that. Is there anything else?"
+                                direct_response = f"Grand, I've booked a call-out visit for you. We'll come out and have a look, and then schedule the full job after that. Is there anything else?"
                         elif is_full_day and time_str:
                             # For full-day jobs, extract just the day (not the time)
                             # Extract day name from time_str like "Thursday, March 12 at 08:00 AM"
