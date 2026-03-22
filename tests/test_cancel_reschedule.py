@@ -580,7 +580,7 @@ class TestRescheduleAppointmentHandler:
             services
         )
         
-        assert 'full day' in result['message'].lower()
+        assert 'John Smith' in result['message']
         
         # Complete reschedule - just provide day, not time
         result = execute_tool_call(
@@ -754,8 +754,9 @@ class TestEdgeCases:
             services
         )
         
-        # Should list both with appropriate time info
-        assert 'full day' in result['message'].lower()
+        # Should list both names (no time/service info - names only for phone brevity)
+        assert 'John Smith' in result['message']
+        assert 'Jane Doe' in result['message']
         assert len(result['customer_names']) == 2
 
 

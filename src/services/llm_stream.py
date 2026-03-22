@@ -704,6 +704,8 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
     # Misfires (filler plays but no tool) are worse than no filler at all
     
     # Check if pre-check is disabled for debugging
+    likely_needs_tool = False
+    detected_intent = None
     if config.DISABLE_FILLER_PRECHECK:
         print(f"\n{'='*60}")
         print(f"🔍 [PRE-CHECK] ⚠️ DISABLED (DISABLE_FILLER_PRECHECK=true)")
@@ -1595,6 +1597,72 @@ TOOL RULES:
         for i, tool_call in enumerate(tool_calls):
             tool_name = tool_call["function"]["name"]
             tool_id = tool_call["id"]
+            
+            # ============================================================
+            # RESCHEDULE INTERCEPTION: If user said "reschedule" but LLM
+            # called cancel_job, redirect to reschedule_job instead.
+            # The LLM often calls cancel_job first (for day lookup), then
+            # sees "cancel" in history and goes rogue with cancel+rebook.
+            # This forces it onto the correct reschedule_job path.
+            # Also catches multi-turn: if reschedule_job was already called
+            # in conversation history, we're mid-reschedule and cancel_job
+            # should never be called.
+            # ============================================================
+            reschedule_words = ["reschedule", "move my", "move the", "change the date", "change the day", "move it"]
+            user_wants_reschedule = detected_intent == "RESCHEDULE" or any(w in user_text.lower() for w in reschedule_words)
+            # Multi-turn: check if reschedule_job was already called earlier in this conversation
+            if not user_wants_reschedule:
+                for msg in messages:
+                    if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                        for tc in msg["tool_calls"]:
+                            if tc.get("function", {}).get("name") in ("reschedule_job", "reschedule_appointment"):
+                                user_wants_reschedule = True
+                                break
+                    if user_wants_reschedule:
+                        break
+            if tool_name in ("cancel_job", "cancel_appointment") and user_wants_reschedule:
+                original_name = tool_name
+                # Map cancel_job args to reschedule_job args
+                try:
+                    raw_args = json.loads(tool_call["function"]["arguments"])
+                    remapped_args = {
+                        "current_date": raw_args.get("appointment_date") or raw_args.get("appointment_datetime"),
+                        "customer_name": raw_args.get("customer_name"),
+                    }
+                    tool_call["function"]["name"] = "reschedule_job"
+                    tool_call["function"]["arguments"] = json.dumps(remapped_args)
+                    tool_name = "reschedule_job"
+                    print(f"   🔄 [RESCHEDULE_INTERCEPT] Redirected {original_name} → reschedule_job (user intent was RESCHEDULE)")
+                except Exception as e:
+                    print(f"   ⚠️ [RESCHEDULE_INTERCEPT] Failed to remap args: {e}")
+            
+            # BLOCK book_job during an active reschedule flow — prevents duplicates
+            if tool_name in ("book_job", "book_appointment") and user_wants_reschedule:
+                print(f"   🚫 [RESCHEDULE_INTERCEPT] BLOCKED {tool_name} during reschedule flow (would create duplicate)")
+                tool_results.append({
+                    "tool_call_id": tool_call["id"],
+                    "role": "tool",
+                    "name": tool_name,
+                    "content": json.dumps({
+                        "success": False,
+                        "error": "Cannot book a new job during a reschedule. Use reschedule_job to move the existing booking instead."
+                    })
+                })
+                continue
+            
+            # BLOCK lookup_customer and search_availability during reschedule — reschedule_job handles everything
+            if tool_name in ("lookup_customer", "search_availability", "get_next_available") and user_wants_reschedule:
+                print(f"   🚫 [RESCHEDULE_INTERCEPT] BLOCKED {tool_name} during reschedule flow (reschedule_job handles this)")
+                tool_results.append({
+                    "tool_call_id": tool_call["id"],
+                    "role": "tool",
+                    "name": tool_name,
+                    "content": json.dumps({
+                        "success": False,
+                        "error": "Not needed during reschedule. Use reschedule_job — it finds the booking, checks availability, and moves it in one tool."
+                    })
+                })
+                continue
             
             print(f"\n   {'─'*50}")
             print(f"   🔧 [TOOL_EXEC] === Executing Tool {i+1}/{len(tool_calls)} ===")

@@ -3363,16 +3363,8 @@ Return ONLY valid JSON, no explanation."""
             
             # If no customer name provided, return list of names for confirmation
             if not customer_name:
-                # Build list of names with job info
-                names_list = []
-                for job in jobs_on_day:
-                    name = job.get('name', 'Unknown')
-                    time_str = job.get('time', '')
-                    service = job.get('service', '')
-                    if job.get('is_full_day'):
-                        names_list.append(f"{name} (full day - {service})")
-                    else:
-                        names_list.append(f"{name} ({time_str} - {service})")
+                # Build list of names ONLY (no times/durations/descriptions - too verbose for phone)
+                names_list = [job.get('name', 'Unknown') for job in jobs_on_day]
                 
                 # Format for AI to read out
                 if len(jobs_on_day) == 1:
@@ -3380,7 +3372,7 @@ Return ONLY valid JSON, no explanation."""
                         "success": False,
                         "requires_confirmation": True,
                         "jobs_on_day": jobs_on_day,
-                        "customer_names": [j['name'] for j in jobs_on_day],
+                        "customer_names": names_list,
                         "appointment_date": parsed_date.strftime('%A, %B %d'),
                         "message": f"I have one booking on {parsed_date.strftime('%A, %B %d')} for {names_list[0]}. Is that your booking?"
                     }
@@ -3390,7 +3382,7 @@ Return ONLY valid JSON, no explanation."""
                         "success": False,
                         "requires_confirmation": True,
                         "jobs_on_day": jobs_on_day,
-                        "customer_names": [j['name'] for j in jobs_on_day],
+                        "customer_names": names_list,
                         "appointment_date": parsed_date.strftime('%A, %B %d'),
                         "message": f"I have {len(jobs_on_day)} bookings on {parsed_date.strftime('%A, %B %d')}: {names_formatted}. Which name is yours?"
                     }
@@ -3472,16 +3464,8 @@ Return ONLY valid JSON, no explanation."""
             
             # If no customer name provided, return list of names for confirmation
             if not customer_name:
-                # Build list of names with job info
-                names_list = []
-                for job in jobs_on_day:
-                    name = job.get('name', 'Unknown')
-                    time_str = job.get('time', '')
-                    service = job.get('service', '')
-                    if job.get('is_full_day'):
-                        names_list.append(f"{name} (full day - {service})")
-                    else:
-                        names_list.append(f"{name} ({time_str} - {service})")
+                # Build list of names ONLY (no times/durations/descriptions - too verbose for phone)
+                names_list = [job.get('name', 'Unknown') for job in jobs_on_day]
                 
                 # Format for AI to read out
                 if len(jobs_on_day) == 1:
@@ -3489,7 +3473,7 @@ Return ONLY valid JSON, no explanation."""
                         "success": False,
                         "requires_confirmation": True,
                         "jobs_on_day": jobs_on_day,
-                        "customer_names": [j['name'] for j in jobs_on_day],
+                        "customer_names": names_list,
                         "appointment_date": parsed_date.strftime('%A, %B %d'),
                         "message": f"I have one booking on {parsed_date.strftime('%A, %B %d')} for {names_list[0]}. Is that your booking?"
                     }
@@ -3499,7 +3483,7 @@ Return ONLY valid JSON, no explanation."""
                         "success": False,
                         "requires_confirmation": True,
                         "jobs_on_day": jobs_on_day,
-                        "customer_names": [j['name'] for j in jobs_on_day],
+                        "customer_names": names_list,
                         "appointment_date": parsed_date.strftime('%A, %B %d'),
                         "message": f"I have {len(jobs_on_day)} bookings on {parsed_date.strftime('%A, %B %d')}: {names_formatted}. Which name is yours?"
                     }

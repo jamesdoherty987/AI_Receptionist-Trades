@@ -175,7 +175,7 @@ class TestCancelFlowIntegration:
             services
         )
         
-        assert 'full day' in result1['message'].lower()
+        assert 'John Smith' in result1['message']
         
         result2 = execute_tool_call(
             'cancel_job',
@@ -321,7 +321,7 @@ class TestRescheduleFlowIntegration:
             services
         )
         
-        assert 'full day' in result1['message'].lower()
+        assert 'John Smith' in result1['message']
         
         # Complete reschedule - just provide day, no time needed
         result2 = execute_tool_call(
@@ -397,9 +397,8 @@ class TestMixedJobsScenarios:
             services
         )
         
-        # Should list both with appropriate formatting
+        # Should list both names (no time/service info - names only for phone brevity)
         assert len(result['customer_names']) == 2
-        assert 'full day' in result['message'].lower()
         assert 'John Smith' in result['message']
         assert 'Jane Doe' in result['message']
     
@@ -448,12 +447,11 @@ class TestMixedJobsScenarios:
             services
         )
         
-        # Should list all 3 jobs
+        # Should list all 3 names (no times - names only for phone brevity)
         assert len(result['customer_names']) == 3
-        # Each should show their time
-        assert '09:00' in result['message'] or '9:00' in result['message']
-        assert '11:00' in result['message']
-        assert '2:00' in result['message'] or '14:00' in result['message']
+        assert 'John Smith' in result['message']
+        assert 'Jane Doe' in result['message']
+        assert 'Mike Wilson' in result['message']
 
 
 class TestErrorScenarios:
