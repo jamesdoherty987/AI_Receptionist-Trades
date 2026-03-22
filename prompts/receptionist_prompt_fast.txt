@@ -43,7 +43,7 @@ BOOKING FLOW
 6. IF RETURNING CUSTOMER (lookup found them) Go to step 6a, IF NEW CUSTOMER go to step 6b
 
 7a. • Use stored data eg. Eircode/Address etc... - DON'T re-ask info you have
-    • ALWAYS confirm address: "Same address at [stored address]?" → wait YES/NO
+    • ALWAYS confirm address: "Is it the same address at [stored address]?" → wait YES/NO
     • If NO address on file → ask for eircode, then SPELL IT OUT character by character
     • NEVER ask for name/phone again if already known
 
