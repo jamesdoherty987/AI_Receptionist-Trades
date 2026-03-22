@@ -370,7 +370,7 @@ CALENDAR_TOOLS = [
 ]
 
 
-def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exclude_booking_id: int = None, company_id: int = None, days_to_check: int = 14, exclude_date=None) -> list:
+def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exclude_booking_id: int = None, company_id: int = None, days_to_check: int = 28, exclude_date=None) -> list:
     """
     Find available days for specific worker(s) in the next N days.
     Used during rescheduling to suggest alternative days when the requested day isn't available.
@@ -2381,9 +2381,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 start_date = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_date = start_date + timedelta(days=4)
             else:
-                # Default: search next 3 weeks for any vague query
+                # Default: search next 4 weeks for any vague query
                 start_date = (today + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                end_date = today + timedelta(days=21)
+                end_date = today + timedelta(days=28)
             
             logger.info(f"[RESCHED_AVAIL] Searching {start_date.date()} to {end_date.date()}")
             
@@ -2508,6 +2508,79 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             tool_duration = time_module.time() - tool_start_time
             
+            # If we found fewer than 3 days, extend the search further out
+            if 0 < len(available_day_summaries) < 3:
+                extended_start = end_search + timedelta(days=1)
+                extended_end = extended_start + timedelta(days=28)  # Search another 4 weeks
+                logger.info(f"[RESCHED_AVAIL] Only found {len(available_day_summaries)} days, extending search to {extended_end.date()}")
+                ext_date = extended_start
+                while ext_date <= extended_end and len(available_day_summaries) < 5:
+                    if ext_date.weekday() not in business_days:
+                        ext_date += timedelta(days=1)
+                        continue
+                    if exclude_date and ext_date.date() == exclude_date:
+                        ext_date += timedelta(days=1)
+                        continue
+                    now = datetime.now()
+                    if is_full_day:
+                        check_time = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                        if check_time > now:
+                            all_free = True
+                            for wid in assigned_worker_ids:
+                                avail = db.check_worker_availability(
+                                    worker_id=wid, appointment_time=check_time,
+                                    duration_minutes=booking_duration,
+                                    exclude_booking_id=booking_id, company_id=company_id
+                                )
+                                if not avail.get('available', False):
+                                    all_free = False
+                                    break
+                            if all_free:
+                                day_name = ext_date.strftime('%A')
+                                day_num = ext_date.day
+                                suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
+                                available_day_summaries.append(f"{day_name} the {day_num}{suffix}: full day available")
+                    else:
+                        slot_time = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                        day_end = ext_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+                        day_slots = []
+                        while slot_time < day_end:
+                            if slot_time <= now:
+                                slot_time += timedelta(minutes=30)
+                                continue
+                            slot_end = slot_time + timedelta(minutes=booking_duration)
+                            if slot_end > day_end:
+                                slot_time += timedelta(minutes=30)
+                                continue
+                            all_free = True
+                            for wid in assigned_worker_ids:
+                                avail = db.check_worker_availability(
+                                    worker_id=wid, appointment_time=slot_time,
+                                    duration_minutes=booking_duration,
+                                    exclude_booking_id=booking_id, company_id=company_id
+                                )
+                                if not avail.get('available', False):
+                                    all_free = False
+                                    break
+                            if all_free:
+                                day_slots.append(slot_time)
+                            slot_time += timedelta(minutes=30)
+                        if day_slots:
+                            day_name = ext_date.strftime('%A')
+                            day_num = ext_date.day
+                            suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
+                            first_time = day_slots[0].strftime('%I %p').lstrip('0').lower()
+                            last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower()
+                            if len(day_slots) >= 4:
+                                available_day_summaries.append(f"{day_name} the {day_num}{suffix}: free from {first_time} to {last_time}")
+                            elif len(day_slots) == 1:
+                                available_day_summaries.append(f"{day_name} the {day_num}{suffix}: {first_time} only")
+                            else:
+                                times = [s.strftime('%I %p').lstrip('0').lower() for s in day_slots[:3]]
+                                available_day_summaries.append(f"{day_name} the {day_num}{suffix}: {' or '.join(times)}")
+                    ext_date += timedelta(days=1)
+                tool_duration = time_module.time() - tool_start_time
+            
             if not available_day_summaries:
                 print(f"[TOOL_TIMING] ✅ search_reschedule_availability completed in {tool_duration:.3f}s (0 days found)")
                 return {
@@ -2517,7 +2590,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     "is_full_day_service": is_full_day
                 }
             
-            natural_summary = naturalize_availability_summary(available_day_summaries[:4], is_full_day=is_full_day)
+            natural_summary = naturalize_availability_summary(available_day_summaries[:5], is_full_day=is_full_day)
             
             print(f"[TOOL_TIMING] ✅ search_reschedule_availability completed in {tool_duration:.3f}s ({len(available_day_summaries)} days found)")
             
@@ -3928,7 +4001,7 @@ Return ONLY valid JSON, no explanation."""
                     else:
                         return {
                             "success": False,
-                            "error": f"The assigned worker ({', '.join(unavailable_workers)}) is not available on {new_time.strftime('%A, %B %d')} and has no availability in the next 2 weeks. Would you like to speak with someone about this?",
+                            "error": f"The assigned worker ({', '.join(unavailable_workers)}) is not available on {new_time.strftime('%A, %B %d')} and has no availability in the next 4 weeks. Would you like to speak with someone about this?",
                             "new_time_unavailable": True
                         }
             elif google_calendar:
