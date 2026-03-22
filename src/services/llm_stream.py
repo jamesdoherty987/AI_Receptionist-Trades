@@ -1620,6 +1620,17 @@ TOOL RULES:
                                 break
                     if user_wants_reschedule:
                         break
+            # Multi-turn fallback: check if ANY earlier user message mentioned reschedule
+            # This catches the case where turn 1 was "I want to reschedule" (no tool call),
+            # and turn 2 is "this Thursday" (LLM calls cancel_job instead of reschedule_job)
+            if not user_wants_reschedule:
+                for msg in messages:
+                    if msg.get("role") == "user":
+                        msg_text = msg.get("content", "").lower()
+                        if any(w in msg_text for w in reschedule_words):
+                            user_wants_reschedule = True
+                            print(f"   🔄 [RESCHEDULE_INTERCEPT] Detected reschedule intent from earlier user message: '{msg_text[:60]}...'")
+                            break
             if tool_name in ("cancel_job", "cancel_appointment") and user_wants_reschedule:
                 original_name = tool_name
                 # Map cancel_job args to reschedule_job args
@@ -1649,6 +1660,44 @@ TOOL RULES:
                     })
                 })
                 continue
+            
+            # REDIRECT lookup_customer during reschedule → reschedule_job with customer name
+            # The LLM sometimes falls into the booking flow (lookup_customer → eircode → book)
+            # when it should be continuing the reschedule. Intercept and redirect.
+            if tool_name == "lookup_customer" and user_wants_reschedule:
+                # Find the original date from the earlier reschedule_job call in history
+                original_date = None
+                for msg in messages:
+                    if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                        for tc in msg["tool_calls"]:
+                            if tc.get("function", {}).get("name") in ("reschedule_job", "reschedule_appointment"):
+                                try:
+                                    prev_args = json.loads(tc["function"]["arguments"])
+                                    original_date = prev_args.get("current_date") or prev_args.get("current_datetime")
+                                except:
+                                    pass
+                
+                customer_name_arg = json.loads(tool_call["function"]["arguments"]).get("customer_name", "")
+                if original_date and customer_name_arg:
+                    print(f"   🔄 [RESCHEDULE_INTERCEPT] Redirected lookup_customer → reschedule_job (mid-reschedule, name='{customer_name_arg}')")
+                    tool_call["function"]["name"] = "reschedule_job"
+                    tool_call["function"]["arguments"] = json.dumps({
+                        "current_date": original_date,
+                        "customer_name": customer_name_arg
+                    })
+                    tool_name = "reschedule_job"
+                else:
+                    print(f"   🚫 [RESCHEDULE_INTERCEPT] BLOCKED lookup_customer during reschedule flow")
+                    tool_results.append({
+                        "tool_call_id": tool_call["id"],
+                        "role": "tool",
+                        "name": tool_name,
+                        "content": json.dumps({
+                            "success": False,
+                            "error": "You are in a reschedule flow. Use reschedule_job with the customer's name to continue the reschedule — do not use lookup_customer."
+                        })
+                    })
+                    continue
             
             print(f"\n   {'─'*50}")
             print(f"   🔧 [TOOL_EXEC] === Executing Tool {i+1}/{len(tool_calls)} ===")
@@ -1727,14 +1776,35 @@ TOOL RULES:
                 })
         
         # Add assistant message with tool calls to history
+        # IMPORTANT: Use a deep copy of tool_calls so the conversation history
+        # reflects any interception changes (e.g., cancel_job → reschedule_job).
+        # The in-place mutation above modifies the dict, but to be safe we
+        # build fresh dicts from the current state of each tool_call.
+        history_tool_calls = [
+            {
+                "id": tc["id"],
+                "type": tc.get("type", "function"),
+                "function": {
+                    "name": tc["function"]["name"],
+                    "arguments": tc["function"]["arguments"]
+                }
+            }
+            for tc in tool_calls
+        ]
         messages.append({
             "role": "assistant",
             "content": full_response if full_response else "",  # Empty string instead of None
-            "tool_calls": tool_calls
+            "tool_calls": history_tool_calls
         })
         
         # Add tool results to history
         messages.extend(tool_results)
+        
+        # Debug: confirm what was stored in history (helps verify reschedule interception)
+        stored_tool_names = [tc["function"]["name"] for tc in history_tool_calls]
+        stored_result_names = [tr.get("name", "?") for tr in tool_results]
+        print(f"   📝 [HISTORY] Stored assistant tool_calls: {stored_tool_names}")
+        print(f"   📝 [HISTORY] Stored tool results: {stored_result_names}")
         
         # Make another call to get LLM's response based on tool results
         tool_exec_duration = time.time() - tool_phase_start
