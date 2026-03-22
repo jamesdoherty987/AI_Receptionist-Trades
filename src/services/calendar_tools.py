@@ -258,7 +258,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "reschedule_job",
-            "description": "Reschedule an existing job to a new time. WORKFLOW: 1) Ask customer what DAY the booking is for (not time - there may be multiple jobs or full-day jobs). 2) Call this with ONLY current_date (the day). 3) System returns ALL jobs on that day with customer names. 4) Read the names to the caller and ask them to confirm which one is theirs. 5) Listen to their response, then ask what day they want to reschedule to. 6) Call again with current_date, customer_name, AND new_datetime to complete.",
+            "description": "Reschedule an existing job to a new time. ALWAYS use this for reschedules — NEVER use cancel_job + book_job instead (that creates duplicates). WORKFLOW: 1) Ask customer what DAY the booking is for. 2) Call this with ONLY current_date. 3) System returns ALL jobs on that day. 4) Read names to caller. 5) Call again with current_date + customer_name (NO new_datetime yet) — system confirms name and suggests available days. 6) Customer picks a day. 7) Call AGAIN with current_date + customer_name + new_datetime to complete the move.",
             "parameters": {
                 "type": "object",
                 "properties": {
