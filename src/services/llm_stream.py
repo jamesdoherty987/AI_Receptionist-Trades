@@ -93,6 +93,36 @@ def format_for_tts_spelling(text: str) -> str:
     result = phone_pattern.sub(space_out_digits, result)
     
     return result
+def sanitize_for_tts(text: str) -> str:
+    """
+    Remove bullet points, dashes, and newline formatting that causes TTS engines
+    (like Deepgram) to stop speaking mid-sentence.
+
+    TTS interprets '\\n- ' as end of speech, so we convert list formatting
+    into comma-separated natural speech.
+
+    Examples:
+        "I have:\\n- Monday at 9 am\\n- Tuesday at 2 pm" -> "I have: Monday at 9 am, Tuesday at 2 pm"
+        "Available days:\\n• Monday\\n• Tuesday" -> "Available days: Monday, Tuesday"
+    """
+    if not text:
+        return text
+
+    # Replace newline + bullet/dash patterns with comma-space
+    # Handles: \n- , \n• , \n* , \n·
+    result = re.sub(r'\n\s*[-•*·]\s*', ', ', text)
+
+    # Replace remaining newlines with space
+    result = re.sub(r'\n+', ' ', result)
+
+    # Clean up any resulting double commas or comma after colon
+    result = re.sub(r':\s*,\s*', ': ', result)
+    result = re.sub(r',\s*,', ',', result)
+
+    # Clean up leading/trailing whitespace
+    result = result.strip()
+
+    return result
 
 # Lazy initialization of OpenAI client with optimized settings
 _client = None
@@ -816,7 +846,6 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         if not likely_needs_tool:
             # Check if AI just asked about booking confirmation
             booking_confirmation_phrases = ["ready to book", "shall i book", "want me to book", "confirm the booking", "go ahead and book", "all correct",
-                                           "for the tap replacement, correct", "for the tap replacement?",
                                            "is that correct?", "correct?"]
             # Only match "is that correct?" / "correct?" if the previous message is about a booking (has day+time)
             day_names_lower = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -840,7 +869,10 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
             
             user_confirms = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "please", "go ahead", "book it", "that's perfect", "sounds good", "correct", "that's right", "that's correct"])
             
-            if ai_asked_to_book and user_confirms:
+            # Negative guard: if user is asking about availability, they're NOT confirming a booking
+            user_asking_availability = any(word in user_message for word in ["available", "availability", "again", "what's available", "when are you", "repeat"])
+            
+            if ai_asked_to_book and user_confirms and not user_asking_availability:
                 likely_needs_tool = True
                 detected_intent = "BOOKING_CONFIRMED"
                 checking_msg = "Booking that now."
@@ -1325,6 +1357,8 @@ TOOL RULES:
                 if not tool_calls:
                     # Strip markdown formatting to prevent TTS reading "**" as "star star"
                     cleaned_token = delta.content.replace('**', '').replace('__', '').replace('~~', '')
+                    # Strip bullet/dash/newline formatting that causes TTS cutoff
+                    cleaned_token = sanitize_for_tts(cleaned_token)
                     # Add pauses for spelled-out content (letters/numbers separated by dashes)
                     cleaned_token = format_for_tts_spelling(cleaned_token)
                     
@@ -1947,6 +1981,8 @@ TOOL RULES:
         
         # Use direct response (fast path) - always use this to save 6-7s
         if direct_response:
+            # Sanitize for TTS: remove bullet points, dashes, newlines that cause TTS cutoff
+            direct_response = sanitize_for_tts(direct_response)
             yield f"<<<TIMING:direct_response=1>>>"
             print(f"   ✅ [DIRECT] Skipped second OpenAI call (saved ~6-7s)")
             

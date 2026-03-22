@@ -900,6 +900,10 @@ def naturalize_availability_summary(day_summaries: list, is_full_day: bool = Fal
         )
         
         result = response.choices[0].message.content.strip()
+        # Sanitize: LLM might return bullet points despite "ONE sentence" instruction
+        result = re.sub(r'\n\s*[-•*·]\s*', ', ', result)
+        result = re.sub(r'\n+', ' ', result)
+        result = re.sub(r':\s*,\s*', ': ', result)
         duration = time_module.time() - start_time
         logger.info(f"[NATURALIZE] Converted availability in {duration:.2f}s: '{result[:50]}...'")
         
