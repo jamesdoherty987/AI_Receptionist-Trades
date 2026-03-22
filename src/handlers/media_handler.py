@@ -717,7 +717,9 @@ async def media_handler(ws):
                         # Skip capture if the caller clearly didn't give an address
                         text_lower_check = text.lower().strip().rstrip('.,!?')
                         skip_phrases = {'no', "no i don't", "no i dont", "i don't know", "i dont know",
-                                        "i'm not sure", "im not sure", "not sure", "no idea"}
+                                        "i'm not sure", "im not sure", "not sure", "no idea",
+                                        "okay", "ok", "sure", "yeah", "yes", "yep", "right",
+                                        "grand", "go ahead", "fire away"}
                         if text_lower_check in skip_phrases or (len(text.split()) <= 3 and text_lower_check.startswith('no')):
                             print(f"🎙️ [ADDR_AUDIO] Skipping capture — caller declined/doesn't know: '{text}'")
                             # DON'T disarm — keep awaiting so the next response (after AI

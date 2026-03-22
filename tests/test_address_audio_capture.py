@@ -424,7 +424,9 @@ class TestPerformanceCharacteristics:
 
 # --- Skip phrases logic (replicated from media_handler.py) ---
 SKIP_PHRASES = {'no', "no i don't", "no i dont", "i don't know", "i dont know",
-                "i'm not sure", "im not sure", "not sure", "no idea"}
+                "i'm not sure", "im not sure", "not sure", "no idea",
+                "okay", "ok", "sure", "yeah", "yes", "yep", "right",
+                "grand", "go ahead", "fire away"}
 
 def should_skip_capture(text: str) -> bool:
     """Replicate the skip logic from media_handler for testing."""
@@ -794,7 +796,9 @@ class TestTrimSilenceMulawEnergyCalculation:
 
 # Replicate the skip-check logic from media_handler Phase 2
 SKIP_PHRASES = {'no', "no i don't", "no i dont", "i don't know", "i dont know",
-                "i'm not sure", "im not sure", "not sure", "no idea"}
+                "i'm not sure", "im not sure", "not sure", "no idea",
+                "okay", "ok", "sure", "yeah", "yes", "yep", "right",
+                "grand", "go ahead", "fire away"}
 
 def _should_skip(text: str) -> bool:
     """Replicate the skip-check from media_handler Phase 2."""
@@ -1211,14 +1215,14 @@ class TestDeferredCaptureRealisticConversations:
         assert r['phase3_captured'] is True
 
     def test_caller_says_just_yeah(self):
-        """Caller says 'yeah' — this is NOT a skip phrase, so it gets captured.
-        In practice this would be 'yeah' followed by the address in the same
-        speech_final (Deepgram accumulates). But even if it's just 'yeah',
-        better to capture than miss."""
+        """Caller says 'yeah' — this IS a skip phrase now (acknowledgment, not address).
+        The caller will follow up with the actual address in the next speech_final,
+        and awaiting_address_audio stays armed to capture it."""
         cs = create_call_state()
         r = _simulate_turn(cs, "What's the address?", "Yeah")
-        assert r['phase2_result'] == 'collecting'
-        assert r['phase3_captured'] is True
+        assert r['phase2_result'] == 'skipped'
+        assert r['phase3_captured'] is False
+        assert cs.awaiting_address_audio is True  # Still armed for next response
 
     def test_caller_says_no_then_gives_address_same_turn(self):
         """'No eircode but the address is 32 Silver Grove' — should capture."""
@@ -1247,6 +1251,65 @@ class TestDeferredCaptureRealisticConversations:
         # This captures a non-address response, but that's OK — the recording
         # is just extra context for the business owner. Better safe than sorry.
         assert r['phase3_captured'] is True
+
+
+# ---------------------------------------------------------------------------
+# Acknowledgment skip: caller says "okay", "yeah", "sure" etc. after AI asks
+# for address — these should NOT trigger collection.
+# ---------------------------------------------------------------------------
+
+class TestAcknowledgmentSkip:
+    """Caller acknowledgments like 'okay', 'yeah', 'sure' should be skipped
+    in Phase 2, not treated as address responses."""
+
+    def test_okay_is_skipped(self):
+        cs = create_call_state()
+        _simulate_phase1(cs, "What's the address for the job?")
+        result = _simulate_phase2(cs, "Okay")
+        assert result == 'skipped'
+        assert cs.awaiting_address_audio is True  # Still armed
+
+    def test_yeah_is_skipped(self):
+        cs = create_call_state()
+        _simulate_phase1(cs, "Can you give me your address?")
+        result = _simulate_phase2(cs, "Yeah")
+        assert result == 'skipped'
+
+    def test_sure_is_skipped(self):
+        cs = create_call_state()
+        _simulate_phase1(cs, "What's the address?")
+        result = _simulate_phase2(cs, "Sure")
+        assert result == 'skipped'
+
+    def test_grand_is_skipped(self):
+        cs = create_call_state()
+        _simulate_phase1(cs, "What's the address?")
+        result = _simulate_phase2(cs, "Grand")
+        assert result == 'skipped'
+
+    def test_okay_then_real_address_captures(self):
+        """Caller says 'okay' first, then gives the actual address next turn."""
+        cs = create_call_state()
+        _simulate_phase1(cs, "What's the address for the job?")
+        result1 = _simulate_phase2(cs, "Okay")
+        assert result1 == 'skipped'
+        assert cs.awaiting_address_audio is True
+
+        # Phase 3 should NOT capture (nothing collecting)
+        assert _simulate_phase3(cs) is False
+
+        # Caller now gives the real address
+        result2 = _simulate_phase2(cs, "32 Silver Grove, Ballybrack, Dublin")
+        assert result2 == 'collecting'
+        assert _simulate_phase3(cs) is True
+        assert cs.address_audio_captured is True
+
+    def test_real_address_still_captures(self):
+        """Sanity check: a real address is NOT skipped."""
+        cs = create_call_state()
+        _simulate_phase1(cs, "What's the address?")
+        result = _simulate_phase2(cs, "15 Main Street, Limerick")
+        assert result == 'collecting'
 
 
 # ---------------------------------------------------------------------------
