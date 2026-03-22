@@ -2565,6 +2565,71 @@ class PostgreSQLDatabaseWrapper:
         end = current_day.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
         return end + timedelta(minutes=buffer_minutes)
     
+    def get_worker_bookings_in_range(self, worker_id: int, range_start, range_end,
+                                      exclude_booking_id: int = None, company_id: int = None) -> list:
+        """
+        Fetch all active bookings for a worker that could overlap with a date range.
+        Returns raw booking rows with appointment_time and duration_minutes.
+        Used for batch availability checking to avoid N individual DB queries.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            # Parse times if strings
+            if isinstance(range_start, str):
+                range_start = datetime.fromisoformat(range_start.replace('Z', '+00:00'))
+            if isinstance(range_end, str):
+                range_end = datetime.fromisoformat(range_end.replace('Z', '+00:00'))
+            if hasattr(range_start, 'tzinfo') and range_start.tzinfo:
+                range_start = range_start.replace(tzinfo=None)
+            if hasattr(range_end, 'tzinfo') and range_end.tzinfo:
+                range_end = range_end.replace(tzinfo=None)
+
+            # Fetch bookings that START before range_end (they could overlap)
+            # We fetch broadly and filter in Python for multi-day job accuracy
+            query = """
+                SELECT b.id, b.appointment_time, b.duration_minutes
+                FROM worker_assignments wa
+                JOIN bookings b ON wa.booking_id = b.id
+                WHERE wa.worker_id = %s
+                AND b.status NOT IN ('completed', 'cancelled')
+                AND b.appointment_time < %s
+            """
+            params = [worker_id, range_end]
+
+            if company_id:
+                query += " AND b.company_id = %s"
+                params.append(company_id)
+            if exclude_booking_id:
+                query += " AND b.id != %s"
+                params.append(exclude_booking_id)
+
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+
+            # Normalize datetimes
+            result = []
+            for row in rows:
+                appt = row['appointment_time']
+                if isinstance(appt, str):
+                    try:
+                        appt = datetime.fromisoformat(appt.replace('Z', '+00:00'))
+                    except ValueError:
+                        appt = datetime.strptime(appt, '%Y-%m-%d %H:%M:%S')
+                if hasattr(appt, 'tzinfo') and appt.tzinfo:
+                    appt = appt.replace(tzinfo=None)
+                result.append({
+                    'id': row['id'],
+                    'appointment_time': appt,
+                    'duration_minutes': row.get('duration_minutes') or 60
+                })
+            return result
+        except Exception as e:
+            print(f"Error fetching worker bookings in range: {e}")
+            return []
+        finally:
+            self.return_connection(conn)
+
     def check_worker_availability(self, worker_id: int, appointment_time, duration_minutes: int = 1440, 
                                    exclude_booking_id: int = None, company_id: int = None) -> Dict:
         """

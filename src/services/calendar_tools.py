@@ -371,6 +371,46 @@ CALENDAR_TOOLS = [
 ]
 
 
+def _check_slot_against_bookings(slot_time, duration_minutes, worker_bookings_by_id, worker_ids, db, company_id=None):
+    """
+    Check if a time slot is free for ALL workers by comparing against pre-fetched bookings.
+    Uses in-memory overlap checks instead of individual DB queries.
+    
+    Args:
+        slot_time: datetime of the slot to check
+        duration_minutes: duration of the job
+        worker_bookings_by_id: dict of {worker_id: [booking_rows]} pre-fetched from DB
+        worker_ids: list of worker IDs that must all be free
+        db: database instance (for _calculate_job_end_time)
+        company_id: company ID for multi-tenant business hours
+    
+    Returns:
+        True if all workers are free at this slot
+    """
+    from src.utils.config import config
+    try:
+        business_hours = config.get_business_hours(company_id=company_id)
+        biz_start = business_hours.get('start', 9)
+        biz_end = business_hours.get('end', 17)
+    except:
+        biz_start = 9
+        biz_end = 17
+    
+    buffer_minutes = 15
+    slot_end = db._calculate_job_end_time(slot_time, duration_minutes, biz_start, biz_end, buffer_minutes, company_id=company_id)
+    
+    for wid in worker_ids:
+        bookings = worker_bookings_by_id.get(wid, [])
+        for bk in bookings:
+            bk_start = bk['appointment_time']
+            bk_dur = bk.get('duration_minutes') or 60
+            bk_end = db._calculate_job_end_time(bk_start, bk_dur, biz_start, biz_end, buffer_minutes, company_id=company_id)
+            # Overlap check
+            if slot_time < bk_end and slot_end > bk_start:
+                return False
+    return True
+
+
 def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exclude_booking_id: int = None, company_id: int = None, days_to_check: int = 28, exclude_date=None) -> list:
     """
     Find available days for specific worker(s) in the next N days.
@@ -2433,6 +2473,24 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     exclude_date = booking_date.date() if hasattr(booking_date, 'date') else None
             
             # Search each day, checking the ASSIGNED worker(s) specifically
+            # OPTIMIZATION: Fetch all worker bookings ONCE for the entire possible range
+            # instead of hitting the DB per slot (saves hundreds of queries)
+            max_search_end = end_date + timedelta(days=35)  # Cover potential auto-extend
+            worker_bookings_by_id = {}
+            if hasattr(db, 'get_worker_bookings_in_range'):
+                for wid in assigned_worker_ids:
+                    worker_bookings_by_id[wid] = db.get_worker_bookings_in_range(
+                        worker_id=wid,
+                        range_start=start_date,
+                        range_end=max_search_end,
+                        exclude_booking_id=booking_id,
+                        company_id=company_id
+                    )
+                use_batch = True
+                logger.info(f"[RESCHED_AVAIL] Batch-fetched bookings for {len(assigned_worker_ids)} workers")
+            else:
+                use_batch = False
+            
             available_day_summaries = []
             current_date = start_date
             end_search = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -2454,18 +2512,19 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 if is_full_day:
                     check_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                     if check_time > now:
-                        all_free = True
-                        for wid in assigned_worker_ids:
-                            avail = db.check_worker_availability(
-                                worker_id=wid,
-                                appointment_time=check_time,
-                                duration_minutes=booking_duration,
-                                exclude_booking_id=booking_id,
-                                company_id=company_id
-                            )
-                            if not avail.get('available', False):
-                                all_free = False
-                                break
+                        if use_batch:
+                            all_free = _check_slot_against_bookings(check_time, booking_duration, worker_bookings_by_id, assigned_worker_ids, db, company_id=company_id)
+                        else:
+                            all_free = True
+                            for wid in assigned_worker_ids:
+                                avail = db.check_worker_availability(
+                                    worker_id=wid, appointment_time=check_time,
+                                    duration_minutes=booking_duration,
+                                    exclude_booking_id=booking_id, company_id=company_id
+                                )
+                                if not avail.get('available', False):
+                                    all_free = False
+                                    break
                         if all_free:
                             day_available = True
                             day_slots = [check_time]
@@ -2480,18 +2539,19 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         if slot_end > day_end:
                             slot_time += timedelta(minutes=30)
                             continue
-                        all_free = True
-                        for wid in assigned_worker_ids:
-                            avail = db.check_worker_availability(
-                                worker_id=wid,
-                                appointment_time=slot_time,
-                                duration_minutes=booking_duration,
-                                exclude_booking_id=booking_id,
-                                company_id=company_id
-                            )
-                            if not avail.get('available', False):
-                                all_free = False
-                                break
+                        if use_batch:
+                            all_free = _check_slot_against_bookings(slot_time, booking_duration, worker_bookings_by_id, assigned_worker_ids, db, company_id=company_id)
+                        else:
+                            all_free = True
+                            for wid in assigned_worker_ids:
+                                avail = db.check_worker_availability(
+                                    worker_id=wid, appointment_time=slot_time,
+                                    duration_minutes=booking_duration,
+                                    exclude_booking_id=booking_id, company_id=company_id
+                                )
+                                if not avail.get('available', False):
+                                    all_free = False
+                                    break
                         if all_free:
                             day_available = True
                             day_slots.append(slot_time)
@@ -2527,11 +2587,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             tool_duration = time_module.time() - tool_start_time
             
-            # If we found fewer than 3 days, extend the search further out
-            if 0 < len(available_day_summaries) < 3:
+            # Auto-extend if fewer than 3 days found (or 0 days)
+            extended_from_zero = len(available_day_summaries) == 0
+            if len(available_day_summaries) < 3:
                 extended_start = end_search + timedelta(days=1)
-                extended_end = extended_start + timedelta(days=28)  # Search another 4 weeks
-                logger.info(f"[RESCHED_AVAIL] Only found {len(available_day_summaries)} days, extending search to {extended_end.date()}")
+                extended_end = extended_start + timedelta(days=28)
+                logger.info(f"[RESCHED_AVAIL] Found {len(available_day_summaries)} days, extending search to {extended_end.date()}")
                 ext_date = extended_start
                 while ext_date <= extended_end and len(available_day_summaries) < 5:
                     if ext_date.weekday() not in business_days:
@@ -2544,92 +2605,19 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     if is_full_day:
                         check_time = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                         if check_time > now:
-                            all_free = True
-                            for wid in assigned_worker_ids:
-                                avail = db.check_worker_availability(
-                                    worker_id=wid, appointment_time=check_time,
-                                    duration_minutes=booking_duration,
-                                    exclude_booking_id=booking_id, company_id=company_id
-                                )
-                                if not avail.get('available', False):
-                                    all_free = False
-                                    break
-                            if all_free:
-                                day_name = ext_date.strftime('%A')
-                                month_name = ext_date.strftime('%B')
-                                day_num = ext_date.day
-                                suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
-                                available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: full day available")
-                    else:
-                        slot_time = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
-                        day_end = ext_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
-                        day_slots = []
-                        while slot_time < day_end:
-                            if slot_time <= now:
-                                slot_time += timedelta(minutes=30)
-                                continue
-                            slot_end = slot_time + timedelta(minutes=booking_duration)
-                            if slot_end > day_end:
-                                slot_time += timedelta(minutes=30)
-                                continue
-                            all_free = True
-                            for wid in assigned_worker_ids:
-                                avail = db.check_worker_availability(
-                                    worker_id=wid, appointment_time=slot_time,
-                                    duration_minutes=booking_duration,
-                                    exclude_booking_id=booking_id, company_id=company_id
-                                )
-                                if not avail.get('available', False):
-                                    all_free = False
-                                    break
-                            if all_free:
-                                day_slots.append(slot_time)
-                            slot_time += timedelta(minutes=30)
-                        if day_slots:
-                            day_name = ext_date.strftime('%A')
-                            month_name = ext_date.strftime('%B')
-                            day_num = ext_date.day
-                            suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
-                            first_time = day_slots[0].strftime('%I %p').lstrip('0').lower()
-                            last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower()
-                            if len(day_slots) >= 4:
-                                available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: free from {first_time} to {last_time}")
-                            elif len(day_slots) == 1:
-                                available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: {first_time} only")
+                            if use_batch:
+                                all_free = _check_slot_against_bookings(check_time, booking_duration, worker_bookings_by_id, assigned_worker_ids, db, company_id=company_id)
                             else:
-                                times = [s.strftime('%I %p').lstrip('0').lower() for s in day_slots[:3]]
-                                available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: {' or '.join(times)}")
-                    ext_date += timedelta(days=1)
-                tool_duration = time_module.time() - tool_start_time
-            
-            # If 0 days found, auto-extend further out instead of giving up
-            extended_from_zero = False
-            if not available_day_summaries:
-                ext_start = end_search + timedelta(days=1)
-                ext_end = ext_start + timedelta(days=28)
-                logger.info(f"[RESCHED_AVAIL] 0 days found, auto-extending search to {ext_end.date()}")
-                ext_date = ext_start
-                while ext_date <= ext_end and len(available_day_summaries) < 5:
-                    if ext_date.weekday() not in business_days:
-                        ext_date += timedelta(days=1)
-                        continue
-                    if exclude_date and ext_date.date() == exclude_date:
-                        ext_date += timedelta(days=1)
-                        continue
-                    now = datetime.now()
-                    if is_full_day:
-                        check_time = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
-                        if check_time > now:
-                            all_free = True
-                            for wid in assigned_worker_ids:
-                                avail = db.check_worker_availability(
-                                    worker_id=wid, appointment_time=check_time,
-                                    duration_minutes=booking_duration,
-                                    exclude_booking_id=booking_id, company_id=company_id
-                                )
-                                if not avail.get('available', False):
-                                    all_free = False
-                                    break
+                                all_free = True
+                                for wid in assigned_worker_ids:
+                                    avail = db.check_worker_availability(
+                                        worker_id=wid, appointment_time=check_time,
+                                        duration_minutes=booking_duration,
+                                        exclude_booking_id=booking_id, company_id=company_id
+                                    )
+                                    if not avail.get('available', False):
+                                        all_free = False
+                                        break
                             if all_free:
                                 day_name = ext_date.strftime('%A')
                                 month_name = ext_date.strftime('%B')
@@ -2648,16 +2636,19 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             if slot_end > day_end_t:
                                 slot_time += timedelta(minutes=30)
                                 continue
-                            all_free = True
-                            for wid in assigned_worker_ids:
-                                avail = db.check_worker_availability(
-                                    worker_id=wid, appointment_time=slot_time,
-                                    duration_minutes=booking_duration,
-                                    exclude_booking_id=booking_id, company_id=company_id
-                                )
-                                if not avail.get('available', False):
-                                    all_free = False
-                                    break
+                            if use_batch:
+                                all_free = _check_slot_against_bookings(slot_time, booking_duration, worker_bookings_by_id, assigned_worker_ids, db, company_id=company_id)
+                            else:
+                                all_free = True
+                                for wid in assigned_worker_ids:
+                                    avail = db.check_worker_availability(
+                                        worker_id=wid, appointment_time=slot_time,
+                                        duration_minutes=booking_duration,
+                                        exclude_booking_id=booking_id, company_id=company_id
+                                    )
+                                    if not avail.get('available', False):
+                                        all_free = False
+                                        break
                             if all_free:
                                 day_slots.append(slot_time)
                             slot_time += timedelta(minutes=30)
@@ -2676,8 +2667,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 times = [s.strftime('%I %p').lstrip('0').lower() for s in day_slots[:3]]
                                 available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: {' or '.join(times)}")
                     ext_date += timedelta(days=1)
-                if available_day_summaries:
-                    extended_from_zero = True
+                # Track if we found results only via extension from 0
+                if extended_from_zero and not available_day_summaries:
+                    extended_from_zero = False  # Still 0, no prefix needed
                 tool_duration = time_module.time() - tool_start_time
             
             if not available_day_summaries:
@@ -2692,7 +2684,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             natural_summary = naturalize_availability_summary(available_day_summaries[:5], is_full_day=is_full_day)
             
             # Prefix with "nothing that week" when we auto-extended from 0 results
-            if extended_from_zero:
+            if extended_from_zero and available_day_summaries:
                 natural_summary = f"There's nothing available that week, but {natural_summary[0].lower()}{natural_summary[1:]}"
             
             print(f"[TOOL_TIMING] ✅ search_reschedule_availability completed in {tool_duration:.3f}s ({len(available_day_summaries)} days found)")

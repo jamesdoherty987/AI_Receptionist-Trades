@@ -47,6 +47,47 @@ def make_mock_db(bookings, worker_available_days):
     
     mock_db.check_worker_availability = Mock(side_effect=check_avail)
     mock_db.get_worker = Mock(return_value={'id': 1, 'name': 'Test Worker'})
+    
+    # Batch optimization: generate fake blocking bookings for unavailable days
+    def get_worker_bookings_in_range(worker_id, range_start, range_end, exclude_booking_id=None, company_id=None):
+        available_weekdays = worker_available_days.get(worker_id, [])
+        # Generate all-day bookings for each unavailable business day in the range
+        fake_bookings = []
+        if isinstance(range_start, str):
+            range_start = datetime.fromisoformat(range_start)
+        if isinstance(range_end, str):
+            range_end = datetime.fromisoformat(range_end)
+        current = range_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        booking_id_counter = 9000
+        while current < range_end:
+            if current.weekday() not in available_weekdays and current.weekday() in [0, 1, 2, 3, 4]:
+                # Block this day with a full-day booking
+                fake_bookings.append({
+                    'id': booking_id_counter,
+                    'appointment_time': current.replace(hour=8, minute=0),
+                    'duration_minutes': 540,  # 9 hours blocks the whole day
+                })
+                booking_id_counter += 1
+            current += timedelta(days=1)
+        return fake_bookings
+    
+    mock_db.get_worker_bookings_in_range = Mock(side_effect=get_worker_bookings_in_range)
+    
+    # _calculate_job_end_time: simple implementation for tests
+    def calc_end_time(start_time, duration_minutes, biz_start_hour=9, biz_end_hour=17, buffer_minutes=15, company_id=None):
+        if duration_minutes < 480:
+            return start_time + timedelta(minutes=duration_minutes + buffer_minutes)
+        elif duration_minutes <= 1440:
+            end = start_time.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+            return end + timedelta(minutes=buffer_minutes)
+        else:
+            # Multi-day: rough approximation for tests
+            days = duration_minutes // 1440
+            end = start_time + timedelta(days=days)
+            return end.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0) + timedelta(minutes=buffer_minutes)
+    
+    mock_db._calculate_job_end_time = Mock(side_effect=calc_end_time)
+    
     return mock_db
 
 
@@ -131,8 +172,8 @@ class TestSearchRescheduleAvailability:
         summary = result.get('natural_summary', '') or result.get('message', '')
         assert summary  # Should have some results
         
-        # Verify check_worker_availability was called with worker_id=5
-        calls = mock_db.check_worker_availability.call_args_list
+        # Verify get_worker_bookings_in_range was called with worker_id=5
+        calls = mock_db.get_worker_bookings_in_range.call_args_list
         assert len(calls) > 0
         for call in calls:
             assert call.kwargs.get('worker_id') == 5 or call[1].get('worker_id') == 5 or call[0][0] == 5
@@ -165,8 +206,8 @@ class TestSearchRescheduleAvailability:
         }, services)
         
         assert result['success'] is True
-        # The exclude_booking_id should be passed to check_worker_availability
-        calls = mock_db.check_worker_availability.call_args_list
+        # The exclude_booking_id should be passed to get_worker_bookings_in_range
+        calls = mock_db.get_worker_bookings_in_range.call_args_list
         for call in calls:
             kwargs = call.kwargs if call.kwargs else {}
             if 'exclude_booking_id' in kwargs:
