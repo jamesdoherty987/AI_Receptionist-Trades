@@ -7,6 +7,7 @@ ARCHITECTURE: Hybrid Approach
 """
 
 import logging
+import re
 
 # Set up logger for this module
 logger = logging.getLogger(__name__)
@@ -489,13 +490,14 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
                 continue
         
         day_name = check_date.strftime('%A')
-        # Include date for clarity (e.g., "Wednesday the 12th")
+        month_name = check_date.strftime('%B')
+        # Include date and month for clarity (e.g., "Wednesday the 12th of March")
         day_num = check_date.day
         suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
         if biz_days_needed > 1:
-            available_days.append(f"{day_name} the {day_num}{suffix} ({biz_days_needed} days)")
+            available_days.append(f"{day_name} the {day_num}{suffix} of {month_name} ({biz_days_needed} days)")
         else:
-            available_days.append(f"{day_name} the {day_num}{suffix}")
+            available_days.append(f"{day_name} the {day_num}{suffix} of {month_name}")
     
     logger.info(f"[RESCHEDULE] Found {len(available_days)} available days for workers {worker_ids}: {available_days[:5]}")
     return available_days
@@ -2249,7 +2251,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             day_summaries = []
             for day_date, day_slots in available_days[:4]:  # Max 4 days
                 day_name = day_date.strftime('%A')
-                # Add date for clarity (e.g., "Monday the 16th")
+                month_name = day_date.strftime('%B')
+                # Add date and month for clarity (e.g., "Monday the 16th of March")
                 day_num = day_date.day
                 suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
                 # Use "tomorrow" or "today" for nearby dates
@@ -2258,7 +2261,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 elif day_date.date() == (today + timedelta(days=1)).date():
                     day_with_date = "tomorrow"
                 else:
-                    day_with_date = f"{day_name} the {day_num}{suffix}"
+                    day_with_date = f"{day_name} the {day_num}{suffix} of {month_name}"
                 
                 if is_full_day:
                     day_summaries.append(f"{day_with_date}: full day available")
@@ -2359,27 +2362,42 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             end_date = None
             
             # Fast paths for common reschedule queries
-            if 'next week' in query_lower and ('week after' in query_lower or 'two' in query_lower or '2' in query_lower):
+            # Helper: find the Monday of a given week offset from today
+            def _monday_of_week(weeks_ahead):
+                """Get the Monday that is `weeks_ahead` full weeks from now."""
                 days_until_monday = (7 - today.weekday()) % 7
                 if days_until_monday == 0:
                     days_until_monday = 7
-                next_monday = today + timedelta(days=days_until_monday)
-                start_date = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
-                end_date = start_date + timedelta(days=11)
+                return today + timedelta(days=days_until_monday + (weeks_ahead - 1) * 7)
+            
+            # "3 weeks", "4 weeks time", "in 5 weeks" etc.
+            weeks_match = re.search(r'(\d+)\s*weeks?', query_lower)
+            
+            if 'week after next' in query_lower or ('next week' in query_lower and ('after' in query_lower or 'two' in query_lower or '2' in query_lower)):
+                # "the week after next" = 2 weeks from now
+                target_monday = _monday_of_week(2)
+                start_date = target_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = start_date + timedelta(days=4)
             elif 'next week' in query_lower:
-                days_until_monday = (7 - today.weekday()) % 7
-                if days_until_monday == 0:
-                    days_until_monday = 7
-                next_monday = today + timedelta(days=days_until_monday)
-                start_date = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+                target_monday = _monday_of_week(1)
+                start_date = target_monday.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_date = start_date + timedelta(days=4)
-            elif 'week after' in query_lower or 'in 2 weeks' in query_lower or 'in two weeks' in query_lower:
-                days_until_monday = (7 - today.weekday()) % 7
-                if days_until_monday == 0:
-                    days_until_monday = 7
-                next_monday = today + timedelta(days=days_until_monday + 7)
-                start_date = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+            elif weeks_match:
+                # "in 2 weeks", "2 weeks time", "in 3 weeks", "4 weeks from now" etc.
+                num_weeks = int(weeks_match.group(1))
+                # "2 weeks" means start searching 2 full weeks from today
+                start_date = (today + timedelta(weeks=num_weeks)).replace(hour=0, minute=0, second=0, microsecond=0)
+                # Search that week plus a few extra days
+                end_date = start_date + timedelta(days=6)
+            elif 'week after' in query_lower:
+                # "the week after that" — 2 weeks out
+                target_monday = _monday_of_week(2)
+                start_date = target_monday.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_date = start_date + timedelta(days=4)
+            elif any(phrase in query_lower for phrase in ['later', 'further', 'further out', 'something else', 'other option', 'other day', 'different day', 'any other', 'anything else']):
+                # Vague "later" / "other options" — skip the next week, search weeks 2-5
+                start_date = (today + timedelta(days=14)).replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = today + timedelta(days=35)
             else:
                 # Default: search next 4 weeks for any vague query
                 start_date = (today + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -2481,6 +2499,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 
                 if day_available and day_slots:
                     day_name = current_date.strftime('%A')
+                    month_name = current_date.strftime('%B')
                     day_num = current_date.day
                     suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
                     
@@ -2489,7 +2508,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     elif current_date.date() == (today + timedelta(days=1)).date():
                         day_label = "tomorrow"
                     else:
-                        day_label = f"{day_name} the {day_num}{suffix}"
+                        day_label = f"{day_name} the {day_num}{suffix} of {month_name}"
                     
                     if is_full_day:
                         available_day_summaries.append(f"{day_label}: full day available")
@@ -2537,9 +2556,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                     break
                             if all_free:
                                 day_name = ext_date.strftime('%A')
+                                month_name = ext_date.strftime('%B')
                                 day_num = ext_date.day
                                 suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
-                                available_day_summaries.append(f"{day_name} the {day_num}{suffix}: full day available")
+                                available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: full day available")
                     else:
                         slot_time = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                         day_end = ext_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
@@ -2567,17 +2587,18 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             slot_time += timedelta(minutes=30)
                         if day_slots:
                             day_name = ext_date.strftime('%A')
+                            month_name = ext_date.strftime('%B')
                             day_num = ext_date.day
                             suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
                             first_time = day_slots[0].strftime('%I %p').lstrip('0').lower()
                             last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower()
                             if len(day_slots) >= 4:
-                                available_day_summaries.append(f"{day_name} the {day_num}{suffix}: free from {first_time} to {last_time}")
+                                available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: free from {first_time} to {last_time}")
                             elif len(day_slots) == 1:
-                                available_day_summaries.append(f"{day_name} the {day_num}{suffix}: {first_time} only")
+                                available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: {first_time} only")
                             else:
                                 times = [s.strftime('%I %p').lstrip('0').lower() for s in day_slots[:3]]
-                                available_day_summaries.append(f"{day_name} the {day_num}{suffix}: {' or '.join(times)}")
+                                available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: {' or '.join(times)}")
                     ext_date += timedelta(days=1)
                 tool_duration = time_module.time() - tool_start_time
             
@@ -2975,6 +2996,7 @@ Return ONLY valid JSON, no explanation."""
                 day_slots = slots_by_day[day_key]
                 day_date = datetime.strptime(day_key, '%Y-%m-%d')
                 day_name = day_date.strftime('%A')
+                month_name = day_date.strftime('%B')
                 day_num = day_date.day
                 suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
                 # Use "tomorrow" or "today" for nearby dates
@@ -2983,7 +3005,7 @@ Return ONLY valid JSON, no explanation."""
                 elif day_date.date() == (today + timedelta(days=1)).date():
                     day_with_date = "tomorrow"
                 else:
-                    day_with_date = f"{day_name} the {day_num}{suffix}"
+                    day_with_date = f"{day_name} the {day_num}{suffix} of {month_name}"
                 
                 if is_full_day:
                     day_summaries.append(f"{day_with_date}: full day available")
@@ -4778,7 +4800,6 @@ Return ONLY valid JSON, no explanation."""
                 if ' - ' in event_summary:
                     extracted_name = event_summary.split(' - ')[-1].strip()
                 else:
-                    import re
                     between_match = re.search(r'between\s+([^and]+)\s+and', event_summary, re.IGNORECASE)
                     if between_match:
                         extracted_name = between_match.group(1).strip()
