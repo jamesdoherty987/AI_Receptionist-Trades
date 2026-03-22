@@ -2708,6 +2708,9 @@ def business_settings_api():
             # Dashboard feature toggles
             'show_finances_tab': company.get('show_finances_tab', True) if company.get('show_finances_tab') is not None else True,
             'show_invoice_buttons': company.get('show_invoice_buttons', True) if company.get('show_invoice_buttons') is not None else True,
+            # SMS toggles
+            'send_confirmation_sms': company.get('send_confirmation_sms', True) if company.get('send_confirmation_sms') is not None else True,
+            'send_reminder_sms': company.get('send_reminder_sms', True) if company.get('send_reminder_sms') is not None else True,
         }
         return jsonify(settings)
     
@@ -2762,6 +2765,8 @@ def business_settings_api():
             'coverage_area': 'coverage_area',
             'show_finances_tab': 'show_finances_tab',
             'show_invoice_buttons': 'show_invoice_buttons',
+            'send_confirmation_sms': 'send_confirmation_sms',
+            'send_reminder_sms': 'send_reminder_sms',
         }
         
         for frontend_field, db_field in field_mapping.items():

@@ -3225,22 +3225,29 @@ Return ONLY valid JSON, no explanation."""
                 from src.services.sms_reminder import get_sms_service
                 sms_service = get_sms_service()
                 if sms_service.client and phone:
+                    # Check if confirmation SMS is enabled for this company
+                    _send_confirmation = True
                     _company_name = None
                     if db and company_id:
                         try:
                             _company_info = db.get_company(company_id)
                             _company_name = _company_info.get('company_name') if _company_info else None
+                            if _company_info and _company_info.get('send_confirmation_sms') is False:
+                                _send_confirmation = False
                         except Exception:
                             pass
-                    _worker_name_list = [w['name'] for w in assigned_workers] if assigned_workers else None
-                    sms_service.send_booking_confirmation(
-                        to_number=phone,
-                        appointment_time=parsed_time,
-                        customer_name=customer_name,
-                        service_type=matched_service_name,
-                        company_name=_company_name,
-                        worker_names=_worker_name_list,
-                    )
+                    if _send_confirmation:
+                        _worker_name_list = [w['name'] for w in assigned_workers] if assigned_workers else None
+                        sms_service.send_booking_confirmation(
+                            to_number=phone,
+                            appointment_time=parsed_time,
+                            customer_name=customer_name,
+                            service_type=matched_service_name,
+                            company_name=_company_name,
+                            worker_names=_worker_name_list,
+                        )
+                    else:
+                        logger.info(f"[BOOK_APPT] Confirmation SMS disabled for company {company_id}, skipping")
             except Exception as sms_err:
                 logger.warning(f"[BOOK_APPT] ⚠️ Booking confirmation SMS failed (booking still saved): {sms_err}")
             
@@ -4175,24 +4182,30 @@ Return ONLY valid JSON, no explanation."""
                 from src.services.sms_reminder import get_sms_service
                 sms_service = get_sms_service()
                 if sms_service.client and phone:
-                    # Get company name for the SMS
+                    # Check if confirmation SMS is enabled for this company
+                    _send_confirmation = True
                     _company_name = None
                     if db and company_id:
                         try:
                             _company_info = db.get_company(company_id)
                             _company_name = _company_info.get('company_name') if _company_info else None
+                            if _company_info and _company_info.get('send_confirmation_sms') is False:
+                                _send_confirmation = False
                         except Exception:
                             pass
-                    _worker_name_list = [w['name'] for w in assigned_workers] if assigned_workers else None
-                    sms_service.send_booking_confirmation(
-                        to_number=phone,
-                        appointment_time=parsed_time,
-                        customer_name=customer_name,
-                        service_type=matched_service_name,
-                        company_name=_company_name,
-                        worker_names=_worker_name_list,
-                        address=validated_address,
-                    )
+                    if _send_confirmation:
+                        _worker_name_list = [w['name'] for w in assigned_workers] if assigned_workers else None
+                        sms_service.send_booking_confirmation(
+                            to_number=phone,
+                            appointment_time=parsed_time,
+                            customer_name=customer_name,
+                            service_type=matched_service_name,
+                            company_name=_company_name,
+                            worker_names=_worker_name_list,
+                            address=validated_address,
+                        )
+                    else:
+                        logger.info(f"[BOOK_JOB] Confirmation SMS disabled for company {company_id}, skipping")
             except Exception as sms_err:
                 logger.warning(f"[BOOK_JOB] ⚠️ Booking confirmation SMS failed (booking still saved): {sms_err}")
             

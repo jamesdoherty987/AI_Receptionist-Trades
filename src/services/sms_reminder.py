@@ -455,6 +455,7 @@ def send_day_before_reminders() -> int:
                 b.phone_number, b.company_id,
                 c.name AS client_name, c.phone AS client_phone,
                 comp.company_name,
+                COALESCE(comp.send_reminder_sms, TRUE) AS send_reminder_sms,
                 ARRAY_AGG(w.name) FILTER (WHERE w.name IS NOT NULL) AS worker_names
             FROM bookings b
             LEFT JOIN clients c ON b.client_id = c.id
@@ -467,7 +468,7 @@ def send_day_before_reminders() -> int:
               AND COALESCE(b.reminder_sent, FALSE) = FALSE
             GROUP BY b.id, b.appointment_time, b.service_type,
                      b.phone_number, b.company_id,
-                     c.name, c.phone, comp.company_name
+                     c.name, c.phone, comp.company_name, comp.send_reminder_sms
             ORDER BY b.appointment_time
         """, (tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
               tomorrow_end.strftime("%Y-%m-%d %H:%M:%S")))
@@ -487,6 +488,11 @@ def send_day_before_reminders() -> int:
         phone = booking.get('phone_number') or booking.get('client_phone')
         if not phone:
             print(f"  [SKIP] Booking {booking['id']}: no phone number")
+            continue
+
+        # Check if reminder SMS is enabled for this company
+        if booking.get('send_reminder_sms') is False:
+            print(f"  [SKIP] Booking {booking['id']}: reminder SMS disabled for company {booking.get('company_id')}")
             continue
 
         customer_name = booking.get('client_name') or 'Customer'

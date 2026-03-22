@@ -952,6 +952,34 @@ function Settings() {
                       <span className="toggle-slider"></span>
                     </label>
                   </div>
+                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0' }}>
+                    <div>
+                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Booking Confirmation SMS</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Send an SMS to the customer when a booking is confirmed</div>
+                    </div>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={formData.send_confirmation_sms !== false}
+                        onChange={(e) => { setFormData(prev => ({ ...prev, send_confirmation_sms: e.target.checked })); setHasUnsavedChanges(true); }}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
+                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0' }}>
+                    <div>
+                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Day-Before Reminder SMS</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Send a reminder SMS to the customer the day before their appointment</div>
+                    </div>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={formData.send_reminder_sms !== false}
+                        onChange={(e) => { setFormData(prev => ({ ...prev, send_reminder_sms: e.target.checked })); setHasUnsavedChanges(true); }}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
                 </div>
               </div>
 
