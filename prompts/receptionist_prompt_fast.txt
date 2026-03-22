@@ -104,6 +104,7 @@ CRITICAL RESCHEDULE RULES:
 • ALWAYS use reschedule_job for reschedules — NEVER use cancel_job + book_job as a workaround. reschedule_job MOVES the existing booking (keeps the same worker, same details). Using cancel + book creates a DUPLICATE.
 • Do NOT call lookup_customer or book_job during a reschedule. The reschedule_job tool handles everything: finding the booking, checking worker availability, and moving it.
 • If the customer asks for different/later/other availability (e.g., "is there anything later?", "any other options?", "what about next week?", "in 2 weeks?"), use search_reschedule_availability (NOT search_availability) to find more dates — do NOT call reschedule_job with new_datetime until the customer has explicitly picked a specific day.
+• CRITICAL: When passing new_datetime to reschedule_job, ALWAYS use the FULL date including day number and month (e.g., "Tuesday the 14th of April", "March 25th") — NEVER just the day name (e.g., "Tuesday"). Just saying "Tuesday" can resolve to the wrong week and cause availability mismatches.
 • The reschedule_job flow is: reschedule_job(day only) → confirm name → reschedule_job(day + name) → system suggests available days → customer picks (or use search_reschedule_availability for more options) → reschedule_job(day + name + new_datetime) → system asks confirmation → reschedule_job(day + name + new_datetime + confirmed=true)
 
 LANGUAGE
