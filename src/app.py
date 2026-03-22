@@ -2782,6 +2782,23 @@ def business_settings_api():
                 print(f"[SETTINGS] Updating company {company_id} with fields: {list(update_data.keys())}")
                 success = db.update_company(company_id, **update_data)
                 print(f"[SETTINGS] Update result: {success}")
+                
+                # Sync business_hours string → business_settings table so both stay in sync
+                if 'business_hours' in update_data and update_data['business_hours']:
+                    try:
+                        from src.utils.config import Config
+                        from src.services.settings_manager import get_settings_manager
+                        parsed = Config.parse_business_hours_string(update_data['business_hours'])
+                        sync_data = {
+                            'opening_hours_start': parsed['start'],
+                            'opening_hours_end': parsed['end'],
+                            'days_open': parsed['days_open'],
+                        }
+                        get_settings_manager().update_business_settings(sync_data, company_id=company_id)
+                        print(f"[SETTINGS] Synced business_hours to business_settings: days_open={parsed['days_open']}")
+                    except Exception as sync_e:
+                        print(f"[WARNING] Could not sync business_hours to business_settings: {sync_e}")
+                
                 # Return success even if no rows changed (data might be identical)
                 return jsonify({"message": "Settings updated successfully"})
             except Exception as e:
@@ -3070,13 +3087,71 @@ def business_hours_api():
     company_id = session.get('company_id')
     
     if request.method == "GET":
-        menu = settings_mgr.get_services_menu(company_id=company_id)
-        return jsonify(menu.get('business_hours', {}))
+        hours = settings_mgr.get_business_hours(company_id=company_id)
+        return jsonify(hours)
     
     elif request.method == "POST":
         data = request.json
         success = settings_mgr.update_business_hours(data, company_id=company_id)
         if success:
+            # Sync: build days_open from per-day closed flags and update business_settings + companies table
+            try:
+                all_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                days_open = [day for day in all_days if not data.get(f'{day.lower()}_closed', False)]
+                
+                # Also extract opening/closing hours from the per-day data if available
+                # Use the first open day's hours as the canonical start/end
+                start_hour = data.get('opening_hours_start')
+                end_hour = data.get('opening_hours_end')
+                if start_hour is None or end_hour is None:
+                    for day in days_open:
+                        open_val = data.get(f'{day.lower()}_open', '')
+                        close_val = data.get(f'{day.lower()}_close', '')
+                        if open_val and close_val:
+                            try:
+                                start_hour = int(open_val.split(':')[0])
+                                end_hour = int(close_val.split(':')[0])
+                            except (ValueError, IndexError):
+                                pass
+                            break
+                
+                # Update days_open in business_settings
+                sync_data = {'days_open': days_open}
+                if start_hour is not None:
+                    sync_data['opening_hours_start'] = start_hour
+                if end_hour is not None:
+                    sync_data['opening_hours_end'] = end_hour
+                settings_mgr.update_business_settings(sync_data, company_id=company_id)
+                
+                # Build and sync the business_hours string to companies table
+                if start_hour is not None and end_hour is not None:
+                    start_period = 'AM' if start_hour < 12 else 'PM'
+                    end_period = 'AM' if end_hour < 12 else 'PM'
+                    display_start = start_hour if start_hour <= 12 else start_hour - 12
+                    display_end = end_hour if end_hour <= 12 else end_hour - 12
+                    if display_start == 0: display_start = 12
+                    if display_end == 0: display_end = 12
+                    
+                    if len(days_open) == 7:
+                        days_text = 'Daily'
+                    elif len(days_open) == 6 and 'Sunday' not in days_open:
+                        days_text = 'Mon-Sat'
+                    elif len(days_open) == 5 and 'Saturday' not in days_open and 'Sunday' not in days_open:
+                        days_text = 'Mon-Fri'
+                    else:
+                        abbrevs = {'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed',
+                                   'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'}
+                        days_text = ', '.join(abbrevs.get(d, d) for d in days_open)
+                    
+                    hours_str = f"{display_start} {start_period} - {display_end} {end_period} {days_text}"
+                    db = get_database()
+                    db.update_company(company_id, business_hours=hours_str)
+                    print(f"[BIZ-HOURS] Synced to companies table: {hours_str}")
+                
+                print(f"[BIZ-HOURS] Synced days_open={days_open} to business_settings")
+            except Exception as sync_e:
+                print(f"[WARNING] Could not sync business hours: {sync_e}")
+            
             return jsonify({"message": "Business hours updated successfully"})
         return jsonify({"error": "Failed to update business hours"}), 500
 
