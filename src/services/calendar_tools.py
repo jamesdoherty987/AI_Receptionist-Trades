@@ -603,14 +603,19 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                     # Job started before this day — check if it spans into this day
                     duration = booking.get('duration_minutes', 60)
                     if duration > 1440:  # Multi-day job (> 24 hours)
-                        # Use business-day calculation: "1 week" = 5 biz days, not 7
-                        from src.utils.duration_utils import duration_to_business_days
-                        biz_days_needed = duration_to_business_days(duration, company_id=company_id)
+                        # Skip closed days — the job doesn't run on days the company is closed
                         try:
                             from src.utils.config import config as _cfg
                             _biz_day_indices = _cfg.get_business_days_indices(company_id=company_id)
                         except Exception:
                             _biz_day_indices = [0, 1, 2, 3, 4]
+                        
+                        if day_start.weekday() not in _biz_day_indices:
+                            continue  # Target day is a closed day, skip
+                        
+                        # Use business-day calculation: "1 week" = 5 biz days, not 7
+                        from src.utils.duration_utils import duration_to_business_days
+                        biz_days_needed = duration_to_business_days(duration, company_id=company_id)
                         # Walk forward from start counting business days
                         _cur = appt_time.replace(hour=0, minute=0, second=0, microsecond=0)
                         _counted = 0

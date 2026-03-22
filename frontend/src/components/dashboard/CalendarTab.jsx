@@ -232,6 +232,7 @@ function CalendarTab() {
   // Get events for a specific date (including multi-day jobs that span into this date)
   const getEventsForDate = (date) => {
     if (!filteredBookings) return [];
+    const openSet = new Set(openDayIndices);
     return filteredBookings.filter(booking => {
       const bookingDate = new Date(booking.appointment_time);
       // Job starts on this date
@@ -239,6 +240,8 @@ function CalendarTab() {
       // Multi-day job: started before this date but duration extends into it
       const duration = booking.duration_minutes || 60;
       if (duration > 1440) {
+        // Skip closed days — the job doesn't run on days the company is closed
+        if (!openSet.has(date.getDay())) return false;
         const bookingEnd = getMultiDayJobEnd(bookingDate, duration, openDayIndices, closingHour);
         const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         if (bookingDate < dayStart && bookingEnd > dayStart) return true;
@@ -250,12 +253,15 @@ function CalendarTab() {
   // Get events for selected date (including multi-day continuations)
   const selectedDateEvents = useMemo(() => {
     if (!selectedDate || !filteredBookings) return [];
+    const openSet = new Set(openDayIndices);
     return filteredBookings
       .filter(booking => {
         const bookingDate = new Date(booking.appointment_time);
         if (bookingDate.toDateString() === selectedDate.toDateString()) return true;
         const duration = booking.duration_minutes || 60;
         if (duration > 1440) {
+          // Skip closed days — the job doesn't run on days the company is closed
+          if (!openSet.has(selectedDate.getDay())) return false;
           const bookingEnd = getMultiDayJobEnd(bookingDate, duration, openDayIndices, closingHour);
           const dayStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
           if (bookingDate < dayStart && bookingEnd > dayStart) return true;
