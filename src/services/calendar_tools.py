@@ -165,7 +165,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "reschedule_appointment",
-            "description": "Reschedule an existing appointment to a new time. WORKFLOW: 1) Ask customer what DAY the booking is for (not time - there may be multiple jobs or full-day jobs). 2) Call this with ONLY current_date (the day). 3) System returns ALL jobs on that day with customer names. 4) Read the names to the caller and ask them to confirm which one is theirs. 5) Listen to their response, then ask what day they want to reschedule to. 6) Call again with current_date, customer_name, AND new_datetime to complete. IMPORTANT: If the customer asks for different/later/other availability options, use search_availability instead — do NOT pass new_datetime until the customer has explicitly chosen a specific day.",
+            "description": "Reschedule an existing appointment to a new time. WORKFLOW: 1) Ask customer what DAY the booking is for (not time - there may be multiple jobs or full-day jobs). 2) Call this with ONLY current_date (the day). 3) System returns ALL jobs on that day with customer names. 4) Read the names to the caller and ask them to confirm which one is theirs. 5) Listen to their response, then ask what day they want to reschedule to. 6) Call again with current_date, customer_name, AND new_datetime to complete. IMPORTANT: If the customer asks for different/later/other availability options, use search_reschedule_availability (NOT search_availability) — do NOT pass new_datetime until the customer has explicitly chosen a specific day.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -262,7 +262,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "reschedule_job",
-            "description": "Reschedule an existing job to a new time. ALWAYS use this for reschedules — NEVER use cancel_job + book_job instead (that creates duplicates). WORKFLOW: 1) Ask customer what DAY the booking is for. 2) Call this with ONLY current_date. 3) System returns ALL jobs on that day. 4) Read names to caller. 5) Call again with current_date + customer_name (NO new_datetime yet) — system confirms name and suggests available days. 6) Customer picks a day. 7) Call AGAIN with current_date + customer_name + new_datetime to complete the move. System will ask for confirmation — then call one final time with confirmed=true. IMPORTANT: If the customer asks for different/later/other availability options instead of picking from the suggested days, use search_availability to find more options — do NOT pass new_datetime until the customer has explicitly chosen a specific day.",
+            "description": "Reschedule an existing job to a new time. ALWAYS use this for reschedules — NEVER use cancel_job + book_job instead (that creates duplicates). WORKFLOW: 1) Ask customer what DAY the booking is for. 2) Call this with ONLY current_date. 3) System returns ALL jobs on that day. 4) Read names to caller. 5) Call again with current_date + customer_name (NO new_datetime yet) — system confirms name and suggests available days. 6) Customer picks a day. 7) Call AGAIN with current_date + customer_name + new_datetime to complete the move. System will ask for confirmation — then call one final time with confirmed=true. IMPORTANT: If the customer asks for different/later/other availability options instead of picking from the suggested days, use search_reschedule_availability (NOT search_availability) to find more options — do NOT pass new_datetime until the customer has explicitly chosen a specific day.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -284,6 +284,27 @@ CALENDAR_TOOLS = [
                     }
                 },
                 "required": ["current_date"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_reschedule_availability",
+            "description": "Search for alternative dates when rescheduling a job. Use this ONLY during a reschedule flow when the customer wants to see different/more availability options for the ASSIGNED WORKER. This checks the specific worker assigned to the booking — NOT general availability. Requires the booking_id from the earlier reschedule_job call.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "booking_id": {
+                        "type": "integer",
+                        "description": "The booking ID from the reschedule_job tool result (found in matched_job.booking_id)"
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "The customer's request in natural language (e.g., 'next week', 'any other options', 'the week after')"
+                    }
+                },
+                "required": ["booking_id", "query"]
             }
         }
     },
@@ -2292,6 +2313,224 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 "duration_label": format_duration_label(service_duration)
             }
         
+        elif tool_name == "search_reschedule_availability":
+            # ========== SEARCH_RESCHEDULE_AVAILABILITY ==========
+            # Dedicated tool for finding alternative dates during a reschedule.
+            # Checks the ASSIGNED worker's availability — not general availability.
+            logger.info(f"[RESCHED_AVAIL] ========== SEARCHING RESCHEDULE AVAILABILITY ==========")
+            booking_id = arguments.get('booking_id')
+            query = arguments.get('query', '')
+            
+            logger.info(f"[RESCHED_AVAIL] Booking ID: {booking_id}, Query: '{query}'")
+            
+            if not booking_id:
+                return {"success": False, "error": "Booking ID is required. Get it from the reschedule_job result."}
+            
+            if not db:
+                return {"success": False, "error": "Database not available."}
+            
+            # Look up the booking to get assigned workers and duration
+            assigned_worker_ids = []
+            booking_duration = 60
+            booking_date = None
+            try:
+                bookings = db.get_all_bookings(company_id=company_id)
+                for booking in bookings:
+                    if booking.get('id') == booking_id:
+                        assigned_worker_ids = booking.get('assigned_worker_ids', [])
+                        booking_duration = booking.get('duration_minutes', 60)
+                        booking_date = booking.get('appointment_time')
+                        break
+            except Exception as e:
+                logger.error(f"[RESCHED_AVAIL] Could not look up booking {booking_id}: {e}")
+                return {"success": False, "error": "Could not look up that booking. Please try again."}
+            
+            if not assigned_worker_ids:
+                logger.warning(f"[RESCHED_AVAIL] No assigned workers for booking {booking_id}, falling back to general search")
+                # Fall through to general search_availability
+                return execute_tool_call("search_availability", {"query": query, "job_description": "general service"}, services)
+            
+            logger.info(f"[RESCHED_AVAIL] Workers: {assigned_worker_ids}, Duration: {booking_duration}min")
+            
+            # Parse the date range from the query using fast paths
+            today = datetime.now()
+            query_lower = query.lower().strip()
+            start_date = None
+            end_date = None
+            
+            # Fast paths for common reschedule queries
+            if 'next week' in query_lower and ('week after' in query_lower or 'two' in query_lower or '2' in query_lower):
+                days_until_monday = (7 - today.weekday()) % 7
+                if days_until_monday == 0:
+                    days_until_monday = 7
+                next_monday = today + timedelta(days=days_until_monday)
+                start_date = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = start_date + timedelta(days=11)
+            elif 'next week' in query_lower:
+                days_until_monday = (7 - today.weekday()) % 7
+                if days_until_monday == 0:
+                    days_until_monday = 7
+                next_monday = today + timedelta(days=days_until_monday)
+                start_date = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = start_date + timedelta(days=4)
+            elif 'week after' in query_lower or 'in 2 weeks' in query_lower or 'in two weeks' in query_lower:
+                days_until_monday = (7 - today.weekday()) % 7
+                if days_until_monday == 0:
+                    days_until_monday = 7
+                next_monday = today + timedelta(days=days_until_monday + 7)
+                start_date = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = start_date + timedelta(days=4)
+            else:
+                # Default: search next 3 weeks for any vague query
+                start_date = (today + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                end_date = today + timedelta(days=21)
+            
+            logger.info(f"[RESCHED_AVAIL] Searching {start_date.date()} to {end_date.date()}")
+            
+            # Get business config
+            try:
+                business_days = config.get_business_days_indices(company_id=company_id)
+            except:
+                business_days = [0, 1, 2, 3, 4]
+            
+            try:
+                business_hours = config.get_business_hours(company_id=company_id)
+                biz_start_hour = business_hours.get('start', 9)
+                biz_end_hour = business_hours.get('end', 17)
+            except:
+                biz_start_hour = 9
+                biz_end_hour = 17
+            
+            is_full_day = booking_duration >= 480
+            
+            # Exclude the current booking date from results
+            exclude_date = None
+            if booking_date:
+                if isinstance(booking_date, str):
+                    try:
+                        exclude_date = datetime.fromisoformat(booking_date.replace('Z', '+00:00')).date()
+                    except:
+                        pass
+                else:
+                    exclude_date = booking_date.date() if hasattr(booking_date, 'date') else None
+            
+            # Search each day, checking the ASSIGNED worker(s) specifically
+            available_day_summaries = []
+            current_date = start_date
+            end_search = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            while current_date <= end_search:
+                if current_date.weekday() not in business_days:
+                    current_date += timedelta(days=1)
+                    continue
+                
+                # Skip the day being moved FROM
+                if exclude_date and current_date.date() == exclude_date:
+                    current_date += timedelta(days=1)
+                    continue
+                
+                now = datetime.now()
+                day_available = False
+                day_slots = []
+                
+                if is_full_day:
+                    check_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                    if check_time > now:
+                        all_free = True
+                        for wid in assigned_worker_ids:
+                            avail = db.check_worker_availability(
+                                worker_id=wid,
+                                appointment_time=check_time,
+                                duration_minutes=booking_duration,
+                                exclude_booking_id=booking_id,
+                                company_id=company_id
+                            )
+                            if not avail.get('available', False):
+                                all_free = False
+                                break
+                        if all_free:
+                            day_available = True
+                            day_slots = [check_time]
+                else:
+                    slot_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
+                    day_end = current_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+                    while slot_time < day_end:
+                        if slot_time <= now:
+                            slot_time += timedelta(minutes=30)
+                            continue
+                        slot_end = slot_time + timedelta(minutes=booking_duration)
+                        if slot_end > day_end:
+                            slot_time += timedelta(minutes=30)
+                            continue
+                        all_free = True
+                        for wid in assigned_worker_ids:
+                            avail = db.check_worker_availability(
+                                worker_id=wid,
+                                appointment_time=slot_time,
+                                duration_minutes=booking_duration,
+                                exclude_booking_id=booking_id,
+                                company_id=company_id
+                            )
+                            if not avail.get('available', False):
+                                all_free = False
+                                break
+                        if all_free:
+                            day_available = True
+                            day_slots.append(slot_time)
+                        slot_time += timedelta(minutes=30)
+                
+                if day_available and day_slots:
+                    day_name = current_date.strftime('%A')
+                    day_num = current_date.day
+                    suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
+                    
+                    if current_date.date() == today.date():
+                        day_label = "today"
+                    elif current_date.date() == (today + timedelta(days=1)).date():
+                        day_label = "tomorrow"
+                    else:
+                        day_label = f"{day_name} the {day_num}{suffix}"
+                    
+                    if is_full_day:
+                        available_day_summaries.append(f"{day_label}: full day available")
+                    else:
+                        first_time = day_slots[0].strftime('%I %p').lstrip('0').lower()
+                        last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower()
+                        if len(day_slots) >= 4:
+                            available_day_summaries.append(f"{day_label}: free from {first_time} to {last_time}")
+                        elif len(day_slots) == 1:
+                            available_day_summaries.append(f"{day_label}: {first_time} only")
+                        else:
+                            times = [s.strftime('%I %p').lstrip('0').lower() for s in day_slots[:3]]
+                            available_day_summaries.append(f"{day_label}: {' or '.join(times)}")
+                
+                current_date += timedelta(days=1)
+            
+            tool_duration = time_module.time() - tool_start_time
+            
+            if not available_day_summaries:
+                print(f"[TOOL_TIMING] ✅ search_reschedule_availability completed in {tool_duration:.3f}s (0 days found)")
+                return {
+                    "success": True,
+                    "available_slots": [],
+                    "message": "The assigned worker has no availability in that time period. Would you like to speak with someone about this?",
+                    "is_full_day_service": is_full_day
+                }
+            
+            natural_summary = naturalize_availability_summary(available_day_summaries[:4], is_full_day=is_full_day)
+            
+            print(f"[TOOL_TIMING] ✅ search_reschedule_availability completed in {tool_duration:.3f}s ({len(available_day_summaries)} days found)")
+            
+            return {
+                "success": True,
+                "natural_summary": natural_summary,
+                "message": natural_summary,
+                "days_found": len(available_day_summaries),
+                "is_full_day_service": is_full_day,
+                "duration_minutes": booking_duration,
+                "duration_label": format_duration_label(booking_duration)
+            }
+        
         elif tool_name == "search_availability":
             # ========== SEARCH_AVAILABILITY ==========
             # Handle specific customer queries about dates/times
@@ -2369,6 +2608,31 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 end_date = start_date + timedelta(days=4)  # Monday to Friday
                 used_fast_path = True
                 logger.info(f"[SEARCH_AVAIL] Fast path: 'next week' -> {start_date.date()} to {end_date.date()}")
+            
+            # Fast path: vague "other options" / "anything else" / "different day" queries
+            # These don't contain specific dates, so AI parsing wastes time and often fails
+            if not used_fast_path:
+                vague_patterns = ['other option', 'other day', 'anything else', 'any other',
+                                  'different day', 'different week', 'something else', 'alternative',
+                                  'more option', 'else available', 'what else']
+                if any(p in query_lower for p in vague_patterns):
+                    # Search next 3 weeks from tomorrow
+                    start_date = (today + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                    end_date = today + timedelta(days=21)
+                    used_fast_path = True
+                    logger.info(f"[SEARCH_AVAIL] Fast path: vague 'other options' query -> {start_date.date()} to {end_date.date()}")
+            
+            # Fast path: "next week or the week after" / "next week or two"
+            if not used_fast_path:
+                if ('next week' in query_lower and ('week after' in query_lower or 'two' in query_lower or '2' in query_lower)):
+                    days_until_monday = (7 - today.weekday()) % 7
+                    if days_until_monday == 0:
+                        days_until_monday = 7
+                    next_monday = today + timedelta(days=days_until_monday)
+                    start_date = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+                    end_date = start_date + timedelta(days=11)  # Two full weeks (Mon-Fri x2)
+                    used_fast_path = True
+                    logger.info(f"[SEARCH_AVAIL] Fast path: 'next week or two' -> {start_date.date()} to {end_date.date()}")
             
             # If fast path didn't match, use AI parsing
             if not used_fast_path:

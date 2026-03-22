@@ -1718,7 +1718,7 @@ TOOL RULES:
                     # This allows audio playback to continue during tool execution
                     # CRITICAL: Add timeout to prevent infinite hang
                     # Use longer timeout for search operations that may need to check many days
-                    TOOL_TIMEOUT = 15.0 if tool_name in ['search_availability', 'get_next_available', 'check_availability', 'book_job'] else 10.0
+                    TOOL_TIMEOUT = 15.0 if tool_name in ['search_availability', 'search_reschedule_availability', 'get_next_available', 'check_availability', 'book_job'] else 10.0
                     try:
                         result = await asyncio.wait_for(
                             asyncio.get_event_loop().run_in_executor(
@@ -1973,6 +1973,30 @@ TOOL RULES:
                         direct_response = "I couldn't check availability. What day would you like to try?"
                     
                     print(f"   ⚡ [DIRECT] get_next_available -> '{direct_response[:50]}...'")
+                
+                # ========== SEARCH_RESCHEDULE_AVAILABILITY ==========
+                elif tool_name == "search_reschedule_availability":
+                    if result_content.get("success"):
+                        natural_summary = result_content.get("natural_summary", "")
+                        message = result_content.get("message", "")
+                        days_found = result_content.get("days_found", 0)
+                        is_full_day = result_content.get("is_full_day_service", False)
+                        
+                        if natural_summary:
+                            if days_found > 1:
+                                direct_response = f"{natural_summary}. Which day works for you?"
+                            elif days_found == 1:
+                                direct_response = f"{natural_summary}. Does that day work?"
+                            else:
+                                direct_response = message or "The assigned worker has no availability then. Would you like to speak with someone?"
+                        elif message:
+                            direct_response = message
+                        else:
+                            direct_response = "The assigned worker has no availability in that period. Would you like to try different dates?"
+                    else:
+                        direct_response = result_content.get("error", "I couldn't check the worker's availability. What dates would you like to try?")
+                    
+                    print(f"   ⚡ [DIRECT] search_reschedule_availability -> '{direct_response[:50]}...'")
                 
                 # ========== SEARCH_AVAILABILITY ==========
                 elif tool_name == "search_availability":
