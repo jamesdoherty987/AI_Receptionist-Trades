@@ -336,7 +336,7 @@
 
 .hero-video-container {
   width: 100%;
-  max-width: 520px;
+  max-width: 640px;
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px rgba(124, 58, 237, 0.15);
@@ -348,41 +348,90 @@
   width: 100%;
   height: auto;
   display: block;
-  border-radius: 20px;
+  cursor: pointer;
 }
 
-.video-sound-btn {
+/* Video Controls - show on hover */
+.video-controls {
   position: absolute;
-  bottom: 16px;
-  right: 16px;
+  bottom: 0;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 50px;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #fff;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.3s;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  opacity: 0;
+  transition: opacity 0.3s;
   z-index: 2;
 }
 
+.hero-video-container:hover .video-controls {
+  opacity: 1;
+}
+
+.video-play-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+.video-play-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.video-progress {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.video-progress:hover {
+  height: 8px;
+}
+
+.video-progress-filled {
+  height: 100%;
+  background: var(--gradient-primary);
+  border-radius: 3px;
+  transition: width 0.1s linear;
+}
+
+.video-sound-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
 .video-sound-btn:hover {
-  background: rgba(0, 0, 0, 0.85);
-  transform: scale(1.05);
-}
-
-.video-sound-btn i {
-  font-size: 1rem;
-}
-
-.sound-btn-label {
-  font-weight: 500;
-  font-size: 0.8rem;
-  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.3);
 }
 
 /* Phone Demo Section */

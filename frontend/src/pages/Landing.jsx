@@ -102,7 +102,10 @@ function Landing() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [progress, setProgress] = useState(0);
   const videoRef = useRef(null);
+  const progressRef = useRef(null);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth <= 768);
@@ -110,6 +113,39 @@ function Landing() {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onTimeUpdate = () => {
+      if (video.duration) setProgress((video.currentTime / video.duration) * 100);
+    };
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    video.addEventListener('timeupdate', onTimeUpdate);
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
+    return () => {
+      video.removeEventListener('timeupdate', onTimeUpdate);
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
+    };
+  }, []);
+
+  const handleProgressClick = (e) => {
+    const bar = progressRef.current;
+    const video = videoRef.current;
+    if (!bar || !video) return;
+    const rect = bar.getBoundingClientRect();
+    const pos = (e.clientX - rect.left) / rect.width;
+    video.currentTime = pos * video.duration;
+  };
+
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) { video.play(); } else { video.pause(); }
+  };
 
   // Feature flags - set to false to hide sections
   const showReviews = false;
@@ -335,24 +371,33 @@ function Landing() {
               muted={isMuted}
               loop
               playsInline
+              onClick={togglePlay}
             >
               <source src="https://pub-6d2ed0f2cb5645b68bd219a42aed3749.r2.dev/assets/cinematic-explainer.mp4" type="video/mp4" />
             </video>
-            <button
-              className="video-sound-btn"
-              onClick={() => {
-                const newMuted = !isMuted;
-                setIsMuted(newMuted);
-                if (videoRef.current) {
-                  videoRef.current.muted = newMuted;
-                  videoRef.current.volume = 0.3;
-                }
-              }}
-              aria-label={isMuted ? 'Unmute video' : 'Mute video'}
-            >
-              <i className={`fas ${isMuted ? 'fa-volume-mute' : 'fa-volume-up'}`}></i>
-              <span className="sound-btn-label">{isMuted ? 'Sound On' : 'Mute'}</span>
-            </button>
+            {/* Custom controls overlay - visible on hover */}
+            <div className="video-controls">
+              <button className="video-play-btn" onClick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
+                <i className={`fas ${isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
+              </button>
+              <div className="video-progress" ref={progressRef} onClick={handleProgressClick}>
+                <div className="video-progress-filled" style={{ width: `${progress}%` }}></div>
+              </div>
+              <button
+                className="video-sound-btn"
+                onClick={() => {
+                  const newMuted = !isMuted;
+                  setIsMuted(newMuted);
+                  if (videoRef.current) {
+                    videoRef.current.muted = newMuted;
+                    videoRef.current.volume = 0.3;
+                  }
+                }}
+                aria-label={isMuted ? 'Unmute video' : 'Mute video'}
+              >
+                <i className={`fas ${isMuted ? 'fa-volume-mute' : 'fa-volume-up'}`}></i>
+              </button>
+            </div>
           </div>
         </div>
       </section>
