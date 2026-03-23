@@ -2,7 +2,6 @@
 Twilio Phone Number Pool Management
 Manages assignment of Twilio phone numbers from a pool to companies
 """
-import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
@@ -205,22 +204,18 @@ if __name__ == "__main__":
     print("📞 TWILIO PHONE NUMBER POOL MANAGER")
     print("="*60)
     
-    # Example: Add your current Twilio number to the pool
-    # Replace with your actual Twilio phone number
-    current_number = os.getenv('TWILIO_PHONE_NUMBER', '+353123456789')
-    
-    print(f"\n1️⃣ Adding current Twilio number to pool...")
-    add_phone_numbers_to_pool([current_number])
-    
-    print(f"\n2️⃣ Listing all phone numbers...")
+    print(f"\n📋 Listing all phone numbers...")
     all_numbers = list_all_phone_numbers()
+    if not all_numbers:
+        print("   No phone numbers in pool.")
     for num in all_numbers:
         status_emoji = "✅" if num['status'] == 'assigned' else "⭕"
         company_info = f" → {num['company_name']}" if num.get('company_name') else ""
         print(f"   {status_emoji} {num['phone_number']} ({num['status']}){company_info}")
     
-    print(f"\n3️⃣ Available numbers: {len(get_available_phone_numbers())}")
+    available = get_available_phone_numbers()
+    print(f"\n   Available numbers: {len(available)}")
     
     print("\n" + "="*60)
-    print("✅ Phone number pool ready!")
+    print("✅ Done!")
     print("="*60)

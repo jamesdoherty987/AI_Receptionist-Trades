@@ -780,7 +780,7 @@ function Settings() {
                       value={formData.business_phone || ''}
                       onChange={handleChange}
                       required
-                      placeholder="e.g., 0852635954"
+                      placeholder="e.g., 085 123 4567"
                     />
                     <small className="form-help">
                       Main contact number. Also used for call transfers and when AI is disabled.

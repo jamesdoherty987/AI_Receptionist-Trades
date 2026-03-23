@@ -920,10 +920,10 @@ def format_duration_label(duration_minutes: int) -> str:
         return "about a week"
     elif duration_minutes >= 5760:
         days = round(duration_minutes / 1440)
-        return f"about {days} days"
+        return f"about a {days} day"
     elif duration_minutes >= 2880:
         days = round(duration_minutes / 1440)
-        return f"about {days} days"
+        return f"about a {days} day"
     elif duration_minutes >= 1440:
         return "a full day"
     elif duration_minutes >= 480:
@@ -931,8 +931,8 @@ def format_duration_label(duration_minutes: int) -> str:
     else:
         hours = duration_minutes / 60
         if hours == int(hours):
-            return f"about {int(hours)} hour{'s' if hours != 1 else ''}"
-        return f"about {hours:.1f} hours"
+            return f"about a {int(hours)} hour{'s' if hours != 1 else ''}"
+        return f"about a {hours:.1f} hour"
 
 
 def naturalize_availability_summary(day_summaries: list, is_full_day: bool = False) -> str:

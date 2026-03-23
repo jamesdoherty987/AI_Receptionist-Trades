@@ -1,10 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import PhoneConfigModal from '../modals/PhoneConfigModal';
-import { getBusinessSettings, updateBusinessSettings } from '../../services/api';
+import { getBusinessSettings, updateBusinessSettings, startFreeTrial, createCheckoutSession, getSubscriptionStatus } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import './OnboardingWizard.css';
 
 const STEPS = [
+  {
+    id: 'subscription',
+    title: 'Subscription',
+    icon: 'fa-crown',
+    iconClass: 'subscription-icon',
+    description: 'Activate your plan'
+  },
   {
     id: 'service-area',
     title: 'Service Area',
@@ -37,6 +45,7 @@ const STEPS = [
 
 function OnboardingWizard({ onComplete }) {
   const queryClient = useQueryClient();
+  const { hasActiveSubscription, getSubscriptionTier, checkAuth } = useAuth();
   const [currentStepIndex, setCurrentStepIndex] = useState(null);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -49,9 +58,55 @@ function OnboardingWizard({ onComplete }) {
     bank_name: '',
     bank_account_holder: ''
   });
+  const [hoursConfig, setHoursConfig] = useState({
+    startHour: '9',
+    startPeriod: 'AM',
+    endHour: '5',
+    endPeriod: 'PM',
+    days: {
+      monday: true,
+      tuesday: true,
+      wednesday: true,
+      thursday: true,
+      friday: true,
+      saturday: false,
+      sunday: false
+    }
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [completedSteps, setCompletedSteps] = useState([]);
+
+  const trialMutation = useMutation({
+    mutationFn: startFreeTrial,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['subscription-status']);
+      checkAuth();
+      if (!completedSteps.includes('subscription')) {
+        setCompletedSteps(prev => [...prev, 'subscription']);
+      }
+      setCurrentStepIndex(null);
+    },
+    onError: (err) => {
+      setError(err.response?.data?.error || 'Failed to start trial. Please try again.');
+    }
+  });
+
+  const checkoutMutation = useMutation({
+    mutationFn: async () => {
+      const baseUrl = window.location.origin;
+      const response = await createCheckoutSession(baseUrl);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+      }
+    },
+    onError: (err) => {
+      setError(err.response?.data?.error || 'Failed to start checkout. Please try again.');
+    }
+  });
 
   const { data: settings, isLoading } = useQuery({
     queryKey: ['business-settings'],
@@ -60,6 +115,61 @@ function OnboardingWizard({ onComplete }) {
       return response.data;
     },
   });
+
+  const { data: subscriptionData } = useQuery({
+    queryKey: ['subscription-status'],
+    queryFn: async () => {
+      const response = await getSubscriptionStatus();
+      return response.data.subscription;
+    },
+  });
+
+  const parseBusinessHours = (hoursString) => {
+    if (!hoursString) return;
+    const timeMatch = hoursString.match(/(\d+)\s*(AM|PM)\s*-\s*(\d+)\s*(AM|PM)/i);
+    const daysMatch = hoursString.match(/(Mon-Sat|Mon-Fri|Mon-Sun|Monday-Saturday|Monday-Friday|Monday-Sunday|Daily|[\w\s,-]+?)(?:\s*\(|$)/i);
+    if (timeMatch) {
+      const daysText = daysMatch ? daysMatch[1].trim().toLowerCase() : 'mon-fri';
+      const days = { monday: false, tuesday: false, wednesday: false, thursday: false, friday: false, saturday: false, sunday: false };
+      if (daysText.includes('daily') || daysText.includes('mon-sun') || daysText.includes('monday-sunday')) {
+        Object.keys(days).forEach(d => days[d] = true);
+      } else if (daysText.includes('mon-sat') || daysText.includes('monday-saturday')) {
+        days.monday = days.tuesday = days.wednesday = days.thursday = days.friday = days.saturday = true;
+      } else if (daysText.includes('mon-fri') || daysText.includes('monday-friday')) {
+        days.monday = days.tuesday = days.wednesday = days.thursday = days.friday = true;
+      } else {
+        if (daysText.includes('mon')) days.monday = true;
+        if (daysText.includes('tue')) days.tuesday = true;
+        if (daysText.includes('wed')) days.wednesday = true;
+        if (daysText.includes('thu')) days.thursday = true;
+        if (daysText.includes('fri')) days.friday = true;
+        if (daysText.includes('sat')) days.saturday = true;
+        if (daysText.includes('sun')) days.sunday = true;
+      }
+      setHoursConfig({ startHour: timeMatch[1], startPeriod: timeMatch[2].toUpperCase(), endHour: timeMatch[3], endPeriod: timeMatch[4].toUpperCase(), days });
+    }
+  };
+
+  const formatBusinessHours = () => {
+    const { startHour, startPeriod, endHour, endPeriod, days } = hoursConfig;
+    const dayNames = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' };
+    const selectedDays = Object.keys(days).filter(d => days[d]);
+    let daysText = '';
+    if (selectedDays.length === 7) daysText = 'Daily';
+    else if (selectedDays.length === 6 && !days.sunday) daysText = 'Mon-Sat';
+    else if (selectedDays.length === 5 && !days.saturday && !days.sunday) daysText = 'Mon-Fri';
+    else if (selectedDays.length > 0) daysText = selectedDays.map(d => dayNames[d]).join(', ');
+    else daysText = 'No days selected';
+    return `${startHour} ${startPeriod} - ${endHour} ${endPeriod} ${daysText}`;
+  };
+
+  const handleHoursChange = (field, value) => {
+    setHoursConfig(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleDayToggle = (day) => {
+    setHoursConfig(prev => ({ ...prev, days: { ...prev.days, [day]: !prev.days[day] } }));
+  };
 
   // Pre-fill form with existing settings and determine completed steps
   useEffect(() => {
@@ -74,10 +184,13 @@ function OnboardingWizard({ onComplete }) {
         bank_name: settings?.bank_name || '',
         bank_account_holder: settings?.bank_account_holder || ''
       });
+      if (settings.business_hours) {
+        parseBusinessHours(settings.business_hours);
+      }
 
-      // Determine which steps are complete
+      // Determine which steps are complete — require all fields for service-area
       const completed = [];
-      if (settings.address || settings.coverage_area || settings.business_hours) {
+      if (settings.address && settings.coverage_area && settings.business_hours) {
         completed.push('service-area');
       }
       if (settings.company_context) {
@@ -118,7 +231,7 @@ function OnboardingWizard({ onComplete }) {
         dataToSave = {
           address: formData.address,
           coverage_area: formData.coverage_area,
-          business_hours: formData.business_hours
+          business_hours: formatBusinessHours()
         };
       } else if (currentStep.id === 'company-details') {
         dataToSave = {
@@ -164,11 +277,22 @@ function OnboardingWizard({ onComplete }) {
     setCurrentStepIndex(null);
   };
 
+  const isPaymentSkipped = () => localStorage.getItem('payment_skipped') === 'true';
+
+  const handleSkipPayment = () => {
+    localStorage.setItem('payment_skipped', 'true');
+    if (!completedSteps.includes('payment')) {
+      setCompletedSteps(prev => [...prev, 'payment']);
+    }
+    setCurrentStepIndex(null);
+  };
+
   const isStepComplete = (stepId) => {
+    if (stepId === 'subscription') return hasActiveSubscription();
     if (stepId === 'phone') return !!settings?.twilio_phone_number;
-    if (stepId === 'service-area') return !!(settings?.address || settings?.coverage_area || settings?.business_hours);
+    if (stepId === 'service-area') return !!(settings?.address && settings?.coverage_area && settings?.business_hours);
     if (stepId === 'company-details') return !!settings?.company_context;
-    if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder);
+    if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder) || isPaymentSkipped();
     return completedSteps.includes(stepId);
   };
 
@@ -213,6 +337,55 @@ function OnboardingWizard({ onComplete }) {
               </div>
             )}
 
+            {currentStep.id === 'subscription' && (
+              <div className="onboarding-form" style={{ textAlign: 'center' }}>
+                {hasActiveSubscription() ? (
+                  <>
+                    <div className="subscription-active-display">
+                      <i className="fas fa-check-circle"></i>
+                      <span>{getSubscriptionTier() === 'pro' ? 'Pro Plan Active' : 'Free Trial Active'}</span>
+                    </div>
+                    <div className="step-actions">
+                      <button className="btn btn-primary" onClick={() => setCurrentStepIndex(null)}>
+                        Done
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="subscription-cta-text">
+                      {subscriptionData?.has_used_trial
+                        ? 'Subscribe to unlock all features.'
+                        : 'Start with a free 14-day trial or subscribe to unlock all features.'}
+                    </p>
+                    <div className="step-actions subscription-actions-col">
+                      {!subscriptionData?.has_used_trial && (
+                        <button
+                          className="btn btn-success"
+                          onClick={() => trialMutation.mutate()}
+                          disabled={trialMutation.isPending}
+                        >
+                          <i className="fas fa-gift"></i>
+                          {trialMutation.isPending ? 'Starting...' : 'Start 14-Day Free Trial'}
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => checkoutMutation.mutate()}
+                        disabled={checkoutMutation.isPending}
+                      >
+                        <i className="fas fa-credit-card"></i>
+                        {checkoutMutation.isPending ? 'Loading...' : 'Subscribe — €99/month'}
+                      </button>
+                      <button className="btn btn-secondary" onClick={handleSkipStep}>
+                        Skip for now
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {currentStep.id === 'service-area' && (
               <div className="onboarding-form">
                 <div className="form-group">
@@ -239,15 +412,82 @@ function OnboardingWizard({ onComplete }) {
                   <small>Where do you provide services?</small>
                 </div>
                 <div className="form-group">
-                  <label htmlFor="ob_business_hours">Business Hours</label>
-                  <input
-                    type="text"
-                    id="ob_business_hours"
-                    name="business_hours"
-                    value={formData.business_hours}
-                    onChange={handleChange}
-                    placeholder="e.g., Mon-Fri 9am-5pm"
-                  />
+                  <label>Business Hours</label>
+                  <div className="ob-hours-config">
+                    <div className="ob-time-row">
+                      <div className="ob-time-selector">
+                        <label className="ob-time-label">Start Time</label>
+                        <div className="ob-time-inputs">
+                          <select
+                            value={hoursConfig.startHour}
+                            onChange={(e) => handleHoursChange('startHour', e.target.value)}
+                            className="ob-hour-select"
+                          >
+                            {[...Array(12)].map((_, i) => (
+                              <option key={i + 1} value={i + 1}>{i + 1}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={hoursConfig.startPeriod}
+                            onChange={(e) => handleHoursChange('startPeriod', e.target.value)}
+                            className="ob-period-select"
+                          >
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </div>
+                      </div>
+                      <span className="ob-time-separator">to</span>
+                      <div className="ob-time-selector">
+                        <label className="ob-time-label">End Time</label>
+                        <div className="ob-time-inputs">
+                          <select
+                            value={hoursConfig.endHour}
+                            onChange={(e) => handleHoursChange('endHour', e.target.value)}
+                            className="ob-hour-select"
+                          >
+                            {[...Array(12)].map((_, i) => (
+                              <option key={i + 1} value={i + 1}>{i + 1}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={hoursConfig.endPeriod}
+                            onChange={(e) => handleHoursChange('endPeriod', e.target.value)}
+                            className="ob-period-select"
+                          >
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="ob-days-selector">
+                      <label className="ob-time-label">Days Open</label>
+                      <div className="ob-days-checkboxes">
+                        {[
+                          { key: 'monday', label: 'Mon' },
+                          { key: 'tuesday', label: 'Tue' },
+                          { key: 'wednesday', label: 'Wed' },
+                          { key: 'thursday', label: 'Thu' },
+                          { key: 'friday', label: 'Fri' },
+                          { key: 'saturday', label: 'Sat' },
+                          { key: 'sunday', label: 'Sun' }
+                        ].map(day => (
+                          <label key={day.key} className="ob-day-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={hoursConfig.days[day.key]}
+                              onChange={() => handleDayToggle(day.key)}
+                            />
+                            <span>{day.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <small className="ob-hours-preview">
+                      {formatBusinessHours()}
+                    </small>
+                  </div>
                 </div>
                 <div className="step-actions">
                   <button className="btn btn-secondary" onClick={handleSkipStep}>
@@ -341,8 +581,8 @@ function OnboardingWizard({ onComplete }) {
                   />
                 </div>
                 <div className="step-actions">
-                  <button className="btn btn-secondary" onClick={handleSkipStep}>
-                    Skip for now
+                  <button className="btn btn-secondary" onClick={handleSkipPayment}>
+                    I don't need this
                   </button>
                   <button 
                     className="btn btn-primary"
@@ -352,6 +592,9 @@ function OnboardingWizard({ onComplete }) {
                     {saving ? 'Saving...' : 'Save'}
                   </button>
                 </div>
+                <small className="payment-skip-hint">
+                  You can always add payment details later in Settings if you change your mind.
+                </small>
               </div>
             )}
 

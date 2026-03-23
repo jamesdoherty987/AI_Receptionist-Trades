@@ -335,6 +335,176 @@
   margin-top: 1rem;
 }
 
+/* Business Hours Config in Onboarding */
+.ob-hours-config {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ob-time-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ob-time-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ob-time-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.ob-time-inputs {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.ob-hour-select,
+.ob-period-select {
+  padding: 0.45rem 0.5rem;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.ob-hour-select {
+  width: 60px;
+}
+
+.ob-period-select {
+  width: 60px;
+}
+
+.ob-hour-select:focus,
+.ob-period-select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.1);
+}
+
+.ob-time-separator {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  padding-bottom: 0.5rem;
+}
+
+.ob-days-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ob-days-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.ob-day-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: white;
+}
+
+.ob-day-checkbox:hover {
+  border-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.ob-day-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.ob-day-checkbox span {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.ob-day-checkbox input[type="checkbox"]:checked + span {
+  color: var(--accent-blue);
+}
+
+.ob-hours-preview {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.payment-skip-hint {
+  display: block;
+  text-align: center;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+/* Subscription step */
+.onboarding-step-card .step-icon.subscription-icon {
+  background: linear-gradient(135deg, #fef3c7 0%, #fef9c3 100%);
+}
+
+.onboarding-step-card .step-icon.subscription-icon i {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subscription-active-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%);
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+
+.subscription-active-display i {
+  color: #10b981;
+  font-size: 1.1rem;
+}
+
+.subscription-active-display span {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #065f46;
+}
+
+.subscription-cta-text {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.subscription-actions-col {
+  flex-direction: column;
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .setup-steps-list {
@@ -392,5 +562,15 @@
 
   .step-actions .btn {
     width: 100%;
+  }
+
+  .ob-time-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ob-time-separator {
+    text-align: center;
+    padding: 0;
   }
 }

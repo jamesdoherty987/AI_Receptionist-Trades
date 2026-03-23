@@ -9,7 +9,8 @@ import {
   getJobWorkers,
   getAvailableWorkersForJob,
   sendInvoice,
-  getInvoiceConfig
+  getInvoiceConfig,
+  getBusinessSettings
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
@@ -53,6 +54,16 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     enabled: isOpen,
     staleTime: 60 * 1000, // 1 minute
     cacheTime: 5 * 60 * 1000
+  });
+
+  const { data: businessSettings } = useQuery({
+    queryKey: ['business-settings'],
+    queryFn: async () => {
+      const response = await getBusinessSettings();
+      return response.data;
+    },
+    enabled: isOpen,
+    staleTime: 60 * 1000,
   });
 
   const { data: assignedWorkers } = useQuery({
@@ -289,6 +300,10 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     }
     
     // Open confirmation modal instead of sending directly
+    // Warn if bank details are missing
+    if (!businessSettings?.bank_iban && !businessSettings?.bank_account_holder) {
+      addToast('Your payment details are missing. Add them in Settings so your invoices include bank info.', 'warning');
+    }
     setShowInvoiceConfirm(true);
   };
 
