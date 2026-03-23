@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import PhoneConfigModal from '../modals/PhoneConfigModal';
-import { getBusinessSettings, updateBusinessSettings, startFreeTrial, createCheckoutSession, getSubscriptionStatus } from '../../services/api';
+import { getBusinessSettings, updateBusinessSettings, startFreeTrial, createCheckoutSession, getSubscriptionStatus, getServicesMenu, getWorkers } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import './OnboardingWizard.css';
 
@@ -33,6 +33,20 @@ const STEPS = [
     icon: 'fa-university',
     iconClass: '',
     description: 'Bank details for invoices'
+  },
+  {
+    id: 'services',
+    title: 'Add Services',
+    icon: 'fa-concierge-bell',
+    iconClass: 'services-icon',
+    description: 'What services do you offer?'
+  },
+  {
+    id: 'workers',
+    title: 'Add Workers',
+    icon: 'fa-hard-hat',
+    iconClass: 'workers-icon',
+    description: 'Who does the work?'
   },
   {
     id: 'phone',
@@ -121,6 +135,22 @@ function OnboardingWizard({ onComplete }) {
     queryFn: async () => {
       const response = await getSubscriptionStatus();
       return response.data.subscription;
+    },
+  });
+
+  const { data: servicesData } = useQuery({
+    queryKey: ['services-menu'],
+    queryFn: async () => {
+      const response = await getServicesMenu();
+      return response.data;
+    },
+  });
+
+  const { data: workersData } = useQuery({
+    queryKey: ['workers'],
+    queryFn: async () => {
+      const response = await getWorkers();
+      return response.data;
     },
   });
 
@@ -293,6 +323,8 @@ function OnboardingWizard({ onComplete }) {
     if (stepId === 'service-area') return !!(settings?.address && settings?.coverage_area && settings?.business_hours);
     if (stepId === 'company-details') return !!settings?.company_context;
     if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder) || isPaymentSkipped();
+    if (stepId === 'services') return (servicesData?.services || []).length > 0;
+    if (stepId === 'workers') return (Array.isArray(workersData) ? workersData : []).length > 0;
     return completedSteps.includes(stepId);
   };
 
@@ -595,6 +627,66 @@ function OnboardingWizard({ onComplete }) {
                 <small className="payment-skip-hint">
                   You can always add payment details later in Settings if you change your mind.
                 </small>
+              </div>
+            )}
+
+            {currentStep.id === 'services' && (
+              <div className="onboarding-form" style={{ textAlign: 'center' }}>
+                {(servicesData?.services || []).length > 0 ? (
+                  <>
+                    <div className="subscription-active-display">
+                      <i className="fas fa-check-circle"></i>
+                      <span>{servicesData.services.length} service{servicesData.services.length !== 1 ? 's' : ''} added</span>
+                    </div>
+                    <div className="step-actions">
+                      <button className="btn btn-primary" onClick={() => setCurrentStepIndex(null)}>
+                        Done
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="subscription-cta-text">Add the services you offer so your AI receptionist can book them.</p>
+                    <div className="step-actions">
+                      <button className="btn btn-secondary" onClick={handleSkipStep}>
+                        Skip for now
+                      </button>
+                      <button className="btn btn-primary" onClick={() => { setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Services')) btn.click(); }); }, 100); }}>
+                        <i className="fas fa-concierge-bell"></i> Go to Services
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {currentStep.id === 'workers' && (
+              <div className="onboarding-form" style={{ textAlign: 'center' }}>
+                {(Array.isArray(workersData) ? workersData : []).length > 0 ? (
+                  <>
+                    <div className="subscription-active-display">
+                      <i className="fas fa-check-circle"></i>
+                      <span>{workersData.length} worker{workersData.length !== 1 ? 's' : ''} added</span>
+                    </div>
+                    <div className="step-actions">
+                      <button className="btn btn-primary" onClick={() => setCurrentStepIndex(null)}>
+                        Done
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="subscription-cta-text">Add your workers so jobs can be assigned to them.</p>
+                    <div className="step-actions">
+                      <button className="btn btn-secondary" onClick={handleSkipStep}>
+                        Skip for now
+                      </button>
+                      <button className="btn btn-primary" onClick={() => { setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Workers')) btn.click(); }); }, 100); }}>
+                        <i className="fas fa-hard-hat"></i> Go to Workers
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

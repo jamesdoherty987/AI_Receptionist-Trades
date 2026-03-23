@@ -505,6 +505,30 @@
   flex-direction: column;
 }
 
+/* Services step icon */
+.onboarding-step-card .step-icon.services-icon {
+  background: linear-gradient(135deg, #e0e7ff 0%, #eef2ff 100%);
+}
+
+.onboarding-step-card .step-icon.services-icon i {
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Workers step icon */
+.onboarding-step-card .step-icon.workers-icon {
+  background: linear-gradient(135deg, #fce7f3 0%, #fdf2f8 100%);
+}
+
+.onboarding-step-card .step-icon.workers-icon i {
+  background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .setup-steps-list {
