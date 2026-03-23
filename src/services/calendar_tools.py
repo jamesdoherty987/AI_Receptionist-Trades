@@ -2,8 +2,8 @@
 OpenAI Tools/Function definitions for calendar operations.
 
 ARCHITECTURE: Hybrid Approach
-- TOOLS: Check availability (queries) - fast, maintains context
-- CALLBACKS: Booking/cancellation/rescheduling - uses existing verification flow
+- TOOLS: Check availability (queries) - fast, maintains context.
+- CALLBACKS: Booking/cancellation/rescheduling - uses existing verification flow.
 """
 
 import logging
