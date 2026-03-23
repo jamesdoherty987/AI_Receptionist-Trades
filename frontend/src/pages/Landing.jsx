@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import Tilt from 'react-parallax-tilt';
 import DarkVeil from '../components/DarkVeil';
 import './Landing.css';
 
@@ -99,6 +100,16 @@ function FeatureCard({ icon, title, description, index }) {
 
 function Landing() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Feature flags - set to false to hide sections
   const showReviews = false;
@@ -318,15 +329,30 @@ function Landing() {
         <div className="hero-visual">
           <div className="hero-video-container">
             <video
+              ref={videoRef}
               className="hero-video"
               autoPlay
-              muted
+              muted={isMuted}
               loop
               playsInline
-              poster=""
             >
               <source src="https://pub-6d2ed0f2cb5645b68bd219a42aed3749.r2.dev/assets/cinematic-explainer.mp4" type="video/mp4" />
             </video>
+            <button
+              className="video-sound-btn"
+              onClick={() => {
+                const newMuted = !isMuted;
+                setIsMuted(newMuted);
+                if (videoRef.current) {
+                  videoRef.current.muted = newMuted;
+                  videoRef.current.volume = 0.3;
+                }
+              }}
+              aria-label={isMuted ? 'Unmute video' : 'Mute video'}
+            >
+              <i className={`fas ${isMuted ? 'fa-volume-mute' : 'fa-volume-up'}`}></i>
+              <span className="sound-btn-label">{isMuted ? 'Sound On' : 'Mute'}</span>
+            </button>
           </div>
         </div>
       </section>
@@ -377,6 +403,51 @@ function Landing() {
               <div className="step-number">3</div>
               <h3>Start Growing</h3>
               <p>Watch your bookings increase as you never miss another call.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Phone Demo Section */}
+      <section className="phone-demo-section">
+        <div className="section-container">
+          <div className="phone-demo-layout">
+            <div className="phone-demo-text">
+              <span className="section-badge">See It In Action</span>
+              <h2>Your AI receptionist <span className="gradient-text">answers every call</span></h2>
+              <p>While you're on a job, your AI handles incoming calls professionally — booking appointments, answering questions, and never putting a customer on hold.</p>
+            </div>
+            <div className="phone-demo-visual">
+              <Tilt
+                tiltMaxAngleX={isMobile ? 0 : 15}
+                tiltMaxAngleY={isMobile ? 0 : 15}
+                perspective={1000}
+                scale={1.02}
+                transitionSpeed={2000}
+                className="phone-tilt-wrapper"
+              >
+                <div className="phone-mockup">
+                  <div className="phone-notch"></div>
+                  <div className="phone-screen">
+                    <div className="call-ui">
+                      <div className="caller-avatar">
+                        <i className="fas fa-phone-alt"></i>
+                      </div>
+                      <div className="caller-info">
+                        <span className="caller-name">Incoming Call</span>
+                        <span className="caller-number">New Customer</span>
+                      </div>
+                      <div className="ai-badge">
+                        <span className="ai-pulse"></span>
+                        AI Answering...
+                      </div>
+                      <div className="call-wave">
+                        <span></span><span></span><span></span><span></span><span></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Tilt>
             </div>
           </div>
         </div>

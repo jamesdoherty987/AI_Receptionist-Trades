@@ -336,11 +336,12 @@
 
 .hero-video-container {
   width: 100%;
-  max-width: 560px;
+  max-width: 520px;
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px rgba(124, 58, 237, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
 }
 
 .hero-video {
@@ -348,6 +349,74 @@
   height: auto;
   display: block;
   border-radius: 20px;
+}
+
+.video-sound-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 50px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  z-index: 2;
+}
+
+.video-sound-btn:hover {
+  background: rgba(0, 0, 0, 0.85);
+  transform: scale(1.05);
+}
+
+.video-sound-btn i {
+  font-size: 1rem;
+}
+
+.sound-btn-label {
+  font-weight: 500;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* Phone Demo Section */
+.phone-demo-section {
+  background: #ffffff;
+}
+
+.phone-demo-layout {
+  display: flex;
+  align-items: center;
+  gap: 4rem;
+}
+
+.phone-demo-text {
+  flex: 1;
+}
+
+.phone-demo-text h2 {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 1rem 0;
+}
+
+.phone-demo-text p {
+  font-size: 1.125rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+
+.phone-demo-visual {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
 }
 
 .phone-tilt-wrapper {
@@ -1259,6 +1328,16 @@
     justify-content: center;
   }
 
+  .phone-demo-layout {
+    flex-direction: column;
+    text-align: center;
+    gap: 2rem;
+  }
+
+  .phone-demo-text h2 {
+    font-size: 2rem;
+  }
+
   .features-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1426,6 +1505,14 @@
   .phone-mockup {
     width: 240px;
     height: 480px;
+  }
+
+  .phone-demo-layout {
+    gap: 1.5rem;
+  }
+
+  .phone-demo-text h2 {
+    font-size: 1.75rem;
   }
 
   .review-card {
