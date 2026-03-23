@@ -1855,10 +1855,15 @@ class PostgreSQLDatabaseWrapper:
             return booking_id
         except Exception as e:
             conn.rollback()
-            print(f"[DB_BOOKING] ❌ Error adding booking: {e}")
-            print(f"[DB_BOOKING] Exception type: {type(e).__name__}")
-            import traceback
-            traceback.print_exc()
+            # UniqueViolation on calendar_event_id is expected during sync
+            # (event already imported) — log quietly without full traceback.
+            if 'UniqueViolation' in type(e).__name__:
+                print(f"[DB_BOOKING] ⏭️  Skipped duplicate calendar_event_id={calendar_event_id}")
+            else:
+                print(f"[DB_BOOKING] ❌ Error adding booking: {e}")
+                print(f"[DB_BOOKING] Exception type: {type(e).__name__}")
+                import traceback
+                traceback.print_exc()
             return None
         finally:
             self.return_connection(conn)

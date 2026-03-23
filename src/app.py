@@ -5637,12 +5637,9 @@ def google_calendar_sync():
         try:
             if has_real_gcal:
                 gcal.reschedule_appointment(
-                    existing_event_id, appt_time, duration_minutes=duration
+                    existing_event_id, appt_time, duration_minutes=duration,
+                    description=desc
                 )
-                try:
-                    gcal.update_event_description(existing_event_id, desc)
-                except Exception:
-                    pass
                 push_updated += 1
             else:
                 gcal_event = gcal.book_appointment(
