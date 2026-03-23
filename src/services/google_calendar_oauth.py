@@ -280,12 +280,16 @@ class CompanyGoogleCalendar:
                 # Fallback to simple addition
                 end_time = start_time + timedelta(minutes=duration_minutes)
         elif duration_minutes >= 480:
-            # Full-day job: end at closing time on the same day
+            # Full-day job: start at opening, end at closing time on the same day
             try:
                 biz_hours = config.get_business_hours(company_id=self.company_id)
+                biz_start_hour = biz_hours.get('start', 9)
                 biz_end_hour = biz_hours.get('end', 17)
             except Exception:
+                biz_start_hour = 9
                 biz_end_hour = 17
+            # Ensure start is at opening hour so the event doesn't span overnight
+            start_time = start_time.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
             end_time = start_time.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
         else:
             end_time = start_time + timedelta(minutes=duration_minutes)
@@ -320,8 +324,8 @@ class CompanyGoogleCalendar:
         from datetime import timedelta
         end_time = start_time + timedelta(minutes=duration_minutes)
 
-        time_min = start_time.strftime('%Y-%m-%dT%H:%M:%S')
-        time_max = end_time.strftime('%Y-%m-%dT%H:%M:%S')
+        time_min = start_time.strftime('%Y-%m-%dT%H:%M:%SZ')
+        time_max = end_time.strftime('%Y-%m-%dT%H:%M:%SZ')
 
         request = self.service.events().list(
             calendarId=self.calendar_id,
@@ -389,9 +393,13 @@ class CompanyGoogleCalendar:
             elif duration_minutes >= 480:
                 try:
                     biz_hours = config.get_business_hours(company_id=self.company_id)
+                    biz_start_hour = biz_hours.get('start', 9)
                     biz_end_hour = biz_hours.get('end', 17)
                 except Exception:
+                    biz_start_hour = 9
                     biz_end_hour = 17
+                # Ensure start is at opening hour so the event doesn't span overnight
+                new_start_time = new_start_time.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                 new_end = new_start_time.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
             else:
                 new_end = new_start_time + timedelta(minutes=duration_minutes)
@@ -418,8 +426,8 @@ class CompanyGoogleCalendar:
         """Find an event by customer name and/or time."""
         from datetime import timedelta
         now = datetime.utcnow()
-        time_min = (appointment_time - timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%S') if appointment_time else now.strftime('%Y-%m-%dT%H:%M:%S')
-        time_max = (appointment_time + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%S') if appointment_time else (now + timedelta(days=days_to_search)).strftime('%Y-%m-%dT%H:%M:%S')
+        time_min = (appointment_time - timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ') if appointment_time else now.strftime('%Y-%m-%dT%H:%M:%SZ')
+        time_max = (appointment_time + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ') if appointment_time else (now + timedelta(days=days_to_search)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
         kwargs = {
             'calendarId': self.calendar_id,
@@ -443,8 +451,8 @@ class CompanyGoogleCalendar:
         day_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
 
-        time_min = day_start.strftime('%Y-%m-%dT%H:%M:%S')
-        time_max = day_end.strftime('%Y-%m-%dT%H:%M:%S')
+        time_min = day_start.strftime('%Y-%m-%dT%H:%M:%SZ')
+        time_max = day_end.strftime('%Y-%m-%dT%H:%M:%SZ')
 
         request = self.service.events().list(
             calendarId=self.calendar_id,
@@ -513,8 +521,8 @@ class CompanyGoogleCalendar:
         from datetime import timedelta
 
         now = datetime.now()
-        time_min = now.strftime('%Y-%m-%dT%H:%M:%S')
-        time_max = (now + timedelta(days=days_ahead)).strftime('%Y-%m-%dT%H:%M:%S')
+        time_min = now.strftime('%Y-%m-%dT%H:%M:%SZ')
+        time_max = (now + timedelta(days=days_ahead)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
         events = []
         page_token = None
