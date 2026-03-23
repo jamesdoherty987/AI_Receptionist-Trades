@@ -111,8 +111,8 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                         stats['push_errors'] += 1
                 else:
                     stats['push_updated'] += 1
-            elif not is_completed:
-                # Only create new gcal events for active bookings, not completed ones
+            else:
+                # Create new gcal event for any booking in the sync window
                 print(f"      [{bid}] CREATE  {summary}  {appt_time.strftime('%Y-%m-%d %H:%M')}  {duration}min")
                 if not dry_run:
                     try:

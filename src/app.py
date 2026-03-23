@@ -5444,8 +5444,8 @@ def google_calendar_callback():
                             push_synced += 1
                         except Exception:
                             pass
-                    elif not is_completed:
-                        # Only create new gcal events for active bookings
+                    else:
+                        # Create new gcal event for any booking in the sync window
                         try:
                             gcal_event = gcal.book_appointment(
                                 summary=summary,
@@ -5667,8 +5667,8 @@ def google_calendar_sync():
                     description=desc, summary=summary
                 )
                 push_updated += 1
-            elif not is_completed:
-                # Only create new gcal events for active bookings, not completed ones
+            else:
+                # Create new gcal event for any booking in the sync window
                 gcal_event = gcal.book_appointment(
                     summary=summary,
                     start_time=appt_time,
