@@ -313,13 +313,13 @@ class PostgreSQLDatabaseWrapper:
             
             # Add requires_callout column if it doesn't exist (migration)
             cursor.execute("""
-                DO $ 
+                DO $$ 
                 BEGIN 
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                                    WHERE table_name='services' AND column_name='requires_callout') THEN
                         ALTER TABLE services ADD COLUMN requires_callout BOOLEAN DEFAULT FALSE;
                     END IF;
-                END $;
+                END $$;
             """)
             
             # Business settings table

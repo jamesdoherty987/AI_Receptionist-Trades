@@ -327,6 +327,7 @@ function Landing() {
             >
               <source src="https://pub-6d2ed0f2cb5645b68bd219a42aed3749.r2.dev/assets/cinematic-explainer.mp4" type="video/mp4" />
             </video>
+          </div>
         </div>
       </section>
 
