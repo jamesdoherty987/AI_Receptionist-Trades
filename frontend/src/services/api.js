@@ -145,6 +145,7 @@ export const getCalendarEvents = (params) => api.get('/api/calendar/events', { p
 export const getGoogleCalendarStatus = () => api.get('/api/google-calendar/status');
 export const connectGoogleCalendar = () => api.post('/api/google-calendar/connect');
 export const disconnectGoogleCalendar = () => api.post('/api/google-calendar/disconnect');
+export const syncGoogleCalendar = () => api.post('/api/google-calendar/sync');
 
 // AI Chat
 export const sendChatMessage = (message, conversation) => 

@@ -256,7 +256,6 @@ class CompanyGoogleCalendar:
         if duration_minutes > 1440:
             try:
                 from src.utils.duration_utils import duration_to_business_days
-                from src.utils.config import config
                 biz_days_needed = duration_to_business_days(duration_minutes, company_id=self.company_id)
                 try:
                     biz_day_indices = config.get_business_days_indices(company_id=self.company_id)
@@ -283,7 +282,6 @@ class CompanyGoogleCalendar:
         elif duration_minutes >= 480:
             # Full-day job: end at closing time on the same day
             try:
-                from src.utils.config import config
                 biz_hours = config.get_business_hours(company_id=self.company_id)
                 biz_end_hour = biz_hours.get('end', 17)
             except Exception:
@@ -306,6 +304,9 @@ class CompanyGoogleCalendar:
             'end': {
                 'dateTime': end_time.strftime('%Y-%m-%dT%H:%M:%S'),
                 'timeZone': self.timezone,
+            },
+            'extendedProperties': {
+                'private': {'bookedForYou': 'true'},
             },
         }
 
@@ -346,7 +347,8 @@ class CompanyGoogleCalendar:
 
     def reschedule_appointment(self, event_id: str, new_start_time,
                                duration_minutes: int = None) -> Optional[dict]:
-        """Move an event to a new time."""
+        """Move an event to a new time, applying the same full-day/multi-day
+        business-day logic used when creating events."""
         from datetime import timedelta
         try:
             event = self.service.events().get(
@@ -358,7 +360,42 @@ class CompanyGoogleCalendar:
                 old_end = datetime.fromisoformat(event['end']['dateTime'].replace('Z', '+00:00'))
                 duration_minutes = int((old_end - old_start).total_seconds() / 60)
 
-            new_end = new_start_time + timedelta(minutes=duration_minutes)
+            # Apply the same end-time logic as book_appointment so that
+            # full-day and multi-day jobs don't stretch into nights/weekends.
+            if duration_minutes > 1440:
+                try:
+                    from src.utils.duration_utils import duration_to_business_days
+                    biz_days_needed = duration_to_business_days(duration_minutes, company_id=self.company_id)
+                    try:
+                        biz_day_indices = config.get_business_days_indices(company_id=self.company_id)
+                    except Exception:
+                        biz_day_indices = [0, 1, 2, 3, 4]
+                    try:
+                        biz_hours = config.get_business_hours(company_id=self.company_id)
+                        biz_end_hour = biz_hours.get('end', 17)
+                    except Exception:
+                        biz_end_hour = 17
+                    cur = new_start_time.replace(hour=0, minute=0, second=0, microsecond=0)
+                    counted = 0
+                    for _ in range(365):
+                        if cur.weekday() in biz_day_indices:
+                            counted += 1
+                            if counted >= biz_days_needed:
+                                break
+                        cur += timedelta(days=1)
+                    new_end = cur.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+                except Exception:
+                    new_end = new_start_time + timedelta(minutes=duration_minutes)
+            elif duration_minutes >= 480:
+                try:
+                    biz_hours = config.get_business_hours(company_id=self.company_id)
+                    biz_end_hour = biz_hours.get('end', 17)
+                except Exception:
+                    biz_end_hour = 17
+                new_end = new_start_time.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
+            else:
+                new_end = new_start_time + timedelta(minutes=duration_minutes)
+
             event['start'] = {
                 'dateTime': new_start_time.strftime('%Y-%m-%dT%H:%M:%S'),
                 'timeZone': self.timezone,
@@ -465,3 +502,73 @@ class CompanyGoogleCalendar:
         except Exception as e:
             logger.error(f"[GCAL] Update description failed: {e}")
             return False
+
+    def get_future_events(self, days_ahead: int = 90) -> list:
+        """Fetch all future events from Google Calendar.
+
+        Returns a list of dicts with keys:
+            id, summary, description, start (datetime), end (datetime),
+            duration_minutes
+        """
+        from datetime import timedelta
+
+        now = datetime.now()
+        time_min = now.strftime('%Y-%m-%dT%H:%M:%S')
+        time_max = (now + timedelta(days=days_ahead)).strftime('%Y-%m-%dT%H:%M:%S')
+
+        events = []
+        page_token = None
+
+        while True:
+            kwargs = {
+                'calendarId': self.calendar_id,
+                'timeMin': time_min,
+                'timeMax': time_max,
+                'timeZone': self.timezone,
+                'singleEvents': True,
+                'orderBy': 'startTime',
+                'maxResults': 250,
+            }
+            if page_token:
+                kwargs['pageToken'] = page_token
+
+            request = self.service.events().list(**kwargs)
+            result = self._execute_with_retry(request)
+
+            for item in result.get('items', []):
+                start_raw = item.get('start', {}).get('dateTime')
+                end_raw = item.get('end', {}).get('dateTime')
+                if not start_raw or not end_raw:
+                    # All-day events use 'date' instead of 'dateTime' — skip
+                    continue
+                try:
+                    start_dt = datetime.fromisoformat(
+                        start_raw.replace('Z', '+00:00')
+                    ).replace(tzinfo=None)
+                    end_dt = datetime.fromisoformat(
+                        end_raw.replace('Z', '+00:00')
+                    ).replace(tzinfo=None)
+                except Exception:
+                    continue
+
+                duration = int((end_dt - start_dt).total_seconds() / 60)
+                ext_props = item.get('extendedProperties', {})
+                events.append({
+                    'id': item['id'],
+                    'summary': item.get('summary', ''),
+                    'description': item.get('description', ''),
+                    'start': start_dt,
+                    'end': end_dt,
+                    'duration_minutes': duration,
+                    'extendedProperties': ext_props,
+                })
+
+            page_token = result.get('nextPageToken')
+            if not page_token:
+                break
+
+        logger.info(
+            f"[GCAL] Fetched {len(events)} future events for company {self.company_id}"
+        )
+        return events
+

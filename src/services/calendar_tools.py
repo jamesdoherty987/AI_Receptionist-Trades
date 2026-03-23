@@ -4459,7 +4459,7 @@ Return ONLY valid JSON, no explanation."""
             # Reschedule in Google Calendar sync if event_id exists
             if event_id and google_calendar_sync:
                 try:
-                    google_calendar_sync.reschedule_appointment(event_id, new_time)
+                    google_calendar_sync.reschedule_appointment(event_id, new_time, duration_minutes=booking_duration)
                     logger.info(f"[RESCHEDULE] ✅ Rescheduled in Google Calendar")
                 except Exception as e:
                     logger.warning(f"[RESCHEDULE] Could not reschedule in Google Calendar: {e}")

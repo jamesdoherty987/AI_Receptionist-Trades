@@ -17,7 +17,8 @@ import {
   deleteAccount,
   getGoogleCalendarStatus,
   connectGoogleCalendar,
-  disconnectGoogleCalendar
+  disconnectGoogleCalendar,
+  syncGoogleCalendar
 } from '../services/api';
 import './Settings.css';
 
@@ -37,6 +38,7 @@ function Settings() {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [gcalConnecting, setGcalConnecting] = useState(false);
+  const [gcalSyncing, setGcalSyncing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   // Flag to hide Stripe Connect component
   const hideStripeConnect = REMOVE_STRIPE_CONNECT;
@@ -493,6 +495,22 @@ function Settings() {
     }
   };
 
+  const handleSyncGoogleCalendar = async () => {
+    setGcalSyncing(true);
+    try {
+      const response = await syncGoogleCalendar();
+      const { message } = response.data;
+      setSaveMessage(message || 'Calendars synced successfully');
+      setTimeout(() => setSaveMessage(''), 5000);
+    } catch (error) {
+      const errorMsg = error?.response?.data?.error || 'Failed to sync calendars';
+      setSaveMessage(errorMsg);
+      setTimeout(() => setSaveMessage(''), 5000);
+    } finally {
+      setGcalSyncing(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="settings-page">
@@ -855,8 +873,8 @@ function Settings() {
                   Google Calendar
                 </h3>
                 <p className="section-description">
-                  Connect your Google Calendar so bookings made by the AI receptionist automatically appear in your calendar.
-                  {' '}This also enables sync with tools like Tradify.
+                  Connect your Google Calendar to keep both calendars in sync.
+                  {' '}Bookings made by the AI receptionist appear in Google Calendar, and existing Google Calendar events are imported here.
                 </p>
                 <div className="gcal-status-card" style={{
                   padding: '1rem 1.25rem',
@@ -884,15 +902,27 @@ function Settings() {
                     </div>
                   </div>
                   {gcalStatus?.connected ? (
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={handleDisconnectGoogleCalendar}
-                      style={{ fontSize: '0.875rem' }}
-                    >
-                      <i className="fas fa-unlink"></i>
-                      Disconnect
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={handleSyncGoogleCalendar}
+                        disabled={gcalSyncing}
+                        style={{ fontSize: '0.875rem' }}
+                      >
+                        <i className={`fas ${gcalSyncing ? 'fa-spinner fa-spin' : 'fa-sync'}`}></i>
+                        {gcalSyncing ? 'Syncing...' : 'Sync Now'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={handleDisconnectGoogleCalendar}
+                        style={{ fontSize: '0.875rem' }}
+                      >
+                        <i className="fas fa-unlink"></i>
+                        Disconnect
+                      </button>
+                    </div>
                   ) : (
                     <button
                       type="button"

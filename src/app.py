@@ -5381,15 +5381,26 @@ def google_calendar_callback():
 
         handle_oauth_callback(authorization_response, company_id, db)
 
-        # Sync existing bookings to Google Calendar (non-blocking best-effort)
+        # Bidirectional sync on first connect (non-blocking best-effort)
         try:
             from src.services.google_calendar_oauth import get_company_google_calendar
             gcal = get_company_google_calendar(company_id, db)
             if gcal:
                 all_bookings = db.get_all_bookings(company_id=company_id)
-                synced = 0
+                push_synced = 0
+                pull_imported = 0
                 from datetime import datetime as dt
+                import re as _re
                 now = dt.now()
+
+                # Build set of known gcal IDs from existing bookings
+                known_gcal_ids = set()
+                for booking in all_bookings:
+                    eid = booking.get('calendar_event_id', '')
+                    if eid and not str(eid).startswith('db_'):
+                        known_gcal_ids.add(eid)
+
+                # Phase 1: Push DB → Google Calendar
                 for booking in all_bookings:
                     if booking.get('status') in ['cancelled', 'completed']:
                         continue
@@ -5403,10 +5414,8 @@ def google_calendar_callback():
                             continue
                     elif hasattr(appt_time, 'replace'):
                         appt_time = appt_time.replace(tzinfo=None)
-                    # Only sync future bookings
                     if appt_time <= now:
                         continue
-                    # Skip if already has a Google Calendar event ID (not a db_ prefix)
                     existing_event_id = booking.get('calendar_event_id', '')
                     if existing_event_id and not str(existing_event_id).startswith('db_'):
                         continue
@@ -5416,7 +5425,7 @@ def google_calendar_callback():
                     phone = booking.get('phone_number') or ''
                     address = booking.get('address') or ''
                     summary = f"{service} - {customer_name}"
-                    desc = f"Synced from BookedForYou\nCustomer: {customer_name}\nPhone: {phone}\nAddress: {address}"
+                    desc = f"Synced from BookedForYou\nCustomer: {customer_name}\nPhone: {phone}\nAddress: {address}\nDuration: {duration} mins"
                     try:
                         gcal_event = gcal.book_appointment(
                             summary=summary,
@@ -5426,11 +5435,69 @@ def google_calendar_callback():
                             phone_number=phone
                         )
                         if gcal_event and booking.get('id'):
-                            db.update_booking(booking['id'], calendar_event_id=gcal_event.get('id'), company_id=company_id)
-                            synced += 1
+                            new_id = gcal_event.get('id')
+                            db.update_booking(booking['id'], calendar_event_id=new_id, company_id=company_id)
+                            if new_id:
+                                known_gcal_ids.add(new_id)
+                            push_synced += 1
                     except Exception:
                         pass
-                safe_print(f"[GCAL] Synced {synced} existing bookings to Google Calendar for company {company_id}")
+
+                # Phase 2: Pull Google Calendar → DB
+                try:
+                    gcal_events = gcal.get_future_events(days_ahead=90)
+                    for event in gcal_events:
+                        gcal_id = event['id']
+                        if gcal_id in known_gcal_ids:
+                            continue
+                        summary = event.get('summary', '').strip()
+                        if not summary:
+                            continue
+                        # Skip events originally created by this app
+                        evt_desc = event.get('description', '')
+                        ext_private = event.get('extendedProperties', {}).get('private', {})
+                        if ext_private.get('bookedForYou') == 'true' or 'Synced from BookedForYou' in evt_desc:
+                            continue
+                        start_dt = event['start']
+                        evt_duration = event.get('duration_minutes', 60)
+                        customer_name = summary
+                        service_type = 'Imported Event'
+                        if ' - ' in summary:
+                            parts = summary.split(' - ', 1)
+                            svc_part = parts[0].strip()
+                            name_part = parts[1].strip()
+                            for pfx in ['URGENT:', 'SCHEDULED:', 'EMERGENCY:']:
+                                if svc_part.upper().startswith(pfx):
+                                    svc_part = svc_part[len(pfx):].strip()
+                                    break
+                            if name_part:
+                                customer_name = name_part
+                                service_type = svc_part or 'Imported Event'
+                        phone = ''
+                        if evt_desc:
+                            pm = _re.search(r'(?:Phone|Customer Phone)[:\s]*([+\d\s\-()]{7,})', evt_desc, _re.IGNORECASE)
+                            if pm:
+                                phone = pm.group(1).strip()
+                        try:
+                            client_id = db.find_or_create_client(
+                                name=customer_name, phone=phone or None,
+                                email=None, company_id=int(company_id)
+                            )
+                            booking_id = db.add_booking(
+                                client_id=client_id, calendar_event_id=gcal_id,
+                                appointment_time=start_dt.strftime('%Y-%m-%d %H:%M:%S'),
+                                service_type=service_type, phone_number=phone or None,
+                                company_id=int(company_id), duration_minutes=evt_duration
+                            )
+                            if booking_id:
+                                known_gcal_ids.add(gcal_id)
+                                pull_imported += 1
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                safe_print(f"[GCAL] Initial sync for company {company_id}: pushed={push_synced}, imported={pull_imported}")
         except Exception as sync_err:
             safe_print(f"[GCAL] Initial sync failed (non-critical): {sync_err}")
 
@@ -5473,6 +5540,239 @@ def google_calendar_disconnect():
     except Exception as e:
         safe_print(f"[GCAL] Disconnect error: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/google-calendar/sync", methods=["POST"])
+@login_required
+def google_calendar_sync():
+    """Bidirectional sync between the database and Google Calendar.
+
+    Phase 1 — DB → Google Calendar (push):
+      For each future, non-cancelled DB booking:
+        - Has a real gcal event → update it (fixes durations/times).
+        - Has only a db_ placeholder or nothing → create a new gcal event.
+
+    Phase 2 — Google Calendar → DB (pull):
+      For each future gcal event that is NOT already linked to a DB booking:
+        - Parse customer name from the event summary.
+        - Calculate duration from event start/end.
+        - Create a client (find_or_create_client) and booking in the DB.
+    """
+    from datetime import datetime as dt
+
+    company_id = session.get('company_id')
+    db = get_database()
+
+    try:
+        from src.services.google_calendar_oauth import get_company_google_calendar
+        gcal = get_company_google_calendar(company_id, db)
+        if not gcal:
+            return jsonify({'error': 'Google Calendar is not connected'}), 400
+    except Exception as e:
+        safe_print(f"[GCAL_SYNC] Could not load Google Calendar: {e}")
+        return jsonify({'error': 'Google Calendar is not connected'}), 400
+
+    # ── Phase 1: DB → Google Calendar ──────────────────────────────
+    all_bookings = db.get_all_bookings(company_id=company_id)
+    now = dt.now()
+    push_created = 0
+    push_updated = 0
+    push_skipped = 0
+    push_errors = 0
+
+    # Build a set of gcal event IDs already linked to DB bookings
+    known_gcal_ids = set()
+
+    for booking in all_bookings:
+        existing_event_id = booking.get('calendar_event_id', '')
+        has_real_gcal = existing_event_id and not str(existing_event_id).startswith('db_')
+        if has_real_gcal:
+            known_gcal_ids.add(existing_event_id)
+
+        if booking.get('status') in ['cancelled', 'completed']:
+            push_skipped += 1
+            continue
+
+        appt_time = booking.get('appointment_time')
+        if not appt_time:
+            push_skipped += 1
+            continue
+        if isinstance(appt_time, str):
+            try:
+                appt_time = dt.fromisoformat(appt_time.replace('Z', '+00:00')).replace(tzinfo=None)
+            except Exception:
+                push_skipped += 1
+                continue
+        elif hasattr(appt_time, 'replace'):
+            appt_time = appt_time.replace(tzinfo=None)
+
+        if appt_time <= now:
+            push_skipped += 1
+            continue
+
+        customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
+        service = booking.get('service_type') or 'Job'
+        duration = booking.get('duration_minutes', 60)
+        phone = booking.get('phone_number') or ''
+        address = booking.get('address') or ''
+        summary = f"{service} - {customer_name}"
+        desc = (
+            f"Synced from BookedForYou\n"
+            f"Customer: {customer_name}\n"
+            f"Phone: {phone}\n"
+            f"Address: {address}\n"
+            f"Duration: {duration} mins"
+        )
+
+        try:
+            if has_real_gcal:
+                gcal.reschedule_appointment(
+                    existing_event_id, appt_time, duration_minutes=duration
+                )
+                try:
+                    gcal.update_event_description(existing_event_id, desc)
+                except Exception:
+                    pass
+                push_updated += 1
+            else:
+                gcal_event = gcal.book_appointment(
+                    summary=summary,
+                    start_time=appt_time,
+                    duration_minutes=duration,
+                    description=desc,
+                    phone_number=phone
+                )
+                if gcal_event:
+                    new_gcal_id = gcal_event.get('id')
+                    if booking.get('id'):
+                        db.update_booking(
+                            booking['id'],
+                            calendar_event_id=new_gcal_id,
+                            company_id=company_id
+                        )
+                    if new_gcal_id:
+                        known_gcal_ids.add(new_gcal_id)
+                    push_created += 1
+        except Exception as e:
+            safe_print(f"[GCAL_SYNC] Push error booking {booking.get('id')}: {e}")
+            push_errors += 1
+
+    # ── Phase 2: Google Calendar → DB (pull) ───────────────────────
+    pull_imported = 0
+    pull_skipped = 0
+    pull_errors = 0
+
+    try:
+        gcal_events = gcal.get_future_events(days_ahead=90)
+    except Exception as e:
+        safe_print(f"[GCAL_SYNC] Could not fetch Google Calendar events: {e}")
+        gcal_events = []
+
+    for event in gcal_events:
+        gcal_id = event['id']
+        if gcal_id in known_gcal_ids:
+            pull_skipped += 1
+            continue
+
+        summary = event.get('summary', '').strip()
+        if not summary:
+            pull_skipped += 1
+            continue
+
+        # Skip events originally created by this app (avoids re-importing
+        # orphaned bookings whose DB record was deleted).
+        # Primary check: extendedProperties.private.bookedForYou (hidden, tamper-proof)
+        # Fallback: description contains "Synced from BookedForYou" (for older events)
+        desc = event.get('description', '')
+        ext_private = event.get('extendedProperties', {}).get('private', {})
+        if ext_private.get('bookedForYou') == 'true' or 'Synced from BookedForYou' in desc:
+            pull_skipped += 1
+            continue
+
+        start_dt = event['start']
+        duration = event.get('duration_minutes', 60)
+
+        # Parse customer name from summary.
+        # Common formats: "Service - Customer", "Customer", "URGENT: Service - Customer"
+        customer_name = summary
+        service_type = 'Imported Event'
+        if ' - ' in summary:
+            parts = summary.split(' - ', 1)
+            # Left part might have a prefix like "URGENT: Plumbing"
+            service_part = parts[0].strip()
+            name_part = parts[1].strip()
+            # Strip urgency prefixes
+            for prefix in ['URGENT:', 'SCHEDULED:', 'EMERGENCY:']:
+                if service_part.upper().startswith(prefix):
+                    service_part = service_part[len(prefix):].strip()
+                    break
+            if name_part:
+                customer_name = name_part
+                service_type = service_part or 'Imported Event'
+
+        # Try to extract phone from description
+        phone = ''
+        if desc:
+            import re
+            phone_match = re.search(r'(?:Phone|Customer Phone)[:\s]*([+\d\s\-()]{7,})', desc, re.IGNORECASE)
+            if phone_match:
+                phone = phone_match.group(1).strip()
+
+        try:
+            client_id = db.find_or_create_client(
+                name=customer_name,
+                phone=phone or None,
+                email=None,
+                company_id=company_id
+            )
+
+            booking_id = db.add_booking(
+                client_id=client_id,
+                calendar_event_id=gcal_id,
+                appointment_time=start_dt.strftime('%Y-%m-%d %H:%M:%S'),
+                service_type=service_type,
+                phone_number=phone or None,
+                company_id=company_id,
+                duration_minutes=duration
+            )
+
+            if booking_id:
+                known_gcal_ids.add(gcal_id)
+                pull_imported += 1
+            else:
+                pull_errors += 1
+        except Exception as e:
+            safe_print(f"[GCAL_SYNC] Pull error for event {gcal_id}: {e}")
+            pull_errors += 1
+
+    total_errors = push_errors + pull_errors
+    safe_print(
+        f"[GCAL_SYNC] Company {company_id}: "
+        f"push(created={push_created}, updated={push_updated}, skipped={push_skipped}, errors={push_errors}) "
+        f"pull(imported={pull_imported}, skipped={pull_skipped}, errors={pull_errors})"
+    )
+
+    parts = []
+    if push_created:
+        parts.append(f"{push_created} pushed to Google")
+    if push_updated:
+        parts.append(f"{push_updated} updated on Google")
+    if pull_imported:
+        parts.append(f"{pull_imported} imported from Google")
+    if not parts:
+        parts.append("Everything already in sync")
+    msg = ", ".join(parts)
+    if total_errors:
+        msg += f" ({total_errors} failed)"
+
+    return jsonify({
+        'success': True,
+        'push_created': push_created,
+        'push_updated': push_updated,
+        'pull_imported': pull_imported,
+        'errors': total_errors,
+        'message': msg
+    })
 
 
 # Global error handlers
