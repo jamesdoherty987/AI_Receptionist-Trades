@@ -78,12 +78,10 @@
   color: var(--text-secondary);
 }
 
-/* Steps List - Grid on desktop, stack on mobile */
+/* Steps List - Wrap into even rows */
 .setup-steps-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1px;
-  background: var(--border-color);
+  display: flex;
+  flex-wrap: wrap;
 }
 
 .setup-step-item {
@@ -91,11 +89,20 @@
   align-items: center;
   gap: 0.625rem;
   padding: 0.75rem 1rem;
-  background: var(--bg-secondary);
+  background: none;
   border: none;
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
   cursor: pointer;
   text-align: left;
   transition: background 0.2s;
+  flex: 1 1 25%;
+  min-width: 180px;
+  box-sizing: border-box;
+}
+
+.setup-step-item:last-child {
+  border-right: none;
 }
 
 .setup-step-item:hover {
@@ -359,53 +366,48 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  padding: 0.75rem;
+  padding: 1rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
 .ob-time-row {
   display: flex;
   align-items: flex-end;
-  gap: 0.75rem;
+  gap: 1.25rem;
   flex-wrap: wrap;
 }
 
 .ob-time-selector {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 140px;
 }
 
 .ob-time-label {
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   font-weight: 500;
   color: var(--text-secondary);
 }
 
 .ob-time-inputs {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.5rem;
 }
 
 .ob-hour-select,
 .ob-period-select {
-  padding: 0.45rem 0.5rem;
+  padding: 0.55rem 0.6rem;
   background: white;
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   color: var(--text-primary);
   cursor: pointer;
-}
-
-.ob-hour-select {
-  width: 60px;
-}
-
-.ob-period-select {
-  width: 60px;
+  flex: 1;
 }
 
 .ob-hour-select:focus,
@@ -416,33 +418,37 @@
 }
 
 .ob-time-separator {
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   color: var(--text-secondary);
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.6rem;
+  font-weight: 500;
 }
 
 .ob-days-selector {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.5rem;
 }
 
 .ob-days-checkboxes {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.5rem;
 }
 
 .ob-day-checkbox {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.3rem 0.5rem;
+  gap: 0.35rem;
+  padding: 0.45rem 0.65rem;
   border: 1px solid var(--border-color);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
   background: white;
+  flex: 1;
+  min-width: 58px;
+  justify-content: center;
 }
 
 .ob-day-checkbox:hover {
@@ -451,13 +457,13 @@
 }
 
 .ob-day-checkbox input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   cursor: pointer;
 }
 
 .ob-day-checkbox span {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 500;
   color: var(--text-primary);
 }
@@ -468,9 +474,11 @@
 
 .ob-hours-preview {
   display: block;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   color: var(--text-tertiary);
   font-style: italic;
+  text-align: center;
+  padding-top: 0.25rem;
 }
 
 .payment-skip-hint {
@@ -550,11 +558,9 @@
 
 /* Responsive */
 @media (max-width: 640px) {
-  .setup-steps-list {
-    grid-template-columns: 1fr;
-  }
-
   .setup-step-item {
+    flex: 1 1 100%;
+    border-right: none;
     padding: 0.625rem 0.875rem;
   }
 
@@ -609,10 +615,15 @@
   .ob-time-row {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.75rem;
   }
 
   .ob-time-separator {
     text-align: center;
     padding: 0;
+  }
+
+  .ob-day-checkbox {
+    min-width: 50px;
   }
 }
