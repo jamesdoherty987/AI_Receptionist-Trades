@@ -324,7 +324,7 @@
   background: var(--border-color);
 }
 
-/* Phone Mockup */
+/* Hero Video */
 .hero-visual {
   flex: 1;
   display: flex;
@@ -332,6 +332,22 @@
   align-items: center;
   position: relative;
   z-index: 1;
+}
+
+.hero-video-container {
+  width: 100%;
+  max-width: 560px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px rgba(124, 58, 237, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hero-video {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 20px;
 }
 
 .phone-tilt-wrapper {

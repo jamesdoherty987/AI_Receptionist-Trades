@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import Tilt from 'react-parallax-tilt';
 import DarkVeil from '../components/DarkVeil';
 import './Landing.css';
 
@@ -100,15 +99,6 @@ function FeatureCard({ icon, title, description, index }) {
 
 function Landing() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Detect mobile for disabling tilt effects
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
 
   // Feature flags - set to false to hide sections
   const showReviews = false;
@@ -326,62 +316,17 @@ function Landing() {
           </div>
         </div>
         <div className="hero-visual">
-          {isMobile ? (
-            <div className="phone-mockup">
-              <div className="phone-notch"></div>
-              <div className="phone-screen">
-                <div className="call-ui">
-                  <div className="caller-avatar">
-                    <i className="fas fa-user"></i>
-                  </div>
-                  <div className="caller-info">
-                    <span className="caller-name">Incoming Call</span>
-                    <span className="caller-number">+353 86 XXX XXXX</span>
-                  </div>
-                  <div className="ai-badge">
-                    <span className="ai-pulse"></span>
-                    <i className="fas fa-robot"></i> AI Answering
-                  </div>
-                  <div className="call-wave">
-                    <span></span><span></span><span></span><span></span><span></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <Tilt
-              className="phone-tilt-wrapper"
-              tiltMaxAngleX={15}
-              tiltMaxAngleY={15}
-              perspective={1000}
-              scale={1.02}
-              transitionSpeed={2000}
-              gyroscope={false}
-              glareEnable={false}
+          <div className="hero-video-container">
+            <video
+              className="hero-video"
+              autoPlay
+              muted
+              loop
+              playsInline
+              poster=""
             >
-              <div className="phone-mockup">
-                <div className="phone-notch"></div>
-                <div className="phone-screen">
-                  <div className="call-ui">
-                    <div className="caller-avatar">
-                      <i className="fas fa-user"></i>
-                    </div>
-                    <div className="caller-info">
-                      <span className="caller-name">Incoming Call</span>
-                      <span className="caller-number">+353 86 XXX XXXX</span>
-                    </div>
-                    <div className="ai-badge">
-                      <span className="ai-pulse"></span>
-                      <i className="fas fa-robot"></i> AI Answering
-                    </div>
-                    <div className="call-wave">
-                      <span></span><span></span><span></span><span></span><span></span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Tilt>
-          )}
+              <source src="https://pub-6d2ed0f2cb5645b68bd219a42aed3749.r2.dev/assets/cinematic-explainer.mp4" type="video/mp4" />
+            </video>
         </div>
       </section>
 

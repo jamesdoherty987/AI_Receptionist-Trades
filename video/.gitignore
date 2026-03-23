@@ -1,0 +1,12 @@
+node_modules
+dist
+.DS_Store
+.env
+
+# AI agent skill files (auto-generated, can be reinstalled)
+.agents
+.claude
+.kiro
+
+# Ignore the output video from Git but not videos you import into src/.
+out
