@@ -7,13 +7,20 @@ function Modal({ isOpen, onClose, title, children, size = 'medium' }) {
       document.body.style.overflow = 'hidden';
       document.body.classList.add('modal-open');
     } else {
-      document.body.style.overflow = 'unset';
-      document.body.classList.remove('modal-open');
+      // Only restore scroll if no other modals are open
+      const openModals = document.querySelectorAll('.modal-overlay');
+      if (openModals.length === 0) {
+        document.body.style.overflow = 'unset';
+        document.body.classList.remove('modal-open');
+      }
     }
     
     return () => {
-      document.body.style.overflow = 'unset';
-      document.body.classList.remove('modal-open');
+      const openModals = document.querySelectorAll('.modal-overlay');
+      if (openModals.length === 0) {
+        document.body.style.overflow = 'unset';
+        document.body.classList.remove('modal-open');
+      }
     };
   }, [isOpen]);
 

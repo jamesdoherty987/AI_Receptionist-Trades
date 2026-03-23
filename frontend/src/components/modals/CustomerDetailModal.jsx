@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getClient, updateClient, deleteClient, getBookings, addClientNote } from '../../services/api';
 import Modal from './Modal';
+import JobDetailModal from './JobDetailModal';
 import { useToast } from '../Toast';
 import { formatPhone, formatDateTime, getStatusBadgeClass, formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
 import './CustomerDetailModal.css';
@@ -14,6 +15,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [newNote, setNewNote] = useState('');
   const [isAddingNote, setIsAddingNote] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState(null);
 
   // Handle escape key to close delete confirmation
   useEffect(() => {
@@ -36,6 +38,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       setShowDeleteConfirm(false);
       setNewNote('');
       setIsAddingNote(false);
+      setSelectedJobId(null);
     }
   }, [isOpen]);
 
@@ -219,7 +222,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
             <div className="stats-row">
               <div className="stat-badge">
                 <i className="fas fa-calendar-check"></i>
-                <span>{totalBookings} Bookings</span>
+                <span>{totalBookings} Jobs</span>
               </div>
               <div className="stat-badge completed">
                 <i className="fas fa-check-circle"></i>
@@ -443,19 +446,26 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
           {/* Right Column - Booking History */}
           <div className="customer-modal-column">
             <div className="info-card bookings-card">
-              <h3><i className="fas fa-history"></i> Booking History ({totalBookings})</h3>
+              <h3><i className="fas fa-history"></i> Jobs History ({totalBookings})</h3>
               <div className="bookings-list">
                 {clientBookings.length === 0 ? (
                   <div className="empty-bookings">
                     <i className="fas fa-calendar-times"></i>
-                    <p>No bookings yet</p>
+                    <p>No jobs yet</p>
                   </div>
                 ) : (
                   clientBookings
                     .sort((a, b) => new Date(b.appointment_time) - new Date(a.appointment_time))
                     .slice(0, 8)
                     .map(booking => (
-                      <div key={booking.id} className="booking-item">
+                      <div 
+                        key={booking.id} 
+                        className="booking-item booking-item-clickable"
+                        onClick={() => setSelectedJobId(booking.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedJobId(booking.id); }}
+                      >
                         <div className="booking-item-main">
                           <span className="booking-service">{booking.service_type || booking.service || 'Service'}</span>
                           <span className={`badge badge-sm ${getStatusBadgeClass(booking.status)}`}>
@@ -493,6 +503,13 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
           </div>
         </div>
       </div>
+
+      {/* Job Detail Modal */}
+      <JobDetailModal
+        isOpen={!!selectedJobId}
+        onClose={() => setSelectedJobId(null)}
+        jobId={selectedJobId}
+      />
     </Modal>
   );
 }
