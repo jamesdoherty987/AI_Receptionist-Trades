@@ -502,23 +502,20 @@ function Settings() {
       const { message, push_created, push_updated, pull_imported, errors } = response.data;
 
       // Build a friendly summary
-      const lines = [];
-      if (push_created) lines.push(`${push_created} new event${push_created !== 1 ? 's' : ''} added to Google Calendar`);
-      if (push_updated) lines.push(`${push_updated} event${push_updated !== 1 ? 's' : ''} updated on Google Calendar`);
-      if (pull_imported) lines.push(`${pull_imported} event${pull_imported !== 1 ? 's' : ''} imported from Google Calendar`);
-      if (!push_created && !push_updated && !pull_imported) lines.push('Everything is already in sync');
-      if (errors) lines.push(`${errors} error${errors !== 1 ? 's' : ''} occurred`);
+      const parts = [];
+      if (push_created) parts.push(`${push_created} added`);
+      if (push_updated) parts.push(`${push_updated} updated`);
+      if (pull_imported) parts.push(`${pull_imported} imported`);
+      if (!push_created && !push_updated && !pull_imported) parts.push('Already in sync');
+      if (errors) parts.push(`${errors} failed`);
 
-      const summary = lines.join('\n');
-      alert(`✅ Sync Complete\n\n${summary}`);
-
-      setSaveMessage(message || 'Calendars synced successfully');
-      setTimeout(() => setSaveMessage(''), 5000);
+      const summary = `✅ Sync complete — ${parts.join(', ')}`;
+      setSaveMessage(summary);
+      setTimeout(() => setSaveMessage(''), 6000);
     } catch (error) {
       const errorMsg = error?.response?.data?.error || 'Failed to sync calendars';
-      alert(`❌ Sync Failed\n\n${errorMsg}`);
-      setSaveMessage(errorMsg);
-      setTimeout(() => setSaveMessage(''), 5000);
+      setSaveMessage(`❌ ${errorMsg}`);
+      setTimeout(() => setSaveMessage(''), 6000);
     } finally {
       setGcalSyncing(false);
     }
