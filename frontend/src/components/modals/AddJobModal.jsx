@@ -128,6 +128,16 @@ function AddJobModal({ isOpen, onClose }) {
 
   const isFullDayJob = (formData.duration_minutes || 0) >= 1440;
 
+  // Filter workers based on selected service's worker_restrictions
+  const eligibleWorkers = useMemo(() => {
+    if (!workers) return [];
+    if (!selectedService?.worker_restrictions || selectedService.worker_restrictions.type === 'all') return workers;
+    const { type, worker_ids } = selectedService.worker_restrictions;
+    if (type === 'only') return workers.filter(w => worker_ids.includes(w.id));
+    if (type === 'except') return workers.filter(w => !worker_ids.includes(w.id));
+    return workers;
+  }, [workers, selectedService]);
+
   const filteredCustomers = useMemo(() => {
     if (!clients) return [];
     if (!customerSearch.trim()) return clients;
@@ -195,6 +205,20 @@ function AddJobModal({ isOpen, onClose }) {
     // Reset date selection when service changes (availability changes)
     setSelectedDate('');
     setFormData(prev => ({ ...prev, appointment_time: '' }));
+
+    // Clear worker if they're not eligible for the new service
+    if (formData.worker_id && service.worker_restrictions && service.worker_restrictions.type !== 'all') {
+      const { type, worker_ids } = service.worker_restrictions;
+      const currentWorkerId = parseInt(formData.worker_id);
+      const isEligible = type === 'only' ? worker_ids.includes(currentWorkerId) : !worker_ids.includes(currentWorkerId);
+      if (!isEligible) {
+        setSelectedWorker(null);
+        setFormData(prev => ({ ...prev, worker_id: '' }));
+        setWorkerAvailability(null);
+        return;
+      }
+    }
+
     if (formData.worker_id && formData.appointment_time) checkWorkerAvailabilityForJob(formData.worker_id, formData.appointment_time, newDuration);
   };
 
@@ -336,9 +360,15 @@ function AddJobModal({ isOpen, onClose }) {
             <label className="form-label">Assign Worker</label>
             <select name="worker_id" className="form-input" value={formData.worker_id} onChange={(e) => handleWorkerSelect(e.target.value)}>
               <option value="">No worker (check all availability)</option>
-              {workers?.map(w => <option key={w.id} value={w.id}>{w.name} {w.trade_specialty && `(${w.trade_specialty})`}</option>)}
+              {eligibleWorkers.map(w => <option key={w.id} value={w.id}>{w.name} {w.trade_specialty && `(${w.trade_specialty})`}</option>)}
             </select>
             {selectedWorker && <div className="worker-selected-info"><i className="fas fa-hard-hat"></i> Showing availability for <strong>{selectedWorker.name}</strong></div>}
+            {selectedService?.worker_restrictions?.type === 'only' && (
+              <div className="worker-restriction-hint"><i className="fas fa-info-circle"></i> Only workers qualified for "{selectedService.name}" are shown</div>
+            )}
+            {selectedService?.worker_restrictions?.type === 'except' && (
+              <div className="worker-restriction-hint"><i className="fas fa-info-circle"></i> Some workers are excluded from "{selectedService.name}"</div>
+            )}
           </div>
 
           {/* Date & Time — with mini calendar */}

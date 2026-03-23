@@ -215,6 +215,11 @@
   color: #1e40af; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;
 }
 .worker-selected-info i { color: #3b82f6; }
+.worker-restriction-hint {
+  margin-top: 0.375rem; padding: 0.4rem 0.75rem;
+  background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px;
+  color: #92400e; font-size: 0.8rem; display: flex; align-items: center; gap: 0.5rem;
+}
 .worker-conflict-warning {
   margin-top: 0.5rem; padding: 0.625rem 0.875rem;
   background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px;
