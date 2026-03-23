@@ -283,6 +283,58 @@ class SMSReminderService:
             print(f"[SMS-CONFIRM] Error sending booking confirmation: {e}")
             return False
 
+    def send_cancellation_sms(self, to_number: str, customer_name: str,
+                              appointment_time: datetime, service_type: str = "appointment",
+                              company_name: str = None, is_full_day: bool = False) -> bool:
+        """Send a short SMS confirming a booking has been cancelled."""
+        if not self.client:
+            print("[SMS-CANCEL] SMS service not configured")
+            return False
+
+        to_number = normalize_phone_number(to_number)
+        try:
+            date_str = appointment_time.strftime('%A, %B %d')
+            business = company_name or 'Your service provider'
+
+            if is_full_day:
+                body = f"Hi {customer_name}, your {service_type} with {business} on {date_str} has been cancelled. If you need to rebook, give us a call."
+            else:
+                time_str = appointment_time.strftime('%I:%M %p')
+                body = f"Hi {customer_name}, your {service_type} with {business} on {date_str} at {time_str} has been cancelled. If you need to rebook, give us a call."
+
+            message = self.client.messages.create(body=body, from_=self.from_number, to=to_number)
+            print(f"[SMS-CANCEL] Cancellation SMS sent to {to_number} (SID: {message.sid})")
+            return True
+        except Exception as e:
+            print(f"[SMS-CANCEL] Failed to send cancellation SMS: {e}")
+            return False
+
+    def send_reschedule_sms(self, to_number: str, customer_name: str,
+                            new_time: datetime, service_type: str = "appointment",
+                            company_name: str = None, is_full_day: bool = False) -> bool:
+        """Send a short SMS confirming a booking has been rescheduled."""
+        if not self.client:
+            print("[SMS-RESCHED] SMS service not configured")
+            return False
+
+        to_number = normalize_phone_number(to_number)
+        try:
+            new_date_str = new_time.strftime('%A, %B %d')
+            business = company_name or 'Your service provider'
+
+            if is_full_day:
+                body = f"Hi {customer_name}, your {service_type} with {business} has been moved to {new_date_str}. See you then!"
+            else:
+                new_time_str = new_time.strftime('%I:%M %p')
+                body = f"Hi {customer_name}, your {service_type} with {business} has been moved to {new_date_str} at {new_time_str}. See you then!"
+
+            message = self.client.messages.create(body=body, from_=self.from_number, to=to_number)
+            print(f"[SMS-RESCHED] Reschedule SMS sent to {to_number} (SID: {message.sid})")
+            return True
+        except Exception as e:
+            print(f"[SMS-RESCHED] Failed to send reschedule SMS: {e}")
+            return False
+
     
     def send_invoice(self, to_number: str, customer_name: str, service_type: str,
                     charge: float, invoice_number: str = None,

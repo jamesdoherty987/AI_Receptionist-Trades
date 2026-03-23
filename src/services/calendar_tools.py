@@ -4127,6 +4127,27 @@ Return ONLY valid JSON, no explanation."""
             event_id = matched_job.get('event_id')
             booking_id = matched_job.get('booking_id')
             
+            # Look up phone number from booking BEFORE deleting
+            _cancel_phone = None
+            _cancel_service = matched_job.get('service', 'appointment')
+            _cancel_company_name = None
+            if booking_id and db:
+                try:
+                    all_bookings = db.get_all_bookings(company_id=company_id)
+                    for bk in all_bookings:
+                        if bk.get('id') == booking_id:
+                            _cancel_phone = bk.get('phone') or bk.get('phone_number')
+                            _cancel_service = bk.get('service_type') or _cancel_service
+                            break
+                except Exception:
+                    pass
+                # Get company name for SMS
+                try:
+                    _company_info = db.get_company(company_id)
+                    _cancel_company_name = _company_info.get('company_name') if _company_info else None
+                except Exception:
+                    pass
+            
             # Cancel in Google Calendar sync if event_id exists
             if event_id and google_calendar_sync:
                 try:
@@ -4142,6 +4163,32 @@ Return ONLY valid JSON, no explanation."""
                     logger.info(f"[CANCEL] Deleted booking {booking_id} from database")
                 except Exception as e:
                     logger.error(f"[CANCEL] Failed to delete booking from database: {e}")
+            
+            # Send cancellation SMS
+            if _cancel_phone:
+                try:
+                    from src.services.sms_reminder import get_sms_service
+                    sms_service = get_sms_service()
+                    if sms_service.client:
+                        _send_sms = True
+                        if db and company_id:
+                            try:
+                                _ci = db.get_company(company_id)
+                                if _ci and _ci.get('send_confirmation_sms') is False:
+                                    _send_sms = False
+                            except Exception:
+                                pass
+                        if _send_sms:
+                            sms_service.send_cancellation_sms(
+                                to_number=_cancel_phone,
+                                customer_name=matched_name,
+                                appointment_time=parsed_date,
+                                service_type=_cancel_service,
+                                company_name=_cancel_company_name,
+                                is_full_day=matched_job.get('is_full_day', False)
+                            )
+                except Exception as e:
+                    logger.warning(f"[CANCEL] SMS send failed (non-blocking): {e}")
             
             time_info = matched_job.get('time', '')
             if matched_job.get('is_full_day'):
@@ -4424,6 +4471,50 @@ Return ONLY valid JSON, no explanation."""
                     logger.info(f"[RESCHEDULE] Updated booking {booking_id} to {new_time}")
                 except Exception as e:
                     logger.error(f"[RESCHEDULE] Failed to update booking in database: {e}")
+            
+            # Send reschedule confirmation SMS
+            _resched_phone = None
+            _resched_service = matched_job.get('service', 'appointment')
+            _resched_company_name = None
+            if booking_id and db:
+                try:
+                    all_bookings = db.get_all_bookings(company_id=company_id)
+                    for bk in all_bookings:
+                        if bk.get('id') == booking_id:
+                            _resched_phone = bk.get('phone') or bk.get('phone_number')
+                            _resched_service = bk.get('service_type') or _resched_service
+                            break
+                except Exception:
+                    pass
+                try:
+                    _company_info = db.get_company(company_id)
+                    _resched_company_name = _company_info.get('company_name') if _company_info else None
+                except Exception:
+                    pass
+            if _resched_phone:
+                try:
+                    from src.services.sms_reminder import get_sms_service
+                    sms_service = get_sms_service()
+                    if sms_service.client:
+                        _send_sms = True
+                        if db and company_id:
+                            try:
+                                _ci = db.get_company(company_id)
+                                if _ci and _ci.get('send_confirmation_sms') is False:
+                                    _send_sms = False
+                            except Exception:
+                                pass
+                        if _send_sms:
+                            sms_service.send_reschedule_sms(
+                                to_number=_resched_phone,
+                                customer_name=matched_name,
+                                new_time=new_time,
+                                service_type=_resched_service,
+                                company_name=_resched_company_name,
+                                is_full_day=is_full_day
+                            )
+                except Exception as e:
+                    logger.warning(f"[RESCHEDULE] SMS send failed (non-blocking): {e}")
             
             if is_full_day:
                 return {

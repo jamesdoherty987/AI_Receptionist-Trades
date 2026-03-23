@@ -1661,6 +1661,52 @@ TOOL RULES:
                 })
                 continue
             
+            # REDIRECT get_next_available / search_availability during reschedule
+            # The LLM sometimes switches to booking-flow availability tools when the
+            # caller says "book" or "I'll take that day".  These tools start from
+            # scratch and ignore the reschedule context.  Redirect to reschedule_job
+            # with the new date so the existing booking gets moved, not duplicated.
+            if tool_name in ("get_next_available", "search_availability") and user_wants_reschedule:
+                # Try to find the original date + customer name from earlier reschedule calls
+                _resched_original_date = None
+                _resched_customer_name = None
+                for msg in messages:
+                    if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                        for tc in msg["tool_calls"]:
+                            if tc.get("function", {}).get("name") in ("reschedule_job", "reschedule_appointment"):
+                                try:
+                                    prev_args = json.loads(tc["function"]["arguments"])
+                                    _resched_original_date = prev_args.get("current_date") or prev_args.get("current_datetime")
+                                    _resched_customer_name = prev_args.get("customer_name") or _resched_customer_name
+                                except:
+                                    pass
+                
+                if _resched_original_date and _resched_customer_name:
+                    # The user's latest message likely contains the new date they want
+                    # Pass it as new_datetime so reschedule_job can complete the move
+                    print(f"   🔄 [RESCHEDULE_INTERCEPT] Redirected {tool_name} → reschedule_job (mid-reschedule, customer='{_resched_customer_name}')")
+                    tool_call["function"]["name"] = "reschedule_job"
+                    tool_call["function"]["arguments"] = json.dumps({
+                        "current_date": _resched_original_date,
+                        "customer_name": _resched_customer_name,
+                        "new_datetime": user_text,
+                        "confirmed": False
+                    })
+                    tool_name = "reschedule_job"
+                else:
+                    # No reschedule context found — block and tell LLM to use the right tool
+                    print(f"   🚫 [RESCHEDULE_INTERCEPT] BLOCKED {tool_name} during reschedule flow (no booking context)")
+                    tool_results.append({
+                        "tool_call_id": tool_call["id"],
+                        "role": "tool",
+                        "name": tool_name,
+                        "content": json.dumps({
+                            "success": False,
+                            "error": "You are in a reschedule flow. Use reschedule_job with the customer's chosen new date as new_datetime to move their existing booking. Do NOT use booking tools."
+                        })
+                    })
+                    continue
+            
             # REDIRECT lookup_customer during reschedule → reschedule_job with customer name
             # The LLM sometimes falls into the booking flow (lookup_customer → eircode → book)
             # when it should be continuing the reschedule. Intercept and redirect.
@@ -1769,7 +1815,7 @@ TOOL RULES:
                     
                     # Clear suggested dates when a booking/reschedule completes successfully
                     # so the next availability search starts fresh
-                    if tool_name in ('book_job', 'reschedule_job') and call_state and result.get('success'):
+                    if tool_name in ('book_job', 'reschedule_job', 'book_appointment', 'reschedule_appointment') and call_state and result.get('success'):
                         call_state.suggested_dates = []
                         print(f"   🔧 [TOOL_RESULT] Cleared suggested dates after successful {tool_name}")
                     
