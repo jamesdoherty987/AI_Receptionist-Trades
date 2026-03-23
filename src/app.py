@@ -3616,6 +3616,37 @@ def bookings_api():
             except Exception as e:
                 print(f"[WARNING] Could not update client description: {e}")
             
+            # Sync to Google Calendar if connected
+            try:
+                from src.services.google_calendar_oauth import get_company_google_calendar
+                gcal = get_company_google_calendar(company_id, db)
+                if gcal:
+                    customer_name = client.get('name', 'Customer')
+                    phone = data.get('phone_number') or client.get('phone') or ''
+                    summary = f"{service_type} - {customer_name}"
+                    desc = (
+                        f"Synced from BookedForYou\n"
+                        f"Customer: {customer_name}\n"
+                        f"Phone: {phone}\n"
+                        f"Address: {job_address or ''}\n"
+                        f"Duration: {duration_minutes} mins"
+                    )
+                    gcal_event = gcal.book_appointment(
+                        summary=summary,
+                        start_time=appointment_dt,
+                        duration_minutes=duration_minutes,
+                        description=desc,
+                        phone_number=phone
+                    )
+                    if gcal_event and gcal_event.get('id'):
+                        db.update_booking(
+                            booking_id,
+                            calendar_event_id=gcal_event['id'],
+                            company_id=company_id
+                        )
+            except Exception as e:
+                safe_print(f"[GCAL] Auto-sync on manual create failed (non-critical): {e}")
+            
             return jsonify({
                 "success": True,
                 "booking_id": booking_id,
@@ -3981,6 +4012,41 @@ def booking_detail_api(booking_id):
             success = True
         
         if success:
+            # Sync changes to Google Calendar if connected
+            try:
+                from src.services.google_calendar_oauth import get_company_google_calendar
+                gcal = get_company_google_calendar(company_id, db)
+                updated_booking = db.get_booking(booking_id, company_id=company_id)
+                if gcal and updated_booking:
+                    event_id = updated_booking.get('calendar_event_id', '')
+                    if event_id and not str(event_id).startswith('db_'):
+                        appt_time = updated_booking.get('appointment_time')
+                        if isinstance(appt_time, str):
+                            from datetime import datetime as _dt
+                            appt_time = _dt.fromisoformat(appt_time.replace('Z', '+00:00')).replace(tzinfo=None)
+                        elif hasattr(appt_time, 'replace'):
+                            appt_time = appt_time.replace(tzinfo=None)
+                        customer_name = updated_booking.get('client_name') or updated_booking.get('customer_name') or 'Customer'
+                        service = updated_booking.get('service_type') or 'Job'
+                        duration = updated_booking.get('duration_minutes', 60)
+                        phone = updated_booking.get('phone_number') or ''
+                        address = updated_booking.get('address') or ''
+                        is_completed = updated_booking.get('status') == 'completed'
+                        summary = f"{'✅ ' if is_completed else ''}{service} - {customer_name}"
+                        desc = (
+                            f"Synced from BookedForYou\n"
+                            f"{'Status: COMPLETED\n' if is_completed else ''}"
+                            f"Customer: {customer_name}\n"
+                            f"Phone: {phone}\n"
+                            f"Address: {address}\n"
+                            f"Duration: {duration} mins"
+                        )
+                        gcal.reschedule_appointment(
+                            event_id, appt_time, duration_minutes=duration,
+                            description=desc, summary=summary
+                        )
+            except Exception as e:
+                safe_print(f"[GCAL] Auto-sync on edit failed (non-critical): {e}")
             return jsonify({"success": True})
         return jsonify({"error": "Failed to update booking"}), 400
     
@@ -3989,6 +4055,16 @@ def booking_detail_api(booking_id):
         booking = db.get_booking(booking_id, company_id=company_id)
         if not booking:
             return jsonify({"error": "Booking not found"}), 404
+        
+        # Cancel in Google Calendar if connected
+        try:
+            from src.services.google_calendar_oauth import get_company_google_calendar
+            gcal = get_company_google_calendar(company_id, db)
+            event_id = booking.get('calendar_event_id', '')
+            if gcal and event_id and not str(event_id).startswith('db_'):
+                gcal.cancel_appointment(event_id)
+        except Exception as e:
+            safe_print(f"[GCAL] Auto-sync on delete failed (non-critical): {e}")
         
         success = db.delete_booking(booking_id, company_id=company_id)
         if success:
@@ -4014,6 +4090,40 @@ def complete_booking_api(booking_id):
     
     # Update booking status to completed - pass company_id for security
     db.update_booking(booking_id, company_id=company_id, status='completed')
+    
+    # Sync completed status to Google Calendar if connected
+    try:
+        from src.services.google_calendar_oauth import get_company_google_calendar
+        gcal = get_company_google_calendar(company_id, db)
+        if gcal:
+            event_id = booking.get('calendar_event_id', '')
+            if event_id and not str(event_id).startswith('db_'):
+                appt_time = booking.get('appointment_time')
+                if isinstance(appt_time, str):
+                    from datetime import datetime as _dt
+                    appt_time = _dt.fromisoformat(appt_time.replace('Z', '+00:00')).replace(tzinfo=None)
+                elif hasattr(appt_time, 'replace'):
+                    appt_time = appt_time.replace(tzinfo=None)
+                customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
+                service = booking.get('service_type') or 'Job'
+                duration = booking.get('duration_minutes', 60)
+                phone = booking.get('phone_number') or ''
+                address = booking.get('address') or ''
+                summary = f"✅ {service} - {customer_name}"
+                desc = (
+                    f"Synced from BookedForYou\n"
+                    f"Status: COMPLETED\n"
+                    f"Customer: {customer_name}\n"
+                    f"Phone: {phone}\n"
+                    f"Address: {address}\n"
+                    f"Duration: {duration} mins"
+                )
+                gcal.reschedule_appointment(
+                    event_id, appt_time, duration_minutes=duration,
+                    description=desc, summary=summary
+                )
+    except Exception as e:
+        safe_print(f"[GCAL] Auto-sync on complete failed (non-critical): {e}")
     
     # Generate/update client description using AI based on all appointments and notes
     try:
