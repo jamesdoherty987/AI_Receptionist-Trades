@@ -129,6 +129,10 @@ export const removeWorkerFromJob = (jobId, data) => api.post(`/api/bookings/${jo
 export const getJobWorkers = (jobId) => api.get(`/api/bookings/${jobId}/workers`);
 export const getAvailableWorkersForJob = (jobId) => api.get(`/api/bookings/${jobId}/available-workers`);
 
+// Job Photos
+export const uploadJobPhoto = (jobId, imageData) => api.post(`/api/bookings/${jobId}/photos`, { image: imageData });
+export const deleteJobPhoto = (jobId, photoUrl) => api.post(`/api/bookings/${jobId}/photos/delete`, { photo_url: photoUrl });
+
 // Finances
 export const getFinances = (range = 'year') => api.get('/api/finances', { params: { range } });
 export const getFinanceStats = () => api.get('/api/finances/stats');

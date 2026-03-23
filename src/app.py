@@ -4138,6 +4138,7 @@ def booking_detail_api(booking_id):
             'client_name': booking.get('client_name') or booking.get('customer_name'),
             'notes': notes_text,
             'address_audio_url': booking.get('address_audio_url'),
+            'photo_urls': booking.get('photo_urls') or [],
         }
         
         return jsonify(response_booking)
@@ -4253,6 +4254,112 @@ def booking_detail_api(booking_id):
         if success:
             return jsonify({"success": True, "message": "Booking deleted"})
         return jsonify({"error": "Failed to delete booking"}), 400
+
+
+@app.route("/api/bookings/<int:booking_id>/photos", methods=["POST"])
+@login_required
+@rate_limit(max_requests=20, window_seconds=60)
+def upload_job_photo_api(booking_id):
+    """Upload a photo to a job card, stored in R2"""
+    db = get_database()
+    company_id = session.get('company_id')
+
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
+        return jsonify({"error": "Booking not found"}), 404
+
+    data = request.json or {}
+    image_data = data.get('image')
+    if not image_data or not image_data.startswith('data:image/'):
+        return jsonify({"error": "Invalid image data"}), 400
+
+    # Upload to R2 under job_photos folder
+    photo_url = upload_base64_image_to_r2(image_data, company_id, file_type='job_photos')
+    if not photo_url or photo_url.startswith('data:'):
+        return jsonify({"error": "Failed to upload photo"}), 500
+
+    # Append to photo_urls JSON array
+    import json as _json
+    existing = booking.get('photo_urls') or []
+    if isinstance(existing, str):
+        try:
+            existing = _json.loads(existing)
+        except Exception:
+            existing = []
+    existing.append(photo_url)
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE bookings SET photo_urls = %s WHERE id = %s AND company_id = %s",
+            (_json.dumps(existing), booking_id, company_id)
+        )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"[ERROR] Failed to save photo URL: {e}")
+        return jsonify({"error": "Failed to save photo"}), 500
+    finally:
+        cursor.close()
+        db.return_connection(conn)
+
+    return jsonify({"success": True, "photo_url": photo_url, "photo_urls": existing})
+
+
+@app.route("/api/bookings/<int:booking_id>/photos/delete", methods=["POST"])
+@login_required
+def delete_job_photo_api(booking_id):
+    """Delete a photo from a job card"""
+    db = get_database()
+    company_id = session.get('company_id')
+
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
+        return jsonify({"error": "Booking not found"}), 404
+
+    data = request.json or {}
+    photo_url = data.get('photo_url')
+    if not photo_url:
+        return jsonify({"error": "photo_url required"}), 400
+
+    import json as _json
+    existing = booking.get('photo_urls') or []
+    if isinstance(existing, str):
+        try:
+            existing = _json.loads(existing)
+        except Exception:
+            existing = []
+
+    if photo_url not in existing:
+        return jsonify({"error": "Photo not found on this job"}), 404
+
+    # Delete from R2
+    try:
+        from src.services.storage_r2 import delete_company_file
+        delete_company_file(company_id, photo_url)
+    except Exception as e:
+        print(f"[WARNING] R2 delete failed (non-critical): {e}")
+
+    existing.remove(photo_url)
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE bookings SET photo_urls = %s WHERE id = %s AND company_id = %s",
+            (_json.dumps(existing), booking_id, company_id)
+        )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"[ERROR] Failed to update photo_urls: {e}")
+        return jsonify({"error": "Failed to delete photo"}), 500
+    finally:
+        cursor.close()
+        db.return_connection(conn)
+
+    return jsonify({"success": True, "photo_urls": existing})
 
 
 @app.route("/api/bookings/<int:booking_id>/complete", methods=["POST"])

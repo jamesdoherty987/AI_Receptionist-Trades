@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   getBooking, 
@@ -10,7 +10,9 @@ import {
   getAvailableWorkersForJob,
   sendInvoice,
   getInvoiceConfig,
-  getBusinessSettings
+  getBusinessSettings,
+  uploadJobPhoto,
+  deleteJobPhoto
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
@@ -32,6 +34,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const [editFormData, setEditFormData] = useState({});
   const [showInvoiceConfirm, setShowInvoiceConfirm] = useState(false);
   const [invoiceData, setInvoiceData] = useState(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [lightboxPhoto, setLightboxPhoto] = useState(null);
+  const photoInputRef = useRef(null);
 
   const { data: job, isLoading } = useQuery({
     queryKey: ['booking', jobId],
@@ -278,6 +283,30 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     }
   });
 
+  const photoUploadMutation = useMutation({
+    mutationFn: (imageData) => uploadJobPhoto(jobId, imageData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      addToast('Photo uploaded', 'success');
+      setUploadingPhoto(false);
+    },
+    onError: (error) => {
+      addToast(error.response?.data?.error || 'Failed to upload photo', 'error');
+      setUploadingPhoto(false);
+    }
+  });
+
+  const photoDeleteMutation = useMutation({
+    mutationFn: (photoUrl) => deleteJobPhoto(jobId, photoUrl),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      addToast('Photo removed', 'success');
+    },
+    onError: () => {
+      addToast('Failed to remove photo', 'error');
+    }
+  });
+
   const handleSendInvoice = () => {
     if (!isSubscriptionActive) {
       addToast('You need an active subscription to send invoices', 'warning');
@@ -311,6 +340,58 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     // Update the job with edited data first if needed, then send invoice
     setInvoiceData(editedData);
     invoiceMutation.mutate({ jobId, invoiceData: editedData });
+  };
+
+  const handlePhotoSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      addToast('Please select an image file', 'warning');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      addToast('Image must be under 10MB', 'warning');
+      return;
+    }
+    setUploadingPhoto(true);
+    // Compress before uploading
+    const canvas = document.createElement('canvas');
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onerror = () => {
+      addToast('Failed to read image file', 'error');
+      setUploadingPhoto(false);
+    };
+    reader.onload = (ev) => {
+      img.onerror = () => {
+        addToast('Failed to load image', 'error');
+        setUploadingPhoto(false);
+      };
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        const maxW = 1200;
+        if (w > maxW) { h = (h * maxW) / w; w = maxW; }
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        let quality = 0.8;
+        let result = canvas.toDataURL('image/jpeg', quality);
+        while (result.length > 400 * 1024 && quality > 0.2) {
+          quality -= 0.1;
+          result = canvas.toDataURL('image/jpeg', quality);
+        }
+        photoUploadMutation.mutate(result);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    if (photoInputRef.current) photoInputRef.current.value = '';
+  };
+
+  const handleDeletePhoto = (photoUrl) => {
+    if (window.confirm('Remove this photo?')) {
+      photoDeleteMutation.mutate(photoUrl);
+    }
   };
 
   const handleStatusChange = (newStatus) => {
@@ -904,8 +985,67 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                 )}
               </div>
             </div>
+
+            {/* Job Photos Card */}
+            <div className="info-card">
+              <div className="card-header-row">
+                <h3><i className="fas fa-camera"></i> Job Photos</h3>
+                <button
+                  className="btn btn-sm btn-primary"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                >
+                  {uploadingPhoto ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-plus"></i>}
+                  {uploadingPhoto ? ' Uploading...' : ' Add Photo'}
+                </button>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoSelect}
+                  style={{ display: 'none' }}
+                />
+              </div>
+
+              {job.photo_urls && job.photo_urls.length > 0 ? (
+                <div className="job-photos-grid">
+                  {job.photo_urls.map((url, idx) => (
+                    <div key={idx} className="job-photo-item">
+                      <img
+                        src={url}
+                        alt={`Job photo ${idx + 1}`}
+                        onClick={() => setLightboxPhoto(url)}
+                      />
+                      <button
+                        className="job-photo-delete"
+                        onClick={() => handleDeletePhoto(url)}
+                        disabled={photoDeleteMutation.isPending}
+                        title="Remove photo"
+                      >
+                        <i className="fas fa-trash"></i>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-workers">
+                  <i className="fas fa-image"></i>
+                  <p>No photos yet</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Photo Lightbox */}
+        {lightboxPhoto && (
+          <div className="job-photo-lightbox" onClick={() => setLightboxPhoto(null)}>
+            <button className="lightbox-close" onClick={() => setLightboxPhoto(null)}>
+              <i className="fas fa-times"></i>
+            </button>
+            <img src={lightboxPhoto} alt="Job photo full size" onClick={(e) => e.stopPropagation()} />
+          </div>
+        )}
       </div>
 
       {/* Invoice Confirmation Modal */}

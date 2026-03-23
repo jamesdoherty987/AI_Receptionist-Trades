@@ -22,7 +22,7 @@ from pydub import AudioSegment
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 AI_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID")  # 2fe8mwpfJcqvj9RGBsC1 - production AI voice
-CUSTOMER_VOICE_ID = "DbwWo4rVEd5NrejHYUnm"  # Irish accent male
+CUSTOMER_VOICE_ID = "DbwWo4rVEd5NrejHYUnm"  # Irish accent female
 FALLBACK_VOICE_ID = os.getenv("ELEVENLABS_FALLBACK_VOICE_ID")  # cfgXMWoeQsY6I5kM4gP3
 
 API_URL = "https://api.elevenlabs.io/v1/text-to-speech"

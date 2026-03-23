@@ -1905,7 +1905,8 @@ class PostgreSQLDatabaseWrapper:
                 if db_field in ['calendar_event_id', 'appointment_time', 'service_type', 
                           'status', 'phone_number', 'email', 'charge', 'payment_status', 
                           'payment_method', 'urgency', 'address', 'eircode', 'property_type',
-                          'duration_minutes', 'address_audio_url', 'requires_callout']:
+                          'duration_minutes', 'address_audio_url', 'requires_callout',
+                          'photo_urls']:
                     fields.append(f"{db_field} = %s")
                     values.append(value)
             
