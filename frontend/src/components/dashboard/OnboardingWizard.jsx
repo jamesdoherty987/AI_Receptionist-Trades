@@ -319,12 +319,12 @@ function OnboardingWizard({ onComplete }) {
 
   const isStepComplete = (stepId) => {
     if (stepId === 'subscription') return hasActiveSubscription();
-    if (stepId === 'phone') return !!settings?.twilio_phone_number;
-    if (stepId === 'service-area') return !!(settings?.address && settings?.coverage_area && settings?.business_hours);
-    if (stepId === 'company-details') return !!settings?.company_context;
-    if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder) || isPaymentSkipped();
-    if (stepId === 'services') return (servicesData?.services || []).length > 0;
-    if (stepId === 'workers') return (Array.isArray(workersData) ? workersData : []).length > 0;
+    if (stepId === 'phone') return !!settings?.twilio_phone_number || completedSteps.includes('phone');
+    if (stepId === 'service-area') return !!(settings?.address && settings?.coverage_area && settings?.business_hours) || completedSteps.includes('service-area');
+    if (stepId === 'company-details') return !!settings?.company_context || completedSteps.includes('company-details');
+    if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder) || isPaymentSkipped() || completedSteps.includes('payment');
+    if (stepId === 'services') return localStorage.getItem('services_setup_visited') === 'true';
+    if (stepId === 'workers') return localStorage.getItem('workers_setup_visited') === 'true';
     return completedSteps.includes(stepId);
   };
 
@@ -651,7 +651,7 @@ function OnboardingWizard({ onComplete }) {
                       <button className="btn btn-secondary" onClick={handleSkipStep}>
                         Skip for now
                       </button>
-                      <button className="btn btn-primary" onClick={() => { setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Services')) btn.click(); }); }, 100); }}>
+                      <button className="btn btn-primary" onClick={() => { localStorage.setItem('services_setup_visited', 'true'); if (!completedSteps.includes('services')) { setCompletedSteps(prev => [...prev, 'services']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Services')) btn.click(); }); }, 100); }}>
                         <i className="fas fa-concierge-bell"></i> Go to Services
                       </button>
                     </div>
@@ -681,7 +681,7 @@ function OnboardingWizard({ onComplete }) {
                       <button className="btn btn-secondary" onClick={handleSkipStep}>
                         Skip for now
                       </button>
-                      <button className="btn btn-primary" onClick={() => { setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Workers')) btn.click(); }); }, 100); }}>
+                      <button className="btn btn-primary" onClick={() => { localStorage.setItem('workers_setup_visited', 'true'); if (!completedSteps.includes('workers')) { setCompletedSteps(prev => [...prev, 'workers']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Workers')) btn.click(); }); }, 100); }}>
                         <i className="fas fa-hard-hat"></i> Go to Workers
                       </button>
                     </div>
