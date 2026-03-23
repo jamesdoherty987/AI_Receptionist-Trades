@@ -5402,8 +5402,9 @@ def google_calendar_callback():
 
                 # Phase 1: Push DB → Google Calendar
                 for booking in all_bookings:
-                    if booking.get('status') in ['cancelled', 'completed']:
+                    if booking.get('status') == 'cancelled':
                         continue
+                    is_completed = booking.get('status') == 'completed'
                     appt_time = booking.get('appointment_time')
                     if not appt_time:
                         continue
@@ -5414,34 +5415,52 @@ def google_calendar_callback():
                             continue
                     elif hasattr(appt_time, 'replace'):
                         appt_time = appt_time.replace(tzinfo=None)
-                    if appt_time <= now:
-                        continue
-                    existing_event_id = booking.get('calendar_event_id', '')
-                    if existing_event_id and not str(existing_event_id).startswith('db_'):
+                    if appt_time <= now and not is_completed:
                         continue
                     customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
                     service = booking.get('service_type') or 'Job'
                     duration = booking.get('duration_minutes', 60)
                     phone = booking.get('phone_number') or ''
                     address = booking.get('address') or ''
-                    summary = f"{service} - {customer_name}"
-                    desc = f"Synced from BookedForYou\nCustomer: {customer_name}\nPhone: {phone}\nAddress: {address}\nDuration: {duration} mins"
-                    try:
-                        gcal_event = gcal.book_appointment(
-                            summary=summary,
-                            start_time=appt_time,
-                            duration_minutes=duration,
-                            description=desc,
-                            phone_number=phone
-                        )
-                        if gcal_event and booking.get('id'):
-                            new_id = gcal_event.get('id')
-                            db.update_booking(booking['id'], calendar_event_id=new_id, company_id=company_id)
-                            if new_id:
-                                known_gcal_ids.add(new_id)
+                    summary = f"{'✅ ' if is_completed else ''}{service} - {customer_name}"
+                    desc = (
+                        f"Synced from BookedForYou\n"
+                        f"{'Status: COMPLETED\n' if is_completed else ''}"
+                        f"Customer: {customer_name}\n"
+                        f"Phone: {phone}\n"
+                        f"Address: {address}\n"
+                        f"Duration: {duration} mins"
+                    )
+                    existing_event_id = booking.get('calendar_event_id', '')
+                    has_real_gcal = existing_event_id and not str(existing_event_id).startswith('db_')
+                    if has_real_gcal:
+                        # Update existing gcal event (single API call)
+                        try:
+                            gcal.reschedule_appointment(
+                                existing_event_id, appt_time, duration_minutes=duration,
+                                description=desc, summary=summary
+                            )
                             push_synced += 1
-                    except Exception:
-                        pass
+                        except Exception:
+                            pass
+                    elif not is_completed:
+                        # Only create new gcal events for active bookings
+                        try:
+                            gcal_event = gcal.book_appointment(
+                                summary=summary,
+                                start_time=appt_time,
+                                duration_minutes=duration,
+                                description=desc,
+                                phone_number=phone
+                            )
+                            if gcal_event and booking.get('id'):
+                                new_id = gcal_event.get('id')
+                                db.update_booking(booking['id'], calendar_event_id=new_id, company_id=company_id)
+                                if new_id:
+                                    known_gcal_ids.add(new_id)
+                                push_synced += 1
+                        except Exception:
+                            pass
 
                 # Phase 2: Pull Google Calendar → DB
                 try:
@@ -5599,9 +5618,11 @@ def google_calendar_sync():
         if has_real_gcal:
             known_gcal_ids.add(existing_event_id)
 
-        if booking.get('status') in ['cancelled', 'completed']:
+        if booking.get('status') == 'cancelled':
             push_skipped += 1
             continue
+
+        is_completed = booking.get('status') == 'completed'
 
         appt_time = booking.get('appointment_time')
         if not appt_time:
@@ -5616,7 +5637,8 @@ def google_calendar_sync():
         elif hasattr(appt_time, 'replace'):
             appt_time = appt_time.replace(tzinfo=None)
 
-        if appt_time <= now:
+        # Skip past bookings unless they're completed (fix their gcal display)
+        if appt_time <= now and not is_completed:
             push_skipped += 1
             continue
 
@@ -5625,9 +5647,10 @@ def google_calendar_sync():
         duration = booking.get('duration_minutes', 60)
         phone = booking.get('phone_number') or ''
         address = booking.get('address') or ''
-        summary = f"{service} - {customer_name}"
+        summary = f"{'✅ ' if is_completed else ''}{service} - {customer_name}"
         desc = (
             f"Synced from BookedForYou\n"
+            f"{'Status: COMPLETED\n' if is_completed else ''}"
             f"Customer: {customer_name}\n"
             f"Phone: {phone}\n"
             f"Address: {address}\n"
@@ -5638,10 +5661,11 @@ def google_calendar_sync():
             if has_real_gcal:
                 gcal.reschedule_appointment(
                     existing_event_id, appt_time, duration_minutes=duration,
-                    description=desc
+                    description=desc, summary=summary
                 )
                 push_updated += 1
-            else:
+            elif not is_completed:
+                # Only create new gcal events for active bookings, not completed ones
                 gcal_event = gcal.book_appointment(
                     summary=summary,
                     start_time=appt_time,

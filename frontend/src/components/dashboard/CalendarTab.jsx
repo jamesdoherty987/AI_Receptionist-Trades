@@ -440,8 +440,8 @@ function CalendarTab() {
                         {events.slice(0, 3).map((event, i) => (
                           <span 
                             key={i} 
-                            className="event-dot worker-colored"
-                            style={{ backgroundColor: getWorkerColor(event) }}
+                            className={`event-dot worker-colored${event.status === 'completed' ? ' completed' : ''}`}
+                            style={{ backgroundColor: event.status === 'completed' ? 'var(--success)' : getWorkerColor(event) }}
                             title={`${event.customer_name || 'Customer'} - ${event.service_type || 'Service'}`}
                           ></span>
                         ))}
@@ -487,9 +487,9 @@ function CalendarTab() {
                 selectedDateEvents.map(event => (
                   <div 
                     key={event.id} 
-                    className="event-card clickable"
+                    className={`event-card clickable${event.status === 'completed' ? ' completed' : ''}`}
                     onClick={() => setSelectedJobId(event.id)}
-                    style={{ borderLeftColor: getWorkerColor(event) }}
+                    style={{ borderLeftColor: event.status === 'completed' ? '#22c55e' : getWorkerColor(event) }}
                   >
                     <div className="event-time">
                       <span className="time-range">{formatTimeRange(event.appointment_time, event.duration_minutes)}</span>
@@ -647,15 +647,15 @@ function CalendarTab() {
                       return (
                         <div
                           key={event.id}
-                          className={`week-event ${isFullDay ? 'full-day' : ''}`}
+                          className={`week-event ${isFullDay ? 'full-day' : ''}${event.status === 'completed' ? ' completed' : ''}`}
                           style={{
                             top: `${top}px`,
                             height: `${height}px`,
                             width,
                             left,
                             right: 'auto',
-                            backgroundColor: getWorkerColor(event),
-                            borderColor: getWorkerColor(event)
+                            backgroundColor: event.status === 'completed' ? '#22c55e' : getWorkerColor(event),
+                            borderColor: event.status === 'completed' ? '#16a34a' : getWorkerColor(event)
                           }}
                           onClick={() => setSelectedJobId(event.id)}
                           title={`${event.customer_name} - ${event.service_type || 'Service'}`}

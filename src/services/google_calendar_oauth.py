@@ -351,7 +351,8 @@ class CompanyGoogleCalendar:
 
     def reschedule_appointment(self, event_id: str, new_start_time,
                                duration_minutes: int = None,
-                               description: str = None) -> Optional[dict]:
+                               description: str = None,
+                               summary: str = None) -> Optional[dict]:
         """Move an event to a new time, applying the same full-day/multi-day
         business-day logic used when creating events.
         Optionally updates the description in the same API call to avoid
@@ -421,6 +422,10 @@ class CompanyGoogleCalendar:
             # separate get+update that could revert the time changes.
             if description is not None:
                 event['description'] = description
+
+            # Update summary if provided (e.g. to add ✅ for completed jobs)
+            if summary is not None:
+                event['summary'] = summary
 
             # Ensure extendedProperties are set (older events may lack them)
             if 'extendedProperties' not in event:

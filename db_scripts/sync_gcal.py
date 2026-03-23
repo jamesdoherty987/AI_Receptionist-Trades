@@ -52,9 +52,11 @@ def sync_company(company_id: int, db, dry_run: bool = False,
     if push:
         print(f"    [PUSH] DB → Google Calendar")
         for booking in bookings:
-            if booking.get('status') in ['cancelled', 'completed']:
+            if booking.get('status') == 'cancelled':
                 stats['push_skipped'] += 1
                 continue
+
+            is_completed = booking.get('status') == 'completed'
 
             appt_time = booking.get('appointment_time')
             if not appt_time:
@@ -69,7 +71,8 @@ def sync_company(company_id: int, db, dry_run: bool = False,
             elif hasattr(appt_time, 'replace'):
                 appt_time = appt_time.replace(tzinfo=None)
 
-            if appt_time <= now:
+            # Skip past bookings unless they're completed (fix their gcal display)
+            if appt_time <= now and not is_completed:
                 stats['push_skipped'] += 1
                 continue
 
@@ -78,11 +81,14 @@ def sync_company(company_id: int, db, dry_run: bool = False,
             duration = booking.get('duration_minutes', 60)
             phone = booking.get('phone_number') or ''
             address = booking.get('address') or ''
-            summary = f"{service} - {customer_name}"
+            summary = f"{'✅ ' if is_completed else ''}{service} - {customer_name}"
             desc = (
                 f"Synced from BookedForYou\n"
-                f"Customer: {customer_name}\nPhone: {phone}\n"
-                f"Address: {address}\nDuration: {duration} mins"
+                f"{'Status: COMPLETED\n' if is_completed else ''}"
+                f"Customer: {customer_name}\n"
+                f"Phone: {phone}\n"
+                f"Address: {address}\n"
+                f"Duration: {duration} mins"
             )
 
             existing_event_id = booking.get('calendar_event_id', '')
@@ -93,18 +99,18 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                 print(f"      [{bid}] UPDATE  {summary}  {appt_time.strftime('%Y-%m-%d %H:%M')}  {duration}min")
                 if not dry_run:
                     try:
-                        gcal.reschedule_appointment(existing_event_id, appt_time, duration_minutes=duration)
-                        try:
-                            gcal.update_event_description(existing_event_id, desc)
-                        except Exception:
-                            pass
+                        gcal.reschedule_appointment(
+                            existing_event_id, appt_time, duration_minutes=duration,
+                            description=desc, summary=summary
+                        )
                         stats['push_updated'] += 1
                     except Exception as e:
                         print(f"      [{bid}] ERROR: {e}")
                         stats['push_errors'] += 1
                 else:
                     stats['push_updated'] += 1
-            else:
+            elif not is_completed:
+                # Only create new gcal events for active bookings, not completed ones
                 print(f"      [{bid}] CREATE  {summary}  {appt_time.strftime('%Y-%m-%d %H:%M')}  {duration}min")
                 if not dry_run:
                     try:
