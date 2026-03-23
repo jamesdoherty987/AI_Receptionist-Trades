@@ -72,7 +72,7 @@ class TestFindWorkerAvailableDays:
             mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
             mock_config.get_business_hours.return_value = {'start': 9, 'end': 17}
             
-            available = _find_worker_available_days(
+            available, available_iso = _find_worker_available_days(
                 db=mock_db, worker_ids=[1], duration_minutes=480,
                 exclude_booking_id=None, company_id=1, days_to_check=14
             )
@@ -89,7 +89,7 @@ class TestFindWorkerAvailableDays:
             mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
             mock_config.get_business_hours.return_value = {'start': 9, 'end': 17}
             
-            available = _find_worker_available_days(
+            available, available_iso = _find_worker_available_days(
                 db=mock_db, worker_ids=[1], duration_minutes=480,
                 exclude_booking_id=None, company_id=1, days_to_check=14
             )
@@ -104,7 +104,7 @@ class TestFindWorkerAvailableDays:
             mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
             mock_config.get_business_hours.return_value = {'start': 9, 'end': 17}
             
-            available = _find_worker_available_days(
+            available, available_iso = _find_worker_available_days(
                 db=mock_db, worker_ids=[1], duration_minutes=480,
                 exclude_booking_id=None, company_id=1, days_to_check=14
             )

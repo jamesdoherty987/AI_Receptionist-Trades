@@ -49,7 +49,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_availability",
-            "description": "Search for availability based on customer's specific request. Use when customer asks about specific dates, times, or constraints like 'after 4pm', 'before 2pm', 'next week', 'in 2 weeks', 'do you have anything on Monday', 'what about mornings'. Understands natural language date/time queries.",
+            "description": "Search for availability based on customer's specific request. Use when customer asks about specific dates, times, or constraints like 'after 4pm', 'before 2pm', 'next week', 'in 2 weeks', 'do you have anything on Monday', 'what about mornings'. Understands natural language date/time queries. IMPORTANT: When the customer rejects suggested dates and asks for OTHER/DIFFERENT/LATER options, you MUST pass previously_suggested_dates so the tool skips those dates and returns NEW ones.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -60,6 +60,11 @@ CALENDAR_TOOLS = [
                     "job_description": {
                         "type": "string",
                         "description": "Description of the job/service needed. This determines the service duration."
+                    },
+                    "previously_suggested_dates": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "ISO date strings (YYYY-MM-DD) of dates already suggested to the customer that they rejected. Get these from the suggested_dates field in the previous search_availability or get_next_available result. ALWAYS pass this when the customer asks for different/other/later options."
                     }
                 },
                 "required": ["query", "job_description"]
@@ -292,7 +297,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_reschedule_availability",
-            "description": "Search for alternative dates when rescheduling a job. Use this ONLY during a reschedule flow when the customer wants to see different/more availability options for the ASSIGNED WORKER. This checks the specific worker assigned to the booking — NOT general availability. Requires the booking_id from the earlier reschedule_job call.",
+            "description": "Search for alternative dates when rescheduling a job. Use this ONLY during a reschedule flow when the customer wants to see different/more availability options for the ASSIGNED WORKER. This checks the specific worker assigned to the booking — NOT general availability. Requires the booking_id from the earlier reschedule_job call. IMPORTANT: When the customer rejects suggested dates and asks for OTHER/DIFFERENT/LATER options, you MUST pass previously_suggested_dates so the tool skips those dates and returns NEW ones.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -303,6 +308,11 @@ CALENDAR_TOOLS = [
                     "query": {
                         "type": "string",
                         "description": "The customer's request in natural language (e.g., 'next week', 'any other options', 'the week after')"
+                    },
+                    "previously_suggested_dates": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "ISO date strings (YYYY-MM-DD) of dates already suggested to the customer that they rejected. Get these from the suggested_dates field in the previous search_reschedule_availability result. ALWAYS pass this when the customer asks for different/other/later options."
                     }
                 },
                 "required": ["booking_id", "query"]
@@ -435,9 +445,10 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
     from src.utils.config import config
     
     if not db or not worker_ids:
-        return []
+        return [], []
     
     available_days = []
+    available_dates_iso = []
     today = datetime.now()
     
     # Get business days and hours
@@ -538,9 +549,10 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
             available_days.append(f"{day_name} the {day_num}{suffix} of {month_name} ({biz_days_needed} days)")
         else:
             available_days.append(f"{day_name} the {day_num}{suffix} of {month_name}")
+        available_dates_iso.append(check_date.strftime('%Y-%m-%d'))
     
     logger.info(f"[RESCHEDULE] Found {len(available_days)} available days for workers {worker_ids}: {available_days[:5]}")
-    return available_days
+    return available_days, available_dates_iso
 
 
 def fuzzy_match_name(spoken_name: str, candidate_names: list) -> tuple:
@@ -2352,6 +2364,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 "is_full_day_service": is_full_day,
                 "is_callout_service": matched_service.get('requires_callout', False),
                 "days_found": len(available_days),
+                "suggested_dates": [d.strftime('%Y-%m-%d') for d, _ in available_days[:4]],
                 "duration_minutes": service_duration,
                 "duration_label": format_duration_label(service_duration)
             }
@@ -2363,8 +2376,21 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             logger.info(f"[RESCHED_AVAIL] ========== SEARCHING RESCHEDULE AVAILABILITY ==========")
             booking_id = arguments.get('booking_id')
             query = arguments.get('query', '')
+            previously_suggested = arguments.get('previously_suggested_dates', []) or []
             
-            logger.info(f"[RESCHED_AVAIL] Booking ID: {booking_id}, Query: '{query}'")
+            # Parse previously suggested dates into date objects for filtering
+            skip_dates = set()
+            latest_suggested = None
+            for ds in previously_suggested:
+                try:
+                    d = datetime.strptime(ds, '%Y-%m-%d').date()
+                    skip_dates.add(d)
+                    if latest_suggested is None or d > latest_suggested:
+                        latest_suggested = d
+                except:
+                    pass
+            
+            logger.info(f"[RESCHED_AVAIL] Booking ID: {booking_id}, Query: '{query}', Skip dates: {skip_dates}")
             
             if not booking_id:
                 return {"success": False, "error": "Booking ID is required. Get it from the reschedule_job result."}
@@ -2435,13 +2461,23 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 start_date = target_monday.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_date = start_date + timedelta(days=4)
             elif any(phrase in query_lower for phrase in ['later', 'further', 'further out', 'something else', 'other option', 'other day', 'different day', 'any other', 'anything else']):
-                # Vague "later" / "other options" — skip the next week, search weeks 2-5
-                start_date = (today + timedelta(days=14)).replace(hour=0, minute=0, second=0, microsecond=0)
-                end_date = today + timedelta(days=35)
+                # Vague "later" / "other options" — start AFTER the latest previously suggested date
+                if latest_suggested:
+                    start_date = (datetime.combine(latest_suggested, datetime.min.time()) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                    end_date = start_date + timedelta(days=28)
+                    logger.info(f"[RESCHED_AVAIL] Vague query with history — starting after {latest_suggested}")
+                else:
+                    start_date = (today + timedelta(days=14)).replace(hour=0, minute=0, second=0, microsecond=0)
+                    end_date = today + timedelta(days=35)
             else:
-                # Default: search next 4 weeks for any vague query
-                start_date = (today + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                end_date = today + timedelta(days=28)
+                # Default: search next 4 weeks, or after latest suggested if available
+                if latest_suggested:
+                    start_date = (datetime.combine(latest_suggested, datetime.min.time()) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                    end_date = start_date + timedelta(days=28)
+                    logger.info(f"[RESCHED_AVAIL] Default with history — starting after {latest_suggested}")
+                else:
+                    start_date = (today + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                    end_date = today + timedelta(days=28)
             
             logger.info(f"[RESCHED_AVAIL] Searching {start_date.date()} to {end_date.date()}")
             
@@ -2492,6 +2528,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 use_batch = False
             
             available_day_summaries = []
+            found_dates_iso = []  # Track ISO dates for suggested_dates return
             current_date = start_date
             end_search = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
             
@@ -2502,6 +2539,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 
                 # Skip the day being moved FROM
                 if exclude_date and current_date.date() == exclude_date:
+                    current_date += timedelta(days=1)
+                    continue
+                
+                # Skip previously suggested dates the customer already rejected
+                if current_date.date() in skip_dates:
                     current_date += timedelta(days=1)
                     continue
                 
@@ -2570,6 +2612,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     else:
                         day_label = f"{day_name} the {day_num}{suffix} of {month_name}"
                     
+                    found_dates_iso.append(current_date.strftime('%Y-%m-%d'))
+                    
                     if is_full_day:
                         available_day_summaries.append(f"{day_label}: full day available")
                     else:
@@ -2601,6 +2645,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     if exclude_date and ext_date.date() == exclude_date:
                         ext_date += timedelta(days=1)
                         continue
+                    # Skip previously suggested dates
+                    if ext_date.date() in skip_dates:
+                        ext_date += timedelta(days=1)
+                        continue
                     now = datetime.now()
                     if is_full_day:
                         check_time = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
@@ -2623,6 +2671,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 month_name = ext_date.strftime('%B')
                                 day_num = ext_date.day
                                 suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
+                                found_dates_iso.append(ext_date.strftime('%Y-%m-%d'))
                                 available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: full day available")
                     else:
                         slot_time = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
@@ -2657,6 +2706,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             month_name = ext_date.strftime('%B')
                             day_num = ext_date.day
                             suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
+                            found_dates_iso.append(ext_date.strftime('%Y-%m-%d'))
                             first_time = day_slots[0].strftime('%I %p').lstrip('0').lower()
                             last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower()
                             if len(day_slots) >= 4:
@@ -2694,6 +2744,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 "natural_summary": natural_summary,
                 "message": natural_summary,
                 "days_found": len(available_day_summaries),
+                "suggested_dates": found_dates_iso,
                 "is_full_day_service": is_full_day,
                 "duration_minutes": booking_duration,
                 "duration_label": format_duration_label(booking_duration)
@@ -2705,8 +2756,21 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             logger.info(f"[SEARCH_AVAIL] ========== SEARCHING AVAILABILITY ==========")
             query = arguments.get('query', '')
             job_description = arguments.get('job_description', 'general service')
+            previously_suggested = arguments.get('previously_suggested_dates', []) or []
             
-            logger.info(f"[SEARCH_AVAIL] Query: '{query}', Job: '{job_description}'")
+            # Parse previously suggested dates into date objects for filtering
+            skip_dates = set()
+            latest_suggested = None
+            for ds in previously_suggested:
+                try:
+                    d = datetime.strptime(ds, '%Y-%m-%d').date()
+                    skip_dates.add(d)
+                    if latest_suggested is None or d > latest_suggested:
+                        latest_suggested = d
+                except:
+                    pass
+            
+            logger.info(f"[SEARCH_AVAIL] Query: '{query}', Job: '{job_description}', Skip dates: {skip_dates}")
             
             # Get service info
             match_result = match_service(job_description, company_id=company_id)
@@ -2795,9 +2859,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                   'more option', 'else available', 'what else', 'later',
                                   'further', 'further out']
                 if any(p in query_lower for p in vague_patterns):
-                    # Search next 3 weeks from tomorrow
-                    start_date = (today + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                    end_date = today + timedelta(days=21)
+                    # Start AFTER the latest previously suggested date if available
+                    if latest_suggested:
+                        start_date = (datetime.combine(latest_suggested, datetime.min.time()) + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                        end_date = start_date + timedelta(days=28)
+                        logger.info(f"[SEARCH_AVAIL] Fast path: vague query with history — starting after {latest_suggested}")
+                    else:
+                        start_date = (today + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                        end_date = today + timedelta(days=21)
                     used_fast_path = True
                     logger.info(f"[SEARCH_AVAIL] Fast path: vague 'other options' query -> {start_date.date()} to {end_date.date()}")
             
@@ -2927,6 +2996,11 @@ Return ONLY valid JSON, no explanation."""
                     continue
                 
                 if specific_day_indices and current_date.weekday() not in specific_day_indices:
+                    current_date += timedelta(days=1)
+                    continue
+                
+                # Skip previously suggested dates the customer already rejected
+                if current_date.date() in skip_dates:
                     current_date += timedelta(days=1)
                     continue
                 
@@ -3060,6 +3134,11 @@ Return ONLY valid JSON, no explanation."""
                     
                     while ext_date <= ext_end_d:
                         if ext_date.weekday() not in business_days:
+                            ext_date += timedelta(days=1)
+                            continue
+                        
+                        # Skip previously suggested dates
+                        if ext_date.date() in skip_dates:
                             ext_date += timedelta(days=1)
                             continue
                         
@@ -3214,6 +3293,9 @@ Return ONLY valid JSON, no explanation."""
             if matched_service.get('requires_callout'):
                 voice_instruction += " This service requires an initial callout visit. Let the customer know you're booking a callout to have a look first, and the full job will be scheduled after."
             
+            # Collect found dates for suggested_dates return
+            found_dates_iso = sorted(slots_by_day.keys())
+            
             return {
                 "success": True,
                 "available_slots": formatted_slots,
@@ -3224,6 +3306,7 @@ Return ONLY valid JSON, no explanation."""
                 "is_full_day_service": is_full_day,
                 "is_callout_service": matched_service.get('requires_callout', False),
                 "days_found": len(slots_by_day),
+                "suggested_dates": found_dates_iso,
                 "duration_minutes": service_duration,
                 "duration_label": format_duration_label(service_duration)
             }
@@ -4060,8 +4143,9 @@ Return ONLY valid JSON, no explanation."""
                 
                 # Find available days for the assigned worker(s)
                 available_days = []
+                available_dates_iso = []
                 if assigned_worker_ids and db:
-                    available_days = _find_worker_available_days(
+                    available_days, available_dates_iso = _find_worker_available_days(
                         db=db,
                         worker_ids=assigned_worker_ids,
                         duration_minutes=booking_duration,
@@ -4078,6 +4162,7 @@ Return ONLY valid JSON, no explanation."""
                         "matched_name": matched_name,
                         "matched_job": matched_job,
                         "available_days": available_days,
+                        "suggested_dates": available_dates_iso[:5],
                         "error": f"Got it, that's the booking for {matched_name}. I have availability on {days_str}. Which day works for you?"
                     }
                 else:
@@ -4171,7 +4256,7 @@ Return ONLY valid JSON, no explanation."""
                 
                 if not all_workers_available:
                     # Find available days for the assigned worker(s) to suggest alternatives
-                    available_days = _find_worker_available_days(
+                    available_days, available_dates_iso = _find_worker_available_days(
                         db=db,
                         worker_ids=assigned_worker_ids,
                         duration_minutes=booking_duration,
@@ -4186,7 +4271,8 @@ Return ONLY valid JSON, no explanation."""
                             "success": False,
                             "error": f"The assigned worker ({', '.join(unavailable_workers)}) is not available on {new_time.strftime('%A, %B %d')}. They are available on: {days_str}. Which day works for you?",
                             "new_time_unavailable": True,
-                            "available_days": available_days
+                            "available_days": available_days,
+                            "suggested_dates": available_dates_iso[:5]
                         }
                     else:
                         return {
