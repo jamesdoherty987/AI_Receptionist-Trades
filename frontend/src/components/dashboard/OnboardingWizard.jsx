@@ -63,7 +63,7 @@ function OnboardingWizard({ onComplete }) {
   const [currentStepIndex, setCurrentStepIndex] = useState(null);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [formData, setFormData] = useState({
-    address: '',
+    business_address: '',
     coverage_area: '',
     business_hours: '',
     company_context: '',
@@ -205,7 +205,7 @@ function OnboardingWizard({ onComplete }) {
   useEffect(() => {
     if (settings) {
       setFormData({
-        address: settings?.address || '',
+        business_address: settings?.business_address || '',
         coverage_area: settings?.coverage_area || '',
         business_hours: settings?.business_hours || '',
         company_context: settings?.company_context || '',
@@ -220,7 +220,7 @@ function OnboardingWizard({ onComplete }) {
 
       // Determine which steps are complete — require all fields for service-area
       const completed = [];
-      if (settings.address && settings.coverage_area && settings.business_hours) {
+      if (settings.business_address && settings.coverage_area && settings.business_hours) {
         completed.push('service-area');
       }
       if (settings.company_context) {
@@ -259,7 +259,7 @@ function OnboardingWizard({ onComplete }) {
       let dataToSave = {};
       if (currentStep.id === 'service-area') {
         dataToSave = {
-          address: formData.address,
+          business_address: formData.business_address,
           coverage_area: formData.coverage_area,
           business_hours: formatBusinessHours()
         };
@@ -320,7 +320,7 @@ function OnboardingWizard({ onComplete }) {
   const isStepComplete = (stepId) => {
     if (stepId === 'subscription') return hasActiveSubscription();
     if (stepId === 'phone') return !!settings?.twilio_phone_number || completedSteps.includes('phone');
-    if (stepId === 'service-area') return !!(settings?.address && settings?.coverage_area && settings?.business_hours) || completedSteps.includes('service-area');
+    if (stepId === 'service-area') return !!(settings?.business_address && settings?.coverage_area && settings?.business_hours) || completedSteps.includes('service-area');
     if (stepId === 'company-details') return !!settings?.company_context || completedSteps.includes('company-details');
     if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder) || isPaymentSkipped() || completedSteps.includes('payment');
     if (stepId === 'services') return localStorage.getItem('services_setup_visited') === 'true';
@@ -425,8 +425,8 @@ function OnboardingWizard({ onComplete }) {
                   <input
                     type="text"
                     id="ob_address"
-                    name="address"
-                    value={formData.address}
+                    name="business_address"
+                    value={formData.business_address}
                     onChange={handleChange}
                     placeholder="e.g., 123 Main St, Dublin"
                   />
@@ -632,61 +632,49 @@ function OnboardingWizard({ onComplete }) {
 
             {currentStep.id === 'services' && (
               <div className="onboarding-form" style={{ textAlign: 'center' }}>
-                {(servicesData?.services || []).length > 0 ? (
-                  <>
-                    <div className="subscription-active-display">
-                      <i className="fas fa-check-circle"></i>
-                      <span>{servicesData.services.length} service{servicesData.services.length !== 1 ? 's' : ''} added</span>
-                    </div>
-                    <div className="step-actions">
-                      <button className="btn btn-primary" onClick={() => setCurrentStepIndex(null)}>
-                        Done
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="subscription-cta-text">Add the services you offer so your AI receptionist can book them.</p>
-                    <div className="step-actions">
-                      <button className="btn btn-secondary" onClick={handleSkipStep}>
-                        Skip for now
-                      </button>
-                      <button className="btn btn-primary" onClick={() => { localStorage.setItem('services_setup_visited', 'true'); if (!completedSteps.includes('services')) { setCompletedSteps(prev => [...prev, 'services']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Services')) btn.click(); }); }, 100); }}>
-                        <i className="fas fa-concierge-bell"></i> Go to Services
-                      </button>
-                    </div>
-                  </>
+                {(servicesData?.services || []).length > 0 && (
+                  <div className="subscription-active-display" style={{ marginBottom: '1rem' }}>
+                    <i className="fas fa-check-circle"></i>
+                    <span>{servicesData.services.length} service{servicesData.services.length !== 1 ? 's' : ''} added</span>
+                  </div>
                 )}
+                <p className="subscription-cta-text">
+                  {(servicesData?.services || []).length > 0
+                    ? 'Review or add more services for your AI receptionist.'
+                    : 'Add the services you offer so your AI receptionist can book them.'}
+                </p>
+                <div className="step-actions">
+                  <button className="btn btn-secondary" onClick={handleSkipStep}>
+                    Skip for now
+                  </button>
+                  <button className="btn btn-primary" onClick={() => { localStorage.setItem('services_setup_visited', 'true'); if (!completedSteps.includes('services')) { setCompletedSteps(prev => [...prev, 'services']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Services')) btn.click(); }); }, 100); }}>
+                    <i className="fas fa-concierge-bell"></i> Go to Services
+                  </button>
+                </div>
               </div>
             )}
 
             {currentStep.id === 'workers' && (
               <div className="onboarding-form" style={{ textAlign: 'center' }}>
-                {(Array.isArray(workersData) ? workersData : []).length > 0 ? (
-                  <>
-                    <div className="subscription-active-display">
-                      <i className="fas fa-check-circle"></i>
-                      <span>{workersData.length} worker{workersData.length !== 1 ? 's' : ''} added</span>
-                    </div>
-                    <div className="step-actions">
-                      <button className="btn btn-primary" onClick={() => setCurrentStepIndex(null)}>
-                        Done
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="subscription-cta-text">Add your workers so jobs can be assigned to them.</p>
-                    <div className="step-actions">
-                      <button className="btn btn-secondary" onClick={handleSkipStep}>
-                        Skip for now
-                      </button>
-                      <button className="btn btn-primary" onClick={() => { localStorage.setItem('workers_setup_visited', 'true'); if (!completedSteps.includes('workers')) { setCompletedSteps(prev => [...prev, 'workers']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Workers')) btn.click(); }); }, 100); }}>
-                        <i className="fas fa-hard-hat"></i> Go to Workers
-                      </button>
-                    </div>
-                  </>
+                {(Array.isArray(workersData) ? workersData : []).length > 0 && (
+                  <div className="subscription-active-display" style={{ marginBottom: '1rem' }}>
+                    <i className="fas fa-check-circle"></i>
+                    <span>{workersData.length} worker{workersData.length !== 1 ? 's' : ''} added</span>
+                  </div>
                 )}
+                <p className="subscription-cta-text">
+                  {(Array.isArray(workersData) ? workersData : []).length > 0
+                    ? 'Review or add more workers for job assignments.'
+                    : 'Add your workers so jobs can be assigned to them.'}
+                </p>
+                <div className="step-actions">
+                  <button className="btn btn-secondary" onClick={handleSkipStep}>
+                    Skip for now
+                  </button>
+                  <button className="btn btn-primary" onClick={() => { localStorage.setItem('workers_setup_visited', 'true'); if (!completedSteps.includes('workers')) { setCompletedSteps(prev => [...prev, 'workers']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Workers')) btn.click(); }); }, 100); }}>
+                    <i className="fas fa-hard-hat"></i> Go to Workers
+                  </button>
+                </div>
               </div>
             )}
 

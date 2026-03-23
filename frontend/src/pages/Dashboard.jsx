@@ -38,7 +38,7 @@ function Dashboard() {
     // 2. AND settings are loaded
     // 3. AND business info is missing
     if (!onboardingComplete && settings !== undefined && initialized) {
-      const needsSetup = !settings?.address || !settings?.coverage_area;
+      const needsSetup = !settings?.business_address || !settings?.coverage_area;
       if (needsSetup) {
         setShowOnboarding(true);
       }
