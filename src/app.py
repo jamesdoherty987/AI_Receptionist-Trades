@@ -5389,9 +5389,10 @@ def google_calendar_callback():
                 all_bookings = db.get_all_bookings(company_id=company_id)
                 push_synced = 0
                 pull_imported = 0
-                from datetime import datetime as dt
+                from datetime import datetime as dt, timedelta as _td
                 import re as _re
                 now = dt.now()
+                sync_cutoff = now - _td(days=30)
 
                 # Build set of known gcal IDs from existing bookings
                 known_gcal_ids = set()
@@ -5415,7 +5416,7 @@ def google_calendar_callback():
                             continue
                     elif hasattr(appt_time, 'replace'):
                         appt_time = appt_time.replace(tzinfo=None)
-                    if appt_time <= now and not is_completed:
+                    if appt_time < sync_cutoff:
                         continue
                     customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
                     service = booking.get('service_type') or 'Job'
@@ -5604,6 +5605,8 @@ def google_calendar_sync():
     # ── Phase 1: DB → Google Calendar ──────────────────────────────
     all_bookings = db.get_all_bookings(company_id=company_id)
     now = dt.now()
+    from datetime import timedelta
+    sync_cutoff = now - timedelta(days=30)
     push_created = 0
     push_updated = 0
     push_skipped = 0
@@ -5637,8 +5640,8 @@ def google_calendar_sync():
         elif hasattr(appt_time, 'replace'):
             appt_time = appt_time.replace(tzinfo=None)
 
-        # Skip past bookings unless they're completed (fix their gcal display)
-        if appt_time <= now and not is_completed:
+        # Include future bookings + last 30 days of past bookings (keeps gcal in sync)
+        if appt_time < sync_cutoff:
             push_skipped += 1
             continue
 

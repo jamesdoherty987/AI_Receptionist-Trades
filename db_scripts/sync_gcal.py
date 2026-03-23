@@ -40,6 +40,8 @@ def sync_company(company_id: int, db, dry_run: bool = False,
 
     bookings = db.get_all_bookings(company_id=company_id)
     now = datetime.now()
+    from datetime import timedelta
+    sync_cutoff = now - timedelta(days=30)
 
     # Track known gcal event IDs so pull phase can skip them
     known_gcal_ids = set()
@@ -71,8 +73,8 @@ def sync_company(company_id: int, db, dry_run: bool = False,
             elif hasattr(appt_time, 'replace'):
                 appt_time = appt_time.replace(tzinfo=None)
 
-            # Skip past bookings unless they're completed (fix their gcal display)
-            if appt_time <= now and not is_completed:
+            # Include future bookings + last 30 days of past bookings
+            if appt_time < sync_cutoff:
                 stats['push_skipped'] += 1
                 continue
 
