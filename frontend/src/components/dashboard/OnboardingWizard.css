@@ -78,28 +78,24 @@
   color: var(--text-secondary);
 }
 
-/* Steps List - Horizontal on desktop */
+/* Steps List - Grid on desktop, stack on mobile */
 .setup-steps-list {
-  display: flex;
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1px;
+  background: var(--border-color);
 }
 
 .setup-step-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  background: none;
+  gap: 0.625rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
   border: none;
-  border-right: 1px solid var(--border-color);
   cursor: pointer;
   text-align: left;
   transition: background 0.2s;
-  flex: 1;
-}
-
-.setup-step-item:last-child {
-  border-right: none;
 }
 
 .setup-step-item:hover {
@@ -111,15 +107,15 @@
 }
 
 .step-item-icon {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   background: rgba(59, 130, 246, 0.1);
   color: var(--accent-blue);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   flex-shrink: 0;
 }
 
@@ -135,16 +131,16 @@
 
 .step-item-title {
   display: block;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-primary);
 }
 
 .step-item-desc {
   display: block;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   color: var(--text-secondary);
-  margin-top: 0.1rem;
+  margin-top: 0.15rem;
 }
 
 .step-arrow {
@@ -157,8 +153,10 @@
   background: white;
   border: 1px solid var(--border-color);
   border-radius: 10px;
-  padding: 1.25rem;
+  padding: 1.5rem 2rem;
   text-align: center;
+  max-width: 640px;
+  margin: 0 auto;
 }
 
 .step-back-btn {
@@ -253,7 +251,7 @@
 /* Form Styles */
 .onboarding-form {
   text-align: left;
-  max-width: 400px;
+  max-width: 560px;
   margin: 0 auto;
 }
 
@@ -271,13 +269,14 @@
 
 .onboarding-form input {
   width: 100%;
-  padding: 0.65rem 0.85rem;
+  padding: 0.7rem 0.9rem;
   background: var(--bg-secondary);
   border: 2px solid var(--border-color);
   border-radius: 8px;
   font-size: 0.95rem;
   color: var(--text-primary);
   transition: all 0.2s;
+  box-sizing: border-box;
 }
 
 .onboarding-form input:focus {
@@ -289,6 +288,26 @@
 
 .onboarding-form input::placeholder {
   color: var(--text-tertiary);
+}
+
+.onboarding-form textarea {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  transition: all 0.2s;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.onboarding-form textarea:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
 }
 
 .onboarding-form small {
@@ -532,17 +551,11 @@
 /* Responsive */
 @media (max-width: 640px) {
   .setup-steps-list {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .setup-step-item {
-    border-right: none;
-    border-bottom: 1px solid var(--border-color);
-    padding: 0.5rem 0.875rem;
-  }
-
-  .setup-step-item:last-child {
-    border-bottom: none;
+    padding: 0.625rem 0.875rem;
   }
 
   .onboarding-overview-header {
@@ -554,13 +567,13 @@
   }
 
   .step-item-icon {
-    width: 24px;
-    height: 24px;
+    width: 26px;
+    height: 26px;
     font-size: 0.7rem;
   }
 
   .step-item-title {
-    font-size: 0.75rem;
+    font-size: 0.78rem;
   }
 
   .step-item-desc {
@@ -569,6 +582,11 @@
 
   .onboarding-step-card {
     padding: 1.25rem 1rem;
+    max-width: none;
+  }
+
+  .onboarding-form {
+    max-width: none;
   }
 
   .onboarding-step-card .step-icon {
