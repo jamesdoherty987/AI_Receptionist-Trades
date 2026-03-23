@@ -129,7 +129,15 @@ export const removeWorkerFromJob = (jobId, data) => api.post(`/api/bookings/${jo
 export const getJobWorkers = (jobId) => api.get(`/api/bookings/${jobId}/workers`);
 export const getAvailableWorkersForJob = (jobId) => api.get(`/api/bookings/${jobId}/available-workers`);
 
-// Job Photos
+// Job Photos & Videos
+export const uploadJobMedia = (jobId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post(`/api/bookings/${jobId}/photos`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000, // 2 min for large videos
+  });
+};
 export const uploadJobPhoto = (jobId, imageData) => api.post(`/api/bookings/${jobId}/photos`, { image: imageData });
 export const deleteJobPhoto = (jobId, photoUrl) => api.post(`/api/bookings/${jobId}/photos/delete`, { photo_url: photoUrl });
 

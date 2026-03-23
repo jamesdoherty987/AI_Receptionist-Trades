@@ -4260,7 +4260,11 @@ def booking_detail_api(booking_id):
 @login_required
 @rate_limit(max_requests=20, window_seconds=60)
 def upload_job_photo_api(booking_id):
-    """Upload a photo to a job card, stored in R2"""
+    """Upload a photo or video to a job card, stored in R2.
+    Accepts either:
+      - JSON with base64 image: {"image": "data:image/..."}
+      - Multipart form with file: file field named 'file'
+    """
     db = get_database()
     company_id = session.get('company_id')
 
@@ -4268,25 +4272,81 @@ def upload_job_photo_api(booking_id):
     if not booking:
         return jsonify({"error": "Booking not found"}), 404
 
-    data = request.json or {}
-    image_data = data.get('image')
-    if not image_data or not image_data.startswith('data:image/'):
-        return jsonify({"error": "Invalid image data"}), 400
+    import json as _json
+    import io
+    from datetime import datetime as _dt
 
-    # Upload to R2 under job_photos folder
-    photo_url = upload_base64_image_to_r2(image_data, company_id, file_type='job_photos')
-    if not photo_url or photo_url.startswith('data:'):
-        return jsonify({"error": "Failed to upload photo"}), 500
+    ALLOWED_MEDIA_TYPES = {
+        'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+        'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo',
+    }
+    MAX_VIDEO_SIZE = 50 * 1024 * 1024  # 50MB for videos
+
+    media_url = None
+
+    # Check if multipart file upload
+    if request.files and 'file' in request.files:
+        file = request.files['file']
+        if not file or not file.filename:
+            return jsonify({"error": "No file provided"}), 400
+
+        content_type = file.content_type or ''
+        if content_type not in ALLOWED_MEDIA_TYPES:
+            return jsonify({"error": f"Unsupported file type: {content_type}"}), 400
+
+        # Read file data and check size
+        file_data = file.read()
+        is_video = content_type.startswith('video/')
+        max_size = MAX_VIDEO_SIZE if is_video else MAX_IMAGE_SIZE_BYTES
+
+        if len(file_data) > max_size:
+            limit_mb = max_size // (1024 * 1024)
+            return jsonify({"error": f"File too large. Max {limit_mb}MB"}), 400
+
+        try:
+            from src.services.storage_r2 import upload_company_file, is_r2_enabled
+            if not is_r2_enabled():
+                return jsonify({"error": "Storage not configured"}), 500
+
+            ext = content_type.split('/')[-1]
+            if ext == 'quicktime':
+                ext = 'mov'
+            elif ext == 'x-msvideo':
+                ext = 'avi'
+            timestamp = _dt.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"job_media_{timestamp}_{secrets.token_hex(4)}.{ext}"
+
+            media_url = upload_company_file(
+                company_id=company_id,
+                file_data=io.BytesIO(file_data),
+                filename=filename,
+                file_type='job_photos',
+                content_type=content_type
+            )
+        except Exception as e:
+            print(f"[ERROR] Media upload failed: {e}")
+            return jsonify({"error": "Failed to upload file"}), 500
+
+    else:
+        # Fallback: base64 image upload (original behavior)
+        data = request.json or {}
+        image_data = data.get('image')
+        if not image_data or not image_data.startswith('data:image/'):
+            return jsonify({"error": "Invalid image data"}), 400
+
+        media_url = upload_base64_image_to_r2(image_data, company_id, file_type='job_photos')
+
+    if not media_url or media_url.startswith('data:'):
+        return jsonify({"error": "Failed to upload media"}), 500
 
     # Append to photo_urls JSON array
-    import json as _json
     existing = booking.get('photo_urls') or []
     if isinstance(existing, str):
         try:
             existing = _json.loads(existing)
         except Exception:
             existing = []
-    existing.append(photo_url)
+    existing.append(media_url)
 
     conn = db.get_connection()
     cursor = conn.cursor()
@@ -4298,13 +4358,13 @@ def upload_job_photo_api(booking_id):
         conn.commit()
     except Exception as e:
         conn.rollback()
-        print(f"[ERROR] Failed to save photo URL: {e}")
-        return jsonify({"error": "Failed to save photo"}), 500
+        print(f"[ERROR] Failed to save media URL: {e}")
+        return jsonify({"error": "Failed to save media"}), 500
     finally:
         cursor.close()
         db.return_connection(conn)
 
-    return jsonify({"success": True, "photo_url": photo_url, "photo_urls": existing})
+    return jsonify({"success": True, "photo_url": media_url, "photo_urls": existing})
 
 
 @app.route("/api/bookings/<int:booking_id>/photos/delete", methods=["POST"])

@@ -12,7 +12,8 @@ import {
   getInvoiceConfig,
   getBusinessSettings,
   uploadJobPhoto,
-  deleteJobPhoto
+  deleteJobPhoto,
+  uploadJobMedia
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
@@ -284,14 +285,20 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   });
 
   const photoUploadMutation = useMutation({
-    mutationFn: (imageData) => uploadJobPhoto(jobId, imageData),
+    mutationFn: (data) => {
+      // data is either a base64 string (image) or a File object (video)
+      if (typeof data === 'string') {
+        return uploadJobPhoto(jobId, data);
+      }
+      return uploadJobMedia(jobId, data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
-      addToast('Photo uploaded', 'success');
+      addToast('Media uploaded', 'success');
       setUploadingPhoto(false);
     },
     onError: (error) => {
-      addToast(error.response?.data?.error || 'Failed to upload photo', 'error');
+      addToast(error.response?.data?.error || 'Failed to upload', 'error');
       setUploadingPhoto(false);
     }
   });
@@ -342,49 +349,65 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     invoiceMutation.mutate({ jobId, invoiceData: editedData });
   };
 
+  const isVideoUrl = (url) => /\.(mp4|mov|webm|avi)(\?|$)/i.test(url);
+
   const handlePhotoSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      addToast('Please select an image file', 'warning');
+
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+
+    if (!isImage && !isVideo) {
+      addToast('Please select an image or video file', 'warning');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      addToast('Image must be under 10MB', 'warning');
+
+    const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      addToast(`File must be under ${isVideo ? '50' : '10'}MB`, 'warning');
       return;
     }
+
     setUploadingPhoto(true);
-    // Compress before uploading
-    const canvas = document.createElement('canvas');
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onerror = () => {
-      addToast('Failed to read image file', 'error');
-      setUploadingPhoto(false);
-    };
-    reader.onload = (ev) => {
-      img.onerror = () => {
-        addToast('Failed to load image', 'error');
+
+    if (isVideo) {
+      // Upload video as raw file via FormData
+      photoUploadMutation.mutate(file);
+    } else {
+      // Compress image before uploading
+      const canvas = document.createElement('canvas');
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onerror = () => {
+        addToast('Failed to read file', 'error');
         setUploadingPhoto(false);
       };
-      img.onload = () => {
-        let w = img.width, h = img.height;
-        const maxW = 1200;
-        if (w > maxW) { h = (h * maxW) / w; w = maxW; }
-        canvas.width = w;
-        canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        let quality = 0.8;
-        let result = canvas.toDataURL('image/jpeg', quality);
-        while (result.length > 400 * 1024 && quality > 0.2) {
-          quality -= 0.1;
-          result = canvas.toDataURL('image/jpeg', quality);
-        }
-        photoUploadMutation.mutate(result);
+      reader.onload = (ev) => {
+        img.onerror = () => {
+          addToast('Failed to load image', 'error');
+          setUploadingPhoto(false);
+        };
+        img.onload = () => {
+          let w = img.width, h = img.height;
+          const maxW = 1200;
+          if (w > maxW) { h = (h * maxW) / w; w = maxW; }
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          let quality = 0.8;
+          let result = canvas.toDataURL('image/jpeg', quality);
+          while (result.length > 400 * 1024 && quality > 0.2) {
+            quality -= 0.1;
+            result = canvas.toDataURL('image/jpeg', quality);
+          }
+          photoUploadMutation.mutate(result);
+        };
+        img.src = ev.target.result;
       };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
+    }
+
     if (photoInputRef.current) photoInputRef.current.value = '';
   };
 
@@ -986,22 +1009,22 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
               </div>
             </div>
 
-            {/* Job Photos Card */}
+            {/* Job Photos & Videos Card */}
             <div className="info-card">
               <div className="card-header-row">
-                <h3><i className="fas fa-camera"></i> Job Photos</h3>
+                <h3><i className="fas fa-camera"></i> Photos & Videos</h3>
                 <button
                   className="btn btn-sm btn-primary"
                   onClick={() => photoInputRef.current?.click()}
                   disabled={uploadingPhoto}
                 >
                   {uploadingPhoto ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-plus"></i>}
-                  {uploadingPhoto ? ' Uploading...' : ' Add Photo'}
+                  {uploadingPhoto ? ' Uploading...' : ' Add Media'}
                 </button>
                 <input
                   ref={photoInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/*,video/mp4,video/quicktime,video/webm"
                   onChange={handlePhotoSelect}
                   style={{ display: 'none' }}
                 />
@@ -1011,16 +1034,30 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                 <div className="job-photos-grid">
                   {job.photo_urls.map((url, idx) => (
                     <div key={idx} className="job-photo-item">
-                      <img
-                        src={url}
-                        alt={`Job photo ${idx + 1}`}
-                        onClick={() => setLightboxPhoto(url)}
-                      />
+                      {isVideoUrl(url) ? (
+                        <>
+                          <video
+                            src={getProxiedMediaUrl(url)}
+                            muted
+                            preload="metadata"
+                            onClick={() => setLightboxPhoto(url)}
+                          />
+                          <div className="video-play-badge" onClick={() => setLightboxPhoto(url)}>
+                            <i className="fas fa-play"></i>
+                          </div>
+                        </>
+                      ) : (
+                        <img
+                          src={getProxiedMediaUrl(url)}
+                          alt={`Job photo ${idx + 1}`}
+                          onClick={() => setLightboxPhoto(url)}
+                        />
+                      )}
                       <button
                         className="job-photo-delete"
                         onClick={() => handleDeletePhoto(url)}
                         disabled={photoDeleteMutation.isPending}
-                        title="Remove photo"
+                        title="Remove"
                       >
                         <i className="fas fa-trash"></i>
                       </button>
@@ -1030,20 +1067,30 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
               ) : (
                 <div className="empty-workers">
                   <i className="fas fa-image"></i>
-                  <p>No photos yet</p>
+                  <p>No photos or videos yet</p>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Photo Lightbox */}
+        {/* Media Lightbox */}
         {lightboxPhoto && (
           <div className="job-photo-lightbox" onClick={() => setLightboxPhoto(null)}>
             <button className="lightbox-close" onClick={() => setLightboxPhoto(null)}>
               <i className="fas fa-times"></i>
             </button>
-            <img src={lightboxPhoto} alt="Job photo full size" onClick={(e) => e.stopPropagation()} />
+            {isVideoUrl(lightboxPhoto) ? (
+              <video
+                src={getProxiedMediaUrl(lightboxPhoto)}
+                controls
+                autoPlay
+                onClick={(e) => e.stopPropagation()}
+                style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '8px' }}
+              />
+            ) : (
+              <img src={getProxiedMediaUrl(lightboxPhoto)} alt="Job photo full size" onClick={(e) => e.stopPropagation()} />
+            )}
           </div>
         )}
       </div>

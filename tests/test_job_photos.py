@@ -13,6 +13,7 @@ import os
 import json
 from unittest.mock import MagicMock, patch, Mock
 from datetime import datetime, timedelta
+from io import BytesIO
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -164,7 +165,7 @@ class TestUploadJobPhoto:
                                content_type='application/json')
 
         assert resp.status_code == 500
-        assert 'Failed to upload photo' in resp.get_json()['error']
+        assert 'Failed to upload media' in resp.get_json()['error']
 
     def test_upload_photo_r2_returns_empty(self, app_client):
         client, mock_db = app_client
@@ -193,7 +194,7 @@ class TestUploadJobPhoto:
                                content_type='application/json')
 
         assert resp.status_code == 500
-        assert 'Failed to save photo' in resp.get_json()['error']
+        assert 'Failed to save media' in resp.get_json()['error']
         mock_conn.rollback.assert_called_once()
 
     def test_upload_photo_handles_string_photo_urls(self, app_client):
@@ -216,6 +217,89 @@ class TestUploadJobPhoto:
         data = resp.get_json()
         assert resp.status_code == 200
         assert len(data['photo_urls']) == 2
+
+
+class TestUploadJobVideo:
+    """Test video upload via multipart form data"""
+
+    def test_upload_video_success(self, app_client):
+        client, mock_db = app_client
+        mock_db.get_booking.return_value = _make_booking()
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_db.get_connection.return_value = mock_conn
+
+        with patch('src.services.storage_r2.is_r2_enabled', return_value=True):
+            with patch('src.services.storage_r2.upload_company_file', return_value='https://r2.example.com/video1.mp4') as mock_r2:
+                from io import BytesIO
+                video_data = BytesIO(b'\x00' * 1024)  # fake video bytes
+                resp = client.post('/api/bookings/42/photos',
+                                   data={'file': (video_data, 'test.mp4', 'video/mp4')},
+                                   content_type='multipart/form-data')
+
+        data = resp.get_json()
+        assert resp.status_code == 200
+        assert data['success'] is True
+        assert 'video1.mp4' in data['photo_url']
+
+    def test_upload_video_too_large(self, app_client):
+        client, mock_db = app_client
+        mock_db.get_booking.return_value = _make_booking()
+
+        # 51MB file - over the 50MB limit
+        from io import BytesIO
+        big_data = BytesIO(b'\x00' * (51 * 1024 * 1024))
+        resp = client.post('/api/bookings/42/photos',
+                           data={'file': (big_data, 'big.mp4', 'video/mp4')},
+                           content_type='multipart/form-data')
+
+        assert resp.status_code == 400
+        assert 'too large' in resp.get_json()['error']
+
+    def test_upload_unsupported_type(self, app_client):
+        client, mock_db = app_client
+        mock_db.get_booking.return_value = _make_booking()
+
+        from io import BytesIO
+        resp = client.post('/api/bookings/42/photos',
+                           data={'file': (BytesIO(b'data'), 'test.exe', 'application/x-msdownload')},
+                           content_type='multipart/form-data')
+
+        assert resp.status_code == 400
+        assert 'Unsupported file type' in resp.get_json()['error']
+
+    def test_upload_image_via_multipart(self, app_client):
+        """Images can also be uploaded via multipart form"""
+        client, mock_db = app_client
+        mock_db.get_booking.return_value = _make_booking()
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_db.get_connection.return_value = mock_conn
+
+        with patch('src.services.storage_r2.is_r2_enabled', return_value=True):
+            with patch('src.services.storage_r2.upload_company_file', return_value='https://r2.example.com/img.jpeg'):
+                from io import BytesIO
+                resp = client.post('/api/bookings/42/photos',
+                                   data={'file': (BytesIO(b'\xff\xd8\xff'), 'photo.jpg', 'image/jpeg')},
+                                   content_type='multipart/form-data')
+
+        assert resp.status_code == 200
+        assert resp.get_json()['success'] is True
+
+    def test_upload_no_file_provided(self, app_client):
+        client, mock_db = app_client
+        mock_db.get_booking.return_value = _make_booking()
+
+        resp = client.post('/api/bookings/42/photos',
+                           data={'file': (BytesIO(b''), '', 'application/octet-stream')},
+                           content_type='multipart/form-data')
+
+        # Empty filename should fail
+        assert resp.status_code == 400
 
 
 class TestDeleteJobPhoto:
