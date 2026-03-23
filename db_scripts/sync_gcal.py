@@ -178,28 +178,44 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                 if phone_match:
                     phone = phone_match.group(1).strip()
 
+            # Try to extract email from description
+            import_email = None
+            if desc:
+                email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', desc)
+                if email_match:
+                    import_email = email_match.group(0).strip()
+
+            # External events may have no contact info — use placeholder
+            if not phone and not import_email:
+                import_email = f"imported-{gcal_id[:12]}@external.calendar"
+
             print(f"      IMPORT  {summary}  {start_dt.strftime('%Y-%m-%d %H:%M')}  {duration}min")
 
             if not dry_run:
                 try:
                     client_id = db.find_or_create_client(
                         name=customer_name, phone=phone or None,
-                        email=None, company_id=company_id
+                        email=import_email, company_id=company_id
                     )
                     booking_id = db.add_booking(
                         client_id=client_id, calendar_event_id=gcal_id,
                         appointment_time=start_dt.strftime('%Y-%m-%d %H:%M:%S'),
                         service_type=service_type, phone_number=phone or None,
+                        email=import_email if not phone else None,
                         company_id=company_id, duration_minutes=duration
                     )
                     if booking_id:
                         known_gcal_ids.add(gcal_id)
                         stats['pull_imported'] += 1
                     else:
-                        stats['pull_errors'] += 1
+                        # add_booking returned None — likely a duplicate
+                        stats['pull_skipped'] += 1
                 except Exception as e:
-                    print(f"      ERROR: {e}")
-                    stats['pull_errors'] += 1
+                    if 'UniqueViolation' in type(e).__name__ or 'unique constraint' in str(e).lower():
+                        stats['pull_skipped'] += 1
+                    else:
+                        print(f"      ERROR: {e}")
+                        stats['pull_errors'] += 1
             else:
                 stats['pull_imported'] += 1
 

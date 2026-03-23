@@ -5478,15 +5478,25 @@ def google_calendar_callback():
                             pm = _re.search(r'(?:Phone|Customer Phone)[:\s]*([+\d\s\-()]{7,})', evt_desc, _re.IGNORECASE)
                             if pm:
                                 phone = pm.group(1).strip()
+                        # Try to extract email from description
+                        import_email = None
+                        if evt_desc:
+                            em = _re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', evt_desc)
+                            if em:
+                                import_email = em.group(0).strip()
+                        # External events may have no contact info — use placeholder
+                        if not phone and not import_email:
+                            import_email = f"imported-{gcal_id[:12]}@external.calendar"
                         try:
                             client_id = db.find_or_create_client(
                                 name=customer_name, phone=phone or None,
-                                email=None, company_id=int(company_id)
+                                email=import_email, company_id=int(company_id)
                             )
                             booking_id = db.add_booking(
                                 client_id=client_id, calendar_event_id=gcal_id,
                                 appointment_time=start_dt.strftime('%Y-%m-%d %H:%M:%S'),
                                 service_type=service_type, phone_number=phone or None,
+                                email=import_email if not phone else None,
                                 company_id=int(company_id), duration_minutes=evt_duration
                             )
                             if booking_id:
@@ -5718,11 +5728,24 @@ def google_calendar_sync():
             if phone_match:
                 phone = phone_match.group(1).strip()
 
+        # Try to extract email from description
+        import_email = None
+        if desc:
+            import re as _re2
+            email_match = _re2.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', desc)
+            if email_match:
+                import_email = email_match.group(0).strip()
+
+        # External events may have no phone/email — use a placeholder
+        # so find_or_create_client doesn't reject them.
+        if not phone and not import_email:
+            import_email = f"imported-{gcal_id[:12]}@external.calendar"
+
         try:
             client_id = db.find_or_create_client(
                 name=customer_name,
                 phone=phone or None,
-                email=None,
+                email=import_email,
                 company_id=company_id
             )
 
@@ -5732,6 +5755,7 @@ def google_calendar_sync():
                 appointment_time=start_dt.strftime('%Y-%m-%d %H:%M:%S'),
                 service_type=service_type,
                 phone_number=phone or None,
+                email=import_email if not phone else None,
                 company_id=company_id,
                 duration_minutes=duration
             )
@@ -5740,10 +5764,15 @@ def google_calendar_sync():
                 known_gcal_ids.add(gcal_id)
                 pull_imported += 1
             else:
-                pull_errors += 1
+                # add_booking returned None — likely a duplicate
+                pull_skipped += 1
         except Exception as e:
-            safe_print(f"[GCAL_SYNC] Pull error for event {gcal_id}: {e}")
-            pull_errors += 1
+            if 'UniqueViolation' in type(e).__name__ or 'unique constraint' in str(e).lower():
+                # Already imported in a previous sync — not an error
+                pull_skipped += 1
+            else:
+                safe_print(f"[GCAL_SYNC] Pull error for event {gcal_id}: {e}")
+                pull_errors += 1
 
     total_errors = push_errors + pull_errors
     safe_print(
