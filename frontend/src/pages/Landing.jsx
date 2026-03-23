@@ -119,6 +119,25 @@ function Landing() {
     return () => video.removeEventListener('play', setVolume);
   }, []);
 
+  // Demo call audio
+  const [isCallPlaying, setIsCallPlaying] = useState(false);
+  const callAudioRef = useRef(null);
+
+  const toggleDemoCall = () => {
+    if (!callAudioRef.current) {
+      callAudioRef.current = new Audio('https://pub-6d2ed0f2cb5645b68bd219a42aed3749.r2.dev/assets/demo-call.mp3');
+      callAudioRef.current.volume = 0.8;
+      callAudioRef.current.addEventListener('ended', () => setIsCallPlaying(false));
+    }
+    if (isCallPlaying) {
+      callAudioRef.current.pause();
+      setIsCallPlaying(false);
+    } else {
+      callAudioRef.current.play();
+      setIsCallPlaying(true);
+    }
+  };
+
   // Feature flags - set to false to hide sections
   const showReviews = false;
   const showPricing = true;
@@ -407,9 +426,13 @@ function Landing() {
         <div className="section-container">
           <div className="phone-demo-layout">
             <div className="phone-demo-text">
-              <span className="section-badge">See It In Action</span>
+              <span className="section-badge">Hear It In Action</span>
               <h2>Your AI receptionist <span className="gradient-text">answers every call</span></h2>
               <p>While you're on a job, your AI handles incoming calls professionally — booking appointments, answering questions, and never putting a customer on hold.</p>
+              <button className="demo-call-btn" onClick={toggleDemoCall}>
+                <i className={`fas ${isCallPlaying ? 'fa-pause' : 'fa-play'}`}></i>
+                {isCallPlaying ? 'Pause Demo Call' : 'Listen to a Demo Call'}
+              </button>
             </div>
             <div className="phone-demo-visual">
               <Tilt
@@ -420,7 +443,7 @@ function Landing() {
                 transitionSpeed={2000}
                 className="phone-tilt-wrapper"
               >
-                <div className="phone-mockup">
+                <div className={`phone-mockup ${isCallPlaying ? 'call-active' : ''}`}>
                   <div className="phone-notch"></div>
                   <div className="phone-screen">
                     <div className="call-ui">
@@ -428,12 +451,12 @@ function Landing() {
                         <i className="fas fa-phone-alt"></i>
                       </div>
                       <div className="caller-info">
-                        <span className="caller-name">Incoming Call</span>
-                        <span className="caller-number">New Customer</span>
+                        <span className="caller-name">{isCallPlaying ? 'Mary O\'Brien' : 'Incoming Call'}</span>
+                        <span className="caller-number">{isCallPlaying ? '087 654 3210' : 'New Customer'}</span>
                       </div>
                       <div className="ai-badge">
                         <span className="ai-pulse"></span>
-                        AI Answering...
+                        {isCallPlaying ? 'AI Connected' : 'AI Answering...'}
                       </div>
                       <div className="call-wave">
                         <span></span><span></span><span></span><span></span><span></span>

@@ -384,6 +384,55 @@
   justify-content: center;
 }
 
+/* Demo call play button */
+.demo-call-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 2rem;
+  margin-top: 1.5rem;
+  background: var(--gradient-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 1rem;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: var(--shadow-glow-blue);
+}
+
+.demo-call-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow);
+}
+
+.demo-call-btn i {
+  font-size: 0.9rem;
+}
+
+/* Phone active call state */
+.phone-mockup.call-active {
+  box-shadow:
+    var(--shadow-xl),
+    0 25px 50px -12px rgba(16, 185, 129, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+}
+
+.phone-mockup.call-active .caller-avatar {
+  background: linear-gradient(135deg, #10b981, #059669);
+  animation: avatar-pulse-green 2s infinite;
+}
+
+@keyframes avatar-pulse-green {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+  50% { box-shadow: 0 0 0 20px rgba(16, 185, 129, 0); }
+}
+
+.phone-mockup.call-active .call-wave span {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
 .phone-tilt-wrapper {
   transform-style: preserve-3d;
 }
