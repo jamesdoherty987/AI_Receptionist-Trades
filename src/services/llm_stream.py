@@ -1708,6 +1708,23 @@ TOOL RULES:
                 arguments = json.loads(tool_call["function"]["arguments"])
                 print(f"   🔧 [TOOL_EXEC] Arguments: {json.dumps(arguments)}")
                 
+                # AUTO-INJECT previously suggested dates from call state
+                # This makes the "other options" / "different day" flow reliable
+                # regardless of whether the LLM remembers to pass them
+                # BUT: if the caller asks for the "soonest" / "earliest" / "closest"
+                # date, we should NOT skip — they want to circle back to the nearest option
+                if tool_name in ('search_availability', 'search_reschedule_availability', 'get_next_available') and call_state and call_state.suggested_dates:
+                    if not arguments.get('previously_suggested_dates'):
+                        query_text = (arguments.get('query') or '').lower()
+                        soonest_patterns = ['soonest', 'earliest', 'closest', 'first available', 'nearest',
+                                            'as soon as', 'quickest', 'next available', 'asap']
+                        wants_soonest = any(p in query_text for p in soonest_patterns)
+                        if wants_soonest:
+                            print(f"   🔧 [TOOL_EXEC] Caller wants soonest — NOT injecting skip dates, searching from start")
+                        else:
+                            arguments['previously_suggested_dates'] = list(call_state.suggested_dates)
+                            print(f"   🔧 [TOOL_EXEC] Auto-injected {len(call_state.suggested_dates)} previously suggested dates from call state")
+                
                 # Execute tool with timeout protection
                 try:
                     tool_start = time.time()
@@ -1739,6 +1756,22 @@ TOOL RULES:
                         raise Exception("Tool returned None")
                     
                     print(f"   🔧 [TOOL_RESULT] Success: {result.get('success')}, Message: {result.get('message', result.get('error', 'N/A'))[:100]}")
+                    
+                    # CAPTURE suggested_dates from tool result into call state
+                    # so they auto-inject on the next availability search call
+                    if call_state and result.get('suggested_dates'):
+                        new_dates = result.get('suggested_dates', [])
+                        if new_dates:
+                            for d in new_dates:
+                                if d not in call_state.suggested_dates:
+                                    call_state.suggested_dates.append(d)
+                            print(f"   🔧 [TOOL_RESULT] Accumulated {len(call_state.suggested_dates)} total suggested dates in call state")
+                    
+                    # Clear suggested dates when a booking/reschedule completes successfully
+                    # so the next availability search starts fresh
+                    if tool_name in ('book_job', 'reschedule_job') and call_state and result.get('success'):
+                        call_state.suggested_dates = []
+                        print(f"   🔧 [TOOL_RESULT] Cleared suggested dates after successful {tool_name}")
                     
                     # Check if this is a transfer request
                     if result.get("transfer") and result.get("success"):

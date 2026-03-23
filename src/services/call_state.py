@@ -78,6 +78,9 @@ class CallState:
     _addr_audio_collecting: bool = False  # True while caller is speaking their address (deferred capture)
     _addr_audio_ever_asked: bool = False  # Stays True once AI asks for address — survives declines
     
+    # --- Availability suggestion tracking (server-side, not LLM-dependent) ---
+    suggested_dates: List[str] = field(default_factory=list)  # ISO dates already shown to caller
+    
     # --- LLM response control ---
     skip_llm_response: bool = False
     
@@ -118,6 +121,7 @@ class CallState:
         self.cancel_name_confirmed = False
         self.cancel_final_asked = False
         self.skip_llm_response = False
+        self.suggested_dates = []
         self.address_audio_url = None
         self.address_audio_captured = False
         self.awaiting_address_audio = False
