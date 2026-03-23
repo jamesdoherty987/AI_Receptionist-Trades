@@ -3905,6 +3905,182 @@ def check_availability_api():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/bookings/availability/month", methods=["GET"])
+@login_required
+def check_monthly_availability_api():
+    """Return day-level availability for an entire month (for mini-calendar colouring)."""
+    db = get_database()
+    company_id = session.get('company_id')
+
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+    service_type = request.args.get('service_type')
+    worker_id = request.args.get('worker_id', type=int)
+
+    if not year or not month:
+        return jsonify({"error": "year and month parameters required"}), 400
+
+    try:
+        from datetime import datetime, timedelta, date as date_cls
+        import calendar as cal_mod
+        from src.services.settings_manager import get_settings_manager
+
+        settings_mgr = get_settings_manager()
+        default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
+
+        slot_duration = default_duration
+        if service_type:
+            service = settings_mgr.get_service_by_name(service_type, company_id=company_id)
+            if service and service.get('duration_minutes'):
+                slot_duration = service['duration_minutes']
+
+        # Business hours
+        bh_start, bh_end, open_days_set = 9, 17, None
+        try:
+            company = db.get_company(company_id)
+            if company and company.get('business_hours'):
+                import re
+                hours_str = company['business_hours']
+                time_match = re.match(r'(\d+)\s*(AM|PM)\s*-\s*(\d+)\s*(AM|PM)', hours_str, re.IGNORECASE)
+                if time_match:
+                    sh = int(time_match.group(1))
+                    sp = time_match.group(2).upper()
+                    eh = int(time_match.group(3))
+                    ep = time_match.group(4).upper()
+                    if sp == 'PM' and sh != 12: sh += 12
+                    elif sp == 'AM' and sh == 12: sh = 0
+                    if ep == 'PM' and eh != 12: eh += 12
+                    elif ep == 'AM' and eh == 12: eh = 0
+                    bh_start, bh_end = sh, eh
+
+                hours_lower = hours_str.lower()
+                if 'daily' in hours_lower or 'mon-sun' in hours_lower:
+                    open_days_set = {0,1,2,3,4,5,6}
+                elif 'mon-sat' in hours_lower:
+                    open_days_set = {0,1,2,3,4,5}
+                elif 'mon-fri' in hours_lower:
+                    open_days_set = {0,1,2,3,4}
+        except Exception:
+            pass
+
+        # Total available slots per open day
+        total_minutes = (bh_end - bh_start) * 60
+        if slot_duration >= 1440:
+            slots_per_day = 1  # full-day: 1 slot
+        else:
+            slots_per_day = max(1, total_minutes // 30)  # 30-min interval slots
+
+        # Gather all bookings for the month window (with buffer for multi-day)
+        month_start = datetime(year, month, 1)
+        _, last_day = cal_mod.monthrange(year, month)
+        month_end = datetime(year, month, last_day, 23, 59, 59)
+        buffer_start = month_start - timedelta(days=45)
+
+        all_bookings = db.get_all_bookings(company_id=company_id)
+        relevant = []
+        for b in all_bookings:
+            if b.get('status') in ['cancelled']:
+                continue
+            if worker_id:
+                bwid = b.get('worker_id')
+                if bwid and int(bwid) != worker_id:
+                    continue
+            appt = b.get('appointment_time')
+            if isinstance(appt, str):
+                try:
+                    appt = datetime.fromisoformat(appt.replace('Z', '+00:00').replace('+00:00', ''))
+                except Exception:
+                    continue
+            if not appt:
+                continue
+            dur = b.get('duration_minutes', default_duration)
+            relevant.append({'start': appt, 'duration': dur, 'booking': b})
+
+        # Build per-day info
+        days = {}
+        for day_num in range(1, last_day + 1):
+            d = date_cls(year, month, day_num)
+            day_name = d.strftime('%A').lower()
+            weekday = d.weekday()
+
+            is_open = True
+            if open_days_set is not None:
+                is_open = weekday in open_days_set
+
+            if not is_open:
+                days[d.isoformat()] = {'date': d.isoformat(), 'status': 'closed', 'booked': 0, 'total': 0}
+                continue
+
+            day_start = datetime.combine(d, datetime.min.time())
+            day_end_dt = day_start + timedelta(days=1)
+            bh_end_dt = day_start.replace(hour=bh_end, minute=0, second=0)
+
+            # Count booked slots for this day
+            booked_slots = 0
+            for rb in relevant:
+                appt = rb['start']
+                dur = rb['duration']
+                if dur > 1440:
+                    from src.utils.duration_utils import duration_to_business_days
+                    biz_days = duration_to_business_days(dur, company_id=company_id)
+                    try:
+                        from src.utils.config import config as _cfg
+                        biz_indices = _cfg.get_business_days_indices(company_id=company_id)
+                    except Exception:
+                        biz_indices = [0,1,2,3,4]
+                    cur = appt.replace(hour=0, minute=0, second=0, microsecond=0)
+                    counted = 0
+                    last_biz = cur
+                    for _ in range(365):
+                        if cur.weekday() in biz_indices:
+                            counted += 1
+                            last_biz = cur
+                            if counted >= biz_days:
+                                break
+                        cur += timedelta(days=1)
+                    b_end = last_biz.replace(hour=bh_end, minute=0)
+                elif dur >= 480:
+                    b_end = appt.replace(hour=bh_end, minute=0)
+                else:
+                    b_end = appt + timedelta(minutes=dur)
+
+                # Does this booking overlap with this day?
+                if appt < day_end_dt and b_end > day_start:
+                    overlap_start = max(appt, day_start)
+                    overlap_end = min(b_end, bh_end_dt)
+                    if overlap_end > overlap_start:
+                        overlap_mins = (overlap_end - overlap_start).total_seconds() / 60
+                        if slot_duration >= 1440:
+                            booked_slots += 1
+                        else:
+                            booked_slots += max(1, int(overlap_mins // 30))
+
+            booked_slots = min(booked_slots, slots_per_day)
+            free = slots_per_day - booked_slots
+            if free <= 0:
+                status = 'full'
+            elif free < slots_per_day:
+                status = 'partial'
+            else:
+                status = 'free'
+
+            days[d.isoformat()] = {
+                'date': d.isoformat(),
+                'status': status,
+                'booked': booked_slots,
+                'total': slots_per_day,
+                'free': free
+            }
+
+        return jsonify({'year': year, 'month': month, 'days': days, 'business_hours': {'start': bh_start, 'end': bh_end}})
+
+    except Exception as e:
+        print(f"[ERROR] Monthly availability: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/bookings/<int:booking_id>", methods=["GET", "PUT", "DELETE"])
 @login_required
 def booking_detail_api(booking_id):
@@ -4026,10 +4202,12 @@ def booking_detail_api(booking_id):
                             appt_time = _dt.fromisoformat(appt_time.replace('Z', '+00:00')).replace(tzinfo=None)
                         elif hasattr(appt_time, 'replace'):
                             appt_time = appt_time.replace(tzinfo=None)
-                        customer_name = updated_booking.get('client_name') or updated_booking.get('customer_name') or 'Customer'
+                        # get_booking doesn't JOIN clients, so look up the name
+                        client = db.get_client(updated_booking.get('client_id'), company_id=company_id)
+                        customer_name = (client.get('name') if client else None) or 'Customer'
                         service = updated_booking.get('service_type') or 'Job'
                         duration = updated_booking.get('duration_minutes', 60)
-                        phone = updated_booking.get('phone_number') or ''
+                        phone = updated_booking.get('phone_number') or (client.get('phone') if client else '') or ''
                         address = updated_booking.get('address') or ''
                         is_completed = updated_booking.get('status') == 'completed'
                         summary = f"{'✅ ' if is_completed else ''}{service} - {customer_name}"
@@ -4104,10 +4282,12 @@ def complete_booking_api(booking_id):
                     appt_time = _dt.fromisoformat(appt_time.replace('Z', '+00:00')).replace(tzinfo=None)
                 elif hasattr(appt_time, 'replace'):
                     appt_time = appt_time.replace(tzinfo=None)
-                customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
+                # get_booking doesn't JOIN clients, so look up the name
+                client = db.get_client(client_id, company_id=company_id)
+                customer_name = (client.get('name') if client else None) or 'Customer'
                 service = booking.get('service_type') or 'Job'
                 duration = booking.get('duration_minutes', 60)
-                phone = booking.get('phone_number') or ''
+                phone = booking.get('phone_number') or (client.get('phone') if client else '') or ''
                 address = booking.get('address') or ''
                 summary = f"✅ {service} - {customer_name}"
                 desc = (
