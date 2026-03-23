@@ -192,9 +192,9 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
 
   const totalBookings = clientBookings.length;
   const completedBookings = clientBookings.filter(b => b.status === 'completed').length;
-  const totalSpent = clientBookings
+  const totalSpent = Math.round(clientBookings
     .filter(b => b.status === 'completed')
-    .reduce((sum, b) => sum + (parseFloat(b.estimated_charge || b.charge || 0)), 0);
+    .reduce((sum, b) => sum + (parseFloat(b.estimated_charge || b.charge || 0)), 0) * 100) / 100;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Customer Details" size="xlarge">

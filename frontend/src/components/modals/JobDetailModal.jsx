@@ -118,7 +118,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
         property_type: job.property_type || '',
         job_address: job.job_address || job.address || '',
         eircode: job.eircode || '',
-        estimated_charge: job.estimated_charge || job.charge || '',
+        estimated_charge: (job.estimated_charge || job.charge) ? Math.round(parseFloat(job.estimated_charge || job.charge) * 100) / 100 : '',
         duration_minutes: job.duration_minutes || 60,
         notes: job.notes || ''
       });
@@ -358,7 +358,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
         property_type: job.property_type || '',
         job_address: job.job_address || job.address || '',
         eircode: job.eircode || '',
-        estimated_charge: job.estimated_charge || job.charge || '',
+        estimated_charge: (job.estimated_charge || job.charge) ? Math.round(parseFloat(job.estimated_charge || job.charge) * 100) / 100 : '',
         duration_minutes: job.duration_minutes || 60,
         notes: job.notes || ''
       });

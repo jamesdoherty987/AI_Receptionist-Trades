@@ -3259,6 +3259,11 @@ def client_api(client_id):
                     if booking.get('eircode'):
                         client['eircode'] = booking['eircode']
                         break
+            if not client.get('property_type') and bookings:
+                for booking in sorted(bookings, key=lambda b: b.get('appointment_time', ''), reverse=True):
+                    if booking.get('property_type'):
+                        client['property_type'] = booking['property_type']
+                        break
             if not client.get('email') and bookings:
                 # Find most recent booking with an email
                 for booking in sorted(bookings, key=lambda b: b.get('appointment_time', ''), reverse=True):
@@ -3562,7 +3567,7 @@ def bookings_api():
             job_charge = data.get('charge') or data.get('estimated_charge')
             if job_charge:
                 try:
-                    job_charge = float(job_charge)
+                    job_charge = round(float(job_charge), 2)
                     if job_charge < 0:
                         job_charge = None
                 except (ValueError, TypeError):

@@ -1,6 +1,6 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createBooking, getClients, checkAvailability, checkMonthlyAvailability, getServicesMenu, getWorkers, checkWorkerAvailability } from '../../services/api';
+import { createBooking, getClients, getClient, checkAvailability, checkMonthlyAvailability, getServicesMenu, getWorkers, checkWorkerAvailability } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import AddClientModal from './AddClientModal';
@@ -155,13 +155,43 @@ function AddJobModal({ isOpen, onClose }) {
     const n = new Date(); setCalMonth(n.getMonth()); setCalYear(n.getFullYear());
   };
 
-  const handleSelectCustomer = (customer) => { setSelectedCustomer(customer); setFormData(prev => ({ ...prev, client_id: customer.id })); setCustomerPickerOpen(false); setCustomerSearch(''); };
-  const handleClearCustomer = () => { setSelectedCustomer(null); setFormData(prev => ({ ...prev, client_id: '' })); };
+  const handleSelectCustomer = async (customer) => {
+    setSelectedCustomer(customer);
+    setFormData(prev => ({ ...prev, client_id: customer.id }));
+    setCustomerPickerOpen(false);
+    setCustomerSearch('');
+    // Fetch full client details to auto-fill address/eircode/property_type
+    try {
+      const res = await getClient(customer.id);
+      const c = res.data;
+      setFormData(prev => ({
+        ...prev,
+        client_id: customer.id,
+        job_address: c.address || prev.job_address || '',
+        eircode: c.eircode || prev.eircode || '',
+        property_type: c.property_type || prev.property_type || '',
+      }));
+    } catch (e) {
+      // Non-critical — form still works without auto-fill
+    }
+  };
+  const handleClearCustomer = () => {
+    setSelectedCustomer(null);
+    setFormData(prev => ({ ...prev, client_id: '', job_address: '', eircode: '', property_type: '' }));
+  };
 
   const handleServiceSelect = (service) => {
     setSelectedService(service);
     const newDuration = service.duration_minutes || 60;
-    setFormData(prev => ({ ...prev, service_type: service.name, estimated_charge: service.price || '', duration_minutes: newDuration }));
+    // Round price to 2 decimal places to avoid floating point display issues (REAL column)
+    const safePrice = service.price ? Math.round(parseFloat(service.price) * 100) / 100 : '';
+    setFormData(prev => ({
+      ...prev,
+      service_type: service.name,
+      estimated_charge: safePrice,
+      duration_minutes: newDuration,
+      requires_callout: typeof service.requires_callout === 'boolean' ? service.requires_callout : prev.requires_callout,
+    }));
     // Reset date selection when service changes (availability changes)
     setSelectedDate('');
     setFormData(prev => ({ ...prev, appointment_time: '' }));
@@ -286,13 +316,13 @@ function AddJobModal({ isOpen, onClose }) {
                   required>
                   <option value="">Select a service...</option>
                   {servicesMenu.services.map(s => (
-                    <option key={s.id} value={s.name}>{s.name} {s.duration_minutes ? `(${formatDuration(s.duration_minutes)})` : ''} {s.price ? `- €${s.price}` : ''}</option>
+                    <option key={s.id} value={s.name}>{s.name} {s.duration_minutes ? `(${formatDuration(s.duration_minutes)})` : ''} {s.price ? `- €${Math.round(parseFloat(s.price) * 100) / 100}` : ''}</option>
                   ))}
                 </select>
                 {selectedService && (
                   <div className="service-badge">
                     <span><i className="fas fa-clock"></i> {formatDuration(selectedService.duration_minutes || 60)}</span>
-                    {selectedService.price && <span><i className="fas fa-euro-sign"></i> €{selectedService.price}</span>}
+                    {selectedService.price && <span><i className="fas fa-euro-sign"></i> €{Math.round(parseFloat(selectedService.price) * 100) / 100}</span>}
                   </div>
                 )}
               </>

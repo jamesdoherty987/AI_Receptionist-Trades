@@ -27,7 +27,7 @@ function InvoiceConfirmModal({
         customer_name: job.customer_name || job.client_name || '',
         phone: job.phone || job.phone_number || '',
         service_type: job.service_type || job.service || '',
-        charge: job.estimated_charge || job.charge || '',
+        charge: (job.estimated_charge || job.charge) ? Math.round(parseFloat(job.estimated_charge || job.charge) * 100) / 100 : '',
         job_address: job.job_address || job.address || '',
         eircode: job.eircode || ''
       });
