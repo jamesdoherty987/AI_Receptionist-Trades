@@ -71,7 +71,10 @@ ADDRESS_ASK_KEYWORDS = ['address', 'eircode', 'eir code', 'location', 'where', '
 # These prevent Phase 1 from re-triggering when the AI says things like
 # "Just confirming your address: 32 Silver Grove, correct?"
 ADDRESS_CONFIRM_PATTERNS = ['confirm', 'correct?', 'right?', 'is it', 'is that', 'so the address is',
-                            'booked in for', 'booked for', 'job at', 'job for']
+                            'booked in for', 'booked for', 'job at', 'job for',
+                            'i have your address', 'i have the address', 'your address is',
+                            'your address as', 'the address as', 'address on file',
+                            'address we have']
 
 
 def ai_asked_for_address(text: str) -> bool:

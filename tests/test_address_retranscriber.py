@@ -218,14 +218,14 @@ class TestRetranscribeAndUpdate:
             "to_number": "0852635954",
             "appointment_time": datetime(2026, 3, 25, 10, 0),
             "customer_name": "John",
-            "address": "original",
+            "address": "32 silver grove area",
         }
 
         with patch("src.services.database.get_database", return_value=mock_db), \
              patch("src.services.sms_reminder.get_sms_service", return_value=mock_sms):
             result = await retranscribe_and_update(
                 audio_url="https://r2.example.com/audio.wav",
-                original_address="original",
+                original_address="32 silver grove area",
                 caller_phone="0852635954",
                 company_id=1,
                 booking_id=42,

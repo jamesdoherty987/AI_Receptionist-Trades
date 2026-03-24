@@ -99,6 +99,60 @@ def transcribe_address_audio(audio_url: str) -> Optional[str]:
         return None
 
 
+def _is_plausible_address(refined: str, original: str) -> bool:
+    """
+    Check if a refined transcription is plausibly the same address as the original.
+    
+    Rejects transcriptions that:
+    - Are too short to be a real address (< 3 words)
+    - Share zero words with the original (likely hallucinated from unrelated audio)
+    - Are clearly conversational filler, not an address
+    """
+    import re
+    
+    refined_lower = refined.lower().strip()
+    original_lower = original.lower().strip()
+    
+    # Too short — real addresses have at least a number + street + area
+    if len(refined_lower.split()) < 3:
+        # But if it's essentially the same as original (just punctuation/casing cleanup), allow it
+        import re as _re
+        norm_refined = _re.sub(r'[^a-z0-9\s]', '', refined_lower)
+        norm_original = _re.sub(r'[^a-z0-9\s]', '', original_lower)
+        if norm_refined.split() != norm_original.split():
+            print(f"[ADDR_RETRANSCRIBE] Validation: too short ({len(refined_lower.split())} words)")
+            return False
+    
+    # Check for conversational filler that got hallucinated into an address
+    filler_phrases = [
+        'perfect', 'thanks', 'thank you', 'great', 'okay', 'ok', 'yes',
+        'no problem', 'that\'s it', 'that\'s correct', 'correct', 'grand',
+        'lovely', 'brilliant', 'cheers', 'bye', 'goodbye'
+    ]
+    if refined_lower.rstrip('.,!? ') in filler_phrases:
+        print(f"[ADDR_RETRANSCRIBE] Validation: looks like filler, not an address")
+        return False
+    
+    # Check word overlap — a legitimate re-transcription of the same audio should
+    # share at least some words with the original ASR result. If zero overlap,
+    # the audio probably wasn't the caller saying their address at all.
+    stop_words = {'the', 'a', 'an', 'of', 'in', 'at', 'to', 'and', 'is', 'it', 'my', 'i', 'county', 'ireland', 'street', 'road', 'avenue', 'drive', 'lane', 'grove', 'park', 'close', 'way', 'place', 'crescent'}
+    
+    def meaningful_words(text):
+        words = set(re.findall(r'\b\w+\b', text.lower()))
+        return words - stop_words
+    
+    refined_words = meaningful_words(refined)
+    original_words = meaningful_words(original)
+    
+    overlap = refined_words & original_words
+    if not overlap and refined_words and original_words:
+        print(f"[ADDR_RETRANSCRIBE] Validation: zero word overlap (refined={refined_words}, original={original_words})")
+        return False
+    
+    return True
+
+
 async def retranscribe_and_update(
     audio_url: str,
     original_address: str,
@@ -145,6 +199,16 @@ async def retranscribe_and_update(
     if not refined_address:
         print(f"[ADDR_RETRANSCRIBE] Transcription failed — falling back to original: '{original_address}'")
         refined_address = original_address
+
+    # Sanity check: reject hallucinated/garbage transcriptions.
+    # gpt-4o-transcribe can hallucinate plausible-sounding addresses when the audio
+    # is just filler like "Perfect. Thanks." — validate before overwriting.
+    if refined_address and original_address and refined_address != original_address:
+        if not _is_plausible_address(refined_address, original_address):
+            print(f"[ADDR_RETRANSCRIBE] ⚠️ Refined address looks suspicious — keeping original")
+            print(f"[ADDR_RETRANSCRIBE]   Refined:  '{refined_address}'")
+            print(f"[ADDR_RETRANSCRIBE]   Original: '{original_address}'")
+            refined_address = original_address
 
     # Step 2: Update database
     if refined_address and (booking_id or client_id):
