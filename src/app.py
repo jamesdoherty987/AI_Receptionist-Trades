@@ -6372,6 +6372,10 @@ def google_calendar_sync():
     # Build a set of gcal event IDs already linked to DB bookings
     known_gcal_ids = set()
 
+    # Check if worker invites are enabled (once, outside the loop)
+    company = db.get_company(company_id)
+    invite_workers = company.get('gcal_invite_workers', False) if company else False
+
     for booking in all_bookings:
         existing_event_id = booking.get('calendar_event_id', '')
         has_real_gcal = existing_event_id and not str(existing_event_id).startswith('db_')
@@ -6408,6 +6412,15 @@ def google_calendar_sync():
         phone = booking.get('phone_number') or ''
         address = booking.get('address') or ''
         summary = f"{'✅ ' if is_completed else ''}{service} - {customer_name}"
+
+        # Build worker info for description and attendees
+        bid = booking.get('id')
+        job_workers = db.get_job_workers(bid, company_id=company_id) if bid else []
+        worker_lines = ''
+        if job_workers:
+            worker_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_workers]
+            worker_lines = f"\nWorkers: {', '.join(worker_names)}"
+
         desc = (
             f"Synced from BookedForYou\n"
             f"{'Status: COMPLETED\n' if is_completed else ''}"
@@ -6415,13 +6428,22 @@ def google_calendar_sync():
             f"Phone: {phone}\n"
             f"Address: {address}\n"
             f"Duration: {duration} mins"
+            f"{worker_lines}"
         )
+
+        # Build attendee list if worker invites are enabled
+        attendee_emails = None
+        if invite_workers and job_workers:
+            attendee_emails = [w['email'] for w in job_workers if w.get('email')]
+            if not attendee_emails:
+                attendee_emails = None
 
         try:
             if has_real_gcal:
                 gcal.reschedule_appointment(
                     existing_event_id, appt_time, duration_minutes=duration,
-                    description=desc, summary=summary
+                    description=desc, summary=summary,
+                    attendee_emails=attendee_emails
                 )
                 push_updated += 1
             else:
@@ -6431,7 +6453,8 @@ def google_calendar_sync():
                     start_time=appt_time,
                     duration_minutes=duration,
                     description=desc,
-                    phone_number=phone
+                    phone_number=phone,
+                    attendee_emails=attendee_emails
                 )
                 if gcal_event:
                     new_gcal_id = gcal_event.get('id')
