@@ -3814,6 +3814,7 @@ def check_availability_api():
     service_type = request.args.get('service_type')  # Optional: to get service-specific duration
     worker_id = request.args.get('worker_id')  # Optional: filter by worker availability
     any_worker = request.args.get('any_worker', 'false').lower() == 'true'  # Show combined availability across all workers
+    override_duration = request.args.get('duration_minutes', type=int)  # Optional: override service duration
     
     if not date_str:
         return jsonify({"error": "Date parameter required (YYYY-MM-DD)"}), 400
@@ -3839,7 +3840,9 @@ def check_availability_api():
         
         # Get service-specific duration if service_type provided
         slot_duration = default_duration
-        if service_type:
+        if override_duration and override_duration > 0:
+            slot_duration = override_duration
+        elif service_type:
             service = settings_mgr.get_service_by_name(service_type, company_id=company_id)
             if service and service.get('duration_minutes'):
                 slot_duration = service['duration_minutes']
@@ -4103,6 +4106,7 @@ def check_monthly_availability_api():
     service_type = request.args.get('service_type')
     worker_id = request.args.get('worker_id', type=int)
     any_worker = request.args.get('any_worker', 'false').lower() == 'true'
+    override_duration = request.args.get('duration_minutes', type=int)
 
     if not year or not month:
         return jsonify({"error": "year and month parameters required"}), 400
@@ -4116,7 +4120,9 @@ def check_monthly_availability_api():
         default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
 
         slot_duration = default_duration
-        if service_type:
+        if override_duration and override_duration > 0:
+            slot_duration = override_duration
+        elif service_type:
             service = settings_mgr.get_service_by_name(service_type, company_id=company_id)
             if service and service.get('duration_minutes'):
                 slot_duration = service['duration_minutes']

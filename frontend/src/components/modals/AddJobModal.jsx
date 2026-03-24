@@ -114,20 +114,21 @@ function AddJobModal({ isOpen, onClose }) {
   const { data: workers } = useQuery({ queryKey: ['workers'], queryFn: async () => (await getWorkers()).data, enabled: isOpen });
 
   // Monthly availability (fires when service is selected)
+  const durationMins = parseInt(formData.duration_minutes) || 60;
   const { data: monthlyData, isLoading: isLoadingMonthly } = useQuery({
-    queryKey: ['monthly-availability', calYear, calMonth + 1, formData.service_type, formData.worker_id, anyWorkerMode],
-    queryFn: async () => (await checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode)).data,
+    queryKey: ['monthly-availability', calYear, calMonth + 1, formData.service_type, formData.worker_id, anyWorkerMode, durationMins],
+    queryFn: async () => (await checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode, durationMins)).data,
     enabled: !!formData.service_type && isOpen
   });
 
   // Daily slots (fires when date is selected)
   const { data: availability, isLoading: isLoadingAvailability } = useQuery({
-    queryKey: ['availability', selectedDate, formData.service_type, formData.worker_id, anyWorkerMode],
-    queryFn: async () => (await checkAvailability(selectedDate, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode)).data,
+    queryKey: ['availability', selectedDate, formData.service_type, formData.worker_id, anyWorkerMode, durationMins],
+    queryFn: async () => (await checkAvailability(selectedDate, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode, durationMins)).data,
     enabled: !!selectedDate && !!formData.service_type && isOpen
   });
 
-  const isFullDayJob = (formData.duration_minutes || 0) >= 1440;
+  const isFullDayJob = durationMins >= 1440;
 
   // Filter workers based on selected service's worker_restrictions
   const eligibleWorkers = useMemo(() => {
@@ -202,10 +203,10 @@ function AddJobModal({ isOpen, onClose }) {
       estimated_charge: safePrice,
       duration_minutes: newDuration,
       requires_callout: typeof service.requires_callout === 'boolean' ? service.requires_callout : prev.requires_callout,
+      appointment_time: '',
     }));
     // Reset date selection when service changes (availability changes)
     setSelectedDate('');
-    setFormData(prev => ({ ...prev, appointment_time: '' }));
 
     // Clear ineligible assigned workers when service changes
     if (service.worker_restrictions && service.worker_restrictions.type !== 'all') {
@@ -295,11 +296,12 @@ function AddJobModal({ isOpen, onClose }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
     if (name === 'duration_minutes') {
       // If duration changes, reset date/time since availability changes
       setSelectedDate('');
       setFormData(prev => ({ ...prev, [name]: value, appointment_time: '' }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
 
