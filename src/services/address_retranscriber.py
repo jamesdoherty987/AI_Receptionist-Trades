@@ -63,6 +63,12 @@ def transcribe_address_audio(audio_url: str) -> Optional[str]:
         transcript = client.audio.transcriptions.create(
             model="gpt-4o-transcribe",
             file=audio_file,
+            prompt=(
+                "Transcribe ONLY the street address from this audio. "
+                "Return just the address itself — no filler words, no conversational phrases "
+                "like 'yeah', 'no problem', 'it's', 'sure', 'the address is', etc. "
+                "Output only the house number, street, area, town, and county."
+            ),
         )
 
         duration = time.time() - start
