@@ -350,6 +350,26 @@
   display: block;
 }
 
+.video-sound-hint {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  z-index: 2;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.video-sound-hint:hover {
+  opacity: 1;
+}
+
 /* Phone Demo Section */
 .phone-demo-section {
   background: #ffffff;

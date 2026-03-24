@@ -101,6 +101,7 @@ function FeatureCard({ icon, title, description, index }) {
 function Landing() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -118,6 +119,31 @@ function Landing() {
     video.addEventListener('play', setVolume);
     return () => video.removeEventListener('play', setVolume);
   }, []);
+
+  // Pause/play video based on scroll visibility
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+      },
+      { threshold: 0.25 }
+    );
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, []);
+
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setIsMuted(video.muted);
+  };
 
   // Demo call audio
   const [isCallPlaying, setIsCallPlaying] = useState(false);
@@ -366,6 +392,17 @@ function Landing() {
             >
               <source src="https://pub-6d2ed0f2cb5645b68bd219a42aed3749.r2.dev/assets/cinematic-explainer.mp4" type="video/mp4" />
             </video>
+            {isMuted && (
+              <span
+                className="video-sound-hint"
+                onClick={toggleMute}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleMute(); }}
+              >
+                🔊 Sound on
+              </span>
+            )}
           </div>
         </div>
       </section>
