@@ -552,7 +552,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                 >
                   <i className="fas fa-edit"></i> Edit
                 </button>
-                {(job.estimated_charge || job.charge) && showInvoiceButtons && (
+                {!!(job.estimated_charge || job.charge) && showInvoiceButtons && (
                   <button 
                     className={`btn btn-invoice ${(invoiceConfig && !invoiceConfig.can_send_invoice) || !isSubscriptionActive ? 'btn-disabled' : ''}`}
                     onClick={handleSendInvoice}
@@ -764,7 +764,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                         <span className="info-value">{job.property_type}</span>
                       </div>
                     )}
-                    {(job.estimated_charge || job.charge) && (
+                    {!!(job.estimated_charge || job.charge) && (
                       <div className="info-cell">
                         <span className="info-label">Charge</span>
                         <span className="info-value price">{formatCurrency(job.estimated_charge || job.charge)}</span>
