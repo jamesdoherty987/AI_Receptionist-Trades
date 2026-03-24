@@ -3599,20 +3599,23 @@ def bookings_api():
                     created_by="user"
                 )
             
-            # Assign worker if provided
-            worker_id = data.get('worker_id')
-            if worker_id:
+            # Assign worker(s) if provided — supports both single worker_id and worker_ids array
+            worker_ids = data.get('worker_ids', [])
+            single_worker_id = data.get('worker_id')
+            if single_worker_id and not worker_ids:
+                worker_ids = [single_worker_id]
+            
+            for wid in worker_ids:
                 try:
-                    worker_id = int(worker_id)
-                    # Verify worker belongs to this company
-                    worker = db.get_worker(worker_id, company_id=company_id)
+                    wid = int(wid)
+                    worker = db.get_worker(wid, company_id=company_id)
                     if worker:
-                        db.assign_worker_to_job(booking_id, worker_id)
-                        print(f"[INFO] Worker {worker_id} assigned to booking {booking_id}")
-                except (ValueError, TypeError) as e:
-                    print(f"[WARNING] Invalid worker_id: {worker_id}")
+                        db.assign_worker_to_job(booking_id, wid)
+                        print(f"[INFO] Worker {wid} assigned to booking {booking_id}")
+                except (ValueError, TypeError):
+                    print(f"[WARNING] Invalid worker_id: {wid}")
                 except Exception as e:
-                    print(f"[WARNING] Could not assign worker: {e}")
+                    print(f"[WARNING] Could not assign worker {wid}: {e}")
             
             # Update client description
             try:
