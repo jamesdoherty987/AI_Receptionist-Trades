@@ -504,16 +504,20 @@ function CalendarTab() {
               ) : (
                 selectedDateEvents.map(event => {
                   const colors = event.status === 'completed' ? ['#22c55e'] : getWorkerColors(event);
-                  const borderStyle = colors.length > 1
-                    ? { borderImage: `linear-gradient(to bottom, ${colors.join(', ')}) 1` }
-                    : { borderLeftColor: colors[0] };
                   return (
                     <div 
                       key={event.id} 
                       className={`event-card clickable${event.status === 'completed' ? ' completed' : ''}`}
                       onClick={() => setSelectedJobId(event.id)}
-                      style={borderStyle}
+                      style={colors.length === 1 ? { borderLeftColor: colors[0] } : { borderLeftColor: 'transparent' }}
                     >
+                      {colors.length > 1 && (
+                        <div className="multi-worker-border" aria-hidden="true">
+                          {colors.map((c, i) => (
+                            <span key={i} style={{ background: c, flex: 1 }} />
+                          ))}
+                        </div>
+                      )}
                       <div className="event-time">
                         <span className="time-range">{formatTimeRange(event.appointment_time, event.duration_minutes)}</span>
                       </div>
@@ -670,9 +674,6 @@ function CalendarTab() {
                       const left = totalColumns > 1 ? `calc(4px + (100% - 8px) * ${column} / ${totalColumns})` : '4px';
                       
                       const weekColors = event.status === 'completed' ? ['#22c55e'] : getWorkerColors(event);
-                      const weekBorderStyle = weekColors.length > 1
-                        ? { borderImage: `linear-gradient(to bottom, ${weekColors.join(', ')}) 1` }
-                        : { borderColor: weekColors[0] };
                       
                       return (
                         <div
@@ -685,11 +686,18 @@ function CalendarTab() {
                             left,
                             right: 'auto',
                             backgroundColor: event.status === 'completed' ? '#22c55e' : getWorkerColor(event),
-                            ...weekBorderStyle
+                            borderColor: weekColors.length === 1 ? weekColors[0] : 'transparent'
                           }}
                           onClick={() => setSelectedJobId(event.id)}
                           title={`${event.customer_name} - ${event.service_type || 'Service'}`}
                         >
+                          {weekColors.length > 1 && (
+                            <div className="multi-worker-border" aria-hidden="true">
+                              {weekColors.map((c, i) => (
+                                <span key={i} style={{ background: c, flex: 1 }} />
+                              ))}
+                            </div>
+                          )}
                           <div className="week-event-time">
                             {formatTimeRange(event.appointment_time, event.duration_minutes)}
                           </div>

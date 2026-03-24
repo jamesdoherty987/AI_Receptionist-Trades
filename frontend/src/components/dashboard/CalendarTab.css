@@ -418,6 +418,7 @@
 
 /* Event Card */
 .event-card {
+  position: relative;
   display: flex;
   gap: 0.875rem;
   padding: 0.875rem;
@@ -435,6 +436,24 @@
 
 .event-card.completed {
   background: rgba(34, 197, 94, 0.07);
+}
+
+/* Multi-worker segmented color bar (replaces gradient) */
+.multi-worker-border {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 10px 0 0 10px;
+}
+
+.week-event .multi-worker-border {
+  width: 3px;
+  border-radius: 6px 0 0 6px;
 }
 
 .event-card.clickable:hover {
