@@ -480,24 +480,77 @@ function Landing() {
                 transitionSpeed={2000}
                 className="phone-tilt-wrapper"
               >
-                <div className={`phone-mockup ${isCallPlaying ? 'call-active' : ''}`}>
-                  <div className="phone-notch"></div>
-                  <div className="phone-screen">
-                    <div className="call-ui">
-                      <div className="caller-avatar">
-                        <i className="fas fa-phone-alt"></i>
+                <div className={`iphone-frame ${isCallPlaying ? 'call-active' : ''}`}>
+                  {/* Side buttons */}
+                  <div className="iphone-btn-silent"></div>
+                  <div className="iphone-btn-vol-up"></div>
+                  <div className="iphone-btn-vol-down"></div>
+                  <div className="iphone-btn-power"></div>
+
+                  {/* Inner bezel */}
+                  <div className="iphone-bezel">
+                    <div className="iphone-screen">
+                      {/* Status bar */}
+                      <div className="iphone-status-bar">
+                        <span className="status-time">9:41</span>
+                        <div className="status-dynamic-island">
+                          <div className="island-camera"></div>
+                        </div>
+                        <div className="status-icons">
+                          <i className="fas fa-signal"></i>
+                          <i className="fas fa-wifi"></i>
+                          <div className="status-battery">
+                            <div className="battery-body"><div className="battery-fill"></div></div>
+                            <div className="battery-nub"></div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="caller-info">
-                        <span className="caller-name">{isCallPlaying ? 'Mary O\'Brien' : 'Incoming Call'}</span>
-                        <span className="caller-number">{isCallPlaying ? '087 654 3210' : 'New Customer'}</span>
+
+                      {/* Call content */}
+                      <div className="call-ui">
+                        <div className="caller-avatar">
+                          <i className="fas fa-phone-alt"></i>
+                        </div>
+                        <div className="caller-info">
+                          <span className="caller-name">{isCallPlaying ? "Mary O'Brien" : 'Incoming Call'}</span>
+                          <span className="caller-number">{isCallPlaying ? '087 654 3210' : 'New Customer'}</span>
+                        </div>
+                        <div className="ai-badge">
+                          <span className="ai-pulse"></span>
+                          {isCallPlaying ? 'AI Connected' : 'AI Answering...'}
+                        </div>
+                        <div className="call-wave">
+                          <span></span><span></span><span></span><span></span><span></span>
+                        </div>
+
+                        {/* Call action buttons */}
+                        <div className="call-actions">
+                          <div className="call-action-btn">
+                            <div className="action-circle"><i className="fas fa-microphone-slash"></i></div>
+                            <span>mute</span>
+                          </div>
+                          <div className="call-action-btn">
+                            <div className="action-circle"><i className="fas fa-th"></i></div>
+                            <span>keypad</span>
+                          </div>
+                          <div className="call-action-btn">
+                            <div className="action-circle"><i className="fas fa-volume-up"></i></div>
+                            <span>speaker</span>
+                          </div>
+                        </div>
+
+                        <div className="call-end-row">
+                          <div className="call-end-btn">
+                            <i className="fas fa-phone-alt"></i>
+                          </div>
+                        </div>
                       </div>
-                      <div className="ai-badge">
-                        <span className="ai-pulse"></span>
-                        {isCallPlaying ? 'AI Connected' : 'AI Answering...'}
-                      </div>
-                      <div className="call-wave">
-                        <span></span><span></span><span></span><span></span><span></span>
-                      </div>
+
+                      {/* Home indicator */}
+                      <div className="iphone-home-indicator"></div>
+
+                      {/* Screen glare */}
+                      <div className="iphone-screen-glare"></div>
                     </div>
                   </div>
                 </div>
