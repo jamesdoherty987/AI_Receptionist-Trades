@@ -273,7 +273,7 @@ class TestFrontendValidationCodeInspection:
         with open('frontend/src/components/modals/AddJobModal.jsx', 'r') as f:
             content = f.read()
         
-        assert "workerAvailability" in content
+        assert "checkWorkerAvailability" in content
     
     def test_workers_tab_uses_assigned_worker_ids(self):
         """WorkersTab should use assigned_worker_ids"""

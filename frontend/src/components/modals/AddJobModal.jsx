@@ -93,9 +93,7 @@ function AddJobModal({ isOpen, onClose }) {
   
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedService, setSelectedService] = useState(null);
-  const [selectedWorker, setSelectedWorker] = useState(null);
   const [anyWorkerMode, setAnyWorkerMode] = useState(false);
-  const [workerAvailability, setWorkerAvailability] = useState(null);
   const [assignedWorkers, setAssignedWorkers] = useState([]); // [{id, name, trade_specialty, availability}]
   const assignedWorkersRef = useRef([]);
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
@@ -163,7 +161,7 @@ function AddJobModal({ isOpen, onClose }) {
 
   const resetForm = () => {
     setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false });
-    setSelectedDate(''); setSelectedService(null); setSelectedWorker(null); setAnyWorkerMode(false); setWorkerAvailability(null); setAssignedWorkers([]);
+    setSelectedDate(''); setSelectedService(null); setAnyWorkerMode(false); setAssignedWorkers([]);
     setCustomerPickerOpen(false); setCustomerSearch(''); setSelectedCustomer(null);
     const n = new Date(); setCalMonth(n.getMonth()); setCalYear(n.getFullYear());
   };
@@ -224,17 +222,13 @@ function AddJobModal({ isOpen, onClose }) {
     if (workerId === 'any') {
       // "Any Worker" mode — combined availability across all workers
       setAnyWorkerMode(true);
-      setSelectedWorker(null);
-      setWorkerAvailability(null);
       setSelectedDate('');
       setFormData(prev => ({ ...prev, worker_id: '', appointment_time: '' }));
       return;
     }
     // "" = no worker filter
     setAnyWorkerMode(false);
-    setSelectedWorker(null);
     setFormData(prev => ({ ...prev, worker_id: '' }));
-    setWorkerAvailability(null);
   };
 
   const addWorkerToJob = async (workerId) => {
@@ -243,11 +237,9 @@ function AddJobModal({ isOpen, onClose }) {
     if (assignedWorkers.some(w => w.id === id)) { addToast('Worker already assigned', 'warning'); return; }
     const worker = workers?.find(w => w.id === id);
     if (!worker) return;
-    // Clear single-worker / any-worker mode when switching to multi-worker
+    // Clear any-worker mode when switching to multi-worker
     setAnyWorkerMode(false);
-    setSelectedWorker(null);
     setFormData(prev => ({ ...prev, worker_id: '' }));
-    setWorkerAvailability(null);
     let avail = null;
     if (formData.appointment_time) {
       try {

@@ -3494,6 +3494,11 @@ def bookings_api():
             
             # Get duration from request or look up from service
             duration_minutes = data.get('duration_minutes')
+            if duration_minutes:
+                try:
+                    duration_minutes = int(duration_minutes)
+                except (ValueError, TypeError):
+                    duration_minutes = None
             if not duration_minutes:
                 # Try to get duration from service type
                 service = settings_mgr.get_service_by_name(service_type, company_id=company_id)
@@ -3503,8 +3508,18 @@ def bookings_api():
                     duration_minutes = settings_mgr.get_default_duration_minutes(company_id=company_id)
             
             # Check for time conflicts using actual duration (no buffer)
+            # Worker-aware: if specific workers are assigned, only check THEIR conflicts
             time_buffer_before = appointment_dt - timedelta(minutes=duration_minutes - 1)
             time_buffer_after = appointment_dt + timedelta(minutes=duration_minutes - 1)
+            
+            # Parse worker_ids early so we can use them for conflict checking
+            requested_worker_ids = [int(w) for w in data.get('worker_ids', []) if w]
+            single_wid = data.get('worker_id')
+            if single_wid and not requested_worker_ids:
+                try:
+                    requested_worker_ids = [int(single_wid)]
+                except (ValueError, TypeError):
+                    pass
             
             conflicting_bookings = db.get_conflicting_bookings(
                 start_time=time_buffer_before.strftime('%Y-%m-%d %H:%M:%S'),
@@ -3512,11 +3527,37 @@ def bookings_api():
                 company_id=company_id
             )
             
-            if conflicting_bookings:
+            if conflicting_bookings and requested_worker_ids:
+                # Workers are assigned — only block if one of THOSE workers is on a conflicting booking
+                worker_conflict = None
+                for wid in requested_worker_ids:
+                    for cb in conflicting_bookings:
+                        assigned = db.get_job_workers(cb['id'])
+                        if any(w['id'] == wid for w in assigned):
+                            worker_conflict = (wid, cb)
+                            break
+                    if worker_conflict:
+                        break
+                
+                if worker_conflict:
+                    wid, conflict = worker_conflict
+                    conflict_time = datetime.fromisoformat(str(conflict['appointment_time']))
+                    conflict_client = db.get_client(conflict['client_id'], company_id=company_id)
+                    conflict_client_name = conflict_client['name'] if conflict_client else 'Unknown'
+                    conflict_worker = db.get_worker(wid, company_id=company_id)
+                    conflict_worker_name = conflict_worker['name'] if conflict_worker else f'Worker {wid}'
+                    
+                    return jsonify({
+                        "error": f"Time conflict: {conflict_worker_name} already has a booking at {conflict_time.strftime('%I:%M %p')} for {conflict_client_name} ({conflict['service_type']}). Please choose a different time or remove this worker.",
+                        "conflict": True,
+                        "conflicting_time": conflict_time.isoformat(),
+                        "conflicting_client": conflict_client_name,
+                        "conflicting_worker": conflict_worker_name
+                    }), 409
+            elif conflicting_bookings and not requested_worker_ids:
+                # No workers assigned — keep the general conflict check as a safety net
                 conflict = conflicting_bookings[0]
                 conflict_time = datetime.fromisoformat(str(conflict['appointment_time']))
-                
-                # Get client name for the conflicting booking (already filtered by company_id)
                 conflict_client = db.get_client(conflict['client_id'], company_id=company_id)
                 conflict_client_name = conflict_client['name'] if conflict_client else 'Unknown'
                 
@@ -3525,7 +3566,7 @@ def bookings_api():
                     "conflict": True,
                     "conflicting_time": conflict_time.isoformat(),
                     "conflicting_client": conflict_client_name
-                }), 409  # 409 Conflict status code
+                }), 409
             
             # Google Calendar integration disabled (USE_GOOGLE_CALENDAR = False)
             calendar_event_id = None
@@ -3599,21 +3640,13 @@ def bookings_api():
                     created_by="user"
                 )
             
-            # Assign worker(s) if provided — supports both single worker_id and worker_ids array
-            worker_ids = data.get('worker_ids', [])
-            single_worker_id = data.get('worker_id')
-            if single_worker_id and not worker_ids:
-                worker_ids = [single_worker_id]
-            
-            for wid in worker_ids:
+            # Assign worker(s) — reuse the worker_ids parsed earlier for conflict checking
+            for wid in requested_worker_ids:
                 try:
-                    wid = int(wid)
                     worker = db.get_worker(wid, company_id=company_id)
                     if worker:
                         db.assign_worker_to_job(booking_id, wid)
                         print(f"[INFO] Worker {wid} assigned to booking {booking_id}")
-                except (ValueError, TypeError):
-                    print(f"[WARNING] Invalid worker_id: {wid}")
                 except Exception as e:
                     print(f"[WARNING] Could not assign worker {wid}: {e}")
             
