@@ -952,6 +952,22 @@ function Settings() {
                     Google will show a "Google hasn't verified this app" warning. Click <strong>Advanced</strong>, then <strong>Go to ai-receptionist-backend... (unsafe)</strong> at the bottom to continue. This is normal for new apps awaiting verification.
                   </p>
                 )}
+                {gcalStatus?.connected && (
+                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0', marginTop: '0.75rem' }}>
+                    <div>
+                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Invite Workers to Calendar Events</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Workers with email addresses will receive Google Calendar invites for their assigned jobs</div>
+                    </div>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={formData.gcal_invite_workers || false}
+                        onChange={(e) => { setFormData(prev => ({ ...prev, gcal_invite_workers: e.target.checked })); setHasUnsavedChanges(true); }}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               {/* Dashboard Feature Toggles */}

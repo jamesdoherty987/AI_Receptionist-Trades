@@ -2711,6 +2711,8 @@ def business_settings_api():
             # SMS toggles
             'send_confirmation_sms': company.get('send_confirmation_sms', True) if company.get('send_confirmation_sms') is not None else True,
             'send_reminder_sms': company.get('send_reminder_sms', True) if company.get('send_reminder_sms') is not None else True,
+            # Google Calendar worker invites toggle
+            'gcal_invite_workers': company.get('gcal_invite_workers', False) if company.get('gcal_invite_workers') is not None else False,
         }
         return jsonify(settings)
     
@@ -2767,6 +2769,7 @@ def business_settings_api():
             'show_invoice_buttons': 'show_invoice_buttons',
             'send_confirmation_sms': 'send_confirmation_sms',
             'send_reminder_sms': 'send_reminder_sms',
+            'gcal_invite_workers': 'gcal_invite_workers',
         }
         
         for frontend_field, db_field in field_mapping.items():
@@ -3744,19 +3747,38 @@ def bookings_api():
                     customer_name = client.get('name', 'Customer')
                     phone = data.get('phone_number') or client.get('phone') or ''
                     summary = f"{service_type} - {customer_name}"
+
+                    # Build worker info for description
+                    job_workers = db.get_job_workers(booking_id, company_id=company_id)
+                    worker_lines = ''
+                    if job_workers:
+                        worker_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_workers]
+                        worker_lines = f"\nWorkers: {', '.join(worker_names)}"
+
                     desc = (
                         f"Synced from BookedForYou\n"
                         f"Customer: {customer_name}\n"
                         f"Phone: {phone}\n"
                         f"Address: {job_address or ''}\n"
                         f"Duration: {duration_minutes} mins"
+                        f"{worker_lines}"
                     )
+
+                    # Check if worker invites are enabled
+                    attendee_emails = None
+                    company = db.get_company(company_id)
+                    if company and company.get('gcal_invite_workers'):
+                        attendee_emails = [w['email'] for w in job_workers if w.get('email')]
+                        if not attendee_emails:
+                            attendee_emails = None
+
                     gcal_event = gcal.book_appointment(
                         summary=summary,
                         start_time=appointment_dt,
                         duration_minutes=duration_minutes,
                         description=desc,
-                        phone_number=phone
+                        phone_number=phone,
+                        attendee_emails=attendee_emails
                     )
                     if gcal_event and gcal_event.get('id'):
                         db.update_booking(
@@ -5368,6 +5390,44 @@ def assign_worker_to_job_api(booking_id):
         # Include warning if forced despite conflicts
         if not availability['available']:
             result['warning'] = f"Worker assigned despite conflicts: {availability['message']}"
+
+        # Update Google Calendar event with new worker info
+        try:
+            from src.services.google_calendar_oauth import get_company_google_calendar
+            calendar_event_id = booking.get('calendar_event_id', '')
+            appt_time = booking.get('appointment_time')
+            if calendar_event_id and not str(calendar_event_id).startswith('db_') and appt_time:
+                gcal = get_company_google_calendar(company_id, db)
+                if gcal:
+                    job_workers = db.get_job_workers(booking_id, company_id=company_id)
+                    worker_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_workers]
+                    worker_line = f"\nWorkers: {', '.join(worker_names)}" if worker_names else ''
+                    customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
+                    phone = booking.get('phone_number') or ''
+                    address = booking.get('address') or ''
+                    duration = booking.get('duration_minutes') or 60
+                    desc = (
+                        f"Synced from BookedForYou\n"
+                        f"Customer: {customer_name}\n"
+                        f"Phone: {phone}\n"
+                        f"Address: {address}\n"
+                        f"Duration: {duration} mins"
+                        f"{worker_line}"
+                    )
+                    attendee_emails = None
+                    company = db.get_company(company_id)
+                    if company and company.get('gcal_invite_workers'):
+                        attendee_emails = [w['email'] for w in job_workers if w.get('email')]
+                        if not attendee_emails:
+                            attendee_emails = None
+                    gcal.reschedule_appointment(
+                        calendar_event_id, appt_time,
+                        duration_minutes=duration, description=desc,
+                        attendee_emails=attendee_emails
+                    )
+        except Exception as e:
+            print(f"[GCAL] Worker assign sync failed (non-critical): {e}")
+
         return jsonify(result), 201
     else:
         return jsonify(result), 400
@@ -5399,6 +5459,43 @@ def remove_worker_from_job_api(booking_id):
     success = db.remove_worker_from_job(booking_id, worker_id)
     
     if success:
+        # Update Google Calendar event with updated worker info
+        try:
+            from src.services.google_calendar_oauth import get_company_google_calendar
+            calendar_event_id = booking.get('calendar_event_id', '')
+            appt_time = booking.get('appointment_time')
+            if calendar_event_id and not str(calendar_event_id).startswith('db_') and appt_time:
+                gcal = get_company_google_calendar(company_id, db)
+                if gcal:
+                    job_workers = db.get_job_workers(booking_id, company_id=company_id)
+                    worker_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_workers]
+                    worker_line = f"\nWorkers: {', '.join(worker_names)}" if worker_names else ''
+                    customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
+                    phone = booking.get('phone_number') or ''
+                    address = booking.get('address') or ''
+                    duration = booking.get('duration_minutes') or 60
+                    desc = (
+                        f"Synced from BookedForYou\n"
+                        f"Customer: {customer_name}\n"
+                        f"Phone: {phone}\n"
+                        f"Address: {address}\n"
+                        f"Duration: {duration} mins"
+                        f"{worker_line}"
+                    )
+                    attendee_emails = None
+                    company = db.get_company(company_id)
+                    if company and company.get('gcal_invite_workers'):
+                        attendee_emails = [w['email'] for w in job_workers if w.get('email')]
+                        if not attendee_emails:
+                            attendee_emails = None
+                    gcal.reschedule_appointment(
+                        calendar_event_id, appt_time,
+                        duration_minutes=duration, description=desc,
+                        attendee_emails=attendee_emails
+                    )
+        except Exception as e:
+            print(f"[GCAL] Worker remove sync failed (non-critical): {e}")
+
         return jsonify({"success": True, "message": "Worker removed from job"})
     else:
         return jsonify({"error": "Worker assignment not found"}), 404

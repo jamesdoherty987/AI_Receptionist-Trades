@@ -160,6 +160,13 @@ function CalendarTab() {
     return '#94a3b8';
   };
 
+  // Get all worker colors for a booking (for multi-worker display)
+  const getWorkerColors = (booking) => {
+    const assignedIds = booking.assigned_worker_ids || [];
+    if (assignedIds.length === 0) return ['#94a3b8'];
+    return assignedIds.map(id => workerColorMap[id] || '#94a3b8');
+  };
+
   // Filter bookings by selected worker
   const filteredBookings = useMemo(() => {
     if (!bookings) return [];
@@ -437,14 +444,25 @@ function CalendarTab() {
                     <span className="day-number">{dayData.day}</span>
                     {hasEvents && (
                       <div className="event-dots">
-                        {events.slice(0, 3).map((event, i) => (
-                          <span 
-                            key={i} 
-                            className={`event-dot worker-colored${event.status === 'completed' ? ' completed' : ''}`}
-                            style={{ backgroundColor: event.status === 'completed' ? 'var(--success)' : getWorkerColor(event) }}
-                            title={`${event.customer_name || 'Customer'} - ${event.service_type || 'Service'}`}
-                          ></span>
-                        ))}
+                        {(() => {
+                          const allDots = [];
+                          for (const event of events.slice(0, 3)) {
+                            const colors = getWorkerColors(event);
+                            for (const [ci, color] of colors.entries()) {
+                              allDots.push(
+                                <span 
+                                  key={`${event.id}-${ci}`} 
+                                  className={`event-dot worker-colored${event.status === 'completed' ? ' completed' : ''}`}
+                                  style={{ backgroundColor: event.status === 'completed' ? 'var(--success)' : color }}
+                                  title={`${event.customer_name || 'Customer'} - ${event.service_type || 'Service'}`}
+                                ></span>
+                              );
+                              if (allDots.length >= 6) break;
+                            }
+                            if (allDots.length >= 6) break;
+                          }
+                          return allDots;
+                        })()}
                         {events.length > 3 && <span className="more-events">+{events.length - 3}</span>}
                       </div>
                     )}
@@ -484,48 +502,55 @@ function CalendarTab() {
                   <p>No events on this day</p>
                 </div>
               ) : (
-                selectedDateEvents.map(event => (
-                  <div 
-                    key={event.id} 
-                    className={`event-card clickable${event.status === 'completed' ? ' completed' : ''}`}
-                    onClick={() => setSelectedJobId(event.id)}
-                    style={{ borderLeftColor: event.status === 'completed' ? '#22c55e' : getWorkerColor(event) }}
-                  >
-                    <div className="event-time">
-                      <span className="time-range">{formatTimeRange(event.appointment_time, event.duration_minutes)}</span>
-                    </div>
-                    <div className="event-info">
-                      <div className="event-header">
-                        <span className="event-customer">{event.customer_name || 'Customer'}</span>
-                        <span className={`badge badge-sm ${getStatusBadgeClass(event.status)}`}>
-                          {event.status}
-                        </span>
+                selectedDateEvents.map(event => {
+                  const colors = event.status === 'completed' ? ['#22c55e'] : getWorkerColors(event);
+                  const borderStyle = colors.length > 1
+                    ? { borderImage: `linear-gradient(to bottom, ${colors.join(', ')}) 1` }
+                    : { borderLeftColor: colors[0] };
+                  return (
+                    <div 
+                      key={event.id} 
+                      className={`event-card clickable${event.status === 'completed' ? ' completed' : ''}`}
+                      onClick={() => setSelectedJobId(event.id)}
+                      style={borderStyle}
+                    >
+                      <div className="event-time">
+                        <span className="time-range">{formatTimeRange(event.appointment_time, event.duration_minutes)}</span>
                       </div>
-                      <div className="event-service">
-                        <i className="fas fa-wrench"></i>
-                        {event.service_type || event.service || 'Service'}
+                      <div className="event-info">
+                        <div className="event-header">
+                          <span className="event-customer">{event.customer_name || 'Customer'}</span>
+                          <span className={`badge badge-sm ${getStatusBadgeClass(event.status)}`}>
+                            {event.status}
+                          </span>
+                        </div>
+                        <div className="event-service">
+                          <i className="fas fa-wrench"></i>
+                          {event.service_type || event.service || 'Service'}
+                        </div>
+                        {(event.assigned_worker_ids?.length > 0) && (
+                          <div className="event-worker">
+                            <span className="worker-indicators">
+                              {getWorkerColors(event).map((c, ci) => (
+                                <span key={ci} className="worker-indicator" style={{ backgroundColor: c }}></span>
+                              ))}
+                            </span>
+                            {event.assigned_worker_ids.map(id => getWorkerName(id)).join(', ')}
+                          </div>
+                        )}
+                        {(event.job_address || event.address) && (
+                          <div className="event-location">
+                            <i className="fas fa-map-marker-alt"></i>
+                            {event.job_address || event.address}
+                          </div>
+                        )}
                       </div>
-                      {(event.assigned_worker_ids?.length > 0) && (
-                        <div className="event-worker">
-                          <span 
-                            className="worker-indicator"
-                            style={{ backgroundColor: getWorkerColor(event) }}
-                          ></span>
-                          {event.assigned_worker_ids.map(id => getWorkerName(id)).join(', ')}
-                        </div>
-                      )}
-                      {(event.job_address || event.address) && (
-                        <div className="event-location">
-                          <i className="fas fa-map-marker-alt"></i>
-                          {event.job_address || event.address}
-                        </div>
-                      )}
+                      <div className="event-arrow">
+                        <i className="fas fa-chevron-right"></i>
+                      </div>
                     </div>
-                    <div className="event-arrow">
-                      <i className="fas fa-chevron-right"></i>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -644,6 +669,11 @@ function CalendarTab() {
                       const width = totalColumns > 1 ? `calc((100% - 8px) / ${totalColumns})` : 'calc(100% - 8px)';
                       const left = totalColumns > 1 ? `calc(4px + (100% - 8px) * ${column} / ${totalColumns})` : '4px';
                       
+                      const weekColors = event.status === 'completed' ? ['#22c55e'] : getWorkerColors(event);
+                      const weekBorderStyle = weekColors.length > 1
+                        ? { borderImage: `linear-gradient(to bottom, ${weekColors.join(', ')}) 1` }
+                        : { borderColor: weekColors[0] };
+                      
                       return (
                         <div
                           key={event.id}
@@ -655,7 +685,7 @@ function CalendarTab() {
                             left,
                             right: 'auto',
                             backgroundColor: event.status === 'completed' ? '#22c55e' : getWorkerColor(event),
-                            borderColor: event.status === 'completed' ? '#16a34a' : getWorkerColor(event)
+                            ...weekBorderStyle
                           }}
                           onClick={() => setSelectedJobId(event.id)}
                           title={`${event.customer_name} - ${event.service_type || 'Service'}`}

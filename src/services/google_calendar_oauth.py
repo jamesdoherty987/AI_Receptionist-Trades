@@ -248,7 +248,8 @@ class CompanyGoogleCalendar:
                 raise
 
     def book_appointment(self, summary: str, start_time, duration_minutes: int = 60,
-                         description: str = '', phone_number: str = '') -> Optional[dict]:
+                         description: str = '', phone_number: str = '',
+                         attendee_emails: list = None) -> Optional[dict]:
         """Create a calendar event."""
         from datetime import timedelta
 
@@ -314,6 +315,9 @@ class CompanyGoogleCalendar:
             },
         }
 
+        if attendee_emails:
+            event['attendees'] = [{'email': e} for e in attendee_emails if e]
+
         request = self.service.events().insert(calendarId=self.calendar_id, body=event)
         created = self._execute_with_retry(request)
         logger.info(f"[GCAL] Created event: {created.get('id')} for company {self.company_id}")
@@ -352,7 +356,8 @@ class CompanyGoogleCalendar:
     def reschedule_appointment(self, event_id: str, new_start_time,
                                duration_minutes: int = None,
                                description: str = None,
-                               summary: str = None) -> Optional[dict]:
+                               summary: str = None,
+                               attendee_emails: list = None) -> Optional[dict]:
         """Move an event to a new time, applying the same full-day/multi-day
         business-day logic used when creating events.
         Optionally updates the description in the same API call to avoid
@@ -433,6 +438,10 @@ class CompanyGoogleCalendar:
             if 'private' not in event['extendedProperties']:
                 event['extendedProperties']['private'] = {}
             event['extendedProperties']['private']['bookedForYou'] = 'true'
+
+            # Update attendees if provided
+            if attendee_emails is not None:
+                event['attendees'] = [{'email': e} for e in attendee_emails if e]
 
             request = self.service.events().update(
                 calendarId=self.calendar_id, eventId=event_id, body=event)

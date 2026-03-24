@@ -865,7 +865,9 @@ class PostgreSQLDatabaseWrapper:
                               'revolut_phone', 'company_context', 'coverage_area', 'remove_stripe_connect',
                               'twilio_phone_number',
                               'google_credentials_json', 'google_calendar_id',
-                              'show_finances_tab', 'show_invoice_buttons']
+                              'show_finances_tab', 'show_invoice_buttons',
+                              'send_confirmation_sms', 'send_reminder_sms',
+                              'gcal_invite_workers']
             
             # Get actual columns that exist in the database
             cursor.execute("""

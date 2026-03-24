@@ -43,6 +43,10 @@ def sync_company(company_id: int, db, dry_run: bool = False,
     from datetime import timedelta
     sync_cutoff = now - timedelta(days=30)
 
+    # Check if worker invites are enabled for this company
+    company = db.get_company(company_id)
+    invite_workers = company.get('gcal_invite_workers', False) if company else False
+
     # Track known gcal event IDs so pull phase can skip them
     known_gcal_ids = set()
     for b in bookings:
@@ -84,6 +88,15 @@ def sync_company(company_id: int, db, dry_run: bool = False,
             phone = booking.get('phone_number') or ''
             address = booking.get('address') or ''
             summary = f"{'✅ ' if is_completed else ''}{service} - {customer_name}"
+
+            # Build worker info
+            bid = booking.get('id', '?')
+            job_workers = db.get_job_workers(bid, company_id=company_id) if bid != '?' else []
+            worker_lines = ''
+            if job_workers:
+                worker_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_workers]
+                worker_lines = f"\nWorkers: {', '.join(worker_names)}"
+
             desc = (
                 f"Synced from BookedForYou\n"
                 f"{'Status: COMPLETED\n' if is_completed else ''}"
@@ -91,11 +104,18 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                 f"Phone: {phone}\n"
                 f"Address: {address}\n"
                 f"Duration: {duration} mins"
+                f"{worker_lines}"
             )
+
+            # Build attendee list if enabled
+            attendee_emails = None
+            if invite_workers and job_workers:
+                attendee_emails = [w['email'] for w in job_workers if w.get('email')]
+                if not attendee_emails:
+                    attendee_emails = None
 
             existing_event_id = booking.get('calendar_event_id', '')
             has_real_gcal = existing_event_id and not str(existing_event_id).startswith('db_')
-            bid = booking.get('id', '?')
 
             if has_real_gcal:
                 print(f"      [{bid}] UPDATE  {summary}  {appt_time.strftime('%Y-%m-%d %H:%M')}  {duration}min")
@@ -103,7 +123,8 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                     try:
                         gcal.reschedule_appointment(
                             existing_event_id, appt_time, duration_minutes=duration,
-                            description=desc, summary=summary
+                            description=desc, summary=summary,
+                            attendee_emails=attendee_emails
                         )
                         stats['push_updated'] += 1
                     except Exception as e:
@@ -118,7 +139,8 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                     try:
                         gcal_event = gcal.book_appointment(
                             summary=summary, start_time=appt_time,
-                            duration_minutes=duration, description=desc, phone_number=phone
+                            duration_minutes=duration, description=desc, phone_number=phone,
+                            attendee_emails=attendee_emails
                         )
                         if gcal_event and booking.get('id'):
                             new_id = gcal_event.get('id')
