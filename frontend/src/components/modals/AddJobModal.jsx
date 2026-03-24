@@ -93,7 +93,7 @@ function AddJobModal({ isOpen, onClose }) {
   
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedService, setSelectedService] = useState(null);
-  const [anyWorkerMode, setAnyWorkerMode] = useState(false);
+  const [anyWorkerMode, setAnyWorkerMode] = useState(true);
   const [assignedWorkers, setAssignedWorkers] = useState([]); // [{id, name, trade_specialty, availability}]
   const assignedWorkersRef = useRef([]);
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
@@ -161,7 +161,7 @@ function AddJobModal({ isOpen, onClose }) {
 
   const resetForm = () => {
     setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false });
-    setSelectedDate(''); setSelectedService(null); setAnyWorkerMode(false); setAssignedWorkers([]);
+    setSelectedDate(''); setSelectedService(null); setAnyWorkerMode(true); setAssignedWorkers([]);
     setCustomerPickerOpen(false); setCustomerSearch(''); setSelectedCustomer(null);
     const n = new Date(); setCalMonth(n.getMonth()); setCalYear(n.getFullYear());
   };
@@ -251,7 +251,12 @@ function AddJobModal({ isOpen, onClose }) {
   };
 
   const removeWorkerFromJob = (workerId) => {
-    setAssignedWorkers(prev => prev.filter(w => w.id !== workerId));
+    setAssignedWorkers(prev => {
+      const updated = prev.filter(w => w.id !== workerId);
+      // If all workers removed, go back to "Any available worker" mode
+      if (updated.length === 0) setAnyWorkerMode(true);
+      return updated;
+    });
   };
 
   // Re-check availability for all assigned workers when date/time changes
@@ -308,7 +313,9 @@ function AddJobModal({ isOpen, onClose }) {
     const allWorkerIds = assignedWorkers.map(w => w.id);
     // Strip worker_id from payload — we use worker_ids exclusively now
     const { worker_id: _unused, ...cleanFormData } = formData;
-    mutation.mutate({ ...cleanFormData, worker_ids: allWorkerIds });
+    // If "Any available worker" mode and no workers manually assigned, ask backend to auto-assign
+    const autoAssign = anyWorkerMode && allWorkerIds.length === 0;
+    mutation.mutate({ ...cleanFormData, worker_ids: allWorkerIds, auto_assign_worker: autoAssign });
   };
 
   const handleOpenAddClient = () => { setCustomerPickerOpen(false); setIsAddClientModalOpen(true); };
@@ -429,16 +436,15 @@ function AddJobModal({ isOpen, onClose }) {
             {/* When no workers assigned: show combined dropdown with availability modes + worker list */}
             {assignedWorkers.length === 0 && (
               <div className="add-worker-row">
-                <select className="form-input" value={anyWorkerMode ? 'any' : formData.worker_id} onChange={(e) => {
+                <select className="form-input" value={anyWorkerMode ? 'any' : ''} onChange={(e) => {
                   const val = e.target.value;
-                  if (val === '' || val === 'any') {
+                  if (val === 'any') {
                     handleWorkerSelect(val);
-                  } else {
+                  } else if (val) {
                     // Add to multi-worker list instead of single-select
                     addWorkerToJob(val);
                   }
                 }}>
-                  <option value="">No worker filter (general availability)</option>
                   <option value="any">Any available worker</option>
                   {eligibleWorkers.map(w => (
                     <option key={w.id} value={w.id}>{w.name} {w.trade_specialty && `(${w.trade_specialty})`}</option>

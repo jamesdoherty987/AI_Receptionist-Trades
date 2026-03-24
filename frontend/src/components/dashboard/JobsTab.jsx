@@ -350,6 +350,12 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                         <i className="fas fa-phone"></i>
                         <span>{job.phone || 'No phone'}</span>
                       </div>
+                      {!!(job.charge || job.estimated_charge) && (
+                        <div className="job-detail">
+                          <i className="fas fa-euro-sign"></i>
+                          <span className="job-price">{formatCurrency(job.charge || job.estimated_charge)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -412,6 +418,12 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                         <i className="fas fa-wrench"></i>
                         <span>{job.service_type || job.service || 'No service'}</span>
                       </div>
+                      {!!(job.charge || job.estimated_charge) && (
+                        <div className="job-detail">
+                          <i className="fas fa-euro-sign"></i>
+                          <span className="job-price">{formatCurrency(job.charge || job.estimated_charge)}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

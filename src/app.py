@@ -3597,17 +3597,20 @@ def bookings_api():
                     }), 409
             elif conflicting_bookings and not requested_worker_ids:
                 # No workers assigned — keep the general conflict check as a safety net
-                conflict = conflicting_bookings[0]
-                conflict_time = datetime.fromisoformat(str(conflict['appointment_time']))
-                conflict_client = db.get_client(conflict['client_id'], company_id=company_id)
-                conflict_client_name = conflict_client['name'] if conflict_client else 'Unknown'
-                
-                return jsonify({
-                    "error": f"Time conflict: There is already a booking at {conflict_time.strftime('%I:%M %p')} for {conflict_client_name} ({conflict['service_type']}). Please choose a different time.",
-                    "conflict": True,
-                    "conflicting_time": conflict_time.isoformat(),
-                    "conflicting_client": conflict_client_name
-                }), 409
+                # BUT skip this if auto_assign_worker is set, because the auto-assign
+                # logic will find a free worker (the calendar already showed availability)
+                if not data.get('auto_assign_worker'):
+                    conflict = conflicting_bookings[0]
+                    conflict_time = datetime.fromisoformat(str(conflict['appointment_time']))
+                    conflict_client = db.get_client(conflict['client_id'], company_id=company_id)
+                    conflict_client_name = conflict_client['name'] if conflict_client else 'Unknown'
+                    
+                    return jsonify({
+                        "error": f"Time conflict: There is already a booking at {conflict_time.strftime('%I:%M %p')} for {conflict_client_name} ({conflict['service_type']}). Please choose a different time.",
+                        "conflict": True,
+                        "conflicting_time": conflict_time.isoformat(),
+                        "conflicting_client": conflict_client_name
+                    }), 409
             
             # Google Calendar integration disabled (USE_GOOGLE_CALENDAR = False)
             calendar_event_id = None
@@ -3690,6 +3693,41 @@ def bookings_api():
                         print(f"[INFO] Worker {wid} assigned to booking {booking_id}")
                 except Exception as e:
                     print(f"[WARNING] Could not assign worker {wid}: {e}")
+            
+            # Auto-assign an available worker if requested (from "Any available worker" mode)
+            if data.get('auto_assign_worker') and not requested_worker_ids:
+                try:
+                    all_workers = db.get_all_workers(company_id=company_id)
+                    
+                    # Respect service worker_restrictions
+                    eligible_workers = all_workers
+                    if service_type:
+                        service = settings_mgr.get_service_by_name(service_type, company_id=company_id)
+                        if service and service.get('worker_restrictions'):
+                            wr = service['worker_restrictions']
+                            wr_type = wr.get('type', 'all')
+                            wr_ids = wr.get('worker_ids', [])
+                            if wr_type == 'only' and wr_ids:
+                                eligible_workers = [w for w in all_workers if w['id'] in wr_ids]
+                            elif wr_type == 'except' and wr_ids:
+                                eligible_workers = [w for w in all_workers if w['id'] not in wr_ids]
+                    
+                    # Find the first available worker
+                    assigned_auto = False
+                    for w in eligible_workers:
+                        avail = db.check_worker_availability(
+                            w['id'], appointment_dt, duration_minutes, company_id=company_id
+                        )
+                        if avail.get('available'):
+                            db.assign_worker_to_job(booking_id, w['id'])
+                            print(f"[INFO] Auto-assigned worker {w['id']} ({w.get('name')}) to booking {booking_id}")
+                            assigned_auto = True
+                            break
+                    
+                    if not assigned_auto:
+                        print(f"[WARNING] No available worker found for auto-assignment on booking {booking_id}")
+                except Exception as e:
+                    print(f"[WARNING] Auto-assign worker failed: {e}")
             
             # Update client description
             try:
