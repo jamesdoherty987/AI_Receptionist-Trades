@@ -3676,6 +3676,7 @@ def check_availability_api():
     date_str = request.args.get('date')
     service_type = request.args.get('service_type')  # Optional: to get service-specific duration
     worker_id = request.args.get('worker_id')  # Optional: filter by worker availability
+    any_worker = request.args.get('any_worker', 'false').lower() == 'true'  # Show combined availability across all workers
     
     if not date_str:
         return jsonify({"error": "Date parameter required (YYYY-MM-DD)"}), 400
@@ -3785,26 +3786,9 @@ def check_availability_api():
         day_end = day_start + timedelta(days=1)
         
         all_bookings = db.get_all_bookings(company_id=company_id)
-        day_bookings = []
-        for booking in all_bookings:
-            if booking.get('status') in ['cancelled', 'completed']:
-                continue
-            
-            # If worker_id is specified, only check bookings for that worker
-            if worker_id:
-                booking_worker_id = booking.get('worker_id')
-                if booking_worker_id and int(booking_worker_id) != worker_id:
-                    continue  # Skip bookings for other workers
-            
-            appt_time = booking.get('appointment_time')
-            if isinstance(appt_time, str):
-                appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00').replace('+00:00', ''))
-            
-            if not appt_time:
-                continue
-            
-            booking_duration = booking.get('duration_minutes', default_duration)
-            # Use business-day logic for multi-day jobs (> 1 day)
+
+        # Helper: compute booking end time for a given booking
+        def _compute_booking_end(appt_time, booking_duration):
             if booking_duration > 1440:
                 from src.utils.duration_utils import duration_to_business_days
                 _biz_days = duration_to_business_days(booking_duration, company_id=company_id)
@@ -3823,23 +3807,62 @@ def check_availability_api():
                         if _counted >= _biz_days:
                             break
                     _cur_day += timedelta(days=1)
-                booking_end = _last_biz.replace(hour=business_hours.get('end', 17), minute=0, second=0, microsecond=0)
+                return _last_biz.replace(hour=business_hours.get('end', 17), minute=0, second=0, microsecond=0)
             elif booking_duration >= 480:
-                # Full-day job (8h to 24h): blocks until closing time on the same day
-                booking_end = appt_time.replace(hour=business_hours.get('end', 17), minute=0, second=0, microsecond=0)
+                return appt_time.replace(hour=business_hours.get('end', 17), minute=0, second=0, microsecond=0)
             else:
-                booking_end = appt_time + timedelta(minutes=booking_duration)
-            
-            # Check if this booking overlaps with the target day at all:
-            # 1. Booking starts on this day (original logic)
-            # 2. Booking started before but extends into this day (multi-day jobs)
-            if appt_time and ((day_start <= appt_time < day_end) or (appt_time < day_start and booking_end > day_start)):
-                day_bookings.append({
-                    'start': max(appt_time, day_start),  # Clamp to day start for multi-day continuations
-                    'end': min(booking_end, day_end),     # Clamp to day end
-                    'duration': booking_duration,
-                    'booking': booking
-                })
+                return appt_time + timedelta(minutes=booking_duration)
+
+        # Helper: filter bookings that overlap with the target day, optionally for a specific worker
+        def _get_day_bookings(filter_worker_id=None):
+            result = []
+            for booking in all_bookings:
+                if booking.get('status') in ['cancelled', 'completed']:
+                    continue
+                if filter_worker_id:
+                    bwid = booking.get('worker_id')
+                    if bwid and int(bwid) != filter_worker_id:
+                        continue
+                appt_time = booking.get('appointment_time')
+                if isinstance(appt_time, str):
+                    appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00').replace('+00:00', ''))
+                if not appt_time:
+                    continue
+                booking_duration = booking.get('duration_minutes', default_duration)
+                booking_end = _compute_booking_end(appt_time, booking_duration)
+                if (day_start <= appt_time < day_end) or (appt_time < day_start and booking_end > day_start):
+                    result.append({
+                        'start': max(appt_time, day_start),
+                        'end': min(booking_end, day_end),
+                        'duration': booking_duration,
+                        'booking': booking
+                    })
+            return result
+
+        # Helper: check if a single slot conflicts with a list of day_bookings
+        def _slot_has_conflict(slot_time, slot_end, bookings_list):
+            for bd in bookings_list:
+                if slot_time < bd['end'] and slot_end > bd['start']:
+                    return bd
+            return None
+
+        # Build per-worker booking lists for "any worker" mode
+        if any_worker:
+            all_workers = db.get_all_workers(company_id=company_id)
+            # Apply service worker_restrictions if applicable
+            eligible_worker_ids = [w['id'] for w in all_workers]
+            if service_type:
+                from src.services.settings_manager import get_settings_manager as _gsm
+                _svc = _gsm().get_service_by_name(service_type, company_id=company_id)
+                if _svc and _svc.get('worker_restrictions'):
+                    wr = _svc['worker_restrictions']
+                    if wr.get('type') == 'only' and wr.get('worker_ids'):
+                        eligible_worker_ids = [wid for wid in eligible_worker_ids if wid in wr['worker_ids']]
+                    elif wr.get('type') == 'except' and wr.get('worker_ids'):
+                        eligible_worker_ids = [wid for wid in eligible_worker_ids if wid not in wr['worker_ids']]
+            per_worker_bookings = {wid: _get_day_bookings(filter_worker_id=wid) for wid in eligible_worker_ids}
+        else:
+            day_bookings = _get_day_bookings(filter_worker_id=worker_id)
         
         current_hour = business_hours['start']
         current_minute = 0
@@ -3860,26 +3883,47 @@ def check_availability_api():
                     current_hour += 1
                 continue
             
-            # Check for conflicts with existing bookings
+            # Check for conflicts
             is_available = True
             booking_info = None
-            
-            for booking_data in day_bookings:
-                booking_start = booking_data['start']
-                booking_end = booking_data['end']
-                
-                # Check for overlap
-                if slot_time < booking_end and slot_end > booking_start:
-                    is_available = False
-                    conflict = booking_data['booking']
-                    client = db.get_client(conflict['client_id'], company_id=company_id)
+
+            if any_worker and per_worker_bookings:
+                # Slot is available if at least one eligible worker is free
+                any_free = False
+                first_conflict = None
+                for wid, wb_list in per_worker_bookings.items():
+                    conflict = _slot_has_conflict(slot_time, slot_end, wb_list)
+                    if not conflict:
+                        any_free = True
+                        break
+                    elif not first_conflict:
+                        first_conflict = conflict
+                is_available = any_free
+                if not is_available and first_conflict:
+                    conflict_booking = first_conflict['booking']
+                    client = db.get_client(conflict_booking['client_id'], company_id=company_id)
                     booking_info = {
                         'client_name': client['name'] if client else 'Unknown',
-                        'service_type': conflict['service_type'],
-                        'time': str(conflict['appointment_time']),
-                        'duration_minutes': booking_data['duration']
+                        'service_type': conflict_booking['service_type'],
+                        'time': str(conflict_booking['appointment_time']),
+                        'duration_minutes': first_conflict['duration']
                     }
-                    break
+            elif any_worker and not per_worker_bookings:
+                # No workers exist — fall back to general availability
+                is_available = True
+            else:
+                for booking_data in day_bookings:
+                    if slot_time < booking_data['end'] and slot_end > booking_data['start']:
+                        is_available = False
+                        conflict = booking_data['booking']
+                        client = db.get_client(conflict['client_id'], company_id=company_id)
+                        booking_info = {
+                            'client_name': client['name'] if client else 'Unknown',
+                            'service_type': conflict['service_type'],
+                            'time': str(conflict['appointment_time']),
+                            'duration_minutes': booking_data['duration']
+                        }
+                        break
             
             slots.append({
                 'time': slot_time.strftime('%H:%M'),
@@ -3921,6 +3965,7 @@ def check_monthly_availability_api():
     month = request.args.get('month', type=int)
     service_type = request.args.get('service_type')
     worker_id = request.args.get('worker_id', type=int)
+    any_worker = request.args.get('any_worker', 'false').lower() == 'true'
 
     if not year or not month:
         return jsonify({"error": "year and month parameters required"}), 400
@@ -3982,24 +4027,92 @@ def check_monthly_availability_api():
         buffer_start = month_start - timedelta(days=45)
 
         all_bookings = db.get_all_bookings(company_id=company_id)
-        relevant = []
-        for b in all_bookings:
-            if b.get('status') in ['cancelled']:
-                continue
-            if worker_id:
-                bwid = b.get('worker_id')
-                if bwid and int(bwid) != worker_id:
-                    continue
-            appt = b.get('appointment_time')
-            if isinstance(appt, str):
+
+        # Helper: compute booking end for overlap calculation
+        def _booking_end(appt, dur):
+            if dur > 1440:
+                from src.utils.duration_utils import duration_to_business_days
+                biz_days = duration_to_business_days(dur, company_id=company_id)
                 try:
-                    appt = datetime.fromisoformat(appt.replace('Z', '+00:00').replace('+00:00', ''))
+                    from src.utils.config import config as _cfg
+                    biz_indices = _cfg.get_business_days_indices(company_id=company_id)
                 except Exception:
+                    biz_indices = [0,1,2,3,4]
+                cur = appt.replace(hour=0, minute=0, second=0, microsecond=0)
+                counted = 0
+                last_biz = cur
+                for _ in range(365):
+                    if cur.weekday() in biz_indices:
+                        counted += 1
+                        last_biz = cur
+                        if counted >= biz_days:
+                            break
+                    cur += timedelta(days=1)
+                return last_biz.replace(hour=bh_end, minute=0)
+            elif dur >= 480:
+                return appt.replace(hour=bh_end, minute=0)
+            else:
+                return appt + timedelta(minutes=dur)
+
+        # Helper: filter bookings for a specific worker
+        def _filter_bookings(filter_worker_id=None):
+            result = []
+            for b in all_bookings:
+                if b.get('status') in ['cancelled']:
                     continue
-            if not appt:
-                continue
-            dur = b.get('duration_minutes', default_duration)
-            relevant.append({'start': appt, 'duration': dur, 'booking': b})
+                if filter_worker_id:
+                    bwid = b.get('worker_id')
+                    if bwid and int(bwid) != filter_worker_id:
+                        continue
+                appt = b.get('appointment_time')
+                if isinstance(appt, str):
+                    try:
+                        appt = datetime.fromisoformat(appt.replace('Z', '+00:00').replace('+00:00', ''))
+                    except Exception:
+                        continue
+                if not appt:
+                    continue
+                dur = b.get('duration_minutes', default_duration)
+                result.append({'start': appt, 'duration': dur, 'booking': b})
+            return result
+
+        # Helper: count booked slots for a day given a list of bookings
+        def _count_booked_slots(day_date, bookings_list):
+            day_start = datetime.combine(day_date, datetime.min.time())
+            day_end_dt = day_start + timedelta(days=1)
+            bh_end_dt = day_start.replace(hour=bh_end, minute=0, second=0)
+            booked = 0
+            for rb in bookings_list:
+                appt = rb['start']
+                dur = rb['duration']
+                b_end = _booking_end(appt, dur)
+                if appt < day_end_dt and b_end > day_start:
+                    overlap_start = max(appt, day_start)
+                    overlap_end = min(b_end, bh_end_dt)
+                    if overlap_end > overlap_start:
+                        overlap_mins = (overlap_end - overlap_start).total_seconds() / 60
+                        if slot_duration >= 1440:
+                            booked += 1
+                        else:
+                            booked += max(1, int(overlap_mins // 30))
+            return min(booked, slots_per_day)
+
+        # Prepare per-worker or single booking lists
+        if any_worker:
+            all_workers = db.get_all_workers(company_id=company_id)
+            eligible_worker_ids = [w['id'] for w in all_workers]
+            if service_type:
+                from src.services.settings_manager import get_settings_manager as _gsm2
+                _svc = _gsm2().get_service_by_name(service_type, company_id=company_id)
+                if _svc and _svc.get('worker_restrictions'):
+                    wr = _svc['worker_restrictions']
+                    if wr.get('type') == 'only' and wr.get('worker_ids'):
+                        eligible_worker_ids = [wid for wid in eligible_worker_ids if wid in wr['worker_ids']]
+                    elif wr.get('type') == 'except' and wr.get('worker_ids'):
+                        eligible_worker_ids = [wid for wid in eligible_worker_ids if wid not in wr['worker_ids']]
+            per_worker_bookings = {wid: _filter_bookings(filter_worker_id=wid) for wid in eligible_worker_ids}
+        else:
+            relevant = _filter_bookings(filter_worker_id=worker_id)
 
         # Build per-day info
         days = {}
@@ -4016,51 +4129,21 @@ def check_monthly_availability_api():
                 days[d.isoformat()] = {'date': d.isoformat(), 'status': 'closed', 'booked': 0, 'total': 0}
                 continue
 
-            day_start = datetime.combine(d, datetime.min.time())
-            day_end_dt = day_start + timedelta(days=1)
-            bh_end_dt = day_start.replace(hour=bh_end, minute=0, second=0)
+            if any_worker and per_worker_bookings:
+                # Day is available if at least one worker has free slots
+                # Use the worker with the LEAST booked slots (most availability)
+                min_booked = slots_per_day
+                for wid, wb_list in per_worker_bookings.items():
+                    wb = _count_booked_slots(d, wb_list)
+                    if wb < min_booked:
+                        min_booked = wb
+                booked_slots = min_booked
+            elif any_worker and not per_worker_bookings:
+                # No workers — show general availability
+                booked_slots = _count_booked_slots(d, _filter_bookings())
+            else:
+                booked_slots = _count_booked_slots(d, relevant)
 
-            # Count booked slots for this day
-            booked_slots = 0
-            for rb in relevant:
-                appt = rb['start']
-                dur = rb['duration']
-                if dur > 1440:
-                    from src.utils.duration_utils import duration_to_business_days
-                    biz_days = duration_to_business_days(dur, company_id=company_id)
-                    try:
-                        from src.utils.config import config as _cfg
-                        biz_indices = _cfg.get_business_days_indices(company_id=company_id)
-                    except Exception:
-                        biz_indices = [0,1,2,3,4]
-                    cur = appt.replace(hour=0, minute=0, second=0, microsecond=0)
-                    counted = 0
-                    last_biz = cur
-                    for _ in range(365):
-                        if cur.weekday() in biz_indices:
-                            counted += 1
-                            last_biz = cur
-                            if counted >= biz_days:
-                                break
-                        cur += timedelta(days=1)
-                    b_end = last_biz.replace(hour=bh_end, minute=0)
-                elif dur >= 480:
-                    b_end = appt.replace(hour=bh_end, minute=0)
-                else:
-                    b_end = appt + timedelta(minutes=dur)
-
-                # Does this booking overlap with this day?
-                if appt < day_end_dt and b_end > day_start:
-                    overlap_start = max(appt, day_start)
-                    overlap_end = min(b_end, bh_end_dt)
-                    if overlap_end > overlap_start:
-                        overlap_mins = (overlap_end - overlap_start).total_seconds() / 60
-                        if slot_duration >= 1440:
-                            booked_slots += 1
-                        else:
-                            booked_slots += max(1, int(overlap_mins // 30))
-
-            booked_slots = min(booked_slots, slots_per_day)
             free = slots_per_day - booked_slots
             if free <= 0:
                 status = 'full'

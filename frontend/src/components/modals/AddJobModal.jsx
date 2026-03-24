@@ -94,6 +94,7 @@ function AddJobModal({ isOpen, onClose }) {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedService, setSelectedService] = useState(null);
   const [selectedWorker, setSelectedWorker] = useState(null);
+  const [anyWorkerMode, setAnyWorkerMode] = useState(false);
   const [workerAvailability, setWorkerAvailability] = useState(null);
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -114,15 +115,15 @@ function AddJobModal({ isOpen, onClose }) {
 
   // Monthly availability (fires when service is selected)
   const { data: monthlyData, isLoading: isLoadingMonthly } = useQuery({
-    queryKey: ['monthly-availability', calYear, calMonth + 1, formData.service_type, formData.worker_id],
-    queryFn: async () => (await checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, formData.worker_id || null)).data,
+    queryKey: ['monthly-availability', calYear, calMonth + 1, formData.service_type, formData.worker_id, anyWorkerMode],
+    queryFn: async () => (await checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode)).data,
     enabled: !!formData.service_type && isOpen
   });
 
   // Daily slots (fires when date is selected)
   const { data: availability, isLoading: isLoadingAvailability } = useQuery({
-    queryKey: ['availability', selectedDate, formData.service_type, formData.worker_id],
-    queryFn: async () => (await checkAvailability(selectedDate, formData.service_type, formData.worker_id || null)).data,
+    queryKey: ['availability', selectedDate, formData.service_type, formData.worker_id, anyWorkerMode],
+    queryFn: async () => (await checkAvailability(selectedDate, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode)).data,
     enabled: !!selectedDate && !!formData.service_type && isOpen
   });
 
@@ -160,7 +161,7 @@ function AddJobModal({ isOpen, onClose }) {
 
   const resetForm = () => {
     setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false });
-    setSelectedDate(''); setSelectedService(null); setSelectedWorker(null); setWorkerAvailability(null);
+    setSelectedDate(''); setSelectedService(null); setSelectedWorker(null); setAnyWorkerMode(false); setWorkerAvailability(null);
     setCustomerPickerOpen(false); setCustomerSearch(''); setSelectedCustomer(null);
     const n = new Date(); setCalMonth(n.getMonth()); setCalYear(n.getFullYear());
   };
@@ -213,6 +214,7 @@ function AddJobModal({ isOpen, onClose }) {
       const isEligible = type === 'only' ? worker_ids.includes(currentWorkerId) : !worker_ids.includes(currentWorkerId);
       if (!isEligible) {
         setSelectedWorker(null);
+        setAnyWorkerMode(false);
         setFormData(prev => ({ ...prev, worker_id: '' }));
         setWorkerAvailability(null);
         return;
@@ -223,6 +225,17 @@ function AddJobModal({ isOpen, onClose }) {
   };
 
   const handleWorkerSelect = async (workerId) => {
+    if (workerId === 'any') {
+      // "Any Worker" mode — combined availability across all workers
+      setAnyWorkerMode(true);
+      setSelectedWorker(null);
+      setWorkerAvailability(null);
+      // Reset date/time since availability view changes
+      setSelectedDate('');
+      setFormData(prev => ({ ...prev, worker_id: '', appointment_time: '' }));
+      return;
+    }
+    setAnyWorkerMode(false);
     if (!workerId) { setSelectedWorker(null); setFormData(prev => ({ ...prev, worker_id: '' })); setWorkerAvailability(null); return; }
     const worker = workers?.find(w => w.id === parseInt(workerId));
     setSelectedWorker(worker || null);
@@ -358,10 +371,12 @@ function AddJobModal({ isOpen, onClose }) {
           {/* Worker Assignment */}
           <div className="form-group">
             <label className="form-label">Assign Worker</label>
-            <select name="worker_id" className="form-input" value={formData.worker_id} onChange={(e) => handleWorkerSelect(e.target.value)}>
-              <option value="">No worker (check all availability)</option>
+            <select name="worker_id" className="form-input" value={anyWorkerMode ? 'any' : formData.worker_id} onChange={(e) => handleWorkerSelect(e.target.value)}>
+              <option value="">No worker (general availability)</option>
+              <option value="any">Any available worker</option>
               {eligibleWorkers.map(w => <option key={w.id} value={w.id}>{w.name} {w.trade_specialty && `(${w.trade_specialty})`}</option>)}
             </select>
+            {anyWorkerMode && <div className="worker-selected-info any-worker-info"><i className="fas fa-users"></i> Showing combined availability — slot is open if <strong>any</strong> worker is free</div>}
             {selectedWorker && <div className="worker-selected-info"><i className="fas fa-hard-hat"></i> Showing availability for <strong>{selectedWorker.name}</strong></div>}
             {selectedService?.worker_restrictions?.type === 'only' && (
               <div className="worker-restriction-hint"><i className="fas fa-info-circle"></i> Only workers qualified for "{selectedService.name}" are shown</div>
@@ -409,7 +424,7 @@ function AddJobModal({ isOpen, onClose }) {
                       <h4>
                         <i className="fas fa-clock"></i>{' '}
                         {new Date(selectedDate + 'T00:00').toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' })}
-                        {selectedWorker ? ` — ${selectedWorker.name}` : ''}
+                        {selectedWorker ? ` — ${selectedWorker.name}` : anyWorkerMode ? ' — Any Worker' : ''}
                       </h4>
                     </div>
                     {isLoadingAvailability ? (
