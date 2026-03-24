@@ -3509,8 +3509,49 @@ def bookings_api():
             
             # Check for time conflicts using actual duration (no buffer)
             # Worker-aware: if specific workers are assigned, only check THEIR conflicts
-            time_buffer_before = appointment_dt - timedelta(minutes=duration_minutes - 1)
-            time_buffer_after = appointment_dt + timedelta(minutes=duration_minutes - 1)
+            # 
+            # We need to find any existing booking whose time span overlaps with the
+            # NEW job's time span.  get_conflicting_bookings already computes each
+            # existing booking's true end (including multi-day spans) and checks
+            # overlap with the query window, so we just pass the new job's window.
+            #
+            # For multi-day / full-day jobs, compute the proper end via the same
+            # helper the DB layer uses; for shorter jobs use simple arithmetic.
+            if duration_minutes > 1440:
+                # Multi-day: walk business days forward
+                from src.utils.duration_utils import duration_to_business_days
+                _biz_days = duration_to_business_days(duration_minutes, company_id=company_id)
+                try:
+                    from src.utils.config import config as _cfg
+                    _biz_indices = _cfg.get_business_days_indices(company_id=company_id)
+                    _bh = _cfg.get_business_hours(company_id=company_id)
+                    _bh_end = _bh.get('end', 17)
+                except Exception:
+                    _biz_indices = [0, 1, 2, 3, 4]
+                    _bh_end = 17
+                _cur = appointment_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                _counted = 0
+                while _counted < _biz_days:
+                    if _cur.weekday() in _biz_indices:
+                        _counted += 1
+                        if _counted >= _biz_days:
+                            break
+                    _cur += timedelta(days=1)
+                new_job_end = _cur.replace(hour=_bh_end, minute=0, second=0, microsecond=0)
+            elif duration_minutes >= 480:
+                # Full-day job: ends at business close same day
+                try:
+                    from src.utils.config import config as _cfg
+                    _bh = _cfg.get_business_hours(company_id=company_id)
+                    _bh_end = _bh.get('end', 17)
+                except Exception:
+                    _bh_end = 17
+                new_job_end = appointment_dt.replace(hour=_bh_end, minute=0, second=0, microsecond=0)
+            else:
+                new_job_end = appointment_dt + timedelta(minutes=duration_minutes)
+            
+            conflict_range_start = appointment_dt
+            conflict_range_end = new_job_end
             
             # Parse worker_ids early so we can use them for conflict checking
             requested_worker_ids = [int(w) for w in data.get('worker_ids', []) if w]
@@ -3522,8 +3563,8 @@ def bookings_api():
                     pass
             
             conflicting_bookings = db.get_conflicting_bookings(
-                start_time=time_buffer_before.strftime('%Y-%m-%d %H:%M:%S'),
-                end_time=time_buffer_after.strftime('%Y-%m-%d %H:%M:%S'),
+                start_time=conflict_range_start.strftime('%Y-%m-%d %H:%M:%S'),
+                end_time=conflict_range_end.strftime('%Y-%m-%d %H:%M:%S'),
                 company_id=company_id
             )
             
