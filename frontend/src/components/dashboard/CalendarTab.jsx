@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getBookings, getWorkers, getBusinessHours } from '../../services/api';
+import { getBookings, getWorkers, getBusinessHours, getCompanyTimeOffRequests } from '../../services/api';
 import { getStatusBadgeClass } from '../../utils/helpers';
 import LoadingSpinner from '../LoadingSpinner';
 import JobDetailModal from '../modals/JobDetailModal';
@@ -126,6 +126,15 @@ function CalendarTab() {
     queryFn: async () => {
       const response = await getBusinessHours();
       return response.data;
+    },
+  });
+
+  // Fetch approved time-off for calendar display
+  const { data: approvedTimeOff } = useQuery({
+    queryKey: ['calendar-time-off'],
+    queryFn: async () => {
+      const response = await getCompanyTimeOffRequests('approved');
+      return response.data?.requests || [];
     },
   });
 
@@ -277,6 +286,27 @@ function CalendarTab() {
       })
       .sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
   }, [selectedDate, filteredBookings, openDayIndices, closingHour]);
+
+  // Get time-off events for a specific date
+  const getTimeOffForDate = (date) => {
+    if (!approvedTimeOff) return [];
+    const dateStr = date.toISOString().split('T')[0];
+    return approvedTimeOff.filter(to => {
+      // Filter by selected worker if applicable
+      if (selectedWorkerId && to.worker_id !== selectedWorkerId) return false;
+      return dateStr >= to.start_date && dateStr <= to.end_date;
+    });
+  };
+
+  // Time-off for selected date
+  const selectedDateTimeOff = useMemo(() => {
+    if (!selectedDate || !approvedTimeOff) return [];
+    const dateStr = selectedDate.toISOString().split('T')[0];
+    return approvedTimeOff.filter(to => {
+      if (selectedWorkerId && to.worker_id !== selectedWorkerId) return false;
+      return dateStr >= to.start_date && dateStr <= to.end_date;
+    });
+  }, [selectedDate, approvedTimeOff, selectedWorkerId]);
 
   // Get worker name by ID (just name, no specialty)
   const getWorkerName = (workerId) => {
@@ -433,15 +463,22 @@ function CalendarTab() {
               
               {calendarData.map((dayData, index) => {
                 const events = getEventsForDate(dayData.date);
+                const timeOff = getTimeOffForDate(dayData.date);
                 const hasEvents = events.length > 0;
+                const hasTimeOff = timeOff.length > 0;
                 
                 return (
                   <div
                     key={index}
-                    className={`calendar-day ${!dayData.isCurrentMonth ? 'other-month' : ''} ${isToday(dayData.date) ? 'today' : ''} ${isSelected(dayData.date) ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
+                    className={`calendar-day ${!dayData.isCurrentMonth ? 'other-month' : ''} ${isToday(dayData.date) ? 'today' : ''} ${isSelected(dayData.date) ? 'selected' : ''} ${hasEvents ? 'has-events' : ''} ${hasTimeOff ? 'has-time-off' : ''}`}
                     onClick={() => setSelectedDate(dayData.date)}
                   >
                     <span className="day-number">{dayData.day}</span>
+                    {hasTimeOff && (
+                      <div className="time-off-indicator" title={timeOff.map(t => `${t.worker_name} - ${t.type}`).join(', ')}>
+                        <i className="fas fa-umbrella-beach"></i>
+                      </div>
+                    )}
                     {hasEvents && (
                       <div className="event-dots">
                         {(() => {
@@ -486,7 +523,10 @@ function CalendarTab() {
                 }
               </h3>
               {selectedDate && (
-                <span className="event-count">{selectedDateEvents.length} event{selectedDateEvents.length !== 1 ? 's' : ''}</span>
+                <span className="event-count">
+                  {selectedDateEvents.length} event{selectedDateEvents.length !== 1 ? 's' : ''}
+                  {selectedDateTimeOff.length > 0 && ` · ${selectedDateTimeOff.length} leave`}
+                </span>
               )}
             </div>
             
@@ -496,13 +536,36 @@ function CalendarTab() {
                   <i className="fas fa-hand-pointer"></i>
                   <p>Click on a day to see events</p>
                 </div>
-              ) : selectedDateEvents.length === 0 ? (
+              ) : (selectedDateEvents.length === 0 && selectedDateTimeOff.length === 0) ? (
                 <div className="empty-events">
                   <i className="fas fa-calendar-check"></i>
                   <p>No events on this day</p>
                 </div>
               ) : (
-                selectedDateEvents.map(event => {
+                <>
+                  {/* Time-off entries */}
+                  {selectedDateTimeOff.map(to => (
+                    <div key={`to-${to.id}`} className="event-card time-off-card">
+                      <div className="time-off-icon">
+                        <i className={`fas ${to.type === 'sick' ? 'fa-thermometer-half' : to.type === 'personal' ? 'fa-user' : 'fa-umbrella-beach'}`}></i>
+                      </div>
+                      <div className="event-info">
+                        <div className="event-header">
+                          <span className="event-customer">{to.worker_name}</span>
+                          <span className="badge badge-sm time-off-badge">{to.type}</span>
+                        </div>
+                        <div className="event-service time-off-dates">
+                          <i className="fas fa-calendar"></i>
+                          {new Date(to.start_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          {' — '}
+                          {new Date(to.end_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </div>
+                        {to.reason && <div className="event-location">{to.reason}</div>}
+                      </div>
+                    </div>
+                  ))}
+                  {/* Job events */}
+                  {selectedDateEvents.map(event => {
                   const colors = event.status === 'completed' ? ['#22c55e'] : getWorkerColors(event);
                   return (
                     <div 
@@ -554,7 +617,8 @@ function CalendarTab() {
                       </div>
                     </div>
                   );
-                })
+                })}
+                </>
               )}
             </div>
           </div>
@@ -623,6 +687,7 @@ function CalendarTab() {
               };
               
               const eventLayouts = getEventLayout(dayEvents);
+              const dayTimeOff = getTimeOffForDate(date);
               
               return (
                 <div 
@@ -634,6 +699,11 @@ function CalendarTab() {
                     <span className={`week-day-number ${isToday(date) ? 'today-number' : ''}`}>
                       {date.getDate()}
                     </span>
+                    {dayTimeOff.length > 0 && (
+                      <span className="week-time-off-badge" title={dayTimeOff.map(t => `${t.worker_name} - ${t.type}`).join(', ')}>
+                        <i className="fas fa-umbrella-beach"></i>
+                      </span>
+                    )}
                   </div>
                   
                   <div className="day-slots">

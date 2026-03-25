@@ -1013,3 +1013,62 @@
     display: none;
   }
 }
+
+/* ---- Time-Off on Calendar ---- */
+
+/* Small icon indicator on month calendar cells */
+.time-off-indicator {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 0.55rem;
+  color: #f59e0b;
+  opacity: 0.7;
+}
+.calendar-day.has-time-off {
+  position: relative;
+}
+
+/* Time-off card in the events panel */
+.event-card.time-off-card {
+  border-left: 3px dashed #f59e0b;
+  background: rgba(245, 158, 11, 0.04);
+  cursor: default;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+}
+.event-card.time-off-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+.time-off-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #d97706;
+  font-size: 0.8rem;
+}
+.time-off-badge {
+  background: rgba(245, 158, 11, 0.1) !important;
+  color: #d97706 !important;
+  text-transform: capitalize;
+  font-size: 0.7rem;
+}
+.time-off-dates {
+  color: var(--text-tertiary, #94a3b8) !important;
+  font-size: 0.8rem;
+}
+
+/* Week view time-off badge in day header */
+.week-time-off-badge {
+  font-size: 0.6rem;
+  color: #f59e0b;
+  margin-left: 2px;
+}

@@ -1960,6 +1960,26 @@ def worker_time_off():
     )
 
     if request_id:
+        # Check for existing bookings that conflict with the requested dates
+        conflicting_jobs = []
+        try:
+            worker_jobs = db.get_worker_jobs(worker_id, include_completed=False, company_id=company_id)
+            for job in worker_jobs:
+                job_date = job.get('appointment_time')
+                if job_date:
+                    if isinstance(job_date, str):
+                        job_date = datetime.fromisoformat(job_date.replace('Z', '+00:00'))
+                    jd = job_date.date() if hasattr(job_date, 'date') else job_date
+                    if start <= jd <= end and job.get('status') not in ('completed', 'cancelled'):
+                        conflicting_jobs.append({
+                            'id': job.get('id'),
+                            'date': str(jd),
+                            'service': job.get('service_type', 'Job'),
+                            'client': job.get('client_name', '')
+                        })
+        except Exception:
+            pass
+
         # Notify the owner about the time-off request
         try:
             worker = db.get_worker(worker_id, company_id=company_id)
@@ -1976,7 +1996,13 @@ def worker_time_off():
         except Exception as e:
             print(f"[WARNING] Could not create time-off notification: {e}")
 
-        return jsonify({"success": True, "id": request_id, "message": "Time-off request submitted"}), 201
+        return jsonify({
+            "success": True,
+            "id": request_id,
+            "message": "Time-off request submitted",
+            "conflicting_jobs": conflicting_jobs,
+            "has_conflicts": len(conflicting_jobs) > 0
+        }), 201
     return jsonify({"error": "Failed to create request"}), 500
 
 
@@ -2086,6 +2112,33 @@ def review_time_off_request(request_id):
     success = db.update_time_off_status(request_id, company_id, status, note)
 
     if success:
+        # If approving, check for conflicting bookings and return a warning
+        conflicting_jobs = []
+        if status == 'approved':
+            try:
+                all_requests = db.get_company_time_off_requests(company_id)
+                the_req = next((r for r in all_requests if r['id'] == request_id), None)
+                if the_req:
+                    from datetime import datetime as _dt, date as _date
+                    s = _dt.strptime(str(the_req['start_date']), '%Y-%m-%d').date() if isinstance(the_req['start_date'], str) else the_req['start_date']
+                    e = _dt.strptime(str(the_req['end_date']), '%Y-%m-%d').date() if isinstance(the_req['end_date'], str) else the_req['end_date']
+                    worker_jobs = db.get_worker_jobs(the_req['worker_id'], include_completed=False, company_id=company_id)
+                    for job in worker_jobs:
+                        job_date = job.get('appointment_time')
+                        if job_date:
+                            if isinstance(job_date, str):
+                                job_date = _dt.fromisoformat(job_date.replace('Z', '+00:00'))
+                            jd = job_date.date() if hasattr(job_date, 'date') else job_date
+                            if s <= jd <= e and job.get('status') not in ('completed', 'cancelled'):
+                                conflicting_jobs.append({
+                                    'id': job.get('id'),
+                                    'date': str(jd),
+                                    'service': job.get('service_type', 'Job'),
+                                    'client': job.get('client_name', '')
+                                })
+            except Exception:
+                pass
+
         # Notify the worker about the decision
         try:
             # Look up the request to get the worker_id
@@ -2107,7 +2160,12 @@ def review_time_off_request(request_id):
         except Exception as e:
             print(f"[WARNING] Could not create time-off review notification: {e}")
 
-        return jsonify({"success": True, "message": f"Request {status}"})
+        return jsonify({
+            "success": True,
+            "message": f"Request {status}",
+            "conflicting_jobs": conflicting_jobs,
+            "has_conflicts": len(conflicting_jobs) > 0
+        })
     return jsonify({"error": "Request not found"}), 404
 
 

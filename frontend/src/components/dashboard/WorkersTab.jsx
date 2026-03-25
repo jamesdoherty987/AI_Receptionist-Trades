@@ -29,9 +29,16 @@ function WorkersTab({ workers, bookings }) {
 
   const reviewMutation = useMutation({
     mutationFn: ({ id, status, note }) => reviewTimeOffRequest(id, status, note),
-    onSuccess: (_, variables) => {
+    onSuccess: (response, variables) => {
       queryClient.invalidateQueries({ queryKey: ['company-time-off'] });
-      addToast(`Request ${variables.status}`, 'success');
+      queryClient.invalidateQueries({ queryKey: ['calendar-time-off'] });
+      const data = response.data;
+      if (variables.status === 'approved' && data?.has_conflicts && data.conflicting_jobs?.length > 0) {
+        const jobList = data.conflicting_jobs.map(j => `${j.date}: ${j.service}${j.client ? ` (${j.client})` : ''}`).join(', ');
+        addToast(`Approved — but ${data.conflicting_jobs.length} existing job(s) overlap: ${jobList}. You may need to reassign them.`, 'warning');
+      } else {
+        addToast(`Request ${variables.status}`, 'success');
+      }
       setReviewNotes(prev => { const n = { ...prev }; delete n[variables.id]; return n; });
     },
     onError: (error) => {

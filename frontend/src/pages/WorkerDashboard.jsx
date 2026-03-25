@@ -83,7 +83,7 @@ function WorkerDashboard() {
   const { data: timeOffData } = useQuery({
     queryKey: ['worker-time-off'],
     queryFn: async () => { const r = await getWorkerTimeOff(); return r.data; },
-    enabled: activeTab === 'hr',
+    enabled: activeTab === 'hr' || activeTab === 'schedule',
   });
 
   const statusMutation = useMutation({
@@ -111,10 +111,16 @@ function WorkerDashboard() {
 
   const timeOffMutation = useMutation({
     mutationFn: (data) => createTimeOffRequest(data),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['worker-time-off'] });
       setShowTimeOffForm(false);
       setTimeOffForm({ start_date: '', end_date: '', reason: '', type: 'vacation' });
+      // Warn about conflicting bookings
+      const data = response.data;
+      if (data?.has_conflicts && data.conflicting_jobs?.length > 0) {
+        const jobList = data.conflicting_jobs.map(j => `${j.date}: ${j.service}${j.client ? ` (${j.client})` : ''}`).join('\n');
+        alert(`Note: You have ${data.conflicting_jobs.length} existing job(s) during this period:\n\n${jobList}\n\nYour manager will see this when reviewing your request.`);
+      }
     },
   });
 
@@ -627,6 +633,7 @@ function WorkerDashboard() {
                   <div className="ws-view-toggle">
                     {[
                       { id: 'list', icon: 'fas fa-list', label: 'List' },
+                      { id: 'week', icon: 'fas fa-calendar-week', label: 'Week' },
                       { id: 'month', icon: 'fas fa-calendar-alt', label: 'Month' },
                       { id: 'year', icon: 'fas fa-calendar', label: 'Year' },
                     ].map(v => (
@@ -666,9 +673,96 @@ function WorkerDashboard() {
                   </>
                 )}
 
+                {/* WEEK VIEW */}
+                {scheduleView === 'week' && (() => {
+                  const allJobs = jobs || [];
+                  const approvedLeave = (timeOffData?.requests || []).filter(r => r.status === 'approved');
+                  const today = new Date();
+
+                  // Get the week's start (Sunday)
+                  const weekStart = new Date(calYear, calMonth, selectedCalDay || today.getDate());
+                  const dayOfWeek = weekStart.getDay();
+                  weekStart.setDate(weekStart.getDate() - dayOfWeek);
+                  weekStart.setHours(0, 0, 0, 0);
+
+                  const weekDays = Array.from({ length: 7 }, (_, i) => {
+                    const d = new Date(weekStart);
+                    d.setDate(weekStart.getDate() + i);
+                    return d;
+                  });
+
+                  const weekLabel = (() => {
+                    const s = weekDays[0];
+                    const e = weekDays[6];
+                    if (s.getMonth() === e.getMonth()) {
+                      return `${s.toLocaleDateString('en-IE', { month: 'long' })} ${s.getDate()} – ${e.getDate()}, ${s.getFullYear()}`;
+                    }
+                    return `${s.toLocaleDateString('en-IE', { month: 'short' })} ${s.getDate()} – ${e.toLocaleDateString('en-IE', { month: 'short' })} ${e.getDate()}, ${e.getFullYear()}`;
+                  })();
+
+                  const navigateWeek = (dir) => {
+                    const ref = new Date(weekStart);
+                    ref.setDate(ref.getDate() + dir * 7);
+                    setCalYear(ref.getFullYear());
+                    setCalMonth(ref.getMonth());
+                    setSelectedCalDay(ref.getDate());
+                  };
+
+                  return (
+                    <div className="ws-week-view">
+                      <div className="ws-month-nav">
+                        <button className="ws-nav-btn" onClick={() => navigateWeek(-1)}><i className="fas fa-chevron-left"></i></button>
+                        <span className="ws-month-title">{weekLabel}</span>
+                        <button className="ws-nav-btn" onClick={() => navigateWeek(1)}><i className="fas fa-chevron-right"></i></button>
+                      </div>
+                      <div className="ws-week-grid">
+                        {weekDays.map((date, idx) => {
+                          const dateStr = date.toISOString().split('T')[0];
+                          const dayJobs = allJobs.filter(j => {
+                            const jd = new Date(j.appointment_time);
+                            return jd.toDateString() === date.toDateString();
+                          }).sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
+                          const onLeave = approvedLeave.some(l => dateStr >= l.start_date && dateStr <= l.end_date);
+                          const isToday = date.toDateString() === today.toDateString();
+
+                          return (
+                            <div key={idx} className={`ws-week-day ${isToday ? 'today' : ''} ${onLeave ? 'on-leave' : ''}`}>
+                              <div className="ws-week-day-header">
+                                <span className="ws-week-day-name">{date.toLocaleDateString('en-IE', { weekday: 'short' })}</span>
+                                <span className={`ws-week-day-num ${isToday ? 'today' : ''}`}>{date.getDate()}</span>
+                                {onLeave && <span className="ws-leave-icon-sm"><i className="fas fa-umbrella-beach"></i></span>}
+                              </div>
+                              <div className="ws-week-day-jobs">
+                                {onLeave && (
+                                  <div className="ws-week-leave-bar">
+                                    <i className="fas fa-umbrella-beach"></i> On Leave
+                                  </div>
+                                )}
+                                {dayJobs.length === 0 && !onLeave && (
+                                  <span className="ws-week-empty">—</span>
+                                )}
+                                {dayJobs.map(job => (
+                                  <div key={job.id} className="ws-week-job" onClick={() => setSelectedJobId(job.id)}>
+                                    <span className="ws-week-job-time">
+                                      {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    <span className="ws-week-job-title">{job.service_type || 'Job'}</span>
+                                    <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* MONTH VIEW */}
                 {scheduleView === 'month' && (() => {
                   const allJobs = jobs || [];
+                  const approvedLeave = (timeOffData?.requests || []).filter(r => r.status === 'approved');
                   const firstDay = new Date(calYear, calMonth, 1).getDay();
                   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
                   const today = new Date();
@@ -685,86 +779,135 @@ function WorkerDashboard() {
                     }
                   });
 
+                  // Check if a day falls within approved leave
+                  const isOnLeave = (day) => {
+                    const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    return approvedLeave.some(l => dateStr >= l.start_date && dateStr <= l.end_date);
+                  };
+
+                  // Get leave info for selected day
+                  const selectedDayLeave = selectedCalDay ? approvedLeave.filter(l => {
+                    const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(selectedCalDay).padStart(2, '0')}`;
+                    return dateStr >= l.start_date && dateStr <= l.end_date;
+                  }) : [];
+
                   // Jobs for selected day
                   const selectedDayJobs = selectedCalDay ? (jobsByDay[selectedCalDay] || []).sort((a, b) =>
                     new Date(a.appointment_time) - new Date(b.appointment_time)
                   ) : [];
 
                   return (
-                    <div className="ws-month-view">
-                      <div className="ws-month-nav">
-                        <button className="ws-nav-btn" onClick={() => {
-                          if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1); }
-                          else setCalMonth(calMonth - 1);
-                          setSelectedCalDay(null);
-                        }}><i className="fas fa-chevron-left"></i></button>
-                        <span className="ws-month-title">{monthName}</span>
-                        <button className="ws-nav-btn" onClick={() => {
-                          if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1); }
-                          else setCalMonth(calMonth + 1);
-                          setSelectedCalDay(null);
-                        }}><i className="fas fa-chevron-right"></i></button>
-                      </div>
-                      <div className="ws-cal-grid">
-                        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-                          <div key={d} className="ws-cal-header">{d}</div>
-                        ))}
-                        {Array.from({ length: firstDay }).map((_, i) => (
-                          <div key={`e-${i}`} className="ws-cal-cell empty"></div>
-                        ))}
-                        {Array.from({ length: daysInMonth }).map((_, i) => {
-                          const day = i + 1;
-                          const dayJobs = jobsByDay[day] || [];
-                          const isToday = day === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
-                          const isSelected = day === selectedCalDay;
-                          return (
-                            <div key={day}
-                              className={`ws-cal-cell ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''} ${dayJobs.length > 0 ? 'has-jobs' : ''}`}
-                              onClick={() => setSelectedCalDay(day === selectedCalDay ? null : day)}>
-                              <span className="ws-cal-day">{day}</span>
-                              {dayJobs.length > 0 && (
-                                <div className="ws-cal-dots">
-                                  {dayJobs.slice(0, 3).map((j, idx) => (
-                                    <span key={idx} className={`ws-cal-dot ${j.status === 'completed' ? 'done' : j.status === 'cancelled' ? 'cancelled' : ''}`}></span>
-                                  ))}
-                                  {dayJobs.length > 3 && <span className="ws-cal-more">+{dayJobs.length - 3}</span>}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                    <div className={`ws-month-view ${selectedCalDay ? 'with-panel' : ''}`}>
+                      <div className="ws-month-main">
+                        <div className="ws-month-nav">
+                          <button className="ws-nav-btn" onClick={() => {
+                            if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1); }
+                            else setCalMonth(calMonth - 1);
+                            setSelectedCalDay(null);
+                          }}><i className="fas fa-chevron-left"></i></button>
+                          <span className="ws-month-title">{monthName}</span>
+                          <button className="ws-nav-btn" onClick={() => {
+                            if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1); }
+                            else setCalMonth(calMonth + 1);
+                            setSelectedCalDay(null);
+                          }}><i className="fas fa-chevron-right"></i></button>
+                        </div>
+                        <div className="ws-cal-grid">
+                          {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+                            <div key={d} className="ws-cal-header">{d}</div>
+                          ))}
+                          {Array.from({ length: firstDay }).map((_, i) => (
+                            <div key={`e-${i}`} className="ws-cal-cell empty"></div>
+                          ))}
+                          {Array.from({ length: daysInMonth }).map((_, i) => {
+                            const day = i + 1;
+                            const dayJobs = jobsByDay[day] || [];
+                            const onLeave = isOnLeave(day);
+                            const isToday = day === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
+                            const isSelected = day === selectedCalDay;
+                            return (
+                              <div key={day}
+                                className={`ws-cal-cell ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''} ${dayJobs.length > 0 ? 'has-jobs' : ''} ${onLeave ? 'on-leave' : ''}`}
+                                onClick={() => setSelectedCalDay(day === selectedCalDay ? null : day)}>
+                                <span className="ws-cal-day">{day}</span>
+                                {onLeave && <span className="ws-leave-icon"><i className="fas fa-umbrella-beach"></i></span>}
+                                {dayJobs.length > 0 && (
+                                  <div className="ws-cal-dots">
+                                    {dayJobs.slice(0, 3).map((j, idx) => (
+                                      <span key={idx} className={`ws-cal-dot ${j.status === 'completed' ? 'done' : j.status === 'cancelled' ? 'cancelled' : ''}`}></span>
+                                    ))}
+                                    {dayJobs.length > 3 && <span className="ws-cal-more">+{dayJobs.length - 3}</span>}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
 
-                      {/* Selected day detail */}
-                      {selectedCalDay && (
-                        <div className="ws-day-detail">
+                      {/* Side panel for selected day */}
+                      <div className="ws-events-panel">
+                        <div className="ws-events-panel-header">
                           <h3>
-                            {new Date(calYear, calMonth, selectedCalDay).toLocaleDateString('en-IE', { weekday: 'long', month: 'long', day: 'numeric' })}
-                            <span className="ws-day-count">{selectedDayJobs.length} job{selectedDayJobs.length !== 1 ? 's' : ''}</span>
+                            {selectedCalDay
+                              ? new Date(calYear, calMonth, selectedCalDay).toLocaleDateString('en-IE', { weekday: 'long', month: 'long', day: 'numeric' })
+                              : 'Select a day'
+                            }
                           </h3>
-                          {selectedDayJobs.length === 0 ? (
-                            <p className="wjd-empty-text">No jobs this day</p>
-                          ) : (
-                            <div className="ws-day-jobs">
-                              {selectedDayJobs.map(job => (
-                                <div key={job.id} className="worker-schedule-item" onClick={() => setSelectedJobId(job.id)}>
-                                  <div className="worker-schedule-date">
-                                    <span className="schedule-date-num">
-                                      {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}
-                                    </span>
-                                  </div>
-                                  <div className="worker-schedule-details">
-                                    <h3>{job.service_type || 'Job'}</h3>
-                                    {job.client_name && <p><i className="fas fa-user"></i> {job.client_name}</p>}
-                                    {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
-                                  </div>
-                                  <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
-                                </div>
-                              ))}
-                            </div>
+                          {selectedCalDay && (
+                            <span className="ws-event-count">
+                              {selectedDayJobs.length} job{selectedDayJobs.length !== 1 ? 's' : ''}
+                              {selectedDayLeave.length > 0 && ' · leave'}
+                            </span>
                           )}
                         </div>
-                      )}
+                        <div className="ws-events-list">
+                          {!selectedCalDay ? (
+                            <div className="ws-events-empty">
+                              <i className="fas fa-hand-pointer"></i>
+                              <p>Tap a day to see details</p>
+                            </div>
+                          ) : (selectedDayJobs.length === 0 && selectedDayLeave.length === 0) ? (
+                            <div className="ws-events-empty">
+                              <i className="fas fa-calendar-check"></i>
+                              <p>Nothing scheduled</p>
+                            </div>
+                          ) : (
+                            <>
+                              {selectedDayLeave.length > 0 && (
+                                <div className="ws-leave-banner">
+                                  <i className="fas fa-umbrella-beach"></i>
+                                  {selectedDayLeave.map(l => (
+                                    <span key={l.id}>
+                                      {l.type.charAt(0).toUpperCase() + l.type.slice(1)} leave
+                                      {' · '}
+                                      {new Date(l.start_date + 'T00:00').toLocaleDateString('en-IE', { month: 'short', day: 'numeric' })}
+                                      {' — '}
+                                      {new Date(l.end_date + 'T00:00').toLocaleDateString('en-IE', { month: 'short', day: 'numeric' })}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {selectedDayJobs.map(job => (
+                                <div key={job.id} className="ws-event-card" onClick={() => setSelectedJobId(job.id)}>
+                                  <div className="ws-event-time">
+                                    {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                  <div className="ws-event-info">
+                                    <span className="ws-event-title">{job.service_type || 'Job'}</span>
+                                    {job.client_name && <span className="ws-event-sub"><i className="fas fa-user"></i> {job.client_name}</span>}
+                                    {job.address && <span className="ws-event-sub"><i className="fas fa-map-marker-alt"></i> {job.address}</span>}
+                                  </div>
+                                  <div className="ws-event-right">
+                                    <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                                    <i className="fas fa-chevron-right ws-event-arrow"></i>
+                                  </div>
+                                </div>
+                              ))}
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   );
                 })()}
