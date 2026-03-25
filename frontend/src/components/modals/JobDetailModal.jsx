@@ -13,7 +13,11 @@ import {
   getBusinessSettings,
   uploadJobPhoto,
   deleteJobPhoto,
-  uploadJobMedia
+  uploadJobMedia,
+  getJobMaterials,
+  addJobMaterial,
+  deleteJobMaterial,
+  getMaterials
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
@@ -38,6 +42,11 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState(null);
   const photoInputRef = useRef(null);
+
+  // Materials state
+  const [showAddMaterial, setShowAddMaterial] = useState(false);
+  const [materialSearch, setMaterialSearch] = useState('');
+  const [customMaterial, setCustomMaterial] = useState({ name: '', unit_price: '', quantity: '1', unit: 'each' });
 
   const { data: job, isLoading } = useQuery({
     queryKey: ['booking', jobId],
@@ -107,6 +116,43 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     gcTime: 10 * 60 * 1000 // 10 minutes
   });
 
+  // Job materials
+  const { data: jobMaterialsData } = useQuery({
+    queryKey: ['job-materials', jobId],
+    queryFn: async () => { const r = await getJobMaterials(jobId); return r.data; },
+    enabled: isOpen && !!jobId,
+    staleTime: 30 * 1000,
+  });
+
+  // Materials catalog for autocomplete
+  const { data: materialsCatalog } = useQuery({
+    queryKey: ['materials'],
+    queryFn: async () => { const r = await getMaterials(); return r.data; },
+    enabled: isOpen && showAddMaterial,
+    staleTime: 60 * 1000,
+  });
+
+  const addMaterialMut = useMutation({
+    mutationFn: (data) => addJobMaterial(jobId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-materials', jobId] });
+      setShowAddMaterial(false);
+      setMaterialSearch('');
+      setCustomMaterial({ name: '', unit_price: '', quantity: '1', unit: 'each' });
+      addToast('Material added', 'success');
+    },
+    onError: () => addToast('Failed to add material', 'error'),
+  });
+
+  const removeMaterialMut = useMutation({
+    mutationFn: (itemId) => deleteJobMaterial(jobId, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-materials', jobId] });
+      addToast('Material removed', 'success');
+    },
+    onError: () => addToast('Failed to remove', 'error'),
+  });
+
   // Populate edit form when job data is loaded
   useEffect(() => {
     if (job) {
@@ -135,6 +181,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   useEffect(() => {
     if (!isOpen) {
       setIsEditing(false);
+      setShowAddMaterial(false);
+      setMaterialSearch('');
+      setCustomMaterial({ name: '', unit_price: '', quantity: '1', unit: 'each' });
     }
   }, [isOpen]);
 
@@ -1044,6 +1093,101 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   ))
                 )}
               </div>
+            </div>
+
+            {/* Materials Used Card */}
+            <div className="info-card">
+              <div className="card-header-row">
+                <h3><i className="fas fa-cubes"></i> Materials Used</h3>
+                <button className="btn btn-sm btn-primary" onClick={() => setShowAddMaterial(!showAddMaterial)}>
+                  <i className="fas fa-plus"></i> Add
+                </button>
+              </div>
+
+              {showAddMaterial && (
+                <div className="assign-box" style={{ marginBottom: '0.75rem' }}>
+                  {/* Search catalog */}
+                  <input
+                    type="text"
+                    className="form-select"
+                    placeholder="Search your materials catalog..."
+                    value={materialSearch}
+                    onChange={e => setMaterialSearch(e.target.value)}
+                    autoFocus
+                  />
+                  {materialSearch && materialsCatalog?.materials?.length > 0 && (
+                    <div className="jm-catalog-results">
+                      {materialsCatalog.materials
+                        .filter(m => m.name.toLowerCase().includes(materialSearch.toLowerCase()))
+                        .slice(0, 6)
+                        .map(m => (
+                          <button key={m.id} className="jm-catalog-item" onClick={() => {
+                            addMaterialMut.mutate({
+                              material_id: m.id, name: m.name, unit_price: m.unit_price,
+                              unit: m.unit || 'each', quantity: 1, added_by: 'owner'
+                            });
+                          }}>
+                            <span className="jm-cat-name">{m.name}</span>
+                            <span className="jm-cat-price">€{parseFloat(m.unit_price).toFixed(2)}/{m.unit || 'each'}</span>
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                  {/* Custom material entry */}
+                  <div className="jm-custom-label">Or add a custom item:</div>
+                  <div className="jm-custom-row">
+                    <input type="text" placeholder="Name" value={customMaterial.name}
+                      onChange={e => setCustomMaterial({...customMaterial, name: e.target.value})}
+                      className="form-select" style={{ flex: 2 }} />
+                    <input type="number" placeholder="€" value={customMaterial.unit_price} min="0" step="0.01"
+                      onChange={e => setCustomMaterial({...customMaterial, unit_price: e.target.value})}
+                      className="form-select" style={{ flex: 1 }} />
+                    <input type="number" placeholder="Qty" value={customMaterial.quantity} min="0.01" step="1"
+                      onChange={e => setCustomMaterial({...customMaterial, quantity: e.target.value})}
+                      className="form-select" style={{ flex: 0.7 }} />
+                  </div>
+                  <div className="assign-buttons">
+                    <button className="btn btn-sm btn-secondary" onClick={() => setShowAddMaterial(false)}>Cancel</button>
+                    <button className="btn btn-sm btn-primary" disabled={!customMaterial.name.trim() || addMaterialMut.isPending}
+                      onClick={() => addMaterialMut.mutate({
+                        name: customMaterial.name, unit_price: parseFloat(customMaterial.unit_price) || 0,
+                        quantity: parseFloat(customMaterial.quantity) || 1, unit: customMaterial.unit, added_by: 'owner'
+                      })}>
+                      {addMaterialMut.isPending ? 'Adding...' : 'Add'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {jobMaterialsData?.materials?.length > 0 ? (
+                <div className="jm-list">
+                  {jobMaterialsData.materials.map(item => (
+                    <div key={item.id} className="jm-item">
+                      <div className="jm-item-info">
+                        <span className="jm-item-name">{item.name}</span>
+                        <span className="jm-item-detail">
+                          {item.quantity} × €{parseFloat(item.unit_price).toFixed(2)}
+                          {item.added_by && <span className="jm-added-by"> · {item.added_by}</span>}
+                        </span>
+                      </div>
+                      <span className="jm-item-total">€{parseFloat(item.total_cost).toFixed(2)}</span>
+                      <button className="btn-remove" onClick={() => removeMaterialMut.mutate(item.id)}
+                        disabled={removeMaterialMut.isPending} title="Remove">
+                        <i className="fas fa-times"></i>
+                      </button>
+                    </div>
+                  ))}
+                  <div className="jm-total">
+                    <span>Materials Total</span>
+                    <span className="jm-total-amount">€{parseFloat(jobMaterialsData.total_cost).toFixed(2)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-workers">
+                  <i className="fas fa-cubes"></i>
+                  <p>No materials logged</p>
+                </div>
+              )}
             </div>
 
             {/* Job Photos & Videos Card */}

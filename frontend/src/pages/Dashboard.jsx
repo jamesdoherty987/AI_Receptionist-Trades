@@ -13,6 +13,7 @@ import FinancesTab from '../components/dashboard/FinancesTab';
 import CalendarTab from '../components/dashboard/CalendarTab';
 import ChatTab from '../components/dashboard/ChatTab';
 import ServicesTab from '../components/dashboard/ServicesTab';
+import MaterialsTab from '../components/dashboard/MaterialsTab';
 import InsightsTab from '../components/dashboard/InsightsTab';
 import { getDashboardData, getBusinessSettings } from '../services/api';
 import './Dashboard.css';
@@ -99,6 +100,11 @@ function Dashboard() {
       label: 'Services',
       icon: 'fas fa-concierge-bell',
       content: <ServicesTab />
+    },
+    {
+      label: 'Materials',
+      icon: 'fas fa-cubes',
+      content: <MaterialsTab />
     },
     {
       label: 'Calendar',

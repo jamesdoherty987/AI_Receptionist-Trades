@@ -114,6 +114,23 @@ export const createService = (data) => api.post('/api/services/menu/service', da
 export const updateService = (id, data) => api.put(`/api/services/menu/service/${id}`, data);
 export const deleteService = (id) => api.delete(`/api/services/menu/service/${id}`);
 
+// Materials Catalog
+export const getMaterials = () => api.get('/api/materials');
+export const createMaterial = (data) => api.post('/api/materials', data);
+export const updateMaterial = (id, data) => api.put(`/api/materials/${id}`, data);
+export const deleteMaterial = (id) => api.delete(`/api/materials/${id}`);
+
+// Job Materials
+export const getJobMaterials = (bookingId) => api.get(`/api/bookings/${bookingId}/materials`);
+export const addJobMaterial = (bookingId, data) => api.post(`/api/bookings/${bookingId}/materials`, data);
+export const updateJobMaterial = (bookingId, itemId, data) => api.put(`/api/bookings/${bookingId}/materials/${itemId}`, data);
+export const deleteJobMaterial = (bookingId, itemId) => api.delete(`/api/bookings/${bookingId}/materials/${itemId}`);
+
+// Worker Job Materials
+export const getWorkerJobMaterials = (jobId) => api.get(`/api/worker/jobs/${jobId}/materials`);
+export const addWorkerJobMaterial = (jobId, data) => api.post(`/api/worker/jobs/${jobId}/materials`, data);
+export const deleteWorkerJobMaterial = (jobId, itemId) => api.delete(`/api/worker/jobs/${jobId}/materials/${itemId}`);
+
 export const getBusinessHours = () => api.get('/api/services/business-hours');
 export const updateBusinessHours = (data) => api.post('/api/services/business-hours', data);
 

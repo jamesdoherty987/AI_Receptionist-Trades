@@ -4062,6 +4062,389 @@ def manage_service_api(service_id):
         return jsonify({"error": result.get('error', 'Service not found')}), 404
 
 
+# ============================================================
+# Materials Catalog & Job Materials API
+# ============================================================
+
+@app.route("/api/materials", methods=["GET", "POST"])
+@login_required
+def materials_api():
+    """Get all materials or create a new one"""
+    company_id = session.get('company_id')
+    db = get_database()
+
+    if request.method == "GET":
+        conn = db.get_connection()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute(
+                "SELECT * FROM materials WHERE company_id = %s ORDER BY category NULLS LAST, name",
+                (company_id,)
+            )
+            materials = [dict(r) for r in cursor.fetchall()]
+            return jsonify({"materials": materials})
+        finally:
+            cursor.close()
+            db.return_connection(conn)
+
+    # POST - create new material
+    data = request.json
+    name = sanitize_string(data.get('name', ''), max_length=255)
+    if not name:
+        return jsonify({"error": "Material name is required"}), 400
+
+    try:
+        unit_price = float(data.get('unit_price', 0))
+        if unit_price < 0:
+            unit_price = 0
+    except (ValueError, TypeError):
+        unit_price = 0
+
+    unit = sanitize_string(data.get('unit', 'each'), max_length=50) or 'each'
+    category = sanitize_string(data.get('category', ''), max_length=100) or None
+    supplier = sanitize_string(data.get('supplier', ''), max_length=255) or None
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """INSERT INTO materials (company_id, name, unit_price, unit, category, supplier)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+            (company_id, name, unit_price, unit, category, supplier)
+        )
+        material_id = cursor.fetchone()[0]
+        conn.commit()
+        return jsonify({"success": True, "id": material_id})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/materials/<int:material_id>", methods=["PUT", "DELETE"])
+@login_required
+def material_detail_api(material_id):
+    """Update or delete a material"""
+    company_id = session.get('company_id')
+    db = get_database()
+
+    if request.method == "PUT":
+        data = request.json
+        fields, values = [], []
+
+        if 'name' in data:
+            name = sanitize_string(data['name'], max_length=255)
+            if not name:
+                return jsonify({"error": "Name is required"}), 400
+            fields.append("name = %s"); values.append(name)
+        if 'unit_price' in data:
+            try:
+                p = max(0, float(data['unit_price']))
+            except (ValueError, TypeError):
+                p = 0
+            fields.append("unit_price = %s"); values.append(p)
+        if 'unit' in data:
+            fields.append("unit = %s"); values.append(sanitize_string(data['unit'], max_length=50) or 'each')
+        if 'category' in data:
+            fields.append("category = %s"); values.append(sanitize_string(data['category'], max_length=100) or None)
+        if 'supplier' in data:
+            fields.append("supplier = %s"); values.append(sanitize_string(data['supplier'], max_length=255) or None)
+
+        if not fields:
+            return jsonify({"error": "No fields to update"}), 400
+
+        fields.append("updated_at = CURRENT_TIMESTAMP")
+        values.extend([material_id, company_id])
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                f"UPDATE materials SET {', '.join(fields)} WHERE id = %s AND company_id = %s",
+                values
+            )
+            conn.commit()
+            return jsonify({"success": cursor.rowcount > 0})
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            db.return_connection(conn)
+
+    elif request.method == "DELETE":
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM materials WHERE id = %s AND company_id = %s", (material_id, company_id))
+            conn.commit()
+            return jsonify({"success": cursor.rowcount > 0})
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            db.return_connection(conn)
+
+
+@app.route("/api/bookings/<int:booking_id>/materials", methods=["GET", "POST"])
+@login_required
+def job_materials_api(booking_id):
+    """Get or add materials for a job"""
+    company_id = session.get('company_id')
+    db = get_database()
+
+    from psycopg2.extras import RealDictCursor
+
+    if request.method == "GET":
+        conn = db.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute(
+                "SELECT * FROM job_materials WHERE booking_id = %s AND company_id = %s ORDER BY created_at",
+                (booking_id, company_id)
+            )
+            items = [dict(r) for r in cursor.fetchall()]
+            total = sum(float(i.get('total_cost', 0)) for i in items)
+            return jsonify({"materials": items, "total_cost": round(total, 2)})
+        finally:
+            cursor.close()
+            db.return_connection(conn)
+
+    # POST - add material to job
+    data = request.json
+    name = sanitize_string(data.get('name', ''), max_length=255)
+    if not name:
+        return jsonify({"error": "Material name is required"}), 400
+
+    try:
+        unit_price = max(0, float(data.get('unit_price', 0)))
+    except (ValueError, TypeError):
+        unit_price = 0
+    try:
+        quantity = max(0.01, float(data.get('quantity', 1)))
+    except (ValueError, TypeError):
+        quantity = 1
+
+    unit = sanitize_string(data.get('unit', 'each'), max_length=50) or 'each'
+    material_id = data.get('material_id')  # nullable for custom items
+    total_cost = round(unit_price * quantity, 2)
+    added_by = data.get('added_by', 'owner')
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """INSERT INTO job_materials (booking_id, company_id, material_id, name, unit_price, unit, quantity, total_cost, added_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (booking_id, company_id, material_id, name, unit_price, unit, quantity, total_cost, added_by)
+        )
+        item_id = cursor.fetchone()[0]
+        conn.commit()
+        return jsonify({"success": True, "id": item_id, "total_cost": total_cost})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/bookings/<int:booking_id>/materials/<int:item_id>", methods=["PUT", "DELETE"])
+@login_required
+def job_material_detail_api(booking_id, item_id):
+    """Update or delete a job material item"""
+    company_id = session.get('company_id')
+    db = get_database()
+
+    if request.method == "DELETE":
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "DELETE FROM job_materials WHERE id = %s AND booking_id = %s AND company_id = %s",
+                (item_id, booking_id, company_id)
+            )
+            conn.commit()
+            return jsonify({"success": cursor.rowcount > 0})
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            db.return_connection(conn)
+
+    elif request.method == "PUT":
+        data = request.json
+        fields, values = [], []
+        if 'quantity' in data:
+            try:
+                q = max(0.01, float(data['quantity']))
+            except (ValueError, TypeError):
+                q = 1
+            fields.append("quantity = %s"); values.append(q)
+        if 'unit_price' in data:
+            try:
+                p = max(0, float(data['unit_price']))
+            except (ValueError, TypeError):
+                p = 0
+            fields.append("unit_price = %s"); values.append(p)
+        if 'name' in data:
+            fields.append("name = %s"); values.append(sanitize_string(data['name'], max_length=255))
+
+        if not fields:
+            return jsonify({"error": "No fields to update"}), 400
+
+        # Recalculate total_cost
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            # Get current values for recalculation
+            from psycopg2.extras import RealDictCursor
+            cur2 = conn.cursor(cursor_factory=RealDictCursor)
+            cur2.execute("SELECT * FROM job_materials WHERE id = %s AND booking_id = %s AND company_id = %s", (item_id, booking_id, company_id))
+            existing = cur2.fetchone()
+            cur2.close()
+            if not existing:
+                return jsonify({"error": "Not found"}), 404
+
+            new_qty = float(data.get('quantity', existing['quantity']))
+            new_price = float(data.get('unit_price', existing['unit_price']))
+            total = round(new_qty * new_price, 2)
+            fields.append("total_cost = %s"); values.append(total)
+
+            values.extend([item_id, booking_id, company_id])
+            cursor.execute(
+                f"UPDATE job_materials SET {', '.join(fields)} WHERE id = %s AND booking_id = %s AND company_id = %s",
+                values
+            )
+            conn.commit()
+            return jsonify({"success": True, "total_cost": total})
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            cursor.close()
+            db.return_connection(conn)
+
+
+# Worker endpoint for adding materials to their jobs
+@app.route("/api/worker/jobs/<int:job_id>/materials", methods=["GET", "POST"])
+@worker_login_required
+def worker_job_materials_api(job_id):
+    """Workers can view and add materials to their assigned jobs"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+    db = get_database()
+
+    # Verify worker is assigned
+    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+    if job_id not in [j['id'] for j in worker_jobs]:
+        return jsonify({"error": "Job not found or not assigned to you"}), 404
+
+    from psycopg2.extras import RealDictCursor
+
+    if request.method == "GET":
+        conn = db.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute(
+                "SELECT * FROM job_materials WHERE booking_id = %s AND company_id = %s ORDER BY created_at",
+                (job_id, company_id)
+            )
+            items = [dict(r) for r in cursor.fetchall()]
+            # Also get the materials catalog for the autocomplete
+            cursor.execute(
+                "SELECT id, name, unit_price, unit, category FROM materials WHERE company_id = %s ORDER BY name",
+                (company_id,)
+            )
+            catalog = [dict(r) for r in cursor.fetchall()]
+            total = sum(float(i.get('total_cost', 0)) for i in items)
+            return jsonify({"materials": items, "catalog": catalog, "total_cost": round(total, 2)})
+        finally:
+            cursor.close()
+            db.return_connection(conn)
+
+    # POST
+    data = request.json
+    name = sanitize_string(data.get('name', ''), max_length=255)
+    if not name:
+        return jsonify({"error": "Material name is required"}), 400
+
+    try:
+        unit_price = max(0, float(data.get('unit_price', 0)))
+    except (ValueError, TypeError):
+        unit_price = 0
+    try:
+        quantity = max(0.01, float(data.get('quantity', 1)))
+    except (ValueError, TypeError):
+        quantity = 1
+
+    unit = sanitize_string(data.get('unit', 'each'), max_length=50) or 'each'
+    material_id = data.get('material_id')
+    total_cost = round(unit_price * quantity, 2)
+
+    # Get worker name for added_by
+    worker_name = 'worker'
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        from psycopg2.extras import RealDictCursor as RDC
+        cur2 = conn.cursor(cursor_factory=RDC)
+        cur2.execute("SELECT name FROM workers WHERE id = %s", (worker_id,))
+        w = cur2.fetchone()
+        cur2.close()
+        if w:
+            worker_name = w['name']
+
+        cursor.execute(
+            """INSERT INTO job_materials (booking_id, company_id, material_id, name, unit_price, unit, quantity, total_cost, added_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (job_id, company_id, material_id, name, unit_price, unit, quantity, total_cost, f"worker:{worker_name}")
+        )
+        item_id = cursor.fetchone()[0]
+        conn.commit()
+        return jsonify({"success": True, "id": item_id, "total_cost": total_cost})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/worker/jobs/<int:job_id>/materials/<int:item_id>", methods=["DELETE"])
+@worker_login_required
+def worker_delete_job_material(job_id, item_id):
+    """Workers can remove materials they added"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+    db = get_database()
+
+    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+    if job_id not in [j['id'] for j in worker_jobs]:
+        return jsonify({"error": "Job not found"}), 404
+
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "DELETE FROM job_materials WHERE id = %s AND booking_id = %s AND company_id = %s",
+            (item_id, job_id, company_id)
+        )
+        conn.commit()
+        return jsonify({"success": cursor.rowcount > 0})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        db.return_connection(conn)
+
+
 @app.route("/api/services/business-hours", methods=["GET", "POST"])
 @login_required
 def business_hours_api():

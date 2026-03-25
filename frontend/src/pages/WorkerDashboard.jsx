@@ -16,7 +16,10 @@ import {
   getWorkerHoursSummary,
   addWorkerJobNote,
   updateWorkerProfile,
-  getWorkerCustomers
+  getWorkerCustomers,
+  getWorkerJobMaterials,
+  addWorkerJobMaterial,
+  deleteWorkerJobMaterial
 } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
@@ -82,6 +85,11 @@ function WorkerDashboard() {
   // Job note state
   const [noteText, setNoteText] = useState('');
 
+  // Job materials state
+  const [showAddMaterial, setShowAddMaterial] = useState(false);
+  const [workerMaterialSearch, setWorkerMaterialSearch] = useState('');
+  const [workerCustomMat, setWorkerCustomMat] = useState({ name: '', unit_price: '', quantity: '1' });
+
   // Profile editing state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileForm, setProfileForm] = useState({ phone: '', image_url: '' });
@@ -136,6 +144,30 @@ function WorkerDashboard() {
     queryKey: ['worker-customers'],
     queryFn: async () => { const r = await getWorkerCustomers(); return r.data; },
     enabled: activeTab === 'customers',
+  });
+
+  // Job materials for selected job
+  const { data: workerJobMaterials } = useQuery({
+    queryKey: ['worker-job-materials', selectedJobId],
+    queryFn: async () => { const r = await getWorkerJobMaterials(selectedJobId); return r.data; },
+    enabled: !!selectedJobId,
+  });
+
+  const addWorkerMatMut = useMutation({
+    mutationFn: (data) => addWorkerJobMaterial(selectedJobId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['worker-job-materials', selectedJobId] });
+      setShowAddMaterial(false);
+      setWorkerMaterialSearch('');
+      setWorkerCustomMat({ name: '', unit_price: '', quantity: '1' });
+    },
+  });
+
+  const removeWorkerMatMut = useMutation({
+    mutationFn: (itemId) => deleteWorkerJobMaterial(selectedJobId, itemId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['worker-job-materials', selectedJobId] });
+    },
   });
 
   const statusMutation = useMutation({
@@ -328,7 +360,7 @@ function WorkerDashboard() {
       <div className="worker-portal">
         <header className="worker-header">
           <div className="worker-header-content">
-            <button className="worker-back-btn" onClick={() => setSelectedJobId(null)}>
+            <button className="worker-back-btn" onClick={() => { setSelectedJobId(null); setShowAddMaterial(false); }}>
               <i className="fas fa-arrow-left"></i> Back to Jobs
             </button>
             <div className="worker-header-right">
@@ -621,6 +653,91 @@ function WorkerDashboard() {
                         </div>
                       ) : (
                         <p className="wjd-empty-text">No photos or videos yet. Capture media on site.</p>
+                      )}
+                    </div>
+
+                    {/* Materials Used */}
+                    <div className="wjd-card">
+                      <div className="wjd-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                        <h3 style={{ margin: 0 }}><i className="fas fa-cubes"></i> Materials Used</h3>
+                        <button className="wjd-btn wjd-btn-sm" onClick={() => setShowAddMaterial(!showAddMaterial)}>
+                          <i className="fas fa-plus"></i> Add
+                        </button>
+                      </div>
+
+                      {showAddMaterial && (
+                        <div className="wjd-mat-add" style={{ background: '#f8fafc', borderRadius: 8, padding: '0.75rem', marginBottom: '0.75rem' }}>
+                          <input type="text" className="wjd-note-input" style={{ marginBottom: '0.5rem' }}
+                            placeholder="Search catalog or type material name..."
+                            value={workerMaterialSearch}
+                            onChange={e => setWorkerMaterialSearch(e.target.value)} autoFocus />
+                          {/* Catalog results */}
+                          {workerMaterialSearch && workerJobMaterials?.catalog?.length > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: '0.5rem' }}>
+                              {workerJobMaterials.catalog
+                                .filter(m => m.name.toLowerCase().includes(workerMaterialSearch.toLowerCase()))
+                                .slice(0, 5)
+                                .map(m => (
+                                  <button key={m.id} className="wjd-btn wjd-btn-sm" style={{ justifyContent: 'space-between', width: '100%' }}
+                                    onClick={() => addWorkerMatMut.mutate({
+                                      material_id: m.id, name: m.name, unit_price: m.unit_price,
+                                      unit: m.unit || 'each', quantity: 1
+                                    })}>
+                                    <span>{m.name}</span>
+                                    <span style={{ color: '#22c55e', fontWeight: 700 }}>€{parseFloat(m.unit_price).toFixed(2)}</span>
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                          {/* Custom entry */}
+                          <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.3rem' }}>Or add custom:</div>
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            <input type="text" placeholder="Name" value={workerCustomMat.name}
+                              onChange={e => setWorkerCustomMat({...workerCustomMat, name: e.target.value})}
+                              className="wjd-note-input" style={{ flex: 2, minWidth: 100, marginBottom: 0 }} />
+                            <input type="number" placeholder="€" value={workerCustomMat.unit_price} min="0" step="0.01"
+                              onChange={e => setWorkerCustomMat({...workerCustomMat, unit_price: e.target.value})}
+                              className="wjd-note-input" style={{ flex: 0.8, minWidth: 60, marginBottom: 0 }} />
+                            <input type="number" placeholder="Qty" value={workerCustomMat.quantity} min="1" step="1"
+                              onChange={e => setWorkerCustomMat({...workerCustomMat, quantity: e.target.value})}
+                              className="wjd-note-input" style={{ flex: 0.6, minWidth: 50, marginBottom: 0 }} />
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+                            <button className="wjd-btn wjd-btn-sm" onClick={() => setShowAddMaterial(false)}>Cancel</button>
+                            <button className="wjd-btn wjd-btn-complete wjd-btn-sm"
+                              disabled={!workerCustomMat.name.trim() || addWorkerMatMut.isPending}
+                              onClick={() => addWorkerMatMut.mutate({
+                                name: workerCustomMat.name, unit_price: parseFloat(workerCustomMat.unit_price) || 0,
+                                quantity: parseFloat(workerCustomMat.quantity) || 1, unit: 'each'
+                              })}>
+                              {addWorkerMatMut.isPending ? 'Adding...' : 'Add'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {workerJobMaterials?.materials?.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          {workerJobMaterials.materials.map(item => (
+                            <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', background: 'white', borderRadius: 6, border: '1px solid var(--border-color, #e2e8f0)' }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ fontWeight: 600, fontSize: '0.85rem', display: 'block' }}>{item.name}</span>
+                                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{item.quantity} × €{parseFloat(item.unit_price).toFixed(2)}</span>
+                              </div>
+                              <span style={{ fontWeight: 700, color: '#22c55e', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>€{parseFloat(item.total_cost).toFixed(2)}</span>
+                              <button className="wjd-btn wjd-btn-sm" style={{ padding: '0.2rem 0.4rem', color: '#ef4444', borderColor: '#fecaca' }}
+                                onClick={() => removeWorkerMatMut.mutate(item.id)}>
+                                <i className="fas fa-times"></i>
+                              </button>
+                            </div>
+                          ))}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.6rem', background: 'linear-gradient(135deg, #f0fdf4, #ecfdf5)', border: '1px solid #bbf7d0', borderRadius: 8, fontWeight: 600, fontSize: '0.88rem', marginTop: '0.25rem' }}>
+                            <span>Total</span>
+                            <span style={{ color: '#16a34a', fontWeight: 700 }}>€{parseFloat(workerJobMaterials.total_cost).toFixed(2)}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="wjd-empty-text">No materials logged yet</p>
                       )}
                     </div>
 
