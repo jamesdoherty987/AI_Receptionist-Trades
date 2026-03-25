@@ -733,7 +733,7 @@ function Landing() {
               <div className="footer-column">
                 <h4>Legal</h4>
                 <Link to="/privacy">Privacy Policy</Link>
-                <Link to="/privacy">Terms of Service</Link>
+                <Link to="/terms">Terms of Service</Link>
                 <Link to="/privacy">Cookie Policy</Link>
               </div>
             </div>

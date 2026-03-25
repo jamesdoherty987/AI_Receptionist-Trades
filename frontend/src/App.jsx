@@ -14,6 +14,7 @@ import SettingsMenu from './pages/SettingsMenu'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import PrivacyPolicy from './pages/PrivacyPolicy'
+import TermsOfService from './pages/TermsOfService'
 
 // Loading component
 import LoadingSpinner from './components/LoadingSpinner'
@@ -140,6 +141,7 @@ function AppRoutes() {
 
       {/* Public pages */}
       <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/terms" element={<TermsOfService />} />
 
       {/* Catch all - redirect to landing */}
       <Route path="*" element={<Navigate to="/" replace />} />
