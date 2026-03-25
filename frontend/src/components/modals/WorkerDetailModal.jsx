@@ -45,7 +45,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     },
     enabled: isOpen && !!workerId,
     staleTime: 30 * 1000, // 30 seconds
-    cacheTime: 5 * 60 * 1000 // 5 minutes
+    gcTime: 5 * 60 * 1000 // 5 minutes
   });
 
   const { data: workerJobs } = useQuery({
@@ -56,7 +56,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     },
     enabled: isOpen && !!workerId,
     staleTime: 30 * 1000, // 30 seconds
-    cacheTime: 5 * 60 * 1000 // 5 minutes
+    gcTime: 5 * 60 * 1000 // 5 minutes
   });
 
   const { data: hoursData } = useQuery({
@@ -67,7 +67,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     },
     enabled: isOpen && !!workerId,
     staleTime: 60 * 1000, // 1 minute
-    cacheTime: 10 * 60 * 1000 // 10 minutes
+    gcTime: 10 * 60 * 1000 // 10 minutes
   });
 
   const updateMutation = useMutation({

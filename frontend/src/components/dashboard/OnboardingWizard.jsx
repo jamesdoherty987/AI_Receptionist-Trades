@@ -111,7 +111,7 @@ function OnboardingWizard({ onComplete }) {
   const trialMutation = useMutation({
     mutationFn: startFreeTrial,
     onSuccess: () => {
-      queryClient.invalidateQueries(['subscription-status']);
+      queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
       checkAuth();
       if (!completedSteps.includes('subscription')) {
         setCompletedSteps(prev => [...prev, 'subscription']);
@@ -256,7 +256,7 @@ function OnboardingWizard({ onComplete }) {
   const saveMutation = useMutation({
     mutationFn: updateBusinessSettings,
     onSuccess: () => {
-      queryClient.invalidateQueries(['business-settings']);
+      queryClient.invalidateQueries({ queryKey: ['business-settings'] });
     },
   });
 
@@ -308,7 +308,7 @@ function OnboardingWizard({ onComplete }) {
 
   const handlePhoneConfigured = () => {
     setShowPhoneModal(false);
-    queryClient.invalidateQueries(['business-settings']);
+    queryClient.invalidateQueries({ queryKey: ['business-settings'] });
     if (!completedSteps.includes('phone')) {
       setCompletedSteps(prev => [...prev, 'phone']);
     }

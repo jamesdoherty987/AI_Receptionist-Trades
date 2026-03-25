@@ -41,7 +41,7 @@ function SettingsMenu() {
   const createMutation = useMutation({
     mutationFn: createService,
     onSuccess: () => {
-      queryClient.invalidateQueries(['services-menu']);
+      queryClient.invalidateQueries({ queryKey: ['services-menu'] });
       setNewService({ name: '', price: '', duration: '' });
       setSaveMessage('Service added successfully!');
       setTimeout(() => setSaveMessage(''), 3000);
@@ -51,7 +51,7 @@ function SettingsMenu() {
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => updateService(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['services-menu']);
+      queryClient.invalidateQueries({ queryKey: ['services-menu'] });
       setEditingService(null);
       setSaveMessage('Service updated successfully!');
       setTimeout(() => setSaveMessage(''), 3000);
@@ -61,7 +61,7 @@ function SettingsMenu() {
   const deleteMutation = useMutation({
     mutationFn: deleteService,
     onSuccess: () => {
-      queryClient.invalidateQueries(['services-menu']);
+      queryClient.invalidateQueries({ queryKey: ['services-menu'] });
       setSaveMessage('Service deleted successfully!');
       setTimeout(() => setSaveMessage(''), 3000);
     },
@@ -70,7 +70,7 @@ function SettingsMenu() {
   const hoursMutation = useMutation({
     mutationFn: updateBusinessHours,
     onSuccess: () => {
-      queryClient.invalidateQueries(['business-hours']);
+      queryClient.invalidateQueries({ queryKey: ['business-hours'] });
       setSaveMessage('Business hours updated successfully!');
       setTimeout(() => setSaveMessage(''), 3000);
     },

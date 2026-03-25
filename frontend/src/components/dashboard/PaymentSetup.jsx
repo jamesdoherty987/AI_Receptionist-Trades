@@ -94,7 +94,7 @@ function PaymentSetup() {
   const disconnectMutation = useMutation({
     mutationFn: disconnectStripeConnect,
     onSuccess: () => {
-      queryClient.invalidateQueries(['connect-status']);
+      queryClient.invalidateQueries({ queryKey: ['connect-status'] });
       setShowDisconnectConfirm(false);
       setMessage('Stripe account disconnected successfully.');
       setTimeout(() => setMessage(''), 5000);
@@ -135,8 +135,8 @@ function PaymentSetup() {
   const bankMutation = useMutation({
     mutationFn: (data) => updateBusinessSettings(data),
     onSuccess: () => {
-      queryClient.invalidateQueries(['business-settings-bank']);
-      queryClient.invalidateQueries(['business-settings']);
+      queryClient.invalidateQueries({ queryKey: ['business-settings-bank'] });
+      queryClient.invalidateQueries({ queryKey: ['business-settings'] });
       setBankSaveMessage('Bank details saved successfully!');
       setTimeout(() => setBankSaveMessage(''), 5000);
     },

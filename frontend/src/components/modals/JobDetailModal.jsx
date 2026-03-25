@@ -47,7 +47,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     },
     enabled: isOpen && !!jobId,
     staleTime: 30 * 1000, // 30 seconds
-    cacheTime: 5 * 60 * 1000 // 5 minutes
+    gcTime: 5 * 60 * 1000 // 5 minutes
   });
 
   // Check invoice configuration
@@ -59,7 +59,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     },
     enabled: isOpen,
     staleTime: 60 * 1000, // 1 minute
-    cacheTime: 5 * 60 * 1000
+    gcTime: 5 * 60 * 1000
   });
 
   const { data: businessSettings } = useQuery({
@@ -80,7 +80,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     },
     enabled: isOpen && !!jobId,
     staleTime: 30 * 1000, // 30 seconds
-    cacheTime: 5 * 60 * 1000 // 5 minutes
+    gcTime: 5 * 60 * 1000 // 5 minutes
   });
 
   // Fetch workers with availability status for this job
@@ -92,7 +92,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     },
     enabled: showAssignWorker && !!jobId,
     staleTime: 30 * 1000,
-    cacheTime: 5 * 60 * 1000
+    gcTime: 5 * 60 * 1000
   });
 
   // Fallback to all workers if availability check not available
@@ -104,7 +104,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     },
     enabled: showAssignWorker && !workersAvailability,
     staleTime: 60 * 1000, // 1 minute
-    cacheTime: 10 * 60 * 1000 // 10 minutes
+    gcTime: 10 * 60 * 1000 // 10 minutes
   });
 
   // Populate edit form when job data is loaded

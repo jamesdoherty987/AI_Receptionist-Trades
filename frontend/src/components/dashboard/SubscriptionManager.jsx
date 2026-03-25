@@ -28,7 +28,7 @@ function SubscriptionManager() {
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
     staleTime: 0,
-    cacheTime: 10 * 60 * 1000
+    gcTime: 10 * 60 * 1000
   });
 
   // Auto-sync on mount if user has a stripe_customer_id but tier is not pro
@@ -92,7 +92,7 @@ function SubscriptionManager() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['subscription-status']);
+      queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
       checkAuth();
     },
     onError: (error) => {
@@ -119,7 +119,7 @@ function SubscriptionManager() {
   const cancelMutation = useMutation({
     mutationFn: cancelSubscription,
     onSuccess: () => {
-      queryClient.invalidateQueries(['subscription-status']);
+      queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
       checkAuth();
       setShowCancelConfirm(false);
     },
@@ -132,7 +132,7 @@ function SubscriptionManager() {
   const reactivateMutation = useMutation({
     mutationFn: reactivateSubscription,
     onSuccess: () => {
-      queryClient.invalidateQueries(['subscription-status']);
+      queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
       checkAuth();
     },
     onError: (error) => {

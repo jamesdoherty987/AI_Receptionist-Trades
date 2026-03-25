@@ -94,7 +94,7 @@ function Settings() {
             console.log('[SUBSCRIPTION] SUCCESS! Tier is now pro');
             // Refresh auth state and query cache
             await checkAuth();
-            queryClient.invalidateQueries(['subscription-status']);
+            queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
             return; // Success - stop polling
           } else {
             console.log('[SUBSCRIPTION] Tier is still:', syncResponse.data.subscription?.tier);
@@ -109,7 +109,7 @@ function Settings() {
         // Also refresh auth state
         console.log('[SUBSCRIPTION] Calling checkAuth...');
         await checkAuth();
-        queryClient.invalidateQueries(['subscription-status']);
+        queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
         
         // Wait a moment for the query to refetch
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -134,7 +134,7 @@ function Settings() {
         } else if (isPro) {
           console.log('[SUBSCRIPTION] SUCCESS! Subscription is now pro');
           // Final refresh to ensure everything is in sync
-          queryClient.invalidateQueries(['subscription-status']);
+          queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
           await checkAuth();
         } else {
           console.log('[SUBSCRIPTION] FAILED: Max attempts reached, tier still not pro');
@@ -307,7 +307,7 @@ function Settings() {
   const saveMutation = useMutation({
     mutationFn: updateBusinessSettings,
     onSuccess: async () => {
-      queryClient.invalidateQueries(['business-settings']);
+      queryClient.invalidateQueries({ queryKey: ['business-settings'] });
       await checkAuth();
       setHasUnsavedChanges(false);
       setSaveMessage('Settings saved successfully!');
@@ -323,7 +323,7 @@ function Settings() {
   const toggleMutation = useMutation({
     mutationFn: (enabled) => toggleAIReceptionist(enabled),
     onSuccess: (response) => {
-      queryClient.invalidateQueries(['ai-status']);
+      queryClient.invalidateQueries({ queryKey: ['ai-status'] });
       const status = response.data?.enabled ? 'enabled' : 'disabled';
       setSaveMessage(`AI Receptionist ${status} successfully!`);
       setTimeout(() => setSaveMessage(''), 3000);
@@ -437,7 +437,7 @@ function Settings() {
 
   const handlePhoneConfigSuccess = (phoneNumber) => {
     // Refresh settings to show the new phone number
-    queryClient.invalidateQueries(['business-settings']);
+    queryClient.invalidateQueries({ queryKey: ['business-settings'] });
     setSaveMessage('Phone number configured successfully!');
     setTimeout(() => setSaveMessage(''), 3000);
   };

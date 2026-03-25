@@ -109,7 +109,7 @@ function NotificationBell() {
             {notifications.length > 0 && (
               <button 
                 className="refresh-btn"
-                onClick={() => queryClient.invalidateQueries(['notifications'])}
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['notifications'] })}
                 aria-label="Refresh notifications"
               >
                 <i className="fas fa-sync-alt"></i>

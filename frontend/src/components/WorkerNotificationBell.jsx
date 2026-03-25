@@ -104,7 +104,7 @@ function WorkerNotificationBell() {
             {notifications.length > 0 && (
               <button
                 className="refresh-btn"
-                onClick={() => queryClient.invalidateQueries(['worker-notifications'])}
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['worker-notifications'] })}
                 aria-label="Refresh notifications"
               >
                 <i className="fas fa-sync-alt"></i>
