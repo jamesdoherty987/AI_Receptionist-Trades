@@ -329,13 +329,7 @@ def start_scheduler_once():
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         
         # We got the lock - this worker starts the scheduler
-        print("\\n🚀 Starting appointment auto-complete scheduler (this worker)...")
-        try:
-            from src.services.appointment_auto_complete import start_auto_complete_scheduler
-            start_auto_complete_scheduler(interval_minutes=60)  # Check every hour
-            print("✅ Auto-complete scheduler started successfully\\n")
-        except Exception as e:
-            print(f"[WARNING] Could not start auto-complete scheduler: {e}\\n")
+        # NOTE: Auto-complete scheduler removed — workers now manually mark jobs complete
         
         # Start SMS day-before reminder scheduler (sends at 5 PM daily)
         try:
@@ -1931,6 +1925,57 @@ def worker_update_job_status(job_id):
 
     db.update_booking(job_id, company_id=company_id, **update_kwargs)
     return jsonify({"success": True, "status": new_status})
+
+
+@app.route("/api/worker/jobs/bulk-complete", methods=["POST"])
+@worker_login_required
+def worker_bulk_complete_jobs():
+    """Allow worker to mark multiple past jobs as completed at once"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+
+    db = get_database()
+    data = request.json or {}
+    filter_type = data.get('filter', 'all')  # 'today', 'week', 'all'
+
+    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+
+    from datetime import datetime, timedelta
+    now = datetime.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=today_start.weekday())  # Monday
+
+    completed_ids = []
+    skipped_statuses = {'completed', 'cancelled', 'paid'}
+
+    for job in worker_jobs:
+        if job['status'] in skipped_statuses:
+            continue
+
+        appt_time = job['appointment_time']
+        if isinstance(appt_time, str):
+            appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00')).replace(tzinfo=None)
+        elif hasattr(appt_time, 'replace'):
+            appt_time = appt_time.replace(tzinfo=None)
+
+        # Only complete jobs whose appointment time is in the past
+        if appt_time >= now:
+            continue
+
+        if filter_type == 'today' and appt_time < today_start:
+            continue
+        elif filter_type == 'week' and appt_time < week_start:
+            continue
+
+        completed_at = now.isoformat()
+        db.update_booking(job['id'], company_id=company_id, status='completed', job_completed_at=completed_at)
+        completed_ids.append(job['id'])
+
+    return jsonify({
+        "success": True,
+        "completed_count": len(completed_ids),
+        "completed_ids": completed_ids
+    })
 
 
 @app.route("/api/worker/jobs/<int:job_id>/details", methods=["PUT"])
@@ -6512,26 +6557,6 @@ def send_invoice_api(booking_id):
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"An error occurred while sending the invoice: {str(e)}"}), 500
-
-
-@app.route("/api/appointments/auto-complete", methods=["POST"])
-@login_required
-def auto_complete_appointments():
-    """Manually trigger auto-completion of overdue appointments"""
-    try:
-        from src.services.appointment_auto_complete import auto_complete_overdue_appointments
-        count = auto_complete_overdue_appointments()
-        return jsonify({
-            "success": True,
-            "message": f"Auto-completed {count} appointment(s)",
-            "count": count
-        })
-    except Exception as e:
-        print(f"[ERROR] Error in auto-complete: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
 
 
 @app.route("/api/finances/stats", methods=["GET"])

@@ -984,3 +984,86 @@
   .wc-detail-actions { flex-wrap: wrap; }
   .wc-detail-actions .wjd-btn { min-height: 44px; flex: 1; justify-content: center; }
 }
+
+/* ---- Improved Job Sections ---- */
+.wj-section { margin-bottom: 1.5rem; }
+.wj-section h2 {
+  font-size: 1rem; font-weight: 600; color: var(--text-primary, #1e293b);
+  margin: 0 0 0.75rem 0; display: flex; align-items: center; gap: 0.5rem;
+}
+.wj-section h2 i { font-size: 0.9rem; }
+
+.wj-section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;
+}
+.wj-section-header h2 { margin-bottom: 0; }
+
+/* In-progress section */
+.wj-in-progress h2 { color: #7c3aed; }
+.wj-in-progress h2 i { color: #8b5cf6; }
+.worker-job-card.in-progress {
+  border-left: 3px solid #8b5cf6;
+  background: rgba(139, 92, 246, 0.03);
+}
+.worker-job-card.in-progress .worker-job-header {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.badge-in-progress {
+  background: rgba(139, 92, 246, 0.1); color: #7c3aed;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+/* Overdue section */
+.wj-overdue h2 { color: #dc2626; }
+.wj-overdue h2 i { color: #ef4444; }
+.worker-job-card.overdue {
+  border-left: 3px solid #ef4444;
+  background: rgba(239, 68, 68, 0.02);
+}
+.badge-overdue {
+  background: rgba(239, 68, 68, 0.1); color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* Today section */
+.wj-today h2 { color: var(--accent-blue, #0ea5e9); }
+.wj-today h2 i { color: var(--accent-blue, #0ea5e9); }
+
+/* Completed section */
+.wj-completed h2 {
+  color: var(--text-tertiary, #94a3b8); cursor: pointer;
+  user-select: none;
+}
+.wj-completed h2:hover { color: var(--text-secondary, #64748b); }
+
+/* Bulk complete confirmation */
+.wj-bulk-confirm {
+  background: rgba(34, 197, 94, 0.06);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: 10px; padding: 0.85rem 1rem;
+  margin-bottom: 0.75rem;
+  animation: wcSlideDown 0.2s ease;
+}
+.wj-bulk-confirm p {
+  margin: 0 0 0.6rem 0; font-size: 0.88rem;
+  color: var(--text-primary, #1e293b); font-weight: 500;
+}
+.wj-bulk-actions {
+  display: flex; gap: 0.5rem; justify-content: flex-end;
+}
+
+/* Quick action buttons on job cards */
+.worker-job-footer {
+  display: flex; align-items: center; gap: 0.5rem;
+  margin-top: 0.75rem; padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color, #e2e8f0);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  .wj-section-header { flex-direction: column; align-items: stretch; }
+  .wj-section-header .wjd-btn { justify-content: center; }
+  .wj-bulk-actions { flex-direction: row; }
+  .wj-bulk-confirm { padding: 0.75rem; }
+}

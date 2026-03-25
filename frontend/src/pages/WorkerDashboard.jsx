@@ -9,6 +9,7 @@ import {
   workerUploadJobMedia,
   workerUpdateJobStatus,
   workerUpdateJobDetails,
+  workerBulkCompleteJobs,
   getWorkerTimeOff,
   createTimeOffRequest,
   deleteTimeOffRequest,
@@ -97,6 +98,7 @@ function WorkerDashboard() {
   // Job history state
   const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [bulkCompleteFilter, setBulkCompleteFilter] = useState(null); // null | 'today' | 'week' | 'all'
 
   // Schedule view state
   const [scheduleView, setScheduleView] = useState('list'); // 'list' | 'month' | 'year'
@@ -245,6 +247,15 @@ function WorkerDashboard() {
     },
   });
 
+  const bulkCompleteMutation = useMutation({
+    mutationFn: (filter) => workerBulkCompleteJobs(filter),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['worker-hours-summary'] });
+      setBulkCompleteFilter(null);
+    },
+  });
+
   const profileMutation = useMutation({
     mutationFn: (data) => updateWorkerProfile(data),
     onSuccess: (response) => {
@@ -338,9 +349,56 @@ function WorkerDashboard() {
   const worker = data?.worker || {};
   const jobs = data?.jobs || [];
   const schedule = data?.schedule || [];
-  const upcomingJobs = jobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled');
-  const completedJobs = jobs.filter(j => j.status === 'completed');
   const timeOffRequests = timeOffData?.requests || [];
+
+  // Smart job grouping
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const weekEnd = new Date(todayStart); weekEnd.setDate(weekEnd.getDate() + 7);
+
+  const activeJobs = jobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled' && j.status !== 'paid');
+  const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'paid');
+
+  // In-progress jobs always on top
+  const inProgressJobs = activeJobs.filter(j => j.status === 'in-progress');
+
+  // Overdue: past appointment time, not started
+  const overdueJobs = activeJobs.filter(j => {
+    if (j.status === 'in-progress') return false;
+    return new Date(j.appointment_time) < now;
+  });
+
+  // Today's upcoming
+  const todayJobs = activeJobs.filter(j => {
+    if (j.status === 'in-progress') return false;
+    const t = new Date(j.appointment_time);
+    return t >= now && t < tomorrowStart;
+  });
+
+  // Tomorrow
+  const tomorrowJobs = activeJobs.filter(j => {
+    if (j.status === 'in-progress') return false;
+    const t = new Date(j.appointment_time);
+    const dayAfterTomorrow = new Date(tomorrowStart); dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
+    return t >= tomorrowStart && t < dayAfterTomorrow;
+  });
+
+  // This week (after tomorrow, within 7 days)
+  const thisWeekJobs = activeJobs.filter(j => {
+    if (j.status === 'in-progress') return false;
+    const t = new Date(j.appointment_time);
+    const dayAfterTomorrow = new Date(tomorrowStart); dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
+    return t >= dayAfterTomorrow && t < weekEnd;
+  });
+
+  // Later (beyond this week)
+  const laterJobs = activeJobs.filter(j => {
+    if (j.status === 'in-progress') return false;
+    return new Date(j.appointment_time) >= weekEnd;
+  });
+
+  const upcomingJobs = activeJobs;
 
   const tabs = [
     { id: 'jobs', label: 'My Jobs', icon: 'fas fa-briefcase' },
@@ -865,20 +923,247 @@ function WorkerDashboard() {
             {/* ---- JOBS TAB ---- */}
             {activeTab === 'jobs' && (
               <div className="worker-jobs">
-                <h2>Upcoming Jobs ({upcomingJobs.length})</h2>
-                {upcomingJobs.length === 0 ? (
-                  <div className="worker-empty"><i className="fas fa-calendar-check"></i><p>No upcoming jobs</p></div>
-                ) : (
-                  <div className="worker-job-list">
-                    {upcomingJobs.map(job => {
-                      const dirUrl = getDirectionsUrl(job);
-                      const isToday = new Date(job.appointment_time).toDateString() === new Date().toDateString();
-                      return (
-                        <div key={job.id} className={`worker-job-card ${isToday ? 'today' : ''}`} onClick={() => setSelectedJobId(job.id)}>
+                {/* In Progress — always visible at top */}
+                {inProgressJobs.length > 0 && (
+                  <div className="wj-section wj-in-progress">
+                    <h2><i className="fas fa-wrench"></i> In Progress ({inProgressJobs.length})</h2>
+                    <div className="worker-job-list">
+                      {inProgressJobs.map(job => {
+                        const dirUrl = getDirectionsUrl(job);
+                        return (
+                          <div key={job.id} className="worker-job-card in-progress" onClick={() => setSelectedJobId(job.id)}>
+                            <div className="worker-job-header">
+                              <span className="worker-job-status badge-in-progress"><i className="fas fa-wrench"></i> in-progress</span>
+                              <JobTimer startedAt={job.job_started_at} />
+                            </div>
+                            <div className="worker-job-body">
+                              <h3>{job.service_type || 'Job'}</h3>
+                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
+                            </div>
+                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                              {dirUrl && (
+                                <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
+                                  <i className="fas fa-directions"></i> Directions
+                                </a>
+                              )}
+                              <button className="wjd-btn wjd-btn-complete wjd-btn-sm" onClick={() => {
+                                const nowIso = new Date().toISOString();
+                                const start = job.job_started_at;
+                                let durationMins = null;
+                                if (start) {
+                                  durationMins = Math.round((new Date(nowIso) - new Date(start)) / 60000);
+                                  if (durationMins < 1) durationMins = 1;
+                                }
+                                statusMutation.mutate({ jobId: job.id, status: 'completed', completed_at: nowIso, actual_duration_minutes: durationMins });
+                              }} disabled={statusMutation.isPending}>
+                                <i className="fas fa-check-circle"></i> Complete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Overdue — needs attention */}
+                {overdueJobs.length > 0 && (
+                  <div className="wj-section wj-overdue">
+                    <div className="wj-section-header">
+                      <h2><i className="fas fa-exclamation-triangle"></i> Overdue ({overdueJobs.length})</h2>
+                      <button className="wjd-btn wjd-btn-complete wjd-btn-sm" onClick={() => setBulkCompleteFilter(bulkCompleteFilter ? null : 'overdue')}>
+                        <i className="fas fa-check-double"></i> Mark All Complete
+                      </button>
+                    </div>
+                    {bulkCompleteFilter === 'overdue' && (
+                      <div className="wj-bulk-confirm">
+                        <p>Mark all {overdueJobs.length} overdue job(s) as completed?</p>
+                        <div className="wj-bulk-actions">
+                          <button className="wjd-btn wjd-btn-sm" onClick={() => setBulkCompleteFilter(null)}>Cancel</button>
+                          <button className="wjd-btn wjd-btn-complete wjd-btn-sm" disabled={bulkCompleteMutation.isPending}
+                            onClick={() => bulkCompleteMutation.mutate('all')}>
+                            {bulkCompleteMutation.isPending ? 'Completing...' : 'Confirm'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="worker-job-list">
+                      {overdueJobs.map(job => {
+                        const dirUrl = getDirectionsUrl(job);
+                        return (
+                          <div key={job.id} className="worker-job-card overdue" onClick={() => setSelectedJobId(job.id)}>
+                            <div className="worker-job-header">
+                              <span className="worker-job-status badge-overdue"><i className="fas fa-exclamation-circle"></i> overdue</span>
+                              <span className="worker-job-date">
+                                {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                            <div className="worker-job-body">
+                              <h3>{job.service_type || 'Job'}</h3>
+                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
+                            </div>
+                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                              {dirUrl && (
+                                <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
+                                  <i className="fas fa-directions"></i> Directions
+                                </a>
+                              )}
+                              <button className="wjd-btn wjd-btn-progress wjd-btn-sm" onClick={() => {
+                                const nowIso = new Date().toISOString();
+                                statusMutation.mutate({ jobId: job.id, status: 'in-progress', started_at: nowIso });
+                              }} disabled={statusMutation.isPending}>
+                                <i className="fas fa-play-circle"></i> Start
+                              </button>
+                              <button className="wjd-btn wjd-btn-complete wjd-btn-sm" onClick={() => {
+                                statusMutation.mutate({ jobId: job.id, status: 'completed', completed_at: new Date().toISOString() });
+                              }} disabled={statusMutation.isPending}>
+                                <i className="fas fa-check-circle"></i> Complete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Today */}
+                {todayJobs.length > 0 && (
+                  <div className="wj-section wj-today">
+                    <h2><i className="fas fa-sun"></i> Today ({todayJobs.length})</h2>
+                    <div className="worker-job-list">
+                      {todayJobs.map(job => {
+                        const dirUrl = getDirectionsUrl(job);
+                        return (
+                          <div key={job.id} className="worker-job-card today" onClick={() => setSelectedJobId(job.id)}>
+                            <div className="worker-job-header">
+                              <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                              <span className="worker-job-date">Today</span>
+                            </div>
+                            <div className="worker-job-body">
+                              <h3>{job.service_type || 'Job'}</h3>
+                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
+                            </div>
+                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                              {dirUrl && (
+                                <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
+                                  <i className="fas fa-directions"></i> Directions
+                                </a>
+                              )}
+                              {job.phone_number && (
+                                <a href={`tel:${job.phone_number}`} className="wjd-btn wjd-btn-sm">
+                                  <i className="fas fa-phone"></i> Call
+                                </a>
+                              )}
+                              <button className="wjd-btn wjd-btn-progress wjd-btn-sm" onClick={() => {
+                                const nowIso = new Date().toISOString();
+                                statusMutation.mutate({ jobId: job.id, status: 'in-progress', started_at: nowIso });
+                              }} disabled={statusMutation.isPending}>
+                                <i className="fas fa-play-circle"></i> Start
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Tomorrow */}
+                {tomorrowJobs.length > 0 && (
+                  <div className="wj-section">
+                    <h2><i className="fas fa-calendar-day"></i> Tomorrow ({tomorrowJobs.length})</h2>
+                    <div className="worker-job-list">
+                      {tomorrowJobs.map(job => {
+                        const dirUrl = getDirectionsUrl(job);
+                        return (
+                          <div key={job.id} className="worker-job-card" onClick={() => setSelectedJobId(job.id)}>
+                            <div className="worker-job-header">
+                              <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                              <span className="worker-job-date">Tomorrow</span>
+                            </div>
+                            <div className="worker-job-body">
+                              <h3>{job.service_type || 'Job'}</h3>
+                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
+                            </div>
+                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                              {dirUrl && (
+                                <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
+                                  <i className="fas fa-directions"></i> Directions
+                                </a>
+                              )}
+                              {job.phone_number && (
+                                <a href={`tel:${job.phone_number}`} className="wjd-btn wjd-btn-sm">
+                                  <i className="fas fa-phone"></i> Call
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* This Week */}
+                {thisWeekJobs.length > 0 && (
+                  <div className="wj-section">
+                    <h2><i className="fas fa-calendar-week"></i> This Week ({thisWeekJobs.length})</h2>
+                    <div className="worker-job-list">
+                      {thisWeekJobs.map(job => {
+                        const dirUrl = getDirectionsUrl(job);
+                        return (
+                          <div key={job.id} className="worker-job-card" onClick={() => setSelectedJobId(job.id)}>
+                            <div className="worker-job-header">
+                              <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                              <span className="worker-job-date">
+                                {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                            <div className="worker-job-body">
+                              <h3>{job.service_type || 'Job'}</h3>
+                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
+                            </div>
+                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                              {dirUrl && (
+                                <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
+                                  <i className="fas fa-directions"></i> Directions
+                                </a>
+                              )}
+                              {job.phone_number && (
+                                <a href={`tel:${job.phone_number}`} className="wjd-btn wjd-btn-sm">
+                                  <i className="fas fa-phone"></i> Call
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Later */}
+                {laterJobs.length > 0 && (
+                  <div className="wj-section">
+                    <h2><i className="fas fa-calendar-alt"></i> Later ({laterJobs.length})</h2>
+                    <div className="worker-job-list">
+                      {laterJobs.map(job => (
+                        <div key={job.id} className="worker-job-card" onClick={() => setSelectedJobId(job.id)}>
                           <div className="worker-job-header">
                             <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                             <span className="worker-job-date">
-                              {isToday ? 'Today' : new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
+                              {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
                             </span>
                           </div>
                           <div className="worker-job-body">
@@ -887,49 +1172,43 @@ function WorkerDashboard() {
                             <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                             {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
                           </div>
-                          <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
-                            {dirUrl && (
-                              <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
-                                <i className="fas fa-directions"></i> Directions
-                              </a>
-                            )}
-                            {job.phone_number && (
-                              <a href={`tel:${job.phone_number}`} className="wjd-btn wjd-btn-sm">
-                                <i className="fas fa-phone"></i> Call
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {completedJobs.length > 0 && (
-                  <>
-                    <h2 style={{ marginTop: '2rem' }}>Completed ({completedJobs.length})</h2>
-                    <div className="worker-job-list">
-                      {completedJobs.slice(0, showAllCompleted ? undefined : 5).map(job => (
-                        <div key={job.id} className="worker-job-card completed" onClick={() => setSelectedJobId(job.id)}>
-                          <div className="worker-job-header">
-                            <span className="worker-job-status badge-completed">completed</span>
-                            <span className="worker-job-date">
-                              {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
-                            </span>
-                          </div>
-                          <div className="worker-job-body">
-                            <h3>{job.service_type || 'Job'}</h3>
-                            <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
-                          </div>
                         </div>
                       ))}
                     </div>
-                    {completedJobs.length > 5 && (
-                      <button className="wjd-btn wjd-btn-sm" style={{ marginTop: '0.75rem' }}
-                        onClick={() => setShowAllCompleted(!showAllCompleted)}>
-                        {showAllCompleted ? 'Show Less' : `Show All ${completedJobs.length} Completed`}
-                      </button>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {upcomingJobs.length === 0 && (
+                  <div className="worker-empty"><i className="fas fa-calendar-check"></i><p>No active jobs</p></div>
+                )}
+
+                {/* Completed */}
+                {completedJobs.length > 0 && (
+                  <div className="wj-section wj-completed">
+                    <h2 style={{ cursor: 'pointer' }} onClick={() => setShowAllCompleted(!showAllCompleted)}>
+                      <i className="fas fa-check-circle"></i> Completed ({completedJobs.length})
+                      <i className={`fas fa-chevron-${showAllCompleted ? 'up' : 'down'}`} style={{ fontSize: '0.75em', marginLeft: '0.5rem' }}></i>
+                    </h2>
+                    {showAllCompleted && (
+                      <div className="worker-job-list">
+                        {completedJobs.slice(0, 10).map(job => (
+                          <div key={job.id} className="worker-job-card completed" onClick={() => setSelectedJobId(job.id)}>
+                            <div className="worker-job-header">
+                              <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                              <span className="worker-job-date">
+                                {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                            <div className="worker-job-body">
+                              <h3>{job.service_type || 'Job'}</h3>
+                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
             )}

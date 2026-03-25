@@ -239,6 +239,7 @@ export const workerUploadJobMedia = (jobId, file) => {
   });
 };
 export const workerUpdateJobStatus = (jobId, data) => api.put(`/api/worker/jobs/${jobId}/status`, typeof data === 'string' ? { status: data } : data);
+export const workerBulkCompleteJobs = (filter) => api.post('/api/worker/jobs/bulk-complete', { filter });
 export const workerUpdateJobDetails = (jobId, data) => api.put(`/api/worker/jobs/${jobId}/details`, data);
 export const getWorkerJobNotes = (jobId) => api.get(`/api/worker/jobs/${jobId}/notes`);
 export const addWorkerJobNote = (jobId, note) => api.post(`/api/worker/jobs/${jobId}/notes`, { note });
