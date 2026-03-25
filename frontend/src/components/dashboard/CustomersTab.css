@@ -229,3 +229,32 @@
     font-size: 0.7rem;
   }
 }
+
+.customer-ai-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #f0f4ff, #f5f0ff);
+  border-radius: var(--radius-md);
+  margin-top: 0.75rem;
+  border-left: 3px solid var(--accent-purple);
+}
+
+.customer-ai-summary i {
+  color: var(--accent-purple);
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+}
+
+.customer-ai-summary span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .customer-ai-summary {
+    display: none;
+  }
+}

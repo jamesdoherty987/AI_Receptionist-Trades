@@ -603,3 +603,27 @@
 .delete-confirm-actions .btn {
   min-width: 120px;
 }
+
+/* AI Summary Card */
+.ai-summary-card {
+  border-left: 3px solid var(--accent-purple);
+  background: linear-gradient(135deg, #f0f4ff, #f5f0ff);
+}
+
+.ai-summary-card h3 i {
+  color: var(--accent-purple);
+}
+
+.ai-summary-content {
+  background: white;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 2px solid var(--border-color);
+}
+
+.ai-summary-content p {
+  margin: 0;
+  color: var(--text-primary);
+  line-height: 1.6;
+  font-size: 0.95rem;
+}

@@ -386,6 +386,16 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
               )}
             </div>
 
+            {/* AI Summary */}
+            {client.description && (
+              <div className="info-card ai-summary-card">
+                <h3><i className="fas fa-robot"></i> AI Summary</h3>
+                <div className="ai-summary-content">
+                  <p>{client.description}</p>
+                </div>
+              </div>
+            )}
+
             {/* Notes */}
             <div className="info-card">
               <div className="notes-header">
