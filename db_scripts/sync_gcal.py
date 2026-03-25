@@ -128,8 +128,13 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                         )
                         stats['push_updated'] += 1
                     except Exception as e:
-                        print(f"      [{bid}] ERROR: {e}")
-                        stats['push_errors'] += 1
+                        err_str = str(e)
+                        if 'eventTypeRestriction' in err_str or 'birthday' in err_str.lower():
+                            print(f"      [{bid}] SKIP (special event type)")
+                            stats['push_skipped'] += 1
+                        else:
+                            print(f"      [{bid}] ERROR: {e}")
+                            stats['push_errors'] += 1
                 else:
                     stats['push_updated'] += 1
             else:

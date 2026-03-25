@@ -574,6 +574,11 @@ class CompanyGoogleCalendar:
             result = self._execute_with_retry(request)
 
             for item in result.get('items', []):
+                # Skip birthday and other special event types that can't be modified
+                event_type = item.get('eventType', 'default')
+                if event_type in ('birthday', 'focusTime', 'outOfOffice', 'workingLocation'):
+                    continue
+
                 start_raw = item.get('start', {}).get('dateTime')
                 end_raw = item.get('end', {}).get('dateTime')
                 is_all_day = False

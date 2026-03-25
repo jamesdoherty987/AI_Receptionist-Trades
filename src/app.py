@@ -6474,8 +6474,14 @@ def google_calendar_sync():
                         known_gcal_ids.add(new_gcal_id)
                     push_created += 1
         except Exception as e:
-            safe_print(f"[GCAL_SYNC] Push error booking {booking.get('id')}: {e}")
-            push_errors += 1
+            err_str = str(e)
+            # Birthday/special event types can't be modified — skip silently
+            if 'eventTypeRestriction' in err_str or 'birthday' in err_str.lower():
+                safe_print(f"[GCAL_SYNC] Skipping special event type for booking {booking.get('id')}")
+                push_skipped += 1
+            else:
+                safe_print(f"[GCAL_SYNC] Push error booking {booking.get('id')}: {e}")
+                push_errors += 1
 
     # ── Phase 2: Google Calendar → DB (pull) ───────────────────────
     pull_imported = 0
