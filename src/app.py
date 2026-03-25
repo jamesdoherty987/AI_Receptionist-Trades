@@ -3960,8 +3960,8 @@ def check_availability_api():
                 if booking.get('status') in ['cancelled', 'completed']:
                     continue
                 if filter_worker_id:
-                    bwid = booking.get('worker_id')
-                    if bwid and int(bwid) != filter_worker_id:
+                    assigned_ids = booking.get('assigned_worker_ids') or []
+                    if filter_worker_id not in assigned_ids and str(filter_worker_id) not in [str(x) for x in assigned_ids]:
                         continue
                 appt_time = booking.get('appointment_time')
                 if isinstance(appt_time, str):
@@ -4204,8 +4204,8 @@ def check_monthly_availability_api():
                 if b.get('status') in ['cancelled']:
                     continue
                 if filter_worker_id:
-                    bwid = b.get('worker_id')
-                    if bwid and int(bwid) != filter_worker_id:
+                    assigned_ids = b.get('assigned_worker_ids') or []
+                    if filter_worker_id not in assigned_ids and str(filter_worker_id) not in [str(x) for x in assigned_ids]:
                         continue
                 appt = b.get('appointment_time')
                 if isinstance(appt, str):
@@ -4273,24 +4273,27 @@ def check_monthly_availability_api():
                 continue
 
             if any_worker and per_worker_bookings:
-                # Day is available if at least one worker has free slots
-                # Use the worker with the LEAST booked slots (most availability)
-                min_booked = slots_per_day
+                # Combined capacity: day is available if at least one worker has free slots
+                # Total capacity = number of workers * slots per day
+                total_capacity = len(per_worker_bookings) * slots_per_day
+                total_booked = 0
                 for wid, wb_list in per_worker_bookings.items():
                     wb = _count_booked_slots(d, wb_list)
-                    if wb < min_booked:
-                        min_booked = wb
-                booked_slots = min_booked
+                    total_booked += min(wb, slots_per_day)
+                booked_slots = total_booked
+                day_total = total_capacity
             elif any_worker and not per_worker_bookings:
                 # No workers — show general availability
                 booked_slots = _count_booked_slots(d, _filter_bookings())
+                day_total = slots_per_day
             else:
                 booked_slots = _count_booked_slots(d, relevant)
+                day_total = slots_per_day
 
-            free = slots_per_day - booked_slots
+            free = day_total - booked_slots
             if free <= 0:
                 status = 'full'
-            elif free < slots_per_day:
+            elif free < day_total:
                 status = 'partial'
             else:
                 status = 'free'
@@ -4299,7 +4302,7 @@ def check_monthly_availability_api():
                 'date': d.isoformat(),
                 'status': status,
                 'booked': booked_slots,
-                'total': slots_per_day,
+                'total': day_total,
                 'free': free
             }
 

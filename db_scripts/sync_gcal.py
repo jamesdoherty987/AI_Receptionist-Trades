@@ -82,6 +82,9 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                 stats['push_skipped'] += 1
                 continue
 
+            existing_event_id = booking.get('calendar_event_id', '')
+            has_real_gcal = existing_event_id and not str(existing_event_id).startswith('db_')
+
             # Skip bookings already synced and not modified since last sync
             if has_real_gcal:
                 gcal_synced_at = booking.get('gcal_synced_at')
@@ -126,9 +129,6 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                 attendee_emails = [w['email'] for w in job_workers if w.get('email')]
                 if not attendee_emails:
                     attendee_emails = None
-
-            existing_event_id = booking.get('calendar_event_id', '')
-            has_real_gcal = existing_event_id and not str(existing_event_id).startswith('db_')
 
             if has_real_gcal:
                 print(f"      [{bid}] UPDATE  {summary}  {appt_time.strftime('%Y-%m-%d %H:%M')}  {duration}min")
