@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getNotifications } from '../services/api';
+import { getWorkerNotifications } from '../services/api';
 import './NotificationBell.css';
 
-function NotificationBell() {
+function WorkerNotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
   const [seenIds, setSeenIds] = useState(() => {
     try {
-      const stored = localStorage.getItem('seenNotifications');
+      const stored = localStorage.getItem('workerSeenNotifications');
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];
@@ -17,19 +17,18 @@ function NotificationBell() {
   const queryClient = useQueryClient();
 
   const { data } = useQuery({
-    queryKey: ['notifications'],
+    queryKey: ['worker-notifications'],
     queryFn: async () => {
-      const response = await getNotifications();
+      const response = await getWorkerNotifications();
       return response.data;
     },
-    refetchInterval: 30000, // Poll every 30 seconds
+    refetchInterval: 30000,
     staleTime: 10000,
   });
 
   const notifications = data?.notifications || [];
   const unseenCount = notifications.filter(n => !seenIds.includes(n.id)).length;
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -47,11 +46,10 @@ function NotificationBell() {
   const handleOpen = () => {
     setIsOpen(!isOpen);
     if (!isOpen && notifications.length > 0) {
-      // Mark all as seen when opening
       const allIds = notifications.map(n => n.id);
-      const newSeenIds = [...new Set([...seenIds, ...allIds])].slice(-100); // Keep last 100
+      const newSeenIds = [...new Set([...seenIds, ...allIds])].slice(-100);
       setSeenIds(newSeenIds);
-      localStorage.setItem('seenNotifications', JSON.stringify(newSeenIds));
+      localStorage.setItem('workerSeenNotifications', JSON.stringify(newSeenIds));
     }
   };
 
@@ -62,7 +60,6 @@ function NotificationBell() {
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
-    
     if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
@@ -71,27 +68,25 @@ function NotificationBell() {
 
   const getIcon = (type) => {
     switch (type) {
-      case 'cancelled': return 'fa-times-circle';
-      case 'completed': return 'fa-check-circle';
-      case 'rescheduled': return 'fa-calendar-alt';
-      case 'time_off_request': return 'fa-umbrella-beach';
-      default: return 'fa-calendar-plus';
+      case 'job_assigned': return 'fa-briefcase';
+      case 'time_off_approved': return 'fa-check-circle';
+      case 'time_off_denied': return 'fa-times-circle';
+      default: return 'fa-bell';
     }
   };
 
   const getIconClass = (type) => {
     switch (type) {
-      case 'cancelled': return 'notif-cancelled';
-      case 'completed': return 'notif-completed';
-      case 'rescheduled': return 'notif-rescheduled';
-      case 'time_off_request': return 'notif-time-off';
+      case 'job_assigned': return 'notif-new';
+      case 'time_off_approved': return 'notif-completed';
+      case 'time_off_denied': return 'notif-cancelled';
       default: return 'notif-new';
     }
   };
 
   return (
     <div className="notification-bell-container" ref={dropdownRef}>
-      <button 
+      <button
         className={`notification-bell-btn ${unseenCount > 0 ? 'has-unseen' : ''}`}
         onClick={handleOpen}
         aria-label={`Notifications${unseenCount > 0 ? `, ${unseenCount} unread` : ''}`}
@@ -107,21 +102,21 @@ function NotificationBell() {
           <div className="notification-header">
             <span>Notifications</span>
             {notifications.length > 0 && (
-              <button 
+              <button
                 className="refresh-btn"
-                onClick={() => queryClient.invalidateQueries(['notifications'])}
+                onClick={() => queryClient.invalidateQueries(['worker-notifications'])}
                 aria-label="Refresh notifications"
               >
                 <i className="fas fa-sync-alt"></i>
               </button>
             )}
           </div>
-          
+
           <div className="notification-list">
             {notifications.length === 0 ? (
               <div className="notification-empty">
                 <i className="fas fa-inbox"></i>
-                <p>No recent activity</p>
+                <p>No recent notifications</p>
               </div>
             ) : (
               notifications.map(notif => (
@@ -131,9 +126,7 @@ function NotificationBell() {
                   </div>
                   <div className="notification-content">
                     <p className="notification-message">{notif.message}</p>
-                    <span className="notification-meta">
-                      {notif.client_name ? `${notif.client_name} • ` : ''}{formatTime(notif.created_at)}
-                    </span>
+                    <span className="notification-meta">{formatTime(notif.created_at)}</span>
                   </div>
                 </div>
               ))
@@ -145,4 +138,4 @@ function NotificationBell() {
   );
 }
 
-export default NotificationBell;
+export default WorkerNotificationBell;

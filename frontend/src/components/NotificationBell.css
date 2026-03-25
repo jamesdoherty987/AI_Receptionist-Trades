@@ -171,3 +171,8 @@
     right: -60px;
   }
 }
+
+.notification-item.notif-time-off .notification-icon {
+  background: #fef3c7;
+  color: #d97706;
+}

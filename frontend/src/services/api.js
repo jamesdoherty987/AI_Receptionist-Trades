@@ -237,4 +237,7 @@ export const getCompanyTimeOffRequests = (status = null) =>
 export const reviewTimeOffRequest = (id, status, note = '') =>
   api.put(`/api/time-off/requests/${id}`, { status, note });
 
+// Worker Notifications
+export const getWorkerNotifications = () => api.get('/api/worker/notifications');
+
 export default api;

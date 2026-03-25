@@ -18,6 +18,7 @@ import {
 } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
+import WorkerNotificationBell from '../components/WorkerNotificationBell';
 import { formatPhone, getStatusBadgeClass, formatDateTime, getProxiedMediaUrl } from '../utils/helpers';
 import { formatDuration } from '../utils/durationOptions';
 import './WorkerDashboard.css';
@@ -257,6 +258,7 @@ function WorkerDashboard() {
             </button>
             <div className="worker-header-right">
               <span className="worker-greeting">Hi, {user?.name || 'Worker'}</span>
+              <WorkerNotificationBell />
               <button className="worker-logout-btn" onClick={handleLogout}>
                 <i className="fas fa-sign-out-alt"></i> Sign Out
               </button>
@@ -493,6 +495,7 @@ function WorkerDashboard() {
           </Link>
           <div className="worker-header-right">
             <span className="worker-greeting">Hi, {user?.name || 'Worker'}</span>
+            <WorkerNotificationBell />
             <button className="worker-logout-btn" onClick={handleLogout}>
               <i className="fas fa-sign-out-alt"></i> Sign Out
             </button>

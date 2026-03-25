@@ -3341,3 +3341,68 @@ class PostgreSQLDatabaseWrapper:
             return []
         finally:
             self.return_connection(conn)
+
+    # ==========================================
+    # Notification Methods
+    # ==========================================
+
+    def create_notification(self, company_id: int, recipient_type: str,
+                           recipient_id: int, notif_type: str, message: str,
+                           metadata: dict = None) -> Optional[int]:
+        """Create a notification. recipient_type is 'owner' or 'worker'."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                INSERT INTO notifications (company_id, recipient_type, recipient_id, type, message, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (company_id, recipient_type, recipient_id, notif_type, message,
+                  __import__('json').dumps(metadata or {})))
+            result = cursor.fetchone()
+            conn.commit()
+            return result['id'] if result else None
+        except Exception as e:
+            conn.rollback()
+            print(f"Error creating notification: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+
+    def get_owner_notifications(self, company_id: int, limit: int = 30) -> List[Dict]:
+        """Get notifications for the business owner (last 48 hours)."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT * FROM notifications
+                WHERE company_id = %s AND recipient_type = 'owner'
+                AND created_at > NOW() - INTERVAL '48 hours'
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (company_id, limit))
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            conn.rollback()
+            return []
+        finally:
+            self.return_connection(conn)
+
+    def get_worker_notifications(self, worker_id: int, company_id: int, limit: int = 30) -> List[Dict]:
+        """Get notifications for a specific worker (last 48 hours)."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT * FROM notifications
+                WHERE company_id = %s AND recipient_type = 'worker' AND recipient_id = %s
+                AND created_at > NOW() - INTERVAL '48 hours'
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (company_id, worker_id, limit))
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            conn.rollback()
+            return []
+        finally:
+            self.return_connection(conn)

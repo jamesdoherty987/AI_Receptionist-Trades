@@ -1960,6 +1960,22 @@ def worker_time_off():
     )
 
     if request_id:
+        # Notify the owner about the time-off request
+        try:
+            worker = db.get_worker(worker_id, company_id=company_id)
+            worker_name = worker['name'] if worker else 'A worker'
+            db.create_notification(
+                company_id=company_id,
+                recipient_type='owner',
+                recipient_id=company_id,
+                notif_type='time_off_request',
+                message=f"{worker_name} requested time off ({start_date} to {end_date})",
+                metadata={'worker_id': worker_id, 'worker_name': worker_name,
+                          'request_id': request_id, 'leave_type': leave_type}
+            )
+        except Exception as e:
+            print(f"[WARNING] Could not create time-off notification: {e}")
+
         return jsonify({"success": True, "id": request_id, "message": "Time-off request submitted"}), 201
     return jsonify({"error": "Failed to create request"}), 500
 
@@ -2070,6 +2086,27 @@ def review_time_off_request(request_id):
     success = db.update_time_off_status(request_id, company_id, status, note)
 
     if success:
+        # Notify the worker about the decision
+        try:
+            # Look up the request to get the worker_id
+            all_requests = db.get_company_time_off_requests(company_id)
+            the_request = next((r for r in all_requests if r['id'] == request_id), None)
+            if the_request:
+                status_label = 'approved' if status == 'approved' else 'denied'
+                msg = f"Your time-off request ({the_request['start_date']} to {the_request['end_date']}) was {status_label}"
+                if note:
+                    msg += f": {note}"
+                db.create_notification(
+                    company_id=company_id,
+                    recipient_type='worker',
+                    recipient_id=the_request['worker_id'],
+                    notif_type=f'time_off_{status_label}',
+                    message=msg,
+                    metadata={'request_id': request_id, 'status': status_label}
+                )
+        except Exception as e:
+            print(f"[WARNING] Could not create time-off review notification: {e}")
+
         return jsonify({"success": True, "message": f"Request {status}"})
     return jsonify({"error": "Request not found"}), 404
 
@@ -4441,11 +4478,13 @@ def bookings_api():
                 )
             
             # Assign worker(s) — reuse the worker_ids parsed earlier for conflict checking
+            assigned_worker_ids_for_notif = []
             for wid in requested_worker_ids:
                 try:
                     worker = db.get_worker(wid, company_id=company_id)
                     if worker:
                         db.assign_worker_to_job(booking_id, wid)
+                        assigned_worker_ids_for_notif.append(wid)
                         print(f"[INFO] Worker {wid} assigned to booking {booking_id}")
                 except Exception as e:
                     print(f"[WARNING] Could not assign worker {wid}: {e}")
@@ -4476,6 +4515,7 @@ def bookings_api():
                         )
                         if avail.get('available'):
                             db.assign_worker_to_job(booking_id, w['id'])
+                            assigned_worker_ids_for_notif.append(w['id'])
                             print(f"[INFO] Auto-assigned worker {w['id']} ({w.get('name')}) to booking {booking_id}")
                             assigned_auto = True
                             break
@@ -4484,6 +4524,23 @@ def bookings_api():
                         print(f"[WARNING] No available worker found for auto-assignment on booking {booking_id}")
                 except Exception as e:
                     print(f"[WARNING] Auto-assign worker failed: {e}")
+
+            # Notify assigned workers about the new job
+            for wid in assigned_worker_ids_for_notif:
+                try:
+                    appt_str = appointment_dt.strftime('%b %d at %I:%M %p')
+                    customer_name = client.get('name', 'a customer') if client else 'a customer'
+                    db.create_notification(
+                        company_id=company_id,
+                        recipient_type='worker',
+                        recipient_id=wid,
+                        notif_type='job_assigned',
+                        message=f"You've been booked for {service_type or 'a job'} with {customer_name} on {appt_str}",
+                        metadata={'booking_id': booking_id, 'service_type': service_type,
+                                  'appointment_time': appointment_dt.isoformat()}
+                    )
+                except Exception as e:
+                    print(f"[WARNING] Could not notify worker {wid}: {e}")
             
             # Update client description
             try:
@@ -5979,6 +6036,24 @@ def notifications_api():
                 'created_at': row['created_at'].isoformat() if row['created_at'] else None
             })
         
+        # Also fetch owner notifications from the notifications table
+        try:
+            owner_notifs = db.get_owner_notifications(company_id, limit=limit)
+            for n in owner_notifs:
+                notifications.append({
+                    'id': f"n_{n['id']}",
+                    'type': n['type'],
+                    'message': n['message'],
+                    'client_name': (n.get('metadata') or {}).get('worker_name', ''),
+                    'appointment_time': None,
+                    'created_at': n['created_at'].isoformat() if n.get('created_at') else None
+                })
+            # Sort all notifications by created_at descending
+            notifications.sort(key=lambda x: x.get('created_at') or '', reverse=True)
+            notifications = notifications[:limit]
+        except Exception as e2:
+            print(f"[WARNING] Could not fetch owner notifications: {e2}")
+
         return jsonify({
             'notifications': notifications,
             'count': len(notifications)
@@ -5990,6 +6065,33 @@ def notifications_api():
     finally:
         if conn:
             db.return_connection(conn)
+
+
+@app.route("/api/worker/notifications", methods=["GET"])
+@worker_login_required
+def worker_notifications_api():
+    """Get notifications for the logged-in worker"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+    db = get_database()
+
+    try:
+        limit = min(int(request.args.get('limit', 20)), 50)
+    except (ValueError, TypeError):
+        limit = 20
+
+    notifs = db.get_worker_notifications(worker_id, company_id, limit=limit)
+    notifications = []
+    for n in notifs:
+        notifications.append({
+            'id': n['id'],
+            'type': n['type'],
+            'message': n['message'],
+            'metadata': n.get('metadata') or {},
+            'created_at': n['created_at'].isoformat() if n.get('created_at') else None
+        })
+
+    return jsonify({'notifications': notifications, 'count': len(notifications)})
 
 
 @app.route("/api/workers", methods=["GET", "POST"])
@@ -6217,6 +6319,25 @@ def assign_worker_to_job_api(booking_id):
                     )
         except Exception as e:
             print(f"[GCAL] Worker assign sync failed (non-critical): {e}")
+
+        # Notify the worker about the job assignment
+        try:
+            from datetime import datetime as _dt
+            appt = booking.get('appointment_time')
+            appt_str = appt.strftime('%b %d at %I:%M %p') if hasattr(appt, 'strftime') else str(appt)
+            customer_name = booking.get('client_name') or booking.get('customer_name') or 'a customer'
+            svc = booking.get('service_type') or 'a job'
+            db.create_notification(
+                company_id=company_id,
+                recipient_type='worker',
+                recipient_id=worker_id,
+                notif_type='job_assigned',
+                message=f"You've been booked for {svc} with {customer_name} on {appt_str}",
+                metadata={'booking_id': booking_id, 'service_type': svc,
+                          'appointment_time': appt.isoformat() if hasattr(appt, 'isoformat') else str(appt)}
+            )
+        except Exception as e:
+            print(f"[WARNING] Could not notify worker of assignment: {e}")
 
         return jsonify(result), 201
     else:
