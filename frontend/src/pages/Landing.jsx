@@ -99,9 +99,11 @@ function FeatureCard({ icon, title, description, index }) {
 }
 
 function Landing() {
+  const CONTACT_EMAIL = 'j.p.enterprisehq@gmail.com';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
+  const [showContactModal, setShowContactModal] = useState(false);
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -726,14 +728,13 @@ function Landing() {
               <div className="footer-column">
                 <h4>Company</h4>
                 <a href="#">About Us</a>
-                <a href="#">Careers</a>
-                <a href="#">Contact</a>
+                <a href="#" onClick={(e) => { e.preventDefault(); setShowContactModal(true); }}>Contact</a>
               </div>
               <div className="footer-column">
                 <h4>Legal</h4>
                 <Link to="/privacy">Privacy Policy</Link>
-                <a href="#">Terms of Service</a>
-                <a href="#">Cookie Policy</a>
+                <Link to="/privacy">Terms of Service</Link>
+                <Link to="/privacy">Cookie Policy</Link>
               </div>
             </div>
           </div>
@@ -742,6 +743,23 @@ function Landing() {
           </div>
         </div>
       </footer>
+
+      {/* Contact Modal */}
+      {showContactModal && (
+        <div className="contact-modal-overlay" onClick={() => setShowContactModal(false)}>
+          <div className="contact-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="contact-modal-close" onClick={() => setShowContactModal(false)}>
+              <i className="fas fa-times"></i>
+            </button>
+            <h3>Get in Touch</h3>
+            <p>Have a question or need help? Send us an email and we'll get back to you as soon as possible.</p>
+            <a href={`mailto:${CONTACT_EMAIL}`} className="contact-email-btn">
+              <i className="fas fa-envelope"></i>
+              {CONTACT_EMAIL}
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

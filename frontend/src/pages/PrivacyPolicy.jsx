@@ -45,10 +45,8 @@ function PrivacyPolicy() {
 
           <h3>2.2 Information Collected Automatically</h3>
           <ul>
-            <li>Usage data: pages visited, features used, time spent on the Service</li>
-            <li>Device information: browser type, operating system, device identifiers</li>
-            <li>Log data: IP address, access times, referring URLs</li>
-            <li>Cookies and similar technologies for session management and analytics</li>
+            <li>Log data: IP address and access times for security monitoring</li>
+            <li>Session cookies to keep you logged in</li>
           </ul>
 
           <h3>2.3 Information from Third-Party Services</h3>
@@ -183,9 +181,8 @@ function PrivacyPolicy() {
         <section className="privacy-section">
           <h2>9. Cookies</h2>
           <p>
-            We use essential cookies to maintain your session and keep you logged in. 
-            We may also use analytics cookies to understand how the Service is used. 
-            You can control cookie preferences through your browser settings.
+            We use essential cookies solely to maintain your session and keep you logged in. 
+            We do not use analytics or advertising cookies.
           </p>
         </section>
 
