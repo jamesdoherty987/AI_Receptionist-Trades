@@ -18,7 +18,8 @@ import './Dashboard.css';
 
 function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const { initialized } = useAuth();
+  const { user, initialized } = useAuth();
+  const userKey = user?.email || 'default';
 
   // Check if user needs onboarding
   const { data: settings } = useQuery({
@@ -31,19 +32,23 @@ function Dashboard() {
 
   // Show onboarding wizard for new users who haven't completed setup
   useEffect(() => {
-    const onboardingComplete = localStorage.getItem('onboarding_complete');
+    const onboardingComplete = localStorage.getItem(`onboarding_complete_${userKey}`);
     
     // Show onboarding if:
     // 1. User hasn't dismissed/completed onboarding before
     // 2. AND settings are loaded
     // 3. AND business info is missing
-    if (!onboardingComplete && settings !== undefined && initialized) {
+    if (!onboardingComplete && settings !== undefined && initialized && user) {
       const needsSetup = !settings?.business_address || !settings?.coverage_area;
       if (needsSetup) {
         setShowOnboarding(true);
+      } else {
+        setShowOnboarding(false);
       }
+    } else if (onboardingComplete) {
+      setShowOnboarding(false);
     }
-  }, [settings, initialized]);
+  }, [settings, initialized, userKey]);
 
   // Scroll to top when dashboard loads
   useEffect(() => {
@@ -103,7 +108,7 @@ function Dashboard() {
   ];
 
   const handleOnboardingComplete = () => {
-    localStorage.setItem('onboarding_complete', 'true');
+    localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
     setShowOnboarding(false);
   };
 

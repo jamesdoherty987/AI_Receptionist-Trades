@@ -59,7 +59,8 @@ const STEPS = [
 
 function OnboardingWizard({ onComplete }) {
   const queryClient = useQueryClient();
-  const { hasActiveSubscription, getSubscriptionTier, checkAuth } = useAuth();
+  const { user, hasActiveSubscription, getSubscriptionTier, checkAuth } = useAuth();
+  const userKey = user?.email || 'default';
   const [currentStepIndex, setCurrentStepIndex] = useState(null);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -90,16 +91,21 @@ function OnboardingWizard({ onComplete }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [completedSteps, setCompletedSteps] = useState([]);
-  const [hidden, setHidden] = useState(() => localStorage.getItem('onboarding_hidden') === 'true');
+  const [hidden, setHidden] = useState(() => localStorage.getItem(`onboarding_hidden_${userKey}`) === 'true');
+
+  // Re-sync hidden state when user loads (userKey changes from 'default' to actual email)
+  useEffect(() => {
+    setHidden(localStorage.getItem(`onboarding_hidden_${userKey}`) === 'true');
+  }, [userKey]);
 
   const handleHide = () => {
     setHidden(true);
-    localStorage.setItem('onboarding_hidden', 'true');
+    localStorage.setItem(`onboarding_hidden_${userKey}`, 'true');
   };
 
   const handleUnhide = () => {
     setHidden(false);
-    localStorage.removeItem('onboarding_hidden');
+    localStorage.removeItem(`onboarding_hidden_${userKey}`);
   };
 
   const trialMutation = useMutation({
@@ -310,7 +316,7 @@ function OnboardingWizard({ onComplete }) {
   };
 
   const handleFinish = () => {
-    localStorage.setItem('onboarding_complete', 'true');
+    localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
     onComplete();
   };
 
@@ -318,10 +324,10 @@ function OnboardingWizard({ onComplete }) {
     setCurrentStepIndex(null);
   };
 
-  const isPaymentSkipped = () => localStorage.getItem('payment_skipped') === 'true';
+  const isPaymentSkipped = () => localStorage.getItem(`payment_skipped_${userKey}`) === 'true';
 
   const handleSkipPayment = () => {
-    localStorage.setItem('payment_skipped', 'true');
+    localStorage.setItem(`payment_skipped_${userKey}`, 'true');
     if (!completedSteps.includes('payment')) {
       setCompletedSteps(prev => [...prev, 'payment']);
     }
@@ -334,8 +340,8 @@ function OnboardingWizard({ onComplete }) {
     if (stepId === 'service-area') return !!(settings?.business_address && settings?.coverage_area && settings?.business_hours) || completedSteps.includes('service-area');
     if (stepId === 'company-details') return !!settings?.company_context || completedSteps.includes('company-details');
     if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder) || isPaymentSkipped() || completedSteps.includes('payment');
-    if (stepId === 'services') return localStorage.getItem('services_setup_visited') === 'true';
-    if (stepId === 'workers') return localStorage.getItem('workers_setup_visited') === 'true';
+    if (stepId === 'services') return localStorage.getItem(`services_setup_visited_${userKey}`) === 'true';
+    if (stepId === 'workers') return localStorage.getItem(`workers_setup_visited_${userKey}`) === 'true';
     return completedSteps.includes(stepId);
   };
 
@@ -658,7 +664,7 @@ function OnboardingWizard({ onComplete }) {
                   <button className="btn btn-secondary" onClick={handleSkipStep}>
                     Skip for now
                   </button>
-                  <button className="btn btn-primary" onClick={() => { localStorage.setItem('services_setup_visited', 'true'); if (!completedSteps.includes('services')) { setCompletedSteps(prev => [...prev, 'services']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Services')) btn.click(); }); }, 100); }}>
+                  <button className="btn btn-primary" onClick={() => { localStorage.setItem(`services_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('services')) { setCompletedSteps(prev => [...prev, 'services']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Services')) btn.click(); }); }, 100); }}>
                     <i className="fas fa-concierge-bell"></i> Go to Services
                   </button>
                 </div>
@@ -682,7 +688,7 @@ function OnboardingWizard({ onComplete }) {
                   <button className="btn btn-secondary" onClick={handleSkipStep}>
                     Skip for now
                   </button>
-                  <button className="btn btn-primary" onClick={() => { localStorage.setItem('workers_setup_visited', 'true'); if (!completedSteps.includes('workers')) { setCompletedSteps(prev => [...prev, 'workers']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Workers')) btn.click(); }); }, 100); }}>
+                  <button className="btn btn-primary" onClick={() => { localStorage.setItem(`workers_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('workers')) { setCompletedSteps(prev => [...prev, 'workers']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Workers')) btn.click(); }); }, 100); }}>
                     <i className="fas fa-hard-hat"></i> Go to Workers
                   </button>
                 </div>
