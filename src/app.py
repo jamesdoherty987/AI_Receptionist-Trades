@@ -4273,30 +4273,56 @@ def check_monthly_availability_api():
                 continue
 
             if any_worker and per_worker_bookings:
-                # Combined capacity: day is available if at least one worker has free slots
-                # Total capacity = number of workers * slots per day
-                total_capacity = len(per_worker_bookings) * slots_per_day
+                # For "any worker" mode, check per-worker availability individually.
+                # A day is "free" if at least one worker is completely free for the job.
+                # A day is "partial" if no worker is fully free but at least one has some slots.
+                # A day is "full" only when every worker is fully booked.
+                num_workers = len(per_worker_bookings)
+                workers_fully_free = 0
+                workers_with_space = 0
                 total_booked = 0
                 for wid, wb_list in per_worker_bookings.items():
                     wb = _count_booked_slots(d, wb_list)
                     total_booked += min(wb, slots_per_day)
+                    if wb == 0:
+                        workers_fully_free += 1
+                    if wb < slots_per_day:
+                        workers_with_space += 1
+
                 booked_slots = total_booked
-                day_total = total_capacity
+                day_total = num_workers * slots_per_day
+
+                if workers_with_space == 0:
+                    status = 'full'
+                elif workers_fully_free > 0:
+                    # At least one worker is completely free — green
+                    status = 'free'
+                else:
+                    # Workers have some availability but none fully free — yellow
+                    status = 'partial'
+
+                free = day_total - booked_slots
             elif any_worker and not per_worker_bookings:
                 # No workers — show general availability
                 booked_slots = _count_booked_slots(d, _filter_bookings())
                 day_total = slots_per_day
+                free = day_total - booked_slots
+                if free <= 0:
+                    status = 'full'
+                elif free < day_total:
+                    status = 'partial'
+                else:
+                    status = 'free'
             else:
                 booked_slots = _count_booked_slots(d, relevant)
                 day_total = slots_per_day
-
-            free = day_total - booked_slots
-            if free <= 0:
-                status = 'full'
-            elif free < day_total:
-                status = 'partial'
-            else:
-                status = 'free'
+                free = day_total - booked_slots
+                if free <= 0:
+                    status = 'full'
+                elif free < day_total:
+                    status = 'partial'
+                else:
+                    status = 'free'
 
             days[d.isoformat()] = {
                 'date': d.isoformat(),
