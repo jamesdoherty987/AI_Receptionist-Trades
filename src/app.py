@@ -5127,6 +5127,39 @@ def check_monthly_availability_api():
         else:
             relevant = _filter_bookings(filter_worker_id=worker_id)
 
+        # Pre-fetch approved time-off for the month
+        leave_by_worker = {}  # worker_id -> set of date strings on leave
+        try:
+            if hasattr(db, 'get_workers_on_leave'):
+                leave_records = db.get_workers_on_leave(company_id, month_start, month_end)
+                for rec in leave_records:
+                    wid = rec['worker_id']
+                    if wid not in leave_by_worker:
+                        leave_by_worker[wid] = set()
+                    s = rec['start_date']
+                    e = rec['end_date']
+                    if isinstance(s, str):
+                        s = date_cls.fromisoformat(s)
+                    if isinstance(e, str):
+                        e = date_cls.fromisoformat(e)
+                    cur = s
+                    while cur <= e:
+                        if date_cls(year, month, 1) <= cur <= date_cls(year, month, last_day):
+                            leave_by_worker[wid].add(cur.isoformat())
+                        cur += timedelta(days=1)
+        except Exception:
+            pass
+
+        # Helper: check if a specific worker is on leave for a date
+        def _worker_on_leave(wid, day_iso):
+            return day_iso in leave_by_worker.get(wid, set())
+
+        # Helper: check if ALL eligible workers are on leave for a date
+        def _all_workers_on_leave(day_iso, worker_ids):
+            if not leave_by_worker:
+                return False
+            return all(day_iso in leave_by_worker.get(wid, set()) for wid in worker_ids)
+
         # Build per-day info
         days = {}
         for day_num in range(1, last_day + 1):
@@ -5144,14 +5177,17 @@ def check_monthly_availability_api():
 
             if any_worker and per_worker_bookings:
                 # For "any worker" mode, check per-worker availability individually.
-                # A day is "free" if at least one worker is completely free for the job.
-                # A day is "partial" if no worker is fully free but at least one has some slots.
-                # A day is "full" only when every worker is fully booked.
+                # Workers on leave are excluded for this day.
                 num_workers = len(per_worker_bookings)
                 workers_fully_free = 0
                 workers_with_space = 0
+                workers_available = 0  # not on leave
                 total_booked = 0
+                day_iso = d.isoformat()
                 for wid, wb_list in per_worker_bookings.items():
+                    if _worker_on_leave(wid, day_iso):
+                        continue  # Skip workers on leave
+                    workers_available += 1
                     wb = _count_booked_slots(d, wb_list)
                     total_booked += min(wb, slots_per_day)
                     if wb == 0:
@@ -5159,19 +5195,27 @@ def check_monthly_availability_api():
                     if wb < slots_per_day:
                         workers_with_space += 1
 
-                booked_slots = total_booked
-                day_total = num_workers * slots_per_day
-
-                if workers_with_space == 0:
+                if workers_available == 0:
+                    # All workers on leave
+                    status = 'leave'
+                    booked_slots = 0
+                    day_total = 0
+                    free = 0
+                elif workers_with_space == 0:
                     status = 'full'
+                    booked_slots = total_booked
+                    day_total = workers_available * slots_per_day
+                    free = day_total - booked_slots
                 elif workers_fully_free > 0:
-                    # At least one worker is completely free — green
                     status = 'free'
+                    booked_slots = total_booked
+                    day_total = workers_available * slots_per_day
+                    free = day_total - booked_slots
                 else:
-                    # Workers have some availability but none fully free — yellow
                     status = 'partial'
-
-                free = day_total - booked_slots
+                    booked_slots = total_booked
+                    day_total = workers_available * slots_per_day
+                    free = day_total - booked_slots
             elif any_worker and not per_worker_bookings:
                 # No workers — show general availability
                 booked_slots = _count_booked_slots(d, _filter_bookings())
@@ -5184,15 +5228,22 @@ def check_monthly_availability_api():
                 else:
                     status = 'free'
             else:
-                booked_slots = _count_booked_slots(d, relevant)
-                day_total = slots_per_day
-                free = day_total - booked_slots
-                if free <= 0:
-                    status = 'full'
-                elif free < day_total:
-                    status = 'partial'
+                day_iso = d.isoformat()
+                if worker_id and _worker_on_leave(worker_id, day_iso):
+                    status = 'leave'
+                    booked_slots = 0
+                    day_total = 0
+                    free = 0
                 else:
-                    status = 'free'
+                    booked_slots = _count_booked_slots(d, relevant)
+                    day_total = slots_per_day
+                    free = day_total - booked_slots
+                    if free <= 0:
+                        status = 'full'
+                    elif free < day_total:
+                        status = 'partial'
+                    else:
+                        status = 'free'
 
             days[d.isoformat()] = {
                 'date': d.isoformat(),

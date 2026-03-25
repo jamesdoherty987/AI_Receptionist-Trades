@@ -49,6 +49,7 @@
 .mc-empty { cursor: default; }
 .mc-day.mc-past { color: #d1d5db; cursor: not-allowed; background: transparent; }
 .mc-day.mc-closed { color: #d1d5db; background: #f3f4f6; cursor: not-allowed; }
+.mc-day.mc-leave { color: #d97706; background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.3); cursor: not-allowed; }
 .mc-day.mc-free { color: #047857; background: #ecfdf5; border-color: #a7f3d0; }
 .mc-day.mc-free:hover { background: #d1fae5; border-color: #6ee7b7; }
 .mc-day.mc-partial { color: #92400e; background: #fef3c7; border-color: #fcd34d; }
@@ -71,6 +72,7 @@
 .mc-dot-free { background: #a7f3d0; border: 1px solid #6ee7b7; }
 .mc-dot-partial { background: #fcd34d; border: 1px solid #f59e0b; }
 .mc-dot-full { background: #fca5a5; border: 1px solid #f87171; }
+.mc-dot-leave { background: rgba(245, 158, 11, 0.3); border: 1px dashed #f59e0b; }
 .mc-dot-closed { background: #e5e7eb; border: 1px solid #d1d5db; }
 
 /* Full-day status */

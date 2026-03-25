@@ -39,18 +39,21 @@ function MiniCalendar({ selectedDate, onSelectDate, monthData, isLoading, calMon
     let statusClass = '';
     if (isPast) statusClass = 'mc-past';
     else if (dayInfo?.status === 'closed') statusClass = 'mc-closed';
+    else if (dayInfo?.status === 'leave') statusClass = 'mc-leave';
     else if (dayInfo?.status === 'full') statusClass = 'mc-full';
     else if (dayInfo?.status === 'partial') statusClass = 'mc-partial';
     else if (dayInfo?.status === 'free') statusClass = 'mc-free';
+
+    const isDisabled = isPast || dayInfo?.status === 'closed' || dayInfo?.status === 'leave';
 
     cells.push(
       <button
         key={d}
         type="button"
         className={`mc-cell mc-day ${statusClass} ${isSelected ? 'mc-selected' : ''}`}
-        disabled={isPast || dayInfo?.status === 'closed'}
-        onClick={() => !isPast && dayInfo?.status !== 'closed' && onSelectDate(iso)}
-        title={isPast ? 'Past date' : dayInfo?.status === 'closed' ? 'Closed' : dayInfo?.status === 'full' ? 'Fully booked' : dayInfo?.status === 'partial' ? `${dayInfo.free} slot${dayInfo.free !== 1 ? 's' : ''} free` : 'Available'}
+        disabled={isDisabled}
+        onClick={() => !isDisabled && onSelectDate(iso)}
+        title={isPast ? 'Past date' : dayInfo?.status === 'closed' ? 'Closed' : dayInfo?.status === 'leave' ? 'Worker on leave' : dayInfo?.status === 'full' ? 'Fully booked' : dayInfo?.status === 'partial' ? `${dayInfo.free} slot${dayInfo.free !== 1 ? 's' : ''} free` : 'Available'}
       >
         {d}
       </button>
@@ -76,6 +79,7 @@ function MiniCalendar({ selectedDate, onSelectDate, monthData, isLoading, calMon
         <span className="mc-legend-item"><span className="mc-dot mc-dot-free"></span>Available</span>
         <span className="mc-legend-item"><span className="mc-dot mc-dot-partial"></span>Partial</span>
         <span className="mc-legend-item"><span className="mc-dot mc-dot-full"></span>Full</span>
+        <span className="mc-legend-item"><span className="mc-dot mc-dot-leave"></span>Leave</span>
         <span className="mc-legend-item"><span className="mc-dot mc-dot-closed"></span>Closed</span>
       </div>
     </div>
