@@ -368,6 +368,12 @@ class CompanyGoogleCalendar:
             event = self.service.events().get(
                 calendarId=self.calendar_id, eventId=event_id).execute()
 
+            # Skip birthday and other special event types that can't be modified
+            event_type = event.get('eventType', 'default')
+            if event_type in ('birthday', 'focusTime', 'outOfOffice', 'workingLocation'):
+                logger.info(f"[GCAL] Skipping {event_type} event {event_id} (not modifiable)")
+                return None
+
             # Calculate duration from existing event if not provided
             if not duration_minutes:
                 old_start = datetime.fromisoformat(event['start']['dateTime'].replace('Z', '+00:00'))
