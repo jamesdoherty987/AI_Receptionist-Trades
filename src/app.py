@@ -1582,7 +1582,8 @@ def invite_worker():
             conn.commit()
         except Exception as e:
             conn.rollback()
-            return jsonify({"error": f"Failed to update invite: {e}"}), 500
+            print(f"[WORKER-INVITE] Failed to update invite: {e}")
+            return jsonify({"error": "Failed to update invite. Please try again."}), 500
         finally:
             db.return_connection(conn)
     else:
@@ -1664,14 +1665,19 @@ def worker_dashboard():
 def update_worker_profile():
     """Allow worker to update their own profile (limited fields)"""
     worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
     data = request.json
 
-    # Workers can only update phone and image
+    # Workers can update phone and image
     allowed_fields = {}
     if 'phone' in data:
         allowed_fields['phone'] = sanitize_string(data['phone'], max_length=20)
     if 'image_url' in data:
-        allowed_fields['image_url'] = data['image_url']
+        image_url = data['image_url']
+        # Handle base64 image upload to R2
+        if image_url and image_url.startswith('data:image/') and company_id:
+            image_url = upload_base64_image_to_r2(image_url, company_id, 'workers')
+        allowed_fields['image_url'] = image_url
 
     if not allowed_fields:
         return jsonify({"error": "No valid fields to update"}), 400
@@ -1691,6 +1697,302 @@ def update_worker_profile():
             "image_url": worker.get('image_url', ''),
         }
     })
+
+
+@app.route("/api/worker/jobs/<int:job_id>", methods=["GET"])
+@worker_login_required
+def worker_job_detail(job_id):
+    """Get full job details for a worker (only if assigned to them)"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+
+    db = get_database()
+
+    # Verify worker is assigned to this job
+    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+    job_ids = [j['id'] for j in worker_jobs]
+    if job_id not in job_ids:
+        return jsonify({"error": "Job not found or not assigned to you"}), 404
+
+    # Get full booking details
+    booking = db.get_booking(job_id, company_id=company_id)
+    if not booking:
+        return jsonify({"error": "Job not found"}), 404
+
+    # Get assigned workers for this job
+    assigned_workers = db.get_job_workers(job_id, company_id=company_id)
+
+    # Get appointment notes
+    notes = db.get_appointment_notes(job_id)
+
+    return jsonify({
+        "success": True,
+        "job": booking,
+        "assigned_workers": assigned_workers,
+        "notes": notes
+    })
+
+
+@app.route("/api/worker/jobs/<int:job_id>/photos", methods=["POST"])
+@worker_login_required
+def worker_upload_job_photo(job_id):
+    """Allow worker to upload photos to their assigned jobs"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+
+    db = get_database()
+
+    # Verify worker is assigned to this job
+    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+    job_ids = [j['id'] for j in worker_jobs]
+    if job_id not in job_ids:
+        return jsonify({"error": "Job not found or not assigned to you"}), 404
+
+    data = request.json
+    image_data = data.get('image')
+    if not image_data:
+        return jsonify({"error": "No image data provided"}), 400
+
+    try:
+        photo_url = upload_base64_image_to_r2(image_data, company_id, 'job-photos')
+        if not photo_url:
+            return jsonify({"error": "Failed to upload photo"}), 500
+
+        booking = db.get_booking(job_id, company_id=company_id)
+        existing_photos = booking.get('photo_urls') or []
+        updated_photos = existing_photos + [photo_url]
+        db.update_booking(job_id, photo_urls=updated_photos)
+
+        return jsonify({"success": True, "photo_url": photo_url, "photo_urls": updated_photos})
+    except Exception as e:
+        print(f"[ERROR] Worker photo upload failed: {e}")
+        return jsonify({"error": "Failed to upload photo"}), 500
+
+
+@app.route("/api/worker/jobs/<int:job_id>/notes", methods=["GET", "POST"])
+@worker_login_required
+def worker_job_notes(job_id):
+    """Get or add notes to a job (worker can log what they did, materials used, etc.)"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+
+    db = get_database()
+
+    # Verify worker is assigned to this job
+    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+    job_ids = [j['id'] for j in worker_jobs]
+    if job_id not in job_ids:
+        return jsonify({"error": "Job not found or not assigned to you"}), 404
+
+    if request.method == "GET":
+        notes = db.get_appointment_notes(job_id)
+        return jsonify({"success": True, "notes": notes})
+
+    # POST - add a note
+    data = request.json
+    note_text = data.get('note', '').strip()
+    if not note_text:
+        return jsonify({"error": "Note text is required"}), 400
+
+    # Get worker name for the created_by field
+    worker = db.get_worker(worker_id)
+    created_by = f"worker:{worker['name']}" if worker else "worker"
+
+    note_id = db.add_appointment_note(
+        booking_id=job_id,
+        note=sanitize_string(note_text, max_length=2000),
+        created_by=created_by
+    )
+
+    if note_id:
+        return jsonify({"success": True, "id": note_id, "message": "Note added"}), 201
+    return jsonify({"error": "Failed to add note"}), 500
+
+
+@app.route("/api/worker/jobs/<int:job_id>/status", methods=["PUT"])
+@worker_login_required
+def worker_update_job_status(job_id):
+    """Allow worker to update job status (limited: in-progress, completed)"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+
+    db = get_database()
+
+    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+    job_ids = [j['id'] for j in worker_jobs]
+    if job_id not in job_ids:
+        return jsonify({"error": "Job not found or not assigned to you"}), 404
+
+    data = request.json
+    new_status = data.get('status', '').strip()
+
+    # Workers can only set these statuses
+    allowed_statuses = ['in-progress', 'completed']
+    if new_status not in allowed_statuses:
+        return jsonify({"error": f"Workers can only set status to: {', '.join(allowed_statuses)}"}), 400
+
+    db.update_booking(job_id, status=new_status)
+    return jsonify({"success": True, "status": new_status})
+
+
+@app.route("/api/worker/time-off", methods=["GET", "POST"])
+@worker_login_required
+def worker_time_off():
+    """Get or create time-off requests"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+    db = get_database()
+
+    if request.method == "GET":
+        requests_list = db.get_worker_time_off(worker_id)
+        return jsonify({"success": True, "requests": requests_list})
+
+    # POST - create new request
+    data = request.json
+    start_date = data.get('start_date')
+    end_date = data.get('end_date')
+    reason = sanitize_string(data.get('reason', ''), max_length=500)
+    leave_type = sanitize_string(data.get('type', 'vacation'), max_length=50)
+
+    if not start_date or not end_date:
+        return jsonify({"error": "Start and end dates are required"}), 400
+
+    # Validate dates
+    from datetime import datetime, date
+    try:
+        start = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end = datetime.strptime(end_date, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+    if end < start:
+        return jsonify({"error": "End date must be on or after start date"}), 400
+
+    if start < date.today():
+        return jsonify({"error": "Cannot request time off in the past"}), 400
+
+    request_id = db.create_time_off_request(
+        worker_id=worker_id,
+        company_id=company_id,
+        start_date=start_date,
+        end_date=end_date,
+        reason=reason,
+        leave_type=leave_type
+    )
+
+    if request_id:
+        return jsonify({"success": True, "id": request_id, "message": "Time-off request submitted"}), 201
+    return jsonify({"error": "Failed to create request"}), 500
+
+
+@app.route("/api/worker/time-off/<int:request_id>", methods=["DELETE"])
+@worker_login_required
+def worker_delete_time_off(request_id):
+    """Delete a pending time-off request"""
+    worker_id = session.get('worker_id')
+    db = get_database()
+
+    success = db.delete_time_off_request(request_id, worker_id)
+    if success:
+        return jsonify({"success": True, "message": "Request cancelled"})
+    return jsonify({"error": "Cannot cancel this request (may already be reviewed)"}), 400
+
+
+@app.route("/api/worker/change-password", methods=["POST"])
+@worker_login_required
+def worker_change_password():
+    """Allow worker to change their password"""
+    worker_id = session.get('worker_id')
+    data = request.json
+
+    current_password = data.get('current_password', '')
+    new_password = data.get('new_password', '')
+
+    if not current_password or not new_password:
+        return jsonify({"error": "Current and new passwords are required"}), 400
+
+    password_error = _validate_password(new_password)
+    if password_error:
+        return jsonify({"error": password_error}), 400
+
+    db = get_database()
+    account = db.get_worker_account_by_worker_id(worker_id)
+    if not account:
+        return jsonify({"error": "Account not found"}), 404
+
+    if not verify_password(current_password, account['password_hash']):
+        return jsonify({"error": "Current password is incorrect"}), 401
+
+    new_hash = hash_password(new_password)
+    success = db.set_worker_account_password(account['id'], new_hash)
+
+    if success:
+        return jsonify({"success": True, "message": "Password changed successfully"})
+    return jsonify({"error": "Failed to change password"}), 500
+
+
+@app.route("/api/worker/hours-summary", methods=["GET"])
+@worker_login_required
+def worker_hours_summary():
+    """Get worker's hours summary"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+    db = get_database()
+
+    worker = db.get_worker(worker_id, company_id=company_id)
+    if not worker:
+        return jsonify({"error": "Worker not found"}), 404
+
+    # Get hours this week
+    hours_data = db.get_worker_hours_this_week(worker_id)
+    hours_this_week = hours_data if isinstance(hours_data, (int, float)) else 0
+
+    # Get job counts
+    all_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+    active_jobs = [j for j in all_jobs if j['status'] not in ('completed', 'cancelled')]
+    completed_jobs = [j for j in all_jobs if j['status'] == 'completed']
+
+    return jsonify({
+        "success": True,
+        "hours_this_week": hours_this_week,
+        "weekly_hours_expected": worker.get('weekly_hours_expected', 40.0),
+        "active_jobs": len(active_jobs),
+        "completed_jobs": len(completed_jobs),
+        "total_jobs": len(all_jobs)
+    })
+
+
+# --- Owner endpoints for managing time-off requests ---
+
+@app.route("/api/time-off/requests", methods=["GET"])
+@login_required
+def get_time_off_requests():
+    """Get all time-off requests for the company (owner view)"""
+    company_id = session.get('company_id')
+    db = get_database()
+    status_filter = request.args.get('status')
+    requests_list = db.get_company_time_off_requests(company_id, status=status_filter)
+    return jsonify({"success": True, "requests": requests_list})
+
+
+@app.route("/api/time-off/requests/<int:request_id>", methods=["PUT"])
+@login_required
+def review_time_off_request(request_id):
+    """Approve or deny a time-off request (owner only)"""
+    company_id = session.get('company_id')
+    data = request.json
+    status = data.get('status')
+    note = sanitize_string(data.get('note', ''), max_length=500)
+
+    if status not in ('approved', 'denied'):
+        return jsonify({"error": "Status must be 'approved' or 'denied'"}), 400
+
+    db = get_database()
+    success = db.update_time_off_status(request_id, company_id, status, note)
+
+    if success:
+        return jsonify({"success": True, "message": f"Request {status}"})
+    return jsonify({"error": "Request not found"}), 404
 
 
 # ============================================

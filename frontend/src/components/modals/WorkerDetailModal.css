@@ -741,3 +741,17 @@
   font-size: 0.8rem !important;
   white-space: nowrap;
 }
+
+/* Portal Active Badge */
+.portal-active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 8px;
+  color: #16a34a;
+  font-size: 0.8rem;
+  font-weight: 600;
+}

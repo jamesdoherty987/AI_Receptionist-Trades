@@ -421,7 +421,7 @@ def _check_slot_against_bookings(slot_time, duration_minutes, worker_bookings_by
     return True
 
 
-def _find_available_workers_batch(slot_time, duration_minutes, worker_bookings_by_id, all_worker_ids, db, company_id=None, worker_restrictions=None):
+def _find_available_workers_batch(slot_time, duration_minutes, worker_bookings_by_id, all_worker_ids, db, company_id=None, worker_restrictions=None, leave_records=None):
     """
     Find which workers from the pool are free at a given slot using pre-fetched bookings.
     Returns list of available worker IDs (in-memory, no DB calls).
@@ -434,6 +434,7 @@ def _find_available_workers_batch(slot_time, duration_minutes, worker_bookings_b
         db: database instance (for _calculate_job_end_time)
         company_id: company ID for business hours
         worker_restrictions: optional dict with 'type' and 'worker_ids' for service restrictions
+        leave_records: optional list of dicts with worker_id, start_date, end_date (pre-fetched)
     
     Returns:
         List of worker IDs that are free at this slot (after applying restrictions)
@@ -451,7 +452,31 @@ def _find_available_workers_batch(slot_time, duration_minutes, worker_bookings_b
     slot_end = db._calculate_job_end_time(slot_time, duration_minutes, biz_start, biz_end, buffer_minutes, company_id=company_id)
     
     available = []
+    slot_date = slot_time.date() if hasattr(slot_time, 'date') else slot_time
+    
+    # Build set of workers on leave for this specific slot date
+    workers_on_leave = set()
+    if leave_records:
+        from datetime import date as _date, datetime as _dt
+        for rec in leave_records:
+            s = rec['start_date']
+            e = rec['end_date']
+            # Normalize to date objects
+            if isinstance(s, str):
+                s = _dt.strptime(s, '%Y-%m-%d').date()
+            elif isinstance(s, _dt):
+                s = s.date()
+            if isinstance(e, str):
+                e = _dt.strptime(e, '%Y-%m-%d').date()
+            elif isinstance(e, _dt):
+                e = e.date()
+            if s <= slot_date <= e:
+                workers_on_leave.add(rec['worker_id'])
+    
     for wid in all_worker_ids:
+        # Skip workers on approved leave for this date
+        if wid in workers_on_leave:
+            continue
         bookings = worker_bookings_by_id.get(wid, [])
         is_free = True
         for bk in bookings:
@@ -3037,6 +3062,7 @@ Return ONLY valid JSON, no explanation."""
             # This avoids hundreds of per-slot DB queries when scanning multiple weeks
             all_worker_ids = []
             worker_bookings_by_id = {}
+            _leave_records = []
             use_batch = False
             if has_workers and db and hasattr(db, 'get_worker_bookings_in_range'):
                 try:
@@ -3054,6 +3080,14 @@ Return ONLY valid JSON, no explanation."""
                             )
                         use_batch = True
                         logger.info(f"[SEARCH_AVAIL] Batch-fetched bookings for {len(all_worker_ids)} workers")
+
+                        # Pre-fetch approved time-off records for the search range
+                        _leave_records = []
+                        if hasattr(db, 'get_workers_on_leave'):
+                            try:
+                                _leave_records = db.get_workers_on_leave(company_id, start_date, batch_end)
+                            except Exception:
+                                _leave_records = []
                 except Exception as e:
                     logger.warning(f"[SEARCH_AVAIL] Batch fetch failed, falling back to per-slot: {e}")
                     use_batch = False
@@ -3095,7 +3129,7 @@ Return ONLY valid JSON, no explanation."""
                         biz_open = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                         if biz_open > now:
                             if use_batch:
-                                avail_ids = _find_available_workers_batch(biz_open, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions)
+                                avail_ids = _find_available_workers_batch(biz_open, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions, leave_records=_leave_records)
                                 if len(avail_ids) >= workers_required:
                                     day_slots = [biz_open]
                             else:
@@ -3153,7 +3187,7 @@ Return ONLY valid JSON, no explanation."""
                                 continue
                             
                             if use_batch:
-                                avail_ids = _find_available_workers_batch(slot_time, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions)
+                                avail_ids = _find_available_workers_batch(slot_time, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions, leave_records=_leave_records)
                                 if len(avail_ids) >= workers_required:
                                     day_slots.append(slot_time)
                             else:
@@ -3239,7 +3273,7 @@ Return ONLY valid JSON, no explanation."""
                                 biz_open = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                                 if biz_open > now:
                                     if use_batch:
-                                        avail_ids = _find_available_workers_batch(biz_open, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions)
+                                        avail_ids = _find_available_workers_batch(biz_open, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions, leave_records=_leave_records)
                                         if len(avail_ids) >= workers_required:
                                             day_slots = [biz_open]
                                     else:
@@ -3269,7 +3303,7 @@ Return ONLY valid JSON, no explanation."""
                                         slot_time += timedelta(minutes=30)
                                         continue
                                     if use_batch:
-                                        avail_ids = _find_available_workers_batch(slot_time, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions)
+                                        avail_ids = _find_available_workers_batch(slot_time, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions, leave_records=_leave_records)
                                         if len(avail_ids) >= workers_required:
                                             day_slots.append(slot_time)
                                     else:

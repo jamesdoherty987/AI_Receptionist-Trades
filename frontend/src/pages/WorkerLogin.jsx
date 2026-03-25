@@ -115,6 +115,9 @@ function WorkerLogin() {
 
           <div className="auth-footer">
             <p>
+              Forgot your password? Ask your employer to resend the invite.
+            </p>
+            <p style={{ marginTop: '0.5rem' }}>
               Business owner? <Link to="/login">Owner login</Link>
             </p>
           </div>

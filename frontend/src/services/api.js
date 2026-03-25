@@ -211,5 +211,22 @@ export const workerSetPassword = (token, password) => api.post('/api/worker/auth
 export const inviteWorker = (workerId) => api.post('/api/worker/invite', { worker_id: workerId });
 export const getWorkerDashboard = () => api.get('/api/worker/dashboard');
 export const updateWorkerProfile = (data) => api.put('/api/worker/profile', data);
+export const getWorkerJobDetail = (id) => api.get(`/api/worker/jobs/${id}`);
+export const workerUploadJobPhoto = (jobId, imageData) => api.post(`/api/worker/jobs/${jobId}/photos`, { image: imageData });
+export const workerUpdateJobStatus = (jobId, status) => api.put(`/api/worker/jobs/${jobId}/status`, { status });
+export const getWorkerJobNotes = (jobId) => api.get(`/api/worker/jobs/${jobId}/notes`);
+export const addWorkerJobNote = (jobId, note) => api.post(`/api/worker/jobs/${jobId}/notes`, { note });
+export const getWorkerTimeOff = () => api.get('/api/worker/time-off');
+export const createTimeOffRequest = (data) => api.post('/api/worker/time-off', data);
+export const deleteTimeOffRequest = (id) => api.delete(`/api/worker/time-off/${id}`);
+export const workerChangePassword = (currentPassword, newPassword) =>
+  api.post('/api/worker/change-password', { current_password: currentPassword, new_password: newPassword });
+export const getWorkerHoursSummary = () => api.get('/api/worker/hours-summary');
+
+// Owner: Time-off management
+export const getCompanyTimeOffRequests = (status = null) =>
+  api.get('/api/time-off/requests', { params: status ? { status } : {} });
+export const reviewTimeOffRequest = (id, status, note = '') =>
+  api.put(`/api/time-off/requests/${id}`, { status, note });
 
 export default api;

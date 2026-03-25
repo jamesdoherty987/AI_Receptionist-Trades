@@ -16,6 +16,13 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [inviteLink, setInviteLink] = useState(null);
+  const [portalStatus, setPortalStatus] = useState(null); // null | 'invited' | 'active'
+
+  // Reset invite state when switching workers
+  useEffect(() => {
+    setInviteLink(null);
+    setPortalStatus(null);
+  }, [workerId]);
 
   // Handle escape key to close delete confirmation
   useEffect(() => {
@@ -116,6 +123,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     onSuccess: (response) => {
       const data = response.data;
       setInviteLink(data.invite_link);
+      setPortalStatus('invited');
       if (data.email_sent) {
         addToast('Invite email sent to worker!', 'success');
       } else {
@@ -123,7 +131,12 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
       }
     },
     onError: (error) => {
-      addToast('Error inviting worker: ' + (error.response?.data?.error || error.message), 'error');
+      if (error.response?.status === 409) {
+        setPortalStatus('active');
+        addToast('This worker already has an active portal account.', 'info');
+      } else {
+        addToast('Error inviting worker: ' + (error.response?.data?.error || error.message), 'error');
+      }
     }
   });
 
@@ -286,15 +299,21 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                 <button className="btn btn-secondary" onClick={handleEditStart}>
                   <i className="fas fa-edit"></i> Edit
                 </button>
-                {worker.email && (
+                {worker.email && portalStatus !== 'active' && (
                   <button 
                     className="btn btn-secondary"
                     onClick={() => inviteMutation.mutate()}
                     disabled={inviteMutation.isPending}
-                    title="Invite worker to their own portal"
+                    title={portalStatus === 'invited' ? 'Resend invite email' : 'Invite worker to their own portal'}
                   >
-                    <i className="fas fa-envelope"></i> {inviteMutation.isPending ? 'Inviting...' : 'Invite to Portal'}
+                    <i className={`fas ${inviteMutation.isPending ? 'fa-spinner fa-spin' : 'fa-envelope'}`}></i>
+                    {inviteMutation.isPending ? 'Sending...' : portalStatus === 'invited' ? 'Resend Invite' : 'Invite to Portal'}
                   </button>
+                )}
+                {portalStatus === 'active' && (
+                  <span className="portal-active-badge" title="Worker has an active portal account">
+                    <i className="fas fa-check-circle"></i> Portal Active
+                  </span>
                 )}
                 <button 
                   className="btn btn-danger"

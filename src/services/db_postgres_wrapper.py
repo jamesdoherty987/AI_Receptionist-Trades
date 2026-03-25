@@ -2697,6 +2697,7 @@ class PostgreSQLDatabaseWrapper:
         
         Handles all durations from 1 hour to 1 month. Multi-day jobs block
         business hours on each spanned day. Single-day jobs use exact times.
+        Also checks approved time-off requests.
         
         Args:
             worker_id: The worker to check
@@ -2724,6 +2725,26 @@ class PostgreSQLDatabaseWrapper:
             # Make timezone-naive for comparison
             if hasattr(appointment_time, 'tzinfo') and appointment_time.tzinfo is not None:
                 appointment_time = appointment_time.replace(tzinfo=None)
+            
+            # --- Check approved time-off first ---
+            try:
+                appt_date = appointment_time.date()
+                cursor.execute("""
+                    SELECT id, start_date, end_date, type FROM worker_time_off
+                    WHERE worker_id = %s AND status = 'approved'
+                    AND start_date <= %s AND end_date >= %s
+                """, (worker_id, appt_date, appt_date))
+                time_off = cursor.fetchone()
+                if time_off and isinstance(time_off, dict) and time_off.get('id'):
+                    return {
+                        'available': False,
+                        'conflicts': [],
+                        'message': f"Worker is on approved {time_off['type']} leave ({time_off['start_date']} to {time_off['end_date']})",
+                        'on_leave': True
+                    }
+            except Exception:
+                # Table may not exist yet — skip time-off check
+                conn.rollback()
             
             # Get business hours for full-day job handling
             try:
@@ -3197,5 +3218,126 @@ class PostgreSQLDatabaseWrapper:
             conn.rollback()
             print(f"Error deleting worker account: {e}")
             return False
+        finally:
+            self.return_connection(conn)
+
+
+    # ==========================================
+    # Worker Time Off Methods
+    # ==========================================
+
+    def create_time_off_request(self, worker_id: int, company_id: int,
+                                start_date: str, end_date: str,
+                                reason: str = None, leave_type: str = 'vacation') -> Optional[int]:
+        """Create a time-off request"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                INSERT INTO worker_time_off (worker_id, company_id, start_date, end_date, reason, type)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (worker_id, company_id, start_date, end_date, reason, leave_type))
+            result = cursor.fetchone()
+            conn.commit()
+            return result['id'] if result else None
+        except Exception as e:
+            conn.rollback()
+            print(f"Error creating time-off request: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+
+    def get_worker_time_off(self, worker_id: int) -> List[Dict]:
+        """Get all time-off requests for a worker"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT * FROM worker_time_off 
+                WHERE worker_id = %s 
+                ORDER BY start_date DESC
+            """, (worker_id,))
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            self.return_connection(conn)
+
+    def get_company_time_off_requests(self, company_id: int, status: str = None) -> List[Dict]:
+        """Get all time-off requests for a company (owner view)"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            query = """
+                SELECT t.*, w.name as worker_name
+                FROM worker_time_off t
+                JOIN workers w ON t.worker_id = w.id
+                WHERE t.company_id = %s
+            """
+            params = [company_id]
+            if status:
+                query += " AND t.status = %s"
+                params.append(status)
+            query += " ORDER BY t.created_at DESC"
+            cursor.execute(query, tuple(params))
+            return [dict(row) for row in cursor.fetchall()]
+        finally:
+            self.return_connection(conn)
+
+    def update_time_off_status(self, request_id: int, company_id: int,
+                               status: str, reviewer_note: str = None) -> bool:
+        """Approve or deny a time-off request (owner only)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE worker_time_off 
+                SET status = %s, reviewer_note = %s, reviewed_at = NOW(), updated_at = NOW()
+                WHERE id = %s AND company_id = %s
+            """, (status, reviewer_note, request_id, company_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"Error updating time-off status: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
+    def delete_time_off_request(self, request_id: int, worker_id: int) -> bool:
+        """Delete a pending time-off request (worker can only delete their own pending requests)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                DELETE FROM worker_time_off 
+                WHERE id = %s AND worker_id = %s AND status = 'pending'
+            """, (request_id, worker_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"Error deleting time-off request: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
+
+    def get_workers_on_leave(self, company_id: int, start_date, end_date) -> list:
+        """Get approved time-off records overlapping the given date range.
+        Returns list of dicts with worker_id, start_date, end_date.
+        Returns empty list if table doesn't exist yet."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT worker_id, start_date, end_date FROM worker_time_off
+                WHERE company_id = %s AND status = 'approved'
+                AND start_date <= %s AND end_date >= %s
+            """, (company_id, end_date, start_date))
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception:
+            # Table may not exist yet
+            conn.rollback()
+            return []
         finally:
             self.return_connection(conn)
