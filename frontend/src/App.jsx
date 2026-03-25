@@ -13,6 +13,7 @@ import Settings from './pages/Settings'
 import SettingsMenu from './pages/SettingsMenu'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
+import PrivacyPolicy from './pages/PrivacyPolicy'
 
 // Loading component
 import LoadingSpinner from './components/LoadingSpinner'
@@ -136,6 +137,9 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
+
+      {/* Public pages */}
+      <Route path="/privacy" element={<PrivacyPolicy />} />
 
       {/* Catch all - redirect to landing */}
       <Route path="*" element={<Navigate to="/" replace />} />
