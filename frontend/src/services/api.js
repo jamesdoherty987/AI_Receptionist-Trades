@@ -46,8 +46,14 @@ api.interceptors.response.use(
             window.location.pathname !== '/signup' &&
             window.location.pathname !== '/' &&
             window.location.pathname !== '/forgot-password' &&
-            window.location.pathname !== '/reset-password') {
+            window.location.pathname !== '/reset-password' &&
+            !window.location.pathname.startsWith('/worker/')) {
           window.location.href = '/login';
+        }
+        if (window.location.pathname.startsWith('/worker/') &&
+            window.location.pathname !== '/worker/login' &&
+            window.location.pathname !== '/worker/set-password') {
+          window.location.href = '/worker/login';
         }
       }
     }
@@ -196,5 +202,14 @@ export const getBankDetails = () => api.get('/api/settings/business');
 // Notifications
 export const getNotifications = (since = null) => 
   api.get('/api/notifications', { params: since ? { since } : {} });
+
+// Worker Portal
+export const workerLogin = (email, password) => api.post('/api/worker/auth/login', { email, password });
+export const workerLogout = () => api.post('/api/worker/auth/logout');
+export const getWorkerMe = () => api.get('/api/worker/auth/me');
+export const workerSetPassword = (token, password) => api.post('/api/worker/auth/set-password', { token, password });
+export const inviteWorker = (workerId) => api.post('/api/worker/invite', { worker_id: workerId });
+export const getWorkerDashboard = () => api.get('/api/worker/dashboard');
+export const updateWorkerProfile = (data) => api.put('/api/worker/profile', data);
 
 export default api;

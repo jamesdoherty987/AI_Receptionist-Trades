@@ -15,6 +15,9 @@ import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
+import WorkerLogin from './pages/WorkerLogin'
+import WorkerSetPassword from './pages/WorkerSetPassword'
+import WorkerDashboard from './pages/WorkerDashboard'
 
 // Loading component
 import LoadingSpinner from './components/LoadingSpinner'
@@ -51,7 +54,7 @@ function ProtectedRoute({ children, requireSubscription = false }) {
 
 // Public Route component (redirects to dashboard if already logged in)
 function PublicRoute({ children }) {
-  const { isAuthenticated, loading, initialized } = useAuth();
+  const { isAuthenticated, isWorker, loading, initialized } = useAuth();
 
   if (!initialized || loading) {
     return (
@@ -68,7 +71,32 @@ function PublicRoute({ children }) {
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={isWorker ? "/worker/dashboard" : "/dashboard"} replace />;
+  }
+
+  return children;
+}
+
+// Worker Protected Route - requires worker authentication
+function WorkerRoute({ children }) {
+  const { isAuthenticated, isWorker, loading, initialized } = useAuth();
+
+  if (!initialized || loading) {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        background: '#f8fafc'
+      }}>
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !isWorker) {
+    return <Navigate to="/worker/login" replace />;
   }
 
   return children;
@@ -142,6 +170,18 @@ function AppRoutes() {
       {/* Public pages */}
       <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/terms" element={<TermsOfService />} />
+
+      {/* Worker Portal routes */}
+      <Route path="/worker/login" element={<WorkerLogin />} />
+      <Route path="/worker/set-password" element={<WorkerSetPassword />} />
+      <Route 
+        path="/worker/dashboard" 
+        element={
+          <WorkerRoute>
+            <WorkerDashboard />
+          </WorkerRoute>
+        } 
+      />
 
       {/* Catch all - redirect to landing */}
       <Route path="*" element={<Navigate to="/" replace />} />

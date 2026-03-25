@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getWorker, updateWorker, deleteWorker, getWorkerJobs, getWorkerHoursThisWeek } from '../../services/api';
+import { getWorker, updateWorker, deleteWorker, getWorkerJobs, getWorkerHoursThisWeek, inviteWorker } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import ImageUpload from '../ImageUpload';
@@ -15,6 +15,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
   const [editData, setEditData] = useState({});
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [inviteLink, setInviteLink] = useState(null);
 
   // Handle escape key to close delete confirmation
   useEffect(() => {
@@ -107,6 +108,22 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     onError: (error) => {
       setShowDeleteConfirm(false);
       addToast('Error deleting worker: ' + (error.response?.data?.error || error.message), 'error');
+    }
+  });
+
+  const inviteMutation = useMutation({
+    mutationFn: () => inviteWorker(workerId),
+    onSuccess: (response) => {
+      const data = response.data;
+      setInviteLink(data.invite_link);
+      if (data.email_sent) {
+        addToast('Invite email sent to worker!', 'success');
+      } else {
+        addToast('Invite link generated. Share it with the worker.', 'info');
+      }
+    },
+    onError: (error) => {
+      addToast('Error inviting worker: ' + (error.response?.data?.error || error.message), 'error');
     }
   });
 
@@ -269,6 +286,16 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                 <button className="btn btn-secondary" onClick={handleEditStart}>
                   <i className="fas fa-edit"></i> Edit
                 </button>
+                {worker.email && (
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={() => inviteMutation.mutate()}
+                    disabled={inviteMutation.isPending}
+                    title="Invite worker to their own portal"
+                  >
+                    <i className="fas fa-envelope"></i> {inviteMutation.isPending ? 'Inviting...' : 'Invite to Portal'}
+                  </button>
+                )}
                 <button 
                   className="btn btn-danger"
                   onClick={handleDelete}
@@ -280,6 +307,26 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
             )}
           </div>
         </div>
+
+        {/* Invite Link Display */}
+        {inviteLink && (
+          <div className="invite-link-banner">
+            <i className="fas fa-link"></i>
+            <div className="invite-link-content">
+              <span className="invite-link-label">Worker invite link:</span>
+              <code className="invite-link-url">{inviteLink}</code>
+            </div>
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                navigator.clipboard.writeText(inviteLink);
+                addToast('Link copied to clipboard!', 'success');
+              }}
+            >
+              <i className="fas fa-copy"></i> Copy
+            </button>
+          </div>
+        )}
 
         {/* Content Grid */}
         <div className="worker-modal-grid">

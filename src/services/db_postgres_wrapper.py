@@ -3089,3 +3089,113 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
+
+    # ==========================================
+    # Worker Account Methods (Worker Portal)
+    # ==========================================
+
+    def create_worker_account(self, worker_id: int, company_id: int, email: str,
+                              invite_token: str, invite_expires_at) -> Optional[int]:
+        """Create a worker account for portal access"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                INSERT INTO worker_accounts (worker_id, company_id, email, invite_token, invite_expires_at)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            """, (worker_id, company_id, email, invite_token, invite_expires_at))
+            result = cursor.fetchone()
+            conn.commit()
+            return result['id'] if result else None
+        except Exception as e:
+            conn.rollback()
+            print(f"Error creating worker account: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+
+    def get_worker_account_by_email(self, email: str) -> Optional[Dict]:
+        """Get worker account by email"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("SELECT * FROM worker_accounts WHERE email = %s", (email,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            self.return_connection(conn)
+
+    def get_worker_account_by_invite_token(self, token: str) -> Optional[Dict]:
+        """Get worker account by invite token"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("SELECT * FROM worker_accounts WHERE invite_token = %s", (token,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            self.return_connection(conn)
+
+    def get_worker_account_by_worker_id(self, worker_id: int) -> Optional[Dict]:
+        """Get worker account by worker_id"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("SELECT * FROM worker_accounts WHERE worker_id = %s", (worker_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            self.return_connection(conn)
+
+    def set_worker_account_password(self, account_id: int, password_hash: str) -> bool:
+        """Set password for a worker account (first-time setup)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE worker_accounts 
+                SET password_hash = %s, password_set = TRUE, 
+                    invite_token = NULL, invite_expires_at = NULL,
+                    updated_at = NOW()
+                WHERE id = %s
+            """, (password_hash, account_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"Error setting worker account password: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
+    def update_worker_account_last_login(self, account_id: int):
+        """Update last login timestamp for worker account"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE worker_accounts SET last_login = NOW() WHERE id = %s",
+                (account_id,)
+            )
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            print(f"Error updating worker last login: {e}")
+        finally:
+            self.return_connection(conn)
+
+    def delete_worker_account(self, worker_id: int) -> bool:
+        """Delete worker account when worker is deleted"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM worker_accounts WHERE worker_id = %s", (worker_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"Error deleting worker account: {e}")
+            return False
+        finally:
+            self.return_connection(conn)

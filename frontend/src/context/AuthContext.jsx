@@ -33,29 +33,31 @@ export function AuthProvider({ children }) {
     const token = sessionStorage.getItem('authToken');
     console.log('[AUTH] checkAuth called, token exists:', !!token);
     
+    // Determine if this is a worker session from cached user
+    const cachedUser = sessionStorage.getItem('authUser');
+    const isWorkerSession = cachedUser ? JSON.parse(cachedUser)?.role === 'worker' : false;
+    const authEndpoint = isWorkerSession ? '/api/worker/auth/me' : '/api/auth/me';
+    
     try {
-      const response = await api.get('/api/auth/me');
-      console.log('[AUTH] /api/auth/me response:', response.data.authenticated);
+      const response = await api.get(authEndpoint);
+      console.log(`[AUTH] ${authEndpoint} response:`, response.data.authenticated);
       
       if (response.data.authenticated) {
-        setUser(response.data.user);
-        setSubscription(response.data.subscription || null);
-        sessionStorage.setItem('authUser', JSON.stringify(response.data.user));
-        if (response.data.subscription) {
+        const userData = isWorkerSession 
+          ? { ...response.data.user, role: 'worker' }
+          : response.data.user;
+        setUser(userData);
+        setSubscription(isWorkerSession ? null : (response.data.subscription || null));
+        sessionStorage.setItem('authUser', JSON.stringify(userData));
+        if (!isWorkerSession && response.data.subscription) {
           sessionStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
         }
       } else {
-        // Server said not authenticated. The request interceptor already
-        // sent the token (if we had one), so if the server still says no,
-        // the token is expired/invalid. Clear everything.
         console.log('[AUTH] Server returned authenticated: false, clearing auth');
         clearAuth();
       }
     } catch (error) {
       console.log('[AUTH] checkAuth error:', error.response?.status, error.message);
-      // Only clear on a definitive 401 response. Network errors or
-      // server-down scenarios keep existing state so the user isn't
-      // kicked out by a transient failure.
       if (error.response?.status === 401) {
         clearAuth();
       }
@@ -162,8 +164,11 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
+    // Determine if this is a worker session to call the right endpoint
+    const isWorkerSession = user?.role === 'worker';
+    const logoutEndpoint = isWorkerSession ? '/api/worker/auth/logout' : '/api/auth/logout';
     try {
-      await api.post('/api/auth/logout');
+      await api.post(logoutEndpoint);
     } catch (error) {
       console.error('Logout error:', error.message || error);
     } finally {
@@ -233,12 +238,39 @@ export function AuthProvider({ children }) {
     return 0;
   };
 
+  // --- Worker auth ---
+  const workerLogin = async (email, password) => {
+    try {
+      const response = await api.post('/api/worker/auth/login', { email, password });
+      if (response.data.success) {
+        queryClient.clear();
+        const userData = { ...response.data.user, role: 'worker' };
+        setUser(userData);
+        sessionStorage.setItem('authUser', JSON.stringify(userData));
+        if (response.data.auth_token) {
+          sessionStorage.setItem('authToken', response.data.auth_token);
+        }
+        // Workers don't have subscriptions
+        setSubscription(null);
+        sessionStorage.removeItem('authSubscription');
+        return { success: true };
+      }
+      return { success: false, error: response.data.error || 'Login failed' };
+    } catch (error) {
+      const errorMessage = error.response?.data?.error || 'Login failed. Please try again.';
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  const isWorker = !!user && user.role === 'worker';
+
   const value = {
     user,
     subscription,
     loading,
     initialized,
     isAuthenticated: !!user,
+    isWorker,
     hasActiveSubscription,
     getSubscriptionTier,
     getTrialDaysRemaining,
@@ -247,7 +279,8 @@ export function AuthProvider({ children }) {
     logout,
     updateProfile,
     changePassword,
-    checkAuth
+    checkAuth,
+    workerLogin
   };
 
   return (

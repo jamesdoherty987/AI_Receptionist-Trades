@@ -1322,6 +1322,384 @@ def reset_password():
 
 
 # ============================================
+# WORKER PORTAL AUTH ENDPOINTS
+# ============================================
+
+_worker_token_serializer = URLSafeTimedSerializer(
+    os.getenv('SECRET_KEY', secrets.token_hex(32)), salt='worker-auth-token'
+)
+
+
+def generate_worker_auth_token(worker_id: int, company_id: int, email: str) -> str:
+    """Generate a signed auth token for a worker."""
+    return _worker_token_serializer.dumps({
+        'wid': worker_id, 'cid': company_id, 'email': email, 'role': 'worker'
+    })
+
+
+def verify_worker_auth_token(token: str, max_age: int = 86400) -> dict | None:
+    """Verify and decode a worker auth token. Returns payload or None."""
+    try:
+        return _worker_token_serializer.loads(token, max_age=max_age)
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+def worker_login_required(f):
+    """Decorator to require worker login for API endpoints."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Check session first
+        worker_id = session.get('worker_id')
+        if worker_id and isinstance(worker_id, int):
+            return f(*args, **kwargs)
+
+        # Fallback: signed auth token header
+        token = request.headers.get('X-Auth-Token')
+        if token:
+            payload = verify_worker_auth_token(token)
+            if payload and payload.get('wid') and payload.get('role') == 'worker':
+                session['worker_id'] = payload['wid']
+                session['worker_company_id'] = payload['cid']
+                session['worker_email'] = payload['email']
+                return f(*args, **kwargs)
+
+        return jsonify({"error": "Authentication required"}), 401
+    return decorated_function
+
+
+@app.route("/api/worker/auth/login", methods=["POST"])
+@rate_limit(max_requests=10, window_seconds=60)
+def worker_login():
+    """Log in as a worker"""
+    data = request.json
+    email = data.get('email', '').lower().strip()
+    password = data.get('password', '')
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+
+    db = get_database()
+    account = db.get_worker_account_by_email(email)
+
+    if not account:
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    if not account.get('password_set') or not account.get('password_hash'):
+        return jsonify({
+            "error": "Please set your password first using the invite link sent to your email."
+        }), 401
+
+    if not verify_password(password, account['password_hash']):
+        return jsonify({"error": "Invalid email or password"}), 401
+
+    # Get the worker record for profile info
+    worker = db.get_worker(account['worker_id'])
+    if not worker:
+        return jsonify({"error": "Worker profile not found"}), 500
+
+    # Get company name
+    company = db.get_company(account['company_id'])
+    company_name = company['company_name'] if company else ''
+
+    # Update last login
+    db.update_worker_account_last_login(account['id'])
+
+    # Create session
+    session['worker_id'] = account['worker_id']
+    session['worker_company_id'] = account['company_id']
+    session['worker_email'] = account['email']
+    session.permanent = True
+
+    # Generate auth token
+    auth_token = generate_worker_auth_token(
+        account['worker_id'], account['company_id'], account['email']
+    )
+
+    return jsonify({
+        "success": True,
+        "auth_token": auth_token,
+        "user": {
+            "id": account['worker_id'],
+            "name": worker['name'],
+            "email": account['email'],
+            "phone": worker.get('phone', ''),
+            "trade_specialty": worker.get('trade_specialty', ''),
+            "image_url": worker.get('image_url', ''),
+            "company_name": company_name,
+            "role": "worker"
+        }
+    })
+
+
+@app.route("/api/worker/auth/me", methods=["GET"])
+def get_current_worker():
+    """Get the currently logged in worker"""
+    worker_id = session.get('worker_id')
+
+    if not worker_id:
+        token = request.headers.get('X-Auth-Token')
+        if token:
+            payload = verify_worker_auth_token(token)
+            if payload and payload.get('wid') and payload.get('role') == 'worker':
+                worker_id = payload['wid']
+                session['worker_id'] = payload['wid']
+                session['worker_company_id'] = payload['cid']
+                session['worker_email'] = payload['email']
+
+    if not worker_id:
+        return jsonify({"authenticated": False}), 200
+
+    db = get_database()
+    worker = db.get_worker(worker_id)
+    account = db.get_worker_account_by_worker_id(worker_id)
+
+    if not worker or not account:
+        session.pop('worker_id', None)
+        session.pop('worker_company_id', None)
+        session.pop('worker_email', None)
+        return jsonify({"authenticated": False}), 200
+
+    company = db.get_company(account['company_id'])
+    company_name = company['company_name'] if company else ''
+
+    return jsonify({
+        "authenticated": True,
+        "user": {
+            "id": worker['id'],
+            "name": worker['name'],
+            "email": account['email'],
+            "phone": worker.get('phone', ''),
+            "trade_specialty": worker.get('trade_specialty', ''),
+            "image_url": worker.get('image_url', ''),
+            "company_name": company_name,
+            "role": "worker"
+        }
+    })
+
+
+@app.route("/api/worker/auth/logout", methods=["POST"])
+def worker_logout():
+    """Log out worker"""
+    session.pop('worker_id', None)
+    session.pop('worker_company_id', None)
+    session.pop('worker_email', None)
+    return jsonify({"success": True, "message": "Logged out"})
+
+
+@app.route("/api/worker/auth/set-password", methods=["POST"])
+@rate_limit(max_requests=5, window_seconds=60)
+def worker_set_password():
+    """Set password for a worker account using invite token"""
+    data = request.json
+    token = data.get('token', '').strip()
+    new_password = data.get('password', '')
+
+    if not token:
+        return jsonify({"error": "Invite token is required"}), 400
+
+    if not new_password:
+        return jsonify({"error": "Password is required"}), 400
+
+    password_error = _validate_password(new_password)
+    if password_error:
+        return jsonify({"error": password_error}), 400
+
+    db = get_database()
+    account = db.get_worker_account_by_invite_token(token)
+
+    if not account:
+        return jsonify({"error": "Invalid or expired invite link."}), 400
+
+    # Check if token has expired
+    from datetime import datetime
+    expires = account.get('invite_expires_at')
+    if expires:
+        if isinstance(expires, str):
+            try:
+                expires = datetime.fromisoformat(expires)
+            except ValueError:
+                expires = None
+        if expires and datetime.now() > expires:
+            return jsonify({"error": "Invite link has expired. Ask your employer to resend the invite."}), 400
+
+    # Set the password
+    password_hash = hash_password(new_password)
+    success = db.set_worker_account_password(account['id'], password_hash)
+
+    if success:
+        return jsonify({
+            "success": True,
+            "message": "Password set successfully! You can now log in."
+        })
+
+    return jsonify({"error": "Failed to set password. Please try again."}), 500
+
+
+@app.route("/api/worker/invite", methods=["POST"])
+@login_required
+def invite_worker():
+    """Create a worker account and generate invite link (owner only)"""
+    company_id = session.get('company_id')
+    data = request.json
+    worker_id = data.get('worker_id')
+
+    if not worker_id:
+        return jsonify({"error": "Worker ID is required"}), 400
+
+    db = get_database()
+
+    # Verify the worker belongs to this company
+    worker = db.get_worker(worker_id, company_id=company_id)
+    if not worker:
+        return jsonify({"error": "Worker not found"}), 404
+
+    if not worker.get('email'):
+        return jsonify({"error": "Worker must have an email address to be invited"}), 400
+
+    # Check if account already exists
+    existing = db.get_worker_account_by_worker_id(worker_id)
+    if existing and existing.get('password_set'):
+        return jsonify({"error": "This worker already has an active account"}), 409
+
+    # Generate invite token
+    from datetime import datetime, timedelta
+    invite_token = secrets.token_urlsafe(32)
+    invite_expires = datetime.now() + timedelta(days=7)
+
+    email = worker['email'].lower().strip()
+
+    if existing:
+        # Re-send invite: update the existing account's token
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE worker_accounts 
+                SET invite_token = %s, invite_expires_at = %s, email = %s, updated_at = NOW()
+                WHERE id = %s
+            """, (invite_token, invite_expires, email, existing['id']))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": f"Failed to update invite: {e}"}), 500
+        finally:
+            db.return_connection(conn)
+    else:
+        account_id = db.create_worker_account(
+            worker_id=worker_id,
+            company_id=company_id,
+            email=email,
+            invite_token=invite_token,
+            invite_expires_at=invite_expires
+        )
+        if not account_id:
+            return jsonify({"error": "Failed to create worker account. Email may already be in use."}), 500
+
+    # Build invite link
+    origin = request.headers.get('Origin', '')
+    if not origin:
+        origin = os.getenv('PUBLIC_URL', request.host_url.rstrip('/'))
+    invite_link = f"{origin}/worker/set-password?token={invite_token}"
+
+    # Try to send email
+    email_sent = False
+    try:
+        from src.services.email_reminder import get_email_service
+        email_service = get_email_service()
+        company = db.get_company(company_id)
+        business_name = company.get('company_name', 'Your Employer') if company else 'Your Employer'
+
+        email_sent = email_service.send_email(
+            to_email=email,
+            subject=f"You're invited to join {business_name} on BookedForYou",
+            html_body=f"""
+            <h2>Welcome to BookedForYou!</h2>
+            <p>{business_name} has invited you to their worker portal.</p>
+            <p>Click the link below to set your password and access your jobs and schedule:</p>
+            <p><a href="{invite_link}" style="display:inline-block;padding:12px 24px;background:#0ea5e9;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">Set Your Password</a></p>
+            <p>This link expires in 7 days.</p>
+            <p style="color:#666;font-size:0.9em;">If you didn't expect this invite, you can ignore this email.</p>
+            """
+        )
+    except Exception as e:
+        print(f"[WORKER-INVITE] Email send error: {e}")
+
+    return jsonify({
+        "success": True,
+        "invite_link": invite_link,
+        "email_sent": email_sent,
+        "message": f"Invite {'sent to ' + email if email_sent else 'link generated. Share it with the worker manually.'}"
+    })
+
+
+@app.route("/api/worker/dashboard", methods=["GET"])
+@worker_login_required
+def worker_dashboard():
+    """Get worker's dashboard data (their jobs and schedule)"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+
+    db = get_database()
+    worker = db.get_worker(worker_id, company_id=company_id)
+    if not worker:
+        return jsonify({"error": "Worker not found"}), 404
+
+    jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+    schedule = db.get_worker_schedule(worker_id)
+
+    return jsonify({
+        "success": True,
+        "worker": {
+            "id": worker['id'],
+            "name": worker['name'],
+            "phone": worker.get('phone', ''),
+            "email": worker.get('email', ''),
+            "trade_specialty": worker.get('trade_specialty', ''),
+            "image_url": worker.get('image_url', ''),
+            "status": worker.get('status', 'active'),
+            "weekly_hours_expected": worker.get('weekly_hours_expected', 40.0)
+        },
+        "jobs": jobs,
+        "schedule": schedule
+    })
+
+
+@app.route("/api/worker/profile", methods=["PUT"])
+@worker_login_required
+def update_worker_profile():
+    """Allow worker to update their own profile (limited fields)"""
+    worker_id = session.get('worker_id')
+    data = request.json
+
+    # Workers can only update phone and image
+    allowed_fields = {}
+    if 'phone' in data:
+        allowed_fields['phone'] = sanitize_string(data['phone'], max_length=20)
+    if 'image_url' in data:
+        allowed_fields['image_url'] = data['image_url']
+
+    if not allowed_fields:
+        return jsonify({"error": "No valid fields to update"}), 400
+
+    db = get_database()
+    db.update_worker(worker_id, **allowed_fields)
+
+    worker = db.get_worker(worker_id)
+    return jsonify({
+        "success": True,
+        "worker": {
+            "id": worker['id'],
+            "name": worker['name'],
+            "phone": worker.get('phone', ''),
+            "email": worker.get('email', ''),
+            "trade_specialty": worker.get('trade_specialty', ''),
+            "image_url": worker.get('image_url', ''),
+        }
+    })
+
+
+# ============================================
 # PHONE NUMBER MANAGEMENT ENDPOINTS
 # ============================================
 

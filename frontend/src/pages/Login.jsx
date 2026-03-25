@@ -171,6 +171,9 @@ function Login() {
               Don't have an account?{' '}
               <Link to="/signup">Create account</Link>
             </p>
+            <p style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
+              Worker? <Link to="/worker/login">Worker portal login</Link>
+            </p>
           </div>
         </div>
 
