@@ -243,6 +243,38 @@
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+/* Constrain profile pic upload inside the edit card */
+.edit-form .image-upload-container {
+  max-width: 100%;
+}
+
+.edit-form .upload-dropzone {
+  padding: 0.75rem;
+}
+
+.edit-form .upload-icon {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 0.35rem;
+}
+
+.edit-form .upload-icon i {
+  font-size: 0.95rem;
+}
+
+.edit-form .upload-text {
+  font-size: 0.85rem;
+  margin-bottom: 0.15rem;
+}
+
+.edit-form .upload-hint {
+  font-size: 0.7rem;
+}
+
+.edit-form .image-preview img {
+  height: 80px;
+}
+
 /* Schedule Card */
 .schedule-card {
   padding: 0;
