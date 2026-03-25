@@ -886,6 +886,7 @@ class PostgreSQLDatabaseWrapper:
                               'twilio_phone_number',
                               'google_credentials_json', 'google_calendar_id',
                               'show_finances_tab', 'show_invoice_buttons',
+                              'show_insights_tab',
                               'send_confirmation_sms', 'send_reminder_sms',
                               'gcal_invite_workers']
             

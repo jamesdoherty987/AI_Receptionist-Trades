@@ -230,6 +230,7 @@ export const deleteTimeOffRequest = (id) => api.delete(`/api/worker/time-off/${i
 export const workerChangePassword = (currentPassword, newPassword) =>
   api.post('/api/worker/change-password', { current_password: currentPassword, new_password: newPassword });
 export const getWorkerHoursSummary = () => api.get('/api/worker/hours-summary');
+export const getWorkerCustomers = () => api.get('/api/worker/customers');
 
 // Owner: Time-off management
 export const getCompanyTimeOffRequests = (status = null) =>

@@ -2083,6 +2083,37 @@ def worker_hours_summary():
     })
 
 
+@app.route("/api/worker/customers", methods=["GET"])
+@worker_login_required
+def worker_customers():
+    """Get unique customers the worker has dealt with through their assigned jobs"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+    db = get_database()
+
+    conn = db.get_connection()
+    from psycopg2.extras import RealDictCursor
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        cursor.execute("""
+            SELECT DISTINCT c.id, c.name, c.phone, c.email, c.address, c.eircode, c.notes,
+                   COUNT(b.id) as total_jobs,
+                   COUNT(CASE WHEN b.status = 'completed' THEN 1 END) as completed_jobs,
+                   MAX(b.appointment_time) as last_job_date
+            FROM worker_assignments wa
+            JOIN bookings b ON wa.booking_id = b.id
+            JOIN clients c ON b.client_id = c.id
+            WHERE wa.worker_id = %s AND b.company_id = %s
+            GROUP BY c.id, c.name, c.phone, c.email, c.address, c.eircode, c.notes
+            ORDER BY MAX(b.appointment_time) DESC
+        """, (worker_id, company_id))
+        customers = [dict(row) for row in cursor.fetchall()]
+    finally:
+        db.return_connection(conn)
+
+    return jsonify({"success": True, "customers": customers})
+
+
 # --- Owner endpoints for managing time-off requests ---
 
 @app.route("/api/time-off/requests", methods=["GET"])
@@ -3555,6 +3586,7 @@ def business_settings_api():
             'coverage_area': company.get('coverage_area', ''),
             # Dashboard feature toggles
             'show_finances_tab': company.get('show_finances_tab', True) if company.get('show_finances_tab') is not None else True,
+            'show_insights_tab': company.get('show_insights_tab', True) if company.get('show_insights_tab') is not None else True,
             'show_invoice_buttons': company.get('show_invoice_buttons', True) if company.get('show_invoice_buttons') is not None else True,
             # SMS toggles
             'send_confirmation_sms': company.get('send_confirmation_sms', True) if company.get('send_confirmation_sms') is not None else True,
@@ -3614,6 +3646,7 @@ def business_settings_api():
             'company_context': 'company_context',
             'coverage_area': 'coverage_area',
             'show_finances_tab': 'show_finances_tab',
+            'show_insights_tab': 'show_insights_tab',
             'show_invoice_buttons': 'show_invoice_buttons',
             'send_confirmation_sms': 'send_confirmation_sms',
             'send_reminder_sms': 'send_reminder_sms',

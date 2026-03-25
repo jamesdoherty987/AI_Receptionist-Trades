@@ -14,7 +14,8 @@ import {
   workerChangePassword,
   getWorkerHoursSummary,
   addWorkerJobNote,
-  updateWorkerProfile
+  updateWorkerProfile,
+  getWorkerCustomers
 } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
@@ -64,6 +65,10 @@ function WorkerDashboard() {
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [selectedCalDay, setSelectedCalDay] = useState(null);
 
+  // Customer tab state
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+
   const { data, isLoading } = useQuery({
     queryKey: ['worker-dashboard'],
     queryFn: async () => { const r = await getWorkerDashboard(); return r.data; },
@@ -84,6 +89,12 @@ function WorkerDashboard() {
     queryKey: ['worker-time-off'],
     queryFn: async () => { const r = await getWorkerTimeOff(); return r.data; },
     enabled: true,
+  });
+
+  const { data: customersData } = useQuery({
+    queryKey: ['worker-customers'],
+    queryFn: async () => { const r = await getWorkerCustomers(); return r.data; },
+    enabled: activeTab === 'customers',
   });
 
   const statusMutation = useMutation({
@@ -251,6 +262,7 @@ function WorkerDashboard() {
   const tabs = [
     { id: 'jobs', label: 'My Jobs', icon: 'fas fa-briefcase' },
     { id: 'schedule', label: 'Schedule', icon: 'fas fa-calendar' },
+    { id: 'customers', label: 'Customers', icon: 'fas fa-users' },
     { id: 'hr', label: 'HR', icon: 'fas fa-user-clock' },
     { id: 'profile', label: 'Profile', icon: 'fas fa-user' },
   ];
@@ -1005,6 +1017,115 @@ function WorkerDashboard() {
                 })()}
               </div>
             )}
+
+            {/* ---- CUSTOMERS TAB ---- */}
+            {activeTab === 'customers' && (() => {
+              const customers = customersData?.customers || [];
+              const filtered = customerSearch.trim()
+                ? customers.filter(c =>
+                    c.name?.toLowerCase().includes(customerSearch.toLowerCase()) ||
+                    c.phone?.includes(customerSearch) ||
+                    c.email?.toLowerCase().includes(customerSearch.toLowerCase())
+                  )
+                : customers;
+
+              return (
+                <div className="worker-customers">
+                  <div className="wc-header">
+                    <h2>My Customers ({customers.length})</h2>
+                    <div className="wc-search">
+                      <i className="fas fa-search"></i>
+                      <input
+                        type="text"
+                        placeholder="Search customers..."
+                        value={customerSearch}
+                        onChange={e => setCustomerSearch(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {filtered.length === 0 ? (
+                    <div className="worker-empty">
+                      <i className="fas fa-users"></i>
+                      <p>{customerSearch ? 'No customers match your search' : 'No customers yet — they\'ll appear here as you get assigned jobs'}</p>
+                    </div>
+                  ) : (
+                    <div className="wc-list">
+                      {filtered.map(customer => (
+                        <div key={customer.id} className={`wc-card ${selectedCustomer?.id === customer.id ? 'expanded' : ''}`}
+                          onClick={() => setSelectedCustomer(selectedCustomer?.id === customer.id ? null : customer)}>
+                          <div className="wc-card-main">
+                            <div className="wc-avatar">
+                              {customer.name?.charAt(0)?.toUpperCase() || 'C'}
+                            </div>
+                            <div className="wc-info">
+                              <h3>{customer.name}</h3>
+                              <div className="wc-contact">
+                                {customer.phone && (
+                                  <span onClick={e => e.stopPropagation()}>
+                                    <a href={`tel:${customer.phone}`}><i className="fas fa-phone"></i> {formatPhone(customer.phone)}</a>
+                                  </span>
+                                )}
+                                {customer.email && (
+                                  <span><i className="fas fa-envelope"></i> {customer.email}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="wc-stats">
+                              <div className="wc-stat">
+                                <span className="wc-stat-num">{customer.total_jobs || 0}</span>
+                                <span className="wc-stat-label">Jobs</span>
+                              </div>
+                              <div className="wc-stat">
+                                <span className="wc-stat-num">{customer.completed_jobs || 0}</span>
+                                <span className="wc-stat-label">Done</span>
+                              </div>
+                            </div>
+                            <i className={`fas fa-chevron-${selectedCustomer?.id === customer.id ? 'up' : 'down'} wc-expand-icon`}></i>
+                          </div>
+
+                          {selectedCustomer?.id === customer.id && (
+                            <div className="wc-details" onClick={e => e.stopPropagation()}>
+                              {(customer.address || customer.eircode) && (
+                                <div className="wc-detail-row">
+                                  <i className="fas fa-map-marker-alt"></i>
+                                  <span>{[customer.address, customer.eircode].filter(Boolean).join(', ')}</span>
+                                </div>
+                              )}
+                              {customer.last_job_date && (
+                                <div className="wc-detail-row">
+                                  <i className="fas fa-calendar"></i>
+                                  <span>Last job: {new Date(customer.last_job_date).toLocaleDateString('en-IE', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                </div>
+                              )}
+                              {customer.notes && (
+                                <div className="wc-detail-row">
+                                  <i className="fas fa-sticky-note"></i>
+                                  <span>{customer.notes}</span>
+                                </div>
+                              )}
+                              <div className="wc-detail-actions">
+                                {customer.phone && (
+                                  <a href={`tel:${customer.phone}`} className="wjd-btn wjd-btn-sm">
+                                    <i className="fas fa-phone"></i> Call
+                                  </a>
+                                )}
+                                {(customer.address || customer.eircode) && (
+                                  <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent([customer.address, customer.eircode].filter(Boolean).join(', '))}`}
+                                    target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
+                                    <i className="fas fa-directions"></i> Directions
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ---- HR TAB ---- */}
             {activeTab === 'hr' && (

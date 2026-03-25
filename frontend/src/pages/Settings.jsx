@@ -996,6 +996,20 @@ function Settings() {
                   </div>
                   <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0' }}>
                     <div>
+                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Insights Tab</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Show the Insights tab with business analytics</div>
+                    </div>
+                    <label className="toggle-switch">
+                      <input
+                        type="checkbox"
+                        checked={formData.show_insights_tab !== false}
+                        onChange={(e) => { setFormData(prev => ({ ...prev, show_insights_tab: e.target.checked })); setHasUnsavedChanges(true); }}
+                      />
+                      <span className="toggle-slider"></span>
+                    </label>
+                  </div>
+                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0' }}>
+                    <div>
                       <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Send Invoice Buttons</div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Show invoice buttons on jobs and finances</div>
                     </div>

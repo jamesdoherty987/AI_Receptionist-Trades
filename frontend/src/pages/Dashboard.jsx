@@ -90,11 +90,11 @@ function Dashboard() {
       icon: 'fas fa-dollar-sign',
       content: <FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} />
     }] : []),
-    {
+    ...(settings?.show_insights_tab !== false ? [{
       label: 'Insights',
       icon: 'fas fa-chart-pie',
       content: isLoading ? <LoadingSpinner /> : <InsightsTab bookings={bookings} clients={clients} workers={workers} />
-    },
+    }] : []),
     {
       label: 'Services',
       icon: 'fas fa-concierge-bell',

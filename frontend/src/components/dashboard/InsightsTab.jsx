@@ -103,6 +103,43 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
       return { month, label, count };
     });
 
+    // Repeat customer rate
+    const clientJobCount = {};
+    nonCancelled.forEach(b => {
+      const cid = b.client_id;
+      if (cid) clientJobCount[cid] = (clientJobCount[cid] || 0) + 1;
+    });
+    const clientsWithJobs = Object.keys(clientJobCount).length;
+    const repeatClients = Object.values(clientJobCount).filter(c => c > 1).length;
+    const repeatRate = clientsWithJobs > 0 ? (repeatClients / clientsWithJobs) * 100 : 0;
+
+    // Average job duration (in hours)
+    const durations = nonCancelled
+      .map(b => b.duration_minutes)
+      .filter(d => d && d > 0 && d < 1440); // exclude full-day defaults
+    const avgDurationMins = durations.length > 0 ? durations.reduce((s, d) => s + d, 0) / durations.length : 0;
+
+    // Booking lead time — how far in advance jobs are booked (days between created_at and appointment_time)
+    const leadTimes = nonCancelled
+      .filter(b => b.created_at && b.appointment_time)
+      .map(b => {
+        const created = new Date(b.created_at);
+        const appt = new Date(b.appointment_time);
+        return (appt - created) / (1000 * 60 * 60 * 24);
+      })
+      .filter(d => d >= 0 && d < 365);
+    const avgLeadDays = leadTimes.length > 0 ? leadTimes.reduce((s, d) => s + d, 0) / leadTimes.length : 0;
+
+    // Service popularity (by job count, not revenue)
+    const serviceCount = {};
+    nonCancelled.forEach(b => {
+      const svc = b.service_type || b.service || 'Other';
+      serviceCount[svc] = (serviceCount[svc] || 0) + 1;
+    });
+    const servicePopularity = Object.entries(serviceCount)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
     return {
       totalClients: clients.length,
       totalJobs: nonCancelled.length,
@@ -113,6 +150,10 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
       heatmap,
       heatmapMax,
       clientGrowthData,
+      repeatRate,
+      avgDurationMins,
+      avgLeadDays,
+      servicePopularity,
     };
   }, [bookings, clients, workers]);
 
@@ -161,6 +202,46 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
         </div>
       </div>
 
+      {/* Second row of stats */}
+      <div className="insights-overview">
+        <div className="overview-card">
+          <div className="overview-icon" style={{ background: stats.repeatRate >= 30 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)' }}>
+            <i className="fas fa-redo" style={{ color: stats.repeatRate >= 30 ? '#10b981' : '#f59e0b' }}></i>
+          </div>
+          <div className="overview-content">
+            <div className="overview-value">{stats.repeatRate.toFixed(0)}%</div>
+            <div className="overview-label">Repeat Customers</div>
+          </div>
+        </div>
+        <div className="overview-card">
+          <div className="overview-icon" style={{ background: 'rgba(139, 92, 246, 0.1)' }}>
+            <i className="fas fa-hourglass-half" style={{ color: '#8b5cf6' }}></i>
+          </div>
+          <div className="overview-content">
+            <div className="overview-value">{stats.avgDurationMins >= 60 ? `${(stats.avgDurationMins / 60).toFixed(1)}h` : `${Math.round(stats.avgDurationMins)}m`}</div>
+            <div className="overview-label">Avg Job Duration</div>
+          </div>
+        </div>
+        <div className="overview-card">
+          <div className="overview-icon" style={{ background: 'rgba(14, 165, 233, 0.1)' }}>
+            <i className="fas fa-calendar-check" style={{ color: '#0ea5e9' }}></i>
+          </div>
+          <div className="overview-content">
+            <div className="overview-value">{stats.avgLeadDays < 1 ? 'Same day' : `${Math.round(stats.avgLeadDays)}d`}</div>
+            <div className="overview-label">Avg Lead Time</div>
+          </div>
+        </div>
+        <div className="overview-card">
+          <div className="overview-icon" style={{ background: 'rgba(236, 72, 153, 0.1)' }}>
+            <i className="fas fa-star" style={{ color: '#ec4899' }}></i>
+          </div>
+          <div className="overview-content">
+            <div className="overview-value" style={{ fontSize: stats.servicePopularity[0]?.name?.length > 10 ? '0.95rem' : undefined }}>{stats.servicePopularity[0]?.name || '—'}</div>
+            <div className="overview-label">Top Service</div>
+          </div>
+        </div>
+      </div>
+
       {/* Two-column layout: Activity + Client Growth */}
       <div className="insights-charts-row">
         {/* Booking Activity */}
@@ -202,8 +283,35 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
         </div>
       </div>
 
-      {/* Two-column layout: Worker Leaderboard + Heatmap */}
+      {/* Service Popularity + Worker Leaderboard */}
       <div className="insights-charts-row">
+        {/* Service Popularity */}
+        <div className="insights-card">
+          <h3><i className="fas fa-concierge-bell"></i> Service Popularity</h3>
+          {stats.servicePopularity.length === 0 ? (
+            <div className="insights-empty">
+              <i className="fas fa-list"></i>
+              <p>No services booked yet</p>
+            </div>
+          ) : (
+            <div className="service-popularity">
+              {stats.servicePopularity.slice(0, 6).map((svc, i) => {
+                const maxCount = stats.servicePopularity[0]?.count || 1;
+                const pct = (svc.count / maxCount) * 100;
+                return (
+                  <div key={i} className="service-pop-row">
+                    <div className="service-pop-label">{svc.name}</div>
+                    <div className="service-pop-track">
+                      <div className="service-pop-fill" style={{ width: `${Math.max(pct, 4)}%` }} />
+                    </div>
+                    <div className="service-pop-count">{svc.count}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* Worker Leaderboard */}
         <div className="insights-card">
           <h3><i className="fas fa-trophy"></i> Worker Leaderboard</h3>
@@ -232,59 +340,59 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
             </div>
           )}
         </div>
+      </div>
 
-        {/* Busiest Hours Heatmap */}
-        <div className="insights-card">
-          <h3><i className="fas fa-clock"></i> Busiest Hours</h3>
-          {stats.totalJobs === 0 ? (
-            <div className="insights-empty">
-              <i className="fas fa-calendar-alt"></i>
-              <p>Book some jobs to see patterns</p>
+      {/* Busiest Hours Heatmap — full width */}
+      <div className="insights-card">
+        <h3><i className="fas fa-clock"></i> Busiest Hours</h3>
+        {stats.totalJobs === 0 ? (
+          <div className="insights-empty">
+            <i className="fas fa-calendar-alt"></i>
+            <p>Book some jobs to see patterns</p>
+          </div>
+        ) : (
+          <div className="heatmap-container">
+            <div className="heatmap-grid" style={{ gridTemplateColumns: `36px repeat(12, 1fr)` }}>
+              {/* Header row: empty corner + hour labels */}
+              <div className="heatmap-corner"></div>
+              {HOUR_LABELS.filter((_, i) => i % 2 === 0).map((h, i) => (
+                <div key={i} className="heatmap-hour-label">{h}</div>
+              ))}
+              {/* Day rows: label + cells — all flat in the grid */}
+              {[1, 2, 3, 4, 5, 6, 0].map(dayIdx => (
+                <>
+                  <div key={`label-${dayIdx}`} className="heatmap-day-label">{DAY_NAMES[dayIdx]}</div>
+                  {Array.from({ length: 12 }, (_, hi) => {
+                    const hour = hi * 2;
+                    const val = stats.heatmap[dayIdx][hour] + stats.heatmap[dayIdx][hour + 1];
+                    const intensity = val / (stats.heatmapMax * 2);
+                    return (
+                      <div
+                        key={`${dayIdx}-${hi}`}
+                        className="heatmap-cell"
+                        style={{
+                          backgroundColor: val === 0
+                            ? '#f8fafc'
+                            : `rgba(99, 102, 241, ${0.15 + intensity * 0.75})`
+                        }}
+                        title={`${DAY_NAMES[dayIdx]} ${HOUR_LABELS[hour]}–${HOUR_LABELS[hour + 2] || '12a'}: ${val} booking${val !== 1 ? 's' : ''}`}
+                      />
+                    );
+                  })}
+                </>
+              ))}
             </div>
-          ) : (
-            <div className="heatmap-container">
-              <div className="heatmap-grid">
-                {/* Header row */}
-                <div className="heatmap-corner"></div>
-                {HOUR_LABELS.filter((_, i) => i % 2 === 0).map((h, i) => (
-                  <div key={i} className="heatmap-hour-label">{h}</div>
-                ))}
-                {/* Day rows */}
-                {[1, 2, 3, 4, 5, 6, 0].map(dayIdx => (
-                  <div key={dayIdx} className="heatmap-row">
-                    <div className="heatmap-day-label">{DAY_NAMES[dayIdx]}</div>
-                    {Array.from({ length: 12 }, (_, hi) => {
-                      const hour = hi * 2;
-                      const val = stats.heatmap[dayIdx][hour] + stats.heatmap[dayIdx][hour + 1];
-                      const intensity = val / (stats.heatmapMax * 2);
-                      return (
-                        <div
-                          key={hi}
-                          className="heatmap-cell"
-                          style={{
-                            backgroundColor: val === 0
-                              ? '#f8fafc'
-                              : `rgba(99, 102, 241, ${0.15 + intensity * 0.75})`
-                          }}
-                          title={`${DAY_NAMES[dayIdx]} ${HOUR_LABELS[hour]}–${HOUR_LABELS[hour + 2] || '12a'}: ${val} booking${val !== 1 ? 's' : ''}`}
-                        />
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-              <div className="heatmap-legend">
-                <span>Less</span>
-                {[0, 0.25, 0.5, 0.75, 1].map((v, i) => (
-                  <div key={i} className="heatmap-legend-cell" style={{
-                    backgroundColor: v === 0 ? '#f8fafc' : `rgba(99, 102, 241, ${0.15 + v * 0.75})`
-                  }} />
-                ))}
-                <span>More</span>
-              </div>
+            <div className="heatmap-legend">
+              <span>Less</span>
+              {[0, 0.25, 0.5, 0.75, 1].map((v, i) => (
+                <div key={i} className="heatmap-legend-cell" style={{
+                  backgroundColor: v === 0 ? '#f8fafc' : `rgba(99, 102, 241, ${0.15 + v * 0.75})`
+                }} />
+              ))}
+              <span>More</span>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
