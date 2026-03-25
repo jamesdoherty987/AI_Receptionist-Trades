@@ -7,7 +7,7 @@
 /* Revenue Cards */
 .revenue-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1rem;
 }
 
@@ -755,4 +755,27 @@
   .transaction-amount {
     font-size: 1rem;
   }
+}
+
+
+/* Transaction profit line */
+.transaction-profit-line {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.78rem;
+  margin-top: 0.15rem;
+}
+.transaction-materials {
+  color: #ef4444;
+  font-weight: 500;
+}
+.transaction-profit {
+  font-weight: 700;
+}
+.transaction-profit.profit-positive {
+  color: #16a34a;
+}
+.transaction-profit.profit-negative {
+  color: #ef4444;
 }

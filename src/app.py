@@ -7533,14 +7533,41 @@ def get_finances():
             cutoff = (now - timedelta(days=365)).strftime('%Y-%m-%d')
             daily_revenue = [d for d in all_daily if d['day'] >= cutoff]
         
+        # Calculate materials costs
+        from psycopg2.extras import RealDictCursor as _RDC
+        total_materials_cost = 0
+        materials_by_booking = {}
+        try:
+            conn = db.get_connection()
+            cur = conn.cursor(cursor_factory=_RDC)
+            cur.execute("SELECT booking_id, SUM(total_cost) as cost FROM job_materials WHERE company_id = %s GROUP BY booking_id", (company_id,))
+            for row in cur.fetchall():
+                materials_by_booking[row['booking_id']] = float(row['cost'] or 0)
+                total_materials_cost += float(row['cost'] or 0)
+            cur.close()
+            db.return_connection(conn)
+        except Exception:
+            pass  # Table might not exist yet
+
+        gross_profit = total_revenue - total_materials_cost
+        profit_margin = (gross_profit / total_revenue * 100) if total_revenue > 0 else 0
+
+        # Add materials_cost to each transaction
+        for t in transactions:
+            t['materials_cost'] = materials_by_booking.get(t['id'], 0)
+            t['profit'] = t['amount'] - t['materials_cost']
+
         return jsonify({
             "total_revenue": total_revenue,
             "paid_revenue": paid_revenue,
             "unpaid_revenue": unpaid_revenue,
-            "pending_revenue": unpaid_revenue,  # For backwards compatibility
-            "completed_revenue": paid_revenue,  # For backwards compatibility
+            "pending_revenue": unpaid_revenue,
+            "completed_revenue": paid_revenue,
+            "total_materials_cost": round(total_materials_cost, 2),
+            "gross_profit": round(gross_profit, 2),
+            "profit_margin": round(profit_margin, 1),
             "daily_revenue": daily_revenue,
-            "monthly_revenue": daily_revenue,  # backwards compat key
+            "monthly_revenue": daily_revenue,
             "transactions": transactions
         })
     except Exception as e:

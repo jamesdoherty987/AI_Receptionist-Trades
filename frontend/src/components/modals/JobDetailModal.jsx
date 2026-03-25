@@ -892,6 +892,36 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
               )}
             </div>
 
+            {/* Profit Summary Card - shown when there are materials */}
+            {jobMaterialsData?.materials?.length > 0 && !!(job.estimated_charge || job.charge) && (() => {
+              const charge = parseFloat(job.estimated_charge || job.charge || 0);
+              const matCost = parseFloat(jobMaterialsData?.total_cost || 0);
+              const profit = charge - matCost;
+              const margin = charge > 0 ? (profit / charge * 100) : 0;
+              return (
+                <div className="info-card" style={{ background: profit >= 0 ? 'linear-gradient(135deg, #f0fdf4, #ecfdf5)' : 'linear-gradient(135deg, #fef2f2, #fff1f2)', border: `1px solid ${profit >= 0 ? '#bbf7d0' : '#fecaca'}` }}>
+                  <h3><i className="fas fa-chart-line"></i> Job Profit</h3>
+                  <div className="info-row">
+                    <div className="info-cell">
+                      <span className="info-label">Charged</span>
+                      <span className="info-value">{formatCurrency(charge)}</span>
+                    </div>
+                    <div className="info-cell">
+                      <span className="info-label">Materials</span>
+                      <span className="info-value" style={{ color: '#ef4444' }}>-{formatCurrency(matCost)}</span>
+                    </div>
+                    <div className="info-cell">
+                      <span className="info-label">Profit</span>
+                      <span className="info-value" style={{ color: profit >= 0 ? '#16a34a' : '#ef4444', fontWeight: 700, fontSize: '1.1rem' }}>
+                        {formatCurrency(profit)}
+                        <span style={{ fontSize: '0.8rem', fontWeight: 500, marginLeft: 4 }}>({margin.toFixed(0)}%)</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Customer Details Card */}
             <div className="info-card">
               <h3><i className="fas fa-user"></i> Customer</h3>

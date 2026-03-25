@@ -596,6 +596,35 @@ function WorkerDashboard() {
                   </div>
                 )}
 
+                {/* Profit Summary - shown when materials are logged */}
+                {workerJobMaterials?.materials?.length > 0 && !!(job.charge || job.estimated_charge) && (() => {
+                  const charge = parseFloat(job.charge || job.estimated_charge || 0);
+                  const matCost = parseFloat(workerJobMaterials?.total_cost || 0);
+                  const profit = charge - matCost;
+                  const margin = charge > 0 ? (profit / charge * 100) : 0;
+                  return (
+                    <div className="wjd-card" style={{ background: profit >= 0 ? 'linear-gradient(135deg, #f0fdf4, #ecfdf5)' : 'linear-gradient(135deg, #fef2f2, #fff1f2)', border: `1px solid ${profit >= 0 ? '#bbf7d0' : '#fecaca'}` }}>
+                      <h3 style={{ margin: '0 0 0.5rem 0' }}><i className="fas fa-chart-line"></i> Job Profit</h3>
+                      <div className="wjd-info-row">
+                        <div className="wjd-info-cell">
+                          <span className="wjd-label">Charged</span>
+                          <span className="wjd-value">€{charge.toFixed(2)}</span>
+                        </div>
+                        <div className="wjd-info-cell">
+                          <span className="wjd-label">Materials</span>
+                          <span className="wjd-value" style={{ color: '#ef4444' }}>-€{matCost.toFixed(2)}</span>
+                        </div>
+                        <div className="wjd-info-cell">
+                          <span className="wjd-label">Profit</span>
+                          <span className="wjd-value" style={{ color: profit >= 0 ? '#16a34a' : '#ef4444', fontWeight: 700 }}>
+                            €{profit.toFixed(2)} ({margin.toFixed(0)}%)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Job Details Grid */}
                 <div className="wjd-grid">
                   <div className="wjd-col">
@@ -937,8 +966,8 @@ function WorkerDashboard() {
                               <JobTimer startedAt={job.job_started_at} />
                             </div>
                             <div className="worker-job-body">
-                              <h3>{job.service_type || 'Job'}</h3>
-                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                              <h3>{job.client_name || 'No client'}</h3>
+                              <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
                             </div>
@@ -1001,8 +1030,8 @@ function WorkerDashboard() {
                               </span>
                             </div>
                             <div className="worker-job-body">
-                              <h3>{job.service_type || 'Job'}</h3>
-                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                              <h3>{job.client_name || 'No client'}</h3>
+                              <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
                             </div>
@@ -1045,8 +1074,8 @@ function WorkerDashboard() {
                               <span className="worker-job-date">Today</span>
                             </div>
                             <div className="worker-job-body">
-                              <h3>{job.service_type || 'Job'}</h3>
-                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                              <h3>{job.client_name || 'No client'}</h3>
+                              <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
                             </div>
@@ -1089,8 +1118,8 @@ function WorkerDashboard() {
                               <span className="worker-job-date">Tomorrow</span>
                             </div>
                             <div className="worker-job-body">
-                              <h3>{job.service_type || 'Job'}</h3>
-                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                              <h3>{job.client_name || 'No client'}</h3>
+                              <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
                             </div>
@@ -1129,8 +1158,8 @@ function WorkerDashboard() {
                               </span>
                             </div>
                             <div className="worker-job-body">
-                              <h3>{job.service_type || 'Job'}</h3>
-                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                              <h3>{job.client_name || 'No client'}</h3>
+                              <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
                             </div>
@@ -1167,8 +1196,8 @@ function WorkerDashboard() {
                             </span>
                           </div>
                           <div className="worker-job-body">
-                            <h3>{job.service_type || 'Job'}</h3>
-                            <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                            <h3>{job.client_name || 'No client'}</h3>
+                            <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                             <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                             {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
                           </div>
@@ -1201,8 +1230,8 @@ function WorkerDashboard() {
                               </span>
                             </div>
                             <div className="worker-job-body">
-                              <h3>{job.service_type || 'Job'}</h3>
-                              <p><i className="fas fa-user"></i> {job.client_name || 'No client'}</p>
+                              <h3>{job.client_name || 'No client'}</h3>
+                              <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                             </div>
                           </div>
                         ))}

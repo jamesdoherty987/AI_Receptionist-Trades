@@ -33,6 +33,9 @@ function FinancesTab({ showInvoiceButtons = true }) {
     total_revenue = 0,
     paid_revenue = 0,
     unpaid_revenue = 0,
+    total_materials_cost = 0,
+    gross_profit = 0,
+    profit_margin = 0,
     transactions = [],
     daily_revenue = []
   } = finances || {};
@@ -79,14 +82,28 @@ function FinancesTab({ showInvoiceButtons = true }) {
     const avgJobValue = totalJobs > 0 ? nonCancelled.reduce((s, t) => s + (t.amount || 0), 0) / totalJobs : 0;
     const collectionRate = total_revenue > 0 ? (paid_revenue / total_revenue) * 100 : 0;
 
+    // Profit per job
+    const jobsWithMaterials = nonCancelled.filter(t => t.materials_cost > 0);
+    const avgProfit = jobsWithMaterials.length > 0 
+      ? jobsWithMaterials.reduce((s, t) => s + (t.profit || 0), 0) / jobsWithMaterials.length 
+      : 0;
+
+    // Most expensive materials (top spending jobs)
+    const topCostJobs = [...nonCancelled]
+      .filter(t => t.materials_cost > 0)
+      .sort((a, b) => b.materials_cost - a.materials_cost)
+      .slice(0, 5);
+
     // Revenue by service type
     const byService = {};
     nonCancelled.forEach(t => {
       const svc = t.description || 'Other';
-      byService[svc] = (byService[svc] || 0) + (t.amount || 0);
+      if (!byService[svc]) byService[svc] = { revenue: 0, materials: 0 };
+      byService[svc].revenue += (t.amount || 0);
+      byService[svc].materials += (t.materials_cost || 0);
     });
     const serviceBreakdown = Object.entries(byService)
-      .map(([name, revenue]) => ({ name, revenue }))
+      .map(([name, data]) => ({ name, revenue: data.revenue, materials: data.materials, profit: data.revenue - data.materials }))
       .sort((a, b) => b.revenue - a.revenue);
 
     // Top customers by total spend
@@ -102,7 +119,7 @@ function FinancesTab({ showInvoiceButtons = true }) {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
 
-    return { totalJobs, avgJobValue, collectionRate, serviceBreakdown, topCustomers };
+    return { totalJobs, avgJobValue, collectionRate, serviceBreakdown, topCustomers, avgProfit, topCostJobs };
   }, [transactions, total_revenue, paid_revenue]);
 
   // Format a YYYY-MM-DD string to a short label
@@ -358,6 +375,28 @@ function FinancesTab({ showInvoiceButtons = true }) {
             <div className="revenue-label">Outstanding</div>
           </div>
         </div>
+        {total_materials_cost > 0 && (
+          <div className="revenue-card materials-cost">
+            <div className="revenue-icon" style={{ background: 'rgba(239, 68, 68, 0.1)' }}>
+              <i className="fas fa-cubes" style={{ color: '#ef4444' }}></i>
+            </div>
+            <div className="revenue-content">
+              <div className="revenue-value">{formatCurrency(total_materials_cost)}</div>
+              <div className="revenue-label">Materials Cost</div>
+            </div>
+          </div>
+        )}
+        {total_materials_cost > 0 && (
+          <div className="revenue-card profit">
+            <div className="revenue-icon" style={{ background: gross_profit >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)' }}>
+              <i className={`fas ${gross_profit >= 0 ? 'fa-trending-up' : 'fa-trending-down'}`} style={{ color: gross_profit >= 0 ? '#10b981' : '#ef4444' }}></i>
+            </div>
+            <div className="revenue-content">
+              <div className="revenue-value" style={{ color: gross_profit >= 0 ? '#10b981' : '#ef4444' }}>{formatCurrency(gross_profit)}</div>
+              <div className="revenue-label">Gross Profit ({profit_margin}%)</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Monthly Revenue Chart */}
@@ -403,6 +442,17 @@ function FinancesTab({ showInvoiceButtons = true }) {
             <div className="insight-label">Avg Job Value</div>
           </div>
         </div>
+        {insights.avgProfit > 0 && (
+          <div className="insight-card">
+            <div className="insight-icon" style={{ background: 'rgba(16, 185, 129, 0.1)' }}>
+              <i className="fas fa-coins" style={{ color: '#10b981' }}></i>
+            </div>
+            <div className="insight-content">
+              <div className="insight-value">{formatCurrency(insights.avgProfit)}</div>
+              <div className="insight-label">Avg Profit/Job</div>
+            </div>
+          </div>
+        )}
         <div className="insight-card">
           <div className="insight-icon" style={{ background: paid_revenue > 0 && insights.collectionRate >= 70 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)' }}>
             <i className="fas fa-percentage" style={{ color: paid_revenue > 0 && insights.collectionRate >= 70 ? '#10b981' : '#f59e0b' }}></i>
@@ -588,6 +638,14 @@ function FinancesTab({ showInvoiceButtons = true }) {
                       <div className={`transaction-amount ${isUnpaid ? 'amount-warning' : 'amount-success'}`}>
                         {formatCurrency(transaction.amount)}
                       </div>
+                      {transaction.materials_cost > 0 && (
+                        <div className="transaction-profit-line">
+                          <span className="transaction-materials">-{formatCurrency(transaction.materials_cost)} materials</span>
+                          <span className={`transaction-profit ${transaction.profit >= 0 ? 'profit-positive' : 'profit-negative'}`}>
+                            = {formatCurrency(transaction.profit)} profit
+                          </span>
+                        </div>
+                      )}
                       <span className={`status-pill ${
                         transaction.status === 'completed' || transaction.payment_status === 'paid' || transaction.status === 'paid'
                           ? 'status-paid'
