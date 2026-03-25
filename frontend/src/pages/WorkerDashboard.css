@@ -457,3 +457,144 @@
   font-size: 0.7rem;
   pointer-events: none;
 }
+
+/* ---- Schedule View Toggle & Calendar ---- */
+.ws-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;
+}
+.ws-header h2 { margin-bottom: 0; }
+
+.ws-view-toggle {
+  display: flex; gap: 0.25rem; background: #fff;
+  border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; padding: 0.25rem;
+}
+.ws-view-btn {
+  display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.75rem;
+  border: none; background: none; border-radius: 6px; font-size: 0.8rem;
+  font-weight: 500; color: var(--text-secondary, #64748b); cursor: pointer;
+  font-family: inherit; transition: all 0.15s;
+}
+.ws-view-btn:hover { background: var(--bg-secondary, #f1f5f9); }
+.ws-view-btn.active {
+  background: var(--gradient-primary, linear-gradient(135deg, #0ea5e9, #ec4899));
+  color: #fff; box-shadow: 0 1px 4px rgba(14, 165, 233, 0.3);
+}
+
+/* Month Navigation */
+.ws-month-nav {
+  display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 1rem;
+}
+.ws-nav-btn {
+  width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border-color, #e2e8f0);
+  background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary, #64748b); transition: all 0.15s;
+}
+.ws-nav-btn:hover { border-color: var(--accent-blue, #0ea5e9); color: var(--accent-blue, #0ea5e9); }
+.ws-month-title { font-size: 1.1rem; font-weight: 600; color: var(--text-primary, #1e293b); min-width: 160px; text-align: center; }
+
+/* Month Calendar Grid */
+.ws-month-view {
+  background: #fff; border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px; padding: 1.25rem;
+}
+.ws-cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+}
+.ws-cal-header {
+  text-align: center; font-size: 0.7rem; font-weight: 600;
+  color: var(--text-tertiary, #94a3b8); padding: 0.5rem 0;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.ws-cal-cell {
+  aspect-ratio: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; border-radius: 8px; cursor: pointer;
+  transition: all 0.15s; position: relative; min-height: 44px;
+}
+.ws-cal-cell.empty { cursor: default; }
+.ws-cal-cell:not(.empty):hover { background: var(--bg-secondary, #f1f5f9); }
+.ws-cal-cell.today { background: rgba(14, 165, 233, 0.08); }
+.ws-cal-cell.today .ws-cal-day { color: var(--accent-blue, #0ea5e9); font-weight: 700; }
+.ws-cal-cell.selected { background: var(--accent-blue, #0ea5e9); }
+.ws-cal-cell.selected .ws-cal-day { color: #fff; }
+.ws-cal-cell.selected .ws-cal-dot { background: rgba(255,255,255,0.7); }
+.ws-cal-cell.selected .ws-cal-dot.done { background: rgba(255,255,255,0.9); }
+.ws-cal-cell.has-jobs { font-weight: 600; }
+
+.ws-cal-day { font-size: 0.85rem; color: var(--text-primary, #1e293b); line-height: 1; }
+.ws-cal-dots { display: flex; gap: 3px; margin-top: 4px; align-items: center; }
+.ws-cal-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent-blue, #0ea5e9);
+}
+.ws-cal-dot.done { background: #22c55e; }
+.ws-cal-dot.cancelled { background: #ef4444; }
+.ws-cal-more { font-size: 0.55rem; color: var(--text-tertiary, #94a3b8); font-weight: 600; }
+
+/* Selected Day Detail */
+.ws-day-detail {
+  margin-top: 1rem; padding-top: 1rem;
+  border-top: 1px solid var(--border-color, #e2e8f0);
+}
+.ws-day-detail h3 {
+  display: flex; align-items: center; gap: 0.75rem;
+  font-size: 0.95rem; font-weight: 600; color: var(--text-primary, #1e293b);
+  margin-bottom: 0.75rem;
+}
+.ws-day-count {
+  font-size: 0.75rem; font-weight: 500; color: var(--text-tertiary, #94a3b8);
+}
+.ws-day-jobs { display: flex; flex-direction: column; gap: 0.5rem; }
+
+/* Year View */
+.ws-year-view {
+  background: #fff; border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px; padding: 1.25rem;
+}
+.ws-year-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem;
+}
+.ws-year-month {
+  border: 1px solid var(--border-color, #e2e8f0); border-radius: 10px;
+  padding: 0.75rem; cursor: pointer; transition: all 0.15s;
+}
+.ws-year-month:hover { border-color: var(--accent-blue, #0ea5e9); box-shadow: 0 2px 8px rgba(14,165,233,0.1); }
+.ws-year-month.current { border-color: var(--accent-blue, #0ea5e9); background: rgba(14, 165, 233, 0.03); }
+
+.ws-ym-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;
+}
+.ws-ym-name { font-size: 0.8rem; font-weight: 600; color: var(--text-primary, #1e293b); }
+.ws-ym-count {
+  font-size: 0.65rem; font-weight: 700; color: #fff; min-width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center; border-radius: 9px;
+  background: var(--accent-blue, #0ea5e9); padding: 0 4px;
+}
+
+/* Mini Calendar in Year View */
+.ws-mini-cal {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+}
+.ws-mini-header {
+  text-align: center; font-size: 0.5rem; color: var(--text-tertiary, #94a3b8);
+  font-weight: 600; padding: 1px 0;
+}
+.ws-mini-day {
+  text-align: center; font-size: 0.55rem; color: var(--text-secondary, #64748b);
+  padding: 1px 0; border-radius: 2px; line-height: 1.4;
+}
+.ws-mini-day.empty { visibility: hidden; }
+.ws-mini-day.has-job { background: rgba(14, 165, 233, 0.15); color: var(--accent-blue, #0ea5e9); font-weight: 700; border-radius: 3px; }
+.ws-mini-day.today { background: var(--accent-blue, #0ea5e9); color: #fff; font-weight: 700; border-radius: 3px; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .ws-year-grid { grid-template-columns: repeat(3, 1fr); }
+  .ws-header { flex-direction: column; align-items: flex-start; }
+}
+@media (max-width: 640px) {
+  .ws-year-grid { grid-template-columns: repeat(2, 1fr); }
+  .ws-cal-cell { min-height: 36px; }
+  .ws-cal-day { font-size: 0.75rem; }
+  .ws-view-btn { padding: 0.35rem 0.5rem; font-size: 0.75rem; }
+}
