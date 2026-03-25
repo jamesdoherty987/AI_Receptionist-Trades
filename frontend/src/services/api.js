@@ -221,7 +221,8 @@ export const workerUploadJobMedia = (jobId, file) => {
     timeout: 120000,
   });
 };
-export const workerUpdateJobStatus = (jobId, status) => api.put(`/api/worker/jobs/${jobId}/status`, { status });
+export const workerUpdateJobStatus = (jobId, data) => api.put(`/api/worker/jobs/${jobId}/status`, typeof data === 'string' ? { status: data } : data);
+export const workerUpdateJobDetails = (jobId, data) => api.put(`/api/worker/jobs/${jobId}/details`, data);
 export const getWorkerJobNotes = (jobId) => api.get(`/api/worker/jobs/${jobId}/notes`);
 export const addWorkerJobNote = (jobId, note) => api.post(`/api/worker/jobs/${jobId}/notes`, { note });
 export const getWorkerTimeOff = () => api.get('/api/worker/time-off');

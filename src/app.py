@@ -1891,7 +1891,7 @@ def worker_job_notes(job_id):
 @app.route("/api/worker/jobs/<int:job_id>/status", methods=["PUT"])
 @worker_login_required
 def worker_update_job_status(job_id):
-    """Allow worker to update job status (limited: in-progress, completed)"""
+    """Allow worker to update job status"""
     worker_id = session.get('worker_id')
     company_id = session.get('worker_company_id')
 
@@ -1905,13 +1905,80 @@ def worker_update_job_status(job_id):
     data = request.json
     new_status = data.get('status', '').strip()
 
-    # Workers can only set these statuses
-    allowed_statuses = ['in-progress', 'completed']
+    allowed_statuses = ['pending', 'confirmed', 'scheduled', 'in-progress', 'completed', 'paid', 'cancelled']
     if new_status not in allowed_statuses:
-        return jsonify({"error": f"Workers can only set status to: {', '.join(allowed_statuses)}"}), 400
+        return jsonify({"error": f"Invalid status. Allowed: {', '.join(allowed_statuses)}"}), 400
 
-    db.update_booking(job_id, status=new_status)
+    # Build update kwargs
+    update_kwargs = {'status': new_status}
+
+    # If starting job, record start time
+    started_at = data.get('started_at')
+    if started_at:
+        update_kwargs['job_started_at'] = started_at
+
+    # If completing job, record end time and actual duration
+    completed_at = data.get('completed_at')
+    if completed_at:
+        update_kwargs['job_completed_at'] = completed_at
+
+    actual_duration = data.get('actual_duration_minutes')
+    if actual_duration is not None:
+        try:
+            update_kwargs['actual_duration_minutes'] = int(actual_duration)
+        except (ValueError, TypeError):
+            pass
+
+    db.update_booking(job_id, company_id=company_id, **update_kwargs)
     return jsonify({"success": True, "status": new_status})
+
+
+@app.route("/api/worker/jobs/<int:job_id>/details", methods=["PUT"])
+@worker_login_required
+def worker_update_job_details(job_id):
+    """Allow worker to edit job details like actual charge and actual duration after completion"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+
+    db = get_database()
+
+    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+    job_ids = [j['id'] for j in worker_jobs]
+    if job_id not in job_ids:
+        return jsonify({"error": "Job not found or not assigned to you"}), 404
+
+    data = request.json
+    update_kwargs = {}
+
+    # Workers can update actual charge
+    if 'actual_charge' in data:
+        try:
+            val = float(data['actual_charge']) if data['actual_charge'] not in (None, '') else None
+            if val is not None and val >= 0:
+                update_kwargs['charge'] = val
+        except (ValueError, TypeError):
+            pass
+
+    # Workers can update actual duration
+    if 'actual_duration_minutes' in data:
+        try:
+            val = int(data['actual_duration_minutes'])
+            if val > 0:
+                update_kwargs['actual_duration_minutes'] = val
+        except (ValueError, TypeError):
+            pass
+
+    # Workers can update job_started_at and job_completed_at
+    if 'job_started_at' in data:
+        update_kwargs['job_started_at'] = data['job_started_at']
+    if 'job_completed_at' in data:
+        update_kwargs['job_completed_at'] = data['job_completed_at']
+
+    if not update_kwargs:
+        return jsonify({"error": "No valid fields to update"}), 400
+
+    db.update_booking(job_id, company_id=company_id, **update_kwargs)
+    return jsonify({"success": True})
 
 
 @app.route("/api/worker/time-off", methods=["GET", "POST"])
@@ -5371,6 +5438,10 @@ def booking_detail_api(booking_id):
             'notes': notes_text,
             'address_audio_url': booking.get('address_audio_url'),
             'photo_urls': booking.get('photo_urls') or [],
+            'job_started_at': booking.get('job_started_at'),
+            'job_completed_at': booking.get('job_completed_at'),
+            'actual_duration_minutes': booking.get('actual_duration_minutes'),
+            'duration_minutes': booking.get('duration_minutes'),
         }
         
         return jsonify(response_booking)

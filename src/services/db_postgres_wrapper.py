@@ -1935,7 +1935,7 @@ class PostgreSQLDatabaseWrapper:
                           'status', 'phone_number', 'email', 'charge', 'payment_status', 
                           'payment_method', 'urgency', 'address', 'eircode', 'property_type',
                           'duration_minutes', 'address_audio_url', 'requires_callout',
-                          'photo_urls']:
+                          'photo_urls', 'job_started_at', 'job_completed_at', 'actual_duration_minutes']:
                     fields.append(f"{db_field} = %s")
                     values.append(value)
             

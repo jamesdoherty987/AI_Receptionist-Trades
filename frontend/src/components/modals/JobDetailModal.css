@@ -120,10 +120,6 @@
   position: relative;
 }
 
-.status-dropdown:hover .status-dropdown-menu {
-  display: block;
-}
-
 .status-dropdown-menu {
   display: none;
   position: absolute;
@@ -134,9 +130,25 @@
   border-radius: 8px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
   min-width: 160px;
-  z-index: 100;
+  z-index: 1001;
   margin-top: 4px;
   overflow: hidden;
+}
+
+.status-dropdown-menu.show {
+  display: block;
+}
+
+.status-dropdown-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: transparent;
+}
+
+.status-dropdown-backdrop.show {
+  display: block;
 }
 
 .status-dropdown-menu button {

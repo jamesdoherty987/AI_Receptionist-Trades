@@ -166,6 +166,57 @@
 .wjd-btn-complete { border-color: #22c55e; color: #fff; background: #22c55e; }
 .wjd-btn-complete:hover { background: #16a34a; }
 
+/* Job Timer */
+.wjd-timer {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 1rem; border-radius: 8px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  color: white; font-weight: 700; font-size: 1.1rem;
+  animation: timerPulse 2s ease-in-out infinite;
+}
+.wjd-timer i { font-size: 0.9rem; }
+.wjd-timer-display { font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+@keyframes timerPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(139, 92, 246, 0); }
+}
+
+/* Worker Status Dropdown */
+.wjd-dropdown-backdrop {
+  position: fixed; inset: 0; z-index: 99; background: transparent;
+}
+.wjd-dropdown-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 100;
+  background: white; border: 2px solid var(--border-color, #e2e8f0);
+  border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  min-width: 180px; overflow: hidden;
+}
+.wjd-dropdown-menu button {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 0.7rem 1rem; text-align: left; background: none;
+  border: none; cursor: pointer; font-size: 0.88rem; font-weight: 500;
+  color: var(--text-primary, #1e293b); transition: background 0.15s; font-family: inherit;
+}
+.wjd-dropdown-menu button:hover { background: #f1f5f9; }
+.wjd-dropdown-menu button.active { background: #f1f5f9; font-weight: 700; }
+
+/* Time & Charge Card */
+.wjd-time-card { background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 1px solid #bbf7d0; }
+.wjd-time-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+.wjd-time-card-header h3 { margin: 0; font-size: 1rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
+
+/* Edit row for time/charge */
+.wjd-edit-row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; }
+.wjd-edit-field { display: flex; flex-direction: column; gap: 0.25rem; flex: 1; min-width: 120px; }
+.wjd-edit-field label { font-size: 0.75rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+.wjd-edit-field input {
+  padding: 0.6rem 0.75rem; border: 2px solid #e2e8f0; border-radius: 8px;
+  font-size: 0.95rem; font-family: inherit; background: white;
+  transition: border-color 0.2s;
+}
+.wjd-edit-field input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+.wjd-edit-actions { display: flex; gap: 0.5rem; align-items: center; padding-bottom: 2px; }
+
 .wjd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
 .wjd-col { display: flex; flex-direction: column; gap: 1rem; }
 .wjd-card {
@@ -377,6 +428,10 @@
   .wjd-btn { min-height: 44px; padding: 0.5rem 0.85rem; }
   .wjd-btn-sm { min-height: 40px; }
   .wjd-card { padding: 1rem; }
+  .wjd-timer { font-size: 0.95rem; padding: 0.4rem 0.75rem; }
+  .wjd-edit-row { flex-direction: column; }
+  .wjd-edit-actions { justify-content: flex-end; width: 100%; }
+  .wjd-dropdown-menu { min-width: 160px; }
 }
 
 /* Job Notes */

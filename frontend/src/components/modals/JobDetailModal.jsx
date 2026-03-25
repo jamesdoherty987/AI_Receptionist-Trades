@@ -419,6 +419,8 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
 
   const handleStatusChange = (newStatus) => {
     statusMutation.mutate({ id: jobId, status: newStatus });
+    // Close the dropdown
+    document.querySelectorAll('.status-dropdown-menu.show, .status-dropdown-backdrop.show').forEach(el => el.classList.remove('show'));
   };
 
   const handleAssignWorker = () => {
@@ -578,7 +580,14 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   </a>
                 )}
                 <div className="status-dropdown">
-                  <button className="btn btn-secondary" disabled={statusMutation.isPending}>
+                  <button className="btn btn-secondary" disabled={statusMutation.isPending}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const menu = e.currentTarget.nextElementSibling;
+                      const backdrop = menu?.nextElementSibling;
+                      if (menu) menu.classList.toggle('show');
+                      if (backdrop) backdrop.classList.toggle('show');
+                    }}>
                     {statusMutation.isPending ? (
                       <>
                         <i className="fas fa-spinner fa-spin"></i> Updating...
@@ -609,6 +618,12 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                       <i className="fas fa-times-circle" style={{color: '#ef4444'}}></i> Cancelled
                     </button>
                   </div>
+                  <div className="status-dropdown-backdrop" onClick={(e) => {
+                    e.stopPropagation();
+                    const menu = e.currentTarget.previousElementSibling;
+                    if (menu) menu.classList.remove('show');
+                    e.currentTarget.classList.remove('show');
+                  }}></div>
                 </div>
               </>
             )}
@@ -800,6 +815,28 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                           {!['paid', 'invoiced', 'pending'].includes(job.payment_status) && job.payment_status}
                         </span>
                       </div>
+                    </div>
+                  )}
+                  {(job.job_started_at || job.actual_duration_minutes) && (
+                    <div className="info-row">
+                      {job.job_started_at && (
+                        <div className="info-cell">
+                          <span className="info-label">Started</span>
+                          <span className="info-value">{new Date(job.job_started_at).toLocaleString('en-IE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      )}
+                      {job.job_completed_at && (
+                        <div className="info-cell">
+                          <span className="info-label">Finished</span>
+                          <span className="info-value">{new Date(job.job_completed_at).toLocaleString('en-IE', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      )}
+                      {job.actual_duration_minutes && (
+                        <div className="info-cell">
+                          <span className="info-label">Actual Time</span>
+                          <span className="info-value">{job.actual_duration_minutes >= 60 ? `${Math.floor(job.actual_duration_minutes / 60)}h ${job.actual_duration_minutes % 60}m` : `${job.actual_duration_minutes}m`}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </>

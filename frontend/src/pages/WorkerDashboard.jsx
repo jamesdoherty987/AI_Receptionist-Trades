@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
@@ -8,6 +8,7 @@ import {
   workerUploadJobPhoto,
   workerUploadJobMedia,
   workerUpdateJobStatus,
+  workerUpdateJobDetails,
   getWorkerTimeOff,
   createTimeOffRequest,
   deleteTimeOffRequest,
@@ -23,6 +24,36 @@ import WorkerNotificationBell from '../components/WorkerNotificationBell';
 import { formatPhone, getStatusBadgeClass, formatDateTime, getProxiedMediaUrl } from '../utils/helpers';
 import { formatDuration } from '../utils/durationOptions';
 import './WorkerDashboard.css';
+
+// Live timer component for in-progress jobs
+function JobTimer({ startedAt }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!startedAt) return;
+    const start = new Date(startedAt).getTime();
+    const tick = () => setElapsed(Math.floor((Date.now() - start) / 1000));
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt]);
+
+  if (!startedAt) return null;
+
+  const hrs = Math.floor(elapsed / 3600);
+  const mins = Math.floor((elapsed % 3600) / 60);
+  const secs = elapsed % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+
+  return (
+    <div className="wjd-timer">
+      <i className="fas fa-stopwatch"></i>
+      <span className="wjd-timer-display">
+        {hrs > 0 ? `${pad(hrs)}:` : ''}{pad(mins)}:{pad(secs)}
+      </span>
+    </div>
+  );
+}
 
 function WorkerDashboard() {
   const { user, logout } = useAuth();
@@ -69,6 +100,16 @@ function WorkerDashboard() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
 
+  // Job timer state
+  const [jobTimerStart, setJobTimerStart] = useState(null); // ISO string when timer started
+  const [jobTimerElapsed, setJobTimerElapsed] = useState(0); // seconds
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  
+  // Job detail editing state
+  const [isEditingJobDetails, setIsEditingJobDetails] = useState(false);
+  const [editActualCharge, setEditActualCharge] = useState('');
+  const [editActualDuration, setEditActualDuration] = useState('');
+
   const { data, isLoading } = useQuery({
     queryKey: ['worker-dashboard'],
     queryFn: async () => { const r = await getWorkerDashboard(); return r.data; },
@@ -98,10 +139,20 @@ function WorkerDashboard() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ jobId, status }) => workerUpdateJobStatus(jobId, status),
+    mutationFn: ({ jobId, status, started_at, completed_at, actual_duration_minutes }) => 
+      workerUpdateJobStatus(jobId, { status, started_at, completed_at, actual_duration_minutes }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['worker-job', selectedJobId] });
+    },
+  });
+
+  const detailsMutation = useMutation({
+    mutationFn: ({ jobId, data }) => workerUpdateJobDetails(jobId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['worker-job', selectedJobId] });
+      setIsEditingJobDetails(false);
     },
   });
 
@@ -307,24 +358,153 @@ function WorkerDashboard() {
                         <i className="fas fa-directions"></i> Get Directions
                       </a>
                     )}
-                    {job.status !== 'completed' && job.status !== 'cancelled' && (
-                      <>
-                        {job.status !== 'in-progress' && (
-                          <button className="wjd-btn wjd-btn-progress" onClick={() => statusMutation.mutate({ jobId: selectedJobId, status: 'in-progress' })}
-                            disabled={statusMutation.isPending}>
-                            <i className="fas fa-wrench"></i> Start Job
-                          </button>
-                        )}
-                        {job.status === 'in-progress' && (
-                          <button className="wjd-btn wjd-btn-complete" onClick={() => statusMutation.mutate({ jobId: selectedJobId, status: 'completed' })}
-                            disabled={statusMutation.isPending}>
-                            <i className="fas fa-check-circle"></i> Mark Complete
-                          </button>
-                        )}
-                      </>
+                    {/* Start Job button — records timer start */}
+                    {job.status !== 'completed' && job.status !== 'cancelled' && job.status !== 'in-progress' && (
+                      <button className="wjd-btn wjd-btn-progress" onClick={() => {
+                        const now = new Date().toISOString();
+                        setJobTimerStart(now);
+                        setJobTimerElapsed(0);
+                        statusMutation.mutate({ jobId: selectedJobId, status: 'in-progress', started_at: now });
+                      }} disabled={statusMutation.isPending}>
+                        <i className="fas fa-play-circle"></i> Start Job
+                      </button>
                     )}
+                    {/* Live timer when in-progress */}
+                    {job.status === 'in-progress' && (
+                      <JobTimer startedAt={job.job_started_at || jobTimerStart} />
+                    )}
+                    {/* Mark Complete button — records timer end and calculates duration */}
+                    {job.status === 'in-progress' && (
+                      <button className="wjd-btn wjd-btn-complete" onClick={() => {
+                        const now = new Date().toISOString();
+                        const start = job.job_started_at || jobTimerStart;
+                        let durationMins = null;
+                        if (start) {
+                          durationMins = Math.round((new Date(now) - new Date(start)) / 60000);
+                          if (durationMins < 1) durationMins = 1;
+                        }
+                        statusMutation.mutate({ 
+                          jobId: selectedJobId, 
+                          status: 'completed', 
+                          completed_at: now,
+                          actual_duration_minutes: durationMins 
+                        });
+                        setJobTimerStart(null);
+                      }} disabled={statusMutation.isPending}>
+                        <i className="fas fa-check-circle"></i> Mark Complete
+                      </button>
+                    )}
+                    {/* Status dropdown for all statuses */}
+                    <div className="wjd-status-dropdown" style={{ position: 'relative' }}>
+                      <button className="wjd-btn" onClick={() => setShowStatusDropdown(!showStatusDropdown)}>
+                        <i className="fas fa-exchange-alt"></i> Status <i className="fas fa-chevron-down" style={{ fontSize: '0.7em', marginLeft: 2 }}></i>
+                      </button>
+                      {showStatusDropdown && (
+                        <>
+                          <div className="wjd-dropdown-backdrop" onClick={() => setShowStatusDropdown(false)}></div>
+                          <div className="wjd-dropdown-menu">
+                            {[
+                              { value: 'pending', label: 'Pending', icon: 'fas fa-clock', color: '#f59e0b' },
+                              { value: 'confirmed', label: 'Confirmed', icon: 'fas fa-calendar-check', color: '#3b82f6' },
+                              { value: 'scheduled', label: 'Scheduled', icon: 'fas fa-calendar-alt', color: '#6366f1' },
+                              { value: 'in-progress', label: 'In Progress', icon: 'fas fa-wrench', color: '#8b5cf6' },
+                              { value: 'completed', label: 'Completed', icon: 'fas fa-check-circle', color: '#22c55e' },
+                              { value: 'paid', label: 'Paid', icon: 'fas fa-money-check-alt', color: '#10b981' },
+                              { value: 'cancelled', label: 'Cancelled', icon: 'fas fa-times-circle', color: '#ef4444' },
+                            ].map(s => (
+                              <button key={s.value} 
+                                className={job.status === s.value ? 'active' : ''}
+                                onClick={() => {
+                                  if (s.value === 'in-progress' && !job.job_started_at) {
+                                    const now = new Date().toISOString();
+                                    setJobTimerStart(now);
+                                    statusMutation.mutate({ jobId: selectedJobId, status: s.value, started_at: now });
+                                  } else {
+                                    statusMutation.mutate({ jobId: selectedJobId, status: s.value });
+                                  }
+                                  setShowStatusDropdown(false);
+                                }}>
+                                <i className={s.icon} style={{ color: s.color }}></i> {s.label}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {/* Time Tracking & Charge Card (shown after completion or when time data exists) */}
+                {(job.status === 'completed' || job.status === 'paid' || job.actual_duration_minutes || job.job_started_at) && (
+                  <div className="wjd-card wjd-time-card">
+                    <div className="wjd-time-card-header">
+                      <h3><i className="fas fa-stopwatch"></i> Time & Charge</h3>
+                      {!isEditingJobDetails && (job.status === 'completed' || job.status === 'paid') && (
+                        <button className="wjd-btn wjd-btn-sm" onClick={() => {
+                          setEditActualCharge(job.charge || job.estimated_charge || '');
+                          setEditActualDuration(job.actual_duration_minutes || '');
+                          setIsEditingJobDetails(true);
+                        }}>
+                          <i className="fas fa-edit"></i> Edit
+                        </button>
+                      )}
+                    </div>
+                    {isEditingJobDetails ? (
+                      <div className="wjd-edit-row">
+                        <div className="wjd-edit-field">
+                          <label>Actual Time (minutes)</label>
+                          <input type="number" min="1" value={editActualDuration} 
+                            onChange={e => setEditActualDuration(e.target.value)} placeholder="e.g. 90" />
+                        </div>
+                        <div className="wjd-edit-field">
+                          <label>Actual Charge (€)</label>
+                          <input type="number" min="0" step="0.01" value={editActualCharge}
+                            onChange={e => setEditActualCharge(e.target.value)} placeholder="e.g. 150.00" />
+                        </div>
+                        <div className="wjd-edit-actions">
+                          <button className="wjd-btn wjd-btn-sm" onClick={() => setIsEditingJobDetails(false)}>Cancel</button>
+                          <button className="wjd-btn wjd-btn-complete wjd-btn-sm" 
+                            disabled={detailsMutation.isPending}
+                            onClick={() => {
+                              const payload = {};
+                              if (editActualDuration) payload.actual_duration_minutes = parseInt(editActualDuration);
+                              if (editActualCharge !== '') payload.actual_charge = parseFloat(editActualCharge);
+                              detailsMutation.mutate({ jobId: selectedJobId, data: payload });
+                            }}>
+                            {detailsMutation.isPending ? 'Saving...' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="wjd-info-row">
+                        {job.job_started_at && (
+                          <div className="wjd-info-cell">
+                            <span className="wjd-label">Started</span>
+                            <span className="wjd-value">{new Date(job.job_started_at).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        )}
+                        {job.job_completed_at && (
+                          <div className="wjd-info-cell">
+                            <span className="wjd-label">Finished</span>
+                            <span className="wjd-value">{new Date(job.job_completed_at).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        )}
+                        {job.actual_duration_minutes && (
+                          <div className="wjd-info-cell">
+                            <span className="wjd-label">Time Taken</span>
+                            <span className="wjd-value">{job.actual_duration_minutes >= 60 ? `${Math.floor(job.actual_duration_minutes / 60)}h ${job.actual_duration_minutes % 60}m` : `${job.actual_duration_minutes}m`}</span>
+                          </div>
+                        )}
+                        <div className="wjd-info-cell">
+                          <span className="wjd-label">Charge</span>
+                          <span className="wjd-value" style={{ color: '#22c55e', fontWeight: 700 }}>
+                            {(job.charge || job.estimated_charge) ? `€${parseFloat(job.charge || job.estimated_charge).toFixed(2)}` : '—'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Job Details Grid */}
                 <div className="wjd-grid">
