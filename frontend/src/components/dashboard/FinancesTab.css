@@ -128,7 +128,7 @@
 
 .chart-svg {
   width: 100%;
-  height: 160px;
+  height: auto;
   display: block;
 }
 
@@ -469,6 +469,167 @@
   font-size: 0.9rem;
 }
 
+/* Quick Insights Row */
+.insights-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.insight-card {
+  background: white;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f1f5f9;
+}
+
+.insight-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.insight-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.insight-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1f2937;
+  line-height: 1.2;
+}
+
+.insight-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 0.1rem;
+}
+
+/* Insights Grid (service bars + top customers) */
+.insights-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+/* Service Bar Chart */
+.service-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.service-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.service-bar-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  width: 90px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.service-bar-track {
+  flex: 1;
+  height: 22px;
+  background: #f1f5f9;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.service-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #818cf8, #6366f1);
+  border-radius: 6px;
+  transition: width 0.4s ease;
+}
+
+.service-bar-value {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #374151;
+  width: 70px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+/* Top Customers */
+.top-customers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.top-customer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid #f8fafc;
+}
+
+.top-customer-row:last-child {
+  border-bottom: none;
+}
+
+.top-customer-rank {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.top-customer-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.top-customer-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2937;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-customer-jobs {
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.top-customer-revenue {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #6366f1;
+  flex-shrink: 0;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .finances-tab {
@@ -505,7 +666,7 @@
   }
 
   .chart-svg {
-    height: 120px;
+    height: auto;
   }
 
   .chart-labels {
@@ -527,6 +688,33 @@
     flex: 1;
     text-align: center;
     font-size: 0.68rem;
+  }
+
+  .insights-row {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .insight-card {
+    padding: 0.75rem 1rem;
+  }
+
+  .insight-value {
+    font-size: 1.15rem;
+  }
+
+  .insights-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .service-bar-label {
+    width: 70px;
+    font-size: 0.7rem;
+  }
+
+  .service-bar-value {
+    width: 60px;
+    font-size: 0.7rem;
   }
 
   .transactions-section {

@@ -72,6 +72,39 @@ function FinancesTab({ showInvoiceButtons = true }) {
     return Math.max(...daily_revenue.map(m => m.revenue));
   }, [daily_revenue]);
 
+  // Insights computed from transactions
+  const insights = useMemo(() => {
+    const nonCancelled = transactions.filter(t => t.status !== 'cancelled');
+    const totalJobs = nonCancelled.length;
+    const avgJobValue = totalJobs > 0 ? nonCancelled.reduce((s, t) => s + (t.amount || 0), 0) / totalJobs : 0;
+    const collectionRate = total_revenue > 0 ? (paid_revenue / total_revenue) * 100 : 0;
+
+    // Revenue by service type
+    const byService = {};
+    nonCancelled.forEach(t => {
+      const svc = t.description || 'Other';
+      byService[svc] = (byService[svc] || 0) + (t.amount || 0);
+    });
+    const serviceBreakdown = Object.entries(byService)
+      .map(([name, revenue]) => ({ name, revenue }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    // Top customers by total spend
+    const byCustomer = {};
+    nonCancelled.forEach(t => {
+      const name = t.customer_name || 'Unknown';
+      if (!byCustomer[name]) byCustomer[name] = { revenue: 0, jobs: 0 };
+      byCustomer[name].revenue += (t.amount || 0);
+      byCustomer[name].jobs += 1;
+    });
+    const topCustomers = Object.entries(byCustomer)
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
+    return { totalJobs, avgJobValue, collectionRate, serviceBreakdown, topCustomers };
+  }, [transactions, total_revenue, paid_revenue]);
+
   // Format a YYYY-MM-DD string to a short label
   const formatDayLabel = (dayStr) => {
     const d = new Date(dayStr + 'T00:00:00');
@@ -147,7 +180,7 @@ function FinancesTab({ showInvoiceButtons = true }) {
     }
   });
 
-  // Build smooth SVG area chart with cubic bezier curves
+  // Build smooth SVG area chart using monotone cubic interpolation
   const renderChart = () => {
     if (!daily_revenue || daily_revenue.length === 0) {
       return (
@@ -158,43 +191,99 @@ function FinancesTab({ showInvoiceButtons = true }) {
       );
     }
 
-    const padding = { top: 10, right: 10, bottom: 4, left: 10 };
+    // For a single data point, show a centered dot instead of a line
+    if (daily_revenue.length === 1) {
+      const item = daily_revenue[0];
+      return (
+        <div className="chart-svg-container">
+          <svg viewBox="0 0 600 180" preserveAspectRatio="xMidYMid meet" className="chart-svg">
+            <circle cx="300" cy="80" r="5" fill="#6366f1" />
+          </svg>
+          <div className="chart-labels">
+            <div className="chart-label-item" style={{ left: '50%' }}>
+              <span className="chart-label-value">{formatCurrency(item.revenue)}</span>
+              <span className="chart-label-month">{formatDayLabel(item.day)}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const padding = { top: 16, right: 16, bottom: 8, left: 16 };
     const width = 600;
     const height = 180;
     const chartW = width - padding.left - padding.right;
     const chartH = height - padding.top - padding.bottom;
 
     const points = daily_revenue.map((item, i) => {
-      const x = padding.left + (daily_revenue.length === 1 ? chartW / 2 : (i / (daily_revenue.length - 1)) * chartW);
-      const y = padding.top + chartH - (maxRevenue > 0 ? (item.revenue / maxRevenue) * chartH * 0.9 : 0);
+      const x = padding.left + (i / (daily_revenue.length - 1)) * chartW;
+      const y = padding.top + chartH - (maxRevenue > 0 ? (item.revenue / maxRevenue) * chartH * 0.85 : 0);
       return { x, y, ...item };
     });
 
-    // Build smooth cubic bezier path
-    const smoothLine = (pts) => {
-      if (pts.length < 2) return `M${pts[0].x},${pts[0].y}`;
+    // Monotone cubic hermite spline — prevents overshoot so the curve
+    // never dips below 0 or spikes above the max value
+    const monotonePath = (pts) => {
+      const n = pts.length;
+      if (n < 2) return `M${pts[0].x},${pts[0].y}`;
+
+      // 1. Compute slopes between consecutive points
+      const dx = [];
+      const dy = [];
+      const m = []; // tangent at each point
+      for (let i = 0; i < n - 1; i++) {
+        dx.push(pts[i + 1].x - pts[i].x);
+        dy.push(pts[i + 1].y - pts[i].y);
+      }
+      const slopes = dx.map((d, i) => dy[i] / d);
+
+      // 2. Compute tangents using Fritsch-Carlson method
+      m.push(slopes[0]);
+      for (let i = 1; i < n - 1; i++) {
+        if (slopes[i - 1] * slopes[i] <= 0) {
+          m.push(0);
+        } else {
+          m.push((slopes[i - 1] + slopes[i]) / 2);
+        }
+      }
+      m.push(slopes[n - 2]);
+
+      // 3. Adjust tangents to ensure monotonicity
+      for (let i = 0; i < n - 1; i++) {
+        if (Math.abs(slopes[i]) < 1e-6) {
+          m[i] = 0;
+          m[i + 1] = 0;
+        } else {
+          const alpha = m[i] / slopes[i];
+          const beta = m[i + 1] / slopes[i];
+          const s = alpha * alpha + beta * beta;
+          if (s > 9) {
+            const t = 3 / Math.sqrt(s);
+            m[i] = t * alpha * slopes[i];
+            m[i + 1] = t * beta * slopes[i];
+          }
+        }
+      }
+
+      // 4. Build cubic bezier segments
       let d = `M${pts[0].x},${pts[0].y}`;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const p0 = pts[Math.max(i - 1, 0)];
-        const p1 = pts[i];
-        const p2 = pts[i + 1];
-        const p3 = pts[Math.min(i + 2, pts.length - 1)];
-        const tension = 0.3;
-        const cp1x = p1.x + (p2.x - p0.x) * tension;
-        const cp1y = p1.y + (p2.y - p0.y) * tension;
-        const cp2x = p2.x - (p3.x - p1.x) * tension;
-        const cp2y = p2.y - (p3.y - p1.y) * tension;
-        d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+      for (let i = 0; i < n - 1; i++) {
+        const seg = dx[i] / 3;
+        const cp1x = pts[i].x + seg;
+        const cp1y = pts[i].y + m[i] * seg;
+        const cp2x = pts[i + 1].x - seg;
+        const cp2y = pts[i + 1].y - m[i + 1] * seg;
+        d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${pts[i + 1].x},${pts[i + 1].y}`;
       }
       return d;
     };
 
-    const linePath = smoothLine(points);
+    const linePath = monotonePath(points);
     const bottomY = padding.top + chartH;
     const areaPath = `${linePath} L${points[points.length - 1].x},${bottomY} L${points[0].x},${bottomY} Z`;
 
     // Subtle horizontal grid lines
-    const gridLines = [0.25, 0.5, 0.75].map(pct => padding.top + chartH * (1 - pct * 0.9));
+    const gridLines = [0.25, 0.5, 0.75].map(pct => padding.top + chartH * (1 - pct * 0.85));
 
     // Show labels for a reasonable subset
     const maxLabels = 8;
@@ -205,18 +294,22 @@ function FinancesTab({ showInvoiceButtons = true }) {
 
     return (
       <div className="chart-svg-container">
-        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="chart-svg">
+        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet" className="chart-svg">
           <defs>
             <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.18" />
+              <stop offset="0%" stopColor="#6366f1" stopOpacity="0.15" />
               <stop offset="100%" stopColor="#6366f1" stopOpacity="0.01" />
             </linearGradient>
           </defs>
           {gridLines.map((y, i) => (
-            <line key={i} x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="#e5e7eb" strokeWidth="0.5" strokeDasharray="4 4" />
+            <line key={i} x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="#f1f5f9" strokeWidth="0.7" />
           ))}
           <path d={areaPath} fill="url(#areaGradient)" />
-          <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" />
+          <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          {/* Data point dots */}
+          {points.filter((_, i) => labelIndices.has(i)).map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r="3" fill="white" stroke="#6366f1" strokeWidth="1.8" />
+          ))}
         </svg>
         <div className="chart-labels">
           {points.filter((_, i) => labelIndices.has(i)).map((p, i) => (
@@ -289,6 +382,90 @@ function FinancesTab({ showInvoiceButtons = true }) {
         </div>
         {renderChart()}
       </div>
+
+      {/* Quick Insights Row */}
+      <div className="insights-row">
+        <div className="insight-card">
+          <div className="insight-icon" style={{ background: 'rgba(99, 102, 241, 0.1)' }}>
+            <i className="fas fa-receipt" style={{ color: '#6366f1' }}></i>
+          </div>
+          <div className="insight-content">
+            <div className="insight-value">{insights.totalJobs}</div>
+            <div className="insight-label">Total Jobs</div>
+          </div>
+        </div>
+        <div className="insight-card">
+          <div className="insight-icon" style={{ background: 'rgba(14, 165, 233, 0.1)' }}>
+            <i className="fas fa-calculator" style={{ color: '#0ea5e9' }}></i>
+          </div>
+          <div className="insight-content">
+            <div className="insight-value">{formatCurrency(insights.avgJobValue)}</div>
+            <div className="insight-label">Avg Job Value</div>
+          </div>
+        </div>
+        <div className="insight-card">
+          <div className="insight-icon" style={{ background: paid_revenue > 0 && insights.collectionRate >= 70 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)' }}>
+            <i className="fas fa-percentage" style={{ color: paid_revenue > 0 && insights.collectionRate >= 70 ? '#10b981' : '#f59e0b' }}></i>
+          </div>
+          <div className="insight-content">
+            <div className="insight-value">{insights.collectionRate.toFixed(0)}%</div>
+            <div className="insight-label">Collection Rate</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Revenue by Service & Top Customers side by side */}
+      {(insights.serviceBreakdown.length > 0 || insights.topCustomers.length > 0) && (
+        <div className="insights-grid">
+          {/* Revenue by Service Type */}
+          {insights.serviceBreakdown.length > 0 && (
+            <div className="chart-section">
+              <div className="chart-header">
+                <h3><i className="fas fa-chart-bar"></i> Revenue by Service</h3>
+              </div>
+              <div className="service-bars">
+                {insights.serviceBreakdown.slice(0, 6).map((svc, i) => {
+                  const maxSvcRevenue = insights.serviceBreakdown[0]?.revenue || 1;
+                  const pct = (svc.revenue / maxSvcRevenue) * 100;
+                  return (
+                    <div key={i} className="service-bar-row">
+                      <div className="service-bar-label">{svc.name}</div>
+                      <div className="service-bar-track">
+                        <div
+                          className="service-bar-fill"
+                          style={{ width: `${Math.max(pct, 3)}%` }}
+                        />
+                      </div>
+                      <div className="service-bar-value">{formatCurrency(svc.revenue)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Top Customers */}
+          {insights.topCustomers.length > 0 && (
+            <div className="chart-section">
+              <div className="chart-header">
+                <h3><i className="fas fa-users"></i> Top Customers</h3>
+              </div>
+              <div className="top-customers-list">
+                {insights.topCustomers.map((cust, i) => (
+                  <div key={i} className="top-customer-row">
+                    <div className="top-customer-rank">{i + 1}</div>
+                    <div className="top-customer-info">
+                      <div className="top-customer-name">{cust.name}</div>
+                      <div className="top-customer-jobs">{cust.jobs} job{cust.jobs !== 1 ? 's' : ''}</div>
+                    </div>
+                    <div className="top-customer-revenue">{formatCurrency(cust.revenue)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Mark as Paid Actions - between chart and jobs list */}
       {unpaid_revenue > 0 && (
