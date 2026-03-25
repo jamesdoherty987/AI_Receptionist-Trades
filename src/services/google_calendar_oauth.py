@@ -576,20 +576,39 @@ class CompanyGoogleCalendar:
             for item in result.get('items', []):
                 start_raw = item.get('start', {}).get('dateTime')
                 end_raw = item.get('end', {}).get('dateTime')
-                if not start_raw or not end_raw:
-                    # All-day events use 'date' instead of 'dateTime' — skip
-                    continue
-                try:
-                    start_dt = datetime.fromisoformat(
-                        start_raw.replace('Z', '+00:00')
-                    ).replace(tzinfo=None)
-                    end_dt = datetime.fromisoformat(
-                        end_raw.replace('Z', '+00:00')
-                    ).replace(tzinfo=None)
-                except Exception:
-                    continue
+                is_all_day = False
 
-                duration = int((end_dt - start_dt).total_seconds() / 60)
+                if not start_raw or not end_raw:
+                    # All-day events use 'date' instead of 'dateTime'
+                    start_date_str = item.get('start', {}).get('date')
+                    end_date_str = item.get('end', {}).get('date')
+                    if not start_date_str:
+                        continue
+                    try:
+                        # Treat all-day events as starting at 9am with 8h duration
+                        start_dt = datetime.strptime(start_date_str, '%Y-%m-%d').replace(hour=9)
+                        if end_date_str:
+                            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+                            day_span = (end_date - start_dt.replace(hour=0)).days
+                            # Google uses exclusive end date, so 1 day span = single day
+                            duration = max(day_span, 1) * 480  # 8 hours per day
+                        else:
+                            duration = 480  # Default 8 hours for single all-day event
+                        end_dt = start_dt.replace(hour=17)
+                        is_all_day = True
+                    except Exception:
+                        continue
+                else:
+                    try:
+                        start_dt = datetime.fromisoformat(
+                            start_raw.replace('Z', '+00:00')
+                        ).replace(tzinfo=None)
+                        end_dt = datetime.fromisoformat(
+                            end_raw.replace('Z', '+00:00')
+                        ).replace(tzinfo=None)
+                    except Exception:
+                        continue
+                    duration = int((end_dt - start_dt).total_seconds() / 60)
                 ext_props = item.get('extendedProperties', {})
                 events.append({
                     'id': item['id'],
@@ -599,6 +618,7 @@ class CompanyGoogleCalendar:
                     'end': end_dt,
                     'duration_minutes': duration,
                     'extendedProperties': ext_props,
+                    'is_all_day': is_all_day,
                 })
 
             page_token = result.get('nextPageToken')
