@@ -290,7 +290,7 @@ function CalendarTab() {
   // Get time-off events for a specific date
   const getTimeOffForDate = (date) => {
     if (!approvedTimeOff) return [];
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     return approvedTimeOff.filter(to => {
       // Filter by selected worker if applicable
       if (selectedWorkerId && to.worker_id !== selectedWorkerId) return false;
@@ -301,7 +301,7 @@ function CalendarTab() {
   // Time-off for selected date
   const selectedDateTimeOff = useMemo(() => {
     if (!selectedDate || !approvedTimeOff) return [];
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
     return approvedTimeOff.filter(to => {
       if (selectedWorkerId && to.worker_id !== selectedWorkerId) return false;
       return dateStr >= to.start_date && dateStr <= to.end_date;

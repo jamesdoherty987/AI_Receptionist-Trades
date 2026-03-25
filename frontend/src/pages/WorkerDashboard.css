@@ -497,9 +497,6 @@
 .ws-month-view {
   background: #fff; border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 12px; overflow: hidden;
-  display: flex; flex-direction: column;
-}
-.ws-month-view.with-panel {
   display: grid; grid-template-columns: 1fr 300px;
 }
 .ws-month-main {
@@ -619,7 +616,7 @@
 }
 .ws-week-day {
   border-right: 1px solid var(--border-color, #e2e8f0);
-  min-height: 140px; display: flex; flex-direction: column;
+  min-height: 320px; display: flex; flex-direction: column;
 }
 .ws-week-day:last-child { border-right: none; }
 .ws-week-day.today { background: rgba(14, 165, 233, 0.03); }
@@ -648,7 +645,7 @@
 }
 
 .ws-week-day-jobs {
-  flex: 1; padding: 0.35rem; display: flex; flex-direction: column; gap: 0.25rem;
+  flex: 1; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;
 }
 .ws-week-leave-bar {
   display: flex; align-items: center; gap: 0.3rem;
@@ -662,14 +659,14 @@
   flex: 1; color: var(--text-tertiary, #94a3b8); font-size: 0.75rem;
 }
 .ws-week-job {
-  display: flex; flex-direction: column; gap: 0.1rem;
-  padding: 0.3rem 0.4rem; background: rgba(14, 165, 233, 0.06);
+  display: flex; flex-direction: column; gap: 0.15rem;
+  padding: 0.45rem 0.5rem; background: rgba(14, 165, 233, 0.06);
   border-left: 2px solid var(--accent-blue, #0ea5e9);
   border-radius: 4px; cursor: pointer; transition: background 0.15s;
 }
 .ws-week-job:hover { background: rgba(14, 165, 233, 0.12); }
-.ws-week-job-time { font-size: 0.6rem; font-weight: 700; color: var(--accent-blue, #0ea5e9); }
-.ws-week-job-title { font-size: 0.65rem; font-weight: 500; color: var(--text-primary, #1e293b); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-week-job-time { font-size: 0.7rem; font-weight: 700; color: var(--accent-blue, #0ea5e9); }
+.ws-week-job-title { font-size: 0.75rem; font-weight: 500; color: var(--text-primary, #1e293b); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Year View */
 .ws-year-view {
@@ -710,13 +707,15 @@
 }
 .ws-mini-day.empty { visibility: hidden; }
 .ws-mini-day.has-job { background: rgba(14, 165, 233, 0.15); color: var(--accent-blue, #0ea5e9); font-weight: 700; border-radius: 3px; }
+.ws-mini-day.has-leave { background: rgba(245, 158, 11, 0.15); color: #d97706; border-radius: 3px; }
+.ws-mini-day.has-leave.has-job { background: linear-gradient(135deg, rgba(14, 165, 233, 0.15) 50%, rgba(245, 158, 11, 0.15) 50%); }
 .ws-mini-day.today { background: var(--accent-blue, #0ea5e9); color: #fff; font-weight: 700; border-radius: 3px; }
 
 /* Responsive */
 @media (max-width: 768px) {
   .ws-year-grid { grid-template-columns: repeat(3, 1fr); }
   .ws-header { flex-direction: column; align-items: flex-start; }
-  .ws-month-view.with-panel { grid-template-columns: 1fr; }
+  .ws-month-view { grid-template-columns: 1fr; }
   .ws-events-panel { border-left: none; border-top: 1px solid var(--border-color, #e2e8f0); }
   .ws-week-grid { grid-template-columns: repeat(3, 1fr); }
   .ws-week-day:nth-child(n+4) { border-top: 1px solid var(--border-color, #e2e8f0); }
@@ -758,6 +757,12 @@
   font-size: 0.8rem;
   color: #d97706;
   margin-bottom: 0.5rem;
+}
+.ws-leave-banner.pending {
+  background: rgba(245, 158, 11, 0.04);
+  border-color: rgba(245, 158, 11, 0.2);
+  color: #b45309;
+  opacity: 0.8;
 }
 .ws-leave-banner i {
   flex-shrink: 0;

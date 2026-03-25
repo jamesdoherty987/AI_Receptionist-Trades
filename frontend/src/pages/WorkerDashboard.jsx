@@ -83,7 +83,7 @@ function WorkerDashboard() {
   const { data: timeOffData } = useQuery({
     queryKey: ['worker-time-off'],
     queryFn: async () => { const r = await getWorkerTimeOff(); return r.data; },
-    enabled: activeTab === 'hr' || activeTab === 'schedule',
+    enabled: true,
   });
 
   const statusMutation = useMutation({
@@ -676,13 +676,16 @@ function WorkerDashboard() {
                 {/* WEEK VIEW */}
                 {scheduleView === 'week' && (() => {
                   const allJobs = jobs || [];
-                  const approvedLeave = (timeOffData?.requests || []).filter(r => r.status === 'approved');
+                  const approvedLeave = (timeOffData?.requests || []).filter(r => r.status === 'approved' || r.status === 'pending');
                   const today = new Date();
 
                   // Get the week's start (Sunday)
-                  const weekStart = new Date(calYear, calMonth, selectedCalDay || today.getDate());
-                  const dayOfWeek = weekStart.getDay();
-                  weekStart.setDate(weekStart.getDate() - dayOfWeek);
+                  const refDate = selectedCalDay
+                    ? new Date(calYear, calMonth, selectedCalDay)
+                    : new Date(); // Default to current week
+                  const dayOfWeek = refDate.getDay();
+                  const weekStart = new Date(refDate);
+                  weekStart.setDate(refDate.getDate() - dayOfWeek);
                   weekStart.setHours(0, 0, 0, 0);
 
                   const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -717,7 +720,7 @@ function WorkerDashboard() {
                       </div>
                       <div className="ws-week-grid">
                         {weekDays.map((date, idx) => {
-                          const dateStr = date.toISOString().split('T')[0];
+                          const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                           const dayJobs = allJobs.filter(j => {
                             const jd = new Date(j.appointment_time);
                             return jd.toDateString() === date.toDateString();
@@ -762,7 +765,7 @@ function WorkerDashboard() {
                 {/* MONTH VIEW */}
                 {scheduleView === 'month' && (() => {
                   const allJobs = jobs || [];
-                  const approvedLeave = (timeOffData?.requests || []).filter(r => r.status === 'approved');
+                  const approvedLeave = (timeOffData?.requests || []).filter(r => r.status === 'approved' || r.status === 'pending');
                   const firstDay = new Date(calYear, calMonth, 1).getDay();
                   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
                   const today = new Date();
@@ -797,7 +800,7 @@ function WorkerDashboard() {
                   ) : [];
 
                   return (
-                    <div className={`ws-month-view ${selectedCalDay ? 'with-panel' : ''}`}>
+                    <div className="ws-month-view">
                       <div className="ws-month-main">
                         <div className="ws-month-nav">
                           <button className="ws-nav-btn" onClick={() => {
@@ -875,11 +878,12 @@ function WorkerDashboard() {
                           ) : (
                             <>
                               {selectedDayLeave.length > 0 && (
-                                <div className="ws-leave-banner">
+                                <div className={`ws-leave-banner ${selectedDayLeave.some(l => l.status === 'pending') ? 'pending' : ''}`}>
                                   <i className="fas fa-umbrella-beach"></i>
                                   {selectedDayLeave.map(l => (
                                     <span key={l.id}>
                                       {l.type.charAt(0).toUpperCase() + l.type.slice(1)} leave
+                                      {l.status === 'pending' ? ' (pending)' : ''}
                                       {' · '}
                                       {new Date(l.start_date + 'T00:00').toLocaleDateString('en-IE', { month: 'short', day: 'numeric' })}
                                       {' — '}
@@ -915,6 +919,7 @@ function WorkerDashboard() {
                 {/* YEAR VIEW */}
                 {scheduleView === 'year' && (() => {
                   const allJobs = jobs || [];
+                  const leaveRequests = (timeOffData?.requests || []).filter(r => r.status === 'approved' || r.status === 'pending');
                   const today = new Date();
 
                   // Build job count per month
@@ -953,6 +958,18 @@ function WorkerDashboard() {
                             if (d.getMonth() === m && d.getFullYear() === calYear) miniJobDays.add(d.getDate());
                           });
 
+                          // Mini leave map for this month
+                          const miniLeaveDays = new Set();
+                          leaveRequests.forEach(l => {
+                            const s = new Date(l.start_date + 'T00:00');
+                            const e = new Date(l.end_date + 'T00:00');
+                            const cur = new Date(s);
+                            while (cur <= e) {
+                              if (cur.getMonth() === m && cur.getFullYear() === calYear) miniLeaveDays.add(cur.getDate());
+                              cur.setDate(cur.getDate() + 1);
+                            }
+                          });
+
                           return (
                             <div key={m} className={`ws-year-month ${isCurrent ? 'current' : ''}`}
                               onClick={() => { setCalMonth(m); setScheduleView('month'); setSelectedCalDay(null); }}>
@@ -970,9 +987,10 @@ function WorkerDashboard() {
                                 {Array.from({ length: daysInMonth }).map((_, i) => {
                                   const day = i + 1;
                                   const hasJob = miniJobDays.has(day);
+                                  const hasLeave = miniLeaveDays.has(day);
                                   const isToday = day === today.getDate() && m === today.getMonth() && calYear === today.getFullYear();
                                   return (
-                                    <span key={day} className={`ws-mini-day ${hasJob ? 'has-job' : ''} ${isToday ? 'today' : ''}`}>
+                                    <span key={day} className={`ws-mini-day ${hasJob ? 'has-job' : ''} ${hasLeave ? 'has-leave' : ''} ${isToday ? 'today' : ''}`}>
                                       {day}
                                     </span>
                                   );

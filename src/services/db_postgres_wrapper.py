@@ -3258,7 +3258,16 @@ class PostgreSQLDatabaseWrapper:
                 WHERE worker_id = %s 
                 ORDER BY start_date DESC
             """, (worker_id,))
-            return [dict(row) for row in cursor.fetchall()]
+            rows = [dict(row) for row in cursor.fetchall()]
+            # Normalize date fields to ISO strings for JSON serialization
+            for row in rows:
+                for key in ('start_date', 'end_date'):
+                    if key in row and hasattr(row[key], 'isoformat'):
+                        row[key] = row[key].isoformat()
+                for key in ('created_at', 'updated_at', 'reviewed_at'):
+                    if key in row and row[key] and hasattr(row[key], 'isoformat'):
+                        row[key] = row[key].isoformat()
+            return rows
         finally:
             self.return_connection(conn)
 
@@ -3279,7 +3288,16 @@ class PostgreSQLDatabaseWrapper:
                 params.append(status)
             query += " ORDER BY t.created_at DESC"
             cursor.execute(query, tuple(params))
-            return [dict(row) for row in cursor.fetchall()]
+            rows = [dict(row) for row in cursor.fetchall()]
+            # Normalize date fields to ISO strings for JSON serialization
+            for row in rows:
+                for key in ('start_date', 'end_date'):
+                    if key in row and hasattr(row[key], 'isoformat'):
+                        row[key] = row[key].isoformat()
+                for key in ('created_at', 'updated_at', 'reviewed_at'):
+                    if key in row and row[key] and hasattr(row[key], 'isoformat'):
+                        row[key] = row[key].isoformat()
+            return rows
         finally:
             self.return_connection(conn)
 
