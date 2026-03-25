@@ -353,6 +353,56 @@ class CompanyGoogleCalendar:
             logger.error(f"[GCAL] Cancel failed: {e}")
             return False
 
+    def create_all_day_event(self, summary: str, start_date, end_date,
+                             description: str = '') -> Optional[dict]:
+        """Create an all-day calendar event (e.g. worker time-off).
+        
+        Args:
+            summary: Event title (e.g. "🏖️ John - Vacation")
+            start_date: date or string YYYY-MM-DD (inclusive start)
+            end_date: date or string YYYY-MM-DD (inclusive end)
+            description: Optional description text
+        
+        Returns:
+            Created event dict or None on failure
+        """
+        from datetime import date as _date, timedelta
+
+        # Normalise to strings
+        if isinstance(start_date, _date):
+            start_str = start_date.isoformat()
+        else:
+            start_str = str(start_date)[:10]
+
+        if isinstance(end_date, _date):
+            # Google Calendar uses exclusive end date, so add 1 day
+            end_str = (end_date + timedelta(days=1)).isoformat()
+        else:
+            from datetime import datetime as _dt
+            end_d = _dt.strptime(str(end_date)[:10], '%Y-%m-%d').date()
+            end_str = (end_d + timedelta(days=1)).isoformat()
+
+        event = {
+            'summary': summary,
+            'description': description.strip() if description else '',
+            'start': {'date': start_str},
+            'end': {'date': end_str},
+            'transparency': 'opaque',
+            'extendedProperties': {
+                'private': {'bookedForYou': 'true', 'timeOff': 'true'},
+            },
+        }
+
+        try:
+            request = self.service.events().insert(
+                calendarId=self.calendar_id, body=event)
+            created = self._execute_with_retry(request)
+            logger.info(f"[GCAL] Created all-day event: {created.get('id')} for company {self.company_id}")
+            return created
+        except Exception as e:
+            logger.error(f"[GCAL] Failed to create all-day event: {e}")
+            return None
+
     def reschedule_appointment(self, event_id: str, new_start_time,
                                duration_minutes: int = None,
                                description: str = None,

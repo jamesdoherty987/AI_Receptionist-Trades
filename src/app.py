@@ -2188,6 +2188,29 @@ def review_time_off_request(request_id):
                     message=msg,
                     metadata={'request_id': request_id, 'status': status_label}
                 )
+
+                # Sync approved time-off to Google Calendar
+                if status == 'approved':
+                    try:
+                        from src.services.google_calendar_oauth import get_company_google_calendar
+                        gcal = get_company_google_calendar(company_id, db)
+                        if gcal and gcal.is_valid():
+                            worker_name = the_request.get('worker_name', 'Worker')
+                            leave_type = the_request.get('leave_type', 'time off')
+                            emoji = '🏖️' if leave_type == 'vacation' else '🤒' if leave_type == 'sick' else '📅'
+                            summary = f"{emoji} {worker_name} - {leave_type.title()}"
+                            description = f"Worker time off ({leave_type})"
+                            if note:
+                                description += f"\nNote: {note}"
+                            gcal.create_all_day_event(
+                                summary=summary,
+                                start_date=the_request['start_date'],
+                                end_date=the_request['end_date'],
+                                description=description
+                            )
+                    except Exception as e:
+                        print(f"[WARNING] Could not sync time-off to Google Calendar: {e}")
+
         except Exception as e:
             print(f"[WARNING] Could not create time-off review notification: {e}")
 
