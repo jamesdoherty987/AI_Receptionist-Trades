@@ -82,6 +82,19 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                 stats['push_skipped'] += 1
                 continue
 
+            # Skip bookings already synced and not modified since last sync
+            if has_real_gcal:
+                gcal_synced_at = booking.get('gcal_synced_at')
+                updated_at = booking.get('updated_at')
+                if gcal_synced_at and updated_at:
+                    if hasattr(gcal_synced_at, 'replace'):
+                        gcal_synced_at = gcal_synced_at.replace(tzinfo=None)
+                    if hasattr(updated_at, 'replace'):
+                        updated_at = updated_at.replace(tzinfo=None)
+                    if updated_at <= gcal_synced_at:
+                        stats['push_skipped'] += 1
+                        continue
+
             customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
             service = booking.get('service_type') or 'Job'
             duration = booking.get('duration_minutes', 60)
@@ -121,12 +134,16 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                 print(f"      [{bid}] UPDATE  {summary}  {appt_time.strftime('%Y-%m-%d %H:%M')}  {duration}min")
                 if not dry_run:
                     try:
-                        gcal.reschedule_appointment(
+                        result = gcal.reschedule_appointment(
                             existing_event_id, appt_time, duration_minutes=duration,
                             description=desc, summary=summary,
                             attendee_emails=attendee_emails
                         )
-                        stats['push_updated'] += 1
+                        if result is not None:
+                            stats['push_updated'] += 1
+                            db.stamp_gcal_synced(bid, company_id=company_id)
+                        else:
+                            stats['push_skipped'] += 1
                     except Exception as e:
                         err_str = str(e)
                         if 'eventTypeRestriction' in err_str or 'birthday' in err_str.lower():
@@ -150,6 +167,7 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                         if gcal_event and booking.get('id'):
                             new_id = gcal_event.get('id')
                             db.update_booking(bid, calendar_event_id=new_id, company_id=company_id)
+                            db.stamp_gcal_synced(bid, company_id=company_id)
                             if new_id:
                                 known_gcal_ids.add(new_id)
                         stats['push_created'] += 1

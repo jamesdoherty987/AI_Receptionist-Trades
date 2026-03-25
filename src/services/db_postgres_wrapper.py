@@ -184,6 +184,8 @@ class PostgreSQLDatabaseWrapper:
                     payment_method TEXT,
                     requires_callout BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    gcal_synced_at TIMESTAMP,
                     FOREIGN KEY (client_id) REFERENCES clients (id)
                 )
             """)
@@ -697,6 +699,24 @@ class PostgreSQLDatabaseWrapper:
                 print("[SUCCESS] Added requires_callout column to bookings table")
             except Exception as e:
                 print(f"[WARNING] Could not add requires_callout column: {e}")
+        
+        # Add updated_at and gcal_synced_at columns to bookings table (incremental sync)
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='bookings' AND column_name='updated_at'")
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE bookings ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+                cursor.execute("UPDATE bookings SET updated_at = created_at WHERE updated_at IS NULL")
+                print("[SUCCESS] Added updated_at column to bookings table")
+            except Exception as e:
+                print(f"[WARNING] Could not add updated_at column: {e}")
+        
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='bookings' AND column_name='gcal_synced_at'")
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE bookings ADD COLUMN gcal_synced_at TIMESTAMP")
+                print("[SUCCESS] Added gcal_synced_at column to bookings table")
+            except Exception as e:
+                print(f"[WARNING] Could not add gcal_synced_at column: {e}")
     
     def _convert_query(self, query: str) -> str:
         """Convert ? placeholders to %s for parameterized queries"""
@@ -1215,6 +1235,7 @@ class PostgreSQLDatabaseWrapper:
                         b.charge, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
                         b.address_audio_url, b.requires_callout,
+                        b.updated_at, b.gcal_synced_at,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
@@ -1226,6 +1247,7 @@ class PostgreSQLDatabaseWrapper:
                              b.charge, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
                              b.address_audio_url, b.requires_callout,
+                             b.updated_at, b.gcal_synced_at,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """, (company_id,))
@@ -1237,6 +1259,7 @@ class PostgreSQLDatabaseWrapper:
                         b.charge, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
                         b.address_audio_url, b.requires_callout,
+                        b.updated_at, b.gcal_synced_at,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
@@ -1247,6 +1270,7 @@ class PostgreSQLDatabaseWrapper:
                              b.charge, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
                              b.address_audio_url, b.requires_callout,
+                             b.updated_at, b.gcal_synced_at,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """)
@@ -1280,6 +1304,8 @@ class PostgreSQLDatabaseWrapper:
                 'assigned_worker_ids': row['assigned_worker_ids'] or [],  # List of assigned worker IDs
                 'address_audio_url': row.get('address_audio_url'),
                 'requires_callout': row.get('requires_callout', False),
+                'updated_at': row.get('updated_at'),
+                'gcal_synced_at': row.get('gcal_synced_at'),
             } for row in rows]
         finally:
             self.return_connection(conn)
@@ -1915,6 +1941,8 @@ class PostgreSQLDatabaseWrapper:
             success = False
             
             if fields:
+                # Always update the updated_at timestamp
+                fields.append("updated_at = CURRENT_TIMESTAMP")
                 values.append(booking_id)
                 query = f"UPDATE bookings SET {', '.join(fields)} WHERE id = %s"
                 cursor.execute(query, values)
@@ -1937,6 +1965,30 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
+    def stamp_gcal_synced(self, booking_id: int, company_id: int = None) -> bool:
+        """Mark a booking as synced to Google Calendar right now."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            if company_id:
+                cursor.execute(
+                    "UPDATE bookings SET gcal_synced_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s",
+                    (booking_id, company_id)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE bookings SET gcal_synced_at = CURRENT_TIMESTAMP WHERE id = %s",
+                    (booking_id,)
+                )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"[DB] Error stamping gcal_synced_at for booking {booking_id}: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
     def delete_booking(self, booking_id: int, company_id: int = None) -> bool:
         """Delete a booking completely from the database
         

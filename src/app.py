@@ -6412,6 +6412,20 @@ def google_calendar_sync():
             push_skipped += 1
             continue
 
+        # Skip bookings already synced and not modified since last sync
+        if has_real_gcal:
+            gcal_synced_at = booking.get('gcal_synced_at')
+            updated_at = booking.get('updated_at')
+            if gcal_synced_at and updated_at:
+                # Normalize both to naive datetimes for comparison
+                if hasattr(gcal_synced_at, 'replace'):
+                    gcal_synced_at = gcal_synced_at.replace(tzinfo=None)
+                if hasattr(updated_at, 'replace'):
+                    updated_at = updated_at.replace(tzinfo=None)
+                if updated_at <= gcal_synced_at:
+                    push_skipped += 1
+                    continue
+
         customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
         service = booking.get('service_type') or 'Job'
         duration = booking.get('duration_minutes', 60)
@@ -6446,12 +6460,18 @@ def google_calendar_sync():
 
         try:
             if has_real_gcal:
-                gcal.reschedule_appointment(
+                result = gcal.reschedule_appointment(
                     existing_event_id, appt_time, duration_minutes=duration,
                     description=desc, summary=summary,
                     attendee_emails=attendee_emails
                 )
-                push_updated += 1
+                if result is not None:
+                    push_updated += 1
+                    # Stamp gcal_synced_at so we skip this booking next sync
+                    if booking.get('id'):
+                        db.stamp_gcal_synced(booking['id'], company_id=company_id)
+                else:
+                    push_skipped += 1
             else:
                 # Create new gcal event for any booking in the sync window
                 gcal_event = gcal.book_appointment(
@@ -6470,6 +6490,7 @@ def google_calendar_sync():
                             calendar_event_id=new_gcal_id,
                             company_id=company_id
                         )
+                        db.stamp_gcal_synced(booking['id'], company_id=company_id)
                     if new_gcal_id:
                         known_gcal_ids.add(new_gcal_id)
                     push_created += 1
