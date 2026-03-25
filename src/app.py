@@ -2096,7 +2096,7 @@ def worker_customers():
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
         cursor.execute("""
-            SELECT DISTINCT c.id, c.name, c.phone, c.email, c.address, c.eircode, c.notes,
+            SELECT DISTINCT c.id, c.name, c.phone, c.email, c.address, c.eircode, c.description,
                    COUNT(b.id) as total_jobs,
                    COUNT(CASE WHEN b.status = 'completed' THEN 1 END) as completed_jobs,
                    MAX(b.appointment_time) as last_job_date
@@ -2104,7 +2104,7 @@ def worker_customers():
             JOIN bookings b ON wa.booking_id = b.id
             JOIN clients c ON b.client_id = c.id
             WHERE wa.worker_id = %s AND b.company_id = %s
-            GROUP BY c.id, c.name, c.phone, c.email, c.address, c.eircode, c.notes
+            GROUP BY c.id, c.name, c.phone, c.email, c.address, c.eircode, c.description
             ORDER BY MAX(b.appointment_time) DESC
         """, (worker_id, company_id))
         customers = [dict(row) for row in cursor.fetchall()]

@@ -1098,10 +1098,10 @@ function WorkerDashboard() {
                                   <span>Last job: {new Date(customer.last_job_date).toLocaleDateString('en-IE', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                                 </div>
                               )}
-                              {customer.notes && (
+                              {customer.description && (
                                 <div className="wc-detail-row">
                                   <i className="fas fa-sticky-note"></i>
-                                  <span>{customer.notes}</span>
+                                  <span>{customer.description}</span>
                                 </div>
                               )}
                               <div className="wc-detail-actions">
