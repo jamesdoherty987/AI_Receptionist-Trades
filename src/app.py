@@ -3961,7 +3961,8 @@ def check_availability_api():
                     continue
                 if filter_worker_id:
                     assigned_ids = booking.get('assigned_worker_ids') or []
-                    if filter_worker_id not in assigned_ids and str(filter_worker_id) not in [str(x) for x in assigned_ids]:
+                    # Unassigned bookings block all workers (could be assigned to anyone)
+                    if len(assigned_ids) > 0 and filter_worker_id not in assigned_ids and str(filter_worker_id) not in [str(x) for x in assigned_ids]:
                         continue
                 appt_time = booking.get('appointment_time')
                 if isinstance(appt_time, str):
@@ -4205,7 +4206,8 @@ def check_monthly_availability_api():
                     continue
                 if filter_worker_id:
                     assigned_ids = b.get('assigned_worker_ids') or []
-                    if filter_worker_id not in assigned_ids and str(filter_worker_id) not in [str(x) for x in assigned_ids]:
+                    # Unassigned bookings block all workers (could be assigned to anyone)
+                    if len(assigned_ids) > 0 and filter_worker_id not in assigned_ids and str(filter_worker_id) not in [str(x) for x in assigned_ids]:
                         continue
                 appt = b.get('appointment_time')
                 if isinstance(appt, str):
