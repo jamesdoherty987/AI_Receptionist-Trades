@@ -24,7 +24,7 @@ import LoadingSpinner from './components/LoadingSpinner'
 
 // Protected Route component - requires authentication
 function ProtectedRoute({ children, requireSubscription = false }) {
-  const { isAuthenticated, hasActiveSubscription, loading, initialized } = useAuth();
+  const { isAuthenticated, isWorker, hasActiveSubscription, loading, initialized } = useAuth();
 
   if (!initialized || loading) {
     return (
@@ -42,6 +42,11 @@ function ProtectedRoute({ children, requireSubscription = false }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Workers shouldn't access owner routes
+  if (isWorker) {
+    return <Navigate to="/worker/dashboard" replace />;
   }
 
   // If subscription is required and user doesn't have one, redirect to settings

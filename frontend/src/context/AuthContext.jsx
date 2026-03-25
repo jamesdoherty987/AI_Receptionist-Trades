@@ -34,8 +34,13 @@ export function AuthProvider({ children }) {
     console.log('[AUTH] checkAuth called, token exists:', !!token);
     
     // Determine if this is a worker session from cached user
-    const cachedUser = sessionStorage.getItem('authUser');
-    const isWorkerSession = cachedUser ? JSON.parse(cachedUser)?.role === 'worker' : false;
+    let isWorkerSession = false;
+    try {
+      const cachedUser = sessionStorage.getItem('authUser');
+      isWorkerSession = cachedUser ? JSON.parse(cachedUser)?.role === 'worker' : false;
+    } catch {
+      isWorkerSession = false;
+    }
     const authEndpoint = isWorkerSession ? '/api/worker/auth/me' : '/api/auth/me';
     
     try {

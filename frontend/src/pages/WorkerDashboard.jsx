@@ -37,7 +37,6 @@ function WorkerDashboard() {
   const jobs = data?.jobs || [];
   const schedule = data?.schedule || [];
 
-  const now = new Date();
   const upcomingJobs = jobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled');
   const completedJobs = jobs.filter(j => j.status === 'completed');
 

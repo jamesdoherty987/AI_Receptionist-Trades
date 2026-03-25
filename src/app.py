@@ -1326,7 +1326,7 @@ def reset_password():
 # ============================================
 
 _worker_token_serializer = URLSafeTimedSerializer(
-    os.getenv('SECRET_KEY', secrets.token_hex(32)), salt='worker-auth-token'
+    app.secret_key, salt='worker-auth-token'
 )
 
 
@@ -1610,17 +1610,11 @@ def invite_worker():
         company = db.get_company(company_id)
         business_name = company.get('company_name', 'Your Employer') if company else 'Your Employer'
 
-        email_sent = email_service.send_email(
+        # Reuse password reset email template — same flow (click link to set password)
+        email_sent = email_service.send_password_reset(
             to_email=email,
-            subject=f"You're invited to join {business_name} on BookedForYou",
-            html_body=f"""
-            <h2>Welcome to BookedForYou!</h2>
-            <p>{business_name} has invited you to their worker portal.</p>
-            <p>Click the link below to set your password and access your jobs and schedule:</p>
-            <p><a href="{invite_link}" style="display:inline-block;padding:12px 24px;background:#0ea5e9;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">Set Your Password</a></p>
-            <p>This link expires in 7 days.</p>
-            <p style="color:#666;font-size:0.9em;">If you didn't expect this invite, you can ignore this email.</p>
-            """
+            reset_link=invite_link,
+            business_name=business_name
         )
     except Exception as e:
         print(f"[WORKER-INVITE] Email send error: {e}")
