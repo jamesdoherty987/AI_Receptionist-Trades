@@ -90,6 +90,17 @@ function OnboardingWizard({ onComplete }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [completedSteps, setCompletedSteps] = useState([]);
+  const [hidden, setHidden] = useState(() => localStorage.getItem('onboarding_hidden') === 'true');
+
+  const handleHide = () => {
+    setHidden(true);
+    localStorage.setItem('onboarding_hidden', 'true');
+  };
+
+  const handleUnhide = () => {
+    setHidden(false);
+    localStorage.removeItem('onboarding_hidden');
+  };
 
   const trialMutation = useMutation({
     mutationFn: startFreeTrial,
@@ -725,6 +736,24 @@ function OnboardingWizard({ onComplete }) {
 
   // Show overview with step list
   const completedCount = STEPS.filter(step => isStepComplete(step.id)).length;
+  const remainingCount = STEPS.length - completedCount;
+
+  // Collapsed reminder bar when hidden
+  if (hidden) {
+    return (
+      <div className="onboarding-inline">
+        <div className="onboarding-hidden-bar">
+          <div className="hidden-bar-content">
+            <i className="fas fa-clipboard-check"></i>
+            <span>{remainingCount} setup step{remainingCount !== 1 ? 's' : ''} remaining</span>
+          </div>
+          <button className="hidden-bar-show-btn" onClick={handleUnhide}>
+            Show setup
+          </button>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="onboarding-inline">
@@ -737,9 +766,14 @@ function OnboardingWizard({ onComplete }) {
               <p>{completedCount} of {STEPS.length} complete</p>
             </div>
           </div>
-          <button className="dismiss-btn" onClick={handleFinish} title="Dismiss">
-            <i className="fas fa-times"></i>
-          </button>
+          <div className="overview-header-actions">
+            <button className="dismiss-btn" onClick={handleHide} title="Hide setup steps">
+              <i className="fas fa-eye-slash"></i>
+            </button>
+            <button className="dismiss-btn" onClick={handleFinish} title="Dismiss permanently">
+              <i className="fas fa-times"></i>
+            </button>
+          </div>
         </div>
         
         <div className="setup-steps-list">

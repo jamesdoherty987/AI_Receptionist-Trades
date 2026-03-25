@@ -78,6 +78,54 @@
   color: var(--text-secondary);
 }
 
+/* Header actions group (hide + dismiss) */
+.overview-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Hidden / collapsed reminder bar */
+.onboarding-hidden-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.hidden-bar-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.hidden-bar-content i {
+  color: var(--accent-blue);
+  font-size: 0.8rem;
+}
+
+.hidden-bar-show-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--accent-blue);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.3rem 0.65rem;
+  border-radius: 5px;
+  transition: all 0.2s;
+}
+
+.hidden-bar-show-btn:hover {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: var(--accent-blue);
+}
+
 /* Steps List - Wrap into even rows */
 .setup-steps-list {
   display: flex;
