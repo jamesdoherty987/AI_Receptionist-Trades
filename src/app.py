@@ -1736,7 +1736,11 @@ def worker_job_detail(job_id):
 @app.route("/api/worker/jobs/<int:job_id>/photos", methods=["POST"])
 @worker_login_required
 def worker_upload_job_photo(job_id):
-    """Allow worker to upload photos to their assigned jobs"""
+    """Allow worker to upload photos and videos to their assigned jobs.
+    Accepts either:
+      - JSON with base64 image: {"image": "data:image/..."}
+      - Multipart form with file: file field named 'file' (for videos)
+    """
     worker_id = session.get('worker_id')
     company_id = session.get('worker_company_id')
 
@@ -1748,25 +1752,100 @@ def worker_upload_job_photo(job_id):
     if job_id not in job_ids:
         return jsonify({"error": "Job not found or not assigned to you"}), 404
 
-    data = request.json
-    image_data = data.get('image')
-    if not image_data:
-        return jsonify({"error": "No image data provided"}), 400
+    import json as _json
+    import io
+    from datetime import datetime as _dt
 
+    ALLOWED_MEDIA_TYPES = {
+        'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+        'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo',
+    }
+    MAX_VIDEO_SIZE = 50 * 1024 * 1024  # 50MB
+
+    media_url = None
+
+    # Check if multipart file upload (videos)
+    if request.files and 'file' in request.files:
+        file = request.files['file']
+        if not file or not file.filename:
+            return jsonify({"error": "No file provided"}), 400
+
+        content_type = file.content_type or ''
+        if content_type not in ALLOWED_MEDIA_TYPES:
+            return jsonify({"error": f"Unsupported file type: {content_type}"}), 400
+
+        file_data = file.read()
+        is_video = content_type.startswith('video/')
+        max_size = MAX_VIDEO_SIZE if is_video else MAX_IMAGE_SIZE_BYTES
+
+        if len(file_data) > max_size:
+            limit_mb = max_size // (1024 * 1024)
+            return jsonify({"error": f"File too large. Max {limit_mb}MB"}), 400
+
+        try:
+            from src.services.storage_r2 import upload_company_file, is_r2_enabled
+            if not is_r2_enabled():
+                return jsonify({"error": "Storage not configured"}), 500
+
+            ext = content_type.split('/')[-1]
+            if ext == 'quicktime':
+                ext = 'mov'
+            elif ext == 'x-msvideo':
+                ext = 'avi'
+            timestamp = _dt.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"job_media_{timestamp}_{secrets.token_hex(4)}.{ext}"
+
+            media_url = upload_company_file(
+                company_id=company_id,
+                file_data=io.BytesIO(file_data),
+                filename=filename,
+                file_type='job_photos',
+                content_type=content_type
+            )
+        except Exception as e:
+            print(f"[ERROR] Worker media upload failed: {e}")
+            return jsonify({"error": "Failed to upload file"}), 500
+    else:
+        # Base64 image upload
+        data = request.json
+        image_data = data.get('image') if data else None
+        if not image_data:
+            return jsonify({"error": "No image data provided"}), 400
+
+        media_url = upload_base64_image_to_r2(image_data, company_id, 'job-photos')
+
+    if not media_url or media_url.startswith('data:'):
+        return jsonify({"error": "Failed to upload media"}), 500
+
+    booking = db.get_booking(job_id, company_id=company_id)
+    existing_photos = booking.get('photo_urls') or []
+    if isinstance(existing_photos, str):
+        try:
+            import json as _json2
+            existing_photos = _json2.loads(existing_photos)
+        except Exception:
+            existing_photos = []
+    updated_photos = existing_photos + [media_url]
+
+    # Use raw SQL for jsonb column (update_booking passes lists as text[] which fails)
+    import json as _json
+    conn = db.get_connection()
+    cursor = conn.cursor()
     try:
-        photo_url = upload_base64_image_to_r2(image_data, company_id, 'job-photos')
-        if not photo_url:
-            return jsonify({"error": "Failed to upload photo"}), 500
-
-        booking = db.get_booking(job_id, company_id=company_id)
-        existing_photos = booking.get('photo_urls') or []
-        updated_photos = existing_photos + [photo_url]
-        db.update_booking(job_id, photo_urls=updated_photos)
-
-        return jsonify({"success": True, "photo_url": photo_url, "photo_urls": updated_photos})
+        cursor.execute(
+            "UPDATE bookings SET photo_urls = %s WHERE id = %s AND company_id = %s",
+            (_json.dumps(updated_photos), job_id, company_id)
+        )
+        conn.commit()
     except Exception as e:
-        print(f"[ERROR] Worker photo upload failed: {e}")
-        return jsonify({"error": "Failed to upload photo"}), 500
+        conn.rollback()
+        print(f"[ERROR] Failed to save media URL: {e}")
+        return jsonify({"error": "Failed to save media"}), 500
+    finally:
+        cursor.close()
+        db.return_connection(conn)
+
+    return jsonify({"success": True, "photo_url": media_url, "photo_urls": updated_photos})
 
 
 @app.route("/api/worker/jobs/<int:job_id>/notes", methods=["GET", "POST"])

@@ -213,6 +213,14 @@ export const getWorkerDashboard = () => api.get('/api/worker/dashboard');
 export const updateWorkerProfile = (data) => api.put('/api/worker/profile', data);
 export const getWorkerJobDetail = (id) => api.get(`/api/worker/jobs/${id}`);
 export const workerUploadJobPhoto = (jobId, imageData) => api.post(`/api/worker/jobs/${jobId}/photos`, { image: imageData });
+export const workerUploadJobMedia = (jobId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post(`/api/worker/jobs/${jobId}/photos`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  });
+};
 export const workerUpdateJobStatus = (jobId, status) => api.put(`/api/worker/jobs/${jobId}/status`, { status });
 export const getWorkerJobNotes = (jobId) => api.get(`/api/worker/jobs/${jobId}/notes`);
 export const addWorkerJobNote = (jobId, note) => api.post(`/api/worker/jobs/${jobId}/notes`, { note });

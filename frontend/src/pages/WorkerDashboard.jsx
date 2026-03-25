@@ -6,6 +6,7 @@ import {
   getWorkerDashboard,
   getWorkerJobDetail,
   workerUploadJobPhoto,
+  workerUploadJobMedia,
   workerUpdateJobStatus,
   getWorkerTimeOff,
   createTimeOffRequest,
@@ -87,7 +88,13 @@ function WorkerDashboard() {
   });
 
   const photoMutation = useMutation({
-    mutationFn: (imageData) => workerUploadJobPhoto(selectedJobId, imageData),
+    mutationFn: (data) => {
+      // data is either a base64 string (image) or a File object (video)
+      if (typeof data === 'string') {
+        return workerUploadJobPhoto(selectedJobId, data);
+      }
+      return workerUploadJobMedia(selectedJobId, data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['worker-job', selectedJobId] });
       setUploadingPhoto(false);
@@ -144,24 +151,39 @@ function WorkerDashboard() {
   const handlePhotoSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) { return; }
-    if (file.size > 10 * 1024 * 1024) { return; }
+
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+
+    if (!isImage && !isVideo) return;
+
+    const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > maxSize) return;
+
     setUploadingPhoto(true);
-    const canvas = document.createElement('canvas');
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      img.onload = () => {
-        let w = img.width, h = img.height;
-        if (w > 1200) { h = (h * 1200) / w; w = 1200; }
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        const result = canvas.toDataURL('image/jpeg', 0.8);
-        photoMutation.mutate(result);
+
+    if (isVideo) {
+      // Upload video as raw file via FormData
+      photoMutation.mutate(file);
+    } else {
+      // Compress image before uploading
+      const canvas = document.createElement('canvas');
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        img.onload = () => {
+          let w = img.width, h = img.height;
+          if (w > 1200) { h = (h * 1200) / w; w = 1200; }
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          const result = canvas.toDataURL('image/jpeg', 0.8);
+          photoMutation.mutate(result);
+        };
+        img.src = ev.target.result;
       };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
+    }
+
     if (photoInputRef.current) photoInputRef.current.value = '';
   };
 
@@ -369,19 +391,22 @@ function WorkerDashboard() {
                     {/* Photos */}
                     <div className="wjd-card">
                       <div className="wjd-card-header">
-                        <h3><i className="fas fa-camera"></i> Photos</h3>
+                        <h3><i className="fas fa-camera"></i> Photos & Videos</h3>
                         <button className="wjd-btn wjd-btn-sm" onClick={() => photoInputRef.current?.click()} disabled={uploadingPhoto}>
                           {uploadingPhoto ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-plus"></i>}
-                          {uploadingPhoto ? ' Uploading...' : ' Add Photo'}
+                          {uploadingPhoto ? ' Uploading...' : ' Add Media'}
                         </button>
-                        <input ref={photoInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoSelect} style={{ display: 'none' }} />
+                        <input ref={photoInputRef} type="file" accept="image/*,video/mp4,video/quicktime,video/webm" capture="environment" onChange={handlePhotoSelect} style={{ display: 'none' }} />
                       </div>
                       {job.photo_urls && job.photo_urls.length > 0 ? (
                         <div className="wjd-photos-grid">
                           {job.photo_urls.map((url, idx) => (
                             <div key={idx} className="wjd-photo-item" onClick={() => setLightboxPhoto(url)}>
                               {isVideoUrl(url) ? (
-                                <video src={getProxiedMediaUrl(url)} muted preload="metadata" />
+                                <>
+                                  <video src={getProxiedMediaUrl(url)} muted preload="metadata" />
+                                  <div className="wjd-video-badge"><i className="fas fa-play"></i></div>
+                                </>
                               ) : (
                                 <img src={getProxiedMediaUrl(url)} alt={`Photo ${idx + 1}`} />
                               )}
@@ -389,7 +414,7 @@ function WorkerDashboard() {
                           ))}
                         </div>
                       ) : (
-                        <p className="wjd-empty-text">No photos yet. Take a photo on site.</p>
+                        <p className="wjd-empty-text">No photos or videos yet. Capture media on site.</p>
                       )}
                     </div>
 
