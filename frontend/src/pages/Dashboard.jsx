@@ -13,6 +13,7 @@ import FinancesTab from '../components/dashboard/FinancesTab';
 import CalendarTab from '../components/dashboard/CalendarTab';
 import ChatTab from '../components/dashboard/ChatTab';
 import ServicesTab from '../components/dashboard/ServicesTab';
+import InsightsTab from '../components/dashboard/InsightsTab';
 import { getDashboardData, getBusinessSettings } from '../services/api';
 import './Dashboard.css';
 
@@ -89,6 +90,11 @@ function Dashboard() {
       icon: 'fas fa-dollar-sign',
       content: <FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} />
     }] : []),
+    {
+      label: 'Insights',
+      icon: 'fas fa-chart-pie',
+      content: isLoading ? <LoadingSpinner /> : <InsightsTab bookings={bookings} clients={clients} workers={workers} />
+    },
     {
       label: 'Services',
       icon: 'fas fa-concierge-bell',
