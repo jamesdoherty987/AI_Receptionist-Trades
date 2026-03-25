@@ -136,19 +136,33 @@ def _is_plausible_address(refined: str, original: str) -> bool:
     # Check word overlap — a legitimate re-transcription of the same audio should
     # share at least some words with the original ASR result. If zero overlap,
     # the audio probably wasn't the caller saying their address at all.
+    # Uses fuzzy matching because different ASR engines often mangle the same
+    # word differently (e.g. "ocean" vs "oshin", "view" vs "niew").
+    from difflib import SequenceMatcher
+    
     stop_words = {'the', 'a', 'an', 'of', 'in', 'at', 'to', 'and', 'is', 'it', 'my', 'i', 'county', 'ireland', 'street', 'road', 'avenue', 'drive', 'lane', 'grove', 'park', 'close', 'way', 'place', 'crescent'}
     
     def meaningful_words(text):
         words = set(re.findall(r'\b\w+\b', text.lower()))
         return words - stop_words
     
+    def has_fuzzy_overlap(words_a, words_b, threshold=0.6):
+        """Check if any word in words_a is a fuzzy match for any word in words_b."""
+        for wa in words_a:
+            for wb in words_b:
+                if SequenceMatcher(None, wa, wb).ratio() >= threshold:
+                    return True
+        return False
+    
     refined_words = meaningful_words(refined)
     original_words = meaningful_words(original)
     
-    overlap = refined_words & original_words
-    if not overlap and refined_words and original_words:
-        print(f"[ADDR_RETRANSCRIBE] Validation: zero word overlap (refined={refined_words}, original={original_words})")
-        return False
+    if refined_words and original_words:
+        # First try exact overlap (fast path)
+        overlap = refined_words & original_words
+        if not overlap and not has_fuzzy_overlap(refined_words, original_words):
+            print(f"[ADDR_RETRANSCRIBE] Validation: zero word overlap even with fuzzy matching (refined={refined_words}, original={original_words})")
+            return False
     
     return True
 
