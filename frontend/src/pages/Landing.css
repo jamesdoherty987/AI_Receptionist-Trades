@@ -2136,9 +2136,9 @@
   transform: translateY(-4px);
   box-shadow: 0 20px 40px -15px rgba(14, 165, 233, 0.15);
 }
-/* Bento sizes — card 1 is tall+wide, card 6 is wide, rest are 1x1 */
+/* Bento sizes — card 1 is tall+wide, card 6 is full-width, rest are 1x1 */
 .bento-card:nth-child(1) { grid-column: span 2; grid-row: span 2; }
-.bento-card:nth-child(6) { grid-column: span 2; }
+.bento-card:nth-child(6) { grid-column: span 4; }
 
 /* Make the hero card visually distinct */
 .bento-card:nth-child(1) {
