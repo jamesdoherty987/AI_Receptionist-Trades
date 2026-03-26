@@ -6988,6 +6988,14 @@ def worker_api(worker_id):
         # Get worker with company_id filter for security
         worker = db.get_worker(worker_id, company_id=company_id)
         if worker:
+            # Include portal status
+            account = db.get_worker_account_by_worker_id(worker_id)
+            if account and account.get('password_set'):
+                worker['portal_status'] = 'active'
+            elif account:
+                worker['portal_status'] = 'invited'
+            else:
+                worker['portal_status'] = None
             return jsonify(worker)
         return jsonify({"error": "Worker not found"}), 404
     

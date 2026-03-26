@@ -26,6 +26,13 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     setPortalStatus(null);
   }, [workerId]);
 
+  // Sync portal status from worker data
+  useEffect(() => {
+    if (worker?.portal_status) {
+      setPortalStatus(worker.portal_status);
+    }
+  }, [worker]);
+
   // Handle escape key to close delete confirmation
   useEffect(() => {
     const handleEscape = (e) => {

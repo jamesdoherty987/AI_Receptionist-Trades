@@ -147,8 +147,9 @@ function WorkersTab({ workers, bookings }) {
   // Build unread counts map { workerId: count }
   const unreadCounts = useMemo(() => {
     const map = {};
-    if (unreadData?.counts) {
-      unreadData.counts.forEach(c => { map[c.worker_id] = c.unread_count; });
+    const counts = unreadData?.counts;
+    if (counts && typeof counts === 'object') {
+      Object.entries(counts).forEach(([wId, count]) => { map[wId] = count; });
     }
     return map;
   }, [unreadData]);
@@ -332,7 +333,7 @@ function WorkersTab({ workers, bookings }) {
           </div>
         ) : (
           filteredWorkers.map((worker) => {
-            const unread = unreadCounts[worker.id] || 0;
+            const unread = unreadCounts[worker.id] || unreadCounts[String(worker.id)] || 0;
             return (
               <div 
                 key={worker.id} 
