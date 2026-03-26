@@ -107,8 +107,55 @@
 
 .worker-modal-actions {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.5rem;
   flex-shrink: 0;
+  align-items: center;
+}
+
+/* Primary message button */
+.btn-message-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  background: var(--accent-blue, #3b82f6);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.btn-message-primary:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+/* Subtle icon-only delete button */
+.btn-icon-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md, 8px);
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-icon-danger:hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+.btn-icon-danger:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .edit-header-fields {
@@ -503,12 +550,18 @@
     gap: 0.5rem;
   }
 
-  .worker-modal-actions button {
+  .worker-modal-actions .btn,
+  .worker-modal-actions .btn-message-primary {
     flex: 1;
     min-width: calc(50% - 0.25rem);
     justify-content: center;
     padding: 0.625rem 0.75rem;
     font-size: 0.85rem;
+  }
+
+  .worker-modal-actions .btn-icon-danger {
+    flex: 0;
+    min-width: auto;
   }
 
   .worker-modal-grid {

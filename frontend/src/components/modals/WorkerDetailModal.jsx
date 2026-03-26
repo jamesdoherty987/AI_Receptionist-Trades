@@ -298,11 +298,11 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
               </>
             ) : (
               <>
+                <button className="btn btn-message-primary" onClick={() => setShowMessageModal(true)}>
+                  <i className="fas fa-comment-dots"></i> Message
+                </button>
                 <button className="btn btn-secondary" onClick={handleEditStart}>
                   <i className="fas fa-edit"></i> Edit
-                </button>
-                <button className="btn btn-secondary" onClick={() => setShowMessageModal(true)}>
-                  <i className="fas fa-comment-dots"></i> Message
                 </button>
                 {worker.email && portalStatus !== 'active' && (
                   <button 
@@ -321,11 +321,12 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                   </span>
                 )}
                 <button 
-                  className="btn btn-danger"
+                  className="btn-icon-danger"
                   onClick={handleDelete}
                   disabled={deleteMutation.isPending}
+                  title="Delete worker"
                 >
-                  <i className="fas fa-trash"></i> Delete
+                  <i className="fas fa-trash"></i>
                 </button>
               </>
             )}
