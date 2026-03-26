@@ -2,11 +2,22 @@ import { useState, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { formatDateTime, getStatusBadgeClass, formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
+import { formatDuration } from '../../utils/durationOptions';
 import { updateBooking } from '../../services/api';
 import { useToast } from '../Toast';
 import AddJobModal from '../modals/AddJobModal';
 import JobDetailModal from '../modals/JobDetailModal';
 import './JobsTab.css';
+
+const STATUS_FILTERS = [
+  { key: 'active', label: 'Active', icon: 'fa-bolt' },
+  { key: 'overdue', label: 'Overdue', icon: 'fa-exclamation-triangle' },
+  { key: 'in-progress', label: 'In Progress', icon: 'fa-wrench' },
+  { key: 'needs-invoice', label: 'Needs Invoice', icon: 'fa-file-invoice' },
+  { key: 'completed', label: 'Completed', icon: 'fa-check-circle' },
+  { key: 'cancelled', label: 'Cancelled', icon: 'fa-times-circle' },
+  { key: 'all', label: 'All', icon: 'fa-list' },
+];
 
 function JobsTab({ bookings, showInvoiceButtons = true }) {
   const queryClient = useQueryClient();
@@ -14,447 +25,247 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('active');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [markingPaidJobId, setMarkingPaidJobId] = useState(null);
 
   const markPaidMutation = useMutation({
     mutationFn: (jobId) => updateBooking(jobId, { status: 'completed', payment_status: 'paid' }),
-    onMutate: (jobId) => {
-      setMarkingPaidJobId(jobId);
-    },
+    onMutate: (jobId) => setMarkingPaidJobId(jobId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
       addToast('Job marked as paid', 'success');
       setMarkingPaidJobId(null);
     },
-    onError: () => {
-      addToast('Failed to mark job as paid', 'error');
-      setMarkingPaidJobId(null);
-    }
+    onError: () => { addToast('Failed to mark job as paid', 'error'); setMarkingPaidJobId(null); }
   });
 
   const handleAddClick = () => {
-    if (!isSubscriptionActive) {
-      addToast('You need an active subscription to add jobs', 'warning');
-      return;
-    }
+    if (!isSubscriptionActive) { addToast('Active subscription required', 'warning'); return; }
     setShowAddModal(true);
   };
 
-  // Get job time status for color coding
-  const getJobTimeStatus = (appointmentTime) => {
-    const now = new Date();
-    const jobTime = new Date(appointmentTime);
-    const diffMinutes = (jobTime - now) / (1000 * 60);
-    
-    // Job is currently happening (within 30 min window)
-    if (diffMinutes >= -30 && diffMinutes <= 30) {
-      return 'now';
-    }
-    // Job time has passed
-    if (diffMinutes < -30) {
-      return 'past';
-    }
-    // Coming up soon (within 2 hours)
-    if (diffMinutes <= 120) {
-      return 'soon';
-    }
-    return 'upcoming';
-  };
+  const now = useMemo(() => new Date(), [bookings]);
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  const dayAfterTomorrow = new Date(tomorrowStart); dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
+  const weekEnd = new Date(todayStart); weekEnd.setDate(weekEnd.getDate() + 7);
 
-  // Check if date is today
-  const isToday = (date) => {
-    const today = new Date();
-    const jobDate = new Date(date);
-    return jobDate.toDateString() === today.toDateString();
-  };
+  const counts = useMemo(() => {
+    const active = bookings.filter(j => !['completed', 'paid', 'cancelled'].includes(j.status));
+    const overdue = active.filter(j => j.status !== 'in-progress' && new Date(j.appointment_time) < now);
+    const inProg = bookings.filter(j => j.status === 'in-progress');
+    const needsInv = bookings.filter(j => j.status === 'completed' && j.payment_status !== 'paid');
+    const done = bookings.filter(j => j.status === 'completed' || j.status === 'paid');
+    const canc = bookings.filter(j => j.status === 'cancelled');
+    return { active: active.length, overdue: overdue.length, 'in-progress': inProg.length, 'needs-invoice': needsInv.length, completed: done.length, cancelled: canc.length, all: bookings.length };
+  }, [bookings]);
 
-  // Check if date is tomorrow
-  const isTomorrow = (date) => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const jobDate = new Date(date);
-    return jobDate.toDateString() === tomorrow.toDateString();
-  };
-
-  // Check if date is in this week (next 7 days)
-  const isThisWeek = (date) => {
-    const now = new Date();
-    const jobDate = new Date(date);
-    const weekFromNow = new Date();
-    weekFromNow.setDate(weekFromNow.getDate() + 7);
-    return jobDate > now && jobDate <= weekFromNow;
-  };
-
-  // Group and sort jobs
-  const groupedJobs = useMemo(() => {
+  // Filter and group jobs
+  const { groups, totalFiltered } = useMemo(() => {
     let jobs = [...bookings];
 
-    // Filter by search term
+    // Search filter
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      jobs = jobs.filter(job =>
-        job.customer_name?.toLowerCase().includes(term) ||
-        job.service?.toLowerCase().includes(term) ||
-        job.service_type?.toLowerCase().includes(term) ||
-        job.phone?.includes(term) ||
-        job.email?.toLowerCase().includes(term) ||
-        job.job_address?.toLowerCase().includes(term) ||
-        job.address?.toLowerCase().includes(term) ||
-        job.eircode?.toLowerCase().includes(term)
+      jobs = jobs.filter(j =>
+        j.customer_name?.toLowerCase().includes(term) ||
+        j.service?.toLowerCase().includes(term) ||
+        j.service_type?.toLowerCase().includes(term) ||
+        j.phone?.includes(term) ||
+        j.email?.toLowerCase().includes(term) ||
+        j.job_address?.toLowerCase().includes(term) ||
+        j.address?.toLowerCase().includes(term) ||
+        j.eircode?.toLowerCase().includes(term) ||
+        j.status?.toLowerCase().includes(term)
       );
     }
 
-    // Sort all jobs chronologically (earliest first)
-    jobs.sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
+    // Status filter
+    if (statusFilter === 'active') {
+      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled'].includes(j.status));
+    } else if (statusFilter === 'overdue') {
+      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'in-progress'].includes(j.status) && new Date(j.appointment_time) < now);
+    } else if (statusFilter === 'in-progress') {
+      jobs = jobs.filter(j => j.status === 'in-progress');
+    } else if (statusFilter === 'needs-invoice') {
+      jobs = jobs.filter(j => j.status === 'completed' && j.payment_status !== 'paid');
+    } else if (statusFilter === 'completed') {
+      jobs = jobs.filter(j => j.status === 'completed' || j.status === 'paid');
+    } else if (statusFilter === 'cancelled') {
+      jobs = jobs.filter(j => j.status === 'cancelled');
+    }
 
-    // Group by day
-    const today = jobs.filter(j => isToday(j.appointment_time) && j.status !== 'completed' && j.status !== 'cancelled');
-    const tomorrow = jobs.filter(j => isTomorrow(j.appointment_time) && j.status !== 'completed' && j.status !== 'cancelled');
-    const thisWeek = jobs.filter(j => 
-      !isToday(j.appointment_time) && 
-      !isTomorrow(j.appointment_time) && 
-      isThisWeek(j.appointment_time) &&
-      j.status !== 'completed' && 
-      j.status !== 'cancelled'
-    );
-    const completed = jobs.filter(j => j.status === 'completed');
-    const cancelled = jobs.filter(j => j.status === 'cancelled');
+    jobs.sort((a, b) => {
+      // In-progress always first
+      if (a.status === 'in-progress' && b.status !== 'in-progress') return -1;
+      if (b.status === 'in-progress' && a.status !== 'in-progress') return 1;
+      return new Date(a.appointment_time) - new Date(b.appointment_time);
+    });
 
-    return { today, tomorrow, thisWeek, completed, cancelled };
-  }, [bookings, searchTerm]);
+    // Group into sections
+    const sections = [];
+    const isActive = (j) => !['completed', 'paid', 'cancelled'].includes(j.status);
 
-  const stats = useMemo(() => {
-    const total = bookings.length;
-    const todayCount = bookings.filter(j => isToday(j.appointment_time) && j.status !== 'completed' && j.status !== 'cancelled').length;
-    const upcoming = bookings.filter(j => new Date(j.appointment_time) > new Date() && j.status !== 'completed' && j.status !== 'cancelled').length;
-    const completed = bookings.filter(j => j.status === 'completed').length;
+    // In Progress (always shown first if any)
+    const inProg = jobs.filter(j => j.status === 'in-progress');
+    if (inProg.length > 0) sections.push({ key: 'in-progress', label: 'In Progress', icon: 'fa-wrench', color: '#8b5cf6', jobs: inProg });
 
-    return { total, todayCount, upcoming, completed };
-  }, [bookings]);
+    // Overdue
+    const overdue = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && new Date(j.appointment_time) < now);
+    if (overdue.length > 0) sections.push({ key: 'overdue', label: 'Overdue', icon: 'fa-exclamation-triangle', color: '#ef4444', jobs: overdue });
 
-  const renderJobCard = (job) => {
-    const timeStatus = getJobTimeStatus(job.appointment_time);
-    // Show "In Progress" if job is happening now and not completed/cancelled
-    const displayStatus = (timeStatus === 'now' && job.status !== 'completed' && job.status !== 'cancelled') 
-      ? 'in-progress' 
-      : job.status;
-    const displayStatusText = displayStatus === 'in-progress' ? 'In Progress' : job.status;
-    
-    return (
-      <div 
-        key={job.id} 
-        className={`job-card status-${displayStatus} time-${timeStatus}`}
-        onClick={() => setSelectedJobId(job.id)}
-      >
-        <div className="job-card-indicator"></div>
-        <div className="job-card-content">
-          <div className="job-header">
-            <div className="job-title">
-              <h3>{job.customer_name}</h3>
-              <span className={`badge ${displayStatus === 'in-progress' ? 'badge-in-progress' : getStatusBadgeClass(job.status)}`}>
-                {displayStatusText}
-              </span>
-            </div>
-            <div className={`job-time-badge time-${timeStatus}`}>
-              <i className="fas fa-clock"></i>
-              {new Date(job.appointment_time).toLocaleTimeString('en-US', { 
-                hour: '2-digit', 
-                minute: '2-digit'
-              })}
-              {timeStatus === 'now' && <span className="pulse-dot"></span>}
-            </div>
-          </div>
-          
-          {/* Address displayed prominently */}
-          <div className="job-address-row">
-            <i className="fas fa-map-marker-alt"></i>
-            <span>
-              {(job.job_address || job.address || job.eircode) 
-                ? `${job.job_address || job.address || ''}${job.eircode ? `${job.job_address || job.address ? ' (' : ''}${job.eircode}${job.job_address || job.address ? ')' : ''}` : ''}`.trim()
-                : 'No address'}
-            </span>
-            {job.address_audio_url && (
-              <button 
-                className="btn-audio-inline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const audio = new Audio(getProxiedMediaUrl(job.address_audio_url));
-                  audio.play();
-                }}
-                title="Listen to address"
-              >
-                <i className="fas fa-volume-up"></i>
-              </button>
-            )}
-          </div>
-          
-          <div className="job-details">
-            <div className="job-detail">
-              <i className="fas fa-wrench"></i>
-              <span>{job.service_type || job.service || 'No service specified'}</span>
-            </div>
-            <div className="job-detail">
-              <i className="fas fa-phone"></i>
-              <span>{job.phone || job.phone_number || 'No phone'}</span>
-            </div>
-            {job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled' && (job.charge || job.estimated_charge) && (
-              <button
-                className="btn-mark-paid-inline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  markPaidMutation.mutate(job.id);
-                }}
-                disabled={markingPaidJobId === job.id}
-                title="Mark as paid"
-              >
-                <i className={`fas ${markingPaidJobId === job.id ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
-                {formatCurrency(job.charge || job.estimated_charge)} — Mark Paid
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
+    // Today
+    const today = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && (() => { const t = new Date(j.appointment_time); return t >= now && t < tomorrowStart; })());
+    if (today.length > 0) sections.push({ key: 'today', label: 'Today', icon: 'fa-sun', color: '#f59e0b', jobs: today });
+
+    // Tomorrow
+    const tomorrow = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && (() => { const t = new Date(j.appointment_time); return t >= tomorrowStart && t < dayAfterTomorrow; })());
+    if (tomorrow.length > 0) sections.push({ key: 'tomorrow', label: 'Tomorrow', icon: 'fa-calendar-day', color: '#3b82f6', jobs: tomorrow });
+
+    // This Week
+    const thisWeek = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && (() => { const t = new Date(j.appointment_time); return t >= dayAfterTomorrow && t < weekEnd; })());
+    if (thisWeek.length > 0) sections.push({ key: 'this-week', label: 'This Week', icon: 'fa-calendar-week', color: '#6366f1', jobs: thisWeek });
+
+    // Later
+    const later = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && new Date(j.appointment_time) >= weekEnd);
+    if (later.length > 0) sections.push({ key: 'later', label: 'Upcoming', icon: 'fa-calendar-alt', color: '#0ea5e9', jobs: later });
+
+    // Needs Invoice
+    const needsInv = jobs.filter(j => j.status === 'completed' && j.payment_status !== 'paid');
+    if (needsInv.length > 0 && statusFilter !== 'needs-invoice') {
+      // Only show as separate section if not already filtered to it
+    }
+    if (statusFilter === 'needs-invoice' && needsInv.length > 0) {
+      // Already filtered, show as flat list
+      if (sections.length === 0) sections.push({ key: 'needs-invoice', label: 'Needs Invoice', icon: 'fa-file-invoice', color: '#f59e0b', jobs: needsInv });
+    }
+
+    // Completed/Paid
+    const done = jobs.filter(j => (j.status === 'completed' && j.payment_status === 'paid') || j.status === 'paid');
+    if (done.length > 0 && (statusFilter === 'completed' || statusFilter === 'all')) {
+      sections.push({ key: 'completed', label: 'Completed & Paid', icon: 'fa-check-circle', color: '#10b981', jobs: done.slice(0, 20) });
+    }
+
+    // Cancelled
+    const canc = jobs.filter(j => j.status === 'cancelled');
+    if (canc.length > 0 && (statusFilter === 'cancelled' || statusFilter === 'all')) {
+      sections.push({ key: 'cancelled', label: 'Cancelled', icon: 'fa-times-circle', color: '#9ca3af', jobs: canc.slice(0, 10) });
+    }
+
+    return { groups: sections, totalFiltered: jobs.length };
+  }, [bookings, searchTerm, statusFilter]);
+
+  const getAddress = (job) => {
+    const addr = job.job_address || job.address || '';
+    const code = job.eircode || '';
+    if (addr && code) return `${addr} (${code})`;
+    return addr || code || 'No address';
   };
 
   return (
     <div className="jobs-tab">
-      {/* Controls */}
-      <div className="jobs-controls">
-        <div className="search-box">
+      {/* Header with search and add */}
+      <div className="jt-header">
+        <div className="jt-search">
           <i className="fas fa-search"></i>
-          <input
-            type="text"
-            placeholder="Search jobs..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+          <input type="text" placeholder="Search by name, service, address, phone..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          {searchTerm && <button className="jt-search-clear" onClick={() => setSearchTerm('')}><i className="fas fa-times"></i></button>}
         </div>
-        
-        {/* Compact Stats Badges */}
-        <div className="stats-badges">
-          <div className="stats-badge stats-today">
-            <span className="badge-value">{stats.todayCount}</span>
-            <span className="badge-label">Today</span>
-          </div>
-          <div className="stats-badge stats-upcoming">
-            <span className="badge-value">{stats.upcoming}</span>
-            <span className="badge-label">Upcoming</span>
-          </div>
-          <div className="stats-badge stats-completed">
-            <span className="badge-value">{stats.completed}</span>
-            <span className="badge-label">Completed</span>
-          </div>
-          <div className="stats-badge stats-total">
-            <span className="badge-value">{stats.total}</span>
-            <span className="badge-label">Total Jobs</span>
-          </div>
-        </div>
-        
-        <button 
-          className="btn btn-primary" 
-          onClick={handleAddClick}
-        >
+        <button className="btn btn-primary" onClick={handleAddClick}>
           <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Job
         </button>
       </div>
 
-      {/* Jobs List Grouped by Day */}
-      <div className="jobs-grouped">
-        {/* Today's Jobs */}
-        {groupedJobs.today.length > 0 && (
-          <div className="jobs-group">
-            <div className="group-header today">
-              <h3>Today</h3>
-              <span className="group-count">{groupedJobs.today.length} jobs</span>
-            </div>
-            <div className="jobs-list">
-              {groupedJobs.today.map(renderJobCard)}
-            </div>
-          </div>
-        )}
+      {/* Filter pills */}
+      <div className="jt-filters">
+        {STATUS_FILTERS.map(f => (
+          <button key={f.key} className={`jt-filter ${statusFilter === f.key ? 'active' : ''} ${f.key === 'overdue' && counts.overdue > 0 ? 'has-alert' : ''}`}
+            onClick={() => setStatusFilter(f.key)}>
+            <i className={`fas ${f.icon}`}></i>
+            <span className="jt-filter-label">{f.label}</span>
+            {counts[f.key] > 0 && <span className="jt-filter-count">{counts[f.key]}</span>}
+          </button>
+        ))}
+      </div>
 
-        {/* Tomorrow's Jobs */}
-        {groupedJobs.tomorrow.length > 0 && (
-          <div className="jobs-group">
-            <div className="group-header tomorrow">
-              <h3>Tomorrow</h3>
-              <span className="group-count">{groupedJobs.tomorrow.length} jobs</span>
-            </div>
-            <div className="jobs-list">
-              {groupedJobs.tomorrow.map(renderJobCard)}
-            </div>
+      {/* Job sections */}
+      <div className="jt-sections">
+        {groups.length === 0 ? (
+          <div className="jt-empty">
+            <div className="jt-empty-icon">{statusFilter === 'overdue' ? '✅' : statusFilter === 'needs-invoice' ? '💰' : '📋'}</div>
+            <p>{statusFilter === 'overdue' ? 'No overdue jobs' : statusFilter === 'needs-invoice' ? 'All jobs invoiced' : searchTerm ? 'No jobs match your search' : 'No jobs found'}</p>
           </div>
-        )}
-
-        {/* This Week */}
-        {groupedJobs.thisWeek.length > 0 && (
-          <div className="jobs-group">
-            <div className="group-header week">
-              <h3>This Week</h3>
-              <span className="group-count">{groupedJobs.thisWeek.length} jobs</span>
-            </div>
-            <div className="jobs-list">
-              {groupedJobs.thisWeek.map(job => (
-                <div 
-                  key={job.id} 
-                  className={`job-card status-${job.status}`}
-                  onClick={() => setSelectedJobId(job.id)}
-                >
-                  <div className="job-card-indicator"></div>
-                  <div className="job-card-content">
-                    <div className="job-header">
-                      <div className="job-title">
-                        <h3>{job.customer_name}</h3>
-                        <span className={`badge ${getStatusBadgeClass(job.status)}`}>
-                          {job.status}
-                        </span>
-                      </div>
-                      <div className="job-date">
-                        <i className="fas fa-calendar"></i>
-                        {formatDateTime(job.appointment_time)}
-                      </div>
-                    </div>
-                    
-                    <div className="job-address-row">
-                      <i className="fas fa-map-marker-alt"></i>
-                      <span>
-                        {(job.job_address || job.address || job.eircode) 
-                          ? `${job.job_address || job.address || ''}${job.eircode ? `${job.job_address || job.address ? ' (' : ''}${job.eircode}${job.job_address || job.address ? ')' : ''}` : ''}`.trim()
-                          : 'No address'}
-                      </span>
-                      {job.address_audio_url && (
-                        <button 
-                          className="btn-audio-inline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const audio = new Audio(getProxiedMediaUrl(job.address_audio_url));
-                            audio.play();
-                          }}
-                          title="Listen to address"
-                        >
-                          <i className="fas fa-volume-up"></i>
-                        </button>
-                      )}
-                    </div>
-                    
-                    <div className="job-details">
-                      <div className="job-detail">
-                        <i className="fas fa-wrench"></i>
-                        <span>{job.service_type || job.service || 'No service'}</span>
-                      </div>
-                      <div className="job-detail">
-                        <i className="fas fa-phone"></i>
-                        <span>{job.phone || 'No phone'}</span>
-                      </div>
-                      {!!(job.charge || job.estimated_charge) && (
-                        <div className="job-detail">
-                          <i className="fas fa-euro-sign"></i>
-                          <span className="job-price">{formatCurrency(job.charge || job.estimated_charge)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+        ) : (
+          groups.map(section => (
+            <div key={section.key} className={`jt-section jt-section-${section.key}`}>
+              <div className="jt-section-header" style={{ '--section-color': section.color }}>
+                <div className="jt-section-title">
+                  <i className={`fas ${section.icon}`} style={{ color: section.color }}></i>
+                  <h3>{section.label}</h3>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Completed Jobs (collapsed) */}
-        {groupedJobs.completed.length > 0 && (
-          <details className="jobs-group collapsed-group">
-            <summary className="group-header completed">
-              <h3>Completed</h3>
-              <span className="group-count">{groupedJobs.completed.length} jobs</span>
-            </summary>
-            <div className="jobs-list">
-              {groupedJobs.completed.slice(0, 10).map(job => (
-                <div 
-                  key={job.id} 
-                  className="job-card status-completed"
-                  onClick={() => setSelectedJobId(job.id)}
-                >
-                  <div className="job-card-indicator"></div>
-                  <div className="job-card-content">
-                    <div className="job-header">
-                      <div className="job-title">
-                        <h3>{job.customer_name}</h3>
-                        <span className="badge badge-success">{job.status}</span>
-                      </div>
-                      <div className="job-date">
-                        <i className="fas fa-calendar"></i>
-                        {formatDateTime(job.appointment_time)}
-                      </div>
-                    </div>
-                    
-                    <div className="job-address-row">
-                      <i className="fas fa-map-marker-alt"></i>
-                      <span>
-                        {(job.job_address || job.address || job.eircode) 
-                          ? `${job.job_address || job.address || ''}${job.eircode ? `${job.job_address || job.address ? ' (' : ''}${job.eircode}${job.job_address || job.address ? ')' : ''}` : ''}`.trim()
-                          : 'No address'}
-                      </span>
-                      {job.address_audio_url && (
-                        <button 
-                          className="btn-audio-inline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const audio = new Audio(getProxiedMediaUrl(job.address_audio_url));
-                            audio.play();
-                          }}
-                          title="Listen to address"
-                        >
-                          <i className="fas fa-volume-up"></i>
-                        </button>
-                      )}
-                    </div>
-                    
-                    <div className="job-details">
-                      <div className="job-detail">
-                        <i className="fas fa-wrench"></i>
-                        <span>{job.service_type || job.service || 'No service'}</span>
-                      </div>
-                      {!!(job.charge || job.estimated_charge) && (
-                        <div className="job-detail">
-                          <i className="fas fa-euro-sign"></i>
-                          <span className="job-price">{formatCurrency(job.charge || job.estimated_charge)}</span>
+                <span className="jt-section-count">{section.jobs.length}</span>
+              </div>
+              <div className="jt-cards">
+                {section.jobs.map(job => {
+                  const isPast = new Date(job.appointment_time) < now && job.status !== 'in-progress' && job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled';
+                  const isNow = Math.abs(new Date(job.appointment_time) - now) < 30 * 60 * 1000 && job.status !== 'completed' && job.status !== 'cancelled';
+                  return (
+                    <div key={job.id} className={`jt-card ${isPast ? 'jt-card-overdue' : ''} ${isNow ? 'jt-card-now' : ''} ${job.status === 'in-progress' ? 'jt-card-active' : ''}`}
+                      onClick={() => setSelectedJobId(job.id)}>
+                      <div className="jt-card-left">
+                        <div className="jt-card-time">
+                          <span className="jt-time">{new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="jt-date">{new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                         </div>
-                      )}
+                      </div>
+                      <div className="jt-card-body">
+                        <div className="jt-card-top">
+                          <h4>{job.customer_name || 'Unknown'}</h4>
+                          <span className={`jt-status-badge jt-status-${job.status}`}>{job.status === 'in-progress' ? 'In Progress' : job.status}</span>
+                        </div>
+                        <div className="jt-card-info">
+                          <span className="jt-info-item"><i className="fas fa-wrench"></i> {job.service_type || job.service || 'Service'}</span>
+                          <span className="jt-info-item"><i className="fas fa-map-marker-alt"></i> {getAddress(job)}</span>
+                        </div>
+                        <div className="jt-card-bottom">
+                          {(job.phone || job.phone_number) && (
+                            <a href={`tel:${job.phone || job.phone_number}`} className="jt-phone" onClick={e => e.stopPropagation()}>
+                              <i className="fas fa-phone"></i> {job.phone || job.phone_number}
+                            </a>
+                          )}
+                          {job.duration_minutes && job.duration_minutes < 1440 && (
+                            <span className="jt-duration"><i className="fas fa-clock"></i> {formatDuration(job.duration_minutes)}</span>
+                          )}
+                          {!!(job.charge || job.estimated_charge) && (
+                            <span className="jt-charge">{formatCurrency(job.charge || job.estimated_charge)}</span>
+                          )}
+                          {job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled' && (job.charge || job.estimated_charge) && (
+                            <button className="jt-mark-paid" onClick={e => { e.stopPropagation(); markPaidMutation.mutate(job.id); }}
+                              disabled={markingPaidJobId === job.id}>
+                              <i className={`fas ${markingPaidJobId === job.id ? 'fa-spinner fa-spin' : 'fa-check'}`}></i> Mark Paid
+                            </button>
+                          )}
+                          {job.address_audio_url && (
+                            <button className="jt-audio-btn" onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }} title="Listen to address">
+                              <i className="fas fa-volume-up"></i>
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  );
+                })}
+              </div>
             </div>
-          </details>
-        )}
-
-        {/* Empty State */}
-        {groupedJobs.today.length === 0 && 
-         groupedJobs.tomorrow.length === 0 && 
-         groupedJobs.thisWeek.length === 0 && 
-         groupedJobs.completed.length === 0 && (
-          <div className="empty-state">
-            <div className="empty-state-icon">📋</div>
-            <p>No jobs found</p>
-          </div>
+          ))
         )}
       </div>
 
-      {/* Modals */}
-      <AddJobModal 
-        isOpen={showAddModal} 
-        onClose={() => setShowAddModal(false)} 
-      />
-      <JobDetailModal
-        isOpen={!!selectedJobId}
-        onClose={() => setSelectedJobId(null)}
-        jobId={selectedJobId}
-        showInvoiceButtons={showInvoiceButtons}
-      />
+      <AddJobModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
+      <JobDetailModal isOpen={!!selectedJobId} onClose={() => setSelectedJobId(null)} jobId={selectedJobId} showInvoiceButtons={showInvoiceButtons} />
     </div>
   );
 }
