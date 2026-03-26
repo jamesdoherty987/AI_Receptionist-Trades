@@ -2106,7 +2106,8 @@
 /* Bento Grid */
 .bento-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: auto auto auto;
   gap: 1rem;
 }
 .bento-card {
@@ -2135,9 +2136,17 @@
   transform: translateY(-4px);
   box-shadow: 0 20px 40px -15px rgba(14, 165, 233, 0.15);
 }
-.bento-large { grid-column: span 4; }
-.bento-medium { grid-column: span 3; }
-.bento-small { grid-column: span 2; }
+/* Bento sizes — card 1 is tall+wide, card 6 is wide, rest are 1x1 */
+.bento-card:nth-child(1) { grid-column: span 2; grid-row: span 2; }
+.bento-card:nth-child(6) { grid-column: span 2; }
+
+/* Make the hero card visually distinct */
+.bento-card:nth-child(1) {
+  background: linear-gradient(135deg, rgba(14,165,233,0.06), rgba(139,92,246,0.06));
+  border-color: rgba(14,165,233,0.2);
+}
+/* Remove the size classes — using nth-child instead */
+.bento-large, .bento-medium, .bento-small { }
 .bento-icon {
   width: 52px; height: 52px; background: var(--gradient-subtle);
   border-radius: 14px; display: flex; align-items: center; justify-content: center;
@@ -2152,15 +2161,13 @@
 
 @media (max-width: 768px) {
   .bento-grid { grid-template-columns: 1fr; }
-  .bento-large, .bento-medium, .bento-small { grid-column: span 1; }
+  .bento-card:nth-child(1), .bento-card:nth-child(6) { grid-column: span 1; grid-row: span 1; }
   .bento-card { padding: 1.5rem; }
-  .bento-mini-demo { max-height: 180px; }
 }
 @media (min-width: 769px) and (max-width: 1024px) {
-  .bento-grid { grid-template-columns: repeat(4, 1fr); }
-  .bento-large { grid-column: span 4; }
-  .bento-medium { grid-column: span 2; }
-  .bento-small { grid-column: span 2; }
+  .bento-grid { grid-template-columns: repeat(2, 1fr); }
+  .bento-card:nth-child(1) { grid-column: span 2; grid-row: span 1; }
+  .bento-card:nth-child(6) { grid-column: span 2; }
 }
 
 /* Live Transcript */
