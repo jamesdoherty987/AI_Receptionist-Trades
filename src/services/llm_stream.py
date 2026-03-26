@@ -1609,9 +1609,19 @@ TOOL RULES:
             # should never be called.
             # ============================================================
             reschedule_words = ["reschedule", "move my", "move the", "change the date", "change the day", "move it"]
+            cancel_words = ["cancel", "cancel my", "need to cancel", "want to cancel", "cancel that", "cancel the"]
+            
+            # If the user is explicitly asking to cancel RIGHT NOW, respect that
+            # even if there were reschedule_job calls earlier in the conversation.
+            user_explicitly_cancelling = (
+                detected_intent == "CANCEL_REQUEST"
+                or any(w in user_text.lower() for w in cancel_words)
+            )
+            
             user_wants_reschedule = detected_intent == "RESCHEDULE" or any(w in user_text.lower() for w in reschedule_words)
             # Multi-turn: check if reschedule_job was already called earlier in this conversation
-            if not user_wants_reschedule:
+            # BUT skip this if the user is now explicitly asking to cancel
+            if not user_wants_reschedule and not user_explicitly_cancelling:
                 for msg in messages:
                     if msg.get("role") == "assistant" and msg.get("tool_calls"):
                         for tc in msg["tool_calls"]:
@@ -1623,7 +1633,8 @@ TOOL RULES:
             # Multi-turn fallback: check if ANY earlier user message mentioned reschedule
             # This catches the case where turn 1 was "I want to reschedule" (no tool call),
             # and turn 2 is "this Thursday" (LLM calls cancel_job instead of reschedule_job)
-            if not user_wants_reschedule:
+            # BUT skip this if the user is now explicitly asking to cancel
+            if not user_wants_reschedule and not user_explicitly_cancelling:
                 for msg in messages:
                     if msg.get("role") == "user":
                         msg_text = msg.get("content", "").lower()
@@ -1631,6 +1642,11 @@ TOOL RULES:
                             user_wants_reschedule = True
                             print(f"   🔄 [RESCHEDULE_INTERCEPT] Detected reschedule intent from earlier user message: '{msg_text[:60]}...'")
                             break
+            
+            # If user explicitly wants to cancel, override any history-based reschedule detection
+            if user_explicitly_cancelling and user_wants_reschedule:
+                print(f"   ✅ [CANCEL_OVERRIDE] User explicitly wants to cancel — ignoring prior reschedule history")
+                user_wants_reschedule = False
             if tool_name in ("cancel_job", "cancel_appointment") and user_wants_reschedule:
                 original_name = tool_name
                 # Map cancel_job args to reschedule_job args
