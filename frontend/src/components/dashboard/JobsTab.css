@@ -3,13 +3,13 @@
 /* Header */
 .jt-header { display: flex; gap: 0.75rem; align-items: center; }
 .jt-search {
-  flex: 1; display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.5rem 0.85rem; background: white; border: 1.5px solid #e2e8f0;
-  border-radius: 8px; transition: border-color 0.2s;
+  flex: 1; display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.35rem 0.65rem; background: white; border: 1px solid #e2e8f0;
+  border-radius: 7px; transition: border-color 0.2s;
 }
-.jt-search:focus-within { border-color: #94a3b8; box-shadow: 0 0 0 3px rgba(148,163,184,0.1); }
-.jt-search i { color: #94a3b8; font-size: 0.85rem; }
-.jt-search input { border: none; outline: none; flex: 1; font-size: 0.85rem; font-family: inherit; background: transparent; color: #1e293b; }
+.jt-search:focus-within { border-color: #94a3b8; box-shadow: 0 0 0 2px rgba(148,163,184,0.08); }
+.jt-search i { color: #94a3b8; font-size: 0.75rem; }
+.jt-search input { border: none; outline: none; flex: 1; font-size: 0.82rem; font-family: inherit; background: transparent; color: #1e293b; }
 .jt-search-clear { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 2px 6px; font-size: 0.8rem; }
 
 /* Filter pills — subtle, muted */

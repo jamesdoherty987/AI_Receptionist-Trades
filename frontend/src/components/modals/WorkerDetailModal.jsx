@@ -159,7 +159,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
 
     const todayJobs = jobs.filter(job => {
       const jobDate = new Date(job.appointment_time);
-      return jobDate.toDateString() === today && job.status !== 'completed' && job.status !== 'cancelled';
+      return jobDate.toDateString() === today && job.status !== 'cancelled';
     }).sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
 
     const next7Days = jobs.filter(job => {

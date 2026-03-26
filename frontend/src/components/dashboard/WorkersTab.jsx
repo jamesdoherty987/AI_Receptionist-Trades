@@ -8,6 +8,12 @@ import AddWorkerModal from '../modals/AddWorkerModal';
 import WorkerDetailModal from '../modals/WorkerDetailModal';
 import './WorkersTab.css';
 
+// Same color palette as CalendarTab for consistency
+const WORKER_COLORS = [
+  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
+];
+
 function WorkersTab({ workers, bookings }) {
   const { hasActiveSubscription } = useAuth();
   const isSubscriptionActive = hasActiveSubscription();
@@ -63,6 +69,11 @@ function WorkersTab({ workers, bookings }) {
 
   const pendingRequests = (timeOffData?.requests || []).filter(r => r.status === 'pending');
   const pastRequests = (timeOffData?.requests || []).filter(r => r.status !== 'pending');
+
+  // Auto-expand time-off when pending requests arrive
+  useEffect(() => {
+    if (pendingRequests.length > 0) setShowTimeOff(true);
+  }, [pendingRequests.length]);
 
   const handleAddClick = () => {
     if (!isSubscriptionActive) {
@@ -179,6 +190,15 @@ function WorkersTab({ workers, bookings }) {
     onLeave: workersWithStatus.filter(w => w.isOnLeave).length,
   }), [workersWithStatus]);
 
+  // Worker color map — same order as calendar
+  const workerColorMap = useMemo(() => {
+    const map = {};
+    (workers || []).forEach((worker, index) => {
+      map[worker.id] = WORKER_COLORS[index % WORKER_COLORS.length];
+    });
+    return map;
+  }, [workers]);
+
   const handleQuickMessage = (e, worker) => {
     e.stopPropagation();
     setMessageWorkerId(worker.id);
@@ -238,65 +258,77 @@ function WorkersTab({ workers, bookings }) {
         </div>
       )}
 
-      {/* Time-Off Requests - Compact */}
-      {pendingRequests.length > 0 && (
+      {/* Time-Off Requests */}
+      {(timeOffData?.requests || []).length > 0 && (
         <div className="time-off-section">
           <button className="time-off-toggle" onClick={() => setShowTimeOff(!showTimeOff)}>
             <div className="time-off-toggle-left">
               <i className="fas fa-umbrella-beach"></i>
               <span>Time-Off Requests</span>
-              <span className="time-off-badge">{pendingRequests.length} pending</span>
+              {pendingRequests.length > 0 && (
+                <span className="time-off-badge">{pendingRequests.length} pending</span>
+              )}
             </div>
             <i className={`fas fa-chevron-${showTimeOff ? 'up' : 'down'}`}></i>
           </button>
 
           {showTimeOff && (
             <div className="time-off-content">
-              {pendingRequests.map(req => (
-                <div key={req.id} className="time-off-card pending">
-                  <div className="time-off-card-top">
-                    <div className="time-off-card-header">
-                      <span className="time-off-worker-name">{req.worker_name}</span>
-                      <span className="time-off-type-badge">{req.type}</span>
+              {pendingRequests.length > 0 && pendingRequests.map(req => {
+                const reqWorkerColor = workerColorMap[req.worker_id] || '#94a3b8';
+                return (
+                  <div key={req.id} className="time-off-card pending" style={{ borderLeftColor: reqWorkerColor }}>
+                    <div className="time-off-card-top">
+                      <div className="time-off-card-header">
+                        <span className="time-off-worker-name">
+                          <span className="time-off-color-dot" style={{ backgroundColor: reqWorkerColor }}></span>
+                          {req.worker_name}
+                        </span>
+                        <span className="time-off-type-badge">{req.type}</span>
+                      </div>
+                      <div className="time-off-dates">
+                        <i className="fas fa-calendar"></i>
+                        {new Date(req.start_date).toLocaleDateString('en-IE', { month: 'short', day: 'numeric' })}
+                        {' — '}
+                        {new Date(req.end_date).toLocaleDateString('en-IE', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </div>
+                      {req.reason && <p className="time-off-reason">{req.reason}</p>}
                     </div>
-                    <div className="time-off-dates">
-                      <i className="fas fa-calendar"></i>
-                      {new Date(req.start_date).toLocaleDateString('en-IE', { month: 'short', day: 'numeric' })}
-                      {' — '}
-                      {new Date(req.end_date).toLocaleDateString('en-IE', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    <div className="time-off-inline-actions">
+                      <input
+                        type="text"
+                        className="time-off-note-input"
+                        placeholder="Note (optional)"
+                        value={reviewNotes[req.id] || ''}
+                        onChange={e => setReviewNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
+                      />
+                      <button
+                        className="btn-pill approve"
+                        onClick={() => { reviewMutation.mutate({ id: req.id, status: 'approved', note: reviewNotes[req.id] || '' }); }}
+                        disabled={reviewMutation.isPending}
+                        title="Approve"
+                      >
+                        <i className="fas fa-check"></i>
+                      </button>
+                      <button
+                        className="btn-pill deny"
+                        onClick={() => { reviewMutation.mutate({ id: req.id, status: 'denied', note: reviewNotes[req.id] || '' }); }}
+                        disabled={reviewMutation.isPending}
+                        title="Deny"
+                      >
+                        <i className="fas fa-times"></i>
+                      </button>
                     </div>
-                    {req.reason && <p className="time-off-reason">{req.reason}</p>}
                   </div>
-                  <div className="time-off-inline-actions">
-                    <input
-                      type="text"
-                      className="time-off-note-input"
-                      placeholder="Note (optional)"
-                      value={reviewNotes[req.id] || ''}
-                      onChange={e => setReviewNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
-                    />
-                    <button
-                      className="btn-pill approve"
-                      onClick={() => { reviewMutation.mutate({ id: req.id, status: 'approved', note: reviewNotes[req.id] || '' }); }}
-                      disabled={reviewMutation.isPending}
-                    >
-                      <i className="fas fa-check"></i>
-                    </button>
-                    <button
-                      className="btn-pill deny"
-                      onClick={() => { reviewMutation.mutate({ id: req.id, status: 'denied', note: reviewNotes[req.id] || '' }); }}
-                      disabled={reviewMutation.isPending}
-                    >
-                      <i className="fas fa-times"></i>
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
 
               {pastRequests.length > 0 && (
                 <div className="time-off-past-summary">
-                  {pastRequests.slice(0, 3).map(req => (
+                  <span className="time-off-past-label">Recent</span>
+                  {pastRequests.slice(0, 5).map(req => (
                     <div key={req.id} className={`time-off-past-item ${req.status}`}>
+                      <span className="time-off-color-dot" style={{ backgroundColor: workerColorMap[req.worker_id] || '#94a3b8' }}></span>
                       <span className="time-off-worker-name">{req.worker_name}</span>
                       <span className="time-off-dates-inline">
                         {new Date(req.start_date).toLocaleDateString('en-IE', { month: 'short', day: 'numeric' })}
@@ -334,11 +366,13 @@ function WorkersTab({ workers, bookings }) {
         ) : (
           filteredWorkers.map((worker) => {
             const unread = unreadCounts[worker.id] || unreadCounts[String(worker.id)] || 0;
+            const workerColor = workerColorMap[worker.id] || '#94a3b8';
             return (
               <div 
                 key={worker.id} 
                 className={`worker-card ${worker.isBusy ? 'is-busy' : ''} ${worker.isOnLeave ? 'is-leave' : ''}`}
                 onClick={() => setSelectedWorkerId(worker.id)}
+                style={{ '--worker-color': workerColor }}
               >
                 <div className="worker-avatar">
                   {worker.image_url ? (
