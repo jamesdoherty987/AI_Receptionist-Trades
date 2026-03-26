@@ -4128,6 +4128,10 @@ def materials_api():
                 (company_id,)
             )
             materials = [dict(r) for r in cursor.fetchall()]
+            # Convert Decimal to float for JSON serialization
+            for m in materials:
+                if m.get('unit_price') is not None:
+                    m['unit_price'] = float(m['unit_price'])
             return jsonify({"materials": materials})
         finally:
             cursor.close()
@@ -4253,7 +4257,12 @@ def job_materials_api(booking_id):
                 (booking_id, company_id)
             )
             items = [dict(r) for r in cursor.fetchall()]
-            total = sum(float(i.get('total_cost', 0)) for i in items)
+            # Convert Decimal to float for JSON serialization
+            for item in items:
+                for k in ('unit_price', 'quantity', 'total_cost'):
+                    if item.get(k) is not None:
+                        item[k] = float(item[k])
+            total = sum(item.get('total_cost', 0) for item in items)
             return jsonify({"materials": items, "total_cost": round(total, 2)})
         finally:
             cursor.close()
@@ -4407,7 +4416,15 @@ def worker_job_materials_api(job_id):
                 (company_id,)
             )
             catalog = [dict(r) for r in cursor.fetchall()]
-            total = sum(float(i.get('total_cost', 0)) for i in items)
+            # Convert Decimal to float for JSON serialization
+            for item in items:
+                for k in ('unit_price', 'quantity', 'total_cost'):
+                    if item.get(k) is not None:
+                        item[k] = float(item[k])
+            for c in catalog:
+                if c.get('unit_price') is not None:
+                    c['unit_price'] = float(c['unit_price'])
+            total = sum(item.get('total_cost', 0) for item in items)
             return jsonify({"materials": items, "catalog": catalog, "total_cost": round(total, 2)})
         finally:
             cursor.close()
@@ -7539,13 +7556,15 @@ def get_finances():
         materials_by_booking = {}
         try:
             conn = db.get_connection()
-            cur = conn.cursor(cursor_factory=_RDC)
-            cur.execute("SELECT booking_id, SUM(total_cost) as cost FROM job_materials WHERE company_id = %s GROUP BY booking_id", (company_id,))
-            for row in cur.fetchall():
-                materials_by_booking[row['booking_id']] = float(row['cost'] or 0)
-                total_materials_cost += float(row['cost'] or 0)
-            cur.close()
-            db.return_connection(conn)
+            try:
+                cur = conn.cursor(cursor_factory=_RDC)
+                cur.execute("SELECT booking_id, SUM(total_cost) as cost FROM job_materials WHERE company_id = %s GROUP BY booking_id", (company_id,))
+                for row in cur.fetchall():
+                    materials_by_booking[row['booking_id']] = float(row['cost'] or 0)
+                    total_materials_cost += float(row['cost'] or 0)
+                cur.close()
+            finally:
+                db.return_connection(conn)
         except Exception:
             pass  # Table might not exist yet
 

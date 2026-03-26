@@ -101,18 +101,6 @@ function CustomersTab({ clients, bookings = [] }) {
                     </div>
                   )}
                 </div>
-                {client.description && (
-                  <div className="customer-ai-summary">
-                    <i className="fas fa-robot"></i>
-                    <span>{client.description}</span>
-                  </div>
-                )}
-                {client.notes && (
-                  <div className="customer-notes">
-                    <i className="fas fa-sticky-note"></i>
-                    <span>{client.notes}</span>
-                  </div>
-                )}
               </div>
               <div className="customer-stats">
                 <div className="stat-item">

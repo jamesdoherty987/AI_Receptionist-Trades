@@ -389,7 +389,7 @@ function FinancesTab({ showInvoiceButtons = true }) {
         {total_materials_cost > 0 && (
           <div className="revenue-card profit">
             <div className="revenue-icon" style={{ background: gross_profit >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)' }}>
-              <i className={`fas ${gross_profit >= 0 ? 'fa-trending-up' : 'fa-trending-down'}`} style={{ color: gross_profit >= 0 ? '#10b981' : '#ef4444' }}></i>
+              <i className={`fas ${gross_profit >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'}`} style={{ color: gross_profit >= 0 ? '#10b981' : '#ef4444' }}></i>
             </div>
             <div className="revenue-content">
               <div className="revenue-value" style={{ color: gross_profit >= 0 ? '#10b981' : '#ef4444' }}>{formatCurrency(gross_profit)}</div>

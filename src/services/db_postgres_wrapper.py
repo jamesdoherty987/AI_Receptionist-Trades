@@ -136,6 +136,13 @@ class PostgreSQLDatabaseWrapper:
                     google_calendar_id TEXT,
                     google_credentials_json TEXT,
                     ai_enabled BOOLEAN DEFAULT true,
+                    -- Feature toggles
+                    show_finances_tab BOOLEAN DEFAULT true,
+                    show_insights_tab BOOLEAN DEFAULT true,
+                    show_invoice_buttons BOOLEAN DEFAULT true,
+                    send_confirmation_sms BOOLEAN DEFAULT true,
+                    send_reminder_sms BOOLEAN DEFAULT true,
+                    gcal_invite_workers BOOLEAN DEFAULT false,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -556,6 +563,15 @@ class PostgreSQLDatabaseWrapper:
             'coverage_area': 'TEXT',
             # Feature flags
             'remove_stripe_connect': 'BOOLEAN DEFAULT false',
+            # Dashboard feature toggles
+            'show_finances_tab': 'BOOLEAN DEFAULT true',
+            'show_insights_tab': 'BOOLEAN DEFAULT true',
+            'show_invoice_buttons': 'BOOLEAN DEFAULT true',
+            # SMS toggles
+            'send_confirmation_sms': 'BOOLEAN DEFAULT true',
+            'send_reminder_sms': 'BOOLEAN DEFAULT true',
+            # Google Calendar
+            'gcal_invite_workers': 'BOOLEAN DEFAULT false',
             # Business settings (may have been missed in original schema)
             'business_hours': "TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)'",
             'trade_type': 'TEXT',
