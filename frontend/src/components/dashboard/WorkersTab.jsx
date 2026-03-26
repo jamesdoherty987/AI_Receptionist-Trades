@@ -3,9 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../Toast';
 import { getWorkerHoursThisWeek, getCompanyTimeOffRequests, reviewTimeOffRequest, getUnreadMessageCounts } from '../../services/api';
+import MessageWorkerModal from '../modals/MessageWorkerModal';
 import AddWorkerModal from '../modals/AddWorkerModal';
 import WorkerDetailModal from '../modals/WorkerDetailModal';
-import MessageWorkerModal from '../modals/MessageWorkerModal';
 import './WorkersTab.css';
 
 function WorkersTab({ workers, bookings }) {
