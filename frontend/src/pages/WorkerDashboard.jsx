@@ -245,9 +245,7 @@ function WorkerDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['worker-job', selectedJobId] });
-      setUploadingPhoto(false);
     },
-    onError: () => { setUploadingPhoto(false); },
   });
 
   const timeOffMutation = useMutation({
@@ -312,40 +310,45 @@ function WorkerDashboard() {
   const handleLogout = async () => { await logout(); navigate('/worker/login'); };
 
   const handlePhotoSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const isVideo = file.type.startsWith('video/');
-    const isImage = file.type.startsWith('image/');
-
-    if (!isImage && !isVideo) return;
-
-    const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
-    if (file.size > maxSize) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
 
     setUploadingPhoto(true);
 
-    if (isVideo) {
-      // Upload video as raw file via FormData
-      photoMutation.mutate(file);
-    } else {
-      // Compress image before uploading
-      const canvas = document.createElement('canvas');
-      const img = new Image();
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        img.onload = () => {
-          let w = img.width, h = img.height;
-          if (w > 1200) { h = (h * 1200) / w; w = 1200; }
-          canvas.width = w; canvas.height = h;
-          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          const result = canvas.toDataURL('image/jpeg', 0.8);
-          photoMutation.mutate(result);
+    const processFile = (file) => new Promise((resolve) => {
+      const isVideo = file.type.startsWith('video/');
+      const isImage = file.type.startsWith('image/');
+      if (!isImage && !isVideo) { resolve(); return; }
+
+      const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+      if (file.size > maxSize) { resolve(); return; }
+
+      if (isVideo) {
+        photoMutation.mutate(file, { onSettled: resolve });
+      } else {
+        const canvas = document.createElement('canvas');
+        const img = new Image();
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          img.onload = () => {
+            let w = img.width, h = img.height;
+            if (w > 1200) { h = (h * 1200) / w; w = 1200; }
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            const result = canvas.toDataURL('image/jpeg', 0.8);
+            photoMutation.mutate(result, { onSettled: resolve });
+          };
+          img.src = ev.target.result;
         };
-        img.src = ev.target.result;
-      };
-      reader.readAsDataURL(file);
+        reader.readAsDataURL(file);
+      }
+    });
+
+    for (const file of files) {
+      await processFile(file);
     }
+
+    setUploadingPhoto(false);
 
     if (photoInputRef.current) photoInputRef.current.value = '';
   };
@@ -767,7 +770,7 @@ function WorkerDashboard() {
                           {uploadingPhoto ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-plus"></i>}
                           {uploadingPhoto ? ' Uploading...' : ' Add Media'}
                         </button>
-                        <input ref={photoInputRef} type="file" accept="image/*,video/mp4,video/quicktime,video/webm" capture="environment" onChange={handlePhotoSelect} style={{ display: 'none' }} />
+                        <input ref={photoInputRef} type="file" accept="image/*,video/mp4,video/quicktime,video/webm" multiple onChange={handlePhotoSelect} style={{ display: 'none' }} />
                       </div>
                       {job.photo_urls && job.photo_urls.length > 0 ? (
                         <div className="wjd-photos-grid">

@@ -718,6 +718,6 @@ def configure_secure_session(app):
         SESSION_COOKIE_SECURE=is_production,  # Must be True for SameSite=None
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='None' if is_production else 'Lax',  # None for cross-origin
-        PERMANENT_SESSION_LIFETIME=timedelta(hours=24),
+        PERMANENT_SESSION_LIFETIME=timedelta(days=5),
         SESSION_REFRESH_EACH_REQUEST=True,
     )
