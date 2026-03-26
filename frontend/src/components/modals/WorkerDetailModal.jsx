@@ -166,7 +166,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
       const jobDate = new Date(job.appointment_time);
       const isAfterToday = jobDate.toDateString() !== today && jobDate > now;
       const isWithinWeek = jobDate <= weekFromNow;
-      return isAfterToday && isWithinWeek && job.status !== 'completed' && job.status !== 'cancelled';
+      return isAfterToday && isWithinWeek && job.status !== 'cancelled';
     }).sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
 
     const completed = jobs.filter(j => j.status === 'completed').length;

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getBookings, getWorkers, getBusinessHours, getCompanyTimeOffRequests } from '../../services/api';
+import { getBookings, getWorkers, getBusinessHours, getCompanyTimeOffRequests, getBusinessSettings } from '../../services/api';
 import { getStatusBadgeClass } from '../../utils/helpers';
 import LoadingSpinner from '../LoadingSpinner';
 import JobDetailModal from '../modals/JobDetailModal';
@@ -105,6 +105,14 @@ function CalendarTab() {
   const [selectedWorkerId, setSelectedWorkerId] = useState(null);
   const [viewMode, setViewMode] = useState('month'); // 'month' or 'week'
   
+  const { data: settings } = useQuery({
+    queryKey: ['business-settings'],
+    queryFn: async () => {
+      const response = await getBusinessSettings();
+      return response.data;
+    },
+  });
+
   const { data: bookings, isLoading: bookingsLoading } = useQuery({
     queryKey: ['bookings'],
     queryFn: async () => {
@@ -791,6 +799,7 @@ function CalendarTab() {
         isOpen={!!selectedJobId}
         onClose={() => setSelectedJobId(null)}
         jobId={selectedJobId}
+        showInvoiceButtons={settings?.show_invoice_buttons !== false}
       />
     </div>
   );

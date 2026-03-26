@@ -394,7 +394,7 @@ function Landing() {
               </button>
             </div>
             <div className="phone-demo-visual">
-              <Tilt tiltMaxAngleX={isMobile ? 8 : 15} tiltMaxAngleY={isMobile ? 8 : 15} perspective={1000} scale={1.02} transitionSpeed={2000} gyroscope={true} className="phone-tilt-wrapper">
+              <Tilt tiltMaxAngleX={isMobile ? 8 : 15} tiltMaxAngleY={isMobile ? 8 : 15} perspective={1000} scale={1.02} transitionSpeed={2000} gyroscope={false} className="phone-tilt-wrapper">
                 <div className={`iphone-frame ${isCallPlaying ? 'call-active' : ''}`}>
                   <div className="iphone-btn-silent"></div><div className="iphone-btn-vol-up"></div><div className="iphone-btn-vol-down"></div><div className="iphone-btn-power"></div>
                   <div className="iphone-bezel"><div className="iphone-screen">
