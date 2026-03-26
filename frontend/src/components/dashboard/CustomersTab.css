@@ -1,260 +1,49 @@
-.customers-tab {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
+.customers-tab { display: flex; flex-direction: column; gap: 1.25rem; }
 
-.customers-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
+.customers-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.customers-header h2 { font-size: 1.3rem; font-weight: 700; color: #1e293b; margin: 0; }
 
-.customers-header h2 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
+.customers-controls { display: flex; align-items: center; gap: 0.75rem; }
 
-.customers-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.customers-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
+.customers-list { display: flex; flex-direction: column; gap: 0.5rem; }
 
 .customer-card {
-  background: white;
-  padding: 1.5rem;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  transition: all var(--transition-base);
+  background: white; padding: 1rem 1.25rem; border-radius: 10px;
+  border: 1px solid #e8ecf1; display: flex; align-items: center; gap: 1rem;
+  transition: all 0.15s; cursor: pointer;
 }
-
-.customer-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}
+.customer-card:hover { border-color: #cbd5e1; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
 
 .customer-avatar {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 1.5rem;
-  flex-shrink: 0;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-size: 1.1rem; flex-shrink: 0;
 }
 
-.customer-info {
-  flex: 1;
-}
+.customer-info { flex: 1; min-width: 0; }
+.customer-info h3 { font-size: 0.95rem; font-weight: 600; color: #1e293b; margin: 0 0 0.25rem 0; }
 
-.customer-info h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 0.5rem;
-}
+.customer-details { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.customer-detail { display: flex; align-items: center; gap: 0.35rem; color: #64748b; font-size: 0.82rem; }
+.customer-detail i { color: #94a3b8; width: 14px; font-size: 0.72rem; }
 
-.customer-details {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.5rem;
-  margin-bottom: 0.75rem;
-}
+.customer-stats { flex-shrink: 0; }
+.stat-item { text-align: center; }
+.stat-number { font-size: 1.3rem; font-weight: 700; color: #6366f1; line-height: 1; }
+.stat-text { font-size: 0.72rem; color: #94a3b8; margin-top: 0.15rem; }
 
-.customer-detail {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-}
-
-.customer-detail i {
-  color: var(--accent-blue);
-  width: 16px;
-}
-
-.customer-notes {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-  margin-top: 0.75rem;
-}
-
-.customer-notes i {
-  color: var(--accent-purple);
-  margin-top: 0.25rem;
-}
-
-.customer-notes span {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-
-.customer-stats {
-  display: flex;
-  gap: 1.5rem;
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-number {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--accent-blue);
-  line-height: 1;
-}
-
-.stat-text {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  margin-top: 0.25rem;
-}
+/* Hidden — moved to detail modal */
+.customer-ai-summary, .customer-notes { display: none; }
 
 @media (max-width: 768px) {
-  .customers-tab {
-    gap: 1rem;
-  }
-
-  .customers-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.75rem;
-  }
-
-  .customers-header h2 {
-    font-size: 1.25rem;
-  }
-
-  .customers-controls {
-    flex-direction: column;
-    gap: 0.625rem;
-  }
-
-  .customers-controls .search-box {
-    min-width: 100%;
-  }
-
-  .customers-controls .btn {
-    justify-content: center;
-  }
-
-  .customers-list {
-    gap: 0.625rem;
-  }
-
-  /* Compact customer cards */
-  .customer-card {
-    flex-direction: row;
-    align-items: center;
-    padding: 0.875rem;
-    border-radius: var(--radius-md);
-    gap: 0.75rem;
-  }
-
-  .customer-avatar {
-    width: 40px;
-    height: 40px;
-    font-size: 1rem;
-  }
-
-  .customer-info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .customer-info h3 {
-    font-size: 0.95rem;
-    margin-bottom: 0.25rem;
-  }
-
-  .customer-details {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0.625rem;
-    margin-bottom: 0;
-  }
-
-  .customer-detail {
-    font-size: 0.8rem;
-    gap: 0.375rem;
-  }
-
-  .customer-detail i {
-    width: 14px;
-    font-size: 0.75rem;
-  }
-
-  .customer-notes {
-    display: none;
-  }
-
-  .customer-stats {
-    flex-shrink: 0;
-    width: auto;
-    gap: 0;
-  }
-
-  .stat-item {
-    text-align: center;
-  }
-
-  .stat-number {
-    font-size: 1.25rem;
-  }
-
-  .stat-text {
-    font-size: 0.7rem;
-  }
-}
-
-.customer-ai-summary {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  background: linear-gradient(135deg, #f0f4ff, #f5f0ff);
-  border-radius: var(--radius-md);
-  margin-top: 0.75rem;
-  border-left: 3px solid var(--accent-purple);
-}
-
-.customer-ai-summary i {
-  color: var(--accent-purple);
-  margin-top: 0.25rem;
-  flex-shrink: 0;
-}
-
-.customer-ai-summary span {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-
-@media (max-width: 768px) {
-  .customer-ai-summary {
-    display: none;
-  }
+  .customers-header { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+  .customers-controls { flex-direction: column; gap: 0.5rem; }
+  .customers-controls .search-box { min-width: 100%; }
+  .customers-controls .btn { justify-content: center; }
+  .customer-card { padding: 0.75rem; gap: 0.75rem; }
+  .customer-avatar { width: 38px; height: 38px; font-size: 0.95rem; }
+  .customer-info h3 { font-size: 0.88rem; }
+  .customer-detail { font-size: 0.75rem; }
+  .stat-number { font-size: 1.1rem; }
 }

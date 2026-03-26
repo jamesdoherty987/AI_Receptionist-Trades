@@ -7,35 +7,34 @@
 /* Overview Cards */
 .insights-overview {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.5rem;
 }
 
 .overview-card {
   background: white;
-  padding: 1rem 1.25rem;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  border: 1px solid #f1f5f9;
-  transition: all 0.2s;
-}
-
-.overview-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px);
-}
-
-.overview-icon {
-  width: 42px;
-  height: 42px;
+  padding: 0.75rem 1rem;
   border-radius: 10px;
   display: flex;
   align-items: center;
+  gap: 0.6rem;
+  border: 1px solid #e8ecf1;
+  transition: all 0.15s;
+}
+
+.overview-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.overview-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
+  font-size: 0.95rem;
   flex-shrink: 0;
 }
 
@@ -349,26 +348,52 @@
 @media (max-width: 768px) {
   .insights-overview {
     grid-template-columns: repeat(2, 1fr);
+    gap: 0.4rem;
   }
 
   .overview-card {
-    padding: 0.75rem 1rem;
+    padding: 0.6rem 0.75rem;
+  }
+
+  .overview-icon {
+    width: 32px; height: 32px; font-size: 0.85rem;
   }
 
   .overview-value {
-    font-size: 1.2rem;
+    font-size: 1rem;
+  }
+
+  .overview-label {
+    font-size: 0.65rem;
   }
 
   .insights-charts-row {
     grid-template-columns: 1fr;
   }
 
+  .insights-card {
+    padding: 0.85rem;
+  }
+
+  .insights-card h3 {
+    font-size: 0.85rem;
+  }
+
   .bar-chart {
-    height: 110px;
+    height: 100px;
   }
 
   .leaderboard-bar-track {
-    width: 50px;
+    width: 40px;
+  }
+
+  .heatmap-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .heatmap-grid {
+    min-width: 400px;
   }
 
   .heatmap-cell {
@@ -376,12 +401,12 @@
   }
 
   .service-pop-label {
-    width: 70px;
-    font-size: 0.68rem;
+    width: 60px;
+    font-size: 0.65rem;
   }
 
   .service-pop-count {
-    width: 28px;
-    font-size: 0.68rem;
+    width: 24px;
+    font-size: 0.65rem;
   }
 }
