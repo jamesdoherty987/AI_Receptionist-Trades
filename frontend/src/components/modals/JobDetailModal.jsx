@@ -55,11 +55,10 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: isOpen && !!jobId,
-    staleTime: 30 * 1000, // 30 seconds
-    gcTime: 5 * 60 * 1000 // 5 minutes
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000
   });
 
-  // Check invoice configuration
   const { data: invoiceConfig } = useQuery({
     queryKey: ['invoice-config'],
     queryFn: async () => {
@@ -67,7 +66,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: isOpen,
-    staleTime: 60 * 1000, // 1 minute
+    staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000
   });
 
@@ -88,11 +87,10 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: isOpen && !!jobId,
-    staleTime: 30 * 1000, // 30 seconds
-    gcTime: 5 * 60 * 1000 // 5 minutes
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000
   });
 
-  // Fetch workers with availability status for this job
   const { data: workersAvailability } = useQuery({
     queryKey: ['available-workers', jobId],
     queryFn: async () => {
@@ -104,7 +102,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     gcTime: 5 * 60 * 1000
   });
 
-  // Fallback to all workers if availability check not available
   const { data: allWorkers } = useQuery({
     queryKey: ['workers'],
     queryFn: async () => {
@@ -112,11 +109,10 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: showAssignWorker && !workersAvailability,
-    staleTime: 60 * 1000, // 1 minute
-    gcTime: 10 * 60 * 1000 // 10 minutes
+    staleTime: 60 * 1000,
+    gcTime: 10 * 60 * 1000
   });
 
-  // Job materials
   const { data: jobMaterialsData } = useQuery({
     queryKey: ['job-materials', jobId],
     queryFn: async () => { const r = await getJobMaterials(jobId); return r.data; },
@@ -124,7 +120,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     staleTime: 30 * 1000,
   });
 
-  // Materials catalog for autocomplete
   const { data: materialsCatalog } = useQuery({
     queryKey: ['materials'],
     queryFn: async () => { const r = await getMaterials(); return r.data; },
@@ -153,14 +148,12 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     onError: () => addToast('Failed to remove', 'error'),
   });
 
-  // Populate edit form when job data is loaded
   useEffect(() => {
     if (job) {
       const appointmentDate = job.appointment_time ? new Date(job.appointment_time) : null;
       const formattedDateTime = appointmentDate 
         ? appointmentDate.toISOString().slice(0, 16) 
         : '';
-      
       setEditFormData({
         customer_name: job.customer_name || '',
         phone: job.phone || job.phone_number || '',
@@ -177,7 +170,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     }
   }, [job]);
 
-  // Reset edit mode when modal closes
   useEffect(() => {
     if (!isOpen) {
       setIsEditing(false);
@@ -203,19 +195,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const statusMutation = useMutation({
     mutationFn: ({ id, status }) => updateBooking(id, { status }),
     onMutate: async ({ status }) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['booking', jobId] });
-      
-      // Snapshot previous value
       const previousJob = queryClient.getQueryData(['booking', jobId]);
-      
-      // Optimistically update to the new value
-      queryClient.setQueryData(['booking', jobId], (old) => ({
-        ...old,
-        status: status
-      }));
-      
-      // Return context with previous value
+      queryClient.setQueryData(['booking', jobId], (old) => ({ ...old, status }));
       return { previousJob };
     },
     onSuccess: () => {
@@ -224,7 +206,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       addToast('Status updated successfully!', 'success');
     },
     onError: (error, variables, context) => {
-      // Rollback to previous value on error
       if (context?.previousJob) {
         queryClient.setQueryData(['booking', jobId], context.previousJob);
       }
@@ -235,24 +216,16 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const assignMutation = useMutation({
     mutationFn: ({ jobId, workerId, force }) => assignWorkerToJob(jobId, { worker_id: workerId, force }),
     onMutate: async ({ workerId }) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['job-workers', jobId] });
-      
-      // Snapshot previous value
       const previousWorkers = queryClient.getQueryData(['job-workers', jobId]);
-      
-      // Find the worker being assigned from availability data or all workers
       const availabilityData = queryClient.getQueryData(['available-workers', jobId]);
       const allWorkersData = queryClient.getQueryData(['workers']);
       const workerToAdd = availabilityData?.available?.find(w => w.id === workerId) 
         || availabilityData?.busy?.find(w => w.id === workerId)
         || allWorkersData?.find(w => w.id === workerId);
-      
-      // Optimistically add worker
       if (workerToAdd) {
         queryClient.setQueryData(['job-workers', jobId], (old = []) => [...old, workerToAdd]);
       }
-      
       return { previousWorkers };
     },
     onSuccess: (response) => {
@@ -269,18 +242,12 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       }
     },
     onError: (error, variables, context) => {
-      // Rollback on error
       if (context?.previousWorkers) {
         queryClient.setQueryData(['job-workers', jobId], context.previousWorkers);
       }
-      
-      // Check if it's a conflict error
       const errorData = error.response?.data;
       if (error.response?.status === 409 && errorData?.can_force) {
-        // Show conflict warning with option to force
-        const conflictMsg = errorData.conflicts?.map(c => 
-          `${c.time} - ${c.service}`
-        ).join(', ');
+        const conflictMsg = errorData.conflicts?.map(c => `${c.time} - ${c.service}`).join(', ');
         addToast(`Worker has conflicts: ${conflictMsg}. Check "Force assign" to override.`, 'warning');
         setForceAssign(false);
       } else {
@@ -292,17 +259,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const removeMutation = useMutation({
     mutationFn: ({ jobId, workerId }) => removeWorkerFromJob(jobId, { worker_id: workerId }),
     onMutate: async ({ workerId }) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['job-workers', jobId] });
-      
-      // Snapshot previous value
       const previousWorkers = queryClient.getQueryData(['job-workers', jobId]);
-      
-      // Optimistically remove worker
-      queryClient.setQueryData(['job-workers', jobId], (old = []) => 
-        old.filter(w => w.id !== workerId)
-      );
-      
+      queryClient.setQueryData(['job-workers', jobId], (old = []) => old.filter(w => w.id !== workerId));
       return { previousWorkers };
     },
     onSuccess: () => {
@@ -311,7 +270,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       addToast('Worker removed', 'success');
     },
     onError: (error, variables, context) => {
-      // Rollback on error
       if (context?.previousWorkers) {
         queryClient.setQueryData(['job-workers', jobId], context.previousWorkers);
       }
@@ -328,17 +286,13 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       setInvoiceData(null);
     },
     onError: (error) => {
-      const message = error.response?.data?.error || 'Failed to send invoice';
-      addToast(message, 'error');
+      addToast(error.response?.data?.error || 'Failed to send invoice', 'error');
     }
   });
 
   const photoUploadMutation = useMutation({
     mutationFn: (data) => {
-      // data is either a base64 string (image) or a File object (video)
-      if (typeof data === 'string') {
-        return uploadJobPhoto(jobId, data);
-      }
+      if (typeof data === 'string') return uploadJobPhoto(jobId, data);
       return uploadJobMedia(jobId, data);
     },
     onSuccess: () => {
@@ -358,9 +312,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
       addToast('Photo removed', 'success');
     },
-    onError: () => {
-      addToast('Failed to remove photo', 'error');
-    }
+    onError: () => addToast('Failed to remove photo', 'error'),
   });
 
   const handleSendInvoice = () => {
@@ -372,20 +324,11 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       addToast('Cannot send invoice: No charge amount set', 'warning');
       return;
     }
-    
-    // Check if invoice service is configured
     if (invoiceConfig && !invoiceConfig.can_send_invoice) {
       const warnings = invoiceConfig.warnings || [];
-      if (warnings.length > 0) {
-        addToast(warnings[0], 'error');
-      } else {
-        addToast('Invoice service is not configured. Please check your settings.', 'error');
-      }
+      addToast(warnings[0] || 'Invoice service is not configured. Please check your settings.', 'error');
       return;
     }
-    
-    // Open confirmation modal instead of sending directly
-    // Warn if bank details are missing
     if (!businessSettings?.bank_iban && !businessSettings?.bank_account_holder) {
       addToast('Your payment details are missing. Add them in Settings so your invoices include bank info.', 'warning');
     }
@@ -393,7 +336,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   };
 
   const handleConfirmInvoice = (editedData) => {
-    // Update the job with edited data first if needed, then send invoice
     setInvoiceData(editedData);
     invoiceMutation.mutate({ jobId, invoiceData: editedData });
   };
@@ -403,119 +345,72 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const handlePhotoSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     const isVideo = file.type.startsWith('video/');
     const isImage = file.type.startsWith('image/');
-
-    if (!isImage && !isVideo) {
-      addToast('Please select an image or video file', 'warning');
-      return;
-    }
-
+    if (!isImage && !isVideo) { addToast('Please select an image or video file', 'warning'); return; }
     const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      addToast(`File must be under ${isVideo ? '50' : '10'}MB`, 'warning');
-      return;
-    }
-
+    if (file.size > maxSize) { addToast(`File must be under ${isVideo ? '50' : '10'}MB`, 'warning'); return; }
     setUploadingPhoto(true);
-
     if (isVideo) {
-      // Upload video as raw file via FormData
       photoUploadMutation.mutate(file);
     } else {
-      // Compress image before uploading
       const canvas = document.createElement('canvas');
       const img = new Image();
       const reader = new FileReader();
-      reader.onerror = () => {
-        addToast('Failed to read file', 'error');
-        setUploadingPhoto(false);
-      };
+      reader.onerror = () => { addToast('Failed to read file', 'error'); setUploadingPhoto(false); };
       reader.onload = (ev) => {
-        img.onerror = () => {
-          addToast('Failed to load image', 'error');
-          setUploadingPhoto(false);
-        };
+        img.onerror = () => { addToast('Failed to load image', 'error'); setUploadingPhoto(false); };
         img.onload = () => {
           let w = img.width, h = img.height;
           const maxW = 1200;
           if (w > maxW) { h = (h * maxW) / w; w = maxW; }
-          canvas.width = w;
-          canvas.height = h;
+          canvas.width = w; canvas.height = h;
           canvas.getContext('2d').drawImage(img, 0, 0, w, h);
           let quality = 0.8;
           let result = canvas.toDataURL('image/jpeg', quality);
-          while (result.length > 400 * 1024 && quality > 0.2) {
-            quality -= 0.1;
-            result = canvas.toDataURL('image/jpeg', quality);
-          }
+          while (result.length > 400 * 1024 && quality > 0.2) { quality -= 0.1; result = canvas.toDataURL('image/jpeg', quality); }
           photoUploadMutation.mutate(result);
         };
         img.src = ev.target.result;
       };
       reader.readAsDataURL(file);
     }
-
     if (photoInputRef.current) photoInputRef.current.value = '';
   };
 
-  const handleDeletePhoto = (photoUrl) => {
-    if (window.confirm('Remove this photo?')) {
-      photoDeleteMutation.mutate(photoUrl);
-    }
-  };
+  const handleDeletePhoto = (photoUrl) => { if (window.confirm('Remove this photo?')) photoDeleteMutation.mutate(photoUrl); };
 
   const handleStatusChange = (newStatus) => {
     statusMutation.mutate({ id: jobId, status: newStatus });
-    // Close the dropdown
     document.querySelectorAll('.status-dropdown-menu.show, .status-dropdown-backdrop.show').forEach(el => el.classList.remove('show'));
   };
 
   const handleAssignWorker = () => {
-    if (!selectedWorkerId) {
-      addToast('Please select a worker', 'warning');
-      return;
-    }
+    if (!selectedWorkerId) { addToast('Please select a worker', 'warning'); return; }
     assignMutation.mutate({ jobId, workerId: selectedWorkerId, force: forceAssign });
   };
 
   const handleEditChange = (e) => {
     const { name, value } = e.target;
-    setEditFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setEditFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSaveEdit = () => {
-    if (!editFormData.appointment_time || !editFormData.service_type) {
-      addToast('Please fill in required fields', 'warning');
-      return;
-    }
+    if (!editFormData.appointment_time || !editFormData.service_type) { addToast('Please fill in required fields', 'warning'); return; }
     editMutation.mutate(editFormData);
   };
 
   const handleCancelEdit = () => {
-    // Reset form data to original job values
     if (job) {
       const appointmentDate = job.appointment_time ? new Date(job.appointment_time) : null;
-      const formattedDateTime = appointmentDate 
-        ? appointmentDate.toISOString().slice(0, 16) 
-        : '';
-      
+      const formattedDateTime = appointmentDate ? appointmentDate.toISOString().slice(0, 16) : '';
       setEditFormData({
-        customer_name: job.customer_name || '',
-        phone: job.phone || job.phone_number || '',
-        email: job.email || '',
-        appointment_time: formattedDateTime,
-        service_type: job.service_type || job.service || '',
-        property_type: job.property_type || '',
-        job_address: job.job_address || job.address || '',
-        eircode: job.eircode || '',
+        customer_name: job.customer_name || '', phone: job.phone || job.phone_number || '',
+        email: job.email || '', appointment_time: formattedDateTime,
+        service_type: job.service_type || job.service || '', property_type: job.property_type || '',
+        job_address: job.job_address || job.address || '', eircode: job.eircode || '',
         estimated_charge: (job.estimated_charge || job.charge) ? Math.round(parseFloat(job.estimated_charge || job.charge) * 100) / 100 : '',
-        duration_minutes: job.duration_minutes || 60,
-        notes: job.notes || ''
+        duration_minutes: job.duration_minutes || 60, notes: job.notes || ''
       });
     }
     setIsEditing(false);
@@ -534,98 +429,57 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
 
   if (!job) return null;
 
-  // Get workers not already assigned, with availability info
   const getUnassignedWorkers = () => {
     const assignedIds = new Set(assignedWorkers?.map(w => w.id) || []);
-    
     if (workersAvailability) {
-      // Use availability data - combine available and busy, mark availability
-      const available = (workersAvailability.available || [])
-        .filter(w => !assignedIds.has(w.id))
-        .map(w => ({ ...w, isAvailable: true }));
-      const busy = (workersAvailability.busy || [])
-        .filter(w => !assignedIds.has(w.id))
-        .map(w => ({ ...w, isAvailable: false }));
+      const available = (workersAvailability.available || []).filter(w => !assignedIds.has(w.id)).map(w => ({ ...w, isAvailable: true }));
+      const busy = (workersAvailability.busy || []).filter(w => !assignedIds.has(w.id)).map(w => ({ ...w, isAvailable: false }));
       return [...available, ...busy];
     }
-    
-    // Fallback to all workers without availability info
-    return (allWorkers || [])
-      .filter(w => !assignedIds.has(w.id))
-      .map(w => ({ ...w, isAvailable: true }));
+    return (allWorkers || []).filter(w => !assignedIds.has(w.id)).map(w => ({ ...w, isAvailable: true }));
   };
-  
   const unassignedWorkers = getUnassignedWorkers();
 
   const getDirectionsUrl = () => {
     const address = job.job_address || job.address;
     const eircode = job.eircode;
-    
-    // Build the most specific destination possible
     let destination = '';
-    if (address && eircode) {
-      // Use both for best accuracy
-      destination = `${address}, ${eircode}`;
-    } else if (eircode) {
-      // Eircode alone is very accurate in Ireland
-      destination = eircode;
-    } else if (address) {
-      // Fall back to address only
-      destination = address;
-    }
-    
-    if (destination) {
-      console.log('Get Directions - Destination:', destination);
-      return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
-    }
-    
-    console.warn('No address or eircode found for job:', job);
+    if (address && eircode) destination = `${address}, ${eircode}`;
+    else if (eircode) destination = eircode;
+    else if (address) destination = address;
+    if (destination) return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
     return null;
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Job Details" size="xlarge">
+    <Modal isOpen={isOpen} onClose={onClose} title={job.service_type || job.service || 'Job Details'} size="xlarge">
       <div className="job-detail-modal">
-        {/* Top Header Bar */}
+        {/* Header: Name + Status + Actions */}
         <div className="job-modal-header">
           <div className="job-modal-title">
             <h2>{job.customer_name}</h2>
-            <span className={`badge badge-lg ${getStatusBadgeClass(job.status)}`}>
-              {job.status}
-            </span>
+            <span className={`badge badge-lg ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
           </div>
           <div className="job-modal-actions">
-            {!isEditing && (
+            {!isEditing ? (
               <>
-                <button 
-                  className="btn btn-edit"
-                  onClick={() => setIsEditing(true)}
-                >
-                  <i className="fas fa-edit"></i> Edit
+                <button className="btn btn-edit" onClick={() => setIsEditing(true)}>
+                  <i className="fas fa-pen"></i> Edit
                 </button>
                 {!!(job.estimated_charge || job.charge) && showInvoiceButtons && (
-                  <button 
+                  <button
                     className={`btn btn-invoice ${(invoiceConfig && !invoiceConfig.can_send_invoice) || !isSubscriptionActive ? 'btn-disabled' : ''}`}
                     onClick={handleSendInvoice}
                     disabled={invoiceMutation.isPending || (invoiceConfig && !invoiceConfig.can_send_invoice)}
-                    title={!isSubscriptionActive 
-                      ? 'Subscription required to send invoices'
-                      : invoiceConfig && !invoiceConfig.can_send_invoice 
-                        ? (invoiceConfig.warnings?.[0] || 'Invoice service not configured') 
-                        : `Send invoice via ${invoiceConfig?.service_name || 'email'}`}
+                    title={!isSubscriptionActive ? 'Subscription required' : invoiceConfig && !invoiceConfig.can_send_invoice ? (invoiceConfig.warnings?.[0] || 'Not configured') : `Send invoice via ${invoiceConfig?.service_name || 'email'}`}
                   >
                     <i className={`fas ${invoiceMutation.isPending ? 'fa-spinner fa-spin' : !isSubscriptionActive ? 'fa-lock' : 'fa-file-invoice-dollar'}`}></i>
-                    {invoiceMutation.isPending ? 'Sending...' : `Send Invoice${invoiceConfig?.delivery_method === 'sms' ? ' (SMS)' : ''}`}
+                    {invoiceMutation.isPending ? 'Sending...' : 'Invoice'}
                   </button>
                 )}
                 {getDirectionsUrl() && (
-                  <a 
-                    href={getDirectionsUrl()} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="btn btn-success"
-                  >
-                    <i className="fas fa-directions"></i> Get Directions
+                  <a href={getDirectionsUrl()} target="_blank" rel="noopener noreferrer" className="btn btn-success">
+                    <i className="fas fa-directions"></i> Directions
                   </a>
                 )}
                 <div className="status-dropdown">
@@ -637,61 +491,35 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                       if (menu) menu.classList.toggle('show');
                       if (backdrop) backdrop.classList.toggle('show');
                     }}>
-                    {statusMutation.isPending ? (
-                      <>
-                        <i className="fas fa-spinner fa-spin"></i> Updating...
-                      </>
-                    ) : (
-                      <>
-                        Change Status <i className="fas fa-chevron-down"></i>
-                      </>
-                    )}
+                    {statusMutation.isPending ? <><i className="fas fa-spinner fa-spin"></i> Updating...</> : <>Status <i className="fas fa-chevron-down"></i></>}
                   </button>
                   <div className="status-dropdown-menu">
-                    <button onClick={() => handleStatusChange('pending')} className={job.status === 'pending' ? 'active' : ''}>
-                      <i className="fas fa-clock" style={{color: '#f59e0b'}}></i> Pending
-                    </button>
-                    <button onClick={() => handleStatusChange('scheduled')} className={job.status === 'scheduled' ? 'active' : ''}>
-                      <i className="fas fa-calendar-check" style={{color: '#3b82f6'}}></i> Scheduled
-                    </button>
-                    <button onClick={() => handleStatusChange('in-progress')} className={job.status === 'in-progress' ? 'active' : ''}>
-                      <i className="fas fa-wrench" style={{color: '#8b5cf6'}}></i> In Progress
-                    </button>
-                    <button onClick={() => handleStatusChange('completed')} className={job.status === 'completed' ? 'active' : ''}>
-                      <i className="fas fa-check-circle" style={{color: '#22c55e'}}></i> Completed
-                    </button>
-                    <button onClick={() => handleStatusChange('paid')} className={job.status === 'paid' ? 'active' : ''}>
-                      <i className="fas fa-money-check-alt" style={{color: '#10b981'}}></i> Paid
-                    </button>
-                    <button onClick={() => handleStatusChange('cancelled')} className={job.status === 'cancelled' ? 'active' : ''}>
-                      <i className="fas fa-times-circle" style={{color: '#ef4444'}}></i> Cancelled
-                    </button>
+                    {[
+                      { key: 'pending', icon: 'fa-clock', color: '#f59e0b', label: 'Pending' },
+                      { key: 'scheduled', icon: 'fa-calendar-check', color: '#3b82f6', label: 'Scheduled' },
+                      { key: 'in-progress', icon: 'fa-wrench', color: '#8b5cf6', label: 'In Progress' },
+                      { key: 'completed', icon: 'fa-check-circle', color: '#22c55e', label: 'Completed' },
+                      { key: 'paid', icon: 'fa-money-check-alt', color: '#10b981', label: 'Paid' },
+                      { key: 'cancelled', icon: 'fa-times-circle', color: '#ef4444', label: 'Cancelled' },
+                    ].map(s => (
+                      <button key={s.key} onClick={() => handleStatusChange(s.key)} className={job.status === s.key ? 'active' : ''}>
+                        <i className={`fas ${s.icon}`} style={{ color: s.color }}></i> {s.label}
+                      </button>
+                    ))}
                   </div>
                   <div className="status-dropdown-backdrop" onClick={(e) => {
                     e.stopPropagation();
-                    const menu = e.currentTarget.previousElementSibling;
-                    if (menu) menu.classList.remove('show');
+                    e.currentTarget.previousElementSibling?.classList.remove('show');
                     e.currentTarget.classList.remove('show');
                   }}></div>
                 </div>
               </>
-            )}
-            {isEditing && (
+            ) : (
               <>
-                <button 
-                  className="btn btn-secondary"
-                  onClick={handleCancelEdit}
-                  disabled={editMutation.isPending}
-                >
-                  Cancel
-                </button>
-                <button 
-                  className="btn btn-primary"
-                  onClick={handleSaveEdit}
-                  disabled={editMutation.isPending}
-                >
-                  <i className={`fas ${editMutation.isPending ? 'fa-spinner fa-spin' : 'fa-save'}`}></i>
-                  {editMutation.isPending ? 'Saving...' : 'Save Changes'}
+                <button className="btn btn-secondary" onClick={handleCancelEdit} disabled={editMutation.isPending}>Cancel</button>
+                <button className="btn btn-primary" onClick={handleSaveEdit} disabled={editMutation.isPending}>
+                  <i className={`fas ${editMutation.isPending ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
+                  {editMutation.isPending ? 'Saving...' : 'Save'}
                 </button>
               </>
             )}
@@ -700,9 +528,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
 
         {/* Two Column Layout */}
         <div className="job-modal-grid">
-          {/* Left Column - Job & Customer Info */}
+          {/* Left Column */}
           <div className="job-modal-column">
-            {/* Job Details Card */}
+            {/* Job Details */}
             <div className="info-card">
               <h3><i className="fas fa-briefcase"></i> Job Details</h3>
               {isEditing ? (
@@ -710,95 +538,43 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   <div className="edit-row">
                     <div className="edit-field">
                       <label className="edit-label">Date & Time *</label>
-                      <input
-                        type="datetime-local"
-                        name="appointment_time"
-                        className="edit-input"
-                        value={editFormData.appointment_time}
-                        onChange={handleEditChange}
-                        required
-                      />
+                      <input type="datetime-local" name="appointment_time" className="edit-input" value={editFormData.appointment_time} onChange={handleEditChange} required />
                     </div>
                     <div className="edit-field">
-                      <label className="edit-label">Service Type *</label>
-                      <input
-                        type="text"
-                        name="service_type"
-                        className="edit-input"
-                        value={editFormData.service_type}
-                        onChange={handleEditChange}
-                        placeholder="e.g., Plumbing repair"
-                        required
-                      />
+                      <label className="edit-label">Service *</label>
+                      <input type="text" name="service_type" className="edit-input" value={editFormData.service_type} onChange={handleEditChange} placeholder="e.g., Plumbing repair" required />
                     </div>
                   </div>
                   <div className="edit-row">
                     <div className="edit-field">
                       <label className="edit-label">Property Type</label>
-                      <input
-                        type="text"
-                        name="property_type"
-                        className="edit-input"
-                        value={editFormData.property_type}
-                        onChange={handleEditChange}
-                        placeholder="e.g., House, Apartment"
-                      />
+                      <input type="text" name="property_type" className="edit-input" value={editFormData.property_type} onChange={handleEditChange} placeholder="e.g., House" />
                     </div>
                     <div className="edit-field">
                       <label className="edit-label">Charge (€)</label>
-                      <input
-                        type="number"
-                        name="estimated_charge"
-                        className="edit-input"
-                        value={editFormData.estimated_charge}
-                        onChange={handleEditChange}
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                      />
+                      <input type="number" name="estimated_charge" className="edit-input" value={editFormData.estimated_charge} onChange={handleEditChange} step="0.01" min="0" placeholder="0.00" />
                     </div>
                   </div>
                   <div className="edit-row">
                     <div className="edit-field">
                       <label className="edit-label">Duration</label>
-                      <select
-                        name="duration_minutes"
-                        className="edit-input"
-                        value={editFormData.duration_minutes || 60}
-                        onChange={handleEditChange}
-                      >
+                      <select name="duration_minutes" className="edit-input" value={editFormData.duration_minutes || 60} onChange={handleEditChange}>
                         {Object.entries(DURATION_OPTIONS_GROUPED).map(([group, options]) => (
                           <optgroup key={group} label={group}>
-                            {options.map((opt) => (
-                              <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
+                            {options.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                           </optgroup>
                         ))}
                       </select>
                     </div>
                     <div className="edit-field">
                       <label className="edit-label">Eircode</label>
-                      <input
-                        type="text"
-                        name="eircode"
-                        className="edit-input"
-                        value={editFormData.eircode}
-                        onChange={handleEditChange}
-                        placeholder="e.g., D01 X2Y3"
-                      />
+                      <input type="text" name="eircode" className="edit-input" value={editFormData.eircode} onChange={handleEditChange} placeholder="e.g., D01 X2Y3" />
                     </div>
                   </div>
                   <div className="edit-row">
                     <div className="edit-field full-width">
                       <label className="edit-label">Job Address</label>
-                      <input
-                        type="text"
-                        name="job_address"
-                        className="edit-input"
-                        value={editFormData.job_address}
-                        onChange={handleEditChange}
-                        placeholder="Job location address"
-                      />
+                      <input type="text" name="job_address" className="edit-input" value={editFormData.job_address} onChange={handleEditChange} placeholder="Job location address" />
                     </div>
                   </div>
                 </div>
@@ -809,11 +585,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                       <span className="info-label">Date & Time</span>
                       <span className="info-value">
                         {formatDateTime(job.appointment_time)}
-                        {job.duration_minutes && (
-                          <span style={{ marginLeft: '8px', color: '#666', fontSize: '0.9em' }}>
-                            ({formatDuration(job.duration_minutes)})
-                          </span>
-                        )}
+                        {job.duration_minutes && <span style={{ marginLeft: 6, color: '#9ca3af', fontSize: '0.85em' }}>({formatDuration(job.duration_minutes)})</span>}
                       </span>
                     </div>
                     <div className="info-cell">
@@ -843,11 +615,8 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                           {[job.job_address || job.address, job.eircode && (job.job_address || job.address ? `(${job.eircode})` : job.eircode)].filter(Boolean).join(' ')}
                         </span>
                         {job.address_audio_url && (
-                          <div className="address-audio-player" style={{ marginTop: '6px' }}>
-                            <audio controls preload="metadata" src={getProxiedMediaUrl(job.address_audio_url)} style={{ height: '32px', width: '100%', maxWidth: '300px' }}>
-                              Your browser does not support audio playback.
-                            </audio>
-                            <span style={{ fontSize: '0.8em', color: '#888', marginLeft: '4px' }}>Listen to address</span>
+                          <div style={{ marginTop: 4 }}>
+                            <audio controls preload="metadata" src={getProxiedMediaUrl(job.address_audio_url)} style={{ height: 28, width: '100%', maxWidth: 280 }} />
                           </div>
                         )}
                       </div>
@@ -892,14 +661,14 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
               )}
             </div>
 
-            {/* Profit Summary Card - shown when there are materials */}
+            {/* Profit Summary */}
             {jobMaterialsData?.materials?.length > 0 && !!(job.estimated_charge || job.charge) && (() => {
               const charge = parseFloat(job.estimated_charge || job.charge || 0);
               const matCost = parseFloat(jobMaterialsData?.total_cost || 0);
               const profit = charge - matCost;
               const margin = charge > 0 ? (profit / charge * 100) : 0;
               return (
-                <div className="info-card" style={{ background: profit >= 0 ? 'linear-gradient(135deg, #f0fdf4, #ecfdf5)' : 'linear-gradient(135deg, #fef2f2, #fff1f2)', border: `1px solid ${profit >= 0 ? '#bbf7d0' : '#fecaca'}` }}>
+                <div className={`info-card profit-card ${profit >= 0 ? 'positive' : 'negative'}`}>
                   <h3><i className="fas fa-chart-line"></i> Job Profit</h3>
                   <div className="info-row">
                     <div className="info-cell">
@@ -912,9 +681,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     </div>
                     <div className="info-cell">
                       <span className="info-label">Profit</span>
-                      <span className="info-value" style={{ color: profit >= 0 ? '#16a34a' : '#ef4444', fontWeight: 700, fontSize: '1.1rem' }}>
+                      <span className="info-value" style={{ color: profit >= 0 ? '#16a34a' : '#ef4444', fontWeight: 700, fontSize: '1rem' }}>
                         {formatCurrency(profit)}
-                        <span style={{ fontSize: '0.8rem', fontWeight: 500, marginLeft: 4 }}>({margin.toFixed(0)}%)</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 500, marginLeft: 4 }}>({margin.toFixed(0)}%)</span>
                       </span>
                     </div>
                   </div>
@@ -922,7 +691,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
               );
             })()}
 
-            {/* Customer Details Card */}
+            {/* Customer */}
             <div className="info-card">
               <h3><i className="fas fa-user"></i> Customer</h3>
               {isEditing ? (
@@ -930,38 +699,17 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   <div className="edit-row">
                     <div className="edit-field">
                       <label className="edit-label">Name</label>
-                      <input
-                        type="text"
-                        name="customer_name"
-                        className="edit-input"
-                        value={editFormData.customer_name}
-                        onChange={handleEditChange}
-                        placeholder="Customer name"
-                      />
+                      <input type="text" name="customer_name" className="edit-input" value={editFormData.customer_name} onChange={handleEditChange} placeholder="Customer name" />
                     </div>
                     <div className="edit-field">
                       <label className="edit-label">Phone</label>
-                      <input
-                        type="tel"
-                        name="phone"
-                        className="edit-input"
-                        value={editFormData.phone}
-                        onChange={handleEditChange}
-                        placeholder="Phone number"
-                      />
+                      <input type="tel" name="phone" className="edit-input" value={editFormData.phone} onChange={handleEditChange} placeholder="Phone number" />
                     </div>
                   </div>
                   <div className="edit-row">
                     <div className="edit-field full-width">
                       <label className="edit-label">Email</label>
-                      <input
-                        type="email"
-                        name="email"
-                        className="edit-input"
-                        value={editFormData.email}
-                        onChange={handleEditChange}
-                        placeholder="Email address"
-                      />
+                      <input type="email" name="email" className="edit-input" value={editFormData.email} onChange={handleEditChange} placeholder="Email address" />
                     </div>
                   </div>
                 </div>
@@ -976,9 +724,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                       <span className="info-label">Phone</span>
                       <span className="info-value">
                         {(job.phone || job.phone_number) ? (
-                          <a href={`tel:${job.phone || job.phone_number}`} className="link">
-                            {formatPhone(job.phone || job.phone_number)}
-                          </a>
+                          <a href={`tel:${job.phone || job.phone_number}`} className="link">{formatPhone(job.phone || job.phone_number)}</a>
                         ) : 'N/A'}
                       </span>
                     </div>
@@ -987,9 +733,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     <div className="info-row">
                       <div className="info-cell">
                         <span className="info-label">Email</span>
-                        <span className="info-value">
-                          <a href={`mailto:${job.email}`} className="link">{job.email}</a>
-                        </span>
+                        <span className="info-value"><a href={`mailto:${job.email}`} className="link">{job.email}</a></span>
                       </div>
                     </div>
                   )}
@@ -997,10 +741,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     <div className="info-row full">
                       <div className="info-cell">
                         <span className="info-label">Address</span>
-                        <span className="info-value">
-                          {job.customer_address || job.job_address || job.address}
-                          {job.eircode && ` (${job.eircode})`}
-                        </span>
+                        <span className="info-value">{job.customer_address || job.job_address || job.address}{job.eircode && ` (${job.eircode})`}</span>
                       </div>
                     </div>
                   )}
@@ -1012,85 +753,47 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
             <div className="info-card">
               <h3><i className="fas fa-sticky-note"></i> Notes</h3>
               {isEditing ? (
-                <div className="edit-form">
-                  <textarea
-                    name="notes"
-                    className="edit-textarea"
-                    value={editFormData.notes}
-                    onChange={handleEditChange}
-                    rows="4"
-                    placeholder="Additional notes about the job..."
-                  />
-                </div>
+                <textarea name="notes" className="edit-textarea" value={editFormData.notes} onChange={handleEditChange} rows="3" placeholder="Additional notes..." />
               ) : (
                 <p className="notes-text">{job.notes || 'No notes'}</p>
               )}
             </div>
           </div>
 
-          {/* Right Column - Workers */}
+          {/* Right Column */}
           <div className="job-modal-column">
+            {/* Workers */}
             <div className="info-card workers-card">
               <div className="card-header-row">
-                <h3><i className="fas fa-hard-hat"></i> Assigned Workers</h3>
-                <button 
-                  className="btn btn-sm btn-primary"
-                  onClick={() => setShowAssignWorker(!showAssignWorker)}
-                >
+                <h3><i className="fas fa-hard-hat"></i> Workers</h3>
+                <button className="btn btn-sm btn-primary" onClick={() => setShowAssignWorker(!showAssignWorker)}>
                   <i className="fas fa-plus"></i> Assign
                 </button>
               </div>
-
               {showAssignWorker && (
                 <div className="assign-box">
-                  <select 
-                    className="form-select"
-                    value={selectedWorkerId}
-                    onChange={(e) => {
-                      setSelectedWorkerId(e.target.value);
-                      setForceAssign(false); // Reset force when changing worker
-                    }}
-                  >
+                  <select className="form-select" value={selectedWorkerId} onChange={(e) => { setSelectedWorkerId(e.target.value); setForceAssign(false); }}>
                     <option value="">Select a worker...</option>
                     {unassignedWorkers.map(worker => (
-                      <option 
-                        key={worker.id} 
-                        value={worker.id}
-                        style={{ color: worker.isAvailable ? 'inherit' : '#dc3545' }}
-                      >
-                        {worker.name} {worker.trade_specialty && `(${worker.trade_specialty})`}
-                        {!worker.isAvailable && ' ⚠️ Busy'}
+                      <option key={worker.id} value={worker.id} style={{ color: worker.isAvailable ? 'inherit' : '#dc3545' }}>
+                        {worker.name} {worker.trade_specialty && `(${worker.trade_specialty})`}{!worker.isAvailable && ' ⚠️ Busy'}
                       </option>
                     ))}
                   </select>
                   {selectedWorkerId && !unassignedWorkers.find(w => w.id == selectedWorkerId)?.isAvailable && (
                     <label className="force-assign-label">
-                      <input 
-                        type="checkbox" 
-                        checked={forceAssign} 
-                        onChange={(e) => setForceAssign(e.target.checked)}
-                      />
+                      <input type="checkbox" checked={forceAssign} onChange={(e) => setForceAssign(e.target.checked)} />
                       <span>Force assign (worker has conflicting jobs)</span>
                     </label>
                   )}
                   <div className="assign-buttons">
-                    <button className="btn btn-sm btn-secondary" onClick={() => {
-                      setShowAssignWorker(false);
-                      setForceAssign(false);
-                    }}>
-                      Cancel
-                    </button>
-                    <button 
-                      className="btn btn-sm btn-primary"
-                      onClick={handleAssignWorker}
-                      disabled={!selectedWorkerId || assignMutation.isPending}
-                    >
+                    <button className="btn btn-sm btn-secondary" onClick={() => { setShowAssignWorker(false); setForceAssign(false); }}>Cancel</button>
+                    <button className="btn btn-sm btn-primary" onClick={handleAssignWorker} disabled={!selectedWorkerId || assignMutation.isPending}>
                       {assignMutation.isPending ? 'Assigning...' : 'Assign'}
                     </button>
                   </div>
                 </div>
               )}
-
               <div className="workers-list">
                 {!assignedWorkers || assignedWorkers.length === 0 ? (
                   <div className="empty-workers">
@@ -1101,22 +804,13 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   assignedWorkers.map(worker => (
                     <div key={worker.id} className="worker-item">
                       <div className="worker-item-avatar">
-                        {worker.image_url ? (
-                          <img src={worker.image_url} alt={worker.name} />
-                        ) : (
-                          <i className="fas fa-user"></i>
-                        )}
+                        {worker.image_url ? <img src={worker.image_url} alt={worker.name} /> : <i className="fas fa-user"></i>}
                       </div>
                       <div className="worker-item-info">
                         <span className="worker-name">{worker.name}</span>
                         {worker.trade_specialty && <span className="worker-specialty">{worker.trade_specialty}</span>}
                       </div>
-                      <button
-                        className="btn-remove"
-                        onClick={() => removeMutation.mutate({ jobId, workerId: worker.id })}
-                        disabled={removeMutation.isPending}
-                        title="Remove worker"
-                      >
+                      <button className="btn-remove" onClick={() => removeMutation.mutate({ jobId, workerId: worker.id })} disabled={removeMutation.isPending} title="Remove worker">
                         <i className="fas fa-times"></i>
                       </button>
                     </div>
@@ -1125,26 +819,17 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
               </div>
             </div>
 
-            {/* Materials Used Card */}
+            {/* Materials */}
             <div className="info-card">
               <div className="card-header-row">
-                <h3><i className="fas fa-cubes"></i> Materials Used</h3>
+                <h3><i className="fas fa-cubes"></i> Materials</h3>
                 <button className="btn btn-sm btn-primary" onClick={() => setShowAddMaterial(!showAddMaterial)}>
                   <i className="fas fa-plus"></i> Add
                 </button>
               </div>
-
               {showAddMaterial && (
-                <div className="assign-box" style={{ marginBottom: '0.75rem' }}>
-                  {/* Search catalog */}
-                  <input
-                    type="text"
-                    className="form-select"
-                    placeholder="Search your materials catalog..."
-                    value={materialSearch}
-                    onChange={e => setMaterialSearch(e.target.value)}
-                    autoFocus
-                  />
+                <div className="assign-box" style={{ marginBottom: '0.5rem' }}>
+                  <input type="text" className="form-select" placeholder="Search materials catalog..." value={materialSearch} onChange={e => setMaterialSearch(e.target.value)} autoFocus />
                   {materialSearch && materialsCatalog?.materials?.length > 0 && (
                     <div className="jm-catalog-results">
                       {materialsCatalog.materials
@@ -1152,10 +837,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                         .slice(0, 6)
                         .map(m => (
                           <button key={m.id} className="jm-catalog-item" onClick={() => {
-                            addMaterialMut.mutate({
-                              material_id: m.id, name: m.name, unit_price: m.unit_price,
-                              unit: m.unit || 'each', quantity: 1, added_by: 'owner'
-                            });
+                            addMaterialMut.mutate({ material_id: m.id, name: m.name, unit_price: m.unit_price, unit: m.unit || 'each', quantity: 1, added_by: 'owner' });
                           }}>
                             <span className="jm-cat-name">{m.name}</span>
                             <span className="jm-cat-price">€{parseFloat(m.unit_price).toFixed(2)}/{m.unit || 'each'}</span>
@@ -1163,142 +845,82 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                         ))}
                     </div>
                   )}
-                  {/* Custom material entry */}
-                  <div className="jm-custom-label">Or add a custom item:</div>
+                  <div className="jm-custom-label">Or add custom:</div>
                   <div className="jm-custom-row">
-                    <input type="text" placeholder="Name" value={customMaterial.name}
-                      onChange={e => setCustomMaterial({...customMaterial, name: e.target.value})}
-                      className="form-select" style={{ flex: 2 }} />
-                    <input type="number" placeholder="€" value={customMaterial.unit_price} min="0" step="0.01"
-                      onChange={e => setCustomMaterial({...customMaterial, unit_price: e.target.value})}
-                      className="form-select" style={{ flex: 1 }} />
-                    <input type="number" placeholder="Qty" value={customMaterial.quantity} min="0.01" step="1"
-                      onChange={e => setCustomMaterial({...customMaterial, quantity: e.target.value})}
-                      className="form-select" style={{ flex: 0.7 }} />
+                    <input type="text" placeholder="Name" value={customMaterial.name} onChange={e => setCustomMaterial({...customMaterial, name: e.target.value})} className="form-select" style={{ flex: 2 }} />
+                    <input type="number" placeholder="€" value={customMaterial.unit_price} min="0" step="0.01" onChange={e => setCustomMaterial({...customMaterial, unit_price: e.target.value})} className="form-select" style={{ flex: 1 }} />
+                    <input type="number" placeholder="Qty" value={customMaterial.quantity} min="0.01" step="1" onChange={e => setCustomMaterial({...customMaterial, quantity: e.target.value})} className="form-select" style={{ flex: 0.7 }} />
                   </div>
                   <div className="assign-buttons">
                     <button className="btn btn-sm btn-secondary" onClick={() => setShowAddMaterial(false)}>Cancel</button>
                     <button className="btn btn-sm btn-primary" disabled={!customMaterial.name.trim() || addMaterialMut.isPending}
-                      onClick={() => addMaterialMut.mutate({
-                        name: customMaterial.name, unit_price: parseFloat(customMaterial.unit_price) || 0,
-                        quantity: parseFloat(customMaterial.quantity) || 1, unit: customMaterial.unit, added_by: 'owner'
-                      })}>
+                      onClick={() => addMaterialMut.mutate({ name: customMaterial.name, unit_price: parseFloat(customMaterial.unit_price) || 0, quantity: parseFloat(customMaterial.quantity) || 1, unit: customMaterial.unit, added_by: 'owner' })}>
                       {addMaterialMut.isPending ? 'Adding...' : 'Add'}
                     </button>
                   </div>
                 </div>
               )}
-
               {jobMaterialsData?.materials?.length > 0 ? (
                 <div className="jm-list">
                   {jobMaterialsData.materials.map(item => (
                     <div key={item.id} className="jm-item">
                       <div className="jm-item-info">
                         <span className="jm-item-name">{item.name}</span>
-                        <span className="jm-item-detail">
-                          {item.quantity} × €{parseFloat(item.unit_price).toFixed(2)}
-                          {item.added_by && <span className="jm-added-by"> · {item.added_by}</span>}
-                        </span>
+                        <span className="jm-item-detail">{item.quantity} × €{parseFloat(item.unit_price).toFixed(2)}{item.added_by && <span className="jm-added-by"> · {item.added_by}</span>}</span>
                       </div>
                       <span className="jm-item-total">€{parseFloat(item.total_cost).toFixed(2)}</span>
-                      <button className="btn-remove" onClick={() => removeMaterialMut.mutate(item.id)}
-                        disabled={removeMaterialMut.isPending} title="Remove">
-                        <i className="fas fa-times"></i>
-                      </button>
+                      <button className="btn-remove" onClick={() => removeMaterialMut.mutate(item.id)} disabled={removeMaterialMut.isPending} title="Remove"><i className="fas fa-times"></i></button>
                     </div>
                   ))}
                   <div className="jm-total">
-                    <span>Materials Total</span>
+                    <span>Total</span>
                     <span className="jm-total-amount">€{parseFloat(jobMaterialsData.total_cost).toFixed(2)}</span>
                   </div>
                 </div>
               ) : (
-                <div className="empty-workers">
-                  <i className="fas fa-cubes"></i>
-                  <p>No materials logged</p>
-                </div>
+                <div className="empty-workers"><i className="fas fa-cubes"></i><p>No materials logged</p></div>
               )}
             </div>
 
-            {/* Job Photos & Videos Card */}
+            {/* Photos & Videos */}
             <div className="info-card">
               <div className="card-header-row">
-                <h3><i className="fas fa-camera"></i> Photos & Videos</h3>
-                <button
-                  className="btn btn-sm btn-primary"
-                  onClick={() => photoInputRef.current?.click()}
-                  disabled={uploadingPhoto}
-                >
+                <h3><i className="fas fa-camera"></i> Media</h3>
+                <button className="btn btn-sm btn-primary" onClick={() => photoInputRef.current?.click()} disabled={uploadingPhoto}>
                   {uploadingPhoto ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-plus"></i>}
-                  {uploadingPhoto ? ' Uploading...' : ' Add Media'}
+                  {uploadingPhoto ? ' Uploading...' : ' Add'}
                 </button>
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/*,video/mp4,video/quicktime,video/webm"
-                  onChange={handlePhotoSelect}
-                  style={{ display: 'none' }}
-                />
+                <input ref={photoInputRef} type="file" accept="image/*,video/mp4,video/quicktime,video/webm" onChange={handlePhotoSelect} style={{ display: 'none' }} />
               </div>
-
               {job.photo_urls && job.photo_urls.length > 0 ? (
                 <div className="job-photos-grid">
                   {job.photo_urls.map((url, idx) => (
                     <div key={idx} className="job-photo-item">
                       {isVideoUrl(url) ? (
                         <>
-                          <video
-                            src={getProxiedMediaUrl(url)}
-                            muted
-                            preload="metadata"
-                            onClick={() => setLightboxPhoto(url)}
-                          />
-                          <div className="video-play-badge" onClick={() => setLightboxPhoto(url)}>
-                            <i className="fas fa-play"></i>
-                          </div>
+                          <video src={getProxiedMediaUrl(url)} muted preload="metadata" onClick={() => setLightboxPhoto(url)} />
+                          <div className="video-play-badge" onClick={() => setLightboxPhoto(url)}><i className="fas fa-play"></i></div>
                         </>
                       ) : (
-                        <img
-                          src={getProxiedMediaUrl(url)}
-                          alt={`Job photo ${idx + 1}`}
-                          onClick={() => setLightboxPhoto(url)}
-                        />
+                        <img src={getProxiedMediaUrl(url)} alt={`Job photo ${idx + 1}`} onClick={() => setLightboxPhoto(url)} />
                       )}
-                      <button
-                        className="job-photo-delete"
-                        onClick={() => handleDeletePhoto(url)}
-                        disabled={photoDeleteMutation.isPending}
-                        title="Remove"
-                      >
-                        <i className="fas fa-trash"></i>
-                      </button>
+                      <button className="job-photo-delete" onClick={() => handleDeletePhoto(url)} disabled={photoDeleteMutation.isPending} title="Remove"><i className="fas fa-trash"></i></button>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="empty-workers">
-                  <i className="fas fa-image"></i>
-                  <p>No photos or videos yet</p>
-                </div>
+                <div className="empty-workers"><i className="fas fa-image"></i><p>No media yet</p></div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Media Lightbox */}
+        {/* Lightbox */}
         {lightboxPhoto && (
           <div className="job-photo-lightbox" onClick={() => setLightboxPhoto(null)}>
-            <button className="lightbox-close" onClick={() => setLightboxPhoto(null)}>
-              <i className="fas fa-times"></i>
-            </button>
+            <button className="lightbox-close" onClick={() => setLightboxPhoto(null)}><i className="fas fa-times"></i></button>
             {isVideoUrl(lightboxPhoto) ? (
-              <video
-                src={getProxiedMediaUrl(lightboxPhoto)}
-                controls
-                autoPlay
-                onClick={(e) => e.stopPropagation()}
-                style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: '8px' }}
-              />
+              <video src={getProxiedMediaUrl(lightboxPhoto)} controls autoPlay onClick={(e) => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8 }} />
             ) : (
               <img src={getProxiedMediaUrl(lightboxPhoto)} alt="Job photo full size" onClick={(e) => e.stopPropagation()} />
             )}
@@ -1306,7 +928,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
         )}
       </div>
 
-      {/* Invoice Confirmation Modal */}
       <InvoiceConfirmModal
         isOpen={showInvoiceConfirm}
         onClose={() => setShowInvoiceConfirm(false)}
