@@ -97,16 +97,7 @@ function WorkerDashboard() {
   // Messages state
   const [msgInput, setMsgInput] = useState('');
   const msgEndRef = useRef(null);
-
-  // Auto-scroll messages to bottom only when new messages arrive
   const prevMsgCountRef = useRef(0);
-  useEffect(() => {
-    const count = messagesData?.messages?.length || 0;
-    if (activeTab === 'messages' && msgEndRef.current && count > prevMsgCountRef.current) {
-      msgEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-    prevMsgCountRef.current = count;
-  }, [activeTab, messagesData]);
 
   // Profile editing state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -189,6 +180,15 @@ function WorkerDashboard() {
     enabled: activeTab === 'messages',
     refetchInterval: activeTab === 'messages' ? 8000 : false,
   });
+
+  // Auto-scroll messages to bottom only when new messages arrive
+  useEffect(() => {
+    const count = messagesData?.messages?.length || 0;
+    if (activeTab === 'messages' && msgEndRef.current && count > prevMsgCountRef.current) {
+      msgEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+    prevMsgCountRef.current = count;
+  }, [activeTab, messagesData]);
 
   const { data: unreadMsgData } = useQuery({
     queryKey: ['worker-unread-messages'],
