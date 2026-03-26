@@ -649,41 +649,44 @@ function Settings() {
                     <h3>
                       <i className="fas fa-robot"></i>
                       AI Receptionist
-                </h3>
-                <p>
-                  {aiStatus?.enabled 
-                    ? 'AI is currently handling your calls' 
-                    : 'Calls are being forwarded to your fallback number'}
-                </p>
+                    </h3>
+                    <p>
+                      {aiStatus?.enabled 
+                        ? 'AI is currently handling your calls' 
+                        : 'Calls are being forwarded to your fallback number'}
+                    </p>
+                  </div>
+                  <label className="toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={aiStatus?.enabled || false}
+                      onChange={handleToggleAI}
+                      disabled={toggleMutation.isPending}
+                    />
+                    <span className="toggle-slider"></span>
+                  </label>
+                </div>
+                <div className="toggle-status">
+                  <span className={`status-badge ${aiStatus?.enabled ? 'active' : 'inactive'}`}>
+                    {aiStatus?.enabled ? 'Active' : 'Inactive'}
+                  </span>
+                  {aiStatus?.business_phone && (
+                    <span className="fallback-info">
+                      <i className="fas fa-phone"></i>
+                      Fallback: {aiStatus.business_phone}
+                    </span>
+                  )}
+                </div>
               </div>
-              <label className="toggle-switch">
-                <input
-                  type="checkbox"
-                  checked={aiStatus?.enabled || false}
-                  onChange={handleToggleAI}
-                  disabled={toggleMutation.isPending}
-                />
-                <span className="toggle-slider"></span>
-              </label>
-            </div>
-            <div className="toggle-status">
-              <span className={`status-badge ${aiStatus?.enabled ? 'active' : 'inactive'}`}>
-                {aiStatus?.enabled ? 'Active' : 'Inactive'}
-              </span>
-              {aiStatus?.business_phone && (
-                <span className="fallback-info">
-                  <i className="fas fa-phone"></i>
-                  Fallback: {aiStatus.business_phone}
-                </span>
-              )}
-            </div>
-          </div>
 
-          {/* Settings Form */}
-          <div className="settings-card">
-            <form onSubmit={handleSubmit}>
-              <div className="form-section">
-                <h3>Business Information</h3>
+              {/* Settings Form */}
+              <div className="settings-card">
+                <form onSubmit={handleSubmit}>
+                  <div className="form-section">
+                    <div className="form-section-header">
+                      <i className="fas fa-building" style={{ color: 'var(--accent-blue)' }}></i>
+                      <h3>Business Information</h3>
+                    </div>
                 <div className="form-grid">
                   <div className="form-group">
                     <label htmlFor="business_name">Business Name *</label>
@@ -838,7 +841,10 @@ function Settings() {
               </div>
 
               <div className="form-section">
-                <h3>Phone Configuration</h3>
+                <div className="form-section-header">
+                  <i className="fas fa-phone-alt" style={{ color: '#10b981' }}></i>
+                  <h3>Phone Configuration</h3>
+                </div>
                 <p className="section-description">
                   Your assigned phone number for receiving calls. {!formData.twilio_phone_number ? 'Click the button below to select your number.' : 'This number is permanently assigned to your account.'}
                 </p>
@@ -853,7 +859,7 @@ function Settings() {
                         value={formData.twilio_phone_number || 'Not assigned'}
                         readOnly
                         disabled
-                        style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
+                        style={{ backgroundColor: 'var(--bg-tertiary)', cursor: 'not-allowed' }}
                       />
                       {!formData.twilio_phone_number && (
                         <button
@@ -878,47 +884,33 @@ function Settings() {
 
               {/* Google Calendar Integration */}
               <div className="form-section">
-                <h3>
-                  <i className="fab fa-google" style={{ marginRight: '8px', color: '#4285f4' }}></i>
-                  Google Calendar
-                </h3>
+                <div className="form-section-header">
+                  <i className="fab fa-google" style={{ color: '#4285f4' }}></i>
+                  <h3>Google Calendar</h3>
+                </div>
                 <p className="section-description">
                   Connect your Google Calendar to keep both calendars in sync.
                   {' '}Bookings made by the AI receptionist appear in Google Calendar, and existing Google Calendar events are imported here.
                 </p>
-                <div className="gcal-status-card" style={{
-                  padding: '1rem 1.25rem',
-                  background: gcalStatus?.connected ? '#f0fdf4' : 'var(--bg-secondary)',
-                  border: `1px solid ${gcalStatus?.connected ? '#86efac' : 'var(--border-color)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '1rem',
-                  flexWrap: 'wrap'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <i className={`fas ${gcalStatus?.connected ? 'fa-check-circle' : 'fa-circle'}`} 
-                       style={{ color: gcalStatus?.connected ? '#16a34a' : '#9ca3af', fontSize: '1.25rem' }}></i>
+                <div className={`gcal-status-card ${gcalStatus?.connected ? 'connected' : 'disconnected'}`}>
+                  <div className="gcal-status-info">
+                    <i className={`fas ${gcalStatus?.connected ? 'fa-check-circle' : 'fa-circle'} gcal-status-icon ${gcalStatus?.connected ? 'connected' : 'disconnected'}`}></i>
                     <div>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                      <div className="gcal-status-label">
                         {gcalStatus?.connected ? 'Connected' : 'Not connected'}
                       </div>
                       {gcalStatus?.connected && gcalStatus?.calendar_email && (
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                          {gcalStatus.calendar_email}
-                        </div>
+                        <div className="gcal-status-email">{gcalStatus.calendar_email}</div>
                       )}
                     </div>
                   </div>
                   {gcalStatus?.connected ? (
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <div className="gcal-actions">
                       <button
                         type="button"
                         className="btn btn-primary"
                         onClick={handleSyncGoogleCalendar}
                         disabled={gcalSyncing}
-                        style={{ fontSize: '0.875rem' }}
                       >
                         <i className={`fas ${gcalSyncing ? 'fa-spinner fa-spin' : 'fa-sync'}`}></i>
                         {gcalSyncing ? 'Syncing...' : 'Sync Now'}
@@ -927,7 +919,6 @@ function Settings() {
                         type="button"
                         className="btn btn-secondary"
                         onClick={handleDisconnectGoogleCalendar}
-                        style={{ fontSize: '0.875rem' }}
                       >
                         <i className="fas fa-unlink"></i>
                         Disconnect
@@ -939,7 +930,6 @@ function Settings() {
                       className="btn btn-primary"
                       onClick={handleConnectGoogleCalendar}
                       disabled={gcalConnecting}
-                      style={{ fontSize: '0.875rem' }}
                     >
                       <i className="fab fa-google"></i>
                       {gcalConnecting ? 'Connecting...' : 'Connect Google Calendar'}
@@ -947,43 +937,45 @@ function Settings() {
                   )}
                 </div>
                 {!gcalStatus?.connected && (
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.5rem', lineHeight: '1.4' }}>
-                    <i className="fas fa-info-circle" style={{ marginRight: '4px' }}></i>
-                    Google will show a "Google hasn't verified this app" warning. Click <strong>Advanced</strong>, then <strong>Go to ai-receptionist-backend... (unsafe)</strong> at the bottom to continue. This is normal for new apps awaiting verification.
-                  </p>
+                  <div className="gcal-help-text">
+                    <i className="fas fa-info-circle"></i>
+                    <span>Google will show a "Google hasn't verified this app" warning. Click <strong>Advanced</strong>, then <strong>Go to ai-receptionist-backend... (unsafe)</strong> to continue. This is normal for new apps awaiting verification.</span>
+                  </div>
                 )}
                 {gcalStatus?.connected && (
-                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0', marginTop: '0.75rem' }}>
-                    <div>
-                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Invite Workers to Calendar Events</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Workers with email addresses will receive Google Calendar invites for their assigned jobs</div>
+                  <div className="toggle-rows" style={{ marginTop: '0.75rem' }}>
+                    <div className="toggle-row">
+                      <div className="toggle-row-info">
+                        <div className="toggle-row-label">Invite Workers to Calendar Events</div>
+                        <div className="toggle-row-desc">Workers with email addresses will receive Google Calendar invites for their assigned jobs</div>
+                      </div>
+                      <label className="toggle-switch">
+                        <input
+                          type="checkbox"
+                          checked={formData.gcal_invite_workers || false}
+                          onChange={(e) => { setFormData(prev => ({ ...prev, gcal_invite_workers: e.target.checked })); setHasUnsavedChanges(true); }}
+                        />
+                        <span className="toggle-slider"></span>
+                      </label>
                     </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={formData.gcal_invite_workers || false}
-                        onChange={(e) => { setFormData(prev => ({ ...prev, gcal_invite_workers: e.target.checked })); setHasUnsavedChanges(true); }}
-                      />
-                      <span className="toggle-slider"></span>
-                    </label>
                   </div>
                 )}
               </div>
 
               {/* Dashboard Feature Toggles */}
               <div className="form-section">
-                <h3>
-                  <i className="fas fa-sliders-h" style={{ marginRight: '8px', color: '#6366f1' }}></i>
-                  Dashboard Features
-                </h3>
+                <div className="form-section-header">
+                  <i className="fas fa-sliders-h" style={{ color: '#6366f1' }}></i>
+                  <h3>Dashboard Features</h3>
+                </div>
                 <p className="section-description">
                   Choose which features to show on your dashboard.
                 </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0' }}>
-                    <div>
-                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Finances Tab</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Show the Finances tab on the dashboard</div>
+                <div className="toggle-rows">
+                  <div className="toggle-row">
+                    <div className="toggle-row-info">
+                      <div className="toggle-row-label">Finances Tab</div>
+                      <div className="toggle-row-desc">Show the Finances tab on the dashboard</div>
                     </div>
                     <label className="toggle-switch">
                       <input
@@ -994,10 +986,10 @@ function Settings() {
                       <span className="toggle-slider"></span>
                     </label>
                   </div>
-                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0' }}>
-                    <div>
-                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Insights Tab</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Show the Insights tab with business analytics</div>
+                  <div className="toggle-row">
+                    <div className="toggle-row-info">
+                      <div className="toggle-row-label">Insights Tab</div>
+                      <div className="toggle-row-desc">Show the Insights tab with business analytics</div>
                     </div>
                     <label className="toggle-switch">
                       <input
@@ -1008,10 +1000,10 @@ function Settings() {
                       <span className="toggle-slider"></span>
                     </label>
                   </div>
-                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0' }}>
-                    <div>
-                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Send Invoice Buttons</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Show invoice buttons on jobs and finances</div>
+                  <div className="toggle-row">
+                    <div className="toggle-row-info">
+                      <div className="toggle-row-label">Send Invoice Buttons</div>
+                      <div className="toggle-row-desc">Show invoice buttons on jobs and finances</div>
                     </div>
                     <label className="toggle-switch">
                       <input
@@ -1022,10 +1014,10 @@ function Settings() {
                       <span className="toggle-slider"></span>
                     </label>
                   </div>
-                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0' }}>
-                    <div>
-                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Booking Confirmation SMS</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Send an SMS to the customer when a booking is confirmed</div>
+                  <div className="toggle-row">
+                    <div className="toggle-row-info">
+                      <div className="toggle-row-label">Booking Confirmation SMS</div>
+                      <div className="toggle-row-desc">Send an SMS to the customer when a booking is confirmed</div>
                     </div>
                     <label className="toggle-switch">
                       <input
@@ -1036,10 +1028,10 @@ function Settings() {
                       <span className="toggle-slider"></span>
                     </label>
                   </div>
-                  <div className="toggle-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0' }}>
-                    <div>
-                      <div style={{ fontWeight: 500, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Day-Before Reminder SMS</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Send a reminder SMS to the customer the day before their appointment</div>
+                  <div className="toggle-row">
+                    <div className="toggle-row-info">
+                      <div className="toggle-row-label">Day-Before Reminder SMS</div>
+                      <div className="toggle-row-desc">Send a reminder SMS to the customer the day before their appointment</div>
                     </div>
                     <label className="toggle-switch">
                       <input
@@ -1054,13 +1046,13 @@ function Settings() {
               </div>
 
               <div className="form-section">
-                <h3>
-                  <i className="fas fa-info-circle" style={{ marginRight: '8px', color: '#4a90d9' }}></i>
-                  Company Details for AI Receptionist
-                </h3>
+                <div className="form-section-header">
+                  <i className="fas fa-info-circle" style={{ color: '#4a90d9' }}></i>
+                  <h3>Company Details for AI Receptionist</h3>
+                </div>
                 <p className="section-description">
                   Give your AI receptionist context about your business. This information helps it answer customer questions 
-                  more accurately -- things like where to park, your company history, specific policies, 
+                  more accurately — things like where to park, your company history, specific policies, 
                   certifications, or any other details callers might ask about.
                 </p>
                 <div className="form-grid">
@@ -1087,12 +1079,7 @@ function Settings() {
                       onChange={handleChange}
                       rows={8}
                       placeholder={"Example:\n- Free parking available in the car park behind the building\n- We've been in business since 2005, family-run company\n- All our technicians are fully insured and certified\n- We offer a 12-month warranty on all work\n- Please have the area clear before our team arrives"}
-                      style={{ 
-                        minHeight: '180px', 
-                        resize: 'vertical',
-                        fontFamily: 'inherit',
-                        lineHeight: '1.5'
-                      }}
+                      style={{ minHeight: '160px', resize: 'vertical', lineHeight: '1.5' }}
                     />
                     <small className="form-help">
                       This information is injected into the AI receptionist's knowledge. Write anything you'd want a real receptionist to know about your business.
@@ -1102,14 +1089,17 @@ function Settings() {
               </div>
 
               <div className="form-section">
-                <h3>Business Logo</h3>
+                <div className="form-section-header">
+                  <i className="fas fa-image" style={{ color: '#f59e0b' }}></i>
+                  <h3>Business Logo</h3>
+                </div>
                 <div className="logo-upload-section">
                   <ImageUpload
                     value={formData.logo_url}
                     onChange={(value) => { setFormData(prev => ({ ...prev, logo_url: value })); setHasUnsavedChanges(true); }}
                     placeholder="Upload Your Company Logo"
                   />
-                  <small className="form-help" style={{ display: 'block', marginTop: '10px', color: '#666' }}>
+                  <small className="form-help">
                     Upload your company logo. It will appear in the header and on invoices. Images are automatically optimized.
                   </small>
                 </div>
@@ -1121,21 +1111,23 @@ function Settings() {
 
           {/* Danger Zone - Delete Account */}
           <div className="settings-card danger-zone">
-            <h3>
-              <i className="fas fa-exclamation-triangle" style={{ marginRight: '8px', color: '#dc2626' }}></i>
-              Danger Zone
-            </h3>
-            <p className="section-description">
-              Permanently delete your account and all associated data. This action cannot be undone.
-            </p>
-            <button 
-              type="button"
-              className="btn btn-danger"
-              onClick={() => setShowDeleteModal(true)}
-            >
-              <i className="fas fa-trash-alt"></i>
-              Delete Account
-            </button>
+            <div className="form-section">
+              <div className="form-section-header">
+                <i className="fas fa-exclamation-triangle" style={{ color: '#dc2626' }}></i>
+                <h3>Danger Zone</h3>
+              </div>
+              <p className="section-description">
+                Permanently delete your account and all associated data. This action cannot be undone.
+              </p>
+              <button 
+                type="button"
+                className="btn btn-danger"
+                onClick={() => setShowDeleteModal(true)}
+              >
+                <i className="fas fa-trash-alt"></i>
+                Delete Account
+              </button>
+            </div>
           </div>
           
           {/* Floating Save Button */}
