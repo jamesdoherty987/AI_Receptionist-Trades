@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
-import { formatDateTime, getStatusBadgeClass, formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
+import { formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
 import { formatDuration } from '../../utils/durationOptions';
 import { updateBooking } from '../../services/api';
 import { useToast } from '../Toast';
@@ -10,12 +10,11 @@ import JobDetailModal from '../modals/JobDetailModal';
 import './JobsTab.css';
 
 const STATUS_FILTERS = [
-  { key: 'active', label: 'Active', icon: 'fa-bolt' },
-  { key: 'overdue', label: 'Overdue', icon: 'fa-exclamation-triangle' },
+  { key: 'active', label: 'Upcoming', icon: 'fa-calendar-check' },
+  { key: 'overdue', label: 'Late', icon: 'fa-exclamation-circle' },
   { key: 'in-progress', label: 'In Progress', icon: 'fa-wrench' },
-  { key: 'needs-invoice', label: 'Needs Invoice', icon: 'fa-file-invoice' },
-  { key: 'completed', label: 'Completed', icon: 'fa-check-circle' },
-  { key: 'cancelled', label: 'Cancelled', icon: 'fa-times-circle' },
+  { key: 'needs-invoice', label: 'Unpaid', icon: 'fa-file-invoice' },
+  { key: 'completed', label: 'Done', icon: 'fa-check-circle' },
   { key: 'all', label: 'All', icon: 'fa-list' },
 ];
 
@@ -64,7 +63,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   }, [bookings]);
 
   // Filter and group jobs
-  const { groups, totalFiltered } = useMemo(() => {
+  const { groups } = useMemo(() => {
     let jobs = [...bookings];
 
     // Search filter
@@ -115,7 +114,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
     // Overdue
     const overdue = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && new Date(j.appointment_time) < now);
-    if (overdue.length > 0) sections.push({ key: 'overdue', label: 'Overdue', icon: 'fa-exclamation-triangle', color: '#ef4444', jobs: overdue });
+    if (overdue.length > 0) sections.push({ key: 'overdue', label: 'Late — Past Appointment Time', icon: 'fa-exclamation-circle', color: '#ef4444', jobs: overdue });
 
     // Today
     const today = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && (() => { const t = new Date(j.appointment_time); return t >= now && t < tomorrowStart; })());
@@ -229,6 +228,11 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                         <div className="jt-card-info">
                           <span className="jt-info-item"><i className="fas fa-wrench"></i> {job.service_type || job.service || 'Service'}</span>
                           <span className="jt-info-item"><i className="fas fa-map-marker-alt"></i> {getAddress(job)}</span>
+                          {job.address_audio_url && (
+                            <button className="jt-audio-btn" onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }} title="Listen to address audio">
+                              <i className="fas fa-volume-up"></i> Listen
+                            </button>
+                          )}
                         </div>
                         <div className="jt-card-bottom">
                           {(job.phone || job.phone_number) && (
@@ -246,11 +250,6 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                             <button className="jt-mark-paid" onClick={e => { e.stopPropagation(); markPaidMutation.mutate(job.id); }}
                               disabled={markingPaidJobId === job.id}>
                               <i className={`fas ${markingPaidJobId === job.id ? 'fa-spinner fa-spin' : 'fa-check'}`}></i> Mark Paid
-                            </button>
-                          )}
-                          {job.address_audio_url && (
-                            <button className="jt-audio-btn" onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }} title="Listen to address">
-                              <i className="fas fa-volume-up"></i>
                             </button>
                           )}
                         </div>

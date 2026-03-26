@@ -6755,6 +6755,166 @@ def worker_notifications_api():
     return jsonify({'notifications': notifications, 'count': len(notifications)})
 
 
+# ── Owner-Worker Messaging ─────────────────────────────────────────
+
+@app.route("/api/messages/conversations", methods=["GET"])
+@login_required
+def get_conversations():
+    """Get all conversation summaries for the owner."""
+    db = get_database()
+    company_id = session.get('company_id')
+    summaries = db.get_owner_conversations_summary(company_id)
+    for s in summaries:
+        if s.get('last_message_at'):
+            s['last_message_at'] = s['last_message_at'].isoformat()
+    return jsonify({'conversations': summaries})
+
+
+@app.route("/api/messages/<int:worker_id>", methods=["GET"])
+@login_required
+def get_messages(worker_id):
+    """Get conversation between owner and a worker."""
+    db = get_database()
+    company_id = session.get('company_id')
+
+    # Verify worker belongs to this company
+    worker = db.get_worker(worker_id, company_id=company_id)
+    if not worker:
+        return jsonify({'error': 'Worker not found'}), 404
+
+    try:
+        limit = min(int(request.args.get('limit', 50)), 100)
+    except (ValueError, TypeError):
+        limit = 50
+    before_id = request.args.get('before_id', type=int)
+
+    messages = db.get_conversation(company_id, worker_id, limit=limit, before_id=before_id)
+    # Mark worker messages as read
+    db.mark_messages_read(company_id, worker_id, 'owner')
+    for m in messages:
+        if m.get('created_at'):
+            m['created_at'] = m['created_at'].isoformat()
+    return jsonify({'messages': messages})
+
+
+@app.route("/api/messages/<int:worker_id>", methods=["POST"])
+@login_required
+@rate_limit(max_requests=60, window_seconds=60)
+def send_message_to_worker(worker_id):
+    """Owner sends a message to a worker."""
+    db = get_database()
+    company_id = session.get('company_id')
+
+    # Verify worker belongs to this company
+    worker = db.get_worker(worker_id, company_id=company_id)
+    if not worker:
+        return jsonify({'error': 'Worker not found'}), 404
+
+    data = request.json or {}
+    content = (data.get('content') or '').strip()
+    if not content:
+        return jsonify({'error': 'Message content is required'}), 400
+    if len(content) > 2000:
+        return jsonify({'error': 'Message too long (max 2000 chars)'}), 400
+
+    msg = db.send_message(company_id, worker_id, 'owner', content)
+    if not msg:
+        return jsonify({'error': 'Failed to send message'}), 500
+
+    # Create notification for the worker
+    worker_name = worker.get('name', 'Worker')
+    company = db.get_company(company_id)
+    company_name = company.get('business_name', 'Your employer') if company else 'Your employer'
+    preview = content[:80] + ('...' if len(content) > 80 else '')
+    db.create_notification(
+        company_id, 'worker', worker_id, 'new_message',
+        f"New message from {company_name}: {preview}",
+        {'sender': 'owner'}
+    )
+
+    if msg.get('created_at'):
+        msg['created_at'] = msg['created_at'].isoformat()
+    return jsonify({'message': msg})
+
+
+@app.route("/api/messages/unread-counts", methods=["GET"])
+@login_required
+def get_unread_message_counts():
+    """Get unread message counts per worker for the owner."""
+    db = get_database()
+    company_id = session.get('company_id')
+    counts = db.get_unread_message_counts(company_id)
+    total = sum(counts.values())
+    return jsonify({'counts': counts, 'total': total})
+
+
+@app.route("/api/worker/messages", methods=["GET"])
+@worker_login_required
+def worker_get_messages():
+    """Worker gets their conversation with the owner."""
+    db = get_database()
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+    try:
+        limit = min(int(request.args.get('limit', 50)), 100)
+    except (ValueError, TypeError):
+        limit = 50
+    before_id = request.args.get('before_id', type=int)
+
+    messages = db.get_conversation(company_id, worker_id, limit=limit, before_id=before_id)
+    # Mark owner messages as read
+    db.mark_messages_read(company_id, worker_id, 'worker')
+    for m in messages:
+        if m.get('created_at'):
+            m['created_at'] = m['created_at'].isoformat()
+    return jsonify({'messages': messages})
+
+
+@app.route("/api/worker/messages", methods=["POST"])
+@worker_login_required
+@rate_limit(max_requests=60, window_seconds=60)
+def worker_send_message():
+    """Worker sends a message to the owner."""
+    db = get_database()
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+    data = request.json or {}
+    content = (data.get('content') or '').strip()
+    if not content:
+        return jsonify({'error': 'Message content is required'}), 400
+    if len(content) > 2000:
+        return jsonify({'error': 'Message too long (max 2000 chars)'}), 400
+
+    msg = db.send_message(company_id, worker_id, 'worker', content)
+    if not msg:
+        return jsonify({'error': 'Failed to send message'}), 500
+
+    # Create notification for the owner
+    worker = db.get_worker(worker_id)
+    worker_name = worker.get('name', 'Worker') if worker else 'Worker'
+    preview = content[:80] + ('...' if len(content) > 80 else '')
+    db.create_notification(
+        company_id, 'owner', 0, 'new_message',
+        f"New message from {worker_name}: {preview}",
+        {'sender': 'worker', 'worker_id': worker_id, 'worker_name': worker_name}
+    )
+
+    if msg.get('created_at'):
+        msg['created_at'] = msg['created_at'].isoformat()
+    return jsonify({'message': msg})
+
+
+@app.route("/api/worker/messages/unread-count", methods=["GET"])
+@worker_login_required
+def worker_unread_count():
+    """Get unread message count for the worker."""
+    db = get_database()
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+    count = db.get_worker_unread_count(company_id, worker_id)
+    return jsonify({'unread_count': count})
+
+
 @app.route("/api/workers", methods=["GET", "POST"])
 @login_required
 @rate_limit(max_requests=30, window_seconds=60)

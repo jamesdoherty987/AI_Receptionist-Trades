@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getWorker, updateWorker, deleteWorker, getWorkerJobs, getWorkerHoursThisWeek, inviteWorker } from '../../services/api';
 import Modal from './Modal';
+import MessageWorkerModal from './MessageWorkerModal';
 import { useToast } from '../Toast';
 import ImageUpload from '../ImageUpload';
 import JobDetailModal from './JobDetailModal';
@@ -17,6 +18,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [inviteLink, setInviteLink] = useState(null);
   const [portalStatus, setPortalStatus] = useState(null); // null | 'invited' | 'active'
+  const [showMessageModal, setShowMessageModal] = useState(false);
 
   // Reset invite state when switching workers
   useEffect(() => {
@@ -299,6 +301,9 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                 <button className="btn btn-secondary" onClick={handleEditStart}>
                   <i className="fas fa-edit"></i> Edit
                 </button>
+                <button className="btn btn-secondary" onClick={() => setShowMessageModal(true)}>
+                  <i className="fas fa-comment-dots"></i> Message
+                </button>
                 {worker.email && portalStatus !== 'active' && (
                   <button 
                     className="btn btn-secondary"
@@ -577,6 +582,13 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
           </div>
         </div>
       )}
+      {/* Message Worker Modal */}
+      <MessageWorkerModal
+        isOpen={showMessageModal}
+        onClose={() => setShowMessageModal(false)}
+        workerId={workerId}
+        workerName={worker?.name}
+      />
     </Modal>
   );
 }

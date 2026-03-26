@@ -260,4 +260,19 @@ export const reviewTimeOffRequest = (id, status, note = '') =>
 // Worker Notifications
 export const getWorkerNotifications = () => api.get('/api/worker/notifications');
 
+// Owner-Worker Messaging
+export const getConversations = () => api.get('/api/messages/conversations');
+export const getMessages = (workerId, beforeId = null) => 
+  api.get(`/api/messages/${workerId}`, { params: beforeId ? { before_id: beforeId } : {} });
+export const sendMessageToWorker = (workerId, content) => 
+  api.post(`/api/messages/${workerId}`, { content });
+export const getUnreadMessageCounts = () => api.get('/api/messages/unread-counts');
+
+// Worker Messaging
+export const getWorkerMessages = (beforeId = null) => 
+  api.get('/api/worker/messages', { params: beforeId ? { before_id: beforeId } : {} });
+export const workerSendMessage = (content) => 
+  api.post('/api/worker/messages', { content });
+export const getWorkerUnreadMessageCount = () => api.get('/api/worker/messages/unread-count');
+
 export default api;

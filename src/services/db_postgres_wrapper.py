@@ -3441,3 +3441,139 @@ class PostgreSQLDatabaseWrapper:
             return []
         finally:
             self.return_connection(conn)
+
+    # ── Messaging ──────────────────────────────────────────────────────
+
+    def send_message(self, company_id: int, worker_id: int, sender_type: str, content: str) -> Optional[Dict]:
+        """Send a message between owner and worker. sender_type is 'owner' or 'worker'."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                INSERT INTO messages (company_id, worker_id, sender_type, content)
+                VALUES (%s, %s, %s, %s)
+                RETURNING *
+            """, (company_id, worker_id, sender_type, content))
+            result = cursor.fetchone()
+            conn.commit()
+            return dict(result) if result else None
+        except Exception as e:
+            conn.rollback()
+            print(f"Error sending message: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+
+    def get_conversation(self, company_id: int, worker_id: int, limit: int = 50, before_id: int = None) -> List[Dict]:
+        """Get messages between owner and a specific worker."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            if before_id:
+                cursor.execute("""
+                    SELECT * FROM messages
+                    WHERE company_id = %s AND worker_id = %s AND id < %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (company_id, worker_id, before_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT * FROM messages
+                    WHERE company_id = %s AND worker_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """, (company_id, worker_id, limit))
+            rows = cursor.fetchall()
+            return [dict(r) for r in reversed(rows)]  # Return in chronological order
+        except Exception as e:
+            conn.rollback()
+            print(f"Error getting conversation: {e}")
+            return []
+        finally:
+            self.return_connection(conn)
+
+    def mark_messages_read(self, company_id: int, worker_id: int, reader_type: str) -> int:
+        """Mark messages as read. reader_type='owner' marks worker messages as read, and vice versa."""
+        sender_type = 'worker' if reader_type == 'owner' else 'owner'
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE messages SET read = TRUE
+                WHERE company_id = %s AND worker_id = %s AND sender_type = %s AND read = FALSE
+            """, (company_id, worker_id, sender_type))
+            count = cursor.rowcount
+            conn.commit()
+            return count
+        except Exception as e:
+            conn.rollback()
+            print(f"Error marking messages read: {e}")
+            return 0
+        finally:
+            self.return_connection(conn)
+
+    def get_unread_message_counts(self, company_id: int) -> Dict[int, int]:
+        """Get unread message counts per worker for the owner."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT worker_id, COUNT(*) as unread
+                FROM messages
+                WHERE company_id = %s AND sender_type = 'worker' AND read = FALSE
+                GROUP BY worker_id
+            """, (company_id,))
+            return {row['worker_id']: row['unread'] for row in cursor.fetchall()}
+        except Exception:
+            conn.rollback()
+            return {}
+        finally:
+            self.return_connection(conn)
+
+    def get_worker_unread_count(self, company_id: int, worker_id: int) -> int:
+        """Get unread message count for a specific worker."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT COUNT(*) FROM messages
+                WHERE company_id = %s AND worker_id = %s AND sender_type = 'owner' AND read = FALSE
+            """, (company_id, worker_id))
+            return cursor.fetchone()[0]
+        except Exception:
+            conn.rollback()
+            return 0
+        finally:
+            self.return_connection(conn)
+
+    def get_owner_conversations_summary(self, company_id: int) -> List[Dict]:
+        """Get a summary of all conversations for the owner with last message and unread count."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT DISTINCT ON (m.worker_id)
+                    m.worker_id,
+                    w.name as worker_name,
+                    w.image_url as worker_image,
+                    m.content as last_message,
+                    m.sender_type as last_sender,
+                    m.created_at as last_message_at,
+                    (SELECT COUNT(*) FROM messages m2 
+                     WHERE m2.company_id = m.company_id AND m2.worker_id = m.worker_id 
+                     AND m2.sender_type = 'worker' AND m2.read = FALSE) as unread_count
+                FROM messages m
+                JOIN workers w ON w.id = m.worker_id
+                WHERE m.company_id = %s
+                ORDER BY m.worker_id, m.created_at DESC
+            """, (company_id,))
+            rows = [dict(r) for r in cursor.fetchall()]
+            # Sort by last message time descending
+            rows.sort(key=lambda x: x.get('last_message_at') or datetime.min, reverse=True)
+            return rows
+        except Exception as e:
+            conn.rollback()
+            print(f"Error getting conversations summary: {e}")
+            return []
+        finally:
+            self.return_connection(conn)

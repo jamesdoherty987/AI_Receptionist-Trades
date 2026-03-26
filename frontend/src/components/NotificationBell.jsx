@@ -75,6 +75,7 @@ function NotificationBell() {
       case 'completed': return 'fa-check-circle';
       case 'rescheduled': return 'fa-calendar-alt';
       case 'time_off_request': return 'fa-umbrella-beach';
+      case 'new_message': return 'fa-comment-dots';
       default: return 'fa-calendar-plus';
     }
   };
@@ -85,6 +86,7 @@ function NotificationBell() {
       case 'completed': return 'notif-completed';
       case 'rescheduled': return 'notif-rescheduled';
       case 'time_off_request': return 'notif-time-off';
+      case 'new_message': return 'notif-new';
       default: return 'notif-new';
     }
   };

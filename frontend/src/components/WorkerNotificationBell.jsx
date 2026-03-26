@@ -71,6 +71,7 @@ function WorkerNotificationBell() {
       case 'job_assigned': return 'fa-briefcase';
       case 'time_off_approved': return 'fa-check-circle';
       case 'time_off_denied': return 'fa-times-circle';
+      case 'new_message': return 'fa-comment-dots';
       default: return 'fa-bell';
     }
   };
@@ -80,6 +81,7 @@ function WorkerNotificationBell() {
       case 'job_assigned': return 'notif-new';
       case 'time_off_approved': return 'notif-completed';
       case 'time_off_denied': return 'notif-cancelled';
+      case 'new_message': return 'notif-new';
       default: return 'notif-new';
     }
   };

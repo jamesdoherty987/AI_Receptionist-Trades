@@ -20,7 +20,10 @@ import {
   getWorkerCustomers,
   getWorkerJobMaterials,
   addWorkerJobMaterial,
-  deleteWorkerJobMaterial
+  deleteWorkerJobMaterial,
+  getWorkerMessages,
+  workerSendMessage,
+  getWorkerUnreadMessageCount
 } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
@@ -90,6 +93,20 @@ function WorkerDashboard() {
   const [showAddMaterial, setShowAddMaterial] = useState(false);
   const [workerMaterialSearch, setWorkerMaterialSearch] = useState('');
   const [workerCustomMat, setWorkerCustomMat] = useState({ name: '', unit_price: '', quantity: '1' });
+
+  // Messages state
+  const [msgInput, setMsgInput] = useState('');
+  const msgEndRef = useRef(null);
+
+  // Auto-scroll messages to bottom only when new messages arrive
+  const prevMsgCountRef = useRef(0);
+  useEffect(() => {
+    const count = messagesData?.messages?.length || 0;
+    if (activeTab === 'messages' && msgEndRef.current && count > prevMsgCountRef.current) {
+      msgEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+    prevMsgCountRef.current = count;
+  }, [activeTab, messagesData]);
 
   // Profile editing state
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -162,6 +179,34 @@ function WorkerDashboard() {
       setShowAddMaterial(false);
       setWorkerMaterialSearch('');
       setWorkerCustomMat({ name: '', unit_price: '', quantity: '1' });
+    },
+  });
+
+  // Messages queries
+  const { data: messagesData } = useQuery({
+    queryKey: ['worker-messages'],
+    queryFn: async () => { const r = await getWorkerMessages(); return r.data; },
+    enabled: activeTab === 'messages',
+    refetchInterval: activeTab === 'messages' ? 8000 : false,
+  });
+
+  const { data: unreadMsgData } = useQuery({
+    queryKey: ['worker-unread-messages'],
+    queryFn: async () => { const r = await getWorkerUnreadMessageCount(); return r.data; },
+    refetchInterval: 30000,
+  });
+
+  const sendMsgMutation = useMutation({
+    mutationFn: (content) => workerSendMessage(content),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['worker-messages'] });
+      queryClient.invalidateQueries({ queryKey: ['worker-unread-messages'] });
+      queryClient.invalidateQueries({ queryKey: ['worker-notifications'] });
+      setMsgInput('');
+    },
+    onError: (error) => {
+      console.error('Failed to send message:', error);
+      alert(error.response?.data?.error || 'Failed to send message. Please try again.');
     },
   });
 
@@ -402,6 +447,7 @@ function WorkerDashboard() {
 
   const tabs = [
     { id: 'jobs', label: 'My Jobs', icon: 'fas fa-briefcase' },
+    { id: 'messages', label: 'Messages', icon: 'fas fa-comment-dots' },
     { id: 'schedule', label: 'Schedule', icon: 'fas fa-calendar' },
     { id: 'customers', label: 'Customers', icon: 'fas fa-users' },
     { id: 'hr', label: 'HR', icon: 'fas fa-user-clock' },
@@ -942,8 +988,16 @@ function WorkerDashboard() {
           <div className="worker-tabs">
             {tabs.map(tab => (
               <button key={tab.id} className={`worker-tab ${activeTab === tab.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab.id)}>
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  if (tab.id === 'messages') {
+                    queryClient.invalidateQueries({ queryKey: ['worker-unread-messages'] });
+                  }
+                }}>
                 <i className={tab.icon}></i> {tab.label}
+                {tab.id === 'messages' && (unreadMsgData?.unread_count || 0) > 0 && activeTab !== 'messages' && (
+                  <span className="wm-tab-badge">{unreadMsgData.unread_count > 9 ? '9+' : unreadMsgData.unread_count}</span>
+                )}
               </button>
             ))}
           </div>
@@ -969,7 +1023,7 @@ function WorkerDashboard() {
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
-                              {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
+                              {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
                             <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
                               {dirUrl && (
@@ -1033,7 +1087,7 @@ function WorkerDashboard() {
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
-                              {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
+                              {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
                             <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
                               {dirUrl && (
@@ -1077,7 +1131,7 @@ function WorkerDashboard() {
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
-                              {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
+                              {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
                             <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
                               {dirUrl && (
@@ -1121,7 +1175,7 @@ function WorkerDashboard() {
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
-                              {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
+                              {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
                             <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
                               {dirUrl && (
@@ -1161,7 +1215,7 @@ function WorkerDashboard() {
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
-                              {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
+                              {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
                             <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
                               {dirUrl && (
@@ -1199,7 +1253,7 @@ function WorkerDashboard() {
                             <h3>{job.client_name || 'No client'}</h3>
                             <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                             <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
-                            {job.address && <p><i className="fas fa-map-marker-alt"></i> {job.address}</p>}
+                            {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                           </div>
                         </div>
                       ))}
@@ -1241,6 +1295,91 @@ function WorkerDashboard() {
                 )}
               </div>
             )}
+
+            {/* ---- MESSAGES TAB ---- */}
+            {activeTab === 'messages' && (() => {
+              const workerMsgs = messagesData?.messages || [];
+              // Group messages by date
+              const grouped = [];
+              let lastD = '';
+              workerMsgs.forEach(m => {
+                const d = new Date(m.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                if (d !== lastD) { grouped.push({ type: 'date', date: d }); lastD = d; }
+                grouped.push({ type: 'msg', ...m });
+              });
+
+              const handleMsgSend = () => {
+                const text = msgInput.trim();
+                if (!text || sendMsgMutation.isPending) return;
+                sendMsgMutation.mutate(text);
+              };
+
+              return (
+                <div className="worker-messages-tab">
+                  <div className="wm-header">
+                    <h2><i className="fas fa-comment-dots"></i> Messages</h2>
+                    <p className="wm-subtitle">Chat with your manager</p>
+                  </div>
+                  <div className="wm-chat-container">
+                    <div className="wm-messages">
+                      {workerMsgs.length === 0 ? (
+                        <div className="wm-empty">
+                          <div className="wm-empty-icon"><i className="fas fa-comments"></i></div>
+                          <h3>No messages yet</h3>
+                          <p>Send a message to your manager</p>
+                        </div>
+                      ) : (
+                        grouped.map((item, i) => {
+                          if (item.type === 'date') {
+                            return (
+                              <div key={`d-${i}`} className="wm-date-divider"><span>{item.date}</span></div>
+                            );
+                          }
+                          const isMine = item.sender_type === 'worker';
+                          return (
+                            <div key={item.id} className={`wm-bubble ${isMine ? 'sent' : 'received'}`}>
+                              <div className="wm-bubble-content">
+                                <p>{item.content}</p>
+                                <span className="wm-time">
+                                  {(() => {
+                                    const d = new Date(item.created_at);
+                                    const diff = Math.floor((Date.now() - d) / 60000);
+                                    if (diff < 1) return 'Just now';
+                                    if (diff < 60) return `${diff}m ago`;
+                                    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                                  })()}
+                                  {isMine && item.read && <i className="fas fa-check-double wm-read" title="Read"></i>}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                      <div ref={msgEndRef} />
+                    </div>
+                    <div className="wm-input-bar">
+                      <textarea
+                        className="wm-input"
+                        placeholder="Type a message..."
+                        value={msgInput}
+                        onChange={(e) => setMsgInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleMsgSend(); } }}
+                        rows="1"
+                        maxLength={2000}
+                      />
+                      <button
+                        className="wm-send-btn"
+                        onClick={handleMsgSend}
+                        disabled={!msgInput.trim() || sendMsgMutation.isPending}
+                        aria-label="Send message"
+                      >
+                        <i className={`fas ${sendMsgMutation.isPending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`}></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* ---- SCHEDULE TAB ---- */}
             {activeTab === 'schedule' && (
