@@ -356,7 +356,7 @@ function Landing() {
                 <div className="bento-icon"><i className={f.icon}></i></div>
                 <h3>{f.title}</h3>
                 <p>{f.description}</p>
-                {i === 0 && <div className="bento-mini-demo"><LiveTranscript /></div>}
+                {i === 0 && null /* mini demo removed */}
               </div>
             ))}
           </div>
@@ -376,22 +376,6 @@ function Landing() {
             <div className="step"><div className="step-number">2</div><h3>Connect Your Phone</h3><p>Forward your business calls to your new AI receptionist number.</p></div>
             <div className="step-connector"></div>
             <div className="step"><div className="step-number">3</div><h3>Start Growing</h3><p>Watch your bookings increase as you never miss another call.</p></div>
-          </div>
-        </div>
-      </section>
-
-      {/* Dashboard Preview */}
-      <section className="dashboard-preview-section">
-        <div className="section-container">
-          <div className="section-header">
-            <span className="section-badge">See It In Action</span>
-            <h2>A dashboard built for <span className="gradient-text">tradespeople</span></h2>
-            <p>Manage jobs, workers, finances, and customers — all in one place.</p>
-          </div>
-          <div className="dp-wrapper">
-            <Tilt tiltMaxAngleX={isMobile ? 0 : 5} tiltMaxAngleY={isMobile ? 0 : 5} perspective={1200} scale={1.01} transitionSpeed={2000}>
-              <DashboardPreview />
-            </Tilt>
           </div>
         </div>
       </section>
@@ -438,30 +422,6 @@ function Landing() {
                 </div>
               </Tilt>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Comparison Table */}
-      <section className="comparison-section">
-        <div className="section-container">
-          <div className="section-header">
-            <span className="section-badge">Why Switch?</span>
-            <h2>Real Receptionist vs <span className="gradient-text">AI Receptionist</span></h2>
-            <p>See why businesses are making the switch to AI-powered call handling.</p>
-          </div>
-          <div className="comparison-table-wrapper">
-            <table className="comparison-table">
-              <thead><tr><th>Feature</th><th><i className="fas fa-user"></i> Real Receptionist</th><th className="highlight-col"><i className="fas fa-robot"></i> AI Receptionist</th></tr></thead>
-              <tbody>
-                <tr><td>Availability</td><td>9-5, weekdays only</td><td className="highlight-col"><i className="fas fa-check"></i> 24/7, 365 days</td></tr>
-                <tr><td>Monthly Cost</td><td>€2,500 - €3,500+</td><td className="highlight-col"><i className="fas fa-check"></i> €99/month</td></tr>
-                <tr><td>Sick Days / Holidays</td><td>20+ days/year</td><td className="highlight-col"><i className="fas fa-check"></i> Never</td></tr>
-                <tr><td>Handles Multiple Calls</td><td>One at a time</td><td className="highlight-col"><i className="fas fa-check"></i> Unlimited</td></tr>
-                <tr><td>Instant Booking</td><td>Manual process</td><td className="highlight-col"><i className="fas fa-check"></i> Automatic</td></tr>
-                <tr><td>Training Required</td><td>Weeks of training</td><td className="highlight-col"><i className="fas fa-check"></i> Ready instantly</td></tr>
-              </tbody>
-            </table>
           </div>
         </div>
       </section>

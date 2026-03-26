@@ -96,10 +96,15 @@ function Login() {
       </div>
 
       <div className="auth-container">
-        <Link to="/" className="auth-logo">
-          <i className="fas fa-bolt"></i>
-          <span>BookedForYou</span>
-        </Link>
+        <div className="auth-top-row">
+          <Link to="/" className="auth-back-btn">
+            <i className="fas fa-arrow-left"></i> Back
+          </Link>
+          <Link to="/" className="auth-logo">
+            <i className="fas fa-bolt"></i>
+            <span>BookedForYou</span>
+          </Link>
+        </div>
 
         <div className="auth-card">
           <div className="auth-header">
@@ -171,10 +176,13 @@ function Login() {
               Don't have an account?{' '}
               <Link to="/signup">Create account</Link>
             </p>
-            <p style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}>
-              Worker? <Link to="/worker/login">Worker portal login</Link>
-            </p>
           </div>
+
+          <Link to="/worker/login" className="worker-portal-btn">
+            <i className="fas fa-hard-hat"></i>
+            Worker Portal Login
+            <i className="fas fa-arrow-right"></i>
+          </Link>
         </div>
 
         <p className="auth-terms">

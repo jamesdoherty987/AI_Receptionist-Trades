@@ -146,10 +146,15 @@ function Signup() {
       </div>
 
       <div className="auth-container signup-container">
-        <Link to="/" className="auth-logo">
-          <i className="fas fa-bolt"></i>
-          <span>BookedForYou</span>
-        </Link>
+        <div className="auth-top-row">
+          <Link to="/" className="auth-back-btn">
+            <i className="fas fa-arrow-left"></i> Back
+          </Link>
+          <Link to="/" className="auth-logo">
+            <i className="fas fa-bolt"></i>
+            <span>BookedForYou</span>
+          </Link>
+        </div>
 
         <div className="auth-card">
           <div className="auth-header">
