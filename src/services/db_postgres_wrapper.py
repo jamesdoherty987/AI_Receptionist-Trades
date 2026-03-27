@@ -237,6 +237,8 @@ class PostgreSQLDatabaseWrapper:
                     ai_summary TEXT,
                     summary TEXT,
                     call_sid TEXT,
+                    is_lost_job BOOLEAN DEFAULT FALSE,
+                    lost_job_reason TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -771,6 +773,8 @@ class PostgreSQLDatabaseWrapper:
             'call_outcome': "TEXT DEFAULT 'no_action'",
             'ai_summary': 'TEXT',
             'call_sid': 'TEXT',
+            'is_lost_job': 'BOOLEAN DEFAULT FALSE',
+            'lost_job_reason': 'TEXT',
         }
         for col_name, col_type in call_log_columns.items():
             cursor.execute(
@@ -3639,7 +3643,8 @@ class PostgreSQLDatabaseWrapper:
                         caller_name: str = None, address: str = None,
                         eircode: str = None, duration_seconds: int = None,
                         call_outcome: str = 'no_action', ai_summary: str = None,
-                        summary: str = None, call_sid: str = None) -> Optional[int]:
+                        summary: str = None, call_sid: str = None,
+                        is_lost_job: bool = False, lost_job_reason: str = None) -> Optional[int]:
         """Create a call log entry for every call regardless of outcome."""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -3647,11 +3652,13 @@ class PostgreSQLDatabaseWrapper:
             cursor.execute("""
                 INSERT INTO call_logs 
                 (company_id, phone_number, caller_name, address, eircode,
-                 duration_seconds, call_outcome, ai_summary, summary, call_sid)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 duration_seconds, call_outcome, ai_summary, summary, call_sid,
+                 is_lost_job, lost_job_reason)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (company_id, phone_number, caller_name, address, eircode,
-                  duration_seconds, call_outcome, ai_summary, summary, call_sid))
+                  duration_seconds, call_outcome, ai_summary, summary, call_sid,
+                  is_lost_job, lost_job_reason))
             result = cursor.fetchone()
             conn.commit()
             return result[0] if result else None
@@ -3663,7 +3670,8 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
 
     def get_call_logs(self, company_id: int, limit: int = 100, offset: int = 0,
-                      outcome_filter: str = None, search: str = None) -> List[Dict]:
+                      outcome_filter: str = None, search: str = None,
+                      lost_only: bool = False, outcomes: list = None) -> List[Dict]:
         """Get call logs for a company with optional filtering."""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -3671,9 +3679,16 @@ class PostgreSQLDatabaseWrapper:
             query = "SELECT * FROM call_logs WHERE company_id = %s"
             params = [company_id]
 
-            if outcome_filter and outcome_filter != 'all':
+            if outcomes:
+                placeholders = ','.join(['%s'] * len(outcomes))
+                query += f" AND call_outcome IN ({placeholders})"
+                params.extend(outcomes)
+            elif outcome_filter and outcome_filter != 'all':
                 query += " AND call_outcome = %s"
                 params.append(outcome_filter)
+
+            if lost_only:
+                query += " AND is_lost_job = TRUE"
 
             if search:
                 query += " AND (caller_name ILIKE %s OR phone_number ILIKE %s OR address ILIKE %s)"
@@ -3693,7 +3708,8 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
 
     def get_call_log_count(self, company_id: int, outcome_filter: str = None,
-                           search: str = None) -> int:
+                           search: str = None, lost_only: bool = False,
+                           outcomes: list = None) -> int:
         """Get total count of call logs for pagination."""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -3701,9 +3717,16 @@ class PostgreSQLDatabaseWrapper:
             query = "SELECT COUNT(*) FROM call_logs WHERE company_id = %s"
             params = [company_id]
 
-            if outcome_filter and outcome_filter != 'all':
+            if outcomes:
+                placeholders = ','.join(['%s'] * len(outcomes))
+                query += f" AND call_outcome IN ({placeholders})"
+                params.extend(outcomes)
+            elif outcome_filter and outcome_filter != 'all':
                 query += " AND call_outcome = %s"
                 params.append(outcome_filter)
+
+            if lost_only:
+                query += " AND is_lost_job = TRUE"
 
             if search:
                 query += " AND (caller_name ILIKE %s OR phone_number ILIKE %s OR address ILIKE %s)"

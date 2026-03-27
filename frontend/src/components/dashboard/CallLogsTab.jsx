@@ -4,34 +4,25 @@ import { getCallLogs } from '../../services/api';
 import { formatPhone } from '../../utils/helpers';
 import './CallLogsTab.css';
 
-const OUTCOME_FILTERS = [
+const FILTERS = [
   { key: 'all', label: 'All', icon: 'fa-list' },
+  { key: 'lost', label: 'Lost Jobs', icon: 'fa-exclamation-triangle' },
   { key: 'booked', label: 'Booked', icon: 'fa-calendar-check' },
   { key: 'cancelled', label: 'Cancelled', icon: 'fa-times-circle' },
   { key: 'rescheduled', label: 'Rescheduled', icon: 'fa-calendar-alt' },
   { key: 'enquiry', label: 'Enquiry', icon: 'fa-question-circle' },
-  { key: 'hung_up', label: 'Hung Up', icon: 'fa-phone-slash' },
-  { key: 'no_action', label: 'No Action', icon: 'fa-minus-circle' },
+  { key: 'no_booking', label: 'No Booking', icon: 'fa-phone-slash' },
 ];
 
 const OUTCOME_LABELS = {
-  booked: 'Booked',
-  cancelled: 'Cancelled',
-  rescheduled: 'Rescheduled',
-  enquiry: 'Enquiry',
-  wrong_number: 'Wrong Number',
-  hung_up: 'Hung Up',
-  no_action: 'No Action',
+  booked: 'Booked', cancelled: 'Cancelled', rescheduled: 'Rescheduled',
+  enquiry: 'Enquiry', wrong_number: 'Wrong Number', hung_up: 'Hung Up', no_action: 'No Action',
 };
 
 const OUTCOME_ICONS = {
-  booked: 'fa-calendar-check',
-  cancelled: 'fa-times-circle',
-  rescheduled: 'fa-calendar-alt',
-  enquiry: 'fa-question-circle',
-  wrong_number: 'fa-phone-slash',
-  hung_up: 'fa-phone-slash',
-  no_action: 'fa-minus-circle',
+  booked: 'fa-calendar-check', cancelled: 'fa-times-circle', rescheduled: 'fa-calendar-alt',
+  enquiry: 'fa-question-circle', wrong_number: 'fa-phone-slash',
+  hung_up: 'fa-phone-slash', no_action: 'fa-minus-circle',
 };
 
 function formatDuration(seconds) {
@@ -58,16 +49,23 @@ function formatRelativeTime(dateStr) {
 }
 
 function CallLogsTab() {
-  const [outcomeFilter, setOutcomeFilter] = useState('all');
+  const [activeFilter, setActiveFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [selectedLog, setSelectedLog] = useState(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['call-logs', outcomeFilter, searchTerm, page],
+    queryKey: ['call-logs', activeFilter, searchTerm, page],
     queryFn: async () => {
       const params = { page, per_page: 50 };
-      if (outcomeFilter !== 'all') params.outcome = outcomeFilter;
+      // Map filter key to API params
+      if (activeFilter === 'lost') {
+        params.lost_only = 'true';
+      } else if (activeFilter === 'no_booking') {
+        params.outcome = 'no_booking';
+      } else if (activeFilter !== 'all') {
+        params.outcome = activeFilter;
+      }
       if (searchTerm.trim()) params.search = searchTerm.trim();
       const res = await getCallLogs(params);
       return res.data;
@@ -80,7 +78,7 @@ function CallLogsTab() {
   const total = data?.total || 0;
 
   const handleFilterChange = useCallback((key) => {
-    setOutcomeFilter(key);
+    setActiveFilter(key);
     setPage(1);
   }, []);
 
@@ -96,21 +94,16 @@ function CallLogsTab() {
         <div className="call-logs-controls">
           <div className="search-box">
             <i className="fas fa-search"></i>
-            <input
-              type="text"
-              placeholder="Search by name, phone, address..."
-              value={searchTerm}
-              onChange={handleSearch}
-            />
+            <input type="text" placeholder="Search by name, phone, address..." value={searchTerm} onChange={handleSearch} />
           </div>
         </div>
       </div>
 
       <div className="call-logs-filters">
-        {OUTCOME_FILTERS.map(f => (
+        {FILTERS.map(f => (
           <button
             key={f.key}
-            className={`filter-btn ${outcomeFilter === f.key ? 'active' : ''}`}
+            className={`filter-btn ${activeFilter === f.key ? 'active' : ''} ${f.key === 'lost' ? 'lost-filter' : ''}`}
             onClick={() => handleFilterChange(f.key)}
           >
             <i className={`fas ${f.icon}`}></i> {f.label}
@@ -124,31 +117,28 @@ function CallLogsTab() {
         ) : logs.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">📞</div>
-            <p>{searchTerm || outcomeFilter !== 'all' ? 'No calls match your filters' : 'No calls logged yet'}</p>
+            <p>{searchTerm || activeFilter !== 'all' ? 'No calls match your filters' : 'No calls logged yet'}</p>
           </div>
         ) : (
           logs.map(log => (
-            <div key={log.id} className="call-log-card" onClick={() => setSelectedLog(log)}>
-              <div className={`call-log-icon ${log.call_outcome || 'no_action'}`}>
-                <i className={`fas ${OUTCOME_ICONS[log.call_outcome] || 'fa-phone'}`}></i>
+            <div key={log.id} className={`call-log-card ${log.is_lost_job ? 'lost-job' : ''}`} onClick={() => setSelectedLog(log)}>
+              <div className={`call-log-icon ${log.is_lost_job ? 'lost' : (log.call_outcome || 'no_action')}`}>
+                <i className={`fas ${log.is_lost_job ? 'fa-exclamation-triangle' : (OUTCOME_ICONS[log.call_outcome] || 'fa-phone')}`}></i>
               </div>
               <div className="call-log-info">
-                <h3>{log.caller_name || formatPhone(log.phone_number) || 'Unknown Caller'}</h3>
+                <h3>
+                  {log.caller_name || formatPhone(log.phone_number) || 'Unknown Caller'}
+                  {log.is_lost_job && <span className="lost-job-badge">Lost Job</span>}
+                </h3>
                 <div className="call-log-meta">
                   {log.phone_number && (
-                    <span className="call-log-meta-item">
-                      <i className="fas fa-phone"></i> {formatPhone(log.phone_number)}
-                    </span>
+                    <span className="call-log-meta-item"><i className="fas fa-phone"></i> {formatPhone(log.phone_number)}</span>
                   )}
                   {log.address && (
-                    <span className="call-log-meta-item">
-                      <i className="fas fa-map-marker-alt"></i> {log.address}
-                    </span>
+                    <span className="call-log-meta-item"><i className="fas fa-map-marker-alt"></i> {log.address}</span>
                   )}
                   {log.duration_seconds != null && (
-                    <span className="call-log-meta-item">
-                      <i className="fas fa-clock"></i> {formatDuration(log.duration_seconds)}
-                    </span>
+                    <span className="call-log-meta-item"><i className="fas fa-clock"></i> {formatDuration(log.duration_seconds)}</span>
                   )}
                 </div>
                 {log.ai_summary && <p className="call-log-summary">{log.ai_summary}</p>}
@@ -184,36 +174,36 @@ function CallLogsTab() {
               <h3>
                 <i className={`fas ${OUTCOME_ICONS[selectedLog.call_outcome] || 'fa-phone'}`} style={{ marginRight: '0.5rem', color: '#6366f1' }}></i>
                 Call Details
+                {selectedLog.is_lost_job && <span className="lost-job-badge" style={{ marginLeft: '0.5rem' }}>Lost Job</span>}
               </h3>
               <button className="call-detail-close" onClick={() => setSelectedLog(null)}>
                 <i className="fas fa-times"></i>
               </button>
             </div>
             <div className="call-detail-body">
+              {selectedLog.is_lost_job && selectedLog.lost_job_reason && (
+                <div className="lost-job-reason-box">
+                  <i className="fas fa-exclamation-triangle"></i>
+                  <span>{selectedLog.lost_job_reason}</span>
+                </div>
+              )}
+
               <div className="call-detail-grid">
                 <div className="call-detail-field">
                   <label>Caller Name</label>
-                  <span className={selectedLog.caller_name ? '' : 'empty'}>
-                    {selectedLog.caller_name || 'Not provided'}
-                  </span>
+                  <span className={selectedLog.caller_name ? '' : 'empty'}>{selectedLog.caller_name || 'Not provided'}</span>
                 </div>
                 <div className="call-detail-field">
                   <label>Phone Number</label>
-                  <span className={selectedLog.phone_number ? '' : 'empty'}>
-                    {selectedLog.phone_number ? formatPhone(selectedLog.phone_number) : 'Unknown'}
-                  </span>
+                  <span className={selectedLog.phone_number ? '' : 'empty'}>{selectedLog.phone_number ? formatPhone(selectedLog.phone_number) : 'Unknown'}</span>
                 </div>
                 <div className="call-detail-field">
                   <label>Address</label>
-                  <span className={selectedLog.address ? '' : 'empty'}>
-                    {selectedLog.address || 'Not provided'}
-                  </span>
+                  <span className={selectedLog.address ? '' : 'empty'}>{selectedLog.address || 'Not provided'}</span>
                 </div>
                 <div className="call-detail-field">
                   <label>Eircode</label>
-                  <span className={selectedLog.eircode ? '' : 'empty'}>
-                    {selectedLog.eircode || 'Not provided'}
-                  </span>
+                  <span className={selectedLog.eircode ? '' : 'empty'}>{selectedLog.eircode || 'Not provided'}</span>
                 </div>
                 <div className="call-detail-field">
                   <label>Duration</label>
@@ -229,30 +219,19 @@ function CallLogsTab() {
                   <label>Date & Time</label>
                   <span>
                     {selectedLog.created_at
-                      ? new Date(selectedLog.created_at).toLocaleString('en-IE', {
-                          day: 'numeric', month: 'short', year: 'numeric',
-                          hour: '2-digit', minute: '2-digit'
-                        })
+                      ? new Date(selectedLog.created_at).toLocaleString('en-IE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                       : '—'}
                   </span>
                 </div>
               </div>
 
-              {selectedLog.ai_summary && (
-                <div className="call-detail-section">
-                  <h4>AI Call Summary</h4>
-                  <p>{selectedLog.ai_summary}</p>
-                </div>
-              )}
-
-              {!selectedLog.ai_summary && (
-                <div className="call-detail-section">
-                  <h4>AI Call Summary</h4>
-                  <p style={{ color: '#cbd5e1', fontStyle: 'italic' }}>
-                    No summary available — caller may have hung up early
-                  </p>
-                </div>
-              )}
+              <div className="call-detail-section">
+                <h4>AI Call Summary</h4>
+                {selectedLog.ai_summary
+                  ? <p>{selectedLog.ai_summary}</p>
+                  : <p style={{ color: '#cbd5e1', fontStyle: 'italic' }}>No summary available — caller may have hung up early</p>
+                }
+              </div>
             </div>
           </div>
         </div>

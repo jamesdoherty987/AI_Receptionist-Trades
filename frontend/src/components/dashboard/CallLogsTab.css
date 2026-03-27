@@ -132,3 +132,27 @@
   .call-log-right { flex-direction: row; gap: 0.5rem; align-items: center; }
   .call-detail-grid { grid-template-columns: 1fr; }
 }
+
+/* Lost Job styles */
+.call-log-card.lost-job { border-left: 3px solid #f59e0b; }
+
+.call-log-icon.lost { background: #fef3c7; color: #d97706; }
+
+.lost-job-badge {
+  display: inline-flex; align-items: center;
+  padding: 0.15rem 0.45rem; border-radius: 4px; font-size: 0.68rem; font-weight: 700;
+  background: #fef3c7; color: #b45309; margin-left: 0.4rem; vertical-align: middle;
+  letter-spacing: 0.02em;
+}
+
+.lost-job-reason-box {
+  display: flex; align-items: flex-start; gap: 0.6rem;
+  padding: 0.75rem 1rem; border-radius: 8px;
+  background: #fffbeb; border: 1px solid #fde68a;
+  font-size: 0.85rem; color: #92400e; line-height: 1.45;
+}
+.lost-job-reason-box i { color: #d97706; margin-top: 0.15rem; flex-shrink: 0; }
+
+.call-logs-filters .filter-btn.lost-filter.active { background: #f59e0b; border-color: #f59e0b; color: white; }
+.call-logs-filters .filter-btn.lost-filter:not(.active) { border-color: #fde68a; color: #b45309; background: #fffbeb; }
+.call-logs-filters .filter-btn.lost-filter:not(.active):hover { border-color: #f59e0b; }

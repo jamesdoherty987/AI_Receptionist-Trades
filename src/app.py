@@ -6696,6 +6696,7 @@ def call_logs_api():
 
     outcome = request.args.get('outcome', 'all')
     search = request.args.get('search', '').strip() or None
+    lost_only = request.args.get('lost_only', '').lower() == 'true'
     try:
         page = max(int(request.args.get('page', 1)), 1)
     except (ValueError, TypeError):
@@ -6706,17 +6707,27 @@ def call_logs_api():
         per_page = 50
     offset = (page - 1) * per_page
 
+    # "no_booking" groups multiple outcomes server-side
+    outcomes = None
+    if outcome == 'no_booking':
+        outcomes = ['hung_up', 'no_action', 'wrong_number']
+        outcome = 'all'  # Don't also apply single outcome filter
+
     logs = db.get_call_logs(
         company_id=company_id,
         limit=per_page,
         offset=offset,
         outcome_filter=outcome,
         search=search,
+        lost_only=lost_only,
+        outcomes=outcomes,
     )
     total = db.get_call_log_count(
         company_id=company_id,
         outcome_filter=outcome,
         search=search,
+        lost_only=lost_only,
+        outcomes=outcomes,
     )
 
     # Serialize datetimes

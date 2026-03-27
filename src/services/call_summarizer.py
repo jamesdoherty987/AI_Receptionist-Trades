@@ -394,12 +394,20 @@ CALL_LOG_FUNCTION = {
                 "enum": ["booked", "cancelled", "rescheduled", "enquiry", "wrong_number", "hung_up", "no_action"],
                 "description": "What happened on the call: booked (new appointment made), cancelled (existing appointment cancelled), rescheduled (appointment moved), enquiry (asked questions but didn't book), wrong_number (caller had wrong number), hung_up (caller disconnected early), no_action (call completed but no specific action taken)."
             },
+            "is_lost_job": {
+                "type": "boolean",
+                "description": "True if the caller wanted a service or job done but did NOT end up booking. Examples: caller asked about a service but hung up, no availability was found, caller said they'd call back, caller was put off by price/wait time, caller got frustrated. False if: a booking was made, it was a cancellation/reschedule, wrong number, or the caller was just making a general enquiry with no intent to book."
+            },
+            "lost_job_reason": {
+                "type": "string",
+                "description": "If is_lost_job is true, briefly explain why the job was lost (e.g., 'No availability on requested date', 'Caller hung up during booking', 'Caller said they would call back', 'Caller seemed unsatisfied with wait time'). Leave empty string if not a lost job."
+            },
             "ai_summary": {
                 "type": "string",
                 "description": "A concise 1-3 sentence summary of the entire call from start to finish. Include what the caller wanted, what happened, and the outcome. Be factual and brief. If the call was very short or the caller hung up, note that."
             }
         },
-        "required": ["call_outcome", "ai_summary"]
+        "required": ["call_outcome", "ai_summary", "is_lost_job"]
     }
 }
 
@@ -412,7 +420,7 @@ def generate_call_log_summary(conversation_log: List[Dict[str, Any]]) -> Optiona
     Returns dict with: caller_name, address, eircode, call_outcome, ai_summary
     """
     if not conversation_log:
-        return {"call_outcome": "hung_up", "ai_summary": "Call ended before any conversation took place.", "caller_name": "", "address": "", "eircode": ""}
+        return {"call_outcome": "hung_up", "ai_summary": "Call ended before any conversation took place.", "caller_name": "", "address": "", "eircode": "", "is_lost_job": False, "lost_job_reason": ""}
 
     transcript_lines = []
     for msg in conversation_log:
@@ -422,12 +430,12 @@ def generate_call_log_summary(conversation_log: List[Dict[str, Any]]) -> Optiona
             transcript_lines.append(f"{role}: {content}")
 
     if not transcript_lines:
-        return {"call_outcome": "hung_up", "ai_summary": "Call ended before any conversation took place.", "caller_name": "", "address": "", "eircode": ""}
+        return {"call_outcome": "hung_up", "ai_summary": "Call ended before any conversation took place.", "caller_name": "", "address": "", "eircode": "", "is_lost_job": False, "lost_job_reason": ""}
 
     # If only the greeting was sent and no customer response, it's a hang-up
     customer_messages = [m for m in conversation_log if m.get('role') == 'user']
     if not customer_messages:
-        return {"call_outcome": "hung_up", "ai_summary": "Caller hung up before speaking. No conversation took place.", "caller_name": "", "address": "", "eircode": ""}
+        return {"call_outcome": "hung_up", "ai_summary": "Caller hung up before speaking. No conversation took place.", "caller_name": "", "address": "", "eircode": "", "is_lost_job": False, "lost_job_reason": ""}
 
     transcript = "\n".join(transcript_lines)
 
@@ -452,7 +460,7 @@ def generate_call_log_summary(conversation_log: List[Dict[str, Any]]) -> Optiona
         print(f"[WARNING] Call log summary generation failed: {e}")
 
     # Fallback — still log something
-    return {"call_outcome": "no_action", "ai_summary": "Call summary could not be generated.", "caller_name": "", "address": "", "eircode": ""}
+    return {"call_outcome": "no_action", "ai_summary": "Call summary could not be generated.", "caller_name": "", "address": "", "eircode": "", "is_lost_job": False, "lost_job_reason": ""}
 
 
 async def log_call(conversation_log: List[Dict[str, Any]],
@@ -484,7 +492,7 @@ async def log_call(conversation_log: List[Dict[str, Any]],
     log_data = await loop.run_in_executor(None, generate_call_log_summary, conversation_log)
 
     if not log_data:
-        log_data = {"call_outcome": "no_action", "ai_summary": "", "caller_name": "", "address": "", "eircode": ""}
+        log_data = {"call_outcome": "no_action", "ai_summary": "", "caller_name": "", "address": "", "eircode": "", "is_lost_job": False, "lost_job_reason": ""}
 
     # Enrich with call_state data if available (more reliable than LLM extraction)
     if call_state:
@@ -509,6 +517,8 @@ async def log_call(conversation_log: List[Dict[str, Any]],
             call_outcome=log_data.get('call_outcome', 'no_action'),
             ai_summary=log_data.get('ai_summary') or None,
             call_sid=call_sid,
+            is_lost_job=bool(log_data.get('is_lost_job', False)),
+            lost_job_reason=log_data.get('lost_job_reason') or None,
         )
         if call_log_id:
             print(f"[SUCCESS] Call logged (id={call_log_id}, outcome={log_data.get('call_outcome')})")
