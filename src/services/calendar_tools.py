@@ -4012,7 +4012,7 @@ Return ONLY valid JSON, no explanation."""
                     # Update client description
                     try:
                         from src.services.client_description_generator import update_client_description
-                        update_client_description(client_id)
+                        update_client_description(client_id, company_id=company_id)
                     except Exception:
                         pass
                     
@@ -5084,7 +5084,7 @@ Return ONLY valid JSON, no explanation."""
                     # Update client description
                     try:
                         from src.services.client_description_generator import update_client_description
-                        update_client_description(client_id)
+                        update_client_description(client_id, company_id=company_id)
                     except Exception:
                         pass
                     

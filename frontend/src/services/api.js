@@ -275,6 +275,18 @@ export const workerSendMessage = (content) =>
   api.post('/api/worker/messages', { content });
 export const getWorkerUnreadMessageCount = () => api.get('/api/worker/messages/unread-count');
 
+// Worker Job Creation
+export const workerGetServices = () => api.get('/api/worker/services');
+export const workerGetClients = () => api.get('/api/worker/clients');
+export const workerGetClient = (id) => api.get(`/api/worker/clients/${id}`);
+export const workerGetWorkers = () => api.get('/api/worker/workers');
+export const workerCheckAvailability = (date, serviceType, workerId = null, anyWorker = false, durationMinutes = null) => api.get('/api/worker/availability', { params: { date, service_type: serviceType, worker_id: workerId, any_worker: anyWorker || undefined, duration_minutes: durationMinutes || undefined } });
+export const workerCheckMonthlyAvailability = (year, month, serviceType, workerId = null, anyWorker = false, durationMinutes = null) => api.get('/api/worker/availability/month', { params: { year, month, service_type: serviceType, worker_id: workerId, any_worker: anyWorker || undefined, duration_minutes: durationMinutes || undefined } });
+export const workerCheckWorkerAvailability = (id, appointmentTime, durationMinutes) =>
+  api.get(`/api/worker/workers/${id}/availability`, { params: { appointment_time: appointmentTime, duration_minutes: durationMinutes } });
+export const workerCreateBooking = (data) => api.post('/api/worker/bookings', data);
+export const workerCreateClient = (data) => api.post('/api/worker/clients/create', data);
+
 // Call Logs
 export const getCallLogs = (params = {}) => api.get('/api/call-logs', { params });
 

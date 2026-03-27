@@ -1889,7 +1889,7 @@ def worker_job_notes(job_id):
         return jsonify({"error": "Note text is required"}), 400
 
     # Get worker name for the created_by field
-    worker = db.get_worker(worker_id)
+    worker = db.get_worker(worker_id, company_id=company_id)
     created_by = f"worker:{worker['name']}" if worker else "worker"
 
     note_id = db.add_appointment_note(
@@ -2246,6 +2246,108 @@ def worker_customers():
         db.return_connection(conn)
 
     return jsonify({"success": True, "customers": customers})
+
+
+# --- Worker endpoints for job creation ---
+
+@app.route("/api/worker/services", methods=["GET"])
+@worker_login_required
+def worker_services():
+    """Get services menu for the worker's company"""
+    company_id = session.get('worker_company_id')
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    menu = settings_mgr.get_services_menu(company_id=company_id)
+    return jsonify(menu)
+
+
+@app.route("/api/worker/clients", methods=["GET"])
+@worker_login_required
+def worker_clients():
+    """Get all clients for the worker's company"""
+    company_id = session.get('worker_company_id')
+    db = get_database()
+    clients = db.get_all_clients(company_id=company_id)
+    return jsonify(clients)
+
+
+@app.route("/api/worker/clients/<int:client_id>", methods=["GET"])
+@worker_login_required
+def worker_client_detail(client_id):
+    """Get a single client's details"""
+    company_id = session.get('worker_company_id')
+    db = get_database()
+    client = db.get_client(client_id, company_id=company_id)
+    if not client:
+        return jsonify({"error": "Client not found"}), 404
+    return jsonify(client)
+
+
+@app.route("/api/worker/clients/create", methods=["POST"])
+@worker_login_required
+@rate_limit(max_requests=30, window_seconds=60)
+def worker_create_client():
+    """Create a new client as a worker"""
+    company_id = session.get('worker_company_id')
+    session['company_id'] = company_id
+    return clients_api()
+
+
+@app.route("/api/worker/workers", methods=["GET"])
+@worker_login_required
+def worker_list_workers():
+    """Get all workers for the worker's company (for assigning to jobs)"""
+    company_id = session.get('worker_company_id')
+    db = get_database()
+    workers = db.get_all_workers(company_id=company_id)
+    return jsonify(workers)
+
+
+@app.route("/api/worker/availability", methods=["GET"])
+@worker_login_required
+def worker_check_availability():
+    """Check daily availability — mirrors /api/bookings/availability for worker context"""
+    company_id = session.get('worker_company_id')
+    session['company_id'] = company_id
+    return check_availability_api()
+
+
+@app.route("/api/worker/availability/month", methods=["GET"])
+@worker_login_required
+def worker_check_monthly_availability():
+    """Check monthly availability — mirrors /api/bookings/availability/month for worker context"""
+    company_id = session.get('worker_company_id')
+    session['company_id'] = company_id
+    return check_monthly_availability_api()
+
+
+@app.route("/api/worker/workers/<int:wid>/availability", methods=["GET"])
+@worker_login_required
+def worker_check_worker_availability(wid):
+    """Check a specific worker's availability — mirrors /api/workers/<id>/availability"""
+    company_id = session.get('worker_company_id')
+    session['company_id'] = company_id
+    return check_worker_availability_api(wid)
+
+
+@app.route("/api/worker/bookings", methods=["POST"])
+@worker_login_required
+@rate_limit(max_requests=30, window_seconds=60)
+def worker_create_booking():
+    """Create a new booking as a worker — reuses the owner booking creation logic"""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+
+    # Inject company_id so the existing bookings_api logic works
+    session['company_id'] = company_id
+
+    # If no workers assigned and not auto-assign, default to assigning the creating worker
+    data = request.json
+    worker_ids = data.get('worker_ids', [])
+    if not worker_ids and not data.get('auto_assign_worker'):
+        data['worker_ids'] = [worker_id]
+
+    return bookings_api()
 
 
 # --- Owner endpoints for managing time-off requests ---
@@ -4838,7 +4940,7 @@ def appointment_notes_api(booking_id):
         print(f"\n[UPDATE] Updating client description for client_id: {client_id} after adding note...")
         try:
             from src.services.client_description_generator import update_client_description
-            success = update_client_description(client_id)
+            success = update_client_description(client_id, company_id=company_id)
             if success:
                 print(f"[SUCCESS] Successfully updated description for client {client_id}")
             else:
@@ -4868,14 +4970,14 @@ def appointment_note_api(booking_id, note_id):
     
     if request.method == "PUT":
         data = request.json
-        success = db.update_appointment_note(note_id, data['note'])
+        success = db.update_appointment_note(note_id, data['note'], booking_id=booking_id)
         if success:
             # Update client description after editing note
             if client_id:
                 print(f"\n[UPDATE] Updating client description for client_id: {client_id} after editing note...")
                 try:
                     from src.services.client_description_generator import update_client_description
-                    success = update_client_description(client_id)
+                    success = update_client_description(client_id, company_id=company_id)
                     if success:
                         print(f"[SUCCESS] Successfully updated description for client {client_id}")
                     else:
@@ -4888,14 +4990,14 @@ def appointment_note_api(booking_id, note_id):
         return jsonify({"error": "Note not found"}), 404
     
     elif request.method == "DELETE":
-        success = db.delete_appointment_note(note_id)
+        success = db.delete_appointment_note(note_id, booking_id=booking_id)
         if success:
             # Update client description after deleting note
             if client_id:
                 print(f"\n[UPDATE] Updating client description for client_id: {client_id} after deleting note...")
                 try:
                     from src.services.client_description_generator import update_client_description
-                    success = update_client_description(client_id)
+                    success = update_client_description(client_id, company_id=company_id)
                     if success:
                         print(f"[SUCCESS] Successfully updated description for client {client_id}")
                     else:
@@ -5229,7 +5331,7 @@ def bookings_api():
             # Update client description
             try:
                 from src.services.client_description_generator import update_client_description
-                update_client_description(client_id)
+                update_client_description(client_id, company_id=company_id)
             except Exception as e:
                 print(f"[WARNING] Could not update client description: {e}")
             
@@ -6289,7 +6391,7 @@ def complete_booking_api(booking_id):
     # Generate/update client description using AI based on all appointments and notes
     try:
         from src.services.client_description_generator import update_client_description
-        success = update_client_description(client_id)
+        success = update_client_description(client_id, company_id=company_id)
         
         if success:
             # Get the updated client info with new description

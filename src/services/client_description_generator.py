@@ -252,7 +252,7 @@ def update_client_description(client_id: int, company_id: int = None) -> bool:
             
             from src.services.database import get_database
             db = get_database()
-            db.update_client_description(client_id, description)
+            db.update_client_description(client_id, description, company_id=company_id)
             print(f"💾 Saved to database for client {client_id}")
             print(f"{'='*60}\\n")
             return True
@@ -285,7 +285,7 @@ def update_all_client_descriptions(company_id: int = None) -> int:
     
     updated_count = 0
     for client in all_clients:
-        if update_client_description(client['id']):
+        if update_client_description(client['id'], company_id=company_id):
             updated_count += 1
     
     print(f"\n✅ Updated {updated_count} client descriptions" + (f" for company {company_id}" if company_id else ""))

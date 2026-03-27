@@ -1,6 +1,9 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createBooking, getClients, getClient, checkAvailability, checkMonthlyAvailability, getServicesMenu, getWorkers, checkWorkerAvailability } from '../../services/api';
+import {
+  createBooking, getClients, getClient, checkAvailability, checkMonthlyAvailability, getServicesMenu, getWorkers, checkWorkerAvailability,
+  workerCreateBooking, workerGetClients, workerGetClient, workerCheckAvailability, workerCheckMonthlyAvailability, workerGetServices, workerGetWorkers, workerCheckWorkerAvailability
+} from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import AddClientModal from './AddClientModal';
@@ -86,9 +89,19 @@ function MiniCalendar({ selectedDate, onSelectDate, monthData, isLoading, calMon
   );
 }
 
-function AddJobModal({ isOpen, onClose }) {
+function AddJobModal({ isOpen, onClose, workerMode = false }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
+
+  // Select API functions based on mode
+  const apiFns = useMemo(() => workerMode ? {
+    createBooking: workerCreateBooking, getClients: workerGetClients, getClient: workerGetClient,
+    checkAvailability: workerCheckAvailability, checkMonthlyAvailability: workerCheckMonthlyAvailability,
+    getServicesMenu: workerGetServices, getWorkers: workerGetWorkers, checkWorkerAvailability: workerCheckWorkerAvailability,
+  } : {
+    createBooking, getClients, getClient, checkAvailability, checkMonthlyAvailability,
+    getServicesMenu, getWorkers, checkWorkerAvailability,
+  }, [workerMode]);
   
   const [formData, setFormData] = useState({
     client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '',
@@ -113,22 +126,22 @@ function AddJobModal({ isOpen, onClose }) {
 
   useEffect(() => { if (!isOpen) resetForm(); }, [isOpen]);
 
-  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: async () => (await getClients()).data, enabled: isOpen });
-  const { data: servicesMenu } = useQuery({ queryKey: ['services-menu'], queryFn: async () => (await getServicesMenu()).data, enabled: isOpen });
-  const { data: workers } = useQuery({ queryKey: ['workers'], queryFn: async () => (await getWorkers()).data, enabled: isOpen });
+  const { data: clients } = useQuery({ queryKey: ['clients', workerMode], queryFn: async () => (await apiFns.getClients()).data, enabled: isOpen });
+  const { data: servicesMenu } = useQuery({ queryKey: ['services-menu', workerMode], queryFn: async () => (await apiFns.getServicesMenu()).data, enabled: isOpen });
+  const { data: workers } = useQuery({ queryKey: ['workers', workerMode], queryFn: async () => (await apiFns.getWorkers()).data, enabled: isOpen });
 
   // Monthly availability (fires when service is selected)
   const durationMins = parseInt(formData.duration_minutes) || 60;
   const { data: monthlyData, isLoading: isLoadingMonthly } = useQuery({
-    queryKey: ['monthly-availability', calYear, calMonth + 1, formData.service_type, formData.worker_id, anyWorkerMode, durationMins],
-    queryFn: async () => (await checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode, durationMins)).data,
+    queryKey: ['monthly-availability', calYear, calMonth + 1, formData.service_type, formData.worker_id, anyWorkerMode, durationMins, workerMode],
+    queryFn: async () => (await apiFns.checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode, durationMins)).data,
     enabled: !!formData.service_type && isOpen
   });
 
   // Daily slots (fires when date is selected)
   const { data: availability, isLoading: isLoadingAvailability } = useQuery({
-    queryKey: ['availability', selectedDate, formData.service_type, formData.worker_id, anyWorkerMode, durationMins],
-    queryFn: async () => (await checkAvailability(selectedDate, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode, durationMins)).data,
+    queryKey: ['availability', selectedDate, formData.service_type, formData.worker_id, anyWorkerMode, durationMins, workerMode],
+    queryFn: async () => (await apiFns.checkAvailability(selectedDate, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode, durationMins)).data,
     enabled: !!selectedDate && !!formData.service_type && isOpen
   });
 
@@ -159,8 +172,16 @@ function AddJobModal({ isOpen, onClose }) {
   }, [customerPickerOpen]);
 
   const mutation = useMutation({
-    mutationFn: createBooking,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['dashboard'] }); queryClient.invalidateQueries({ queryKey: ['bookings'] }); onClose(); addToast('Job created successfully!', 'success'); },
+    mutationFn: apiFns.createBooking,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      if (workerMode) {
+        queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
+      }
+      onClose();
+      addToast('Job created successfully!', 'success');
+    },
     onError: (error) => { addToast('Error creating job: ' + (error.response?.data?.error || error.message), 'error'); }
   });
 
@@ -178,7 +199,7 @@ function AddJobModal({ isOpen, onClose }) {
     setCustomerSearch('');
     // Fetch full client details to auto-fill address/eircode/property_type
     try {
-      const res = await getClient(customer.id);
+      const res = await apiFns.getClient(customer.id);
       const c = res.data;
       setFormData(prev => ({
         ...prev,
@@ -251,7 +272,7 @@ function AddJobModal({ isOpen, onClose }) {
     let avail = null;
     if (formData.appointment_time) {
       try {
-        const res = await checkWorkerAvailability(id, formData.appointment_time, formData.duration_minutes || 60);
+        const res = await apiFns.checkWorkerAvailability(id, formData.appointment_time, formData.duration_minutes || 60);
         avail = res.data;
       } catch { /* ignore */ }
     }
@@ -276,7 +297,7 @@ function AddJobModal({ isOpen, onClose }) {
     if (!appointmentTime || current.length === 0) return;
     const updated = await Promise.all(current.map(async (w) => {
       try {
-        const res = await checkWorkerAvailability(w.id, appointmentTime, duration || 60);
+        const res = await apiFns.checkWorkerAvailability(w.id, appointmentTime, duration || 60);
         return { ...w, availability: res.data };
       } catch { return { ...w, availability: null }; }
     }));
@@ -613,7 +634,7 @@ function AddJobModal({ isOpen, onClose }) {
           </div>
         </form>
       </Modal>
-      <AddClientModal isOpen={isAddClientModalOpen} onClose={handleCloseAddClient} />
+      <AddClientModal isOpen={isAddClientModalOpen} onClose={handleCloseAddClient} workerMode={workerMode} />
     </>
   );
 }

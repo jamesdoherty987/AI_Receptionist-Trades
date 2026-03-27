@@ -31,7 +31,7 @@ def auto_complete_overdue_appointments() -> int:
     
     try:
         query = """
-            SELECT id, client_id, appointment_time, service_type 
+            SELECT id, client_id, company_id, appointment_time, service_type 
             FROM bookings 
             WHERE status != %s 
             AND appointment_time < %s
@@ -54,7 +54,7 @@ def auto_complete_overdue_appointments() -> int:
     completed_count = 0
     
     for booking in overdue_bookings:
-        booking_id, client_id, appt_time, service_type = booking
+        booking_id, client_id, booking_company_id, appt_time, service_type = booking
         
         try:
             print(f"\n  [BOOKING] Booking {booking_id}: {appt_time} ({service_type or 'General'})")
@@ -72,12 +72,12 @@ def auto_complete_overdue_appointments() -> int:
                 )
             
             # Update booking status to completed
-            db.update_booking(booking_id, status='completed')
+            db.update_booking(booking_id, company_id=booking_company_id, status='completed')
             print(f"  [SUCCESS] Marked as completed")
             
             # Update client description
             try:
-                success = update_client_description(client_id)
+                success = update_client_description(client_id, company_id=booking_company_id)
                 if success:
                     print(f"  [AI] Updated AI description for client {client_id}")
                 else:

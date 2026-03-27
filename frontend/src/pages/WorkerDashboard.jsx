@@ -30,6 +30,7 @@ import ImageUpload from '../components/ImageUpload';
 import WorkerNotificationBell from '../components/WorkerNotificationBell';
 import { formatPhone, getStatusBadgeClass, formatDateTime, getProxiedMediaUrl } from '../utils/helpers';
 import { formatDuration } from '../utils/durationOptions';
+import AddJobModal from '../components/modals/AddJobModal';
 import './WorkerDashboard.css';
 
 // Live timer component for in-progress jobs
@@ -107,6 +108,7 @@ function WorkerDashboard() {
   const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
   const [bulkCompleteFilter, setBulkCompleteFilter] = useState(null); // null | 'today' | 'week' | 'all'
+  const [isAddJobOpen, setIsAddJobOpen] = useState(false);
 
   // Schedule view state
   const [scheduleView, setScheduleView] = useState('list'); // 'list' | 'month' | 'year'
@@ -1013,6 +1015,12 @@ function WorkerDashboard() {
             {/* ---- JOBS TAB ---- */}
             {activeTab === 'jobs' && (
               <div className="worker-jobs">
+                {/* Add Job button */}
+                <div className="wj-add-job-row">
+                  <button className="wjd-btn wjd-btn-progress wj-add-job-btn" onClick={() => setIsAddJobOpen(true)}>
+                    <i className="fas fa-plus-circle"></i> Add Job
+                  </button>
+                </div>
                 {/* In Progress — always visible at top */}
                 {inProgressJobs.length > 0 && (
                   <div className="wj-section wj-in-progress">
@@ -2111,6 +2119,7 @@ function WorkerDashboard() {
           </div>
         </div>
       </main>
+      <AddJobModal isOpen={isAddJobOpen} onClose={() => setIsAddJobOpen(false)} workerMode={true} />
     </div>
   );
 }

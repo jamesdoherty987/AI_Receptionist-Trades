@@ -1159,3 +1159,19 @@
   .wm-input-bar { padding: 0.5rem 0.75rem; }
   .wm-send-btn { width: 36px; height: 36px; font-size: 0.9rem; }
 }
+
+/* ---- Add Job Button ---- */
+.wj-add-job-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+.wj-add-job-btn {
+  font-size: 0.9rem;
+  padding: 0.5rem 1.2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}

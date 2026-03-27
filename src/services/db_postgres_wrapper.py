@@ -1772,16 +1772,27 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def update_client_description(self, client_id: int, description: str):
-        """Update client description (AI-generated summary)"""
+    def update_client_description(self, client_id: int, description: str, company_id: int = None):
+        """Update client description (AI-generated summary).
+        
+        SECURITY: When company_id is provided, always filter by it to prevent
+        cross-tenant writes.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("""
-                UPDATE clients 
-                SET description = %s, updated_at = %s
-                WHERE id = %s
-            """, (description, datetime.now(), client_id))
+            if company_id:
+                cursor.execute("""
+                    UPDATE clients 
+                    SET description = %s, updated_at = %s
+                    WHERE id = %s AND company_id = %s
+                """, (description, datetime.now(), client_id, company_id))
+            else:
+                cursor.execute("""
+                    UPDATE clients 
+                    SET description = %s, updated_at = %s
+                    WHERE id = %s
+                """, (description, datetime.now(), client_id))
             
             conn.commit()
         except Exception as e:
@@ -2199,16 +2210,27 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def update_appointment_note(self, note_id: int, note: str) -> bool:
-        """Update an appointment note"""
+    def update_appointment_note(self, note_id: int, note: str, booking_id: int = None) -> bool:
+        """Update an appointment note.
+        
+        SECURITY: When booking_id is provided, verify the note belongs to that
+        booking to prevent cross-tenant note manipulation via IDOR.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("""
-                UPDATE appointment_notes 
-                SET note = %s, updated_at = %s
-                WHERE id = %s
-            """, (note, datetime.now(), note_id))
+            if booking_id:
+                cursor.execute("""
+                    UPDATE appointment_notes 
+                    SET note = %s, updated_at = %s
+                    WHERE id = %s AND booking_id = %s
+                """, (note, datetime.now(), note_id, booking_id))
+            else:
+                cursor.execute("""
+                    UPDATE appointment_notes 
+                    SET note = %s, updated_at = %s
+                    WHERE id = %s
+                """, (note, datetime.now(), note_id))
             
             rows_affected = cursor.rowcount
             conn.commit()
@@ -2220,12 +2242,19 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def delete_appointment_note(self, note_id: int) -> bool:
-        """Delete an appointment note"""
+    def delete_appointment_note(self, note_id: int, booking_id: int = None) -> bool:
+        """Delete an appointment note.
+        
+        SECURITY: When booking_id is provided, verify the note belongs to that
+        booking to prevent cross-tenant note deletion via IDOR.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("DELETE FROM appointment_notes WHERE id = %s", (note_id,))
+            if booking_id:
+                cursor.execute("DELETE FROM appointment_notes WHERE id = %s AND booking_id = %s", (note_id, booking_id))
+            else:
+                cursor.execute("DELETE FROM appointment_notes WHERE id = %s", (note_id,))
             
             rows_affected = cursor.rowcount
             conn.commit()
