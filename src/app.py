@@ -8036,8 +8036,9 @@ def google_calendar_callback():
                         try:
                             # Check if booking already exists for this gcal event
                             # to avoid creating an orphaned customer when add_booking
-                            # fails with a UniqueViolation.
-                            existing = db.get_booking_by_calendar_event_id(gcal_id, company_id=int(company_id))
+                            # fails with a UniqueViolation.  calendar_event_id is
+                            # globally unique, so check WITHOUT company_id filter.
+                            existing = db.get_booking_by_calendar_event_id(gcal_id)
                             if existing:
                                 known_gcal_ids.add(gcal_id)
                                 continue
@@ -8351,9 +8352,9 @@ def google_calendar_sync():
         try:
             # Check if booking already exists for this gcal event to avoid
             # creating an orphaned customer when add_booking fails with a
-            # UniqueViolation (client is committed first, booking rollback
-            # leaves the customer without a job).
-            existing = db.get_booking_by_calendar_event_id(gcal_id, company_id=company_id)
+            # UniqueViolation.  calendar_event_id is globally unique (not
+            # per-company), so we must check WITHOUT company_id filter.
+            existing = db.get_booking_by_calendar_event_id(gcal_id)
             if existing:
                 known_gcal_ids.add(gcal_id)
                 pull_skipped += 1

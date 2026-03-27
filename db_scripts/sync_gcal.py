@@ -248,7 +248,9 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                 try:
                     # Check if booking already exists for this gcal event
                     # to avoid creating an orphaned customer.
-                    existing = db.get_booking_by_calendar_event_id(gcal_id, company_id=company_id)
+                    # calendar_event_id is globally unique, so check without
+                    # company_id filter.
+                    existing = db.get_booking_by_calendar_event_id(gcal_id)
                     if existing:
                         known_gcal_ids.add(gcal_id)
                         stats['pull_skipped'] += 1
