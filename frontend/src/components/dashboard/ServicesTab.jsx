@@ -244,7 +244,19 @@ function ServicesTab() {
                 step="0.01"
                 min="0"
               />
-              {formData.price_max !== null && formData.price_max !== '' && formData.price_max !== undefined ? (
+              <div className="price-range-toggle-row">
+                <button
+                  type="button"
+                  className={`price-range-toggle ${formData.price_max !== null && formData.price_max !== undefined ? 'active' : ''}`}
+                  onClick={() => setFormData({ ...formData, price_max: formData.price_max !== null && formData.price_max !== undefined ? null : '' })}
+                  role="switch"
+                  aria-checked={formData.price_max !== null && formData.price_max !== undefined}
+                >
+                  <span className="price-range-toggle-slider" />
+                </button>
+                <span className="price-range-toggle-label">Price range</span>
+              </div>
+              {formData.price_max !== null && formData.price_max !== undefined && (
                 <div className="price-max-row">
                   <div className="price-max-field">
                     <span className="price-max-label">to</span>
@@ -259,14 +271,7 @@ function ServicesTab() {
                       autoFocus
                     />
                   </div>
-                  <button type="button" className="price-range-remove" onClick={() => setFormData({ ...formData, price_max: null })} title="Remove range">
-                    <i className="fas fa-times"></i>
-                  </button>
                 </div>
-              ) : (
-                <button type="button" className="price-range-add" onClick={() => setFormData({ ...formData, price_max: '' })}>
-                  <i className="fas fa-arrows-alt-h"></i> Add price range
-                </button>
               )}
             </div>
             <div className="form-group">
@@ -573,7 +578,19 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
                 step="0.01"
                 min="0"
               />
-              {editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined ? (
+              <div className="price-range-toggle-row">
+                <button
+                  type="button"
+                  className={`price-range-toggle ${editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined ? 'active' : ''}`}
+                  onClick={() => setEditData({ ...editData, price_max: editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined ? null : '' })}
+                  role="switch"
+                  aria-checked={editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined}
+                >
+                  <span className="price-range-toggle-slider" />
+                </button>
+                <span className="price-range-toggle-label">Price range</span>
+              </div>
+              {editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined && (
                 <div className="price-max-row">
                   <div className="price-max-field">
                     <span className="price-max-label">to</span>
@@ -587,14 +604,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
                       min="0"
                     />
                   </div>
-                  <button type="button" className="price-range-remove" onClick={() => setEditData({ ...editData, price_max: null })} title="Remove range">
-                    <i className="fas fa-times"></i>
-                  </button>
                 </div>
-              ) : (
-                <button type="button" className="price-range-add" onClick={() => setEditData({ ...editData, price_max: '' })}>
-                  <i className="fas fa-arrows-alt-h"></i> Add price range
-                </button>
               )}
             </div>
             <div className="form-group">
