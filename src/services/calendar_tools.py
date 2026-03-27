@@ -406,7 +406,7 @@ def _check_slot_against_bookings(slot_time, duration_minutes, worker_bookings_by
         biz_start = 9
         biz_end = 17
     
-    buffer_minutes = 15
+    buffer_minutes = 0
     slot_end = db._calculate_job_end_time(slot_time, duration_minutes, biz_start, biz_end, buffer_minutes, company_id=company_id)
     
     for wid in worker_ids:
@@ -448,7 +448,7 @@ def _find_available_workers_batch(slot_time, duration_minutes, worker_bookings_b
         biz_start = 9
         biz_end = 17
     
-    buffer_minutes = 15
+    buffer_minutes = 0
     slot_end = db._calculate_job_end_time(slot_time, duration_minutes, biz_start, biz_end, buffer_minutes, company_id=company_id)
     
     available = []

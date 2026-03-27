@@ -1225,7 +1225,9 @@ class PostgreSQLDatabaseWrapper:
                 duration = row.get('duration_minutes') or 60
                 
                 # Use business-day end time for multi-day jobs (with company-specific hours)
-                booking_end = self._calculate_job_end_time(appt_time, duration, biz_start, biz_end, company_id=company_id)
+                # No buffer here — conflict detection should use actual job end times.
+                # The 15-min buffer is a scheduling preference handled separately.
+                booking_end = self._calculate_job_end_time(appt_time, duration, biz_start, biz_end, buffer_minutes=0, company_id=company_id)
                 
                 # Check true overlap: booking overlaps range if booking_end > range_start
                 if booking_end > range_start:
@@ -2674,7 +2676,7 @@ class PostgreSQLDatabaseWrapper:
     
     def _calculate_job_end_time(self, start_time, duration_minutes: int, 
                                  biz_start_hour: int = 9, biz_end_hour: int = 17,
-                                 buffer_minutes: int = 15, company_id: int = None):
+                                 buffer_minutes: int = 0, company_id: int = None):
         """
         Calculate the true end time of a job, handling multi-day spans correctly.
         
@@ -2860,12 +2862,12 @@ class PostgreSQLDatabaseWrapper:
                 start_hour = 9
                 end_hour = 17
             
-            # Calculate appointment end time with buffer
-            buffer_minutes = 15  # Buffer between jobs
+            # Calculate appointment end time (no artificial buffer — use actual duration
+            # so conflict detection matches what the calendar availability shows)
             
             # Calculate the TRUE end time of the new appointment
             appointment_end = self._calculate_job_end_time(
-                appointment_time, duration_minutes, start_hour, end_hour, buffer_minutes, company_id=company_id
+                appointment_time, duration_minutes, start_hour, end_hour, buffer_minutes=0, company_id=company_id
             )
             
             # Get all active jobs assigned to this worker
@@ -2907,7 +2909,7 @@ class PostgreSQLDatabaseWrapper:
                 
                 # Calculate the TRUE end time of the existing job
                 job_end = self._calculate_job_end_time(
-                    job_time, job_duration, start_hour, end_hour, buffer_minutes, company_id=company_id
+                    job_time, job_duration, start_hour, end_hour, buffer_minutes=0, company_id=company_id
                 )
                 
                 # Check for overlap
