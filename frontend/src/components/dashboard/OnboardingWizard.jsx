@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import PhoneConfigModal from '../modals/PhoneConfigModal';
-import { getBusinessSettings, updateBusinessSettings, startFreeTrial, createCheckoutSession, getSubscriptionStatus, getServicesMenu, getWorkers } from '../../services/api';
+import { getBusinessSettings, updateBusinessSettings, startFreeTrial, createCheckoutSession, getSubscriptionStatus, getServicesMenu, getWorkers, getMaterials } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import './OnboardingWizard.css';
 
@@ -47,6 +47,13 @@ const STEPS = [
     icon: 'fa-hard-hat',
     iconClass: 'workers-icon',
     description: 'Who does the work?'
+  },
+  {
+    id: 'materials',
+    title: 'Add Materials',
+    icon: 'fa-cubes',
+    iconClass: '',
+    description: 'Track materials used on jobs'
   },
   {
     id: 'phone',
@@ -167,6 +174,14 @@ function OnboardingWizard({ onComplete }) {
     queryKey: ['workers'],
     queryFn: async () => {
       const response = await getWorkers();
+      return response.data;
+    },
+  });
+
+  const { data: materialsData } = useQuery({
+    queryKey: ['materials'],
+    queryFn: async () => {
+      const response = await getMaterials();
       return response.data;
     },
   });
@@ -345,6 +360,7 @@ function OnboardingWizard({ onComplete }) {
     if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder) || isPaymentSkipped() || completedSteps.includes('payment');
     if (stepId === 'services') return localStorage.getItem(`services_setup_visited_${userKey}`) === 'true';
     if (stepId === 'workers') return localStorage.getItem(`workers_setup_visited_${userKey}`) === 'true';
+    if (stepId === 'materials') return localStorage.getItem(`materials_setup_visited_${userKey}`) === 'true';
     return completedSteps.includes(stepId);
   };
 
@@ -701,6 +717,30 @@ function OnboardingWizard({ onComplete }) {
                   </button>
                   <button className="btn btn-primary" onClick={() => { localStorage.setItem(`workers_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('workers')) { setCompletedSteps(prev => [...prev, 'workers']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Workers')) btn.click(); }); }, 100); }}>
                     <i className="fas fa-hard-hat"></i> Go to Workers
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {currentStep.id === 'materials' && (
+              <div className="onboarding-form" style={{ textAlign: 'center' }}>
+                {(materialsData?.materials || []).length > 0 && (
+                  <div className="subscription-active-display" style={{ marginBottom: '1rem' }}>
+                    <i className="fas fa-check-circle"></i>
+                    <span>{materialsData.materials.length} material{materialsData.materials.length !== 1 ? 's' : ''} added</span>
+                  </div>
+                )}
+                <p className="subscription-cta-text">
+                  {(materialsData?.materials || []).length > 0
+                    ? 'Review or add more materials to your catalog.'
+                    : 'Add materials you commonly use so you can track costs on jobs.'}
+                </p>
+                <div className="step-actions">
+                  <button className="btn btn-secondary" onClick={handleSkipStep}>
+                    Skip for now
+                  </button>
+                  <button className="btn btn-primary" onClick={() => { localStorage.setItem(`materials_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('materials')) { setCompletedSteps(prev => [...prev, 'materials']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Materials')) btn.click(); }); }, 100); }}>
+                    <i className="fas fa-cubes"></i> Go to Materials
                   </button>
                 </div>
               </div>
