@@ -2975,8 +2975,8 @@ class PostgreSQLDatabaseWrapper:
             
             # Sort by least busy (fewest upcoming bookings first) to balance workload
             if len(available_workers) > 1:
+                conn = None
                 try:
-                    from datetime import datetime as _dt
                     worker_ids = [w['id'] for w in available_workers]
                     conn = self.get_connection()
                     cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -2991,12 +2991,14 @@ class PostgreSQLDatabaseWrapper:
                         GROUP BY wa.worker_id
                     """, (worker_ids, company_id))
                     counts = {row['worker_id']: row['upcoming_count'] for row in cursor.fetchall()}
-                    self.return_connection(conn)
                     # Workers with no upcoming bookings get count 0
                     available_workers.sort(key=lambda w: counts.get(w['id'], 0))
                     print(f"[WORKER_AVAIL] Sorted by least busy: {[(w['name'], counts.get(w['id'], 0)) for w in available_workers]}")
                 except Exception as sort_err:
                     print(f"[WORKER_AVAIL] ⚠️ Could not sort by workload (falling back to default order): {sort_err}")
+                finally:
+                    if conn:
+                        self.return_connection(conn)
             
             return available_workers
         except Exception as e:
