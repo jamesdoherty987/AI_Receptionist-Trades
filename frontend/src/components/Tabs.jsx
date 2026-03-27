@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import './Tabs.css';
 
 function Tabs({ tabs, defaultTab = 0 }) {
@@ -19,6 +19,21 @@ function Tabs({ tabs, defaultTab = 0 }) {
     setActiveTab(index);
     setMenuOpen(false);
   };
+
+  // Build grouped structure for rendering
+  const groupedTabs = useMemo(() => {
+    const groups = [];
+    let currentGroup = null;
+    tabs.forEach((tab, index) => {
+      const group = tab.group || '';
+      if (group !== currentGroup) {
+        groups.push({ name: group, tabs: [] });
+        currentGroup = group;
+      }
+      groups[groups.length - 1].tabs.push({ ...tab, index });
+    });
+    return groups;
+  }, [tabs]);
 
   return (
     <div className="tabs-container">
@@ -48,30 +63,40 @@ function Tabs({ tabs, defaultTab = 0 }) {
               </button>
             </div>
             <div className="mobile-menu-items">
-              {tabs.map((tab, index) => (
-                <button
-                  key={index}
-                  className={`mobile-menu-item ${activeTab === index ? 'active' : ''}`}
-                  onClick={() => handleTabSelect(index)}
-                >
-                  {tab.icon && <i className={tab.icon}></i>}
-                  <span>{tab.label}</span>
-                </button>
+              {groupedTabs.map((group) => (
+                <div key={group.name} className="mobile-menu-group">
+                  {group.name && <div className="mobile-group-label">{group.name}</div>}
+                  {group.tabs.map((tab) => (
+                    <button
+                      key={tab.index}
+                      className={`mobile-menu-item ${activeTab === tab.index ? 'active' : ''}`}
+                      onClick={() => handleTabSelect(tab.index)}
+                    >
+                      {tab.icon && <i className={tab.icon}></i>}
+                      <span>{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           </div>
         </>
       ) : (
         <div className="tabs-header">
-          {tabs.map((tab, index) => (
-            <button
-              key={index}
-              className={`tab-button ${activeTab === index ? 'active' : ''}`}
-              onClick={() => setActiveTab(index)}
-            >
-              {tab.icon && <i className={tab.icon}></i>}
-              {tab.label}
-            </button>
+          {groupedTabs.map((group, gi) => (
+            <div key={group.name} className="tab-group">
+              {group.tabs.map((tab) => (
+                <button
+                  key={tab.index}
+                  className={`tab-button ${activeTab === tab.index ? 'active' : ''}`}
+                  onClick={() => setActiveTab(tab.index)}
+                >
+                  {tab.icon && <i className={tab.icon}></i>}
+                  {tab.label}
+                </button>
+              ))}
+              {gi < groupedTabs.length - 1 && <span className="tab-group-divider" />}
+            </div>
           ))}
         </div>
       )}

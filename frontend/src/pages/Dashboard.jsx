@@ -66,54 +66,69 @@ function Dashboard() {
   const workers = dashboardData?.workers || [];
 
   const tabs = [
+    // Day-to-day
     {
       label: 'Jobs',
       icon: 'fas fa-briefcase',
+      group: 'Day-to-Day',
       content: isLoading ? <LoadingSpinner /> : <JobsTab bookings={bookings} showInvoiceButtons={settings?.show_invoice_buttons !== false} />
+    },
+    {
+      label: 'Calls',
+      icon: 'fas fa-phone-alt',
+      group: 'Day-to-Day',
+      content: <CallLogsTab />
+    },
+    {
+      label: 'Calendar',
+      icon: 'fas fa-calendar',
+      group: 'Day-to-Day',
+      content: <CalendarTab />
+    },
+    // Team & Clients
+    {
+      label: 'Workers',
+      icon: 'fas fa-hard-hat',
+      group: 'Team & Clients',
+      content: isLoading ? <LoadingSpinner /> : <WorkersTab workers={workers} bookings={bookings} />
     },
     {
       label: 'Customers',
       icon: 'fas fa-users',
+      group: 'Team & Clients',
       content: isLoading ? <LoadingSpinner /> : <CustomersTab clients={clients} bookings={bookings} />
     },
-    {
-      label: 'Workers',
-      icon: 'fas fa-hard-hat',
-      content: isLoading ? <LoadingSpinner /> : <WorkersTab workers={workers} bookings={bookings} />
-    },
-    ...(settings?.show_finances_tab !== false ? [{
-      label: 'Finances',
-      icon: 'fas fa-dollar-sign',
-      content: <FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} />
-    }] : []),
-    ...(settings?.show_insights_tab !== false ? [{
-      label: 'Insights',
-      icon: 'fas fa-chart-pie',
-      content: isLoading ? <LoadingSpinner /> : <InsightsTab bookings={bookings} clients={clients} workers={workers} />
-    }] : []),
-    {
-      label: 'Calls',
-      icon: 'fas fa-phone-alt',
-      content: <CallLogsTab />
-    },
+    // Setup
     {
       label: 'Services',
       icon: 'fas fa-concierge-bell',
+      group: 'Setup',
       content: <ServicesTab />
     },
     {
       label: 'Materials',
       icon: 'fas fa-cubes',
+      group: 'Setup',
       content: <MaterialsTab />
     },
-    {
-      label: 'Calendar',
-      icon: 'fas fa-calendar',
-      content: <CalendarTab />
-    },
+    // Reports
+    ...(settings?.show_finances_tab !== false ? [{
+      label: 'Finances',
+      icon: 'fas fa-dollar-sign',
+      group: 'Reports',
+      content: <FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} />
+    }] : []),
+    ...(settings?.show_insights_tab !== false ? [{
+      label: 'Insights',
+      icon: 'fas fa-chart-pie',
+      group: 'Reports',
+      content: isLoading ? <LoadingSpinner /> : <InsightsTab bookings={bookings} clients={clients} workers={workers} />
+    }] : []),
+    // Dev tools
     ...(import.meta.env.VITE_ENABLE_TEST_CHAT === 'true' ? [{
       label: 'AI Chat',
       icon: 'fas fa-comments',
+      group: 'Dev Tools',
       content: <ChatTab />
     }] : [])
   ];
