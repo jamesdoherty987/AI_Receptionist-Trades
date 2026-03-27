@@ -1618,6 +1618,34 @@ TOOL RULES:
                 or any(w in user_text.lower() for w in cancel_words)
             )
             
+            # Multi-turn cancel detection: if a recent user message said "cancel" and
+            # the LLM is now following up (e.g. asking for the date), the current
+            # message won't contain cancel words.  Also check if cancel_job was
+            # already called in this conversation — that means we're mid-cancel flow.
+            if not user_explicitly_cancelling:
+                # Check if cancel_job was already called earlier
+                for msg in messages:
+                    if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                        for tc in msg["tool_calls"]:
+                            if tc.get("function", {}).get("name") in ("cancel_job", "cancel_appointment"):
+                                user_explicitly_cancelling = True
+                                print(f"   ✅ [CANCEL_OVERRIDE] cancel_job was already called earlier — staying in cancel flow")
+                                break
+                    if user_explicitly_cancelling:
+                        break
+            if not user_explicitly_cancelling:
+                # Check if a recent user message mentioned cancel
+                for msg in reversed(messages):
+                    if msg.get("role") == "user":
+                        msg_text = msg.get("content", "").lower()
+                        if any(w in msg_text for w in cancel_words):
+                            user_explicitly_cancelling = True
+                            print(f"   ✅ [CANCEL_OVERRIDE] Detected cancel intent from recent user message: '{msg_text[:60]}...'")
+                            break
+                        # Stop scanning once we hit a non-cancel user message
+                        # (don't look further back than the most recent few turns)
+                        break
+            
             user_wants_reschedule = detected_intent == "RESCHEDULE" or any(w in user_text.lower() for w in reschedule_words)
             # Multi-turn: check if reschedule_job was already called earlier in this conversation
             # BUT skip this if the user is now explicitly asking to cancel

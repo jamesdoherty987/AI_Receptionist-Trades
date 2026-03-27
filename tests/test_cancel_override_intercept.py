@@ -21,6 +21,26 @@ def compute_user_wants_reschedule(detected_intent, user_text, messages):
         or any(w in user_text.lower() for w in cancel_words)
     )
 
+    # Multi-turn cancel detection: check if cancel_job was already called earlier
+    if not user_explicitly_cancelling:
+        for msg in messages:
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                for tc in msg["tool_calls"]:
+                    if tc.get("function", {}).get("name") in ("cancel_job", "cancel_appointment"):
+                        user_explicitly_cancelling = True
+                        break
+            if user_explicitly_cancelling:
+                break
+    if not user_explicitly_cancelling:
+        # Check if a recent user message mentioned cancel
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                msg_text = msg.get("content", "").lower()
+                if any(w in msg_text for w in cancel_words):
+                    user_explicitly_cancelling = True
+                    break
+                break
+
     user_wants_reschedule = detected_intent == "RESCHEDULE" or any(w in user_text.lower() for w in reschedule_words)
 
     if not user_wants_reschedule and not user_explicitly_cancelling:
@@ -89,6 +109,38 @@ class TestCancelOverrideAfterReschedule:
         wants_reschedule, explicitly_cancelling = compute_user_wants_reschedule(
             detected_intent="CANCEL_REQUEST",
             user_text="I need to cancel my booking",
+            messages=messages,
+        )
+        assert explicitly_cancelling is True
+        assert wants_reschedule is False
+
+    def test_cancel_followup_date_after_cancel_request(self):
+        """Key bug: user said 'cancel' in previous turn, now gives date — should stay in cancel flow."""
+        messages = _make_reschedule_history() + [
+            {"role": "user", "content": "Actually, can I cancel a job, please?"},
+            {"role": "assistant", "content": "What day is your booking for?"},
+        ]
+        wants_reschedule, explicitly_cancelling = compute_user_wants_reschedule(
+            detected_intent=None,
+            user_text="It's for the April 2",
+            messages=messages,
+        )
+        assert explicitly_cancelling is True
+        assert wants_reschedule is False
+
+    def test_cancel_followup_after_cancel_tool_called(self):
+        """If cancel_job was already called (e.g. to list bookings), follow-up should stay in cancel."""
+        messages = _make_reschedule_history() + [
+            {"role": "user", "content": "Can I cancel a job?"},
+            {"role": "assistant", "tool_calls": [
+                {"function": {"name": "cancel_job", "arguments": json.dumps({"appointment_date": "April 2", "customer_name": ""})}}
+            ]},
+            {"role": "tool", "content": json.dumps({"success": False, "message": "Which booking?"})},
+            {"role": "assistant", "content": "I have 3 bookings. Which name is yours?"},
+        ]
+        wants_reschedule, explicitly_cancelling = compute_user_wants_reschedule(
+            detected_intent=None,
+            user_text="John Smith",
             messages=messages,
         )
         assert explicitly_cancelling is True

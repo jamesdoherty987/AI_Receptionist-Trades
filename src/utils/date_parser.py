@@ -624,7 +624,7 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
         elif parsed.get("month") and parsed.get("day"):
             month = parsed["month"]
             day = parsed["day"]
-            year = parsed.get("year", now.year)
+            year = parsed.get("year") or now.year
             
             if hour is None:
                 if require_time:
