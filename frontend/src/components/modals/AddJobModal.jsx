@@ -92,7 +92,7 @@ function AddJobModal({ isOpen, onClose }) {
   
   const [formData, setFormData] = useState({
     client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '',
-    property_type: '', estimated_charge: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false
+    property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false
   });
   
   const [selectedDate, setSelectedDate] = useState('');
@@ -165,7 +165,7 @@ function AddJobModal({ isOpen, onClose }) {
   });
 
   const resetForm = () => {
-    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false });
+    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false });
     setSelectedDate(''); setSelectedService(null); setAnyWorkerMode(true); setAssignedWorkers([]);
     setCustomerPickerOpen(false); setCustomerSearch(''); setSelectedCustomer(null);
     const n = new Date(); setCalMonth(n.getMonth()); setCalYear(n.getFullYear());
@@ -201,10 +201,13 @@ function AddJobModal({ isOpen, onClose }) {
     const newDuration = service.duration_minutes || 60;
     // Round price to 2 decimal places to avoid floating point display issues (REAL column)
     const safePrice = service.price ? Math.round(parseFloat(service.price) * 100) / 100 : '';
+    const safePriceMax = service.price_max ? Math.round(parseFloat(service.price_max) * 100) / 100 : '';
+    // For price ranges, pre-fill estimated charge with min price — user can adjust
     setFormData(prev => ({
       ...prev,
       service_type: service.name,
       estimated_charge: safePrice,
+      estimated_charge_max: safePriceMax && safePriceMax > safePrice ? safePriceMax : '',
       duration_minutes: newDuration,
       requires_callout: typeof service.requires_callout === 'boolean' ? service.requires_callout : prev.requires_callout,
       appointment_time: '',
@@ -391,13 +394,13 @@ function AddJobModal({ isOpen, onClose }) {
                   required>
                   <option value="">Select a service...</option>
                   {servicesMenu.services.map(s => (
-                    <option key={s.id} value={s.name}>{s.name} {s.duration_minutes ? `(${formatDuration(s.duration_minutes)})` : ''} {s.price ? `- €${Math.round(parseFloat(s.price) * 100) / 100}` : ''}</option>
+                    <option key={s.id} value={s.name}>{s.name} {s.duration_minutes ? `(${formatDuration(s.duration_minutes)})` : ''} {s.price ? (s.price_max && parseFloat(s.price_max) > parseFloat(s.price) ? `- €${Math.round(parseFloat(s.price) * 100) / 100} – €${Math.round(parseFloat(s.price_max) * 100) / 100}` : `- €${Math.round(parseFloat(s.price) * 100) / 100}`) : ''}</option>
                   ))}
                 </select>
                 {selectedService && (
                   <div className="service-badge">
                     <span><i className="fas fa-clock"></i> {formatDuration(selectedService.duration_minutes || 60)}</span>
-                    {selectedService.price && <span><i className="fas fa-euro-sign"></i> €{Math.round(parseFloat(selectedService.price) * 100) / 100}</span>}
+                    {selectedService.price && <span><i className="fas fa-euro-sign"></i> {selectedService.price_max && parseFloat(selectedService.price_max) > parseFloat(selectedService.price) ? `€${Math.round(parseFloat(selectedService.price) * 100) / 100} – €${Math.round(parseFloat(selectedService.price_max) * 100) / 100}` : `€${Math.round(parseFloat(selectedService.price) * 100) / 100}`}</span>}
                   </div>
                 )}
               </>
@@ -572,7 +575,18 @@ function AddJobModal({ isOpen, onClose }) {
           
           <div className="form-group">
             <label className="form-label">Estimated Charge (€)</label>
-            <input type="number" name="estimated_charge" className="form-input" value={formData.estimated_charge} onChange={handleChange} step="0.01" min="0" placeholder="0.00" />
+            {formData.estimated_charge_max ? (
+              <div className="price-range-display">
+                <div className="price-range-inputs">
+                  <input type="number" name="estimated_charge" className="form-input" value={formData.estimated_charge} onChange={handleChange} step="0.01" min="0" placeholder="Min" />
+                  <span className="price-range-sep">to</span>
+                  <input type="number" name="estimated_charge_max" className="form-input" value={formData.estimated_charge_max} onChange={handleChange} step="0.01" min="0" placeholder="Max" />
+                </div>
+                <span className="price-range-hint">Price range from service — adjust as needed</span>
+              </div>
+            ) : (
+              <input type="number" name="estimated_charge" className="form-input" value={formData.estimated_charge} onChange={handleChange} step="0.01" min="0" placeholder="0.00" />
+            )}
           </div>
 
           {/* Initial Callout Toggle */}

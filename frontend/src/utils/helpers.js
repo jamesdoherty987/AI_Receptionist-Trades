@@ -37,6 +37,20 @@ export const formatCurrency = (amount) => {
   }).format(amount);
 };
 
+/**
+ * Format a price or price range for display.
+ * If price_max is set and greater than price, shows "€X - €Y".
+ * Otherwise shows the single price.
+ */
+export const formatPriceRange = (price, priceMax) => {
+  const min = parseFloat(price) || 0;
+  const max = parseFloat(priceMax) || 0;
+  if (max > min) {
+    return `${formatCurrency(min)} – ${formatCurrency(max)}`;
+  }
+  return formatCurrency(min);
+};
+
 export const formatPhone = (phone) => {
   if (!phone) return '';
   const cleaned = phone.replace(/\D/g, '');

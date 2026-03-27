@@ -5003,9 +5003,13 @@ Return ONLY valid JSON, no explanation."""
                     # Get the correct price from matched service
                     if urgency_level == 'emergency' and matched_service.get('emergency_price'):
                         job_charge = float(matched_service['emergency_price'])
+                        job_charge_max = None  # No range for emergency pricing
                     else:
                         job_charge = float(matched_service.get('price', 0))
-                    logger.info(f"[BOOK_JOB] Job charge: EUR{job_charge}")
+                        # Preserve price range if service has one
+                        price_max = matched_service.get('price_max')
+                        job_charge_max = float(price_max) if price_max and float(price_max) > job_charge else None
+                    logger.info(f"[BOOK_JOB] Job charge: EUR{job_charge}{f' (range up to EUR{job_charge_max})' if job_charge_max else ''}")
                     
                     # Add booking with validated address information, correct charge, and duration
                     # MUST pass company_id for data isolation
@@ -5022,6 +5026,7 @@ Return ONLY valid JSON, no explanation."""
                         eircode=extracted_eircode,  # Use extracted eircode if available
                         property_type=property_type,
                         charge=job_charge,
+                        charge_max=job_charge_max,
                         company_id=company_id,
                         duration_minutes=service_duration,
                         requires_callout=is_callout_booking
@@ -5397,8 +5402,11 @@ Return ONLY valid JSON, no explanation."""
                 # Update charge based on new service and effective urgency
                 if effective_urgency == 'emergency' and matched_service.get('emergency_price'):
                     update_fields['charge'] = float(matched_service['emergency_price'])
+                    update_fields['charge_max'] = None  # No range for emergency
                 else:
                     update_fields['charge'] = float(matched_service.get('price', 0))
+                    price_max = matched_service.get('price_max')
+                    update_fields['charge_max'] = float(price_max) if price_max and float(price_max) > float(matched_service.get('price', 0)) else None
                 
                 # Update duration
                 update_fields['duration_minutes'] = matched_service.get('duration_minutes', 60)
@@ -5425,8 +5433,11 @@ Return ONLY valid JSON, no explanation."""
                         matched_service = match_result['service']
                         if new_urgency == 'emergency' and matched_service.get('emergency_price'):
                             update_fields['charge'] = float(matched_service['emergency_price'])
+                            update_fields['charge_max'] = None  # No range for emergency
                         else:
                             update_fields['charge'] = float(matched_service.get('price', 0))
+                            price_max = matched_service.get('price_max')
+                            update_fields['charge_max'] = float(price_max) if price_max and float(price_max) > float(matched_service.get('price', 0)) else None
                     except Exception as price_err:
                         logger.warning(f"[MODIFY_JOB] Could not update charge for urgency change: {price_err}")
             

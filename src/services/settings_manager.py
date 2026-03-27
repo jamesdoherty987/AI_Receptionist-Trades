@@ -352,6 +352,7 @@ class SettingsManager:
                 description=service.get('description'),
                 duration_minutes=service.get('duration_minutes', 60),
                 price=service.get('price', 0),
+                price_max=service.get('price_max'),
                 emergency_price=service.get('emergency_price'),
                 currency=service.get('currency', 'EUR'),
                 active=service.get('active', True),

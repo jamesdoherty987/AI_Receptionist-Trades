@@ -2022,6 +2022,7 @@ def worker_update_job_details(job_id):
             val = float(data['actual_charge']) if data['actual_charge'] not in (None, '') else None
             if val is not None and val >= 0:
                 update_kwargs['charge'] = val
+                update_kwargs['charge_max'] = None  # Clear range — actual charge is now final
         except (ValueError, TypeError):
             pass
 
@@ -4004,6 +4005,14 @@ def add_service_api():
     except (ValueError, TypeError):
         price = 0
     
+    # Sanitize price_max for price ranges
+    try:
+        price_max = float(data.get('price_max', 0)) if data.get('price_max') else None
+        if price_max is not None and price_max <= price:
+            price_max = None  # Only store if it's actually a range
+    except (ValueError, TypeError):
+        price_max = None
+    
     try:
         duration = int(data.get('duration_minutes', 1440)) if data.get('duration_minutes') else 1440
         if duration < 1:
@@ -4033,6 +4042,7 @@ def add_service_api():
     sanitized_data = {
         'name': name,
         'price': price,
+        'price_max': price_max,
         'duration_minutes': duration,
         'image_url': image_url if image_url else None,
         'category': data.get('category', 'General'),
@@ -4073,6 +4083,17 @@ def manage_service_api(service_id):
                 data['price'] = price if price >= 0 else 0
             except (ValueError, TypeError):
                 data['price'] = 0
+        
+        # Sanitize price_max if provided
+        if 'price_max' in data:
+            try:
+                price_max = float(data.get('price_max', 0)) if data.get('price_max') else None
+                price_val = data.get('price', 0) or 0
+                if price_max is not None and price_max <= float(price_val):
+                    price_max = None
+                data['price_max'] = price_max
+            except (ValueError, TypeError):
+                data['price_max'] = None
         
         # Sanitize duration if provided
         if 'duration_minutes' in data:
@@ -5103,6 +5124,18 @@ def bookings_api():
             else:
                 job_charge = None
             
+            # Sanitize charge_max for price ranges
+            job_charge_max = data.get('estimated_charge_max')
+            if job_charge_max:
+                try:
+                    job_charge_max = round(float(job_charge_max), 2)
+                    if job_charge_max <= (job_charge or 0):
+                        job_charge_max = None
+                except (ValueError, TypeError):
+                    job_charge_max = None
+            else:
+                job_charge_max = None
+            
             booking_id = db.add_booking(
                 client_id=client_id,
                 calendar_event_id=calendar_event_id,
@@ -5114,6 +5147,7 @@ def bookings_api():
                 eircode=job_eircode,
                 property_type=job_property_type,
                 charge=job_charge,
+                charge_max=job_charge_max,
                 company_id=company_id,
                 duration_minutes=duration_minutes,
                 requires_callout=bool(data.get('requires_callout', False))
@@ -5895,6 +5929,7 @@ def booking_detail_api(booking_id):
             'created_at': booking.get('created_at'),
             'charge': booking.get('charge'),
             'estimated_charge': booking.get('charge'),
+            'estimated_charge_max': booking.get('charge_max'),
             'payment_status': booking.get('payment_status'),
             'payment_method': booking.get('payment_method'),
             'urgency': booking.get('urgency'),
@@ -5934,22 +5969,24 @@ def booking_detail_api(booking_id):
         # Sanitize fields - convert empty strings to None for optional fields
         sanitized_data = {}
         for key, value in data.items():
-            if isinstance(value, str):
+            if key in ['charge', 'estimated_charge', 'estimated_charge_max']:
+                # Sanitize charge values — handle both string and numeric inputs
+                db_key = 'charge_max' if key == 'estimated_charge_max' else key
+                if value is not None and value != '':
+                    try:
+                        float_val = float(value)
+                        sanitized_data[db_key] = float_val if float_val >= 0 else None
+                    except (ValueError, TypeError):
+                        sanitized_data[db_key] = None
+                else:
+                    sanitized_data[db_key] = None
+            elif isinstance(value, str):
                 value = value.strip()
                 # For optional text fields, convert empty to None
                 if key in ['address', 'eircode', 'property_type', 'phone_number', 'email', 'phone']:
                     sanitized_data[key] = value if value else None
                 else:
                     sanitized_data[key] = value
-            elif key in ['charge', 'estimated_charge']:
-                # Sanitize charge values
-                if value is not None and value != '':
-                    try:
-                        sanitized_data[key] = float(value) if float(value) >= 0 else None
-                    except (ValueError, TypeError):
-                        sanitized_data[key] = None
-                else:
-                    sanitized_data[key] = None
             else:
                 sanitized_data[key] = value
         
@@ -6389,6 +6426,7 @@ def send_invoice_api(booking_id):
             'created_at': booking.get('created_at'),
             'charge': booking.get('charge'),
             'estimated_charge': booking.get('charge'),
+            'estimated_charge_max': booking.get('charge_max'),
             'payment_status': booking.get('payment_status'),
             'payment_method': booking.get('payment_method'),
             'urgency': booking.get('urgency'),

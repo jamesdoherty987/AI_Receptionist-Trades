@@ -11,7 +11,7 @@ import {
 import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
 import ImageUpload from '../ImageUpload';
-import { formatCurrency } from '../../utils/helpers';
+import { formatPriceRange } from '../../utils/helpers';
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
 import './ServicesTab.css';
 
@@ -25,6 +25,7 @@ function ServicesTab() {
   const [formData, setFormData] = useState({ 
     name: '', 
     price: '', 
+    price_max: '',
     duration: '1440', 
     image_url: '', 
     workers_required: '1',
@@ -83,6 +84,7 @@ function ServicesTab() {
       setFormData({ 
         name: '', 
         price: '', 
+        price_max: '',
         duration: '1440', 
         image_url: '', 
         workers_required: '1',
@@ -138,6 +140,9 @@ function ServicesTab() {
     createMutation.mutate({
       name: formData.name,
       price: Math.round((parseFloat(formData.price) || 0) * 100) / 100,
+      price_max: formData.price_max && parseFloat(formData.price_max) > (parseFloat(formData.price) || 0) 
+        ? Math.round(parseFloat(formData.price_max) * 100) / 100 
+        : null,
       duration_minutes: parseInt(formData.duration) || 60,
       image_url: formData.image_url,
       workers_required: parseInt(formData.workers_required) || 1,
@@ -164,6 +169,9 @@ function ServicesTab() {
       data: {
         name: service.name,
         price: Math.round((parseFloat(service.price) || 0) * 100) / 100,
+        price_max: service.price_max && parseFloat(service.price_max) > (parseFloat(service.price) || 0)
+          ? Math.round(parseFloat(service.price_max) * 100) / 100 
+          : null,
         duration_minutes: parseInt(service.duration_minutes) || 60,
         image_url: service.image_url,
         workers_required: parseInt(service.workers_required) || 1,
@@ -227,15 +235,28 @@ function ServicesTab() {
             </div>
             <div className="form-group">
               <label>Price (€)</label>
-              <input
-                type="number"
-                className="form-input"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                placeholder="0.00"
-                step="0.01"
-                min="0"
-              />
+              <div className="price-range-inputs">
+                <input
+                  type="number"
+                  className="form-input"
+                  value={formData.price}
+                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                  placeholder="0.00"
+                  step="0.01"
+                  min="0"
+                />
+                <span className="price-range-separator">to</span>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={formData.price_max}
+                  onChange={(e) => setFormData({ ...formData, price_max: e.target.value })}
+                  placeholder="Max (optional)"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+              <span className="form-hint">Set a max price for a range, or leave blank for a fixed price</span>
             </div>
             <div className="form-group">
               <label>Duration</label>
@@ -532,15 +553,27 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           <div className="edit-row">
             <div className="form-group">
               <label>Price (€)</label>
-              <input
-                type="number"
-                className="form-input"
-                value={editData.price || ''}
-                onChange={(e) => setEditData({ ...editData, price: e.target.value })}
-                placeholder="Price"
-                step="0.01"
-                min="0"
-              />
+              <div className="price-range-inputs">
+                <input
+                  type="number"
+                  className="form-input"
+                  value={editData.price || ''}
+                  onChange={(e) => setEditData({ ...editData, price: e.target.value })}
+                  placeholder="Price"
+                  step="0.01"
+                  min="0"
+                />
+                <span className="price-range-separator">to</span>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={editData.price_max || ''}
+                  onChange={(e) => setEditData({ ...editData, price_max: e.target.value })}
+                  placeholder="Max (optional)"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
             </div>
             <div className="form-group">
               <label>Duration</label>
@@ -645,7 +678,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
         <h3 className="service-title">{service.name || 'Unnamed Service'}</h3>
         <div className="service-meta">
           {service.price > 0 && (
-            <span className="meta-item price">{formatCurrency(service.price)}</span>
+            <span className="meta-item price">{formatPriceRange(service.price, service.price_max)}</span>
           )}
           {(service.duration_minutes || service.duration) && (
             <span className="meta-item duration">

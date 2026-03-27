@@ -325,7 +325,12 @@ def load_system_prompt(company_id=None):
         services_list = []
         for service in services_menu.get('services', []):
             if service.get('active', True):
-                service_line = f"{service['name']} ({service['category']}) - €{service['price']}"
+                price = service['price']
+                price_max = service.get('price_max')
+                if price_max and float(price_max) > float(price):
+                    service_line = f"{service['name']} ({service['category']}) - €{price} to €{price_max}"
+                else:
+                    service_line = f"{service['name']} ({service['category']}) - €{price}"
                 if service.get('emergency_price'):
                     service_line += f" (Emergency: €{service['emergency_price']})"
                 service_line += f" - {service['duration_minutes']} minutes"

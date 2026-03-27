@@ -637,7 +637,11 @@ function WorkerDashboard() {
                         <div className="wjd-info-cell">
                           <span className="wjd-label">Charge</span>
                           <span className="wjd-value" style={{ color: '#22c55e', fontWeight: 700 }}>
-                            {(job.charge || job.estimated_charge) ? `€${parseFloat(job.charge || job.estimated_charge).toFixed(2)}` : '—'}
+                            {(job.charge || job.estimated_charge) 
+                              ? (job.charge_max && parseFloat(job.charge_max) > parseFloat(job.charge || job.estimated_charge)
+                                ? `€${parseFloat(job.charge || job.estimated_charge).toFixed(2)} – €${parseFloat(job.charge_max).toFixed(2)}`
+                                : `€${parseFloat(job.charge || job.estimated_charge).toFixed(2)}`)
+                              : '—'}
                           </span>
                         </div>
                       </div>

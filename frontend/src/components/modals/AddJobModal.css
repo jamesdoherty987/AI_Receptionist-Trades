@@ -298,3 +298,30 @@
 .add-worker-row { margin-bottom: 0.375rem; }
 .add-worker-select { font-size: 0.9rem; }
 .availability-mode-row { margin-top: 0.25rem; }
+
+/* Price Range */
+.price-range-inputs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.price-range-inputs .form-input {
+  flex: 1;
+  min-width: 0;
+}
+.price-range-sep {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.price-range-hint {
+  display: block;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 0.25rem;
+}
+.price-range-display {
+  display: flex;
+  flex-direction: column;
+}

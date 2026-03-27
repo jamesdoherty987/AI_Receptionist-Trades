@@ -187,6 +187,7 @@ class PostgreSQLDatabaseWrapper:
                     phone_number TEXT,
                     email TEXT,
                     charge REAL DEFAULT 0,
+                    charge_max REAL DEFAULT NULL,
                     payment_status TEXT DEFAULT 'unpaid',
                     payment_method TEXT,
                     requires_callout BOOLEAN DEFAULT FALSE,
@@ -296,6 +297,7 @@ class PostgreSQLDatabaseWrapper:
                     description TEXT,
                     duration_minutes INTEGER DEFAULT 1440,
                     price REAL DEFAULT 0,
+                    price_max REAL DEFAULT NULL,
                     emergency_price REAL,
                     currency TEXT DEFAULT 'EUR',
                     active INTEGER DEFAULT 1,
@@ -733,6 +735,24 @@ class PostgreSQLDatabaseWrapper:
                 print("[SUCCESS] Added gcal_synced_at column to bookings table")
             except Exception as e:
                 print(f"[WARNING] Could not add gcal_synced_at column: {e}")
+        
+        # Add price_max column to services table (price ranges)
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='services' AND column_name='price_max'")
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE services ADD COLUMN price_max REAL DEFAULT NULL")
+                print("[SUCCESS] Added price_max column to services table")
+            except Exception as e:
+                print(f"[WARNING] Could not add price_max column: {e}")
+        
+        # Add charge_max column to bookings table (price ranges)
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='bookings' AND column_name='charge_max'")
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE bookings ADD COLUMN charge_max REAL DEFAULT NULL")
+                print("[SUCCESS] Added charge_max column to bookings table")
+            except Exception as e:
+                print(f"[WARNING] Could not add charge_max column: {e}")
     
     def _convert_query(self, query: str) -> str:
         """Convert ? placeholders to %s for parameterized queries"""
@@ -1250,7 +1270,7 @@ class PostgreSQLDatabaseWrapper:
                     SELECT 
                         b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
                         b.service_type, b.status, b.phone_number, b.email, b.created_at,
-                        b.charge, b.payment_status, b.payment_method, b.urgency, 
+                        b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
                         b.address_audio_url, b.requires_callout,
                         b.updated_at, b.gcal_synced_at,
@@ -1262,7 +1282,7 @@ class PostgreSQLDatabaseWrapper:
                     WHERE b.company_id = %s
                     GROUP BY b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
                              b.service_type, b.status, b.phone_number, b.email, b.created_at,
-                             b.charge, b.payment_status, b.payment_method, b.urgency, 
+                             b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
                              b.address_audio_url, b.requires_callout,
                              b.updated_at, b.gcal_synced_at,
@@ -1274,7 +1294,7 @@ class PostgreSQLDatabaseWrapper:
                     SELECT 
                         b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
                         b.service_type, b.status, b.phone_number, b.email, b.created_at,
-                        b.charge, b.payment_status, b.payment_method, b.urgency, 
+                        b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
                         b.address_audio_url, b.requires_callout,
                         b.updated_at, b.gcal_synced_at,
@@ -1285,7 +1305,7 @@ class PostgreSQLDatabaseWrapper:
                     LEFT JOIN worker_assignments wa ON b.id = wa.booking_id
                     GROUP BY b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
                              b.service_type, b.status, b.phone_number, b.email, b.created_at,
-                             b.charge, b.payment_status, b.payment_method, b.urgency, 
+                             b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
                              b.address_audio_url, b.requires_callout,
                              b.updated_at, b.gcal_synced_at,
@@ -1307,6 +1327,7 @@ class PostgreSQLDatabaseWrapper:
                 'email': row['email'] or row['client_email'],  # Use booking email or client email as fallback
                 'created_at': row['created_at'],
                 'charge': row['charge'],
+                'charge_max': row.get('charge_max'),
                 'estimated_charge': row['charge'],  # Alias for compatibility
                 'payment_status': row['payment_status'],
                 'payment_method': row['payment_method'],
@@ -1836,7 +1857,8 @@ class PostgreSQLDatabaseWrapper:
     def add_booking(self, client_id: int, calendar_event_id: str, appointment_time: str,
                     service_type: str, phone_number: str = None, email: str = None,
                     urgency: str = None, address: str = None, eircode: str = None,
-                    property_type: str = None, charge: float = None, company_id: int = None,
+                    property_type: str = None, charge: float = None, charge_max: float = None,
+                    company_id: int = None,
                     duration_minutes: int = 1440, requires_callout: bool = False) -> Optional[int]:
         """Add a new booking (default 1 day duration for trades)"""
         print(f"[DB_BOOKING] ========== ADDING BOOKING ==========")
@@ -1866,11 +1888,11 @@ class PostgreSQLDatabaseWrapper:
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
-                                        eircode, property_type, charge, company_id, duration_minutes, requires_callout)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        eircode, property_type, charge, charge_max, company_id, duration_minutes, requires_callout)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
-                      phone_number, email, urgency, address, eircode, property_type, charge, company_id, duration_minutes, requires_callout))
+                      phone_number, email, urgency, address, eircode, property_type, charge, charge_max, company_id, duration_minutes, requires_callout))
             else:
                 print(f"[DB_BOOKING] Inserting booking without charge...")
                 cursor.execute("""
@@ -1949,7 +1971,7 @@ class PostgreSQLDatabaseWrapper:
                     continue
                 
                 if db_field in ['calendar_event_id', 'appointment_time', 'service_type', 
-                          'status', 'phone_number', 'email', 'charge', 'payment_status', 
+                          'status', 'phone_number', 'email', 'charge', 'charge_max', 'payment_status', 
                           'payment_method', 'urgency', 'address', 'eircode', 'property_type',
                           'duration_minutes', 'address_audio_url', 'requires_callout',
                           'photo_urls', 'job_started_at', 'job_completed_at', 'actual_duration_minutes']:
@@ -2954,7 +2976,7 @@ class PostgreSQLDatabaseWrapper:
     # Service management methods
     def add_service(self, service_id: str, category: str, name: str, 
                    description: str = None, duration_minutes: int = 1440,
-                   price: float = 0, emergency_price: float = None,
+                   price: float = 0, price_max: float = None, emergency_price: float = None,
                    currency: str = 'EUR', active: bool = True,
                    image_url: str = None, sort_order: int = 0,
                    workers_required: int = 1, worker_restrictions: dict = None,
@@ -2974,10 +2996,10 @@ class PostgreSQLDatabaseWrapper:
         try:
             cursor.execute("""
                 INSERT INTO services (id, category, name, description, duration_minutes,
-                                    price, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, requires_callout, company_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    price, price_max, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, requires_callout, company_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (service_id, category, name, description, duration_minutes,
-                  price, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, requires_callout, company_id))
+                  price, price_max, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, requires_callout, company_id))
             
             conn.commit()
             return True
@@ -3037,7 +3059,7 @@ class PostgreSQLDatabaseWrapper:
         
         try:
             allowed_fields = ['category', 'name', 'description', 'duration_minutes',
-                             'price', 'emergency_price', 'currency', 'active',
+                             'price', 'price_max', 'emergency_price', 'currency', 'active',
                              'image_url', 'sort_order', 'workers_required', 'worker_restrictions',
                              'requires_callout']
             

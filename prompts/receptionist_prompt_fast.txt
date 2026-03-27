@@ -84,6 +84,7 @@ CALLOUT SERVICES (jobs that require an initial site visit)
 
 GENERAL QUESTIONS (pricing, hours, services, etc.)
 • For pricing → use SERVICES OFFERED and PRICING NOTES sections below
+• When a service shows a price range (e.g., "[Price 1] to [Price 2]"), quote it naturally: "That would typically be between [Price 1] and [Price 2], depending on the job"
 • For hours → use BUSINESS HOURS section below
 • For coverage/service area → use COVERAGE AREA section below
 • For other questions (parking, directions, policies, etc.) → use ADDITIONAL COMPANY DETAILS section below

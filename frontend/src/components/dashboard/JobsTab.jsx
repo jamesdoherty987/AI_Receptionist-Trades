@@ -244,7 +244,11 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                             <span className="jt-duration"><i className="fas fa-clock"></i> {formatDuration(job.duration_minutes)}</span>
                           )}
                           {!!(job.charge || job.estimated_charge) && (
-                            <span className="jt-charge">{formatCurrency(job.charge || job.estimated_charge)}</span>
+                            <span className="jt-charge">
+                              {job.charge_max && parseFloat(job.charge_max) > parseFloat(job.charge || job.estimated_charge)
+                                ? `${formatCurrency(job.charge || job.estimated_charge)} – ${formatCurrency(job.charge_max)}`
+                                : formatCurrency(job.charge || job.estimated_charge)}
+                            </span>
                           )}
                           {job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled' && (job.charge || job.estimated_charge) && (
                             <button className="jt-mark-paid" onClick={e => { e.stopPropagation(); markPaidMutation.mutate(job.id); }}

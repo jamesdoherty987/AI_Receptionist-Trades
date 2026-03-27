@@ -164,6 +164,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
         job_address: job.job_address || job.address || '',
         eircode: job.eircode || '',
         estimated_charge: (job.estimated_charge || job.charge) ? Math.round(parseFloat(job.estimated_charge || job.charge) * 100) / 100 : '',
+        estimated_charge_max: job.estimated_charge_max ? Math.round(parseFloat(job.estimated_charge_max) * 100) / 100 : '',
         duration_minutes: job.duration_minutes || 60,
         notes: job.notes || ''
       });
@@ -410,6 +411,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
         service_type: job.service_type || job.service || '', property_type: job.property_type || '',
         job_address: job.job_address || job.address || '', eircode: job.eircode || '',
         estimated_charge: (job.estimated_charge || job.charge) ? Math.round(parseFloat(job.estimated_charge || job.charge) * 100) / 100 : '',
+        estimated_charge_max: job.estimated_charge_max ? Math.round(parseFloat(job.estimated_charge_max) * 100) / 100 : '',
         duration_minutes: job.duration_minutes || 60, notes: job.notes || ''
       });
     }
@@ -552,7 +554,11 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     </div>
                     <div className="edit-field">
                       <label className="edit-label">Charge (€)</label>
-                      <input type="number" name="estimated_charge" className="edit-input" value={editFormData.estimated_charge} onChange={handleEditChange} step="0.01" min="0" placeholder="0.00" />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <input type="number" name="estimated_charge" className="edit-input" value={editFormData.estimated_charge} onChange={handleEditChange} step="0.01" min="0" placeholder="Min" style={{ flex: 1 }} />
+                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>to</span>
+                        <input type="number" name="estimated_charge_max" className="edit-input" value={editFormData.estimated_charge_max || ''} onChange={handleEditChange} step="0.01" min="0" placeholder="Max (opt)" style={{ flex: 1 }} />
+                      </div>
                     </div>
                   </div>
                   <div className="edit-row">
@@ -603,7 +609,11 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     {!!(job.estimated_charge || job.charge) && (
                       <div className="info-cell">
                         <span className="info-label">Charge</span>
-                        <span className="info-value price">{formatCurrency(job.estimated_charge || job.charge)}</span>
+                        <span className="info-value price">
+                          {job.estimated_charge_max && parseFloat(job.estimated_charge_max) > parseFloat(job.estimated_charge || job.charge)
+                            ? `${formatCurrency(job.estimated_charge || job.charge)} – ${formatCurrency(job.estimated_charge_max)}`
+                            : formatCurrency(job.estimated_charge || job.charge)}
+                        </span>
                       </div>
                     )}
                   </div>

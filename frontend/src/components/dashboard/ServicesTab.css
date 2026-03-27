@@ -720,3 +720,22 @@
   padding: 0.15rem 0.5rem;
   font-weight: 600;
 }
+
+/* Price Range Inputs */
+.price-range-inputs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.price-range-inputs .form-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.price-range-separator {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  flex-shrink: 0;
+}
