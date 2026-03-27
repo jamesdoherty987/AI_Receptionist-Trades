@@ -4228,12 +4228,14 @@ Return ONLY valid JSON, no explanation."""
             if matched_job.get('is_full_day'):
                 return {
                     "success": True,
-                    "message": f"Successfully cancelled the full-day booking for {matched_name} on {parsed_date.strftime('%A, %B %d')}."
+                    "message": f"The booking for {matched_name} on {parsed_date.strftime('%A, %B %d')} has been cancelled.",
+                    "voice_instruction": "Confirm the cancellation warmly and naturally. Ask if there's anything else you can help with. Use casual Irish tone — e.g. 'Grand, that's all taken care of' or 'No problem, that's cancelled for you'."
                 }
             else:
                 return {
                     "success": True,
-                    "message": f"Successfully cancelled the booking for {matched_name} at {time_info} on {parsed_date.strftime('%A, %B %d')}."
+                    "message": f"The booking for {matched_name} at {time_info} on {parsed_date.strftime('%A, %B %d')} has been cancelled.",
+                    "voice_instruction": "Confirm the cancellation warmly and naturally. Ask if there's anything else you can help with. Use casual Irish tone — e.g. 'Grand, that's all taken care of' or 'No problem, that's cancelled for you'."
                 }
         
         elif tool_name == "reschedule_appointment":
@@ -4553,12 +4555,14 @@ Return ONLY valid JSON, no explanation."""
             if is_full_day:
                 return {
                     "success": True,
-                    "message": f"Successfully rescheduled the full-day booking for {matched_name} from {parsed_date.strftime('%A, %B %d')} to {new_time.strftime('%A, %B %d')}."
+                    "message": f"The booking for {matched_name} has been moved from {parsed_date.strftime('%A, %B %d')} to {new_time.strftime('%A, %B %d')}.",
+                    "voice_instruction": "Confirm the reschedule warmly and naturally. Mention the new day. Use casual Irish tone — e.g. 'Grand, you're all moved to [day]' or 'Lovely, that's sorted for [day] now'. Ask if there's anything else."
                 }
             else:
                 return {
                     "success": True,
-                    "message": f"Successfully rescheduled the booking for {matched_name} to {new_time.strftime('%A, %B %d at %I:%M %p')}."
+                    "message": f"The booking for {matched_name} has been moved to {new_time.strftime('%A, %B %d at %I:%M %p')}.",
+                    "voice_instruction": "Confirm the reschedule warmly and naturally. Mention the new day and time. Use casual Irish tone — e.g. 'Grand, you're all moved to [day] at [time]' or 'Lovely, that's sorted for [day] now'. Ask if there's anything else."
                 }
         
         elif tool_name == "book_job":
