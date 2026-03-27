@@ -3754,7 +3754,8 @@ class PostgreSQLDatabaseWrapper:
 
     def get_call_logs(self, company_id: int, limit: int = 100, offset: int = 0,
                       outcome_filter: str = None, search: str = None,
-                      lost_only: bool = False, outcomes: list = None) -> List[Dict]:
+                      lost_only: bool = False, outcomes: list = None,
+                      include_lost: bool = False) -> List[Dict]:
         """Get call logs for a company with optional filtering."""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -3762,7 +3763,12 @@ class PostgreSQLDatabaseWrapper:
             query = "SELECT * FROM call_logs WHERE company_id = %s"
             params = [company_id]
 
-            if outcomes:
+            if outcomes and include_lost:
+                # OR: outcome in list OR is_lost_job
+                placeholders = ','.join(['%s'] * len(outcomes))
+                query += f" AND (call_outcome IN ({placeholders}) OR is_lost_job = TRUE)"
+                params.extend(outcomes)
+            elif outcomes:
                 placeholders = ','.join(['%s'] * len(outcomes))
                 query += f" AND call_outcome IN ({placeholders})"
                 params.extend(outcomes)
@@ -3792,7 +3798,7 @@ class PostgreSQLDatabaseWrapper:
 
     def get_call_log_count(self, company_id: int, outcome_filter: str = None,
                            search: str = None, lost_only: bool = False,
-                           outcomes: list = None) -> int:
+                           outcomes: list = None, include_lost: bool = False) -> int:
         """Get total count of call logs for pagination."""
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -3800,7 +3806,11 @@ class PostgreSQLDatabaseWrapper:
             query = "SELECT COUNT(*) FROM call_logs WHERE company_id = %s"
             params = [company_id]
 
-            if outcomes:
+            if outcomes and include_lost:
+                placeholders = ','.join(['%s'] * len(outcomes))
+                query += f" AND (call_outcome IN ({placeholders}) OR is_lost_job = TRUE)"
+                params.extend(outcomes)
+            elif outcomes:
                 placeholders = ','.join(['%s'] * len(outcomes))
                 query += f" AND call_outcome IN ({placeholders})"
                 params.extend(outcomes)

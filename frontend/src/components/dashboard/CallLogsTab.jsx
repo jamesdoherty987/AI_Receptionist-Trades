@@ -10,7 +10,6 @@ const FILTERS = [
   { key: 'booked', label: 'Booked', icon: 'fa-calendar-check' },
   { key: 'cancelled', label: 'Cancelled', icon: 'fa-times-circle' },
   { key: 'rescheduled', label: 'Rescheduled', icon: 'fa-calendar-alt' },
-  { key: 'enquiry', label: 'Enquiry', icon: 'fa-question-circle' },
   { key: 'no_booking', label: 'No Booking', icon: 'fa-phone-slash' },
 ];
 

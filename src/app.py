@@ -6840,10 +6840,12 @@ def call_logs_api():
         per_page = 50
     offset = (page - 1) * per_page
 
-    # "no_booking" groups multiple outcomes server-side
+    # "no_booking" groups multiple outcomes server-side + lost jobs
     outcomes = None
+    include_lost = False
     if outcome == 'no_booking':
-        outcomes = ['hung_up', 'no_action', 'wrong_number']
+        outcomes = ['hung_up', 'no_action', 'wrong_number', 'enquiry', 'cancelled']
+        include_lost = True
         outcome = 'all'  # Don't also apply single outcome filter
 
     logs = db.get_call_logs(
@@ -6854,6 +6856,7 @@ def call_logs_api():
         search=search,
         lost_only=lost_only,
         outcomes=outcomes,
+        include_lost=include_lost,
     )
     total = db.get_call_log_count(
         company_id=company_id,
@@ -6861,6 +6864,7 @@ def call_logs_api():
         search=search,
         lost_only=lost_only,
         outcomes=outcomes,
+        include_lost=include_lost,
     )
 
     # Serialize datetimes
