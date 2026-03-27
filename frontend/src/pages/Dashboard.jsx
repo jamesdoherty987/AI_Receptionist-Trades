@@ -19,9 +19,23 @@ import { getDashboardData, getBusinessSettings } from '../services/api';
 import './Dashboard.css';
 
 function Dashboard() {
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const { user, initialized } = useAuth();
+  const { user } = useAuth();
   const userKey = user?.email || 'default';
+
+  // Onboarding dismissed state — initialized from localStorage so it survives remounts
+  const [onboardingDismissed, setOnboardingDismissed] = useState(
+    () => localStorage.getItem(`onboarding_complete_${userKey}`) === 'true'
+  );
+
+  // Re-sync when userKey changes (e.g. from 'default' to actual email)
+  useEffect(() => {
+    setOnboardingDismissed(localStorage.getItem(`onboarding_complete_${userKey}`) === 'true');
+  }, [userKey]);
+
+  const handleOnboardingComplete = useCallback(() => {
+    localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
+    setOnboardingDismissed(true);
+  }, [userKey]);
 
   // Check if user needs onboarding
   const { data: settings } = useQuery({
@@ -31,19 +45,6 @@ function Dashboard() {
       return response.data;
     },
   });
-
-  // Show onboarding wizard for new users who haven't completed/dismissed setup
-  useEffect(() => {
-    const onboardingComplete = localStorage.getItem(`onboarding_complete_${userKey}`);
-    
-    if (onboardingComplete) {
-      setShowOnboarding(false);
-    } else if (settings !== undefined && initialized && user) {
-      // Always show the wizard if user hasn't explicitly dismissed it.
-      // The wizard itself handles step completion and auto-hides when all done.
-      setShowOnboarding(true);
-    }
-  }, [settings, initialized, userKey]);
 
   // Scroll to top when dashboard loads
   useEffect(() => {
@@ -104,18 +105,12 @@ function Dashboard() {
       icon: 'fas fa-calendar',
       content: <CalendarTab />
     },
-    // Test Chat tab - only show in development (controlled by VITE_ENABLE_TEST_CHAT)
     ...(import.meta.env.VITE_ENABLE_TEST_CHAT === 'true' ? [{
       label: 'AI Chat',
       icon: 'fas fa-comments',
       content: <ChatTab />
     }] : [])
   ];
-
-  const handleOnboardingComplete = useCallback(() => {
-    localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
-    setShowOnboarding(false);
-  }, [userKey]);
 
   return (
     <div className="dashboard">
@@ -124,11 +119,9 @@ function Dashboard() {
         <div className="container">
           <TrialBanner />
           
-          {/* Onboarding Wizard for new users - at top, subtle */}
-          {showOnboarding && (
-            <OnboardingWizard 
-              onComplete={handleOnboardingComplete}
-            />
+          {/* Onboarding Wizard — always mounted until dismissed, manages its own step state */}
+          {!onboardingDismissed && (
+            <OnboardingWizard onComplete={handleOnboardingComplete} />
           )}
           
           <div className="dashboard-header">
