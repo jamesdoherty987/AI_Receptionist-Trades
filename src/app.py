@@ -1589,7 +1589,7 @@ def invite_worker():
             invite_expires_at=invite_expires
         )
         if not account_id:
-            return jsonify({"error": "Failed to create worker account. Email may already be in use."}), 500
+            return jsonify({"error": "This email is already registered as a worker on another account. A worker can currently only be linked to one company. Please use a different email address."}), 409
 
     # Build invite link
     origin = request.headers.get('Origin', '')
