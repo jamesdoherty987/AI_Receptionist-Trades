@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { getCallLogs } from '../../services/api';
-import { formatPhone } from '../../utils/helpers';
+import { formatPhone, getProxiedMediaUrl } from '../../utils/helpers';
 import './CallLogsTab.css';
 
 const FILTERS = [
@@ -140,6 +140,9 @@ function CallLogsTab() {
                   {log.duration_seconds != null && (
                     <span className="call-log-meta-item"><i className="fas fa-clock"></i> {formatDuration(log.duration_seconds)}</span>
                   )}
+                  {log.recording_url && (
+                    <span className="call-log-meta-item"><i className="fas fa-microphone"></i> Recorded</span>
+                  )}
                 </div>
                 {log.ai_summary && <p className="call-log-summary">{log.ai_summary}</p>}
               </div>
@@ -231,6 +234,18 @@ function CallLogsTab() {
                   ? <p>{selectedLog.ai_summary}</p>
                   : <p style={{ color: '#cbd5e1', fontStyle: 'italic' }}>No summary available — caller may have hung up early</p>
                 }
+              </div>
+
+              <div className="call-detail-section">
+                <h4>Call Recording</h4>
+                {selectedLog.recording_url ? (
+                  <audio controls preload="none" className="call-recording-player">
+                    <source src={getProxiedMediaUrl(selectedLog.recording_url)} type="audio/wav" />
+                    Your browser does not support audio playback.
+                  </audio>
+                ) : (
+                  <p style={{ color: '#cbd5e1', fontStyle: 'italic' }}>No recording available</p>
+                )}
               </div>
             </div>
           </div>

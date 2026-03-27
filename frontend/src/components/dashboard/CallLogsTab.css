@@ -156,3 +156,8 @@
 .call-logs-filters .filter-btn.lost-filter.active { background: #f59e0b; border-color: #f59e0b; color: white; }
 .call-logs-filters .filter-btn.lost-filter:not(.active) { border-color: #fde68a; color: #b45309; background: #fffbeb; }
 .call-logs-filters .filter-btn.lost-filter:not(.active):hover { border-color: #f59e0b; }
+
+/* Call recording player */
+.call-recording-player {
+  width: 100%; border-radius: 8px; height: 40px;
+}

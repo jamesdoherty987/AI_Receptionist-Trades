@@ -239,6 +239,7 @@ class PostgreSQLDatabaseWrapper:
                     call_sid TEXT,
                     is_lost_job BOOLEAN DEFAULT FALSE,
                     lost_job_reason TEXT,
+                    recording_url TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -775,6 +776,7 @@ class PostgreSQLDatabaseWrapper:
             'call_sid': 'TEXT',
             'is_lost_job': 'BOOLEAN DEFAULT FALSE',
             'lost_job_reason': 'TEXT',
+            'recording_url': 'TEXT',
         }
         for col_name, col_type in call_log_columns.items():
             cursor.execute(
@@ -3666,6 +3668,29 @@ class PostgreSQLDatabaseWrapper:
             conn.rollback()
             print(f"[ERROR] Failed to create call log: {e}")
             return None
+        finally:
+            self.return_connection(conn)
+
+    def update_call_log(self, call_log_id: int, recording_url: str = None) -> bool:
+        """Update a call log entry (e.g., to attach a recording URL after upload)."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            updates = []
+            params = []
+            if recording_url is not None:
+                updates.append("recording_url = %s")
+                params.append(recording_url)
+            if not updates:
+                return False
+            params.append(call_log_id)
+            cursor.execute(f"UPDATE call_logs SET {', '.join(updates)} WHERE id = %s", tuple(params))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Failed to update call log: {e}")
+            return False
         finally:
             self.return_connection(conn)
 

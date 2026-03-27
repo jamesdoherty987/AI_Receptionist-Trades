@@ -106,6 +106,9 @@ async def media_handler(ws):
     # Rolling audio buffer for address capture (~10 seconds of caller audio)
     audio_buffer = deque(maxlen=MAX_BUFFER_PACKETS)
     
+    # Full call recording — collects ALL caller audio for the entire call
+    full_call_audio = []
+    
     # Connect to Deepgram ASR
     asr = DeepgramASR()
     try:
@@ -604,6 +607,9 @@ async def media_handler(ws):
                 
                 # Append to rolling buffer for address audio capture
                 audio_buffer.append(audio)
+                
+                # Append to full call recording
+                full_call_audio.append(audio)
 
                 # ASR health check
                 if asr.is_closed():
@@ -957,10 +963,11 @@ async def media_handler(ws):
                 print(f"⚠️ Summary error: {e}")
         
         # Log EVERY call to call_logs table (regardless of outcome)
+        call_log_id = None
         if company_id:
             try:
                 from src.services.call_summarizer import log_call
-                await log_call(
+                call_log_id = await log_call(
                     conversation_log=conversation_log,
                     caller_phone=caller_phone,
                     company_id=company_id,
@@ -970,6 +977,44 @@ async def media_handler(ws):
                 )
             except Exception as e:
                 print(f"⚠️ Call log error: {e}")
+        
+        # Upload full call recording to R2 (async, non-blocking)
+        if company_id and full_call_audio and len(full_call_audio) > 50:
+            try:
+                raw_audio = b''.join(full_call_audio)
+                audio_duration = len(raw_audio) / MULAW_SAMPLE_RATE
+                print(f"🎙️ [RECORDING] Converting {len(raw_audio)} bytes ({audio_duration:.1f}s) to WAV...")
+                
+                wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
+                
+                from src.services.storage_r2 import upload_company_file
+                import io
+                company_id_int = int(company_id)
+                rec_filename = f"{call_sid or 'call'}_{int(call_start_time)}.wav"
+                
+                recording_url = await asyncio.to_thread(
+                    upload_company_file,
+                    company_id_int,
+                    io.BytesIO(wav_data),
+                    rec_filename,
+                    'call_recordings',
+                    'audio/wav'
+                )
+                
+                if recording_url and call_log_id:
+                    from src.services.database import get_database
+                    db = get_database()
+                    db.update_call_log(call_log_id, recording_url=recording_url)
+                    print(f"🎙️ [RECORDING] ✅ Saved ({audio_duration:.1f}s): {recording_url}")
+                elif recording_url:
+                    print(f"🎙️ [RECORDING] ✅ Uploaded but no call_log_id to attach to")
+                else:
+                    print(f"🎙️ [RECORDING] ⚠️ Upload returned None (R2 not configured?)")
+            except Exception as e:
+                print(f"⚠️ Recording upload error: {e}")
+        
+        # Free memory
+        full_call_audio.clear()
         
         if respond_task and not respond_task.done():
             respond_task.cancel()
