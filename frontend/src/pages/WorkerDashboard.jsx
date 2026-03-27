@@ -2136,7 +2136,7 @@ function WorkerDashboard() {
           </div>
         </div>
       </main>
-      <AddJobModal isOpen={isAddJobOpen} onClose={() => setIsAddJobOpen(false)} workerMode={true} />
+      <AddJobModal isOpen={isAddJobOpen} onClose={() => setIsAddJobOpen(false)} workerMode={true} currentWorkerId={user?.id} />
     </div>
   );
 }

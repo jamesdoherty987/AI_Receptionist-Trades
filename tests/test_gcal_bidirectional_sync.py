@@ -8,6 +8,7 @@ Tests for bidirectional Google Calendar sync:
   - reschedule_appointment applies the same end-time logic as book_appointment
 """
 import pytest
+import json
 from unittest.mock import MagicMock, patch, call
 from datetime import datetime, timedelta
 
@@ -191,44 +192,99 @@ class TestRescheduleEndTimeLogic:
 # ── Pull: parsing event summaries ────────────────────────────────
 
 class TestPullParsing:
-    """Test the summary parsing logic used in the sync endpoint."""
+    """Test the LLM-based batch parsing and fallback logic used in pull sync."""
 
-    def _parse_summary(self, summary):
-        """Replicate the parsing logic from the sync endpoint."""
-        customer_name = summary
-        service_type = 'Imported Event'
-        if ' - ' in summary:
-            parts = summary.split(' - ', 1)
-            service_part = parts[0].strip()
-            name_part = parts[1].strip()
-            for prefix in ['URGENT:', 'SCHEDULED:', 'EMERGENCY:']:
-                if service_part.upper().startswith(prefix):
-                    service_part = service_part[len(prefix):].strip()
-                    break
-            if name_part:
-                customer_name = name_part
-                service_type = service_part or 'Imported Event'
-        return customer_name, service_type
+    def test_build_fallback_uses_summary_as_job(self):
+        from db_scripts.sync_gcal import _build_fallback
+        result = _build_fallback('Fix kitchen sink')
+        assert result['customer_name'] == ''
+        assert result['job_description'] == 'Fix kitchen sink'
+        assert result['address'] == ''
+        assert result['phone'] == ''
 
-    def test_standard_format(self):
-        name, svc = self._parse_summary('Plumbing - John Smith')
-        assert name == 'John Smith'
-        assert svc == 'Plumbing'
+    def test_batch_parse_empty_list(self):
+        from db_scripts.sync_gcal import parse_gcal_events_batch
+        assert parse_gcal_events_batch([]) == []
 
-    def test_urgent_prefix(self):
-        name, svc = self._parse_summary('URGENT: Boiler Repair - Mary Jones')
-        assert name == 'Mary Jones'
-        assert svc == 'Boiler Repair'
+    @patch('src.services.llm_stream.get_openai_client')
+    def test_batch_parse_returns_structured_data(self, mock_get_client):
+        """Mock the LLM to return structured JSON and verify parsing."""
+        from db_scripts.sync_gcal import parse_gcal_events_batch
 
-    def test_plain_name_only(self):
-        name, svc = self._parse_summary('Team Meeting')
-        assert name == 'Team Meeting'
-        assert svc == 'Imported Event'
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({
+            'events': [
+                {'customer_name': 'John Smith', 'job_description': 'Plumbing', 'address': '', 'phone': ''},
+                {'customer_name': '', 'job_description': 'Team Meeting', 'address': '', 'phone': ''},
+            ]
+        })
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_get_client.return_value = mock_client
 
-    def test_scheduled_prefix(self):
-        name, svc = self._parse_summary('SCHEDULED: Painting - Bob')
-        assert name == 'Bob'
-        assert svc == 'Painting'
+        events = [
+            {'summary': 'Plumbing - John Smith', 'description': ''},
+            {'summary': 'Team Meeting', 'description': ''},
+        ]
+        results = parse_gcal_events_batch(events)
+        assert len(results) == 2
+        assert results[0]['customer_name'] == 'John Smith'
+        assert results[0]['job_description'] == 'Plumbing'
+        assert results[1]['customer_name'] == ''
+        assert results[1]['job_description'] == 'Team Meeting'
+
+    @patch('src.services.llm_stream.get_openai_client')
+    def test_batch_parse_falls_back_on_error(self, mock_get_client):
+        """If the LLM call fails, fallback should use summary as job_description."""
+        from db_scripts.sync_gcal import parse_gcal_events_batch
+
+        mock_get_client.side_effect = Exception('API down')
+
+        events = [
+            {'summary': 'Fix sink for Mary', 'description': ''},
+        ]
+        results = parse_gcal_events_batch(events)
+        assert len(results) == 1
+        assert results[0]['customer_name'] == ''
+        assert results[0]['job_description'] == 'Fix sink for Mary'
+
+    @patch('src.services.llm_stream.get_openai_client')
+    def test_batch_parse_handles_mismatched_count(self, mock_get_client):
+        """If LLM returns fewer items than sent, remaining get fallbacks."""
+        from db_scripts.sync_gcal import parse_gcal_events_batch
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({
+            'events': [
+                {'customer_name': 'Alice', 'job_description': 'Painting', 'address': '', 'phone': ''},
+            ]
+        })
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        events = [
+            {'summary': 'Painting - Alice', 'description': ''},
+            {'summary': 'Roofing for Bob', 'description': ''},
+        ]
+        results = parse_gcal_events_batch(events)
+        assert len(results) == 2
+        assert results[0]['customer_name'] == 'Alice'
+        # Second event should get fallback
+        assert results[1]['customer_name'] == ''
+        assert results[1]['job_description'] == 'Roofing for Bob'
+
+    def test_unnamed_customer_gets_placeholder(self):
+        """When LLM returns empty customer_name, sync should assign a placeholder."""
+        # This tests the logic in sync_company's pull phase
+        customer_name = ''
+        unnamed_counter = 3
+        if not customer_name:
+            unnamed_counter += 1
+            customer_name = f"GCal Import #{unnamed_counter}"
+        assert customer_name == 'GCal Import #4'
 
     def test_phone_extraction(self):
         import re

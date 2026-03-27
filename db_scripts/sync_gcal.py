@@ -23,6 +23,103 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv()
 
+import json as _json
+
+# Maximum events to send in a single LLM batch call
+_LLM_BATCH_SIZE = 40
+
+
+def _build_fallback(summary: str) -> dict:
+    """Return a safe fallback when LLM parsing isn't available."""
+    return {
+        'customer_name': '',
+        'job_description': summary,
+        'address': '',
+        'phone': '',
+    }
+
+
+def parse_gcal_events_batch(events: list[dict]) -> list[dict]:
+    """Parse multiple gcal events in a single LLM call.
+
+    Each item in *events* should have keys 'summary' and 'description'.
+    Returns a list of dicts (same order) with keys:
+        customer_name, job_description, address, phone
+    Falls back per-event on any error.
+    """
+    if not events:
+        return []
+
+    from src.services.llm_stream import get_openai_client
+
+    # Build numbered event list for the prompt
+    event_lines = []
+    for i, ev in enumerate(events):
+        line = f"{i + 1}. Title: {ev['summary']}"
+        if ev.get('description'):
+            # Truncate long descriptions to keep prompt reasonable
+            desc_short = ev['description'][:300]
+            line += f" | Description: {desc_short}"
+        event_lines.append(line)
+
+    prompt = (
+        "Extract structured info from each Google Calendar event below.\n"
+        "Return ONLY valid JSON: an object with a single key \"events\" containing "
+        "an array of objects in the SAME ORDER as the input.\n"
+        "Each object must have exactly these keys:\n"
+        '  "customer_name": the person\'s name (empty string if not identifiable),\n'
+        '  "job_description": what work/service is being done (empty string if unclear),\n'
+        '  "address": any address or location mentioned (empty string if none),\n'
+        '  "phone": any phone number mentioned (empty string if none)\n\n'
+        "Rules:\n"
+        "- Do NOT invent information that isn't present in the event.\n"
+        "- If the title is only a person's name with no job info, job_description should be empty.\n"
+        "- If the title is only a job/task description with no person's name, customer_name should be empty.\n"
+        "- Generic titles like 'Meeting', 'Busy', 'Lunch' etc. have no customer — leave customer_name empty.\n"
+        "- Look in both the title AND description for names, addresses, and phone numbers.\n\n"
+        "Events:\n" + "\n".join(event_lines)
+    )
+
+    fallbacks = [_build_fallback(ev['summary']) for ev in events]
+
+    try:
+        client = get_openai_client()
+        resp = client.chat.completions.create(
+            model='gpt-4o-mini',
+            messages=[{'role': 'user', 'content': prompt}],
+            temperature=0,
+            max_tokens=max(300, 150 * len(events)),
+            response_format={'type': 'json_object'},
+        )
+        raw = resp.choices[0].message.content.strip()
+        data = _json.loads(raw)
+
+        # Handle both {"events": [...]} and direct [...] responses
+        parsed_list = data.get('events', data) if isinstance(data, dict) else data
+        if not isinstance(parsed_list, list):
+            print(f"      [LLM batch] unexpected response shape, using fallbacks")
+            return fallbacks
+
+        # If LLM returned fewer/more items than expected, pad or truncate
+        results = []
+        for i, ev in enumerate(events):
+            if i < len(parsed_list) and isinstance(parsed_list[i], dict):
+                item = parsed_list[i]
+                # Ensure all keys exist and are strings
+                result = {}
+                for key in ('customer_name', 'job_description', 'address', 'phone'):
+                    val = item.get(key, '')
+                    result[key] = val.strip() if isinstance(val, str) else ''
+                results.append(result)
+            else:
+                results.append(fallbacks[i])
+
+        return results
+
+    except Exception as e:
+        print(f"      [LLM batch fallback] {e}")
+        return fallbacks
+
 
 def sync_company(company_id: int, db, dry_run: bool = False,
                  push: bool = True, pull: bool = True):
@@ -186,6 +283,8 @@ def sync_company(company_id: int, db, dry_run: bool = False,
             print(f"      ERROR fetching events: {e}")
             gcal_events = []
 
+        # First pass: filter to importable events
+        importable = []
         for event in gcal_events:
             gcal_id = event['id']
             if gcal_id in known_gcal_ids:
@@ -197,36 +296,50 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                 stats['pull_skipped'] += 1
                 continue
 
-            # Skip events originally created by this app (avoids re-importing
-            # orphaned bookings whose DB record was deleted).
             desc = event.get('description', '')
             ext_private = event.get('extendedProperties', {}).get('private', {})
             if ext_private.get('bookedForYou') == 'true' or 'Synced from BookedForYou' in desc:
                 stats['pull_skipped'] += 1
                 continue
 
+            importable.append(event)
+
+        # Batch LLM parse all importable events at once (in chunks)
+        parsed_results = []
+        for chunk_start in range(0, len(importable), _LLM_BATCH_SIZE):
+            chunk = importable[chunk_start:chunk_start + _LLM_BATCH_SIZE]
+            llm_input = [
+                {'summary': ev.get('summary', ''), 'description': ev.get('description', '')}
+                for ev in chunk
+            ]
+            parsed_results.extend(parse_gcal_events_batch(llm_input))
+
+        # Counter for unnamed customers (per company sync run)
+        unnamed_counter = 0
+
+        # Second pass: import with parsed data
+        for idx, event in enumerate(importable):
+            gcal_id = event['id']
+            summary = event.get('summary', '').strip()
+            desc = event.get('description', '')
             start_dt = event['start']
             duration = event.get('duration_minutes', 60)
 
-            # Parse customer name and service from summary
-            customer_name = summary
-            service_type = 'Imported Event'
-            if ' - ' in summary:
-                parts = summary.split(' - ', 1)
-                service_part = parts[0].strip()
-                name_part = parts[1].strip()
-                for prefix in ['URGENT:', 'SCHEDULED:', 'EMERGENCY:']:
-                    if service_part.upper().startswith(prefix):
-                        service_part = service_part[len(prefix):].strip()
-                        break
-                if name_part:
-                    customer_name = name_part
-                    service_type = service_part or 'Imported Event'
+            parsed = parsed_results[idx] if idx < len(parsed_results) else _build_fallback(summary)
 
-            # Extract phone from description
-            phone = ''
-            desc = event.get('description', '')
-            if desc:
+            customer_name = parsed.get('customer_name', '').strip()
+            service_type = parsed.get('job_description', '').strip() or 'Imported Event'
+            address_from_llm = parsed.get('address', '').strip()
+            phone_from_llm = parsed.get('phone', '').strip()
+
+            # If no customer name was found, generate a descriptive placeholder
+            if not customer_name:
+                unnamed_counter += 1
+                customer_name = f"GCal Import #{unnamed_counter}"
+
+            # Extract phone: prefer LLM-extracted, fall back to regex from description
+            phone = phone_from_llm
+            if not phone and desc:
                 phone_match = re.search(r'(?:Phone|Customer Phone)[:\s]*([+\d\s\-()]{7,})', desc, re.IGNORECASE)
                 if phone_match:
                     phone = phone_match.group(1).strip()
@@ -242,14 +355,10 @@ def sync_company(company_id: int, db, dry_run: bool = False,
             if not phone and not import_email:
                 import_email = f"imported-{gcal_id[:12]}@external.calendar"
 
-            print(f"      IMPORT  {summary}  {start_dt.strftime('%Y-%m-%d %H:%M')}  {duration}min")
+            print(f"      IMPORT  \"{summary}\" → customer=\"{customer_name}\", job=\"{service_type}\"  {start_dt.strftime('%Y-%m-%d %H:%M')}  {duration}min")
 
             if not dry_run:
                 try:
-                    # Check if booking already exists for this gcal event
-                    # to avoid creating an orphaned customer.
-                    # calendar_event_id is globally unique, so check without
-                    # company_id filter.
                     existing = db.get_booking_by_calendar_event_id(gcal_id)
                     if existing:
                         known_gcal_ids.add(gcal_id)
@@ -265,13 +374,13 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                         appointment_time=start_dt.strftime('%Y-%m-%d %H:%M:%S'),
                         service_type=service_type, phone_number=phone or None,
                         email=import_email if not phone else None,
-                        company_id=company_id, duration_minutes=duration
+                        company_id=company_id, duration_minutes=duration,
+                        address=address_from_llm or None
                     )
                     if booking_id:
                         known_gcal_ids.add(gcal_id)
                         stats['pull_imported'] += 1
                     else:
-                        # add_booking returned None — likely a duplicate
                         stats['pull_skipped'] += 1
                 except Exception as e:
                     if 'UniqueViolation' in type(e).__name__ or 'unique constraint' in str(e).lower():

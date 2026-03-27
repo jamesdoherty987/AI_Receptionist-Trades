@@ -89,7 +89,7 @@ function MiniCalendar({ selectedDate, onSelectDate, monthData, isLoading, calMon
   );
 }
 
-function AddJobModal({ isOpen, onClose, workerMode = false }) {
+function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = null }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
 
@@ -132,16 +132,89 @@ function AddJobModal({ isOpen, onClose, workerMode = false }) {
 
   // Monthly availability (fires when service is selected)
   const durationMins = parseInt(formData.duration_minutes) || 60;
+  // In worker mode, always include the creating worker in availability checks
+  const effectiveWorkerList = useMemo(() => {
+    if (workerMode && currentWorkerId && assignedWorkers.length > 0) {
+      // Add current worker if not already in the list
+      if (!assignedWorkers.some(w => w.id === currentWorkerId)) {
+        return [{ id: currentWorkerId }, ...assignedWorkers];
+      }
+    }
+    return assignedWorkers;
+  }, [assignedWorkers, workerMode, currentWorkerId]);
+  const assignedWorkerIds = effectiveWorkerList.map(w => w.id).sort().join(',');
+
   const { data: monthlyData, isLoading: isLoadingMonthly } = useQuery({
-    queryKey: ['monthly-availability', calYear, calMonth + 1, formData.service_type, formData.worker_id, anyWorkerMode, durationMins, workerMode],
-    queryFn: async () => (await apiFns.checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode, durationMins)).data,
+    queryKey: ['monthly-availability', calYear, calMonth + 1, formData.service_type, formData.worker_id, anyWorkerMode, durationMins, workerMode, assignedWorkerIds, currentWorkerId],
+    queryFn: async () => {
+      // When workers are assigned, fetch each worker's availability and intersect
+      if (effectiveWorkerList.length > 0) {
+        const results = await Promise.all(
+          effectiveWorkerList.map(w => apiFns.checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, w.id, false, durationMins).then(r => r.data))
+        );
+        if (!results.length || !results[0]) return results[0];
+        const merged = { ...results[0], days: { ...results[0].days } };
+        if (merged.days) {
+          for (const dayKey of Object.keys(merged.days)) {
+            const dayStatuses = results.map(r => r.days?.[dayKey]?.status || 'closed');
+            // If business is closed for any worker's result, mark closed
+            if (dayStatuses.some(s => s === 'closed')) {
+              merged.days[dayKey] = { ...merged.days[dayKey], status: 'closed', free: 0 };
+            } else if (dayStatuses.some(s => s === 'leave' || s === 'full')) {
+              // If any worker is on leave or fully booked, no availability
+              merged.days[dayKey] = { ...merged.days[dayKey], status: 'full', free: 0 };
+            } else if (dayStatuses.some(s => s === 'partial')) {
+              const minFree = Math.min(...results.map(r => r.days?.[dayKey]?.free ?? 0));
+              merged.days[dayKey] = { ...merged.days[dayKey], status: minFree > 0 ? 'partial' : 'full', free: minFree };
+            }
+            // else all 'free' — keep as-is from results[0]
+          }
+        }
+        return merged;
+      }
+      // In worker mode with no extra workers, show the creating worker's own availability
+      const effectiveWorkerId = workerMode && currentWorkerId ? currentWorkerId : (anyWorkerMode ? null : (formData.worker_id || null));
+      const effectiveAnyWorker = workerMode && currentWorkerId ? false : anyWorkerMode;
+      return (await apiFns.checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, effectiveWorkerId, effectiveAnyWorker, durationMins)).data;
+    },
     enabled: !!formData.service_type && isOpen
   });
 
   // Daily slots (fires when date is selected)
   const { data: availability, isLoading: isLoadingAvailability } = useQuery({
-    queryKey: ['availability', selectedDate, formData.service_type, formData.worker_id, anyWorkerMode, durationMins, workerMode],
-    queryFn: async () => (await apiFns.checkAvailability(selectedDate, formData.service_type, anyWorkerMode ? null : (formData.worker_id || null), anyWorkerMode, durationMins)).data,
+    queryKey: ['availability', selectedDate, formData.service_type, formData.worker_id, anyWorkerMode, durationMins, workerMode, assignedWorkerIds, currentWorkerId],
+    queryFn: async () => {
+      // When workers are assigned, fetch each worker's slots and intersect
+      if (effectiveWorkerList.length > 0) {
+        const results = await Promise.all(
+          effectiveWorkerList.map(w => apiFns.checkAvailability(selectedDate, formData.service_type, w.id, false, durationMins).then(r => r.data))
+        );
+        if (!results.length || !results[0]) return results[0];
+        const merged = { ...results[0] };
+        if (merged.slots) {
+          // Build lookup maps by time for each worker's slots (safer than index matching)
+          const slotMaps = results.map(r => {
+            const map = {};
+            (r.slots || []).forEach(s => { map[s.time] = s; });
+            return map;
+          });
+          merged.slots = merged.slots.map(slot => {
+            const allAvailable = slotMaps.every(m => m[slot.time]?.available);
+            if (!allAvailable) {
+              // Find the first conflicting worker's booking info
+              const conflictMap = slotMaps.find(m => m[slot.time] && !m[slot.time].available);
+              return { ...slot, available: false, booking: conflictMap?.[slot.time]?.booking || slot.booking };
+            }
+            return slot;
+          });
+        }
+        return merged;
+      }
+      // In worker mode with no extra workers, show the creating worker's own availability
+      const effectiveWorkerId = workerMode && currentWorkerId ? currentWorkerId : (anyWorkerMode ? null : (formData.worker_id || null));
+      const effectiveAnyWorker = workerMode && currentWorkerId ? false : anyWorkerMode;
+      return (await apiFns.checkAvailability(selectedDate, formData.service_type, effectiveWorkerId, effectiveAnyWorker, durationMins)).data;
+    },
     enabled: !!selectedDate && !!formData.service_type && isOpen
   });
 
