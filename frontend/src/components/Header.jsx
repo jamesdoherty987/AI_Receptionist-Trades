@@ -6,7 +6,7 @@ import { getBusinessSettings } from '../services/api';
 import NotificationBell from './NotificationBell';
 import './Header.css';
 
-function Header() {
+function Header({ onNotificationNavigate }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -101,7 +101,7 @@ function Header() {
             </Link>
             
             {/* Notification Bell */}
-            <NotificationBell />
+            <NotificationBell onNavigate={onNotificationNavigate} />
             
             {/* User Menu */}
             <div className="user-menu-container" ref={menuRef}>

@@ -459,6 +459,23 @@ function WorkerDashboard() {
     { id: 'profile', label: 'Profile', icon: 'fas fa-user' },
   ];
 
+  const handleWorkerNotifNavigate = (notif) => {
+    const typeToTab = {
+      'job_assigned': 'jobs',
+      'new_message': 'messages',
+      'time_off_approved': 'hr',
+      'time_off_denied': 'hr',
+    };
+    const tab = typeToTab[notif.type];
+    if (tab) {
+      setActiveTab(tab);
+      setSelectedJobId(null); // close any open job detail
+      if (tab === 'messages') {
+        queryClient.invalidateQueries({ queryKey: ['worker-unread-messages'] });
+      }
+    }
+  };
+
   // ---- Job Detail View ----
   if (selectedJobId) {
     const job = selectedJob?.job;
@@ -474,7 +491,7 @@ function WorkerDashboard() {
             </button>
             <div className="worker-header-right">
               <span className="worker-greeting">Hi, {user?.name || 'Worker'}</span>
-              <WorkerNotificationBell />
+              <WorkerNotificationBell onNavigate={handleWorkerNotifNavigate} />
               <button className="worker-logout-btn" onClick={handleLogout}>
                 <i className="fas fa-sign-out-alt"></i> Sign Out
               </button>
@@ -958,7 +975,7 @@ function WorkerDashboard() {
           </Link>
           <div className="worker-header-right">
             <span className="worker-greeting">Hi, {user?.name || 'Worker'}</span>
-            <WorkerNotificationBell />
+            <WorkerNotificationBell onNavigate={handleWorkerNotifNavigate} />
             <button className="worker-logout-btn" onClick={handleLogout}>
               <i className="fas fa-sign-out-alt"></i> Sign Out
             </button>

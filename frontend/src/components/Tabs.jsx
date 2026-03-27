@@ -1,8 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import './Tabs.css';
 
-function Tabs({ tabs, defaultTab = 0 }) {
-  const [activeTab, setActiveTab] = useState(defaultTab);
+function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
+  const [internalTab, setInternalTab] = useState(defaultTab);
+  const activeTab = controlledTab !== undefined ? controlledTab : internalTab;
+  const setActiveTab = (idx) => {
+    setInternalTab(idx);
+    if (onTabChange) onTabChange(idx);
+  };
   const [menuOpen, setMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 

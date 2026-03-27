@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { getNotifications } from '../services/api';
 import './NotificationBell.css';
 
-function NotificationBell() {
+function NotificationBell({ onNavigate }) {
   const [isOpen, setIsOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
   const [seenIds, setSeenIds] = useState(() => {
     try {
       const stored = localStorage.getItem('seenNotifications');
@@ -127,7 +130,31 @@ function NotificationBell() {
               </div>
             ) : (
               notifications.map(notif => (
-                <div key={notif.id} className={`notification-item ${getIconClass(notif.type)}`}>
+                <div
+                  key={notif.id}
+                  className={`notification-item clickable ${getIconClass(notif.type)}`}
+                  onClick={() => {
+                    if (location.pathname !== '/dashboard') {
+                      navigate('/dashboard', { state: { notificationNav: notif } });
+                    } else if (onNavigate) {
+                      onNavigate(notif);
+                    }
+                    setIsOpen(false);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      if (location.pathname !== '/dashboard') {
+                        navigate('/dashboard', { state: { notificationNav: notif } });
+                      } else if (onNavigate) {
+                        onNavigate(notif);
+                      }
+                      setIsOpen(false);
+                    }
+                  }}
+                >
                   <div className="notification-icon">
                     <i className={`fas ${getIcon(notif.type)}`}></i>
                   </div>
@@ -136,6 +163,9 @@ function NotificationBell() {
                     <span className="notification-meta">
                       {notif.client_name ? `${notif.client_name} • ` : ''}{formatTime(notif.created_at)}
                     </span>
+                  </div>
+                  <div className="notification-arrow">
+                    <i className="fas fa-chevron-right"></i>
                   </div>
                 </div>
               ))

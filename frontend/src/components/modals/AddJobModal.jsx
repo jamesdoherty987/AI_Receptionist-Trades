@@ -355,9 +355,17 @@ function AddJobModal({ isOpen, onClose, workerMode = false }) {
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title="Add New Job" size="large">
+      <Modal isOpen={isOpen} onClose={onClose} title={workerMode ? "Create Job" : "Add New Job"} size="large">
         <form onSubmit={handleSubmit} className="form add-job-form">
           
+          {/* Worker mode banner */}
+          {workerMode && (
+            <div className="worker-job-banner">
+              <i className="fas fa-hard-hat"></i>
+              <span>You'll be automatically assigned to this job. You can also add other workers below.</span>
+            </div>
+          )}
+
           {/* Customer Selection */}
           <div className="form-group">
             <label className="form-label">Customer <span className="required">*</span></label>
@@ -432,7 +440,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false }) {
 
           {/* Worker Assignment */}
           <div className="form-group">
-            <label className="form-label">Assign Workers</label>
+            <label className="form-label">{workerMode ? 'Additional Workers' : 'Assign Workers'}</label>
             {/* Assigned workers list */}
             {assignedWorkers.length > 0 && (
               <div className="assigned-workers-list">
@@ -482,7 +490,11 @@ function AddJobModal({ isOpen, onClose, workerMode = false }) {
                 </select>
               </div>
             )}
-            {anyWorkerMode && assignedWorkers.length === 0 && <div className="worker-selected-info any-worker-info"><i className="fas fa-users"></i> Showing combined availability — slot is open if <strong>any</strong> worker is free</div>}
+            {anyWorkerMode && assignedWorkers.length === 0 && (
+              workerMode 
+                ? <div className="worker-selected-info any-worker-info"><i className="fas fa-user-check"></i> You're assigned to this job. Select additional workers if needed.</div>
+                : <div className="worker-selected-info any-worker-info"><i className="fas fa-users"></i> Showing combined availability — slot is open if <strong>any</strong> worker is free</div>
+            )}
             {assignedWorkers.length > 0 && <div className="worker-selected-info"><i className="fas fa-users"></i> <strong>{assignedWorkers.length}</strong> worker{assignedWorkers.length !== 1 ? 's' : ''} assigned</div>}
             {selectedService?.worker_restrictions?.type === 'only' && (
               <div className="worker-restriction-hint"><i className="fas fa-info-circle"></i> Only workers qualified for "{selectedService.name}" are shown</div>
@@ -630,7 +642,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false }) {
 
           <div className="form-actions">
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={mutation.isPending}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={mutation.isPending}>{mutation.isPending ? 'Creating...' : 'Create Job'}</button>
+            <button type="submit" className="btn btn-primary" disabled={mutation.isPending}>{mutation.isPending ? 'Creating...' : workerMode ? 'Create & Assign to Me' : 'Create Job'}</button>
           </div>
         </form>
       </Modal>

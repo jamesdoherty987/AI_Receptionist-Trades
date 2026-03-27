@@ -4228,13 +4228,13 @@ Return ONLY valid JSON, no explanation."""
             if matched_job.get('is_full_day'):
                 return {
                     "success": True,
-                    "message": f"The booking for {matched_name} on {parsed_date.strftime('%A, %B %d')} has been cancelled.",
+                    "message": f"Thats all done there,I've cancelled the booking for {matched_name} on {parsed_date.strftime('%A, %B %d')}. Let me know if you need anything else.",
                     "voice_instruction": "Confirm the cancellation warmly and naturally. Ask if there's anything else you can help with. Use casual Irish tone — e.g. 'Grand, that's all taken care of' or 'No problem, that's cancelled for you'."
                 }
             else:
                 return {
                     "success": True,
-                    "message": f"The booking for {matched_name} at {time_info} on {parsed_date.strftime('%A, %B %d')} has been cancelled.",
+                    "message": f"Thats all done there,I've cancelled the booking for {matched_name} at {time_info} on {parsed_date.strftime('%A, %B %d')}. Let me know if you need anything else.",
                     "voice_instruction": "Confirm the cancellation warmly and naturally. Ask if there's anything else you can help with. Use casual Irish tone — e.g. 'Grand, that's all taken care of' or 'No problem, that's cancelled for you'."
                 }
         

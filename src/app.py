@@ -2341,11 +2341,13 @@ def worker_create_booking():
     # Inject company_id so the existing bookings_api logic works
     session['company_id'] = company_id
 
-    # If no workers assigned and not auto-assign, default to assigning the creating worker
+    # Worker always gets assigned to their own job
     data = request.json
     worker_ids = data.get('worker_ids', [])
-    if not worker_ids and not data.get('auto_assign_worker'):
-        data['worker_ids'] = [worker_id]
+    if worker_id not in worker_ids:
+        data['worker_ids'] = [worker_id] + worker_ids
+    # Don't use auto_assign — we've explicitly set the worker(s)
+    data['auto_assign_worker'] = False
 
     return bookings_api()
 
@@ -6915,7 +6917,8 @@ def notifications_api():
                 'message': message,
                 'client_name': row['client_name'] or 'Unknown',
                 'appointment_time': row['appointment_time'].isoformat() if row['appointment_time'] else None,
-                'created_at': row['created_at'].isoformat() if row['created_at'] else None
+                'created_at': row['created_at'].isoformat() if row['created_at'] else None,
+                'metadata': {'booking_id': row['id']}
             })
         
         # Also fetch owner notifications from the notifications table
@@ -6928,7 +6931,8 @@ def notifications_api():
                     'message': n['message'],
                     'client_name': (n.get('metadata') or {}).get('worker_name', ''),
                     'appointment_time': None,
-                    'created_at': n['created_at'].isoformat() if n.get('created_at') else None
+                    'created_at': n['created_at'].isoformat() if n.get('created_at') else None,
+                    'metadata': n.get('metadata') or {}
                 })
             # Sort all notifications by created_at descending
             notifications.sort(key=lambda x: x.get('created_at') or '', reverse=True)

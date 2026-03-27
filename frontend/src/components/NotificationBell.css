@@ -108,11 +108,23 @@
   transition: background 0.2s ease;
 }
 
+.notification-item.clickable {
+  cursor: pointer;
+}
+
+.notification-item.clickable:hover {
+  background: #eef2ff;
+}
+
+.notification-item.clickable:active {
+  background: #e0e7ff;
+}
+
 .notification-item:last-child {
   border-bottom: none;
 }
 
-.notification-item:hover {
+.notification-item:not(.clickable):hover {
   background: #f9fafb;
 }
 
@@ -175,4 +187,17 @@
 .notification-item.notif-time-off .notification-icon {
   background: #fef3c7;
   color: #d97706;
+}
+
+.notification-arrow {
+  display: flex;
+  align-items: center;
+  color: #d1d5db;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  transition: color 0.2s ease;
+}
+
+.notification-item.clickable:hover .notification-arrow {
+  color: #6366f1;
 }

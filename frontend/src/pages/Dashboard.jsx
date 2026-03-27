@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import Tabs from '../components/Tabs';
@@ -21,6 +22,8 @@ import './Dashboard.css';
 
 function Dashboard() {
   const { user } = useAuth();
+  const location = useLocation();
+  const nav = useNavigate();
   const userKey = user?.email || 'default';
 
   // Onboarding dismissed state — initialized from localStorage so it survives remounts
@@ -65,7 +68,10 @@ function Dashboard() {
   const clients = dashboardData?.clients || [];
   const workers = dashboardData?.workers || [];
 
-  const tabs = [
+  // Controlled tab state for notification navigation
+  const [activeTab, setActiveTab] = useState(0);
+
+  const tabs = useMemo(() => [
     // Day-to-day
     {
       label: 'Jobs',
@@ -131,11 +137,38 @@ function Dashboard() {
       group: 'Dev Tools',
       content: <ChatTab />
     }] : [])
-  ];
+  ], [isLoading, bookings, clients, workers, settings]);
+
+  // Map notification types to tab labels for navigation
+  const handleNotificationNavigate = useCallback((notif) => {
+    const typeToLabel = {
+      'new_booking': 'Jobs',
+      'cancelled': 'Jobs',
+      'completed': 'Jobs',
+      'rescheduled': 'Jobs',
+      'time_off_request': 'Workers',
+      'new_message': 'Workers',
+    };
+    const targetLabel = typeToLabel[notif.type];
+    if (targetLabel) {
+      const idx = tabs.findIndex(t => t.label === targetLabel);
+      if (idx !== -1) setActiveTab(idx);
+    }
+  }, [tabs]);
+
+  // Handle notification navigation from other pages (e.g. Settings → Dashboard)
+  useEffect(() => {
+    const notif = location.state?.notificationNav;
+    if (notif && tabs.length > 0) {
+      handleNotificationNavigate(notif);
+      // Clear the state so it doesn't re-trigger on re-renders
+      nav(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, tabs, handleNotificationNavigate, nav, location.pathname]);
 
   return (
     <div className="dashboard">
-      <Header />
+      <Header onNotificationNavigate={handleNotificationNavigate} />
       <main className="dashboard-main">
         <div className="container">
           <TrialBanner />
@@ -149,7 +182,7 @@ function Dashboard() {
             <h1>Dashboard</h1>
           </div>
           
-          <Tabs tabs={tabs} defaultTab={0} />
+          <Tabs tabs={tabs} defaultTab={0} activeTab={activeTab} onTabChange={setActiveTab} />
         </div>
       </main>
     </div>

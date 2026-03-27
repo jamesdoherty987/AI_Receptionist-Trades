@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getWorkerNotifications } from '../services/api';
 import './NotificationBell.css';
 
-function WorkerNotificationBell() {
+function WorkerNotificationBell({ onNavigate }) {
   const [isOpen, setIsOpen] = useState(false);
   const [seenIds, setSeenIds] = useState(() => {
     try {
@@ -122,13 +122,32 @@ function WorkerNotificationBell() {
               </div>
             ) : (
               notifications.map(notif => (
-                <div key={notif.id} className={`notification-item ${getIconClass(notif.type)}`}>
+                <div
+                  key={notif.id}
+                  className={`notification-item clickable ${getIconClass(notif.type)}`}
+                  onClick={() => {
+                    if (onNavigate) onNavigate(notif);
+                    setIsOpen(false);
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      if (onNavigate) onNavigate(notif);
+                      setIsOpen(false);
+                    }
+                  }}
+                >
                   <div className="notification-icon">
                     <i className={`fas ${getIcon(notif.type)}`}></i>
                   </div>
                   <div className="notification-content">
                     <p className="notification-message">{notif.message}</p>
                     <span className="notification-meta">{formatTime(notif.created_at)}</span>
+                  </div>
+                  <div className="notification-arrow">
+                    <i className="fas fa-chevron-right"></i>
                   </div>
                 </div>
               ))
