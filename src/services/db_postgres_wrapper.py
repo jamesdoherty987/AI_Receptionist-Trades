@@ -904,7 +904,8 @@ class PostgreSQLDatabaseWrapper:
                               'show_finances_tab', 'show_invoice_buttons',
                               'show_insights_tab',
                               'send_confirmation_sms', 'send_reminder_sms',
-                              'gcal_invite_workers']
+                              'gcal_invite_workers',
+                              'bypass_numbers']
             
             # Get actual columns that exist in the database
             cursor.execute("""

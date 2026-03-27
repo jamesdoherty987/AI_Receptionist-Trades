@@ -40,6 +40,10 @@ function Settings() {
   const [gcalConnecting, setGcalConnecting] = useState(false);
   const [gcalSyncing, setGcalSyncing] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // Bypass numbers state
+  const [bypassNumbers, setBypassNumbers] = useState([]);
+  const [newBypassName, setNewBypassName] = useState('');
+  const [newBypassPhone, setNewBypassPhone] = useState('');
   // Flag to hide Stripe Connect component
   const hideStripeConnect = REMOVE_STRIPE_CONNECT;
   
@@ -250,6 +254,13 @@ function Settings() {
       if (settings.business_hours) {
         parseBusinessHours(settings.business_hours);
       }
+      // Parse bypass numbers
+      try {
+        const parsed = typeof settings.bypass_numbers === 'string' 
+          ? JSON.parse(settings.bypass_numbers || '[]') 
+          : (settings.bypass_numbers || []);
+        setBypassNumbers(Array.isArray(parsed) ? parsed : []);
+      } catch { setBypassNumbers([]); }
     }
   }, [settings]);
 
@@ -425,7 +436,8 @@ function Settings() {
     if (e) e.preventDefault();
     const updatedData = {
       ...formData,
-      business_hours: formatBusinessHours()
+      business_hours: formatBusinessHours(),
+      bypass_numbers: JSON.stringify(bypassNumbers),
     };
     saveMutation.mutate(updatedData);
   };
@@ -677,6 +689,107 @@ function Settings() {
                     </span>
                   )}
                 </div>
+              </div>
+
+              {/* Bypass Numbers - Always Forward to Fallback */}
+              <div className="bypass-numbers-section">
+                <div className="form-section-header">
+                  <i className="fas fa-phone-slash" style={{ color: '#ef4444' }}></i>
+                  <h3>Always Forward Numbers</h3>
+                </div>
+                <p className="section-description">
+                  Calls from these numbers will always be forwarded directly to your business phone, bypassing the AI receptionist entirely.
+                </p>
+                <div className="bypass-add-row">
+                  <input
+                    type="text"
+                    placeholder="Name (e.g. John)"
+                    value={newBypassName}
+                    onChange={(e) => setNewBypassName(e.target.value)}
+                    className="bypass-input bypass-name"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (newBypassPhone.trim()) {
+                          const phone = newBypassPhone.trim();
+                          const isDuplicate = bypassNumbers.some(b => b.phone.replace(/[\s\-\(\)\+]/g, '') === phone.replace(/[\s\-\(\)\+]/g, ''));
+                          if (!isDuplicate) {
+                            setBypassNumbers(prev => [...prev, { name: newBypassName.trim(), phone }]);
+                            setNewBypassName('');
+                            setNewBypassPhone('');
+                            setHasUnsavedChanges(true);
+                          }
+                        }
+                      }
+                    }}
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Phone number"
+                    value={newBypassPhone}
+                    onChange={(e) => setNewBypassPhone(e.target.value)}
+                    className="bypass-input bypass-phone"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (newBypassPhone.trim()) {
+                          const phone = newBypassPhone.trim();
+                          const isDuplicate = bypassNumbers.some(b => b.phone.replace(/[\s\-\(\)\+]/g, '') === phone.replace(/[\s\-\(\)\+]/g, ''));
+                          if (!isDuplicate) {
+                            setBypassNumbers(prev => [...prev, { name: newBypassName.trim(), phone }]);
+                            setNewBypassName('');
+                            setNewBypassPhone('');
+                            setHasUnsavedChanges(true);
+                          }
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    disabled={!newBypassPhone.trim()}
+                    onClick={() => {
+                      if (newBypassPhone.trim()) {
+                        const phone = newBypassPhone.trim();
+                        const isDuplicate = bypassNumbers.some(b => b.phone.replace(/[\s\-\(\)\+]/g, '') === phone.replace(/[\s\-\(\)\+]/g, ''));
+                        if (isDuplicate) return;
+                        setBypassNumbers(prev => [...prev, { name: newBypassName.trim(), phone }]);
+                        setNewBypassName('');
+                        setNewBypassPhone('');
+                        setHasUnsavedChanges(true);
+                      }
+                    }}
+                  >
+                    <i className="fas fa-plus"></i> Add
+                  </button>
+                </div>
+                {bypassNumbers.length > 0 && (
+                  <div className="bypass-list">
+                    {bypassNumbers.map((entry, idx) => (
+                      <div key={idx} className="bypass-entry">
+                        <div className="bypass-entry-info">
+                          <span className="bypass-entry-name">{entry.name || 'No name'}</span>
+                          <span className="bypass-entry-phone">{entry.phone}</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="bypass-remove-btn"
+                          title="Remove"
+                          onClick={() => {
+                            setBypassNumbers(prev => prev.filter((_, i) => i !== idx));
+                            setHasUnsavedChanges(true);
+                          }}
+                        >
+                          <i className="fas fa-times"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {bypassNumbers.length === 0 && (
+                  <p className="bypass-empty">No bypass numbers configured. All calls go through the AI receptionist.</p>
+                )}
               </div>
 
               {/* Settings Form */}

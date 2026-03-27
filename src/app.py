@@ -395,17 +395,38 @@ def twilio_voice():
         print(f"[ERROR] No company found for Twilio number: {to_number}")
         return Response(str(twiml), mimetype="text/xml")
     
+    # Check if caller is in the bypass list (always forward to fallback)
+    bypass_numbers_raw = company.get('bypass_numbers', '[]')
+    bypass_forward = False
+    try:
+        import json
+        import re
+        bypass_list = json.loads(bypass_numbers_raw) if bypass_numbers_raw else []
+        if bypass_list and isinstance(bypass_list, list):
+            # Normalize caller phone for comparison (strip spaces, dashes, parens)
+            caller_normalized = re.sub(r'[\s\-\(\)\+]', '', caller_phone)
+            for entry in bypass_list:
+                if not isinstance(entry, dict):
+                    continue
+                entry_phone = re.sub(r'[\s\-\(\)\+]', '', entry.get('phone', ''))
+                if entry_phone and len(entry_phone) >= 7 and caller_normalized[-9:] == entry_phone[-9:]:
+                    bypass_forward = True
+                    print(f"[BYPASS] Caller {caller_phone} matches bypass entry: {entry.get('name', 'Unknown')} ({entry.get('phone', '')})")
+                    break
+    except Exception as e:
+        print(f"[WARNING] Error checking bypass numbers: {e}")
+    
     # Check if AI receptionist is enabled
     ai_enabled = company.get('ai_enabled', True)
     
     twiml = VoiceResponse()
     
-    if not ai_enabled:
+    if not ai_enabled or bypass_forward:
         # AI is disabled - forward to business phone number
         business_phone = company.get('phone') if company else None
         
         print("=" * 60)
-        print("📞 Incoming Twilio Call - AI DISABLED")
+        print(f"📞 Incoming Twilio Call - {'BYPASS NUMBER' if bypass_forward else 'AI DISABLED'}")
         print(f"[PHONE] Caller: {caller_phone}")
         print(f"[PHONE] Forwarding to business phone: {business_phone or 'No phone number set!'}")
         print("=" * 60)
@@ -3728,6 +3749,8 @@ def business_settings_api():
             'send_reminder_sms': company.get('send_reminder_sms', True) if company.get('send_reminder_sms') is not None else True,
             # Google Calendar worker invites toggle
             'gcal_invite_workers': company.get('gcal_invite_workers', False) if company.get('gcal_invite_workers') is not None else False,
+            # Bypass numbers - always forward to fallback
+            'bypass_numbers': company.get('bypass_numbers', '[]'),
         }
         return jsonify(settings)
     
@@ -3786,6 +3809,7 @@ def business_settings_api():
             'send_confirmation_sms': 'send_confirmation_sms',
             'send_reminder_sms': 'send_reminder_sms',
             'gcal_invite_workers': 'gcal_invite_workers',
+            'bypass_numbers': 'bypass_numbers',
         }
         
         for frontend_field, db_field in field_mapping.items():
