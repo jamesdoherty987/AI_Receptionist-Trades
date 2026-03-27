@@ -328,12 +328,12 @@ def load_system_prompt(company_id=None):
                 price = service['price']
                 price_max = service.get('price_max')
                 if price_max and float(price_max) > float(price):
-                    service_line = f"{service['name']} ({service['category']}) - €{price} to €{price_max}"
+                    service_line = f"{service['name']} ({service['category']}) | Price: €{price} to €{price_max}"
                 else:
-                    service_line = f"{service['name']} ({service['category']}) - €{price}"
+                    service_line = f"{service['name']} ({service['category']}) | Price: €{price}"
                 if service.get('emergency_price'):
                     service_line += f" (Emergency: €{service['emergency_price']})"
-                service_line += f" - {service['duration_minutes']} minutes"
+                service_line += f" | Duration: {service['duration_minutes']} minutes"
                 if service.get('requires_callout'):
                     service_line += " [CALLOUT REQUIRED]"
                 services_list.append(service_line)
