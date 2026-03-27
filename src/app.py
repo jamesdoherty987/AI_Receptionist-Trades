@@ -8034,6 +8034,13 @@ def google_calendar_callback():
                         if not phone and not import_email:
                             import_email = f"imported-{gcal_id[:12]}@external.calendar"
                         try:
+                            # Check if booking already exists for this gcal event
+                            # to avoid creating an orphaned customer when add_booking
+                            # fails with a UniqueViolation.
+                            existing = db.get_booking_by_calendar_event_id(gcal_id, company_id=int(company_id))
+                            if existing:
+                                known_gcal_ids.add(gcal_id)
+                                continue
                             client_id = db.find_or_create_client(
                                 name=customer_name, phone=phone or None,
                                 email=import_email, company_id=int(company_id)
@@ -8342,6 +8349,16 @@ def google_calendar_sync():
             import_email = f"imported-{gcal_id[:12]}@external.calendar"
 
         try:
+            # Check if booking already exists for this gcal event to avoid
+            # creating an orphaned customer when add_booking fails with a
+            # UniqueViolation (client is committed first, booking rollback
+            # leaves the customer without a job).
+            existing = db.get_booking_by_calendar_event_id(gcal_id, company_id=company_id)
+            if existing:
+                known_gcal_ids.add(gcal_id)
+                pull_skipped += 1
+                continue
+
             client_id = db.find_or_create_client(
                 name=customer_name,
                 phone=phone or None,

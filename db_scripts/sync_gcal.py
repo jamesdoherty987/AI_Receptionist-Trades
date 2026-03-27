@@ -246,6 +246,14 @@ def sync_company(company_id: int, db, dry_run: bool = False,
 
             if not dry_run:
                 try:
+                    # Check if booking already exists for this gcal event
+                    # to avoid creating an orphaned customer.
+                    existing = db.get_booking_by_calendar_event_id(gcal_id, company_id=company_id)
+                    if existing:
+                        known_gcal_ids.add(gcal_id)
+                        stats['pull_skipped'] += 1
+                        continue
+
                     client_id = db.find_or_create_client(
                         name=customer_name, phone=phone or None,
                         email=import_email, company_id=company_id
