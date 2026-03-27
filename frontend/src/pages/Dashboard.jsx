@@ -32,22 +32,16 @@ function Dashboard() {
     },
   });
 
-  // Show onboarding wizard for new users who haven't completed setup
+  // Show onboarding wizard for new users who haven't completed/dismissed setup
   useEffect(() => {
     const onboardingComplete = localStorage.getItem(`onboarding_complete_${userKey}`);
     
-    // Show onboarding if user hasn't dismissed/completed it before.
-    // Once shown, keep it visible until user explicitly closes or completes all steps.
     if (onboardingComplete) {
       setShowOnboarding(false);
     } else if (settings !== undefined && initialized && user) {
-      setShowOnboarding(prev => {
-        // If already showing, keep showing (don't hide mid-flow when settings update)
-        if (prev) return true;
-        // Initial decision: show if business info is missing
-        const needsSetup = !settings?.business_address || !settings?.coverage_area;
-        return needsSetup;
-      });
+      // Always show the wizard if user hasn't explicitly dismissed it.
+      // The wizard itself handles step completion and auto-hides when all done.
+      setShowOnboarding(true);
     }
   }, [settings, initialized, userKey]);
 
