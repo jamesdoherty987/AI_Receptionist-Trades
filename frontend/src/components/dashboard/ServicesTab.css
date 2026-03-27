@@ -761,6 +761,11 @@
   font-size: 0.75rem;
   color: #6b7280;
 }
+.price-from-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
 .price-max-row {
   display: flex;
   align-items: center;

@@ -6687,6 +6687,52 @@ def config_api():
     })
 
 
+@app.route("/api/call-logs", methods=["GET"])
+@login_required
+def call_logs_api():
+    """Get call logs for the company with optional filtering and pagination."""
+    db = get_database()
+    company_id = session.get('company_id')
+
+    outcome = request.args.get('outcome', 'all')
+    search = request.args.get('search', '').strip() or None
+    try:
+        page = max(int(request.args.get('page', 1)), 1)
+    except (ValueError, TypeError):
+        page = 1
+    try:
+        per_page = min(int(request.args.get('per_page', 50)), 100)
+    except (ValueError, TypeError):
+        per_page = 50
+    offset = (page - 1) * per_page
+
+    logs = db.get_call_logs(
+        company_id=company_id,
+        limit=per_page,
+        offset=offset,
+        outcome_filter=outcome,
+        search=search,
+    )
+    total = db.get_call_log_count(
+        company_id=company_id,
+        outcome_filter=outcome,
+        search=search,
+    )
+
+    # Serialize datetimes
+    for log in logs:
+        if log.get('created_at'):
+            log['created_at'] = log['created_at'].isoformat() if hasattr(log['created_at'], 'isoformat') else str(log['created_at'])
+
+    return jsonify({
+        "call_logs": logs,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": max(1, -(-total // per_page)),  # ceil division
+    })
+
+
 @app.route("/api/notifications", methods=["GET"])
 @login_required
 def notifications_api():

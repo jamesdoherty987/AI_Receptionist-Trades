@@ -227,9 +227,16 @@ class PostgreSQLDatabaseWrapper:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS call_logs (
                     id BIGSERIAL PRIMARY KEY,
+                    company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE,
                     phone_number TEXT,
+                    caller_name TEXT,
+                    address TEXT,
+                    eircode TEXT,
                     duration_seconds INTEGER,
+                    call_outcome TEXT DEFAULT 'no_action',
+                    ai_summary TEXT,
                     summary TEXT,
+                    call_sid TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -753,6 +760,29 @@ class PostgreSQLDatabaseWrapper:
                 print("[SUCCESS] Added charge_max column to bookings table")
             except Exception as e:
                 print(f"[WARNING] Could not add charge_max column: {e}")
+        
+        # ============================================
+        # Call logs table expansion for call tracking feature
+        # ============================================
+        call_log_columns = {
+            'caller_name': 'TEXT',
+            'address': 'TEXT',
+            'eircode': 'TEXT',
+            'call_outcome': "TEXT DEFAULT 'no_action'",
+            'ai_summary': 'TEXT',
+            'call_sid': 'TEXT',
+        }
+        for col_name, col_type in call_log_columns.items():
+            cursor.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='call_logs' AND column_name=%s",
+                (col_name,)
+            )
+            if not cursor.fetchone():
+                try:
+                    cursor.execute(f"ALTER TABLE call_logs ADD COLUMN {col_name} {col_type}")
+                    print(f"[SUCCESS] Added {col_name} column to call_logs table")
+                except Exception as e:
+                    print(f"[WARNING] Could not add {col_name} to call_logs: {e}")
     
     def _convert_query(self, query: str) -> str:
         """Convert ? placeholders to %s for parameterized queries"""
@@ -3598,5 +3628,92 @@ class PostgreSQLDatabaseWrapper:
             conn.rollback()
             print(f"Error getting conversations summary: {e}")
             return []
+        finally:
+            self.return_connection(conn)
+
+    # ============================================
+    # Call Logs
+    # ============================================
+
+    def create_call_log(self, company_id: int, phone_number: str = None,
+                        caller_name: str = None, address: str = None,
+                        eircode: str = None, duration_seconds: int = None,
+                        call_outcome: str = 'no_action', ai_summary: str = None,
+                        summary: str = None, call_sid: str = None) -> Optional[int]:
+        """Create a call log entry for every call regardless of outcome."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO call_logs 
+                (company_id, phone_number, caller_name, address, eircode,
+                 duration_seconds, call_outcome, ai_summary, summary, call_sid)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (company_id, phone_number, caller_name, address, eircode,
+                  duration_seconds, call_outcome, ai_summary, summary, call_sid))
+            result = cursor.fetchone()
+            conn.commit()
+            return result[0] if result else None
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Failed to create call log: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+
+    def get_call_logs(self, company_id: int, limit: int = 100, offset: int = 0,
+                      outcome_filter: str = None, search: str = None) -> List[Dict]:
+        """Get call logs for a company with optional filtering."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            query = "SELECT * FROM call_logs WHERE company_id = %s"
+            params = [company_id]
+
+            if outcome_filter and outcome_filter != 'all':
+                query += " AND call_outcome = %s"
+                params.append(outcome_filter)
+
+            if search:
+                query += " AND (caller_name ILIKE %s OR phone_number ILIKE %s OR address ILIKE %s)"
+                term = f"%{search}%"
+                params.extend([term, term, term])
+
+            query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
+
+            cursor.execute(query, tuple(params))
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Failed to get call logs: {e}")
+            return []
+        finally:
+            self.return_connection(conn)
+
+    def get_call_log_count(self, company_id: int, outcome_filter: str = None,
+                           search: str = None) -> int:
+        """Get total count of call logs for pagination."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            query = "SELECT COUNT(*) FROM call_logs WHERE company_id = %s"
+            params = [company_id]
+
+            if outcome_filter and outcome_filter != 'all':
+                query += " AND call_outcome = %s"
+                params.append(outcome_filter)
+
+            if search:
+                query += " AND (caller_name ILIKE %s OR phone_number ILIKE %s OR address ILIKE %s)"
+                term = f"%{search}%"
+                params.extend([term, term, term])
+
+            cursor.execute(query, tuple(params))
+            return cursor.fetchone()[0]
+        except Exception as e:
+            conn.rollback()
+            return 0
         finally:
             self.return_connection(conn)

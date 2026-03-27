@@ -956,6 +956,21 @@ async def media_handler(ws):
             except Exception as e:
                 print(f"⚠️ Summary error: {e}")
         
+        # Log EVERY call to call_logs table (regardless of outcome)
+        if company_id:
+            try:
+                from src.services.call_summarizer import log_call
+                await log_call(
+                    conversation_log=conversation_log,
+                    caller_phone=caller_phone,
+                    company_id=company_id,
+                    duration_seconds=int(total_duration),
+                    call_sid=call_sid,
+                    call_state=call_state,
+                )
+            except Exception as e:
+                print(f"⚠️ Call log error: {e}")
+        
         if respond_task and not respond_task.done():
             respond_task.cancel()
         await asr.close()

@@ -365,3 +365,156 @@ async def add_call_summary_to_booking(
         import traceback
         traceback.print_exc()
         return False
+
+
+# ============================================
+# Call Log Summary — runs for EVERY call
+# ============================================
+
+CALL_LOG_FUNCTION = {
+    "name": "extract_call_log",
+    "description": "Extract a concise summary and caller details from a phone call transcript. This runs for EVERY call regardless of outcome.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "caller_name": {
+                "type": "string",
+                "description": "The caller's name if mentioned during the call. Leave empty string if not provided."
+            },
+            "address": {
+                "type": "string",
+                "description": "The caller's address if mentioned. Leave empty string if not provided."
+            },
+            "eircode": {
+                "type": "string",
+                "description": "The caller's eircode/postcode if mentioned. Leave empty string if not provided."
+            },
+            "call_outcome": {
+                "type": "string",
+                "enum": ["booked", "cancelled", "rescheduled", "enquiry", "wrong_number", "hung_up", "no_action"],
+                "description": "What happened on the call: booked (new appointment made), cancelled (existing appointment cancelled), rescheduled (appointment moved), enquiry (asked questions but didn't book), wrong_number (caller had wrong number), hung_up (caller disconnected early), no_action (call completed but no specific action taken)."
+            },
+            "ai_summary": {
+                "type": "string",
+                "description": "A concise 1-3 sentence summary of the entire call from start to finish. Include what the caller wanted, what happened, and the outcome. Be factual and brief. If the call was very short or the caller hung up, note that."
+            }
+        },
+        "required": ["call_outcome", "ai_summary"]
+    }
+}
+
+
+def generate_call_log_summary(conversation_log: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """
+    Generate a call log summary for ANY call, regardless of whether a booking was made.
+    This is lighter-weight than the full job summarizer — just captures key facts.
+    
+    Returns dict with: caller_name, address, eircode, call_outcome, ai_summary
+    """
+    if not conversation_log:
+        return {"call_outcome": "hung_up", "ai_summary": "Call ended before any conversation took place.", "caller_name": "", "address": "", "eircode": ""}
+
+    transcript_lines = []
+    for msg in conversation_log:
+        role = "Customer" if msg.get('role') == 'user' else "Receptionist"
+        content = msg.get('content', '').strip()
+        if content:
+            transcript_lines.append(f"{role}: {content}")
+
+    if not transcript_lines:
+        return {"call_outcome": "hung_up", "ai_summary": "Call ended before any conversation took place.", "caller_name": "", "address": "", "eircode": ""}
+
+    # If only the greeting was sent and no customer response, it's a hang-up
+    customer_messages = [m for m in conversation_log if m.get('role') == 'user']
+    if not customer_messages:
+        return {"call_outcome": "hung_up", "ai_summary": "Caller hung up before speaking. No conversation took place.", "caller_name": "", "address": "", "eircode": ""}
+
+    transcript = "\n".join(transcript_lines)
+
+    try:
+        client = get_openai_client()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You extract a brief summary and caller details from phone call transcripts for a trades/service business. Be concise and factual. If information wasn't mentioned, leave the field as an empty string."},
+                {"role": "user", "content": f"Summarize this call:\n\n{transcript}"}
+            ],
+            tools=[{"type": "function", "function": CALL_LOG_FUNCTION}],
+            tool_choice={"type": "function", "function": {"name": "extract_call_log"}},
+            temperature=0.1,
+            max_tokens=500
+        )
+
+        tool_calls = response.choices[0].message.tool_calls
+        if tool_calls and len(tool_calls) > 0:
+            return json.loads(tool_calls[0].function.arguments)
+    except Exception as e:
+        print(f"[WARNING] Call log summary generation failed: {e}")
+
+    # Fallback — still log something
+    return {"call_outcome": "no_action", "ai_summary": "Call summary could not be generated.", "caller_name": "", "address": "", "eircode": ""}
+
+
+async def log_call(conversation_log: List[Dict[str, Any]],
+                   caller_phone: str = None,
+                   company_id: int = None,
+                   duration_seconds: int = None,
+                   call_sid: str = None,
+                   call_state=None) -> Optional[int]:
+    """
+    Log EVERY call to the call_logs table, regardless of outcome.
+    This runs in addition to add_call_summary_to_booking.
+    
+    Returns the call_log id if successful.
+    """
+    import asyncio
+
+    if not company_id:
+        print("[INFO] Cannot log call: no company_id")
+        return None
+
+    try:
+        company_id_int = int(company_id)
+    except (ValueError, TypeError):
+        print(f"[WARNING] Invalid company_id for call log: {company_id}")
+        return None
+
+    # Generate the call log summary in a thread pool
+    loop = asyncio.get_running_loop()
+    log_data = await loop.run_in_executor(None, generate_call_log_summary, conversation_log)
+
+    if not log_data:
+        log_data = {"call_outcome": "no_action", "ai_summary": "", "caller_name": "", "address": "", "eircode": ""}
+
+    # Enrich with call_state data if available (more reliable than LLM extraction)
+    if call_state:
+        if call_state.get('customer_name') and not log_data.get('caller_name'):
+            log_data['caller_name'] = call_state.get('customer_name')
+        if call_state.get('job_address') and not log_data.get('address'):
+            log_data['address'] = call_state.get('job_address')
+        # Detect booking outcome from call_state (this flag stays True after booking)
+        if call_state.get('already_booked'):
+            log_data['call_outcome'] = 'booked'
+
+    try:
+        from src.services.database import get_database
+        db = get_database()
+        call_log_id = db.create_call_log(
+            company_id=company_id_int,
+            phone_number=caller_phone,
+            caller_name=log_data.get('caller_name') or None,
+            address=log_data.get('address') or None,
+            eircode=log_data.get('eircode') or None,
+            duration_seconds=duration_seconds,
+            call_outcome=log_data.get('call_outcome', 'no_action'),
+            ai_summary=log_data.get('ai_summary') or None,
+            call_sid=call_sid,
+        )
+        if call_log_id:
+            print(f"[SUCCESS] Call logged (id={call_log_id}, outcome={log_data.get('call_outcome')})")
+        return call_log_id
+    except Exception as e:
+        print(f"[ERROR] Failed to log call: {e}")
+        import traceback
+        traceback.print_exc()
+        return None

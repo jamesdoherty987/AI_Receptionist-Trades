@@ -15,6 +15,7 @@ import ChatTab from '../components/dashboard/ChatTab';
 import ServicesTab from '../components/dashboard/ServicesTab';
 import MaterialsTab from '../components/dashboard/MaterialsTab';
 import InsightsTab from '../components/dashboard/InsightsTab';
+import CallLogsTab from '../components/dashboard/CallLogsTab';
 import { getDashboardData, getBusinessSettings } from '../services/api';
 import './Dashboard.css';
 
@@ -90,6 +91,11 @@ function Dashboard() {
       icon: 'fas fa-chart-pie',
       content: isLoading ? <LoadingSpinner /> : <InsightsTab bookings={bookings} clients={clients} workers={workers} />
     }] : []),
+    {
+      label: 'Calls',
+      icon: 'fas fa-phone-alt',
+      content: <CallLogsTab />
+    },
     {
       label: 'Services',
       icon: 'fas fa-concierge-bell',

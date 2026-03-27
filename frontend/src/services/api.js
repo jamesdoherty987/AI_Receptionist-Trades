@@ -275,4 +275,7 @@ export const workerSendMessage = (content) =>
   api.post('/api/worker/messages', { content });
 export const getWorkerUnreadMessageCount = () => api.get('/api/worker/messages/unread-count');
 
+// Call Logs
+export const getCallLogs = (params = {}) => api.get('/api/call-logs', { params });
+
 export default api;

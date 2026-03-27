@@ -235,6 +235,9 @@ function ServicesTab() {
             </div>
             <div className="form-group">
               <label>Price (€)</label>
+              {formData.price_max !== null && formData.price_max !== undefined && (
+                <span className="price-from-label">from</span>
+              )}
               <input
                 type="number"
                 className="form-input"
@@ -569,6 +572,9 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           <div className="edit-row">
             <div className="form-group">
               <label>Price (€)</label>
+              {editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined && (
+                <span className="price-from-label">from</span>
+              )}
               <input
                 type="number"
                 className="form-input"
