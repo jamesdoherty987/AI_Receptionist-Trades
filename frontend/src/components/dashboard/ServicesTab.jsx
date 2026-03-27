@@ -25,7 +25,7 @@ function ServicesTab() {
   const [formData, setFormData] = useState({ 
     name: '', 
     price: '', 
-    price_max: '',
+    price_max: null,
     duration: '1440', 
     image_url: '', 
     workers_required: '1',
@@ -84,7 +84,7 @@ function ServicesTab() {
       setFormData({ 
         name: '', 
         price: '', 
-        price_max: '',
+        price_max: null,
         duration: '1440', 
         image_url: '', 
         workers_required: '1',
@@ -244,7 +244,7 @@ function ServicesTab() {
                 step="0.01"
                 min="0"
               />
-              {formData.price_max !== '' && formData.price_max !== undefined ? (
+              {formData.price_max !== null && formData.price_max !== '' && formData.price_max !== undefined ? (
                 <div className="price-max-row">
                   <div className="price-max-field">
                     <span className="price-max-label">to</span>
@@ -259,7 +259,7 @@ function ServicesTab() {
                       autoFocus
                     />
                   </div>
-                  <button type="button" className="price-range-remove" onClick={() => setFormData({ ...formData, price_max: '' })} title="Remove range">
+                  <button type="button" className="price-range-remove" onClick={() => setFormData({ ...formData, price_max: null })} title="Remove range">
                     <i className="fas fa-times"></i>
                   </button>
                 </div>
