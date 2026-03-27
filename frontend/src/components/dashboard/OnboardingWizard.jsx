@@ -249,7 +249,10 @@ function OnboardingWizard({ onComplete }) {
       if (settings.twilio_phone_number) {
         completed.push('phone');
       }
-      setCompletedSteps(completed);
+      setCompletedSteps(prev => {
+        const merged = new Set([...prev, ...completed]);
+        return [...merged];
+      });
     }
   }, [settings]);
 
@@ -345,6 +348,16 @@ function OnboardingWizard({ onComplete }) {
     return completedSteps.includes(stepId);
   };
 
+  // Auto-finish the wizard when all steps are complete
+  const allComplete = !isLoading && STEPS.every(step => isStepComplete(step.id));
+  
+  useEffect(() => {
+    if (allComplete) {
+      localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
+      onComplete();
+    }
+  }, [allComplete, userKey, onComplete]);
+
   if (isLoading) {
     return (
       <div className="onboarding-inline">
@@ -356,8 +369,6 @@ function OnboardingWizard({ onComplete }) {
     );
   }
 
-  // If all steps complete, don't show anything
-  const allComplete = STEPS.every(step => isStepComplete(step.id));
   if (allComplete) {
     return null;
   }

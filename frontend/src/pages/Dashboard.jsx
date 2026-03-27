@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
@@ -36,19 +36,18 @@ function Dashboard() {
   useEffect(() => {
     const onboardingComplete = localStorage.getItem(`onboarding_complete_${userKey}`);
     
-    // Show onboarding if:
-    // 1. User hasn't dismissed/completed onboarding before
-    // 2. AND settings are loaded
-    // 3. AND business info is missing
-    if (!onboardingComplete && settings !== undefined && initialized && user) {
-      const needsSetup = !settings?.business_address || !settings?.coverage_area;
-      if (needsSetup) {
-        setShowOnboarding(true);
-      } else {
-        setShowOnboarding(false);
-      }
-    } else if (onboardingComplete) {
+    // Show onboarding if user hasn't dismissed/completed it before.
+    // Once shown, keep it visible until user explicitly closes or completes all steps.
+    if (onboardingComplete) {
       setShowOnboarding(false);
+    } else if (settings !== undefined && initialized && user) {
+      setShowOnboarding(prev => {
+        // If already showing, keep showing (don't hide mid-flow when settings update)
+        if (prev) return true;
+        // Initial decision: show if business info is missing
+        const needsSetup = !settings?.business_address || !settings?.coverage_area;
+        return needsSetup;
+      });
     }
   }, [settings, initialized, userKey]);
 
@@ -119,10 +118,10 @@ function Dashboard() {
     }] : [])
   ];
 
-  const handleOnboardingComplete = () => {
+  const handleOnboardingComplete = useCallback(() => {
     localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
     setShowOnboarding(false);
-  };
+  }, [userKey]);
 
   return (
     <div className="dashboard">
