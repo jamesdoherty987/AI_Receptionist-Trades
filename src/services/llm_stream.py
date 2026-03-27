@@ -1635,16 +1635,23 @@ TOOL RULES:
                         break
             if not user_explicitly_cancelling:
                 # Check if a recent user message mentioned cancel
+                # Look back up to 5 user messages (covers the "cancel" → clarification → date → name pattern)
+                # But stop if we hit a reschedule word first — means user changed their mind
+                user_msg_count = 0
                 for msg in reversed(messages):
                     if msg.get("role") == "user":
+                        user_msg_count += 1
                         msg_text = msg.get("content", "").lower()
                         if any(w in msg_text for w in cancel_words):
                             user_explicitly_cancelling = True
                             print(f"   ✅ [CANCEL_OVERRIDE] Detected cancel intent from recent user message: '{msg_text[:60]}...'")
                             break
-                        # Stop scanning once we hit a non-cancel user message
-                        # (don't look further back than the most recent few turns)
-                        break
+                        if any(w in msg_text for w in reschedule_words):
+                            # User said "reschedule" more recently than "cancel" — they changed their mind
+                            print(f"   ℹ️ [CANCEL_OVERRIDE] Found reschedule intent more recent than cancel — not overriding")
+                            break
+                        if user_msg_count >= 5:
+                            break
             
             user_wants_reschedule = detected_intent == "RESCHEDULE" or any(w in user_text.lower() for w in reschedule_words)
             # Multi-turn: check if reschedule_job was already called earlier in this conversation

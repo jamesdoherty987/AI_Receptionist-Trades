@@ -33,13 +33,20 @@ def compute_user_wants_reschedule(detected_intent, user_text, messages):
                 break
     if not user_explicitly_cancelling:
         # Check if a recent user message mentioned cancel
+        # Look back up to 5 user messages
+        # But stop if we hit a reschedule word first — means user changed their mind
+        user_msg_count = 0
         for msg in reversed(messages):
             if msg.get("role") == "user":
+                user_msg_count += 1
                 msg_text = msg.get("content", "").lower()
                 if any(w in msg_text for w in cancel_words):
                     user_explicitly_cancelling = True
                     break
-                break
+                if any(w in msg_text for w in reschedule_words):
+                    break
+                if user_msg_count >= 5:
+                    break
 
     user_wants_reschedule = detected_intent == "RESCHEDULE" or any(w in user_text.lower() for w in reschedule_words)
 
@@ -146,6 +153,26 @@ class TestCancelOverrideAfterReschedule:
         assert explicitly_cancelling is True
         assert wants_reschedule is False
 
+    def test_cancel_two_messages_back_after_reschedule(self):
+        """Exact production bug: cancel request is 2 user messages back, with a neutral date reply in between."""
+        messages = _make_reschedule_history() + [
+            # Reschedule completed successfully
+            {"role": "assistant", "content": "Successfully rescheduled to Saturday, April 04."},
+            # User now wants to cancel
+            {"role": "user", "content": "Perfect. Actually, would I be able to cancel that booking?"},
+            {"role": "assistant", "content": "What day is your booking for?"},
+            # User gives the date — no cancel words
+            {"role": "user", "content": "It's for Saturday, April 4."},
+            {"role": "assistant", "content": "What day is your booking for?"},
+        ]
+        wants_reschedule, explicitly_cancelling = compute_user_wants_reschedule(
+            detected_intent=None,
+            user_text="It's for Saturday, April 4",
+            messages=messages,
+        )
+        assert explicitly_cancelling is True
+        assert wants_reschedule is False
+
 
 class TestRescheduleStillWorks:
     """Make sure the cancel override doesn't break legitimate reschedule interception."""
@@ -232,3 +259,20 @@ class TestEdgeCases:
         )
         assert explicitly_cancelling is True
         assert wants_reschedule is False
+
+    def test_cancel_then_change_mind_to_reschedule(self):
+        """User said 'cancel' earlier but then said 'reschedule' — reschedule should win."""
+        messages = _make_reschedule_history() + [
+            {"role": "user", "content": "I want to cancel that booking"},
+            {"role": "assistant", "content": "Are you sure you want to cancel?"},
+            {"role": "user", "content": "Actually, can you reschedule it instead?"},
+            {"role": "assistant", "content": "What day would you like to move it to?"},
+        ]
+        wants_reschedule, explicitly_cancelling = compute_user_wants_reschedule(
+            detected_intent=None,
+            user_text="Next Thursday",
+            messages=messages,
+        )
+        # The reschedule message is more recent than the cancel — reschedule should win
+        assert explicitly_cancelling is False
+        assert wants_reschedule is True
