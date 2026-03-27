@@ -44,6 +44,9 @@ function Settings() {
   const [bypassNumbers, setBypassNumbers] = useState([]);
   const [newBypassName, setNewBypassName] = useState('');
   const [newBypassPhone, setNewBypassPhone] = useState('');
+  const [editingBypassIdx, setEditingBypassIdx] = useState(null);
+  const [editBypassName, setEditBypassName] = useState('');
+  const [editBypassPhone, setEditBypassPhone] = useState('');
   // Flag to hide Stripe Connect component
   const hideStripeConnect = REMOVE_STRIPE_CONNECT;
   
@@ -700,6 +703,9 @@ function Settings() {
                 <p className="section-description">
                   Calls from these numbers will always be forwarded directly to your business phone, bypassing the AI receptionist entirely.
                 </p>
+                <small className="form-help" style={{ display: 'block', marginBottom: '0.75rem' }}>
+                  Any format works — 085 123 4567, 353851234567, or +353 85 123 4567.
+                </small>
                 <div className="bypass-add-row">
                   <input
                     type="text"
@@ -768,21 +774,104 @@ function Settings() {
                   <div className="bypass-list">
                     {bypassNumbers.map((entry, idx) => (
                       <div key={idx} className="bypass-entry">
-                        <div className="bypass-entry-info">
-                          <span className="bypass-entry-name">{entry.name || 'No name'}</span>
-                          <span className="bypass-entry-phone">{entry.phone}</span>
-                        </div>
-                        <button
-                          type="button"
-                          className="bypass-remove-btn"
-                          title="Remove"
-                          onClick={() => {
-                            setBypassNumbers(prev => prev.filter((_, i) => i !== idx));
-                            setHasUnsavedChanges(true);
-                          }}
-                        >
-                          <i className="fas fa-times"></i>
-                        </button>
+                        {editingBypassIdx === idx ? (
+                          <>
+                            <input
+                              type="text"
+                              value={editBypassName}
+                              onChange={(e) => setEditBypassName(e.target.value)}
+                              className="bypass-input bypass-name"
+                              placeholder="Name"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  if (editBypassPhone.trim()) {
+                                    setBypassNumbers(prev => prev.map((b, i) => i === idx ? { name: editBypassName.trim(), phone: editBypassPhone.trim() } : b));
+                                    setEditingBypassIdx(null);
+                                    setHasUnsavedChanges(true);
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  setEditingBypassIdx(null);
+                                }
+                              }}
+                            />
+                            <input
+                              type="tel"
+                              value={editBypassPhone}
+                              onChange={(e) => setEditBypassPhone(e.target.value)}
+                              className="bypass-input bypass-phone"
+                              placeholder="Phone number"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  if (editBypassPhone.trim()) {
+                                    setBypassNumbers(prev => prev.map((b, i) => i === idx ? { name: editBypassName.trim(), phone: editBypassPhone.trim() } : b));
+                                    setEditingBypassIdx(null);
+                                    setHasUnsavedChanges(true);
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  setEditingBypassIdx(null);
+                                }
+                              }}
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              className="bypass-action-btn bypass-save-btn"
+                              title="Save"
+                              disabled={!editBypassPhone.trim()}
+                              onClick={() => {
+                                if (editBypassPhone.trim()) {
+                                  setBypassNumbers(prev => prev.map((b, i) => i === idx ? { name: editBypassName.trim(), phone: editBypassPhone.trim() } : b));
+                                  setEditingBypassIdx(null);
+                                  setHasUnsavedChanges(true);
+                                }
+                              }}
+                            >
+                              <i className="fas fa-check"></i>
+                            </button>
+                            <button
+                              type="button"
+                              className="bypass-action-btn bypass-cancel-btn"
+                              title="Cancel"
+                              onClick={() => setEditingBypassIdx(null)}
+                            >
+                              <i className="fas fa-times"></i>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <div className="bypass-entry-info">
+                              <span className="bypass-entry-name">{entry.name || 'No name'}</span>
+                              <span className="bypass-entry-phone">{entry.phone}</span>
+                            </div>
+                            <div className="bypass-entry-actions">
+                              <button
+                                type="button"
+                                className="bypass-action-btn bypass-edit-btn"
+                                title="Edit"
+                                onClick={() => {
+                                  setEditingBypassIdx(idx);
+                                  setEditBypassName(entry.name || '');
+                                  setEditBypassPhone(entry.phone || '');
+                                }}
+                              >
+                                <i className="fas fa-pen"></i>
+                              </button>
+                              <button
+                                type="button"
+                                className="bypass-action-btn bypass-remove-btn"
+                                title="Remove"
+                                onClick={() => {
+                                  setBypassNumbers(prev => prev.filter((_, i) => i !== idx));
+                                  setHasUnsavedChanges(true);
+                                }}
+                              >
+                                <i className="fas fa-times"></i>
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>

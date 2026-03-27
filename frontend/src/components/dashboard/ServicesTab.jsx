@@ -235,28 +235,39 @@ function ServicesTab() {
             </div>
             <div className="form-group">
               <label>Price (€)</label>
-              <div className="price-range-inputs">
-                <input
-                  type="number"
-                  className="form-input"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                  placeholder="0.00"
-                  step="0.01"
-                  min="0"
-                />
-                <span className="price-range-separator">to</span>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={formData.price_max}
-                  onChange={(e) => setFormData({ ...formData, price_max: e.target.value })}
-                  placeholder="Max (optional)"
-                  step="0.01"
-                  min="0"
-                />
-              </div>
-              <span className="form-hint">Set a max price for a range, or leave blank for a fixed price</span>
+              <input
+                type="number"
+                className="form-input"
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                placeholder="0.00"
+                step="0.01"
+                min="0"
+              />
+              {formData.price_max !== '' && formData.price_max !== undefined ? (
+                <div className="price-max-row">
+                  <div className="price-max-field">
+                    <span className="price-max-label">to</span>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={formData.price_max}
+                      onChange={(e) => setFormData({ ...formData, price_max: e.target.value })}
+                      placeholder="Max price"
+                      step="0.01"
+                      min="0"
+                      autoFocus
+                    />
+                  </div>
+                  <button type="button" className="price-range-remove" onClick={() => setFormData({ ...formData, price_max: '' })} title="Remove range">
+                    <i className="fas fa-times"></i>
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="price-range-add" onClick={() => setFormData({ ...formData, price_max: '' })}>
+                  <i className="fas fa-arrows-alt-h"></i> Add price range
+                </button>
+              )}
             </div>
             <div className="form-group">
               <label>Duration</label>
@@ -553,27 +564,38 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           <div className="edit-row">
             <div className="form-group">
               <label>Price (€)</label>
-              <div className="price-range-inputs">
-                <input
-                  type="number"
-                  className="form-input"
-                  value={editData.price || ''}
-                  onChange={(e) => setEditData({ ...editData, price: e.target.value })}
-                  placeholder="Price"
-                  step="0.01"
-                  min="0"
-                />
-                <span className="price-range-separator">to</span>
-                <input
-                  type="number"
-                  className="form-input"
-                  value={editData.price_max || ''}
-                  onChange={(e) => setEditData({ ...editData, price_max: e.target.value })}
-                  placeholder="Max (optional)"
-                  step="0.01"
-                  min="0"
-                />
-              </div>
+              <input
+                type="number"
+                className="form-input"
+                value={editData.price || ''}
+                onChange={(e) => setEditData({ ...editData, price: e.target.value })}
+                placeholder="Price"
+                step="0.01"
+                min="0"
+              />
+              {editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined ? (
+                <div className="price-max-row">
+                  <div className="price-max-field">
+                    <span className="price-max-label">to</span>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={editData.price_max || ''}
+                      onChange={(e) => setEditData({ ...editData, price_max: e.target.value })}
+                      placeholder="Max price"
+                      step="0.01"
+                      min="0"
+                    />
+                  </div>
+                  <button type="button" className="price-range-remove" onClick={() => setEditData({ ...editData, price_max: null })} title="Remove range">
+                    <i className="fas fa-times"></i>
+                  </button>
+                </div>
+              ) : (
+                <button type="button" className="price-range-add" onClick={() => setEditData({ ...editData, price_max: '' })}>
+                  <i className="fas fa-arrows-alt-h"></i> Add price range
+                </button>
+              )}
             </div>
             <div className="form-group">
               <label>Duration</label>

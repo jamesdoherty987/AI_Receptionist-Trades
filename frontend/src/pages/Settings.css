@@ -638,6 +638,7 @@
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
+  gap: 0.5rem;
 }
 
 .bypass-entry-info {
@@ -645,6 +646,7 @@
   align-items: center;
   gap: 0.75rem;
   min-width: 0;
+  flex: 1;
 }
 
 .bypass-entry-name {
@@ -656,6 +658,41 @@
 .bypass-entry-phone {
   color: var(--text-secondary);
   font-size: 0.875rem;
+}
+
+.bypass-entry-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.bypass-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.bypass-edit-btn:hover {
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.bypass-save-btn {
+  color: #10b981;
+}
+
+.bypass-save-btn:hover {
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.bypass-cancel-btn:hover {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary, rgba(0,0,0,0.05));
 }
 
 .bypass-remove-btn {

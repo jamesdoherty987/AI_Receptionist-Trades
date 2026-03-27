@@ -721,21 +721,64 @@
   font-weight: 600;
 }
 
-/* Price Range Inputs */
-.price-range-inputs {
+/* Price Range */
+.price-range-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: 1px dashed #d1d5db;
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.78rem;
+  color: #6b7280;
+  cursor: pointer;
+  margin-top: 0.35rem;
+  transition: all 0.15s;
+}
+.price-range-add:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+  background: #eff6ff;
+}
+.price-max-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
 }
-
-.price-range-inputs .form-input {
+.price-max-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   flex: 1;
-  min-width: 0;
 }
-
-.price-range-separator {
+.price-max-label {
   font-size: 0.8rem;
   color: var(--text-secondary);
   font-weight: 500;
   flex-shrink: 0;
+}
+.price-max-field .form-input {
+  flex: 1;
+}
+.price-range-remove {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f9fafb;
+  color: #9ca3af;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.price-range-remove:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+  background: #fef2f2;
 }
