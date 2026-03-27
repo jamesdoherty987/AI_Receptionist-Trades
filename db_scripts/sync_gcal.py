@@ -14,7 +14,6 @@ Usage:
 """
 import sys
 import os
-import re
 import argparse
 from datetime import datetime
 
@@ -24,6 +23,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import json as _json
+import re as _re_mod
+import logging
+
+_logger = logging.getLogger(__name__)
 
 # Maximum events to send in a single LLM batch call
 _LLM_BATCH_SIZE = 40
@@ -119,6 +122,130 @@ def parse_gcal_events_batch(events: list[dict]) -> list[dict]:
     except Exception as e:
         print(f"      [LLM batch fallback] {e}")
         return fallbacks
+
+
+def process_gcal_pull_events(gcal_events: list[dict], known_gcal_ids: set,
+                             company_id: int, db) -> tuple[list[dict], int]:
+    """Process a list of raw Google Calendar events for import into the DB.
+
+    Filters out already-known and app-created events, batch-parses with LLM,
+    matches services against the company's service list, and returns a tuple
+    of (records, skipped_count).
+
+    Each record dict has keys:
+        gcal_id, customer_name, service_type, phone, import_email,
+        address, start_dt, duration, price
+    """
+    # First pass: filter to importable events
+    importable = []
+    skipped = 0
+    for event in gcal_events:
+        gcal_id = event['id']
+        if gcal_id in known_gcal_ids:
+            skipped += 1
+            continue
+        summary = event.get('summary', '').strip()
+        if not summary:
+            skipped += 1
+            continue
+        desc = event.get('description', '')
+        ext_private = event.get('extendedProperties', {}).get('private', {})
+        if ext_private.get('bookedForYou') == 'true' or 'Synced from BookedForYou' in desc:
+            skipped += 1
+            continue
+        importable.append(event)
+
+    if not importable:
+        return [], skipped
+
+    # Batch LLM parse all importable events (in chunks)
+    parsed_results = []
+    for chunk_start in range(0, len(importable), _LLM_BATCH_SIZE):
+        chunk = importable[chunk_start:chunk_start + _LLM_BATCH_SIZE]
+        llm_input = [
+            {'summary': ev.get('summary', ''), 'description': ev.get('description', '')}
+            for ev in chunk
+        ]
+        parsed_results.extend(parse_gcal_events_batch(llm_input))
+
+    # Build import-ready records
+    unnamed_counter = 0
+    records = []
+
+    for idx, event in enumerate(importable):
+        gcal_id = event['id']
+        summary = event.get('summary', '').strip()
+        desc = event.get('description', '')
+        start_dt = event['start']
+        duration = event.get('duration_minutes', 60)
+
+        parsed = parsed_results[idx] if idx < len(parsed_results) else _build_fallback(summary)
+
+        customer_name = parsed.get('customer_name', '').strip()
+        job_desc = parsed.get('job_description', '').strip()
+        address = parsed.get('address', '').strip()
+        phone_from_llm = parsed.get('phone', '').strip()
+
+        # If no customer name was found, generate a placeholder
+        if not customer_name:
+            unnamed_counter += 1
+            customer_name = f"GCal Import #{unnamed_counter}"
+
+        # Match job description against company's services
+        service_type = 'Imported Event'
+        price = None
+        if job_desc:
+            try:
+                from src.services.calendar_tools import match_service
+                matched = match_service(job_desc, company_id=company_id, use_ai_fallback=True)
+                if matched and not matched.get('is_general', True):
+                    service_type = matched['matched_name']
+                    svc = matched.get('service', {})
+                    price = svc.get('price')
+                else:
+                    # Use the LLM-extracted description as the service type
+                    service_type = job_desc
+            except Exception as e:
+                _logger.warning(f"Service matching failed for '{job_desc}': {e}")
+                service_type = job_desc
+        else:
+            # No job description extracted — use the raw summary
+            service_type = summary
+
+        # Phone: prefer LLM-extracted, fall back to regex from description
+        phone = phone_from_llm
+        if not phone and desc:
+            phone_match = _re_mod.search(
+                r'(?:Phone|Customer Phone)[:\s]*([+\d\s\-()]{7,})',
+                desc, _re_mod.IGNORECASE
+            )
+            if phone_match:
+                phone = phone_match.group(1).strip()
+
+        # Email from description
+        import_email = None
+        if desc:
+            email_match = _re_mod.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', desc)
+            if email_match:
+                import_email = email_match.group(0).strip()
+
+        # Placeholder if no contact info
+        if not phone and not import_email:
+            import_email = f"imported-{gcal_id[:12]}@external.calendar"
+
+        records.append({
+            'gcal_id': gcal_id,
+            'customer_name': customer_name,
+            'service_type': service_type,
+            'phone': phone,
+            'import_email': import_email,
+            'address': address,
+            'start_dt': start_dt,
+            'duration': duration,
+            'price': price,
+        })
+
+    return records, skipped
 
 
 def sync_company(company_id: int, db, dry_run: bool = False,
@@ -283,79 +410,15 @@ def sync_company(company_id: int, db, dry_run: bool = False,
             print(f"      ERROR fetching events: {e}")
             gcal_events = []
 
-        # First pass: filter to importable events
-        importable = []
-        for event in gcal_events:
-            gcal_id = event['id']
-            if gcal_id in known_gcal_ids:
-                stats['pull_skipped'] += 1
-                continue
+        records, pull_skipped_filter = process_gcal_pull_events(
+            gcal_events, known_gcal_ids, company_id, db
+        )
+        stats['pull_skipped'] += pull_skipped_filter
 
-            summary = event.get('summary', '').strip()
-            if not summary:
-                stats['pull_skipped'] += 1
-                continue
-
-            desc = event.get('description', '')
-            ext_private = event.get('extendedProperties', {}).get('private', {})
-            if ext_private.get('bookedForYou') == 'true' or 'Synced from BookedForYou' in desc:
-                stats['pull_skipped'] += 1
-                continue
-
-            importable.append(event)
-
-        # Batch LLM parse all importable events at once (in chunks)
-        parsed_results = []
-        for chunk_start in range(0, len(importable), _LLM_BATCH_SIZE):
-            chunk = importable[chunk_start:chunk_start + _LLM_BATCH_SIZE]
-            llm_input = [
-                {'summary': ev.get('summary', ''), 'description': ev.get('description', '')}
-                for ev in chunk
-            ]
-            parsed_results.extend(parse_gcal_events_batch(llm_input))
-
-        # Counter for unnamed customers (per company sync run)
-        unnamed_counter = 0
-
-        # Second pass: import with parsed data
-        for idx, event in enumerate(importable):
-            gcal_id = event['id']
-            summary = event.get('summary', '').strip()
-            desc = event.get('description', '')
-            start_dt = event['start']
-            duration = event.get('duration_minutes', 60)
-
-            parsed = parsed_results[idx] if idx < len(parsed_results) else _build_fallback(summary)
-
-            customer_name = parsed.get('customer_name', '').strip()
-            service_type = parsed.get('job_description', '').strip() or 'Imported Event'
-            address_from_llm = parsed.get('address', '').strip()
-            phone_from_llm = parsed.get('phone', '').strip()
-
-            # If no customer name was found, generate a descriptive placeholder
-            if not customer_name:
-                unnamed_counter += 1
-                customer_name = f"GCal Import #{unnamed_counter}"
-
-            # Extract phone: prefer LLM-extracted, fall back to regex from description
-            phone = phone_from_llm
-            if not phone and desc:
-                phone_match = re.search(r'(?:Phone|Customer Phone)[:\s]*([+\d\s\-()]{7,})', desc, re.IGNORECASE)
-                if phone_match:
-                    phone = phone_match.group(1).strip()
-
-            # Try to extract email from description
-            import_email = None
-            if desc:
-                email_match = re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', desc)
-                if email_match:
-                    import_email = email_match.group(0).strip()
-
-            # External events may have no contact info — use placeholder
-            if not phone and not import_email:
-                import_email = f"imported-{gcal_id[:12]}@external.calendar"
-
-            print(f"      IMPORT  \"{summary}\" → customer=\"{customer_name}\", job=\"{service_type}\"  {start_dt.strftime('%Y-%m-%d %H:%M')}  {duration}min")
+        for rec in records:
+            gcal_id = rec['gcal_id']
+            print(f"      IMPORT  \"{rec['service_type']}\" → customer=\"{rec['customer_name']}\"  "
+                  f"{rec['start_dt'].strftime('%Y-%m-%d %H:%M')}  {rec['duration']}min")
 
             if not dry_run:
                 try:
@@ -366,16 +429,17 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                         continue
 
                     client_id = db.find_or_create_client(
-                        name=customer_name, phone=phone or None,
-                        email=import_email, company_id=company_id
+                        name=rec['customer_name'], phone=rec['phone'] or None,
+                        email=rec['import_email'], company_id=company_id
                     )
                     booking_id = db.add_booking(
                         client_id=client_id, calendar_event_id=gcal_id,
-                        appointment_time=start_dt.strftime('%Y-%m-%d %H:%M:%S'),
-                        service_type=service_type, phone_number=phone or None,
-                        email=import_email if not phone else None,
-                        company_id=company_id, duration_minutes=duration,
-                        address=address_from_llm or None
+                        appointment_time=rec['start_dt'].strftime('%Y-%m-%d %H:%M:%S'),
+                        service_type=rec['service_type'],
+                        phone_number=rec['phone'] or None,
+                        email=rec['import_email'] if not rec['phone'] else None,
+                        company_id=company_id, duration_minutes=rec['duration'],
+                        address=rec['address'] or None
                     )
                     if booking_id:
                         known_gcal_ids.add(gcal_id)

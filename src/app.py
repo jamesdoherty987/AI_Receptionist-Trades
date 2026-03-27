@@ -5602,7 +5602,32 @@ def check_availability_api():
             per_worker_bookings = {wid: _get_day_bookings(filter_worker_id=wid) for wid in eligible_worker_ids}
         else:
             day_bookings = _get_day_bookings(filter_worker_id=worker_id)
-        
+
+        # Check worker time-off / leave for this day
+        workers_on_leave_today = set()
+        try:
+            if hasattr(db, 'get_workers_on_leave'):
+                from datetime import date as date_cls
+                leave_records = db.get_workers_on_leave(company_id, day_start, day_end)
+                for rec in leave_records:
+                    s = rec['start_date']
+                    e = rec['end_date']
+                    if isinstance(s, str):
+                        s = date_cls.fromisoformat(s)
+                    if isinstance(e, str):
+                        e = date_cls.fromisoformat(e)
+                    if s <= target_date <= e:
+                        workers_on_leave_today.add(rec['worker_id'])
+        except Exception:
+            pass
+
+        # If a specific worker is on leave, all slots are unavailable
+        worker_on_leave = worker_id and worker_id in workers_on_leave_today
+
+        # For "any worker" mode, remove workers on leave from the pool
+        if any_worker and per_worker_bookings and workers_on_leave_today:
+            per_worker_bookings = {wid: bk for wid, bk in per_worker_bookings.items() if wid not in workers_on_leave_today}
+
         current_hour = business_hours['start']
         current_minute = 0
         end_hour = business_hours['end']
@@ -5626,7 +5651,11 @@ def check_availability_api():
             is_available = True
             booking_info = None
 
-            if any_worker and per_worker_bookings:
+            # If the specific worker is on leave, mark all slots unavailable
+            if worker_on_leave:
+                is_available = False
+                booking_info = {'leave': True, 'reason': 'Worker is on leave this day'}
+            elif any_worker and per_worker_bookings:
                 # Slot is available if at least one eligible worker is free
                 any_free = False
                 first_conflict = None
@@ -5648,8 +5677,8 @@ def check_availability_api():
                         'duration_minutes': first_conflict['duration']
                     }
             elif any_worker and not per_worker_bookings:
-                # No workers exist — fall back to general availability
-                is_available = True
+                # No workers available (all on leave or none exist)
+                is_available = False
             else:
                 for booking_data in day_bookings:
                     if slot_time < booking_data['end'] and slot_end > booking_data['start']:
@@ -8217,69 +8246,31 @@ def google_calendar_callback():
                 # Phase 2: Pull Google Calendar → DB
                 try:
                     gcal_events = gcal.get_future_events(days_ahead=90)
-                    for event in gcal_events:
-                        gcal_id = event['id']
-                        if gcal_id in known_gcal_ids:
-                            continue
-                        summary = event.get('summary', '').strip()
-                        if not summary:
-                            continue
-                        # Skip events originally created by this app
-                        evt_desc = event.get('description', '')
-                        ext_private = event.get('extendedProperties', {}).get('private', {})
-                        if ext_private.get('bookedForYou') == 'true' or 'Synced from BookedForYou' in evt_desc:
-                            continue
-                        start_dt = event['start']
-                        evt_duration = event.get('duration_minutes', 60)
-                        customer_name = summary
-                        service_type = 'Imported Event'
-                        if ' - ' in summary:
-                            parts = summary.split(' - ', 1)
-                            svc_part = parts[0].strip()
-                            name_part = parts[1].strip()
-                            for pfx in ['URGENT:', 'SCHEDULED:', 'EMERGENCY:']:
-                                if svc_part.upper().startswith(pfx):
-                                    svc_part = svc_part[len(pfx):].strip()
-                                    break
-                            if name_part:
-                                customer_name = name_part
-                                service_type = svc_part or 'Imported Event'
-                        phone = ''
-                        if evt_desc:
-                            pm = _re.search(r'(?:Phone|Customer Phone)[:\s]*([+\d\s\-()]{7,})', evt_desc, _re.IGNORECASE)
-                            if pm:
-                                phone = pm.group(1).strip()
-                        # Try to extract email from description
-                        import_email = None
-                        if evt_desc:
-                            em = _re.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', evt_desc)
-                            if em:
-                                import_email = em.group(0).strip()
-                        # External events may have no contact info — use placeholder
-                        if not phone and not import_email:
-                            import_email = f"imported-{gcal_id[:12]}@external.calendar"
+                    from db_scripts.sync_gcal import process_gcal_pull_events
+                    records, _skip_count = process_gcal_pull_events(
+                        gcal_events, known_gcal_ids, int(company_id), db
+                    )
+                    for rec in records:
                         try:
-                            # Check if booking already exists for this gcal event
-                            # to avoid creating an orphaned customer when add_booking
-                            # fails with a UniqueViolation.  calendar_event_id is
-                            # globally unique, so check WITHOUT company_id filter.
-                            existing = db.get_booking_by_calendar_event_id(gcal_id)
+                            existing = db.get_booking_by_calendar_event_id(rec['gcal_id'])
                             if existing:
-                                known_gcal_ids.add(gcal_id)
+                                known_gcal_ids.add(rec['gcal_id'])
                                 continue
                             client_id = db.find_or_create_client(
-                                name=customer_name, phone=phone or None,
-                                email=import_email, company_id=int(company_id)
+                                name=rec['customer_name'], phone=rec['phone'] or None,
+                                email=rec['import_email'], company_id=int(company_id)
                             )
                             booking_id = db.add_booking(
-                                client_id=client_id, calendar_event_id=gcal_id,
-                                appointment_time=start_dt.strftime('%Y-%m-%d %H:%M:%S'),
-                                service_type=service_type, phone_number=phone or None,
-                                email=import_email if not phone else None,
-                                company_id=int(company_id), duration_minutes=evt_duration
+                                client_id=client_id, calendar_event_id=rec['gcal_id'],
+                                appointment_time=rec['start_dt'].strftime('%Y-%m-%d %H:%M:%S'),
+                                service_type=rec['service_type'],
+                                phone_number=rec['phone'] or None,
+                                email=rec['import_email'] if not rec['phone'] else None,
+                                company_id=int(company_id), duration_minutes=rec['duration'],
+                                address=rec['address'] or None
                             )
                             if booking_id:
-                                known_gcal_ids.add(gcal_id)
+                                known_gcal_ids.add(rec['gcal_id'])
                                 pull_imported += 1
                         except Exception:
                             pass
@@ -8511,110 +8502,49 @@ def google_calendar_sync():
         safe_print(f"[GCAL_SYNC] Could not fetch Google Calendar events: {e}")
         gcal_events = []
 
-    for event in gcal_events:
-        gcal_id = event['id']
-        if gcal_id in known_gcal_ids:
-            pull_skipped += 1
-            continue
+    from db_scripts.sync_gcal import process_gcal_pull_events
+    records, skip_count = process_gcal_pull_events(
+        gcal_events, known_gcal_ids, company_id, db
+    )
+    pull_skipped += skip_count
 
-        summary = event.get('summary', '').strip()
-        if not summary:
-            pull_skipped += 1
-            continue
-
-        # Skip events originally created by this app (avoids re-importing
-        # orphaned bookings whose DB record was deleted).
-        # Primary check: extendedProperties.private.bookedForYou (hidden, tamper-proof)
-        # Fallback: description contains "Synced from BookedForYou" (for older events)
-        desc = event.get('description', '')
-        ext_private = event.get('extendedProperties', {}).get('private', {})
-        if ext_private.get('bookedForYou') == 'true' or 'Synced from BookedForYou' in desc:
-            pull_skipped += 1
-            continue
-
-        start_dt = event['start']
-        duration = event.get('duration_minutes', 60)
-
-        # Parse customer name from summary.
-        # Common formats: "Service - Customer", "Customer", "URGENT: Service - Customer"
-        customer_name = summary
-        service_type = 'Imported Event'
-        if ' - ' in summary:
-            parts = summary.split(' - ', 1)
-            # Left part might have a prefix like "URGENT: Plumbing"
-            service_part = parts[0].strip()
-            name_part = parts[1].strip()
-            # Strip urgency prefixes
-            for prefix in ['URGENT:', 'SCHEDULED:', 'EMERGENCY:']:
-                if service_part.upper().startswith(prefix):
-                    service_part = service_part[len(prefix):].strip()
-                    break
-            if name_part:
-                customer_name = name_part
-                service_type = service_part or 'Imported Event'
-
-        # Try to extract phone from description
-        phone = ''
-        if desc:
-            import re
-            phone_match = re.search(r'(?:Phone|Customer Phone)[:\s]*([+\d\s\-()]{7,})', desc, re.IGNORECASE)
-            if phone_match:
-                phone = phone_match.group(1).strip()
-
-        # Try to extract email from description
-        import_email = None
-        if desc:
-            import re as _re2
-            email_match = _re2.search(r'[\w.+-]+@[\w-]+\.[\w.-]+', desc)
-            if email_match:
-                import_email = email_match.group(0).strip()
-
-        # External events may have no phone/email — use a placeholder
-        # so find_or_create_client doesn't reject them.
-        if not phone and not import_email:
-            import_email = f"imported-{gcal_id[:12]}@external.calendar"
-
+    for rec in records:
         try:
-            # Check if booking already exists for this gcal event to avoid
-            # creating an orphaned customer when add_booking fails with a
-            # UniqueViolation.  calendar_event_id is globally unique (not
-            # per-company), so we must check WITHOUT company_id filter.
-            existing = db.get_booking_by_calendar_event_id(gcal_id)
+            existing = db.get_booking_by_calendar_event_id(rec['gcal_id'])
             if existing:
-                known_gcal_ids.add(gcal_id)
+                known_gcal_ids.add(rec['gcal_id'])
                 pull_skipped += 1
                 continue
 
             client_id = db.find_or_create_client(
-                name=customer_name,
-                phone=phone or None,
-                email=import_email,
+                name=rec['customer_name'],
+                phone=rec['phone'] or None,
+                email=rec['import_email'],
                 company_id=company_id
             )
 
             booking_id = db.add_booking(
                 client_id=client_id,
-                calendar_event_id=gcal_id,
-                appointment_time=start_dt.strftime('%Y-%m-%d %H:%M:%S'),
-                service_type=service_type,
-                phone_number=phone or None,
-                email=import_email if not phone else None,
+                calendar_event_id=rec['gcal_id'],
+                appointment_time=rec['start_dt'].strftime('%Y-%m-%d %H:%M:%S'),
+                service_type=rec['service_type'],
+                phone_number=rec['phone'] or None,
+                email=rec['import_email'] if not rec['phone'] else None,
                 company_id=company_id,
-                duration_minutes=duration
+                duration_minutes=rec['duration'],
+                address=rec['address'] or None
             )
 
             if booking_id:
-                known_gcal_ids.add(gcal_id)
+                known_gcal_ids.add(rec['gcal_id'])
                 pull_imported += 1
             else:
-                # add_booking returned None — likely a duplicate
                 pull_skipped += 1
         except Exception as e:
             if 'UniqueViolation' in type(e).__name__ or 'unique constraint' in str(e).lower():
-                # Already imported in a previous sync — not an error
                 pull_skipped += 1
             else:
-                safe_print(f"[GCAL_SYNC] Pull error for event {gcal_id}: {e}")
+                safe_print(f"[GCAL_SYNC] Pull error for event {rec['gcal_id']}: {e}")
                 pull_errors += 1
 
     total_errors = push_errors + pull_errors
