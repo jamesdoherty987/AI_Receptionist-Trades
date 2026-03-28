@@ -26,7 +26,7 @@ function Dashboard() {
   const nav = useNavigate();
   const userKey = user?.email || 'default';
 
-  // Onboarding dismissed state — initialized from localStorage so it survives remounts
+  // Onboarding dismissed state — initialized from localStorage, then synced with backend
   const [onboardingDismissed, setOnboardingDismissed] = useState(
     () => localStorage.getItem(`onboarding_complete_${userKey}`) === 'true'
   );
@@ -49,6 +49,14 @@ function Dashboard() {
       return response.data;
     },
   });
+
+  // Sync backend setup_wizard_complete flag → localStorage so wizard stays dismissed across devices
+  useEffect(() => {
+    if (settings?.setup_wizard_complete && !onboardingDismissed) {
+      localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
+      setOnboardingDismissed(true);
+    }
+  }, [settings, userKey, onboardingDismissed]);
 
   // Scroll to top when dashboard loads
   useEffect(() => {

@@ -4,6 +4,7 @@ import { createWorker } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import ImageUpload from '../ImageUpload';
+import HelpTooltip from '../HelpTooltip';
 
 function AddWorkerModal({ isOpen, onClose }) {
   const queryClient = useQueryClient();
@@ -86,7 +87,7 @@ function AddWorkerModal({ isOpen, onClose }) {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Trade Specialty</label>
+          <label className="form-label">Trade Specialty <HelpTooltip text="The worker's main skill or trade. Used to match them with relevant jobs." /></label>
           <input
             type="text"
             name="specialty"
@@ -107,7 +108,7 @@ function AddWorkerModal({ isOpen, onClose }) {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Expected Weekly Hours</label>
+          <label className="form-label">Expected Weekly Hours <HelpTooltip text="How many hours per week this worker is expected to work. Used for scheduling and workload tracking." /></label>
           <input
             type="number"
             name="weekly_hours_expected"

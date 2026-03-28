@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import PhoneConfigModal from '../modals/PhoneConfigModal';
+import HelpTooltip from '../HelpTooltip';
 import { getBusinessSettings, updateBusinessSettings, startFreeTrial, createCheckoutSession, getSubscriptionStatus, getServicesMenu, getWorkers, getMaterials } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import './OnboardingWizard.css';
@@ -335,6 +336,8 @@ function OnboardingWizard({ onComplete }) {
 
   const handleFinish = () => {
     localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
+    // Persist to backend so it survives across devices/browsers
+    updateBusinessSettings({ setup_wizard_complete: true }).catch(() => {});
     onComplete();
   };
 
@@ -370,6 +373,8 @@ function OnboardingWizard({ onComplete }) {
   useEffect(() => {
     if (allComplete) {
       localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
+      // Persist to backend so it survives across devices/browsers
+      updateBusinessSettings({ setup_wizard_complete: true }).catch(() => {});
       onComplete();
     }
   }, [allComplete, userKey, onComplete]);
@@ -476,7 +481,7 @@ function OnboardingWizard({ onComplete }) {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="ob_coverage_area">Service Area</label>
+                  <label htmlFor="ob_coverage_area">Service Area <HelpTooltip text="The geographic area you serve. Your AI receptionist uses this to tell callers if you cover their location." /></label>
                   <input
                     type="text"
                     id="ob_coverage_area"
@@ -583,7 +588,7 @@ function OnboardingWizard({ onComplete }) {
             {currentStep.id === 'company-details' && (
               <div className="onboarding-form">
                 <div className="form-group">
-                  <label htmlFor="ob_company_context">Tell your AI receptionist about your business</label>
+                  <label htmlFor="ob_company_context">Tell your AI receptionist about your business <HelpTooltip text="Anything your AI should know when talking to customers — parking info, warranties, certifications, policies, etc." /></label>
                   <textarea
                     id="ob_company_context"
                     name="company_context"
@@ -635,7 +640,7 @@ function OnboardingWizard({ onComplete }) {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="ob_bank_iban">IBAN</label>
+                  <label htmlFor="ob_bank_iban">IBAN <HelpTooltip text="Your International Bank Account Number. Appears on invoices so customers can pay you." /></label>
                   <input
                     type="text"
                     id="ob_bank_iban"
@@ -646,7 +651,7 @@ function OnboardingWizard({ onComplete }) {
                   />
                 </div>
                 <div className="form-group">
-                  <label htmlFor="ob_bank_bic">BIC / SWIFT Code</label>
+                  <label htmlFor="ob_bank_bic">BIC / SWIFT Code <HelpTooltip text="Your bank's identification code. Usually 8 or 11 characters — find it on your bank statement or online banking." /></label>
                   <input
                     type="text"
                     id="ob_bank_bic"

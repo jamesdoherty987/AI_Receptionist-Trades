@@ -7,6 +7,7 @@ import {
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import AddClientModal from './AddClientModal';
+import HelpTooltip from '../HelpTooltip';
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
 import './AddJobModal.css';
 
@@ -665,11 +666,11 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
               </select>
             </div>
             <div className="form-group">
-              <label className="form-label">Property Type</label>
+              <label className="form-label">Property Type <HelpTooltip text="The type of property for this job — e.g. house, apartment, office. Helps workers prepare." /></label>
               <input type="text" name="property_type" className="form-input" value={formData.property_type} onChange={handleChange} placeholder="e.g., House" />
             </div>
             <div className="form-group">
-              <label className="form-label">Eircode</label>
+              <label className="form-label">Eircode <HelpTooltip text="Irish postal code for the job location. Helps with routing and navigation." /></label>
               <input type="text" name="eircode" className="form-input" value={formData.eircode} onChange={handleChange} />
             </div>
           </div>
@@ -680,7 +681,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
           </div>
           
           <div className="form-group">
-            <label className="form-label">Estimated Charge (€)</label>
+            <label className="form-label">Estimated Charge (€) <HelpTooltip text="The price you'll charge the customer. Pre-filled from the service — adjust if needed for this specific job." /></label>
             {formData.estimated_charge_max ? (
               <div className="price-range-display">
                 <div className="price-range-inputs">
@@ -697,7 +698,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
 
           {/* Initial Callout Toggle */}
           <div className="form-group">
-            <label className="form-label">Requires Initial Callout?</label>
+            <label className="form-label">Requires Initial Callout? <HelpTooltip text="Enable if a worker needs to visit the site first to assess the job before scheduling the full work." /></label>
             <div className="callout-toggle-wrapper">
               <button type="button" className={`callout-toggle ${formData.requires_callout ? 'active' : ''}`}
                 onClick={() => setFormData(prev => ({ ...prev, requires_callout: !prev.requires_callout }))}

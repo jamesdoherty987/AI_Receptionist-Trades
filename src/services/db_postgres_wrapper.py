@@ -633,6 +633,8 @@ class PostgreSQLDatabaseWrapper:
             'address': 'TEXT',
             'logo_url': 'TEXT',
             'ai_enabled': 'BOOLEAN DEFAULT true',
+            # Setup wizard completion flag — once true, wizard never shows again
+            'setup_wizard_complete': 'BOOLEAN DEFAULT false',
         }
         
         # Also migrate business_settings table for bank details
@@ -1004,7 +1006,8 @@ class PostgreSQLDatabaseWrapper:
                               'show_insights_tab',
                               'send_confirmation_sms', 'send_reminder_sms',
                               'gcal_invite_workers',
-                              'bypass_numbers']
+                              'bypass_numbers',
+                              'setup_wizard_complete']
             
             # Get actual columns that exist in the database
             cursor.execute("""

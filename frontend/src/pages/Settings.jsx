@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
+import HelpTooltip from '../components/HelpTooltip';
 import PhoneConfigModal from '../components/modals/PhoneConfigModal';
 import SubscriptionManager from '../components/dashboard/SubscriptionManager';
 import PaymentSetup from '../components/dashboard/PaymentSetup';
@@ -1259,7 +1260,7 @@ function Settings() {
                 </p>
                 <div className="form-grid">
                   <div className="form-group full-width">
-                    <label htmlFor="coverage_area">Coverage Area / Service Area</label>
+                    <label htmlFor="coverage_area">Coverage Area / Service Area <HelpTooltip text="The geographic area you serve. Your AI receptionist uses this to tell callers if you cover their location." /></label>
                     <input
                       type="text"
                       id="coverage_area"
@@ -1273,7 +1274,7 @@ function Settings() {
                     </small>
                   </div>
                   <div className="form-group full-width">
-                    <label htmlFor="company_context">Additional Company Context &amp; Details</label>
+                    <label htmlFor="company_context">Additional Company Context &amp; Details <HelpTooltip text="Anything your AI receptionist should know — parking info, warranties, certifications, policies. Write it like you're briefing a new receptionist." /></label>
                     <textarea
                       id="company_context"
                       name="company_context"

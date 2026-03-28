@@ -3864,6 +3864,8 @@ def business_settings_api():
             'gcal_invite_workers': company.get('gcal_invite_workers', False) if company.get('gcal_invite_workers') is not None else False,
             # Bypass numbers - always forward to fallback
             'bypass_numbers': company.get('bypass_numbers', '[]'),
+            # Setup wizard permanently dismissed
+            'setup_wizard_complete': bool(company.get('setup_wizard_complete', False)),
         }
         return jsonify(settings)
     
@@ -3923,6 +3925,7 @@ def business_settings_api():
             'send_reminder_sms': 'send_reminder_sms',
             'gcal_invite_workers': 'gcal_invite_workers',
             'bypass_numbers': 'bypass_numbers',
+            'setup_wizard_complete': 'setup_wizard_complete',
         }
         
         for frontend_field, db_field in field_mapping.items():

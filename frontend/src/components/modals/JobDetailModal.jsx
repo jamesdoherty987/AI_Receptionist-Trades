@@ -27,6 +27,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../Toast';
 import { formatDateTime, getStatusBadgeClass, formatCurrency, formatPhone, getProxiedMediaUrl } from '../../utils/helpers';
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
+import HelpTooltip from '../HelpTooltip';
 import './JobDetailModal.css';
 
 function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
@@ -580,11 +581,11 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   </div>
                   <div className="edit-row">
                     <div className="edit-field">
-                      <label className="edit-label">Property Type</label>
+                      <label className="edit-label">Property Type <HelpTooltip text="The type of property — e.g. house, apartment, office." /></label>
                       <input type="text" name="property_type" className="edit-input" value={editFormData.property_type} onChange={handleEditChange} placeholder="e.g., House" />
                     </div>
                     <div className="edit-field">
-                      <label className="edit-label">Charge (€)</label>
+                      <label className="edit-label">Charge (€) <HelpTooltip text="The price for this job. Use both fields for a price range." /></label>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                         <input type="number" name="estimated_charge" className="edit-input" value={editFormData.estimated_charge} onChange={handleEditChange} step="0.01" min="0" placeholder="Min" style={{ flex: 1 }} />
                         <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>to</span>
@@ -604,7 +605,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                       </select>
                     </div>
                     <div className="edit-field">
-                      <label className="edit-label">Eircode</label>
+                      <label className="edit-label">Eircode <HelpTooltip text="Irish postal code for the job location." /></label>
                       <input type="text" name="eircode" className="edit-input" value={editFormData.eircode} onChange={handleEditChange} placeholder="e.g., D01 X2Y3" />
                     </div>
                   </div>

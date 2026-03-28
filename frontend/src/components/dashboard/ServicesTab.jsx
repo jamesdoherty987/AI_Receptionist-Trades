@@ -16,6 +16,7 @@ import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
 import ImageUpload from '../ImageUpload';
 import { formatPriceRange } from '../../utils/helpers';
+import HelpTooltip from '../HelpTooltip';
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
 import './ServicesTab.css';
 
@@ -304,7 +305,7 @@ function ServicesTab() {
           </div>
 
           <div className="callout-toggle-group">
-            <label>Package Only?</label>
+            <label>Package Only? <HelpTooltip text="If enabled, this service can only be booked as part of a package — not on its own." /></label>
             <div className="callout-toggle-row">
               <button
                 type="button"
@@ -412,7 +413,7 @@ function ServicesTab() {
 
           <div className="form-grid">
             <div className="form-group">
-              <label>Workers Required</label>
+              <label>Workers Required <HelpTooltip text="How many workers are needed on-site at the same time for this service." /></label>
               <div className="workers-input-wrapper">
                 <button 
                   type="button" 
@@ -444,7 +445,7 @@ function ServicesTab() {
           
           {!formData.package_only && (
           <div className="callout-toggle-group">
-            <label>Requires Initial Callout?</label>
+            <label>Requires Initial Callout? <HelpTooltip text="If enabled, the AI will book a short callout visit first so a worker can assess the job before scheduling the full work." /></label>
             <div className="callout-toggle-row">
               <button
                 type="button"
@@ -631,7 +632,7 @@ function WorkerRestrictions({ restrictions, onChange, workers }) {
   if (!workers || workers.length === 0) {
     return (
       <div className="worker-restrictions">
-        <label>Who Can Do This Job</label>
+        <label>Who Can Do This Job <HelpTooltip text="Control which workers are eligible for this service. Useful if only certain tradespeople are qualified." /></label>
         <div className="no-workers-message">
           <i className="fas fa-info-circle"></i>
           <span>Add workers in the Workers tab to set job restrictions</span>
@@ -642,7 +643,7 @@ function WorkerRestrictions({ restrictions, onChange, workers }) {
 
   return (
     <div className="worker-restrictions">
-      <label>Who Can Do This Job</label>
+      <label>Who Can Do This Job <HelpTooltip text="Control which workers are eligible for this service. Useful if only certain tradespeople are qualified." /></label>
       <div className="restriction-type-selector">
         <button
           type="button"
@@ -767,7 +768,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           </div>
 
           <div className="callout-toggle-group">
-            <label>Package Only?</label>
+            <label>Package Only? <HelpTooltip text="If enabled, this service can only be booked as part of a package — not on its own." /></label>
             <div className="callout-toggle-row">
               <button
                 type="button"
@@ -929,7 +930,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           
           {!editData.package_only && (
           <div className="callout-toggle-group">
-            <label>Requires Initial Callout?</label>
+            <label>Requires Initial Callout? <HelpTooltip text="If enabled, the AI will book a short callout visit first so a worker can assess the job before scheduling the full work." /></label>
             <div className="callout-toggle-row">
               <button
                 type="button"

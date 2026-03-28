@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createClient, workerCreateClient } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
+import HelpTooltip from '../HelpTooltip';
 import './AddClientModal.css';
 
 function AddClientModal({ isOpen, onClose, workerMode = false }) {
@@ -71,7 +72,7 @@ function AddClientModal({ isOpen, onClose, workerMode = false }) {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Notes</label>
+          <label className="form-label">Notes <HelpTooltip text="Any extra details about this customer — access codes, preferences, or things your team should know." /></label>
           <textarea
             name="notes"
             className="form-textarea"
