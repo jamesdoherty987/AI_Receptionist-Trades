@@ -1167,7 +1167,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               <i className="fas fa-box"></i> Pkg only
             </span>
           )}
-          {service.default_materials?.length > 0 && (
+          {Array.isArray(service.default_materials) && service.default_materials.length > 0 && (
             <span className="meta-item callout-badge" title={`${service.default_materials.length} default material${service.default_materials.length !== 1 ? 's' : ''}`}>
               <i className="fas fa-cubes"></i> {service.default_materials.length} material{service.default_materials.length !== 1 ? 's' : ''}
             </span>
@@ -1765,7 +1765,7 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
               🔍 Requires investigation
             </span>
           )}
-          {pkg.default_materials?.length > 0 && (
+          {Array.isArray(pkg.default_materials) && pkg.default_materials.length > 0 && (
             <span className="meta-item callout-badge" title={`${pkg.default_materials.length} default material${pkg.default_materials.length !== 1 ? 's' : ''}`}>
               <i className="fas fa-cubes"></i> {pkg.default_materials.length} material{pkg.default_materials.length !== 1 ? 's' : ''}
             </span>
