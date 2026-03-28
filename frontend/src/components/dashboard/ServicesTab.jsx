@@ -820,7 +820,6 @@ function PackagesSection({ services, isSubscriptionActive }) {
     price_override: null,
     price_max_override: null,
     use_when_uncertain: false,
-    clarifying_question: '',
   });
 
   const { data: packagesData } = useQuery({
@@ -888,7 +887,6 @@ function PackagesSection({ services, isSubscriptionActive }) {
       price_override: null,
       price_max_override: null,
       use_when_uncertain: false,
-      clarifying_question: '',
     });
   };
 
@@ -918,7 +916,6 @@ function PackagesSection({ services, isSubscriptionActive }) {
       description: pkgFormData.description || '',
       services: buildServicesPayload(pkgFormData.selectedServiceIds),
       use_when_uncertain: pkgFormData.use_when_uncertain,
-      clarifying_question: pkgFormData.clarifying_question?.trim() || null,
     };
 
     if (pkgFormData.price_override !== null && pkgFormData.price_override !== undefined && pkgFormData.price_override !== '') {
@@ -943,7 +940,6 @@ function PackagesSection({ services, isSubscriptionActive }) {
       description: pkgData.description || '',
       services: buildServicesPayload(pkgData.selectedServiceIds),
       use_when_uncertain: pkgData.use_when_uncertain,
-      clarifying_question: pkgData.clarifying_question?.trim() || null,
     };
 
     if (pkgData.price_override !== null && pkgData.price_override !== undefined && pkgData.price_override !== '') {
@@ -1087,7 +1083,6 @@ function PackagesSection({ services, isSubscriptionActive }) {
 
 function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPending, toggleServiceSelection, moveService, getSelectedServiceDetails, isNew }) {
   const { selected, totalDuration, totalPrice, totalPriceMax } = getSelectedServiceDetails(formData.selectedServiceIds);
-  const hasPriceOverride = formData.price_override !== null && formData.price_override !== undefined && formData.price_override !== '';
 
   return (
     <form className="package-form-card" onSubmit={onSubmit}>
@@ -1165,52 +1160,38 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
       {selected.length >= 2 && (
         <div className="package-meta">
           <span className="meta-item duration"><i className="fas fa-clock"></i> {formatDuration(totalDuration)}</span>
-          <span className="meta-item price">{formatPriceRange(totalPrice, totalPriceMax > totalPrice ? totalPriceMax : null)}</span>
         </div>
       )}
 
-      {/* Price Override */}
-      <div className="form-group" style={{ marginTop: '0.75rem' }}>
-        <div className="price-range-toggle-row">
-          <button
-            type="button"
-            className={`price-range-toggle ${hasPriceOverride ? 'active' : ''}`}
-            onClick={() => setFormData({ ...formData, price_override: hasPriceOverride ? null : '', price_max_override: null })}
-            role="switch"
-            aria-checked={hasPriceOverride}
-          >
-            <span className="price-range-toggle-slider" />
-          </button>
-          <span className="price-range-toggle-label">Override package price</span>
+      {/* Package Price — auto-fills from services sum, editable */}
+      <div className="form-grid" style={{ marginTop: '0.75rem' }}>
+        <div className="form-group">
+          <label>Price (€)</label>
+          <input
+            type="number"
+            className="form-input"
+            value={formData.price_override ?? (selected.length >= 2 ? totalPrice : '')}
+            onChange={(e) => setFormData({ ...formData, price_override: e.target.value === '' ? null : e.target.value })}
+            placeholder="0.00"
+            step="0.01"
+            min="0"
+          />
+          {selected.length >= 2 && formData.price_override == null && (
+            <span className="form-hint">Auto-calculated from services (€{totalPrice})</span>
+          )}
         </div>
-        {hasPriceOverride && (
-          <div className="form-grid" style={{ marginTop: '0.5rem' }}>
-            <div className="form-group">
-              <label>Price (€)</label>
-              <input
-                type="number"
-                className="form-input"
-                value={formData.price_override}
-                onChange={(e) => setFormData({ ...formData, price_override: e.target.value })}
-                placeholder="0.00"
-                step="0.01"
-                min="0"
-              />
-            </div>
-            <div className="form-group">
-              <label>Max Price (€, optional)</label>
-              <input
-                type="number"
-                className="form-input"
-                value={formData.price_max_override || ''}
-                onChange={(e) => setFormData({ ...formData, price_max_override: e.target.value })}
-                placeholder="Max price"
-                step="0.01"
-                min="0"
-              />
-            </div>
-          </div>
-        )}
+        <div className="form-group">
+          <label>Max Price (€, optional)</label>
+          <input
+            type="number"
+            className="form-input"
+            value={formData.price_max_override ?? (selected.length >= 2 && totalPriceMax > totalPrice ? totalPriceMax : '')}
+            onChange={(e) => setFormData({ ...formData, price_max_override: e.target.value === '' ? null : e.target.value })}
+            placeholder="Max price"
+            step="0.01"
+            min="0"
+          />
+        </div>
       </div>
 
       {/* Book when uncertain toggle */}
@@ -1233,20 +1214,6 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
               : 'No — only match when clearly relevant'}
           </span>
         </div>
-      </div>
-
-      {/* Clarifying question */}
-      <div className="form-group" style={{ marginTop: '0.75rem' }}>
-        <label>Clarifying Question (optional)</label>
-        <textarea
-          className="form-input"
-          value={formData.clarifying_question}
-          onChange={(e) => setFormData({ ...formData, clarifying_question: e.target.value })}
-          placeholder="e.g., Do you know where the leak is coming from?"
-          rows={2}
-          maxLength={500}
-        />
-        <span className="form-hint">The AI receptionist will ask this question when this package is a potential match</span>
       </div>
 
       <div className="form-actions">
@@ -1284,7 +1251,6 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
         price_override: pkg.price_override != null ? pkg.price_override : null,
         price_max_override: pkg.price_max_override != null ? pkg.price_max_override : null,
         use_when_uncertain: pkg.use_when_uncertain || false,
-        clarifying_question: pkg.clarifying_question || '',
       });
     }
   }, [isEditing, pkg]);
@@ -1358,11 +1324,6 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
           {pkg.use_when_uncertain && (
             <span className="badge-uncertain" title="AI prefers this package when the caller's issue is vague or ambiguous">
               🤔 Book when uncertain
-            </span>
-          )}
-          {pkg.clarifying_question && (
-            <span className="badge-uncertain" title={`AI will ask: "${pkg.clarifying_question}"`}>
-              ❓ Has clarifying question
             </span>
           )}
         </div>

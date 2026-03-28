@@ -236,8 +236,6 @@ class TestPromptBuilder:
         assert '📦 Roof Leak Investigation' in result
         assert '[USE WHEN ISSUE IS UNCERTAIN]' in result
         assert 'Roof Inspection → Leak Finding → Roof Repair' in result
-        assert 'Ask:' in result
-        assert 'Do you know where the leak is coming from?' in result
 
     def test_build_packages_prompt_no_uncertain_tag(self):
         """Package without use_when_uncertain should not have the tag"""

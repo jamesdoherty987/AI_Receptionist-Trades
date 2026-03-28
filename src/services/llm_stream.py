@@ -277,9 +277,6 @@ def _build_packages_prompt_section(packages_list):
 
         line += f" | Duration: {duration_label}"
 
-        if pkg.get('clarifying_question'):
-            line += f' | Ask: "{pkg["clarifying_question"]}"'
-
         lines.append(line)
 
     return "\n".join(lines) + "\n"
@@ -377,7 +374,7 @@ CONFIDENCE-BASED CLARIFYING RULES:
 • If the issue COULD match multiple services or a package (grey zone), ask ONE clarifying question to narrow it down
   Example: "I have a leak" → could be Toilet Leak Repair OR Roof Leak Investigation package → ask ONE question
 • If a package is marked [USE WHEN ISSUE IS UNCERTAIN], prefer it when the caller can't pinpoint the exact problem
-• If a package has a custom "Ask:" question, use that question when clarifying — it's written by the business owner for their specific trade
+• When asking a clarifying question, think about what would help distinguish between the matching services/packages — e.g., "Do you know where the leak is coming from?" or "Is this for a specific room or the whole house?"
 • MAXIMUM ONE clarifying question — do NOT interrogate the caller or slow down the call
 • If still uncertain after one question, book the [USE WHEN ISSUE IS UNCERTAIN] package or fall back to General Service
 
