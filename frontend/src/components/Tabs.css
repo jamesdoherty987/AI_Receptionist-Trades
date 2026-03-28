@@ -7,6 +7,7 @@
 
 .tabs-header {
   display: flex;
+  align-items: flex-end;
   background: var(--bg-secondary);
   border-bottom: 2px solid var(--bg-tertiary);
   padding: 0.5rem 0.5rem 0.25rem;
