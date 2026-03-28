@@ -677,6 +677,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                             {matchedServiceOrPackage.data.requires_callout && (
                               <div className="jdm-sd-badge"><i className="fas fa-phone-alt"></i> Requires callout</div>
                             )}
+                            {matchedServiceOrPackage.data.requires_quote && (
+                              <div className="jdm-sd-badge"><i className="fas fa-file-invoice"></i> Requires quote</div>
+                            )}
                           </>
                         ) : (
                           <>

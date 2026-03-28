@@ -4165,6 +4165,7 @@ def add_service_api():
         'workers_required': max(1, int(data.get('workers_required', 1)) if data.get('workers_required') else 1),
         'worker_restrictions': restrictions,
         'requires_callout': bool(data.get('requires_callout', False)),
+        'requires_quote': bool(data.get('requires_quote', False)),
         'default_materials': data.get('default_materials', [])
     }
     
@@ -4246,6 +4247,10 @@ def manage_service_api(service_id):
         # Handle requires_callout if provided
         if 'requires_callout' in data:
             data['requires_callout'] = bool(data.get('requires_callout', False))
+        
+        # Handle requires_quote if provided
+        if 'requires_quote' in data:
+            data['requires_quote'] = bool(data.get('requires_quote', False))
         
         # Handle package_only if provided
         if 'package_only' in data:
@@ -5347,7 +5352,8 @@ def bookings_api():
                 charge_max=job_charge_max,
                 company_id=company_id,
                 duration_minutes=duration_minutes,
-                requires_callout=bool(data.get('requires_callout', False))
+                requires_callout=bool(data.get('requires_callout', False)),
+                requires_quote=bool(data.get('requires_quote', False))
             )
             
             # Add initial note if provided

@@ -361,6 +361,7 @@ class SettingsManager:
                 workers_required=service.get('workers_required', 1),
                 worker_restrictions=service.get('worker_restrictions'),
                 requires_callout=service.get('requires_callout', False),
+                requires_quote=service.get('requires_quote', False),
                 package_only=service.get('package_only', False),
                 company_id=company_id,
                 default_materials=service.get('default_materials', [])

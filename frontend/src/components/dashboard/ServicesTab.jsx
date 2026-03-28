@@ -42,6 +42,7 @@ function ServicesTab() {
     workers_required: '1',
     worker_restrictions: { type: 'all', worker_ids: [] },
     requires_callout: false,
+    requires_quote: false,
     package_only: false,
     show_price_duration: false,
     default_materials: []
@@ -111,6 +112,7 @@ function ServicesTab() {
         workers_required: '1',
         worker_restrictions: { type: 'all', worker_ids: [] },
         requires_callout: false,
+        requires_quote: false,
         package_only: false,
         show_price_duration: false,
         default_materials: []
@@ -171,6 +173,7 @@ function ServicesTab() {
       workers_required: parseInt(formData.workers_required) || 1,
       worker_restrictions: restrictions,
       requires_callout: formData.requires_callout,
+      requires_quote: formData.requires_quote,
       package_only: formData.package_only,
       default_materials: formData.default_materials || [],
     });
@@ -202,6 +205,7 @@ function ServicesTab() {
         workers_required: parseInt(service.workers_required) || 1,
         worker_restrictions: restrictions,
         requires_callout: service.requires_callout || false,
+        requires_quote: service.requires_quote || false,
         package_only: service.package_only || false,
         default_materials: service.default_materials || [],
       },
@@ -464,7 +468,7 @@ function ServicesTab() {
               <button
                 type="button"
                 className={`callout-toggle ${formData.requires_callout ? 'active' : ''}`}
-                onClick={() => setFormData({ ...formData, requires_callout: !formData.requires_callout })}
+                onClick={() => setFormData({ ...formData, requires_callout: !formData.requires_callout, requires_quote: false })}
                 role="switch"
                 aria-checked={formData.requires_callout}
               >
@@ -473,6 +477,28 @@ function ServicesTab() {
               <span className="callout-toggle-label">
                 {formData.requires_callout 
                   ? 'Yes — AI will book a callout visit instead of the full job' 
+                  : 'No — book the full job directly'}
+              </span>
+            </div>
+          </div>
+          )}
+          
+          {!formData.package_only && !formData.requires_callout && (
+          <div className="callout-toggle-group">
+            <label>Requires Quote Visit? <HelpTooltip text="If enabled, the AI books a free quote visit first so a worker can assess and quote the job. The quote service is configured in your Services tab." /></label>
+            <div className="callout-toggle-row">
+              <button
+                type="button"
+                className={`callout-toggle ${formData.requires_quote ? 'active' : ''}`}
+                onClick={() => setFormData({ ...formData, requires_quote: !formData.requires_quote })}
+                role="switch"
+                aria-checked={formData.requires_quote}
+              >
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">
+                {formData.requires_quote 
+                  ? 'Yes — AI will book a free quote visit instead of the full job' 
                   : 'No — book the full job directly'}
               </span>
             </div>
@@ -1079,7 +1105,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               <button
                 type="button"
                 className={`callout-toggle ${editData.requires_callout ? 'active' : ''}`}
-                onClick={() => setEditData({ ...editData, requires_callout: !editData.requires_callout })}
+                onClick={() => setEditData({ ...editData, requires_callout: !editData.requires_callout, requires_quote: false })}
                 role="switch"
                 aria-checked={editData.requires_callout}
               >
@@ -1088,6 +1114,28 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               <span className="callout-toggle-label">
                 {editData.requires_callout 
                   ? 'Yes — AI will book a callout visit instead of the full job' 
+                  : 'No — book the full job directly'}
+              </span>
+            </div>
+          </div>
+          )}
+          
+          {!editData.package_only && !editData.requires_callout && (
+          <div className="callout-toggle-group">
+            <label>Requires Quote Visit? <HelpTooltip text="If enabled, the AI books a free quote visit first so a worker can assess and quote the job. The quote service is configured in your Services tab." /></label>
+            <div className="callout-toggle-row">
+              <button
+                type="button"
+                className={`callout-toggle ${editData.requires_quote ? 'active' : ''}`}
+                onClick={() => setEditData({ ...editData, requires_quote: !editData.requires_quote })}
+                role="switch"
+                aria-checked={editData.requires_quote}
+              >
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">
+                {editData.requires_quote 
+                  ? 'Yes — AI will book a free quote visit instead of the full job' 
                   : 'No — book the full job directly'}
               </span>
             </div>
@@ -1160,6 +1208,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           {service.requires_callout && (
             <span className="meta-item callout-badge" title="Requires initial callout visit">
               <i className="fas fa-phone-alt"></i> Callout
+            </span>
+          )}
+          {service.requires_quote && (
+            <span className="meta-item callout-badge" title="Requires free quote visit">
+              <i className="fas fa-file-invoice"></i> Quote
             </span>
           )}
           {service.package_only && (

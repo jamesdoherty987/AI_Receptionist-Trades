@@ -106,7 +106,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
   
   const [formData, setFormData] = useState({
     client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '',
-    property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false
+    property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false
   });
   
   const [selectedDate, setSelectedDate] = useState('');
@@ -260,7 +260,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
   });
 
   const resetForm = () => {
-    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false });
+    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false });
     setSelectedDate(''); setSelectedService(null); setAnyWorkerMode(true); setAssignedWorkers([]);
     setCustomerPickerOpen(false); setCustomerSearch(''); setSelectedCustomer(null);
     const n = new Date(); setCalMonth(n.getMonth()); setCalYear(n.getFullYear());
@@ -305,6 +305,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
       estimated_charge_max: safePriceMax && safePriceMax > safePrice ? safePriceMax : '',
       duration_minutes: newDuration,
       requires_callout: typeof service.requires_callout === 'boolean' ? service.requires_callout : prev.requires_callout,
+      requires_quote: typeof service.requires_quote === 'boolean' ? service.requires_quote : prev.requires_quote,
       appointment_time: '',
     }));
     // Reset date selection when service changes (availability changes)
@@ -701,13 +702,28 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
             <label className="form-label">Requires Initial Callout? <HelpTooltip text="Enable if a worker needs to visit the site first to assess the job. This books the callout service from your Services tab rather than the full job." /></label>
             <div className="callout-toggle-wrapper">
               <button type="button" className={`callout-toggle ${formData.requires_callout ? 'active' : ''}`}
-                onClick={() => setFormData(prev => ({ ...prev, requires_callout: !prev.requires_callout }))}
+                onClick={() => setFormData(prev => ({ ...prev, requires_callout: !prev.requires_callout, requires_quote: false }))}
                 role="switch" aria-checked={formData.requires_callout}>
                 <span className="callout-toggle-slider" />
               </button>
               <span className="callout-toggle-label">{formData.requires_callout ? 'Yes — callout visit needed before work begins' : 'No — go straight to the job'}</span>
             </div>
           </div>
+
+          {/* Quote Visit Toggle */}
+          {!formData.requires_callout && (
+          <div className="form-group">
+            <label className="form-label">Requires Quote Visit? <HelpTooltip text="Enable if a worker needs to visit the site first to give a free quote. This books the quote service from your Services tab rather than the full job." /></label>
+            <div className="callout-toggle-wrapper">
+              <button type="button" className={`callout-toggle ${formData.requires_quote ? 'active' : ''}`}
+                onClick={() => setFormData(prev => ({ ...prev, requires_quote: !prev.requires_quote }))}
+                role="switch" aria-checked={formData.requires_quote}>
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">{formData.requires_quote ? 'Yes — free quote visit needed before work begins' : 'No — go straight to the job'}</span>
+            </div>
+          </div>
+          )}
           
           <div className="form-group">
             <label className="form-label">Notes</label>

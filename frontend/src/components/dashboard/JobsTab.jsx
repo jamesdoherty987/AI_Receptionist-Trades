@@ -358,6 +358,9 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                   {servicePopup.data.requires_callout && (
                     <div className="jt-popup-badge"><i className="fas fa-phone-alt"></i> Requires callout</div>
                   )}
+                  {servicePopup.data.requires_quote && (
+                    <div className="jt-popup-badge"><i className="fas fa-file-invoice"></i> Requires quote</div>
+                  )}
                   {servicePopup.data.package_only && (
                     <div className="jt-popup-badge"><i className="fas fa-box"></i> Package only</div>
                   )}

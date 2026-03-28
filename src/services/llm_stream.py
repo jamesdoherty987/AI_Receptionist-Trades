@@ -379,6 +379,8 @@ def load_system_prompt(company_id=None):
                 service_line += f" | Duration: {service['duration_minutes']} minutes"
                 if service.get('requires_callout'):
                     service_line += " [CALLOUT REQUIRED]"
+                if service.get('requires_quote'):
+                    service_line += " [QUOTE REQUIRED]"
                 services_list.append(service_line)
         
         # Build business hours string
@@ -2243,6 +2245,7 @@ TOOL RULES:
                         address = details.get("job_address", "") or details.get("eircode", "")
                         duration_mins = details.get("duration_minutes", 0)
                         is_callout_booking = result_content.get("is_callout_booking", False)
+                        is_quote_booking = result_content.get("is_quote_booking", False)
                         original_service = result_content.get("original_service_name", "")
                         
                         # Check if this is a full-day job (8+ hours)
@@ -2257,6 +2260,15 @@ TOOL RULES:
                                 direct_response = f"Grand, I've booked a call-out visit for {time_str}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
                             else:
                                 direct_response = f"Grand, I've booked a call-out visit for you. We'll come out and have a look, and then schedule the full job after that. Is there anything else?"
+                        elif is_quote_booking:
+                            # Quote booking: tell the caller it's a free quote visit
+                            if is_full_day and time_str:
+                                day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
+                                direct_response = f"Grand, I've booked a free quote visit for {day_part}. We'll come out, have a look, and give you a quote for the {original_service} job. Is there anything else?"
+                            elif time_str:
+                                direct_response = f"Grand, I've booked a free quote visit for {time_str}. We'll come out, have a look, and give you a quote for the {original_service} job. Is there anything else?"
+                            else:
+                                direct_response = f"Grand, I've booked a free quote visit for you. We'll come out, have a look, and give you a quote. Is there anything else?"
                         elif is_full_day and time_str:
                             # For full-day jobs, extract just the day (not the time)
                             # Extract day name from time_str like "Thursday, March 12 at 08:00 AM"

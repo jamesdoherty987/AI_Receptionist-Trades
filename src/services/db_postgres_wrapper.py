@@ -191,6 +191,7 @@ class PostgreSQLDatabaseWrapper:
                     payment_status TEXT DEFAULT 'unpaid',
                     payment_method TEXT,
                     requires_callout BOOLEAN DEFAULT FALSE,
+                    requires_quote BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     gcal_synced_at TIMESTAMP,
@@ -316,6 +317,7 @@ class PostgreSQLDatabaseWrapper:
                     workers_required INTEGER DEFAULT 1,
                     worker_restrictions JSONB DEFAULT NULL,
                     requires_callout BOOLEAN DEFAULT FALSE,
+                    requires_quote BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -350,6 +352,17 @@ class PostgreSQLDatabaseWrapper:
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                                    WHERE table_name='services' AND column_name='package_only') THEN
                         ALTER TABLE services ADD COLUMN package_only BOOLEAN DEFAULT FALSE;
+                    END IF;
+                END $$;
+            """)
+            
+            # Add requires_quote column if it doesn't exist (migration)
+            cursor.execute("""
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                   WHERE table_name='services' AND column_name='requires_quote') THEN
+                        ALTER TABLE services ADD COLUMN requires_quote BOOLEAN DEFAULT FALSE;
                     END IF;
                 END $$;
             """)
@@ -773,6 +786,15 @@ class PostgreSQLDatabaseWrapper:
             except Exception as e:
                 print(f"[WARNING] Could not add requires_callout column: {e}")
         
+        # Add requires_quote column to bookings table
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='bookings' AND column_name='requires_quote'")
+        if not cursor.fetchone():
+            try:
+                cursor.execute("ALTER TABLE bookings ADD COLUMN requires_quote BOOLEAN DEFAULT FALSE")
+                print("[SUCCESS] Added requires_quote column to bookings table")
+            except Exception as e:
+                print(f"[WARNING] Could not add requires_quote column: {e}")
+        
         # Add updated_at and gcal_synced_at columns to bookings table (incremental sync)
         cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='bookings' AND column_name='updated_at'")
         if not cursor.fetchone():
@@ -911,6 +933,27 @@ class PostgreSQLDatabaseWrapper:
                     print(f"[SUCCESS] Created default 'General Callout' for company {company_id}")
                 except Exception as e:
                     print(f"[WARNING] Could not create default service for company {company_id}: {e}")
+            
+            # Create default "General Quote" service for the new company
+            if company_id:
+                try:
+                    self.add_service(
+                        service_id=f"quote_{company_id}",
+                        category="General",
+                        name="General Quote",
+                        description="Default quote service — used when a job requires a free quote visit before the full work is scheduled",
+                        duration_minutes=240,  # 4 hours
+                        price=0,
+                        emergency_price=None,
+                        currency='EUR',
+                        active=True,
+                        image_url=None,
+                        sort_order=9998,  # Put near the end, before callout
+                        company_id=company_id
+                    )
+                    print(f"[SUCCESS] Created default 'General Quote' for company {company_id}")
+                except Exception as e:
+                    print(f"[WARNING] Could not create default quote service for company {company_id}: {e}")
             
             return company_id
         except Exception as e:
@@ -1359,7 +1402,7 @@ class PostgreSQLDatabaseWrapper:
                         b.service_type, b.status, b.phone_number, b.email, b.created_at,
                         b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
-                        b.address_audio_url, b.requires_callout,
+                        b.address_audio_url, b.requires_callout, b.requires_quote,
                         b.updated_at, b.gcal_synced_at,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
@@ -1371,7 +1414,7 @@ class PostgreSQLDatabaseWrapper:
                              b.service_type, b.status, b.phone_number, b.email, b.created_at,
                              b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
-                             b.address_audio_url, b.requires_callout,
+                             b.address_audio_url, b.requires_callout, b.requires_quote,
                              b.updated_at, b.gcal_synced_at,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
@@ -1383,7 +1426,7 @@ class PostgreSQLDatabaseWrapper:
                         b.service_type, b.status, b.phone_number, b.email, b.created_at,
                         b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
-                        b.address_audio_url, b.requires_callout,
+                        b.address_audio_url, b.requires_callout, b.requires_quote,
                         b.updated_at, b.gcal_synced_at,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
@@ -1394,7 +1437,7 @@ class PostgreSQLDatabaseWrapper:
                              b.service_type, b.status, b.phone_number, b.email, b.created_at,
                              b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
-                             b.address_audio_url, b.requires_callout,
+                             b.address_audio_url, b.requires_callout, b.requires_quote,
                              b.updated_at, b.gcal_synced_at,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
@@ -1430,6 +1473,7 @@ class PostgreSQLDatabaseWrapper:
                 'assigned_worker_ids': row['assigned_worker_ids'] or [],  # List of assigned worker IDs
                 'address_audio_url': row.get('address_audio_url'),
                 'requires_callout': row.get('requires_callout', False),
+                'requires_quote': row.get('requires_quote', False),
                 'updated_at': row.get('updated_at'),
                 'gcal_synced_at': row.get('gcal_synced_at'),
             } for row in rows]
@@ -1957,7 +2001,7 @@ class PostgreSQLDatabaseWrapper:
                     urgency: str = None, address: str = None, eircode: str = None,
                     property_type: str = None, charge: float = None, charge_max: float = None,
                     company_id: int = None,
-                    duration_minutes: int = 1440, requires_callout: bool = False) -> Optional[int]:
+                    duration_minutes: int = 1440, requires_callout: bool = False, requires_quote: bool = False) -> Optional[int]:
         """Add a new booking (default 1 day duration for trades)"""
         print(f"[DB_BOOKING] ========== ADDING BOOKING ==========")
         print(f"[DB_BOOKING] client_id={client_id}, calendar_event_id={calendar_event_id}")
@@ -1965,7 +2009,7 @@ class PostgreSQLDatabaseWrapper:
         print(f"[DB_BOOKING] phone={phone_number}, email={email}, company_id={company_id}")
         print(f"[DB_BOOKING] urgency={urgency}, address={address}, eircode={eircode}")
         print(f"[DB_BOOKING] property_type={property_type}, charge={charge}, duration={duration_minutes}")
-        print(f"[DB_BOOKING] requires_callout={requires_callout}")
+        print(f"[DB_BOOKING] requires_callout={requires_callout}, requires_quote={requires_quote}")
         
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -1986,21 +2030,21 @@ class PostgreSQLDatabaseWrapper:
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
-                                        eircode, property_type, charge, charge_max, company_id, duration_minutes, requires_callout)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        eircode, property_type, charge, charge_max, company_id, duration_minutes, requires_callout, requires_quote)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
-                      phone_number, email, urgency, address, eircode, property_type, charge, charge_max, company_id, duration_minutes, requires_callout))
+                      phone_number, email, urgency, address, eircode, property_type, charge, charge_max, company_id, duration_minutes, requires_callout, requires_quote))
             else:
                 print(f"[DB_BOOKING] Inserting booking without charge...")
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
-                                        eircode, property_type, company_id, duration_minutes, requires_callout)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        eircode, property_type, company_id, duration_minutes, requires_callout, requires_quote)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
-                      phone_number, email, urgency, address, eircode, property_type, company_id, duration_minutes, requires_callout))
+                      phone_number, email, urgency, address, eircode, property_type, company_id, duration_minutes, requires_callout, requires_quote))
             
             result = cursor.fetchone()
             booking_id = result['id'] if result else None
@@ -2071,7 +2115,7 @@ class PostgreSQLDatabaseWrapper:
                 if db_field in ['calendar_event_id', 'appointment_time', 'service_type', 
                           'status', 'phone_number', 'email', 'charge', 'charge_max', 'payment_status', 
                           'payment_method', 'urgency', 'address', 'eircode', 'property_type',
-                          'duration_minutes', 'address_audio_url', 'requires_callout',
+                          'duration_minutes', 'address_audio_url', 'requires_callout', 'requires_quote',
                           'photo_urls', 'job_started_at', 'job_completed_at', 'actual_duration_minutes']:
                     fields.append(f"{db_field} = %s")
                     values.append(value)
@@ -3120,6 +3164,7 @@ class PostgreSQLDatabaseWrapper:
                    image_url: str = None, sort_order: int = 0,
                    workers_required: int = 1, worker_restrictions: dict = None,
                    requires_callout: bool = False, package_only: bool = False,
+                   requires_quote: bool = False,
                    company_id: int = None, default_materials: list = None) -> bool:
         """Add a new service for a specific company (default 1 day duration for trades)"""
         import json
@@ -3136,10 +3181,10 @@ class PostgreSQLDatabaseWrapper:
         try:
             cursor.execute("""
                 INSERT INTO services (id, category, name, description, duration_minutes,
-                                    price, price_max, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, requires_callout, package_only, company_id, default_materials)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    price, price_max, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, requires_callout, package_only, requires_quote, company_id, default_materials)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (service_id, category, name, description, duration_minutes,
-                  price, price_max, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, requires_callout, package_only, company_id, materials_json))
+                  price, price_max, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, requires_callout, package_only, requires_quote, company_id, materials_json))
             
             conn.commit()
             return True
@@ -3201,7 +3246,7 @@ class PostgreSQLDatabaseWrapper:
             allowed_fields = ['category', 'name', 'description', 'duration_minutes',
                              'price', 'price_max', 'emergency_price', 'currency', 'active',
                              'image_url', 'sort_order', 'workers_required', 'worker_restrictions',
-                             'requires_callout', 'package_only', 'default_materials']
+                             'requires_callout', 'package_only', 'requires_quote', 'default_materials']
             
             fields = []
             values = []
