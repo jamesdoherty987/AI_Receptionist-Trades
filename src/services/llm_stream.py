@@ -355,8 +355,13 @@ def load_system_prompt(company_id=None):
         try:
             settings_mgr = get_settings_manager()
             packages_list = settings_mgr.get_packages(company_id=company_id)
+            print(f"[PROMPT_DEBUG] Loaded {len(packages_list)} packages for company {company_id}")
+            for pkg in packages_list:
+                print(f"[PROMPT_DEBUG]   📦 {pkg.get('name')} (uncertain={pkg.get('use_when_uncertain')}, services={len(pkg.get('services', []))})")
         except Exception as e:
             print(f"[WARNING] Error loading packages: {e}")
+            import traceback
+            traceback.print_exc()
             packages_list = []
         
         # Build services list from menu (exclude package_only services)
