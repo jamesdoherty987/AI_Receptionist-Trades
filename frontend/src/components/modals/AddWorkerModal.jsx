@@ -87,7 +87,7 @@ function AddWorkerModal({ isOpen, onClose }) {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Trade Specialty <HelpTooltip text="The worker's main skill or trade. Used to match them with relevant jobs." /></label>
+          <label className="form-label">Trade Specialty <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, fontSize: '0.85rem' }}>(optional)</span> <HelpTooltip text="The worker's main skill or trade. Used to match them with relevant jobs." /></label>
           <input
             type="text"
             name="specialty"

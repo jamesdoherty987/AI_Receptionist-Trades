@@ -445,7 +445,7 @@ function ServicesTab() {
           
           {!formData.package_only && (
           <div className="callout-toggle-group">
-            <label>Requires Initial Callout? <HelpTooltip text="If enabled, the AI will book a short callout visit first so a worker can assess the job before scheduling the full work." /></label>
+            <label>Requires Initial Callout? <HelpTooltip text="If enabled, the AI books a callout visit first so a worker can assess the job. The callout service is configured in your Services tab." /></label>
             <div className="callout-toggle-row">
               <button
                 type="button"
@@ -930,7 +930,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           
           {!editData.package_only && (
           <div className="callout-toggle-group">
-            <label>Requires Initial Callout? <HelpTooltip text="If enabled, the AI will book a short callout visit first so a worker can assess the job before scheduling the full work." /></label>
+            <label>Requires Initial Callout? <HelpTooltip text="If enabled, the AI books a callout visit first so a worker can assess the job. The callout service is configured in your Services tab." /></label>
             <div className="callout-toggle-row">
               <button
                 type="button"

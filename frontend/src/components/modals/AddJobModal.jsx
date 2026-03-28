@@ -698,7 +698,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
 
           {/* Initial Callout Toggle */}
           <div className="form-group">
-            <label className="form-label">Requires Initial Callout? <HelpTooltip text="Enable if a worker needs to visit the site first to assess the job before scheduling the full work." /></label>
+            <label className="form-label">Requires Initial Callout? <HelpTooltip text="Enable if a worker needs to visit the site first to assess the job. This books the callout service from your Services tab rather than the full job." /></label>
             <div className="callout-toggle-wrapper">
               <button type="button" className={`callout-toggle ${formData.requires_callout ? 'active' : ''}`}
                 onClick={() => setFormData(prev => ({ ...prev, requires_callout: !prev.requires_callout }))}
