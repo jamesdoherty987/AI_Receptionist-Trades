@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
 import { formatDuration } from '../../utils/durationOptions';
-import { updateBooking } from '../../services/api';
+import { updateBooking, getServicesMenu, getPackages } from '../../services/api';
 import { useToast } from '../Toast';
 import AddJobModal from '../modals/AddJobModal';
 import JobDetailModal from '../modals/JobDetailModal';
@@ -28,6 +28,32 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [markingPaidJobId, setMarkingPaidJobId] = useState(null);
+  const [servicePopup, setServicePopup] = useState(null);
+
+  const { data: servicesMenu } = useQuery({
+    queryKey: ['services-menu'],
+    queryFn: async () => { const r = await getServicesMenu(); return r.data; },
+    staleTime: 60 * 1000,
+  });
+
+  const { data: packagesData } = useQuery({
+    queryKey: ['packages'],
+    queryFn: async () => { const r = await getPackages(); return r.data; },
+    staleTime: 60 * 1000,
+  });
+
+  const services = servicesMenu?.services || [];
+  const packages = packagesData?.packages || packagesData || [];
+
+  const findServiceOrPackage = (serviceType) => {
+    if (!serviceType) return null;
+    const name = serviceType.toLowerCase().trim();
+    const svc = services.find(s => s.name?.toLowerCase().trim() === name);
+    if (svc) return { type: 'service', data: svc };
+    const pkg = packages.find(p => p.name?.toLowerCase().trim() === name);
+    if (pkg) return { type: 'package', data: pkg };
+    return null;
+  };
 
   const markPaidMutation = useMutation({
     mutationFn: (jobId) => updateBooking(jobId, { status: 'completed', payment_status: 'paid' }),
@@ -226,7 +252,25 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                           <span className={`jt-status-badge jt-status-${job.status}`}>{job.status === 'in-progress' ? 'In Progress' : job.status}</span>
                         </div>
                         <div className="jt-card-info">
-                          <span className="jt-info-item"><i className="fas fa-wrench"></i> {job.service_type || job.service || 'Service'}</span>
+                          {(() => {
+                            const match = findServiceOrPackage(job.service_type || job.service);
+                            if (match) {
+                              return (
+                                <button
+                                  className={`jt-service-chip jt-service-chip-${match.type}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setServicePopup(servicePopup?.data?.id === match.data.id ? null : match);
+                                  }}
+                                  title={`View ${match.type} details`}
+                                >
+                                  <i className={`fas ${match.type === 'package' ? 'fa-box' : 'fa-wrench'}`}></i>
+                                  {job.service_type || job.service || 'Service'}
+                                </button>
+                              );
+                            }
+                            return <span className="jt-info-item"><i className="fas fa-wrench"></i> {job.service_type || job.service || 'Service'}</span>;
+                          })()}
                           <span className="jt-info-item"><i className="fas fa-map-marker-alt"></i> {getAddress(job)}</span>
                           {job.address_audio_url && (
                             <button className="jt-audio-btn" onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }} title="Listen to address audio">
@@ -266,6 +310,103 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
           ))
         )}
       </div>
+
+      {/* Service/Package Detail Popup */}
+      {servicePopup && (
+        <div className="jt-service-popup-overlay" onClick={() => setServicePopup(null)}>
+          <div className="jt-service-popup" onClick={(e) => e.stopPropagation()}>
+            <button className="jt-service-popup-close" onClick={() => setServicePopup(null)}>
+              <i className="fas fa-times"></i>
+            </button>
+            <div className="jt-service-popup-header">
+              <i className={`fas ${servicePopup.type === 'package' ? 'fa-box' : 'fa-wrench'}`}></i>
+              <div>
+                <h4>{servicePopup.data.name}</h4>
+                <span className="jt-service-popup-type">{servicePopup.type === 'package' ? 'Package' : 'Service'}</span>
+              </div>
+            </div>
+            {servicePopup.data.image_url && (
+              <img src={servicePopup.data.image_url} alt={servicePopup.data.name} className="jt-service-popup-img" />
+            )}
+            <div className="jt-service-popup-meta">
+              {servicePopup.type === 'service' ? (
+                <>
+                  {servicePopup.data.description && (
+                    <p className="jt-popup-desc">{servicePopup.data.description}</p>
+                  )}
+                  {servicePopup.data.price > 0 && (
+                    <div className="jt-popup-row">
+                      <span className="jt-popup-label">Price</span>
+                      <span className="jt-popup-value">
+                        €{parseFloat(servicePopup.data.price).toFixed(2)}
+                        {servicePopup.data.price_max && parseFloat(servicePopup.data.price_max) > parseFloat(servicePopup.data.price) && ` – €${parseFloat(servicePopup.data.price_max).toFixed(2)}`}
+                      </span>
+                    </div>
+                  )}
+                  {servicePopup.data.duration_minutes > 0 && (
+                    <div className="jt-popup-row">
+                      <span className="jt-popup-label">Duration</span>
+                      <span className="jt-popup-value">{formatDuration(servicePopup.data.duration_minutes)}</span>
+                    </div>
+                  )}
+                  {servicePopup.data.workers_required > 1 && (
+                    <div className="jt-popup-row">
+                      <span className="jt-popup-label">Workers</span>
+                      <span className="jt-popup-value">{servicePopup.data.workers_required}</span>
+                    </div>
+                  )}
+                  {servicePopup.data.requires_callout && (
+                    <div className="jt-popup-badge"><i className="fas fa-phone-alt"></i> Requires callout</div>
+                  )}
+                  {servicePopup.data.package_only && (
+                    <div className="jt-popup-badge"><i className="fas fa-box"></i> Package only</div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {servicePopup.data.description && (
+                    <p className="jt-popup-desc">{servicePopup.data.description}</p>
+                  )}
+                  {(servicePopup.data.total_price > 0 || servicePopup.data.price_override > 0) && (
+                    <div className="jt-popup-row">
+                      <span className="jt-popup-label">Price</span>
+                      <span className="jt-popup-value">
+                        €{parseFloat(servicePopup.data.price_override || servicePopup.data.total_price).toFixed(2)}
+                        {(servicePopup.data.price_max_override || servicePopup.data.total_price_max) > (servicePopup.data.price_override || servicePopup.data.total_price) &&
+                          ` – €${parseFloat(servicePopup.data.price_max_override || servicePopup.data.total_price_max).toFixed(2)}`}
+                      </span>
+                    </div>
+                  )}
+                  {(servicePopup.data.total_duration_minutes > 0 || servicePopup.data.duration_override > 0) && (
+                    <div className="jt-popup-row">
+                      <span className="jt-popup-label">Duration</span>
+                      <span className="jt-popup-value">{formatDuration(servicePopup.data.duration_override || servicePopup.data.total_duration_minutes)}</span>
+                    </div>
+                  )}
+                  {servicePopup.data.services?.length > 0 && (
+                    <div className="jt-popup-services">
+                      <span className="jt-popup-label">Services included</span>
+                      <div className="jt-popup-service-list">
+                        {[...servicePopup.data.services]
+                          .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+                          .map((s, i) => (
+                            <span key={s.id || i} className="jt-popup-service-step">
+                              {i > 0 && <i className="fas fa-arrow-right jt-popup-arrow"></i>}
+                              {s.name}
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                  {servicePopup.data.use_when_uncertain && (
+                    <div className="jt-popup-badge"><i className="fas fa-search"></i> Requires investigation</div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <AddJobModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
       <JobDetailModal isOpen={!!selectedJobId} onClose={() => setSelectedJobId(null)} jobId={selectedJobId} showInvoiceButtons={showInvoiceButtons} />

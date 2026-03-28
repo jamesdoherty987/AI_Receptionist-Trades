@@ -1454,8 +1454,8 @@ class ServiceMatcher:
                 pkg_services = pkg.get('services', [])
                 service_names = [s.get('name', '') for s in pkg_services]
                 combined_desc = f"{pkg.get('description', '')} {' '.join(service_names)}"
-                duration = sum(s.get('duration_minutes', 0) for s in pkg_services)
-                price = pkg.get('price_override') or sum(s.get('price', 0) for s in pkg_services)
+                duration = pkg.get('duration_override') or pkg.get('total_duration_minutes') or sum(s.get('duration_minutes', 0) for s in pkg_services)
+                price = pkg.get('price_override') or pkg.get('total_price') or sum(s.get('price', 0) for s in pkg_services)
                 
                 virtual_entries.append({
                     'id': pkg['id'],
@@ -1815,8 +1815,8 @@ def match_service(job_description: str, company_id: int = None, use_ai_fallback:
             uncertain_pkg = next((p for p in packages if p.get('use_when_uncertain', False)), None)
             if uncertain_pkg:
                 pkg_services = uncertain_pkg.get('services', [])
-                duration = sum(s.get('duration_minutes', 0) for s in pkg_services)
-                price = uncertain_pkg.get('price_override') or sum(s.get('price', 0) for s in pkg_services)
+                duration = uncertain_pkg.get('duration_override') or uncertain_pkg.get('total_duration_minutes') or sum(s.get('duration_minutes', 0) for s in pkg_services)
+                price = uncertain_pkg.get('price_override') or uncertain_pkg.get('total_price') or sum(s.get('price', 0) for s in pkg_services)
                 result = {
                     'service': {
                         'id': uncertain_pkg['id'],

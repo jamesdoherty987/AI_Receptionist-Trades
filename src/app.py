@@ -4235,6 +4235,10 @@ def manage_service_api(service_id):
         if 'requires_callout' in data:
             data['requires_callout'] = bool(data.get('requires_callout', False))
         
+        # Handle package_only if provided
+        if 'package_only' in data:
+            data['package_only'] = bool(data.get('package_only', False))
+        
         # Upload image to R2 if it's base64
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
             data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'services')
@@ -6907,7 +6911,7 @@ def call_logs_api():
     outcomes = None
     include_lost = False
     if outcome == 'no_booking':
-        outcomes = ['hung_up', 'no_action', 'wrong_number', 'enquiry', 'cancelled']
+        outcomes = ['hung_up', 'no_action', 'wrong_number', 'enquiry', 'cancelled', 'lost_job']
         include_lost = True
         outcome = 'all'  # Don't also apply single outcome filter
 

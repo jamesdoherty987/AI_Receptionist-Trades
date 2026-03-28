@@ -2359,7 +2359,7 @@ TOOL RULES:
                     elif len(matches) > 1:
                         direct_response = "Can you tell me a bit more about the issue so I can match you with the right service?"
                     else:
-                        direct_response = f"That sounds like it could be a {matches[0]['name'].lower()}. Is that right?"
+                        direct_response = f"One of the services we offer is a {matches[0]['name'].lower()}. Does that sound like the issue your experiencing?"
                     
                     print(f"   ⚡ [DIRECT] match_issue -> '{direct_response[:50]}...' ({len(matches)} matches, top={top_score}, top_investigation={top_is_investigation})")
                 

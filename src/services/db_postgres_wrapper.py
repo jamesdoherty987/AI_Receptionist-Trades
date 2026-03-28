@@ -364,6 +364,7 @@ class PostgreSQLDatabaseWrapper:
                     services JSONB NOT NULL DEFAULT '[]',
                     price_override REAL DEFAULT NULL,
                     price_max_override REAL DEFAULT NULL,
+                    duration_override INTEGER DEFAULT NULL,
                     use_when_uncertain BOOLEAN DEFAULT FALSE,
                     clarifying_question TEXT DEFAULT NULL,
                     active INTEGER DEFAULT 1,
@@ -376,6 +377,14 @@ class PostgreSQLDatabaseWrapper:
             
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_packages_company ON packages(company_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_packages_active ON packages(company_id, active)")
+            
+            # Add duration_override column if missing (migration)
+            try:
+                cursor.execute("""
+                    ALTER TABLE packages ADD COLUMN IF NOT EXISTS duration_override INTEGER DEFAULT NULL
+                """)
+            except Exception:
+                pass
             
             # Business settings table
             cursor.execute("""
@@ -3108,7 +3117,7 @@ class PostgreSQLDatabaseWrapper:
                    currency: str = 'EUR', active: bool = True,
                    image_url: str = None, sort_order: int = 0,
                    workers_required: int = 1, worker_restrictions: dict = None,
-                   requires_callout: bool = False,
+                   requires_callout: bool = False, package_only: bool = False,
                    company_id: int = None) -> bool:
         """Add a new service for a specific company (default 1 day duration for trades)"""
         import json
@@ -3124,10 +3133,10 @@ class PostgreSQLDatabaseWrapper:
         try:
             cursor.execute("""
                 INSERT INTO services (id, category, name, description, duration_minutes,
-                                    price, price_max, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, requires_callout, company_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    price, price_max, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, requires_callout, package_only, company_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (service_id, category, name, description, duration_minutes,
-                  price, price_max, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, requires_callout, company_id))
+                  price, price_max, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, requires_callout, package_only, company_id))
             
             conn.commit()
             return True
@@ -3189,7 +3198,7 @@ class PostgreSQLDatabaseWrapper:
             allowed_fields = ['category', 'name', 'description', 'duration_minutes',
                              'price', 'price_max', 'emergency_price', 'currency', 'active',
                              'image_url', 'sort_order', 'workers_required', 'worker_restrictions',
-                             'requires_callout']
+                             'requires_callout', 'package_only']
             
             fields = []
             values = []
@@ -3325,6 +3334,7 @@ class PostgreSQLDatabaseWrapper:
     def add_package(self, package_id: str, company_id: int, name: str,
                     description: str = None, services: list = None,
                     price_override: float = None, price_max_override: float = None,
+                    duration_override: int = None,
                     use_when_uncertain: bool = False, clarifying_question: str = None,
                     active: bool = True, image_url: str = None,
                     sort_order: int = 0) -> bool:
@@ -3337,11 +3347,13 @@ class PostgreSQLDatabaseWrapper:
             services_json = json.dumps(services or [])
             cursor.execute("""
                 INSERT INTO packages (id, company_id, name, description, services,
-                                     price_override, price_max_override, use_when_uncertain,
+                                     price_override, price_max_override, duration_override,
+                                     use_when_uncertain,
                                      clarifying_question, active, image_url, sort_order)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (package_id, company_id, name, description, services_json,
-                  price_override, price_max_override, use_when_uncertain,
+                  price_override, price_max_override, duration_override,
+                  use_when_uncertain,
                   clarifying_question, 1 if active else 0, image_url, sort_order))
             
             conn.commit()
@@ -3361,7 +3373,8 @@ class PostgreSQLDatabaseWrapper:
         
         try:
             allowed_fields = ['name', 'description', 'services', 'price_override',
-                             'price_max_override', 'use_when_uncertain', 'clarifying_question',
+                             'price_max_override', 'duration_override', 'use_when_uncertain',
+                             'clarifying_question',
                              'active', 'image_url', 'sort_order']
             
             fields = []

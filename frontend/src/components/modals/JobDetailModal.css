@@ -939,3 +939,56 @@
     margin-top: 0.75rem;
   }
 }
+
+/* Service/Package link button in job detail */
+.jdm-service-link {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.85rem;
+  border: 1px solid #e0e7ff; background: #eef2ff; color: #4338ca;
+  cursor: pointer; transition: all 0.15s; font-family: inherit; font-weight: 500;
+}
+.jdm-service-link:hover { background: #e0e7ff; border-color: #a5b4fc; }
+.jdm-service-link i { font-size: 0.7rem; }
+.jdm-chevron { font-size: 0.55rem !important; margin-left: 0.15rem; color: #818cf8; }
+.jdm-service-link-package { border-color: #ede9fe; background: #f5f3ff; color: #7c3aed; }
+.jdm-service-link-package:hover { background: #ede9fe; border-color: #c4b5fd; }
+
+/* Expandable service detail card */
+.jdm-service-detail {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: 0.75rem; margin: 0.5rem 0;
+  animation: jdmSlideDown 0.2s ease;
+}
+@keyframes jdmSlideDown { from { opacity: 0; max-height: 0; } to { opacity: 1; max-height: 400px; } }
+
+.jdm-service-detail-img {
+  width: 100%; height: 100px; object-fit: cover; border-radius: 6px; margin-bottom: 0.6rem;
+}
+
+.jdm-service-detail-grid { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.jdm-sd-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.2rem 0; border-bottom: 1px solid #f1f5f9;
+}
+.jdm-sd-label { font-size: 0.76rem; color: #64748b; }
+.jdm-sd-value { font-size: 0.8rem; color: #1e293b; font-weight: 500; }
+
+.jdm-sd-desc { font-size: 0.78rem; color: #64748b; margin: 0 0 0.3rem; line-height: 1.4; }
+
+.jdm-sd-badge {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.2rem 0.5rem; border-radius: 5px; font-size: 0.72rem;
+  background: #fef3c7; color: #92400e; margin-top: 0.15rem;
+}
+.jdm-sd-badge i { font-size: 0.6rem; }
+
+.jdm-sd-services { margin-top: 0.15rem; }
+.jdm-sd-service-flow {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem; margin-top: 0.25rem;
+}
+.jdm-sd-step {
+  font-size: 0.74rem; color: #334155; padding: 0.12rem 0.4rem;
+  background: white; border: 1px solid #e2e8f0; border-radius: 4px;
+}
+.jdm-sd-arrow { font-size: 0.5rem; color: #94a3b8; margin: 0 0.05rem; }

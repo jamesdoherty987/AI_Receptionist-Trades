@@ -157,3 +157,74 @@
   .jt-info-item { font-size: 0.72rem; }
   .jt-cards { gap: 0.4rem; }
 }
+
+/* Service/Package chip on job card */
+.jt-service-chip {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.15rem 0.5rem; border-radius: 5px; font-size: 0.76rem;
+  border: 1px solid #e2e8f0; background: #f8fafc; color: #334155;
+  cursor: pointer; transition: all 0.15s; font-family: inherit;
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jt-service-chip:hover { background: #eef2ff; border-color: #a5b4fc; color: #4338ca; }
+.jt-service-chip i { font-size: 0.65rem; flex-shrink: 0; }
+.jt-service-chip-package { border-color: #ddd6fe; background: #faf5ff; }
+.jt-service-chip-package:hover { background: #f3e8ff; border-color: #c084fc; color: #7c3aed; }
+
+/* Service/Package popup overlay */
+.jt-service-popup-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;
+  animation: jtPopFadeIn 0.15s ease;
+}
+@keyframes jtPopFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.jt-service-popup {
+  background: white; border-radius: 12px; padding: 1.25rem;
+  max-width: 380px; width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  position: relative; animation: jtPopSlideUp 0.2s ease;
+}
+@keyframes jtPopSlideUp { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.jt-service-popup-close {
+  position: absolute; top: 0.6rem; right: 0.6rem;
+  background: none; border: none; color: #94a3b8; cursor: pointer;
+  font-size: 0.85rem; padding: 4px 6px; border-radius: 4px;
+}
+.jt-service-popup-close:hover { color: #475569; background: #f1f5f9; }
+
+.jt-service-popup-header {
+  display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.75rem;
+}
+.jt-service-popup-header > i { font-size: 1.1rem; color: #6366f1; }
+.jt-service-popup-header h4 { margin: 0; font-size: 1rem; color: #1e293b; }
+.jt-service-popup-type {
+  font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em;
+}
+
+.jt-service-popup-img {
+  width: 100%; height: 120px; object-fit: cover; border-radius: 8px; margin-bottom: 0.75rem;
+}
+
+.jt-service-popup-meta { display: flex; flex-direction: column; gap: 0.4rem; }
+
+.jt-popup-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.3rem 0; border-bottom: 1px solid #f1f5f9;
+}
+.jt-popup-label { font-size: 0.78rem; color: #64748b; }
+.jt-popup-value { font-size: 0.82rem; color: #1e293b; font-weight: 500; }
+
+.jt-popup-desc { font-size: 0.8rem; color: #64748b; margin: 0 0 0.3rem; line-height: 1.4; }
+
+.jt-popup-badge {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.2rem 0.5rem; border-radius: 5px; font-size: 0.72rem;
+  background: #fef3c7; color: #92400e; margin-top: 0.2rem;
+}
+.jt-popup-badge i { font-size: 0.65rem; }
+
+.jt-popup-services { margin-top: 0.2rem; }
+.jt-popup-service-list { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; margin-top: 0.3rem; }
+.jt-popup-service-step { font-size: 0.76rem; color: #334155; padding: 0.15rem 0.4rem; background: #f1f5f9; border-radius: 4px; }
+.jt-popup-arrow { font-size: 0.55rem; color: #94a3b8; margin: 0 0.1rem; }

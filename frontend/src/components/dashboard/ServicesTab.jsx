@@ -32,6 +32,7 @@ function ServicesTab() {
   const [viewMode, setViewMode] = useState('grid');
   const [formData, setFormData] = useState({ 
     name: '', 
+    description: '',
     price: '', 
     price_max: null,
     duration: '1440', 
@@ -39,7 +40,8 @@ function ServicesTab() {
     workers_required: '1',
     worker_restrictions: { type: 'all', worker_ids: [] },
     requires_callout: false,
-    package_only: false
+    package_only: false,
+    show_price_duration: false
   });
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, service: null });
 
@@ -89,6 +91,7 @@ function ServicesTab() {
       setShowAddForm(false);
       setFormData({ 
         name: '', 
+        description: '',
         price: '', 
         price_max: null,
         duration: '1440', 
@@ -96,7 +99,8 @@ function ServicesTab() {
         workers_required: '1',
         worker_restrictions: { type: 'all', worker_ids: [] },
         requires_callout: false,
-        package_only: false
+        package_only: false,
+        show_price_duration: false
       });
     },
     onError: () => addToast('Failed to add service', 'error'),
@@ -144,6 +148,7 @@ function ServicesTab() {
     
     createMutation.mutate({
       name: formData.name,
+      description: formData.description || null,
       price: Math.round((parseFloat(formData.price) || 0) * 100) / 100,
       price_max: formData.price_max && parseFloat(formData.price_max) > (parseFloat(formData.price) || 0) 
         ? Math.round(parseFloat(formData.price_max) * 100) / 100 
@@ -173,6 +178,7 @@ function ServicesTab() {
       id: service.id,
       data: {
         name: service.name,
+        description: service.description || null,
         price: Math.round((parseFloat(service.price) || 0) * 100) / 100,
         price_max: service.price_max && parseFloat(service.price_max) > (parseFloat(service.price) || 0)
           ? Math.round(parseFloat(service.price_max) * 100) / 100 
@@ -285,6 +291,62 @@ function ServicesTab() {
                 required
               />
             </div>
+            <div className="form-group form-group-wide">
+              <label>Description (optional)</label>
+              <textarea
+                className="form-input"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Brief description of this service"
+                rows={2}
+              />
+            </div>
+          </div>
+
+          <div className="callout-toggle-group">
+            <label>Package Only?</label>
+            <div className="callout-toggle-row">
+              <button
+                type="button"
+                className={`callout-toggle ${formData.package_only ? 'active' : ''}`}
+                onClick={() => setFormData({ ...formData, package_only: !formData.package_only })}
+                role="switch"
+                aria-checked={formData.package_only}
+              >
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">
+                {formData.package_only 
+                  ? 'Yes — only available as part of a package' 
+                  : 'No — available as a standalone service'}
+              </span>
+            </div>
+          </div>
+
+          {formData.package_only && (
+            <div className="callout-toggle-group">
+              <label>Set Price & Duration?</label>
+              <div className="callout-toggle-row">
+                <button
+                  type="button"
+                  className={`callout-toggle ${formData.show_price_duration ? 'active' : ''}`}
+                  onClick={() => setFormData({ ...formData, show_price_duration: !formData.show_price_duration })}
+                  role="switch"
+                  aria-checked={formData.show_price_duration || false}
+                >
+                  <span className="callout-toggle-slider" />
+                </button>
+                <span className="callout-toggle-label">
+                  {formData.show_price_duration 
+                    ? 'Yes — set individual price & duration' 
+                    : 'No — price & duration will come from the package'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {(!formData.package_only || formData.show_price_duration) && (
+          <div className="form-grid">
             <div className="form-group">
               <label>Price (€)</label>
               {formData.price_max !== null && formData.price_max !== undefined && (
@@ -345,6 +407,10 @@ function ServicesTab() {
                 ))}
               </select>
             </div>
+          </div>
+          )}
+
+          <div className="form-grid">
             <div className="form-group">
               <label>Workers Required</label>
               <div className="workers-input-wrapper">
@@ -392,26 +458,6 @@ function ServicesTab() {
                 {formData.requires_callout 
                   ? 'Yes — AI will book a callout visit instead of the full job' 
                   : 'No — book the full job directly'}
-              </span>
-            </div>
-          </div>
-
-          <div className="callout-toggle-group">
-            <label>Package Only?</label>
-            <div className="callout-toggle-row">
-              <button
-                type="button"
-                className={`callout-toggle ${formData.package_only ? 'active' : ''}`}
-                onClick={() => setFormData({ ...formData, package_only: !formData.package_only })}
-                role="switch"
-                aria-checked={formData.package_only}
-              >
-                <span className="callout-toggle-slider" />
-              </button>
-              <span className="callout-toggle-label">
-                {formData.package_only 
-                  ? 'Yes — only available as part of a package' 
-                  : 'No — available as a standalone service'}
               </span>
             </div>
           </div>
@@ -665,7 +711,8 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
       setEditData({
         ...service,
         price_max: hasRange ? service.price_max : null,
-        worker_restrictions: service.worker_restrictions || { type: 'all', worker_ids: [] }
+        worker_restrictions: service.worker_restrictions || { type: 'all', worker_ids: [] },
+        show_price_duration: service.package_only ? (parseFloat(service.price) > 0) : false
       });
     }
   }, [isEditing, service]);
@@ -692,6 +739,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
   };
 
   if (isEditing) {
+    const showPriceDuration = !editData.package_only || editData.show_price_duration;
     return (
       <div className="service-card editing">
         <div className="edit-form">
@@ -705,6 +753,60 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               placeholder="Service Name"
             />
           </div>
+          <div className="form-group">
+            <label>Description (optional)</label>
+            <textarea
+              className="form-input"
+              value={editData.description || ''}
+              onChange={(e) => setEditData({ ...editData, description: e.target.value })}
+              placeholder="Brief description of this service"
+              rows={2}
+            />
+          </div>
+
+          <div className="callout-toggle-group">
+            <label>Package Only?</label>
+            <div className="callout-toggle-row">
+              <button
+                type="button"
+                className={`callout-toggle ${editData.package_only ? 'active' : ''}`}
+                onClick={() => setEditData({ ...editData, package_only: !editData.package_only })}
+                role="switch"
+                aria-checked={editData.package_only}
+              >
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">
+                {editData.package_only 
+                  ? 'Yes — only available as part of a package' 
+                  : 'No — available as a standalone service'}
+              </span>
+            </div>
+          </div>
+
+          {editData.package_only && (
+            <div className="callout-toggle-group">
+              <label>Set Price & Duration?</label>
+              <div className="callout-toggle-row">
+                <button
+                  type="button"
+                  className={`callout-toggle ${editData.show_price_duration ? 'active' : ''}`}
+                  onClick={() => setEditData({ ...editData, show_price_duration: !editData.show_price_duration })}
+                  role="switch"
+                  aria-checked={editData.show_price_duration || false}
+                >
+                  <span className="callout-toggle-slider" />
+                </button>
+                <span className="callout-toggle-label">
+                  {editData.show_price_duration 
+                    ? 'Yes — set individual price & duration' 
+                    : 'No — price & duration will come from the package'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {showPriceDuration && (
           <div className="edit-row">
             <div className="form-group">
               <label>Price (€)</label>
@@ -788,6 +890,34 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               </div>
             </div>
           </div>
+          )}
+
+          {!showPriceDuration && (
+          <div className="edit-row">
+            <div className="form-group">
+              <label>Workers</label>
+              <div className="workers-input-wrapper compact">
+                <button 
+                  type="button" 
+                  className="workers-btn"
+                  onClick={() => setEditData({ ...editData, workers_required: Math.max(1, (editData.workers_required || 1) - 1) })}
+                  disabled={(editData.workers_required || 1) <= 1}
+                >
+                  <i className="fas fa-minus"></i>
+                </button>
+                <span className="workers-value">{editData.workers_required || 1}</span>
+                <button 
+                  type="button" 
+                  className="workers-btn"
+                  onClick={() => setEditData({ ...editData, workers_required: (editData.workers_required || 1) + 1 })}
+                  disabled={(editData.workers_required || 1) >= 10}
+                >
+                  <i className="fas fa-plus"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          )}
           
           <WorkerRestrictions
             restrictions={editData.worker_restrictions}
@@ -811,26 +941,6 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
                 {editData.requires_callout 
                   ? 'Yes — AI will book a callout visit instead of the full job' 
                   : 'No — book the full job directly'}
-              </span>
-            </div>
-          </div>
-
-          <div className="callout-toggle-group">
-            <label>Package Only?</label>
-            <div className="callout-toggle-row">
-              <button
-                type="button"
-                className={`callout-toggle ${editData.package_only ? 'active' : ''}`}
-                onClick={() => setEditData({ ...editData, package_only: !editData.package_only })}
-                role="switch"
-                aria-checked={editData.package_only}
-              >
-                <span className="callout-toggle-slider" />
-              </button>
-              <span className="callout-toggle-label">
-                {editData.package_only 
-                  ? 'Yes — only available as part of a package' 
-                  : 'No — available as a standalone service'}
               </span>
             </div>
           </div>
@@ -870,6 +980,9 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
       </div>
       <div className="service-content">
         <h3 className="service-title">{service.name || 'Unnamed Service'}</h3>
+        {service.description && (
+          <p className="service-description">{service.description}</p>
+        )}
         {isGrid && service.price > 0 && (
           <div className="service-grid-price">{formatPriceRange(service.price, service.price_max)}</div>
         )}
@@ -926,6 +1039,7 @@ function PackagesSection({ services, isSubscriptionActive }) {
     selectedServiceIds: [],
     price_override: null,
     price_max_override: null,
+    duration_override: null,
     use_when_uncertain: false,
   });
 
@@ -992,6 +1106,7 @@ function PackagesSection({ services, isSubscriptionActive }) {
       selectedServiceIds: [],
       price_override: null,
       price_max_override: null,
+      duration_override: null,
       use_when_uncertain: false,
     });
   };
@@ -1031,6 +1146,10 @@ function PackagesSection({ services, isSubscriptionActive }) {
       }
     }
 
+    if (pkgFormData.duration_override !== null && pkgFormData.duration_override !== undefined && pkgFormData.duration_override !== '') {
+      payload.duration_override = parseInt(pkgFormData.duration_override) || null;
+    }
+
     createPkgMutation.mutate(payload);
   };
 
@@ -1056,6 +1175,12 @@ function PackagesSection({ services, isSubscriptionActive }) {
     } else {
       payload.price_override = null;
       payload.price_max_override = null;
+    }
+
+    if (pkgData.duration_override !== null && pkgData.duration_override !== undefined && pkgData.duration_override !== '') {
+      payload.duration_override = parseInt(pkgData.duration_override) || null;
+    } else {
+      payload.duration_override = null;
     }
 
     updatePkgMutation.mutate({ id: pkgData.id, data: payload });
@@ -1186,7 +1311,7 @@ function PackagesSection({ services, isSubscriptionActive }) {
 }
 
 function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPending, toggleServiceSelection, moveService, getSelectedServiceDetails, isNew }) {
-  const { selected, totalDuration, totalPrice, totalPriceMax } = getSelectedServiceDetails(formData.selectedServiceIds);
+  const { selected } = getSelectedServiceDetails(formData.selectedServiceIds);
 
   return (
     <form className="package-form-card" onSubmit={onSubmit}>
@@ -1227,7 +1352,7 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
               />
               <span className="service-picker-name">{svc.name}</span>
               <span className="service-picker-meta">
-                {formatDuration(svc.duration_minutes)} · {formatPriceRange(svc.price, svc.price_max)}
+                {svc.duration_minutes ? formatDuration(svc.duration_minutes) : ''}{svc.price > 0 ? ` · ${formatPriceRange(svc.price, svc.price_max)}` : ''}
               </span>
             </label>
           ))}
@@ -1259,57 +1384,67 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
         )}
       </div>
 
-      {selected.length >= 2 && (
-        <div className="package-meta">
-          <span className="meta-item duration"><i className="fas fa-clock"></i> {formatDuration(totalDuration)}</span>
-        </div>
-      )}
-
-      <div className="form-group" style={{ marginTop: '0.75rem' }}>
-        <label>Price (€)</label>
-        {formData.price_max_override != null && (
-          <span className="price-from-label">from</span>
-        )}
-        <input
-          type="number"
-          className="form-input"
-          value={formData.price_override ?? (selected.length >= 2 ? totalPrice : '')}
-          onChange={(e) => setFormData({ ...formData, price_override: e.target.value === '' ? null : e.target.value })}
-          placeholder="0.00"
-          step="0.01"
-          min="0"
-        />
-        {selected.length >= 2 && formData.price_override == null && (
-          <span className="form-hint">Auto-calculated from services (€{totalPrice})</span>
-        )}
-        <div className="price-range-toggle-row">
-          <button
-            type="button"
-            className={`price-range-toggle ${formData.price_max_override != null ? 'active' : ''}`}
-            onClick={() => setFormData({ ...formData, price_max_override: formData.price_max_override != null ? null : (selected.length >= 2 && totalPriceMax > totalPrice ? totalPriceMax : '') })}
-            role="switch"
-            aria-checked={formData.price_max_override != null}
-          >
-            <span className="price-range-toggle-slider" />
-          </button>
-          <span className="price-range-toggle-label">Price range</span>
-        </div>
-        {formData.price_max_override != null && (
-          <div className="price-max-row">
-            <div className="price-max-field">
-              <span className="price-max-label">to</span>
-              <input
-                type="number"
-                className="form-input"
-                value={formData.price_max_override ?? ''}
-                onChange={(e) => setFormData({ ...formData, price_max_override: e.target.value === '' ? null : e.target.value })}
-                placeholder="Max price"
-                step="0.01"
-                min="0"
-              />
-            </div>
+      <div className="form-grid" style={{ marginTop: '0.75rem' }}>
+        <div className="form-group">
+          <label>Total Price (€) *</label>
+          {formData.price_max_override != null && (
+            <span className="price-from-label">from</span>
+          )}
+          <input
+            type="number"
+            className="form-input"
+            value={formData.price_override ?? ''}
+            onChange={(e) => setFormData({ ...formData, price_override: e.target.value === '' ? null : e.target.value })}
+            placeholder="0.00"
+            step="0.01"
+            min="0"
+          />
+          <div className="price-range-toggle-row">
+            <button
+              type="button"
+              className={`price-range-toggle ${formData.price_max_override != null ? 'active' : ''}`}
+              onClick={() => setFormData({ ...formData, price_max_override: formData.price_max_override != null ? null : '' })}
+              role="switch"
+              aria-checked={formData.price_max_override != null}
+            >
+              <span className="price-range-toggle-slider" />
+            </button>
+            <span className="price-range-toggle-label">Price range</span>
           </div>
-        )}
+          {formData.price_max_override != null && (
+            <div className="price-max-row">
+              <div className="price-max-field">
+                <span className="price-max-label">to</span>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={formData.price_max_override ?? ''}
+                  onChange={(e) => setFormData({ ...formData, price_max_override: e.target.value === '' ? null : e.target.value })}
+                  placeholder="Max price"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="form-group">
+          <label>Total Duration *</label>
+          <select
+            className="form-input"
+            value={formData.duration_override ?? ''}
+            onChange={(e) => setFormData({ ...formData, duration_override: e.target.value === '' ? null : e.target.value })}
+          >
+            <option value="">Select duration</option>
+            {Object.entries(DURATION_OPTIONS_GROUPED).map(([group, options]) => (
+              <optgroup key={group} label={group}>
+                {options.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="callout-toggle-group">
@@ -1361,6 +1496,7 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
     selectedServiceIds: [],
     price_override: null,
     price_max_override: null,
+    duration_override: null,
     use_when_uncertain: false,
   });
 
@@ -1377,6 +1513,7 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
         selectedServiceIds: serviceIds,
         price_override: pkg.price_override != null ? pkg.price_override : null,
         price_max_override: pkg.price_max_override != null ? pkg.price_max_override : null,
+        duration_override: pkg.duration_override != null ? pkg.duration_override : null,
         use_when_uncertain: pkg.use_when_uncertain || false,
       });
     }

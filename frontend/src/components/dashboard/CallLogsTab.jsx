@@ -15,12 +15,12 @@ const FILTERS = [
 
 const OUTCOME_LABELS = {
   booked: 'Booked', cancelled: 'Cancelled', rescheduled: 'Rescheduled',
-  enquiry: 'Enquiry', wrong_number: 'Wrong Number', hung_up: 'Hung Up', no_action: 'No Action',
+  enquiry: 'Enquiry', lost_job: 'Lost Job', wrong_number: 'Wrong Number', hung_up: 'Hung Up', no_action: 'No Action',
 };
 
 const OUTCOME_ICONS = {
   booked: 'fa-calendar-check', cancelled: 'fa-times-circle', rescheduled: 'fa-calendar-alt',
-  enquiry: 'fa-question-circle', wrong_number: 'fa-phone-slash',
+  enquiry: 'fa-question-circle', lost_job: 'fa-exclamation-triangle', wrong_number: 'fa-phone-slash',
   hung_up: 'fa-phone-slash', no_action: 'fa-minus-circle',
 };
 

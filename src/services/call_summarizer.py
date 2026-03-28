@@ -391,16 +391,16 @@ CALL_LOG_FUNCTION = {
             },
             "call_outcome": {
                 "type": "string",
-                "enum": ["booked", "cancelled", "rescheduled", "enquiry", "wrong_number", "hung_up", "no_action"],
-                "description": "What happened on the call: booked (new appointment made), cancelled (existing appointment cancelled), rescheduled (appointment moved), enquiry (asked questions but didn't book), wrong_number (caller had wrong number), hung_up (caller disconnected early), no_action (call completed but no specific action taken)."
+                "enum": ["booked", "cancelled", "rescheduled", "lost_job", "enquiry", "wrong_number", "hung_up", "no_action"],
+                "description": "What happened on the call. Use 'booked' if a new appointment was made. Use 'cancelled' if an existing appointment was cancelled. Use 'rescheduled' if an appointment was moved. Use 'lost_job' if the caller had ANY interest in getting work/service done but did NOT end up booking — this includes: caller asked about a specific service or job, caller described a problem they need fixed, caller asked about availability or pricing for a service, caller said they'd call back or think about it, no suitable availability was found, caller hung up or left during the booking process, caller seemed hesitant or was put off. Use 'enquiry' ONLY for purely informational calls where the caller had absolutely NO intent to get work done — e.g., asking for business hours, asking for a quote on a hypothetical future project with no urgency, asking if you service their area with no specific job in mind, or following up on an existing booking. Use 'wrong_number' if the caller had the wrong number. Use 'hung_up' if the caller disconnected very early before any real conversation. Use 'no_action' if the call completed but doesn't fit any other category. When in doubt between 'enquiry' and 'lost_job', prefer 'lost_job' — most callers who discuss a service need are potential lost jobs, not mere enquiries."
             },
             "is_lost_job": {
                 "type": "boolean",
-                "description": "True if the caller wanted a service or job done but did NOT end up booking. Examples: caller asked about a service but hung up, no availability was found, caller said they'd call back, caller was put off by price/wait time, caller got frustrated. False if: a booking was made, it was a cancellation/reschedule, wrong number, or the caller was just making a general enquiry with no intent to book."
+                "description": "True if the caller had ANY level of interest in getting a service or job done but did NOT end up with a confirmed booking. This should be true whenever: the caller described a problem or service need, the caller asked about availability or pricing for a specific job, the caller said they'd call back or think about it, no availability was found for what they wanted, the caller hung up or left during the booking flow, the caller seemed put off by price or wait time, or the caller asked about a service but didn't commit. False ONLY if: a booking was successfully made, it was purely a cancellation/reschedule, it was a wrong number, the caller hung up before any conversation, or the caller was asking a purely informational question with genuinely zero intent to book any work (e.g., 'what are your hours?'). Err on the side of marking as true — if the caller mentioned any specific service need or problem, this should be true."
             },
             "lost_job_reason": {
                 "type": "string",
-                "description": "If is_lost_job is true, briefly explain why the job was lost (e.g., 'No availability on requested date', 'Caller hung up during booking', 'Caller said they would call back', 'Caller seemed unsatisfied with wait time'). Leave empty string if not a lost job."
+                "description": "If is_lost_job is true, briefly explain why the job was lost (e.g., 'No availability on requested date', 'Caller hung up during booking', 'Caller said they would call back', 'Caller seemed unsatisfied with wait time', 'Caller asked about service but did not commit'). Leave empty string if not a lost job."
             },
             "ai_summary": {
                 "type": "string",
@@ -444,7 +444,7 @@ def generate_call_log_summary(conversation_log: List[Dict[str, Any]]) -> Optiona
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You extract a brief summary and caller details from phone call transcripts for a trades/service business. Be concise and factual. If information wasn't mentioned, leave the field as an empty string."},
+                {"role": "system", "content": "You extract a brief summary and caller details from phone call transcripts for a trades/service business. Be concise and factual. If information wasn't mentioned, leave the field as an empty string.\n\nIMPORTANT classification guidance:\n- If the caller mentioned ANY specific problem, service need, or job they want done and did NOT end up with a confirmed booking, classify as call_outcome='lost_job' with is_lost_job=true. This is the most common scenario for unbooked calls.\n- Only use call_outcome='enquiry' for purely informational calls where the caller had genuinely NO intent to get work done (e.g., asking business hours, general questions about the company, following up on an existing booking).\n- When in doubt between 'enquiry' and 'lost_job', ALWAYS choose 'lost_job'. A caller who discusses a specific service need is a lost job, not an enquiry."},
                 {"role": "user", "content": f"Summarize this call:\n\n{transcript}"}
             ],
             tools=[{"type": "function", "function": CALL_LOG_FUNCTION}],

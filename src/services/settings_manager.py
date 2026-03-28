@@ -361,6 +361,7 @@ class SettingsManager:
                 workers_required=service.get('workers_required', 1),
                 worker_restrictions=service.get('worker_restrictions'),
                 requires_callout=service.get('requires_callout', False),
+                package_only=service.get('package_only', False),
                 company_id=company_id
             )
         except Exception as e:
@@ -655,11 +656,20 @@ class SettingsManager:
         return resolved
     
     def calculate_package_duration(self, package: Dict[str, Any], company_id: int = None) -> Dict[str, Any]:
-        """Calculate total duration from constituent services.
+        """Calculate total duration, respecting duration_override if set.
         
         Returns dict with min_minutes, max_minutes, and human-readable label.
         """
         from src.services.calendar_tools import format_duration_label
+        
+        duration_override = package.get('duration_override')
+        if duration_override is not None:
+            label = format_duration_label(duration_override) if duration_override > 0 else "unknown"
+            return {
+                'min_minutes': duration_override,
+                'max_minutes': duration_override,
+                'label': label,
+            }
         
         services = package.get('services', [])
         if isinstance(services, str):
@@ -754,6 +764,11 @@ class SettingsManager:
         if price_max_override is not None and price_max_override < 0:
             return "Price max override must be non-negative"
 
+        # Duration override validation
+        duration_override = package_data.get('duration_override')
+        if duration_override is not None and duration_override < 0:
+            return "Duration override must be non-negative"
+
         # Validate all service_ids exist in the same company (requires DB)
         from src.services.database import get_database
         db = get_database()
@@ -793,6 +808,7 @@ class SettingsManager:
                 services=services,
                 price_override=package_data.get('price_override'),
                 price_max_override=package_data.get('price_max_override'),
+                duration_override=package_data.get('duration_override'),
                 use_when_uncertain=package_data.get('use_when_uncertain', False),
                 clarifying_question=package_data.get('clarifying_question'),
                 active=package_data.get('active', True),
@@ -835,7 +851,7 @@ class SettingsManager:
         # Build kwargs for update
         update_kwargs = {}
         allowed = ['name', 'description', 'services', 'price_override', 'price_max_override',
-                    'use_when_uncertain', 'clarifying_question', 'active', 'image_url', 'sort_order']
+                    'duration_override', 'use_when_uncertain', 'clarifying_question', 'active', 'image_url', 'sort_order']
         for key in allowed:
             if key in package_data:
                 update_kwargs[key] = package_data[key]

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   getBooking, 
@@ -17,7 +17,9 @@ import {
   getJobMaterials,
   addJobMaterial,
   deleteJobMaterial,
-  getMaterials
+  getMaterials,
+  getServicesMenu,
+  getPackages
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
@@ -47,6 +49,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const [showAddMaterial, setShowAddMaterial] = useState(false);
   const [materialSearch, setMaterialSearch] = useState('');
   const [customMaterial, setCustomMaterial] = useState({ name: '', unit_price: '', quantity: '1', unit: 'each' });
+  const [showServiceDetail, setShowServiceDetail] = useState(false);
 
   const { data: job, isLoading } = useQuery({
     queryKey: ['booking', jobId],
@@ -127,6 +130,33 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     staleTime: 60 * 1000,
   });
 
+  const { data: servicesMenu } = useQuery({
+    queryKey: ['services-menu'],
+    queryFn: async () => { const r = await getServicesMenu(); return r.data; },
+    enabled: isOpen && !!job,
+    staleTime: 60 * 1000,
+  });
+
+  const { data: packagesRaw } = useQuery({
+    queryKey: ['packages'],
+    queryFn: async () => { const r = await getPackages(); return r.data; },
+    enabled: isOpen && !!job,
+    staleTime: 60 * 1000,
+  });
+
+  const matchedServiceOrPackage = useMemo(() => {
+    if (!job) return null;
+    const serviceType = (job.service_type || job.service || '').toLowerCase().trim();
+    if (!serviceType) return null;
+    const allServices = servicesMenu?.services || [];
+    const allPackages = packagesRaw?.packages || packagesRaw || [];
+    const svc = allServices.find(s => s.name?.toLowerCase().trim() === serviceType);
+    if (svc) return { type: 'service', data: svc };
+    const pkg = allPackages.find(p => p.name?.toLowerCase().trim() === serviceType);
+    if (pkg) return { type: 'package', data: pkg };
+    return null;
+  }, [job, servicesMenu, packagesRaw]);
+
   const addMaterialMut = useMutation({
     mutationFn: (data) => addJobMaterial(jobId, data),
     onSuccess: () => {
@@ -175,6 +205,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     if (!isOpen) {
       setIsEditing(false);
       setShowAddMaterial(false);
+      setShowServiceDetail(false);
       setMaterialSearch('');
       setCustomMaterial({ name: '', unit_price: '', quantity: '1', unit: 'each' });
     }
@@ -596,9 +627,96 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     </div>
                     <div className="info-cell">
                       <span className="info-label">Service</span>
-                      <span className="info-value">{job.service_type || job.service || 'N/A'}</span>
+                      {matchedServiceOrPackage ? (
+                        <button
+                          className={`jdm-service-link jdm-service-link-${matchedServiceOrPackage.type}`}
+                          onClick={() => setShowServiceDetail(!showServiceDetail)}
+                        >
+                          <i className={`fas ${matchedServiceOrPackage.type === 'package' ? 'fa-box' : 'fa-wrench'}`}></i>
+                          {job.service_type || job.service}
+                          <i className={`fas fa-chevron-${showServiceDetail ? 'up' : 'down'} jdm-chevron`}></i>
+                        </button>
+                      ) : (
+                        <span className="info-value">{job.service_type || job.service || 'N/A'}</span>
+                      )}
                     </div>
                   </div>
+                  {showServiceDetail && matchedServiceOrPackage && (
+                    <div className="jdm-service-detail">
+                      {matchedServiceOrPackage.data.image_url && (
+                        <img src={matchedServiceOrPackage.data.image_url} alt={matchedServiceOrPackage.data.name} className="jdm-service-detail-img" />
+                      )}
+                      <div className="jdm-service-detail-grid">
+                        {matchedServiceOrPackage.type === 'service' ? (
+                          <>
+                            {matchedServiceOrPackage.data.description && (
+                              <p className="jdm-sd-desc">{matchedServiceOrPackage.data.description}</p>
+                            )}
+                            {matchedServiceOrPackage.data.price > 0 && (
+                              <div className="jdm-sd-item">
+                                <span className="jdm-sd-label">Price</span>
+                                <span className="jdm-sd-value">
+                                  €{parseFloat(matchedServiceOrPackage.data.price).toFixed(2)}
+                                  {matchedServiceOrPackage.data.price_max && parseFloat(matchedServiceOrPackage.data.price_max) > parseFloat(matchedServiceOrPackage.data.price) && ` – €${parseFloat(matchedServiceOrPackage.data.price_max).toFixed(2)}`}
+                                </span>
+                              </div>
+                            )}
+                            {matchedServiceOrPackage.data.duration_minutes > 0 && (
+                              <div className="jdm-sd-item">
+                                <span className="jdm-sd-label">Duration</span>
+                                <span className="jdm-sd-value">{formatDuration(matchedServiceOrPackage.data.duration_minutes)}</span>
+                              </div>
+                            )}
+                            {matchedServiceOrPackage.data.workers_required > 1 && (
+                              <div className="jdm-sd-item">
+                                <span className="jdm-sd-label">Workers needed</span>
+                                <span className="jdm-sd-value">{matchedServiceOrPackage.data.workers_required}</span>
+                              </div>
+                            )}
+                            {matchedServiceOrPackage.data.requires_callout && (
+                              <div className="jdm-sd-badge"><i className="fas fa-phone-alt"></i> Requires callout</div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {matchedServiceOrPackage.data.description && (
+                              <p className="jdm-sd-desc">{matchedServiceOrPackage.data.description}</p>
+                            )}
+                            {matchedServiceOrPackage.data.services?.length > 0 && (
+                              <div className="jdm-sd-services">
+                                <span className="jdm-sd-label">Services</span>
+                                <div className="jdm-sd-service-flow">
+                                  {[...matchedServiceOrPackage.data.services]
+                                    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+                                    .map((s, i) => (
+                                      <span key={s.id || i} className="jdm-sd-step">
+                                        {i > 0 && <i className="fas fa-arrow-right jdm-sd-arrow"></i>}
+                                        {s.name}
+                                      </span>
+                                    ))}
+                                </div>
+                              </div>
+                            )}
+                            {(matchedServiceOrPackage.data.total_price > 0 || matchedServiceOrPackage.data.price_override > 0) && (
+                              <div className="jdm-sd-item">
+                                <span className="jdm-sd-label">Package price</span>
+                                <span className="jdm-sd-value">€{parseFloat(matchedServiceOrPackage.data.price_override || matchedServiceOrPackage.data.total_price).toFixed(2)}</span>
+                              </div>
+                            )}
+                            {(matchedServiceOrPackage.data.total_duration_minutes > 0 || matchedServiceOrPackage.data.duration_override > 0) && (
+                              <div className="jdm-sd-item">
+                                <span className="jdm-sd-label">Total duration</span>
+                                <span className="jdm-sd-value">{formatDuration(matchedServiceOrPackage.data.duration_override || matchedServiceOrPackage.data.total_duration_minutes)}</span>
+                              </div>
+                            )}
+                            {matchedServiceOrPackage.data.use_when_uncertain && (
+                              <div className="jdm-sd-badge"><i className="fas fa-search"></i> Requires investigation</div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="info-row">
                     {job.property_type && (
                       <div className="info-cell">

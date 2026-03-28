@@ -64,6 +64,7 @@
 .call-outcome-badge.hung_up { background: #f1f5f9; color: #94a3b8; }
 .call-outcome-badge.wrong_number { background: #f1f5f9; color: #94a3b8; }
 .call-outcome-badge.no_action { background: #f1f5f9; color: #64748b; }
+.call-outcome-badge.lost_job { background: #fef3c7; color: #b45309; }
 
 .call-log-duration { font-size: 0.75rem; color: #94a3b8; }
 
