@@ -1324,7 +1324,7 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
             className="form-input"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            placeholder="e.g., Roof Leak Investigation"
+            placeholder="e.g., Leak Investigation and Fix"
             required
           />
         </div>
