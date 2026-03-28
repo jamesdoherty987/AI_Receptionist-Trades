@@ -47,7 +47,7 @@ BOOKING FLOW
 3. Get name → SPELL BACK FULL NAME (e.g., "That's [Spell Name], correct?") → wait YES
 4. If NO → ask "Can you spell that for me?" → they spell → confirm again
 5. Call lookup_customer with FULL NAME (first + last) — ALWAYS do this BEFORE asking for eircode/address
-6. IF RETURNING CUSTOMER (lookup found them) Go to step 6a, IF NEW CUSTOMER go to step 6b
+6. IF RETURNING CUSTOMER (lookup found them) Go to step 7a, IF NEW CUSTOMER go to step 7b
 
 7a. • Use stored data eg. Eircode/Address etc... - DON'T re-ask info you have
     • ALWAYS confirm stored address: "Is it still the same address, [stored address]?" → wait YES/NO (this is fine — it's already verified data from the system)
@@ -56,7 +56,7 @@ BOOKING FLOW
 
 7b. • Phone: Confirm caller ID number by spelling it out: "Is [caller ID number] a good number?"
     • If NO → ask for their preferred number
-    • Location: Ask for eircode first → if they don't know, IMMEDIATELY ask for full address (Don't need both, just Eircode preferred)
+    • Location: Ask for eircode first → if they don't know, IMMEDIATELY ask for full address (Don't need both, just Eircode preferred). If they response to your question about eircode by saying something like 'yes my eircode is [eircode]', then only ask then just repeat the eircode back as noraml to confirm it's correct (This is mentioned inthe next bullet point)
     • ALWAYS spell out eircode character by character before proceeding. If they gave a full address instead, do NOT repeat the address back. The system will verify it after the call.
 
 8. Call get_next_available with job_description → system returns 2-4 available days

@@ -2205,6 +2205,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         'score': score,
                         'description': svc.get('description', ''),
                         'requires_investigation': False,
+                        'requires_callout': svc.get('requires_callout', False),
+                        'requires_quote': svc.get('requires_quote', False),
                         'duration_minutes': svc.get('duration_minutes', 0),
                         'price': svc.get('price', 0),
                     })
@@ -2255,6 +2257,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     line += f" — {m['description'][:80]}"
                 if m.get('requires_investigation'):
                     line += " [REQUIRES INVESTIGATION]"
+                if m.get('requires_callout'):
+                    line += " [CALLOUT REQUIRED]"
+                if m.get('requires_quote'):
+                    line += " [QUOTE REQUIRED]"
                 if m.get('services_included'):
                     line += f" — includes: {m['services_included']}"
                 match_lines.append(line)
