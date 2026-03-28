@@ -1163,35 +1163,52 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
         </div>
       )}
 
-      {/* Package Price — auto-fills from services sum, editable */}
-      <div className="form-grid" style={{ marginTop: '0.75rem' }}>
-        <div className="form-group">
-          <label>Price (€)</label>
-          <input
-            type="number"
-            className="form-input"
-            value={formData.price_override ?? (selected.length >= 2 ? totalPrice : '')}
-            onChange={(e) => setFormData({ ...formData, price_override: e.target.value === '' ? null : e.target.value })}
-            placeholder="0.00"
-            step="0.01"
-            min="0"
-          />
-          {selected.length >= 2 && formData.price_override == null && (
-            <span className="form-hint">Auto-calculated from services (€{totalPrice})</span>
-          )}
+      {/* Package Price — auto-fills from services sum, with price range toggle */}
+      <div className="form-group" style={{ marginTop: '0.75rem' }}>
+        <label>Price (€)</label>
+        {formData.price_max_override != null && (
+          <span className="price-from-label">from</span>
+        )}
+        <input
+          type="number"
+          className="form-input"
+          value={formData.price_override ?? (selected.length >= 2 ? totalPrice : '')}
+          onChange={(e) => setFormData({ ...formData, price_override: e.target.value === '' ? null : e.target.value })}
+          placeholder="0.00"
+          step="0.01"
+          min="0"
+        />
+        {selected.length >= 2 && formData.price_override == null && (
+          <span className="form-hint">Auto-calculated from services (€{totalPrice})</span>
+        )}
+        <div className="price-range-toggle-row">
+          <button
+            type="button"
+            className={`price-range-toggle ${formData.price_max_override != null ? 'active' : ''}`}
+            onClick={() => setFormData({ ...formData, price_max_override: formData.price_max_override != null ? null : (selected.length >= 2 && totalPriceMax > totalPrice ? totalPriceMax : '') })}
+            role="switch"
+            aria-checked={formData.price_max_override != null}
+          >
+            <span className="price-range-toggle-slider" />
+          </button>
+          <span className="price-range-toggle-label">Price range</span>
         </div>
-        <div className="form-group">
-          <label>Max Price (€, optional)</label>
-          <input
-            type="number"
-            className="form-input"
-            value={formData.price_max_override ?? (selected.length >= 2 && totalPriceMax > totalPrice ? totalPriceMax : '')}
-            onChange={(e) => setFormData({ ...formData, price_max_override: e.target.value === '' ? null : e.target.value })}
-            placeholder="Max price"
-            step="0.01"
-            min="0"
-          />
-        </div>
+        {formData.price_max_override != null && (
+          <div className="price-max-row">
+            <div className="price-max-field">
+              <span className="price-max-label">to</span>
+              <input
+                type="number"
+                className="form-input"
+                value={formData.price_max_override ?? ''}
+                onChange={(e) => setFormData({ ...formData, price_max_override: e.target.value === '' ? null : e.target.value })}
+                placeholder="Max price"
+                step="0.01"
+                min="0"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Book when uncertain toggle */}
