@@ -359,30 +359,6 @@ def load_system_prompt(company_id=None):
             print(f"[WARNING] Error loading packages: {e}")
             packages_list = []
         
-        # Conditionally inject packages clarifying rules into prompt template
-        # Only include when active packages exist (Task 6.3)
-        if packages_list:
-            packages_rules = """PACKAGES (multi-service bundles for complex/ambiguous issues)
-• When a caller's issue is ambiguous or clearly needs multiple steps, suggest the matching package
-• Book the PACKAGE — the system handles the total duration automatically
-• Mention the package name and briefly what it includes
-• Quote the package price range if available
-
-CONFIDENCE-BASED CLARIFYING RULES:
-• If the caller's issue CLEARLY matches one service (high confidence), book it directly — no questions needed
-  Example: "I need my toilet replaced" → book Toilet Replacement immediately
-• If the issue COULD match multiple services or a package (grey zone), ask ONE clarifying question to narrow it down
-  Example: "I have a leak" → could be Toilet Leak Repair OR Roof Leak Investigation package → ask ONE question
-• If a package is marked [USE WHEN ISSUE IS UNCERTAIN], prefer it when the caller can't pinpoint the exact problem
-• When asking a clarifying question, think about what would help distinguish between the matching services/packages — e.g., "Do you know where the leak is coming from?" or "Is this for a specific room or the whole house?"
-• MAXIMUM ONE clarifying question — do NOT interrogate the caller or slow down the call
-• If still uncertain after one question, book the [USE WHEN ISSUE IS UNCERTAIN] package or fall back to General Service
-
-"""
-            prompt = prompt.replace("{{PACKAGES_CLARIFYING_RULES}}\n", packages_rules)
-        else:
-            prompt = prompt.replace("{{PACKAGES_CLARIFYING_RULES}}\n", "")
-        
         # Build services list from menu (exclude package_only services)
         services_list = []
         for service in services_menu.get('services', []):
