@@ -1859,14 +1859,29 @@ TOOL RULES:
                 # regardless of whether the LLM remembers to pass them
                 # BUT: if the caller asks for the "soonest" / "earliest" / "closest"
                 # date, we should NOT skip — they want to circle back to the nearest option
+                # ALSO: if the caller is SELECTING a specific date (e.g., "the 31st of March"),
+                # don't inject skip dates — they're choosing from what was offered, not browsing
                 if tool_name in ('search_availability', 'search_reschedule_availability', 'get_next_available') and call_state and call_state.suggested_dates:
                     if not arguments.get('previously_suggested_dates'):
                         query_text = (arguments.get('query') or '').lower()
                         soonest_patterns = ['soonest', 'earliest', 'closest', 'first available', 'nearest',
                                             'as soon as', 'quickest', 'next available', 'asap']
                         wants_soonest = any(p in query_text for p in soonest_patterns)
+                        
+                        # Detect if the caller is selecting a specific date (has a day number with ordinal suffix
+                        # or a day number adjacent to a month name). Bare numbers like "2 weeks" or "after 4pm" should NOT match.
+                        # e.g., "31st of March", "the 7th", "April 2nd", "Tuesday the 15th", "March 31"
+                        month_pattern = '(?:january|february|march|april|may|june|july|august|september|october|november|december)'
+                        has_specific_date = bool(
+                            re.search(r'\d{1,2}(?:st|nd|rd|th)\b', query_text) or  # ordinal: "31st", "7th"
+                            re.search(month_pattern + r'\s+\d{1,2}\b', query_text) or  # "March 31", "April 7"
+                            re.search(r'\d{1,2}\s+(?:of\s+)?' + month_pattern, query_text)  # "31 of March", "7 march"
+                        )
+                        
                         if wants_soonest:
                             print(f"   🔧 [TOOL_EXEC] Caller wants soonest — NOT injecting skip dates, searching from start")
+                        elif has_specific_date:
+                            print(f"   🔧 [TOOL_EXEC] Caller selecting specific date — NOT injecting skip dates")
                         else:
                             arguments['previously_suggested_dates'] = list(call_state.suggested_dates)
                             print(f"   🔧 [TOOL_EXEC] Auto-injected {len(call_state.suggested_dates)} previously suggested dates from call state")

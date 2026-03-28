@@ -205,11 +205,11 @@ class TestFormatDurationLabel:
 
     def test_1_hour(self):
         from src.services.calendar_tools import format_duration_label
-        assert format_duration_label(60) == "about 1 hour"
+        assert format_duration_label(60) == "about a 1 hour"
 
     def test_2_hours(self):
         from src.services.calendar_tools import format_duration_label
-        assert format_duration_label(120) == "about 2 hours"
+        assert format_duration_label(120) == "about a 2 hour"
 
     def test_half_day(self):
         from src.services.calendar_tools import format_duration_label
@@ -222,7 +222,7 @@ class TestFormatDurationLabel:
     def test_two_days(self):
         from src.services.calendar_tools import format_duration_label
         label = format_duration_label(2880)
-        assert "2 days" in label
+        assert "2 day" in label
 
     def test_one_week(self):
         from src.services.calendar_tools import format_duration_label

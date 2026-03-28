@@ -90,16 +90,19 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
         <div className="tabs-header">
           {groupedTabs.map((group, gi) => (
             <div key={group.name} className="tab-group">
-              {group.tabs.map((tab) => (
-                <button
-                  key={tab.index}
-                  className={`tab-button ${activeTab === tab.index ? 'active' : ''}`}
-                  onClick={() => setActiveTab(tab.index)}
-                >
-                  {tab.icon && <i className={tab.icon}></i>}
-                  {tab.label}
-                </button>
-              ))}
+              {group.name && <span className="tab-group-label">{group.name}</span>}
+              <div className="tab-group-buttons">
+                {group.tabs.map((tab) => (
+                  <button
+                    key={tab.index}
+                    className={`tab-button ${activeTab === tab.index ? 'active' : ''}`}
+                    onClick={() => setActiveTab(tab.index)}
+                  >
+                    {tab.icon && <i className={tab.icon}></i>}
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
               {gi < groupedTabs.length - 1 && <span className="tab-group-divider" />}
             </div>
           ))}

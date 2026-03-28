@@ -972,8 +972,15 @@ def format_duration_label(duration_minutes: int) -> str:
         return "a full day"
     else:
         hours = duration_minutes / 60
-        if hours == int(hours):
-            return f"about a {int(hours)} hour{'s' if hours != 1 else ''}"
+        whole = int(hours)
+        fraction = hours - whole
+        # Convert .5 to "and a half" for natural TTS speech
+        if abs(fraction - 0.5) < 0.01:
+            if whole == 0:
+                return "about a half hour"
+            return f"about a {whole} and a half hour"
+        elif hours == whole:
+            return f"about a {whole} hour"
         return f"about a {hours:.1f} hour"
 
 
@@ -3154,10 +3161,37 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         year = today.year
                         if month_num < today.month:
                             year += 1  # Next year if month has passed
-                        start_date = datetime(year, month_num, 1)
-                        end_date = start_date + timedelta(days=14)
-                        used_fast_path = True
-                        logger.info(f"[SEARCH_AVAIL] Fast path: month '{month_name}' -> {start_date.date()} to {end_date.date()}")
+                        
+                        # Check if a specific day number is mentioned (e.g., "31st of March", "the 15th of April", "March 15")
+                        # Require ordinal suffix OR the number to be adjacent to "of"/month name
+                        # to avoid matching "2 weeks in march" as day 2
+                        day_match = re.search(r'(\d{1,2})(?:st|nd|rd|th)', query_lower)  # ordinal: "31st", "15th"
+                        if not day_match:
+                            # Try "month day" pattern: "march 15", "april 7"
+                            day_match = re.search(month_name + r'\s+(\d{1,2})\b', query_lower)
+                        if not day_match:
+                            # Try "day of month" pattern: "15 of march", "7 march"
+                            day_match = re.search(r'(\d{1,2})\s+(?:of\s+)?' + month_name, query_lower)
+                        if day_match:
+                            specific_day = int(day_match.group(1))
+                            if 1 <= specific_day <= 31:
+                                try:
+                                    # Target the specific date, search that day +/- 1 day
+                                    target_date = datetime(year, month_num, specific_day)
+                                    start_date = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                                    end_date = start_date  # Single day search
+                                    used_fast_path = True
+                                    logger.info(f"[SEARCH_AVAIL] Fast path: specific date '{specific_day} {month_name}' -> {start_date.date()}")
+                                    break
+                                except ValueError:
+                                    pass  # Invalid date (e.g., Feb 31), fall through
+                        
+                        # No specific day — search first 2 weeks of the month
+                        if not used_fast_path:
+                            start_date = datetime(year, month_num, 1)
+                            end_date = start_date + timedelta(days=14)
+                            used_fast_path = True
+                            logger.info(f"[SEARCH_AVAIL] Fast path: month '{month_name}' -> {start_date.date()} to {end_date.date()}")
                         break
             
             # Fast path: "the week after next" or "in 2 weeks"
@@ -4489,13 +4523,13 @@ Return ONLY valid JSON, no explanation."""
             if matched_job.get('is_full_day'):
                 return {
                     "success": True,
-                    "message": f"Thats all done there,I've cancelled the booking for {matched_name} on {parsed_date.strftime('%A, %B %d')}. Let me know if you need anything else.",
+                    "message": f"Thats all done there, I've cancelled the booking for {matched_name} on {parsed_date.strftime('%A, %B %d')}. Let me know if you need anything else.",
                     "voice_instruction": "Confirm the cancellation warmly and naturally. Ask if there's anything else you can help with. Use casual Irish tone — e.g. 'Grand, that's all taken care of' or 'No problem, that's cancelled for you'."
                 }
             else:
                 return {
                     "success": True,
-                    "message": f"Thats all done there,I've cancelled the booking for {matched_name} at {time_info} on {parsed_date.strftime('%A, %B %d')}. Let me know if you need anything else.",
+                    "message": f"Thats all done there, I've cancelled the booking for {matched_name} at {time_info} on {parsed_date.strftime('%A, %B %d')}. Let me know if you need anything else.",
                     "voice_instruction": "Confirm the cancellation warmly and naturally. Ask if there's anything else you can help with. Use casual Irish tone — e.g. 'Grand, that's all taken care of' or 'No problem, that's cancelled for you'."
                 }
         

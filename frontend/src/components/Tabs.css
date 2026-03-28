@@ -16,6 +16,23 @@
 
 .tab-group {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  flex: 1;
+}
+
+.tab-group-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary, #aaa);
+  padding: 0 0.25rem 0.2rem;
+  text-align: center;
+}
+
+.tab-group-buttons {
+  display: flex;
   align-items: center;
   gap: 0.25rem;
   flex: 1;
@@ -27,6 +44,7 @@
   background: var(--border-color, #ddd);
   margin: 0 0.25rem;
   flex-shrink: 0;
+  align-self: flex-end;
   opacity: 0.6;
 }
 
