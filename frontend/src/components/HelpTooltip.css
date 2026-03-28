@@ -26,8 +26,7 @@
 .help-tooltip-bubble {
   position: absolute;
   top: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
+  right: -8px;
   background: var(--text-primary);
   color: #fff;
   font-size: 0.78rem;
@@ -48,8 +47,7 @@
   content: '';
   position: absolute;
   bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 12px;
   border: 5px solid transparent;
   border-bottom-color: var(--text-primary);
 }
@@ -57,11 +55,11 @@
 @keyframes helpTooltipIn {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(-4px);
+    transform: translateY(-4px);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(0);
   }
 }
 
@@ -69,14 +67,5 @@
   .help-tooltip-bubble {
     max-width: 200px;
     font-size: 0.75rem;
-    left: auto;
-    right: -8px;
-    transform: none;
-  }
-
-  .help-tooltip-bubble::after {
-    left: auto;
-    right: 12px;
-    transform: none;
   }
 }
