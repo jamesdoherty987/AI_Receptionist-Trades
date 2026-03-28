@@ -64,10 +64,12 @@ def transcribe_address_audio(audio_url: str) -> Optional[str]:
             model="gpt-4o-transcribe",
             file=audio_file,
             prompt=(
-                "Transcribe ONLY the street address from this audio. "
-                "Return just the address itself — no filler words, no conversational phrases "
+                "Transcribe ONLY the address or eircode from this audio. "
+                "The caller may be saying an Irish eircode (7-character alphanumeric code like V95H5P2, D02WR97, A86DP21) "
+                "OR a street address. If they spell out individual letters and numbers, reconstruct the eircode. "
+                "Return just the address or eircode itself — no filler words, no conversational phrases "
                 "like 'yeah', 'no problem', 'it's', 'sure', 'the address is', etc. "
-                "Output only the house number, street, area, town, and county."
+                "Do NOT convert an eircode into a street address. If you hear a code, return the code."
             ),
         )
 
@@ -82,13 +84,20 @@ def transcribe_address_audio(audio_url: str) -> Optional[str]:
             text = re.sub(
                 r'^(?:yeah|yes|yep|sure|okay|ok|right|so|well|um|uh|eh|ah)'
                 r'[\s,.:;]*'
-                r"(?:it'?s|that'?s|the address is|my address is|i'?m at|we'?re at|it is|that is)?"
+                r"(?:it'?s|that'?s|the address is|my address is|the eircode is|my eircode is|i'?m at|we'?re at|it is|that is)?"
                 r'[\s,.:;]*',
                 '', text, count=1, flags=re.IGNORECASE
             ).strip()
             # If stripping removed everything, fall back to original
             if not text:
                 text = transcript.text.strip()
+            
+            # If the result looks like an eircode, normalize it (remove spaces/dashes)
+            if _looks_like_eircode(text):
+                cleaned_eircode = re.sub(r'[-\s]', '', text.strip()).upper()
+                print(f"[ADDR_RETRANSCRIBE] Detected eircode: '{text}' → '{cleaned_eircode}'")
+                text = cleaned_eircode
+            
             print(f"[ADDR_RETRANSCRIBE] After prefix cleanup: '{text}'")
         
         return text
@@ -97,6 +106,55 @@ def transcribe_address_audio(audio_url: str) -> Optional[str]:
         duration = time.time() - start
         print(f"[ADDR_RETRANSCRIBE] Transcription failed ({duration:.1f}s): {e}")
         return None
+
+
+def _looks_like_eircode(text: str) -> bool:
+    """Check if text looks like an Irish eircode (e.g. V95H5P2, D02 WR97)."""
+    import re
+    cleaned = re.sub(r'[-\s]', '', text.strip())
+    # Standard eircode: letter + (O or 0) + digit + 4 alphanumeric, OR letter + 2 digits + 4 alphanumeric
+    if re.match(r'^[A-Z][O0]\d[A-Z0-9]{4}$', cleaned, re.IGNORECASE):
+        return True
+    if re.match(r'^[A-Z]\d{2}[A-Z0-9]{4}$', cleaned, re.IGNORECASE):
+        return True
+    # Looser: 6-8 alphanumeric with at least one letter and one digit (ASR mangled eircode)
+    if re.match(r'^[A-Z0-9]{6,8}$', cleaned, re.IGNORECASE) and re.search(r'[A-Z]', cleaned, re.IGNORECASE) and re.search(r'\d', cleaned):
+        return True
+    return False
+
+
+def _is_plausible_address_standalone(refined: str) -> bool:
+    """
+    Check if a refined transcription is plausible when we have NO original to compare against.
+    Used when the original address was empty (e.g. eircode-only booking).
+    
+    Rejects obvious filler/hallucinations. More permissive than the overlap-based check
+    since we can't compare — but catches the worst cases.
+    """
+    import re
+    refined_lower = refined.lower().strip().rstrip('.,!? ')
+    
+    # Accept eircodes
+    if _looks_like_eircode(refined):
+        return True
+    
+    # Reject conversational filler
+    filler_phrases = [
+        'perfect', 'thanks', 'thank you', 'great', 'okay', 'ok', 'yes',
+        'no problem', 'that\'s it', 'that\'s correct', 'correct', 'grand',
+        'lovely', 'brilliant', 'cheers', 'bye', 'goodbye', 'no', 'yeah',
+        'sure', 'right', 'absolutely', 'of course'
+    ]
+    if refined_lower in filler_phrases:
+        print(f"[ADDR_RETRANSCRIBE] Standalone validation: looks like filler")
+        return False
+    
+    # Reject very short non-eircode text (< 3 words and not a code)
+    if len(refined_lower.split()) < 2:
+        print(f"[ADDR_RETRANSCRIBE] Standalone validation: too short ({len(refined_lower.split())} words)")
+        return False
+    
+    return True
 
 
 def _is_plausible_address(refined: str, original: str) -> bool:
@@ -112,6 +170,26 @@ def _is_plausible_address(refined: str, original: str) -> bool:
     
     refined_lower = refined.lower().strip()
     original_lower = original.lower().strip()
+    
+    # If the refined result is an eircode, it's always plausible — the whole point
+    # of retranscription is to get a better reading of what the caller said.
+    # An eircode is a specific, structured code that gpt-4o-transcribe wouldn't
+    # hallucinate from random noise.
+    if _looks_like_eircode(refined):
+        print(f"[ADDR_RETRANSCRIBE] Validation: refined looks like eircode — accepting")
+        return True
+    
+    # If the original is an eircode/short code and the refined is a street address,
+    # the model likely hallucinated an address from the eircode audio. Reject it.
+    # Only trigger for short originals (≤7 chars after stripping) that look like codes,
+    # not concatenated words from a real address like "32 main st" → "32mainst".
+    original_cleaned = re.sub(r'[-\s]', '', original_lower)
+    original_word_count = len(original.strip().split())
+    if (len(original_cleaned) <= 7 and original_word_count <= 2
+            and re.match(r'^[a-z0-9]{2,7}$', original_cleaned)
+            and len(refined_lower.split()) >= 3):
+        print(f"[ADDR_RETRANSCRIBE] Validation: original looks like a code ('{original}') but refined is a street address — rejecting hallucination")
+        return False
     
     # Too short — real addresses have at least a number + street + area
     if len(refined_lower.split()) < 3:
@@ -217,12 +295,20 @@ async def retranscribe_and_update(
     # Sanity check: reject hallucinated/garbage transcriptions.
     # gpt-4o-transcribe can hallucinate plausible-sounding addresses when the audio
     # is just filler like "Perfect. Thanks." — validate before overwriting.
-    if refined_address and original_address and refined_address != original_address:
-        if not _is_plausible_address(refined_address, original_address):
-            print(f"[ADDR_RETRANSCRIBE] ⚠️ Refined address looks suspicious — keeping original")
-            print(f"[ADDR_RETRANSCRIBE]   Refined:  '{refined_address}'")
-            print(f"[ADDR_RETRANSCRIBE]   Original: '{original_address}'")
-            refined_address = original_address
+    if refined_address and refined_address != original_address:
+        if original_address:
+            if not _is_plausible_address(refined_address, original_address):
+                print(f"[ADDR_RETRANSCRIBE] ⚠️ Refined address looks suspicious — keeping original")
+                print(f"[ADDR_RETRANSCRIBE]   Refined:  '{refined_address}'")
+                print(f"[ADDR_RETRANSCRIBE]   Original: '{original_address}'")
+                refined_address = original_address
+        else:
+            # Original was empty (e.g. eircode-only booking where validated_address was None).
+            # Extra caution: reject if it looks like filler or hallucinated content.
+            if not _is_plausible_address_standalone(refined_address):
+                print(f"[ADDR_RETRANSCRIBE] ⚠️ Refined address looks suspicious (no original to compare) — discarding")
+                print(f"[ADDR_RETRANSCRIBE]   Refined:  '{refined_address}'")
+                refined_address = original_address
 
     # Step 2: Update database
     if refined_address and (booking_id or client_id):
@@ -230,13 +316,25 @@ async def retranscribe_and_update(
             from src.services.database import get_database
             db = get_database()
 
+            # If the refined result looks like an eircode, update the eircode field
+            # instead of the address field to avoid overwriting with a code
+            is_eircode = _looks_like_eircode(refined_address)
+
             if booking_id:
-                db.update_booking(booking_id, company_id=company_id, address=refined_address)
-                print(f"[ADDR_RETRANSCRIBE] ✅ Updated booking {booking_id} address")
+                if is_eircode:
+                    db.update_booking(booking_id, company_id=company_id, eircode=refined_address)
+                    print(f"[ADDR_RETRANSCRIBE] ✅ Updated booking {booking_id} eircode")
+                else:
+                    db.update_booking(booking_id, company_id=company_id, address=refined_address)
+                    print(f"[ADDR_RETRANSCRIBE] ✅ Updated booking {booking_id} address")
 
             if client_id:
-                db.update_client(client_id, address=refined_address)
-                print(f"[ADDR_RETRANSCRIBE] ✅ Updated client {client_id} address")
+                if is_eircode:
+                    db.update_client(client_id, eircode=refined_address)
+                    print(f"[ADDR_RETRANSCRIBE] ✅ Updated client {client_id} eircode")
+                else:
+                    db.update_client(client_id, address=refined_address)
+                    print(f"[ADDR_RETRANSCRIBE] ✅ Updated client {client_id} address")
 
         except Exception as e:
             print(f"[ADDR_RETRANSCRIBE] ⚠️ DB update failed: {e}")

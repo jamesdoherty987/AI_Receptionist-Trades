@@ -5665,7 +5665,8 @@ Return ONLY valid JSON, no explanation."""
                             _cs._deferred_sms_kwargs = _sms_kwargs
                             _cs._deferred_sms_booking_id = booking_id
                             _cs._deferred_sms_client_id = client_id
-                            _cs._deferred_sms_original_address = validated_address
+                            # Use eircode as fallback when validated_address is None (eircode-only booking)
+                            _cs._deferred_sms_original_address = validated_address or extracted_eircode
                             logger.info(f"[BOOK_JOB] 📨 SMS deferred — address audio captured, retranscriber will send after call")
                         else:
                             sms_service.send_booking_confirmation(**_sms_kwargs)
