@@ -457,6 +457,25 @@
   padding: 1.25rem;
 }
 
+/* When editing inside a grid, break out to full width */
+.services-grid .service-card.editing {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 1.25rem;
+  border: 2px solid var(--accent-blue);
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.1);
+  overflow: visible;
+}
+
+.services-grid .service-card.editing .edit-form {
+  width: 100%;
+}
+
+.services-grid .service-card.editing .edit-row {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
 /* Grid card variant */
 .service-card.service-card-grid {
   flex-direction: column;

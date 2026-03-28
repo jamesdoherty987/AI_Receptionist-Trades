@@ -246,7 +246,27 @@
   border-radius: 10px; transition: border-color 0.2s, box-shadow 0.2s;
 }
 .mat-card:hover { border-color: var(--accent-blue); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-.mat-card.editing { padding: 1.25rem; }
+.mat-card.editing {
+  padding: 1.25rem;
+}
+
+/* When editing inside a grid, break out to full width */
+.mat-grid .mat-card.editing {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  padding: 1.25rem;
+  border: 2px solid var(--accent-blue);
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.1);
+  overflow: visible;
+}
+
+.mat-grid .mat-card.editing .mat-edit-form {
+  width: 100%;
+}
+
+.mat-grid .mat-card.editing .mat-edit-grid {
+  grid-template-columns: 1fr 1fr;
+}
 
 /* Grid card variant */
 .mat-card.mat-card-grid {
