@@ -102,8 +102,8 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
                     {tab.label}
                   </button>
                 ))}
+                {gi < groupedTabs.length - 1 && <span className="tab-group-divider" />}
               </div>
-              {gi < groupedTabs.length - 1 && <span className="tab-group-divider" />}
             </div>
           ))}
         </div>

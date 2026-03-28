@@ -984,6 +984,65 @@ def format_duration_label(duration_minutes: int) -> str:
         return f"about a {hours:.1f} hour"
 
 
+def _format_slot_ranges(day_slots: list) -> str:
+    """
+    Format a list of 30-min slot datetimes into a human-readable range string,
+    correctly handling gaps (e.g., "from 8 am to 10 am and 3 pm").
+    
+    Consecutive slots (30 min apart) are grouped into ranges.
+    Non-consecutive slots start a new range.
+    """
+    from datetime import timedelta
+    
+    if not day_slots:
+        return ""
+    
+    # Group consecutive slots into ranges
+    ranges = []
+    range_start = day_slots[0]
+    range_end = day_slots[0]
+    
+    for i in range(1, len(day_slots)):
+        if day_slots[i] - range_end <= timedelta(minutes=30):
+            range_end = day_slots[i]
+        else:
+            ranges.append((range_start, range_end))
+            range_start = day_slots[i]
+            range_end = day_slots[i]
+    ranges.append((range_start, range_end))
+    
+    def fmt(t):
+        return t.strftime('%I %p').lstrip('0').lower()
+    
+    # Single range
+    if len(ranges) == 1:
+        s, e = ranges[0]
+        if s == e:
+            return fmt(s)
+        return f"from {fmt(s)} to {fmt(e)}"
+    
+    # Multiple ranges — format each, then join naturally
+    parts = []
+    single_slots = []
+    for s, e in ranges:
+        if s == e:
+            single_slots.append(fmt(s))
+        else:
+            parts.append(f"{fmt(s)} to {fmt(e)}")
+    
+    # If ALL ranges are single slots, use "at X or Y" style
+    if not parts and single_slots:
+        if len(single_slots) == 2:
+            return f"at {single_slots[0]} or {single_slots[1]}"
+        return f"at {', '.join(single_slots[:-1])}, or {single_slots[-1]}"
+    
+    # Mix of ranges and single slots — combine them
+    all_parts = parts + [f"at {s}" for s in single_slots]
+    if len(all_parts) == 2:
+        return f"from {all_parts[0]} and {all_parts[1]}"
+    return f"from {', '.join(all_parts[:-1])}, and {all_parts[-1]}"
+
+
 def naturalize_availability_summary(day_summaries: list, is_full_day: bool = False) -> str:
     """
     Convert structured day availability into natural, conversational speech.
@@ -1008,11 +1067,11 @@ def naturalize_availability_summary(day_summaries: list, is_full_day: bool = Fal
         if "full day available" in summary.lower():
             day = summary.split(":")[0]
             return f"We're available to start on {day}"
-        elif "free from" in summary.lower():
-            parts = summary.split(": ")
+        elif ": free " in summary.lower():
+            parts = summary.split(": ", 1)
             day = parts[0]
-            times = parts[1].replace("free from ", "")
-            return f"On {day}, I'm free {times}"
+            times = parts[1][5:]  # Strip "free " prefix
+            return f"On {day}, I have {times}"
         elif "only" in summary.lower():
             parts = summary.split(": ")
             day = parts[0]
@@ -1042,11 +1101,14 @@ def naturalize_availability_summary(day_summaries: list, is_full_day: bool = Fal
             for summary in day_summaries[:3]:  # Max 3 for readability
                 if ": " in summary:
                     day, times = summary.split(": ", 1)
-                    if "free from" in times.lower():
-                        times = times.replace("free from ", "")
-                        parts.append(f"{day} from {times}")
+                    if times.lower().startswith("free "):
+                        # Strip "free " prefix — the rest already has "from"/"at" as needed
+                        times = times[5:]
+                        parts.append(f"{day} {times}")
                     elif "or" in times:
                         parts.append(f"{day} at {times}")
+                    elif "only" in times:
+                        parts.append(f"{day} {times}")
                     else:
                         parts.append(f"{day} {times}")
                 else:
@@ -2457,13 +2519,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 # For full-day services (8+ hours), describe as "full day" instead of time range
                 if service_duration >= 480:  # 8 hours or more
                     summary = f"{day_name}: full day available"
-                elif len(day_slots) >= 6:
-                    # Many slots available - describe as a range
-                    # Use trades-friendly language: "free from X to Y" instead of "appointments starting from"
-                    summary = f"{day_name}: free from {first_time} to {last_time}"
                 elif len(day_slots) >= 3:
-                    # Several slots - mention range
-                    summary = f"{day_name}: available {first_time} to {last_time}"
+                    # Use gap-aware range formatting to avoid misleading "8am to 3pm" when there's a gap
+                    slot_range_str = _format_slot_ranges(day_slots)
+                    summary = f"{day_name}: free {slot_range_str}"
                 else:
                     # Few slots - list them specifically
                     times = [s.strftime('%I %p').lstrip('0').lower().replace(' 0', ' ') for s in day_slots]
@@ -2666,15 +2725,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 if is_full_day:
                     day_summaries.append(f"{day_with_date}: full day available")
                 else:
-                    first_time = day_slots[0].strftime('%I %p').lstrip('0').lower()
-                    last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower()
-                    if len(day_slots) >= 4:
-                        day_summaries.append(f"{day_with_date}: free from {first_time} to {last_time}")
-                    elif len(day_slots) == 1:
-                        day_summaries.append(f"{day_with_date}: {first_time} only")
+                    slot_range_str = _format_slot_ranges(day_slots)
+                    if len(day_slots) == 1:
+                        day_summaries.append(f"{day_with_date}: {slot_range_str} only")
                     else:
-                        times = [s.strftime('%I %p').lstrip('0').lower() for s in day_slots[:3]]
-                        day_summaries.append(f"{day_with_date}: {' or '.join(times)}")
+                        day_summaries.append(f"{day_with_date}: free {slot_range_str}")
             
             # Generate natural summary
             natural_summary = naturalize_availability_summary(day_summaries, is_full_day=is_full_day)
@@ -2965,15 +3020,11 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     if is_full_day:
                         available_day_summaries.append(f"{day_label}: full day available")
                     else:
-                        first_time = day_slots[0].strftime('%I %p').lstrip('0').lower()
-                        last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower()
-                        if len(day_slots) >= 4:
-                            available_day_summaries.append(f"{day_label}: free from {first_time} to {last_time}")
-                        elif len(day_slots) == 1:
-                            available_day_summaries.append(f"{day_label}: {first_time} only")
+                        slot_range_str = _format_slot_ranges(day_slots)
+                        if len(day_slots) == 1:
+                            available_day_summaries.append(f"{day_label}: {slot_range_str} only")
                         else:
-                            times = [s.strftime('%I %p').lstrip('0').lower() for s in day_slots[:3]]
-                            available_day_summaries.append(f"{day_label}: {' or '.join(times)}")
+                            available_day_summaries.append(f"{day_label}: free {slot_range_str}")
                 
                 current_date += timedelta(days=1)
             
@@ -3055,15 +3106,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             day_num = ext_date.day
                             suffix = 'th' if 11 <= day_num <= 13 else {1: 'st', 2: 'nd', 3: 'rd'}.get(day_num % 10, 'th')
                             found_dates_iso.append(ext_date.strftime('%Y-%m-%d'))
-                            first_time = day_slots[0].strftime('%I %p').lstrip('0').lower()
-                            last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower()
-                            if len(day_slots) >= 4:
-                                available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: free from {first_time} to {last_time}")
-                            elif len(day_slots) == 1:
-                                available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: {first_time} only")
+                            ext_day_label = f"{day_name} the {day_num}{suffix} of {month_name}"
+                            slot_range_str = _format_slot_ranges(day_slots)
+                            if len(day_slots) == 1:
+                                available_day_summaries.append(f"{ext_day_label}: {slot_range_str} only")
                             else:
-                                times = [s.strftime('%I %p').lstrip('0').lower() for s in day_slots[:3]]
-                                available_day_summaries.append(f"{day_name} the {day_num}{suffix} of {month_name}: {' or '.join(times)}")
+                                available_day_summaries.append(f"{ext_day_label}: free {slot_range_str}")
                     ext_date += timedelta(days=1)
                 # Track if we found results only via extension from 0
                 if extended_from_zero and not available_day_summaries:
@@ -3681,15 +3729,11 @@ Return ONLY valid JSON, no explanation."""
                 if is_full_day:
                     day_summaries.append(f"{day_with_date}: full day available")
                 else:
-                    first_time = day_slots[0].strftime('%I %p').lstrip('0').lower()
-                    last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower()
-                    if len(day_slots) >= 4:
-                        day_summaries.append(f"{day_with_date}: free from {first_time} to {last_time}")
-                    elif len(day_slots) == 1:
-                        day_summaries.append(f"{day_with_date}: {first_time} only")
+                    slot_range_str = _format_slot_ranges(day_slots)
+                    if len(day_slots) == 1:
+                        day_summaries.append(f"{day_with_date}: {slot_range_str} only")
                     else:
-                        times = [s.strftime('%I %p').lstrip('0').lower() for s in day_slots[:3]]
-                        day_summaries.append(f"{day_with_date}: {' or '.join(times)}")
+                        day_summaries.append(f"{day_with_date}: free {slot_range_str}")
             
             natural_summary = naturalize_availability_summary(day_summaries, is_full_day=is_full_day)
             

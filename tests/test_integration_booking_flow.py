@@ -361,10 +361,10 @@ class TestDurationPrefixInDirectResponse:
 
     def test_1_hour_job_has_duration_prefix(self):
         resp = self._build_direct_response(
-            60, "about 1 hour",
+            60, "about a 1 hour",
             "I have Monday at 10am or 2pm", False
         )
-        assert "about 1 hour" in resp
+        assert "about a 1 hour" in resp
 
 
 # ─── naturalize_availability_summary tests ────────────────────────────
@@ -577,7 +577,7 @@ class TestExecuteToolCallFlow:
         assert result['success']
         assert result.get('is_full_day_service') is False
         assert result['duration_minutes'] == 60
-        assert result['duration_label'] == 'about 1 hour'
+        assert result['duration_label'] == 'about a 1 hour'
         # Should have multiple slots per day
         if result.get('available_days'):
             assert result['available_days'][0]['slots_count'] > 1
