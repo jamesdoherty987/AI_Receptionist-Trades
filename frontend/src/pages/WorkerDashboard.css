@@ -1028,6 +1028,27 @@
 
 /* Today section */
 .wj-today h2 { color: var(--accent-blue, #0ea5e9); }
+
+/* Just-completed card — subtle green to indicate done without disappearing */
+.worker-job-card.just-completed {
+  border-left: 3px solid #22c55e;
+  background: rgba(34, 197, 94, 0.05);
+  opacity: 0.85;
+  transition: background 0.4s ease, border-color 0.4s ease, opacity 0.4s ease;
+}
+.worker-job-card.just-completed:hover {
+  opacity: 0.95;
+}
+.badge-completed {
+  background: rgba(34, 197, 94, 0.1); color: #16a34a;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+.just-completed-label {
+  color: #16a34a !important;
+  border-color: #bbf7d0 !important;
+  cursor: default !important;
+  font-weight: 600;
+}
 .wj-today h2 i { color: var(--accent-blue, #0ea5e9); }
 
 /* Completed section */

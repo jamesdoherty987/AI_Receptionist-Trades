@@ -301,6 +301,15 @@ function WorkerDashboard() {
   const bulkCompleteMutation = useMutation({
     mutationFn: (filter) => workerBulkCompleteJobs(filter),
     onSuccess: (response) => {
+      // Mark all currently active overdue jobs as recently completed
+      const overdueIds = activeJobs
+        .filter(j => j.status !== 'in-progress' && j.status !== 'completed' && j.status !== 'cancelled' && j.status !== 'paid' && new Date(j.appointment_time) < new Date())
+        .map(j => j.id);
+      setRecentlyCompleted(prev => {
+        const next = new Set(prev);
+        overdueIds.forEach(id => next.add(id));
+        return next;
+      });
       queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['worker-hours-summary'] });
       setBulkCompleteFilter(null);
@@ -413,21 +422,26 @@ function WorkerDashboard() {
   const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
   const weekEnd = new Date(todayStart); weekEnd.setDate(weekEnd.getDate() + 7);
 
-  const activeJobs = jobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled' && j.status !== 'paid' || recentlyCompleted.has(j.id));
+  const activeJobs = jobs.filter(j => (j.status !== 'completed' && j.status !== 'cancelled' && j.status !== 'paid') || recentlyCompleted.has(j.id));
   const completedJobs = jobs.filter(j => (j.status === 'completed' || j.status === 'paid') && !recentlyCompleted.has(j.id));
 
   // In-progress jobs always on top
   const inProgressJobs = activeJobs.filter(j => j.status === 'in-progress');
 
+  // Recently completed jobs that were in-progress (show in their own mini-section or stay in in-progress area)
+  const justCompletedFromProgress = activeJobs.filter(j => recentlyCompleted.has(j.id) && j.status === 'completed' && j.job_started_at);
+
   // Overdue: past appointment time, not started
   const overdueJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
+    if (recentlyCompleted.has(j.id) && j.job_started_at) return false; // shown in justCompletedFromProgress
     return new Date(j.appointment_time) < now;
   });
 
   // Today's upcoming
   const todayJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
+    if (recentlyCompleted.has(j.id) && j.job_started_at) return false;
     const t = new Date(j.appointment_time);
     return t >= now && t < tomorrowStart;
   });
@@ -435,6 +449,7 @@ function WorkerDashboard() {
   // Tomorrow
   const tomorrowJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
+    if (recentlyCompleted.has(j.id) && j.job_started_at) return false;
     const t = new Date(j.appointment_time);
     const dayAfterTomorrow = new Date(tomorrowStart); dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
     return t >= tomorrowStart && t < dayAfterTomorrow;
@@ -443,6 +458,7 @@ function WorkerDashboard() {
   // This week (after tomorrow, within 7 days)
   const thisWeekJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
+    if (recentlyCompleted.has(j.id) && j.job_started_at) return false;
     const t = new Date(j.appointment_time);
     const dayAfterTomorrow = new Date(tomorrowStart); dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
     return t >= dayAfterTomorrow && t < weekEnd;
@@ -451,6 +467,7 @@ function WorkerDashboard() {
   // Later (beyond this week)
   const laterJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
+    if (recentlyCompleted.has(j.id) && j.job_started_at) return false;
     return new Date(j.appointment_time) >= weekEnd;
   });
 
@@ -1045,9 +1062,9 @@ function WorkerDashboard() {
                   </button>
                 </div>
                 {/* In Progress — always visible at top */}
-                {inProgressJobs.length > 0 && (
+                {(inProgressJobs.length > 0 || justCompletedFromProgress.length > 0) && (
                   <div className="wj-section wj-in-progress">
-                    <h2><i className="fas fa-wrench"></i> In Progress ({inProgressJobs.length})</h2>
+                    <h2><i className="fas fa-wrench"></i> In Progress ({inProgressJobs.length}{justCompletedFromProgress.length > 0 ? ` + ${justCompletedFromProgress.length} done` : ''})</h2>
                     <div className="worker-job-list">
                       {inProgressJobs.map(job => {
                         const dirUrl = getDirectionsUrl(job);
@@ -1085,6 +1102,32 @@ function WorkerDashboard() {
                           </div>
                         );
                       })}
+                      {justCompletedFromProgress.map(job => {
+                        const dirUrl = getDirectionsUrl(job);
+                        return (
+                          <div key={job.id} className="worker-job-card just-completed" onClick={() => setSelectedJobId(job.id)}>
+                            <div className="worker-job-header">
+                              <span className="worker-job-status badge-completed"><i className="fas fa-check-circle"></i> completed</span>
+                            </div>
+                            <div className="worker-job-body">
+                              <h3>{job.client_name || 'No client'}</h3>
+                              <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
+                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}</p>}
+                            </div>
+                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                              {dirUrl && (
+                                <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
+                                  <i className="fas fa-directions"></i> Directions
+                                </a>
+                              )}
+                              <span className="wjd-btn wjd-btn-sm just-completed-label">
+                                <i className="fas fa-check-circle"></i> Done
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -1116,7 +1159,11 @@ function WorkerDashboard() {
                         return (
                           <div key={job.id} className={`worker-job-card overdue${recentlyCompleted.has(job.id) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
                             <div className="worker-job-header">
-                              <span className="worker-job-status badge-overdue"><i className="fas fa-exclamation-circle"></i> overdue</span>
+                              {recentlyCompleted.has(job.id) ? (
+                                <span className="worker-job-status badge-completed"><i className="fas fa-check-circle"></i> completed</span>
+                              ) : (
+                                <span className="worker-job-status badge-overdue"><i className="fas fa-exclamation-circle"></i> overdue</span>
+                              )}
                               <span className="worker-job-date">
                                 {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
                               </span>
@@ -1133,17 +1180,25 @@ function WorkerDashboard() {
                                   <i className="fas fa-directions"></i> Directions
                                 </a>
                               )}
-                              <button className="wjd-btn wjd-btn-progress wjd-btn-sm" onClick={() => {
-                                const nowIso = new Date().toISOString();
-                                statusMutation.mutate({ jobId: job.id, status: 'in-progress', started_at: nowIso });
-                              }} disabled={statusMutation.isPending}>
-                                <i className="fas fa-play-circle"></i> Start
-                              </button>
-                              <button className="wjd-btn wjd-btn-complete wjd-btn-sm" onClick={() => {
-                                statusMutation.mutate({ jobId: job.id, status: 'completed', completed_at: new Date().toISOString() });
-                              }} disabled={statusMutation.isPending}>
-                                <i className="fas fa-check-circle"></i> Complete
-                              </button>
+                              {recentlyCompleted.has(job.id) ? (
+                                <span className="wjd-btn wjd-btn-sm just-completed-label">
+                                  <i className="fas fa-check-circle"></i> Done
+                                </span>
+                              ) : (
+                                <>
+                                  <button className="wjd-btn wjd-btn-progress wjd-btn-sm" onClick={() => {
+                                    const nowIso = new Date().toISOString();
+                                    statusMutation.mutate({ jobId: job.id, status: 'in-progress', started_at: nowIso });
+                                  }} disabled={statusMutation.isPending}>
+                                    <i className="fas fa-play-circle"></i> Start
+                                  </button>
+                                  <button className="wjd-btn wjd-btn-complete wjd-btn-sm" onClick={() => {
+                                    statusMutation.mutate({ jobId: job.id, status: 'completed', completed_at: new Date().toISOString() });
+                                  }} disabled={statusMutation.isPending}>
+                                    <i className="fas fa-check-circle"></i> Complete
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         );
@@ -1182,12 +1237,18 @@ function WorkerDashboard() {
                                   <i className="fas fa-phone"></i> Call
                                 </a>
                               )}
-                              <button className="wjd-btn wjd-btn-progress wjd-btn-sm" onClick={() => {
-                                const nowIso = new Date().toISOString();
-                                statusMutation.mutate({ jobId: job.id, status: 'in-progress', started_at: nowIso });
-                              }} disabled={statusMutation.isPending}>
-                                <i className="fas fa-play-circle"></i> Start
-                              </button>
+                              {recentlyCompleted.has(job.id) ? (
+                                <span className="wjd-btn wjd-btn-sm just-completed-label">
+                                  <i className="fas fa-check-circle"></i> Done
+                                </span>
+                              ) : (
+                                <button className="wjd-btn wjd-btn-progress wjd-btn-sm" onClick={() => {
+                                  const nowIso = new Date().toISOString();
+                                  statusMutation.mutate({ jobId: job.id, status: 'in-progress', started_at: nowIso });
+                                }} disabled={statusMutation.isPending}>
+                                  <i className="fas fa-play-circle"></i> Start
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -1280,7 +1341,7 @@ function WorkerDashboard() {
                     <h2><i className="fas fa-calendar-alt"></i> Later ({laterJobs.length})</h2>
                     <div className="worker-job-list">
                       {laterJobs.map(job => (
-                        <div key={job.id} className="worker-job-card" onClick={() => setSelectedJobId(job.id)}>
+                        <div key={job.id} className={`worker-job-card${recentlyCompleted.has(job.id) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
                           <div className="worker-job-header">
                             <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                             <span className="worker-job-date">
