@@ -110,9 +110,6 @@ function WorkerDashboard() {
   const [bulkCompleteFilter, setBulkCompleteFilter] = useState(null); // null | 'today' | 'week' | 'all'
   const [isAddJobOpen, setIsAddJobOpen] = useState(false);
 
-  // Track recently completed job IDs so they stay visible with green styling
-  const [recentlyCompleted, setRecentlyCompleted] = useState(new Set());
-
   // Schedule view state
   const [scheduleView, setScheduleView] = useState('list'); // 'list' | 'month' | 'year'
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
@@ -225,10 +222,7 @@ function WorkerDashboard() {
   const statusMutation = useMutation({
     mutationFn: ({ jobId, status, started_at, completed_at, actual_duration_minutes }) => 
       workerUpdateJobStatus(jobId, { status, started_at, completed_at, actual_duration_minutes }),
-    onSuccess: (_, variables) => {
-      if (variables.status === 'completed') {
-        setRecentlyCompleted(prev => new Set(prev).add(variables.jobId));
-      }
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['worker-job', selectedJobId] });
     },
@@ -300,16 +294,7 @@ function WorkerDashboard() {
 
   const bulkCompleteMutation = useMutation({
     mutationFn: (filter) => workerBulkCompleteJobs(filter),
-    onSuccess: (response) => {
-      // Mark all currently active overdue jobs as recently completed
-      const overdueIds = activeJobs
-        .filter(j => j.status !== 'in-progress' && j.status !== 'completed' && j.status !== 'cancelled' && j.status !== 'paid' && new Date(j.appointment_time) < new Date())
-        .map(j => j.id);
-      setRecentlyCompleted(prev => {
-        const next = new Set(prev);
-        overdueIds.forEach(id => next.add(id));
-        return next;
-      });
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['worker-hours-summary'] });
       setBulkCompleteFilter(null);
@@ -422,34 +407,56 @@ function WorkerDashboard() {
   const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
   const weekEnd = new Date(todayStart); weekEnd.setDate(weekEnd.getDate() + 7);
 
-  const activeJobs = jobs.filter(j => (j.status !== 'completed' && j.status !== 'cancelled' && j.status !== 'paid') || recentlyCompleted.has(j.id));
-  const completedJobs = jobs.filter(j => (j.status === 'completed' || j.status === 'paid') && !recentlyCompleted.has(j.id));
+  // Helper: is this a completed/paid job whose appointment was today?
+  const isCompletedToday = (j) => {
+    if (j.status !== 'completed' && j.status !== 'paid') return false;
+    const t = new Date(j.appointment_time);
+    return t >= todayStart && t < tomorrowStart;
+  };
+
+  // Also treat overdue jobs completed today (appointment before today but completed_at is today)
+  const isCompletedTodayOverdue = (j) => {
+    if (j.status !== 'completed' && j.status !== 'paid') return false;
+    const t = new Date(j.appointment_time);
+    if (t >= todayStart) return false; // not overdue
+    // Check if it was completed today
+    const completedAt = j.job_completed_at ? new Date(j.job_completed_at) : null;
+    return completedAt && completedAt >= todayStart && completedAt < tomorrowStart;
+  };
+
+  const isTodayDone = (j) => isCompletedToday(j) || isCompletedTodayOverdue(j);
+
+  const activeJobs = jobs.filter(j => (j.status !== 'completed' && j.status !== 'cancelled' && j.status !== 'paid') || isTodayDone(j));
+  const completedJobs = jobs.filter(j => (j.status === 'completed' || j.status === 'paid') && !isTodayDone(j));
 
   // In-progress jobs always on top
   const inProgressJobs = activeJobs.filter(j => j.status === 'in-progress');
 
-  // Recently completed jobs that were in-progress (show in their own mini-section or stay in in-progress area)
-  const justCompletedFromProgress = activeJobs.filter(j => recentlyCompleted.has(j.id) && j.status === 'completed' && j.job_started_at);
+  // Jobs completed today that were started (had a timer) — show in the in-progress area
+  const justCompletedFromProgress = activeJobs.filter(j => isTodayDone(j) && j.job_started_at);
 
   // Overdue: past appointment time, not started
   const overdueJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
-    if (recentlyCompleted.has(j.id) && j.job_started_at) return false; // shown in justCompletedFromProgress
+    if (isTodayDone(j) && j.job_started_at) return false; // shown in justCompletedFromProgress
+    if (isCompletedToday(j)) return false; // today's completed jobs show in Today section
     return new Date(j.appointment_time) < now;
   });
 
-  // Today's upcoming
+  // Today's jobs (includes today's completed jobs)
   const todayJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
-    if (recentlyCompleted.has(j.id) && j.job_started_at) return false;
+    if (isTodayDone(j) && j.job_started_at) return false; // shown in justCompletedFromProgress
+    if (isCompletedTodayOverdue(j)) return false; // overdue completed jobs stay in overdue
     const t = new Date(j.appointment_time);
-    return t >= now && t < tomorrowStart;
+    if (isCompletedToday(j)) return true; // all completed today jobs with today appointment
+    return t >= now && t < tomorrowStart; // upcoming active jobs
   });
 
   // Tomorrow
   const tomorrowJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
-    if (recentlyCompleted.has(j.id) && j.job_started_at) return false;
+    if (isTodayDone(j)) return false;
     const t = new Date(j.appointment_time);
     const dayAfterTomorrow = new Date(tomorrowStart); dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
     return t >= tomorrowStart && t < dayAfterTomorrow;
@@ -458,7 +465,7 @@ function WorkerDashboard() {
   // This week (after tomorrow, within 7 days)
   const thisWeekJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
-    if (recentlyCompleted.has(j.id) && j.job_started_at) return false;
+    if (isTodayDone(j)) return false;
     const t = new Date(j.appointment_time);
     const dayAfterTomorrow = new Date(tomorrowStart); dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
     return t >= dayAfterTomorrow && t < weekEnd;
@@ -467,7 +474,7 @@ function WorkerDashboard() {
   // Later (beyond this week)
   const laterJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
-    if (recentlyCompleted.has(j.id) && j.job_started_at) return false;
+    if (isTodayDone(j)) return false;
     return new Date(j.appointment_time) >= weekEnd;
   });
 
@@ -1157,9 +1164,9 @@ function WorkerDashboard() {
                       {overdueJobs.map(job => {
                         const dirUrl = getDirectionsUrl(job);
                         return (
-                          <div key={job.id} className={`worker-job-card overdue${recentlyCompleted.has(job.id) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
+                          <div key={job.id} className={`worker-job-card overdue${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
                             <div className="worker-job-header">
-                              {recentlyCompleted.has(job.id) ? (
+                              {isTodayDone(job) ? (
                                 <span className="worker-job-status badge-completed"><i className="fas fa-check-circle"></i> completed</span>
                               ) : (
                                 <span className="worker-job-status badge-overdue"><i className="fas fa-exclamation-circle"></i> overdue</span>
@@ -1180,7 +1187,7 @@ function WorkerDashboard() {
                                   <i className="fas fa-directions"></i> Directions
                                 </a>
                               )}
-                              {recentlyCompleted.has(job.id) ? (
+                              {isTodayDone(job) ? (
                                 <span className="wjd-btn wjd-btn-sm just-completed-label">
                                   <i className="fas fa-check-circle"></i> Done
                                 </span>
@@ -1215,9 +1222,13 @@ function WorkerDashboard() {
                       {todayJobs.map(job => {
                         const dirUrl = getDirectionsUrl(job);
                         return (
-                          <div key={job.id} className={`worker-job-card today${recentlyCompleted.has(job.id) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
+                          <div key={job.id} className={`worker-job-card today${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
                             <div className="worker-job-header">
-                              <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                              {isTodayDone(job) ? (
+                                <span className="worker-job-status badge-completed"><i className="fas fa-check-circle"></i> completed</span>
+                              ) : (
+                                <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                              )}
                               <span className="worker-job-date">Today</span>
                             </div>
                             <div className="worker-job-body">
@@ -1237,7 +1248,7 @@ function WorkerDashboard() {
                                   <i className="fas fa-phone"></i> Call
                                 </a>
                               )}
-                              {recentlyCompleted.has(job.id) ? (
+                              {isTodayDone(job) ? (
                                 <span className="wjd-btn wjd-btn-sm just-completed-label">
                                   <i className="fas fa-check-circle"></i> Done
                                 </span>
@@ -1265,7 +1276,7 @@ function WorkerDashboard() {
                       {tomorrowJobs.map(job => {
                         const dirUrl = getDirectionsUrl(job);
                         return (
-                          <div key={job.id} className={`worker-job-card${recentlyCompleted.has(job.id) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
+                          <div key={job.id} className={`worker-job-card${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
                             <div className="worker-job-header">
                               <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                               <span className="worker-job-date">Tomorrow</span>
@@ -1303,7 +1314,7 @@ function WorkerDashboard() {
                       {thisWeekJobs.map(job => {
                         const dirUrl = getDirectionsUrl(job);
                         return (
-                          <div key={job.id} className={`worker-job-card${recentlyCompleted.has(job.id) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
+                          <div key={job.id} className={`worker-job-card${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
                             <div className="worker-job-header">
                               <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                               <span className="worker-job-date">
@@ -1341,7 +1352,7 @@ function WorkerDashboard() {
                     <h2><i className="fas fa-calendar-alt"></i> Later ({laterJobs.length})</h2>
                     <div className="worker-job-list">
                       {laterJobs.map(job => (
-                        <div key={job.id} className={`worker-job-card${recentlyCompleted.has(job.id) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
+                        <div key={job.id} className={`worker-job-card${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
                           <div className="worker-job-header">
                             <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                             <span className="worker-job-date">

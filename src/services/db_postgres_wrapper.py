@@ -2634,7 +2634,8 @@ class PostgreSQLDatabaseWrapper:
         try:
             query = """
                 SELECT b.id, b.appointment_time, c.name as client_name, b.service_type, 
-                       b.status, b.address, b.phone_number, wa.assigned_at
+                       b.status, b.address, b.phone_number, wa.assigned_at,
+                       b.job_started_at, b.job_completed_at, b.actual_duration_minutes
                 FROM worker_assignments wa
                 JOIN bookings b ON wa.booking_id = b.id
                 LEFT JOIN clients c ON b.client_id = c.id
