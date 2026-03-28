@@ -7,7 +7,7 @@
 
 .tabs-header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   background: var(--bg-secondary);
   border-bottom: 2px solid var(--bg-tertiary);
   padding: 0.5rem 0.5rem 0.25rem;
@@ -17,19 +17,13 @@
 
 .tab-group {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
+  align-items: center;
+  gap: 0.25rem;
   flex: 1;
 }
 
 .tab-group-label {
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-tertiary, #aaa);
-  padding: 0 0.25rem 0.2rem;
-  text-align: center;
+  display: none;
 }
 
 .tab-group-buttons {
