@@ -554,6 +554,311 @@ class SettingsManager:
             duration = self.get_default_duration_minutes(company_id=company_id)
         
         return duration
+    
+    # ======= Package Management =======
+    
+    def get_packages(self, company_id: int = None, active_only: bool = True) -> List[Dict[str, Any]]:
+        """Get all packages for a company with resolved service details, duration, and price."""
+        from src.services.database import get_database
+        db = get_database()
+        try:
+            packages = db.get_all_packages(active_only=active_only, company_id=company_id)
+            result = []
+            for pkg in packages:
+                resolved_services = self.resolve_package_services(pkg, company_id=company_id)
+                pkg['services'] = resolved_services
+                duration_info = self.calculate_package_duration(pkg, company_id=company_id)
+                pkg['total_duration_minutes'] = duration_info['min_minutes']
+                pkg['duration_label'] = duration_info['label']
+                price_info = self.calculate_package_price(pkg, company_id=company_id)
+                pkg['total_price'] = price_info['price']
+                pkg['total_price_max'] = price_info['price_max']
+                result.append(pkg)
+            return result
+        except Exception as e:
+            print(f"Error getting packages: {e}")
+            return []
+    
+    def get_package_by_id(self, package_id: str, company_id: int = None) -> Optional[Dict[str, Any]]:
+        """Get a single package by ID with resolved service details."""
+        from src.services.database import get_database
+        db = get_database()
+        try:
+            pkg = db.get_package(package_id, company_id=company_id)
+            if not pkg:
+                return None
+            resolved_services = self.resolve_package_services(pkg, company_id=company_id)
+            pkg['services'] = resolved_services
+            duration_info = self.calculate_package_duration(pkg, company_id=company_id)
+            pkg['total_duration_minutes'] = duration_info['min_minutes']
+            pkg['duration_label'] = duration_info['label']
+            price_info = self.calculate_package_price(pkg, company_id=company_id)
+            pkg['total_price'] = price_info['price']
+            pkg['total_price_max'] = price_info['price_max']
+            return pkg
+        except Exception as e:
+            print(f"Error getting package: {e}")
+            return None
+    
+    def resolve_package_services(self, package: Dict[str, Any], company_id: int = None) -> List[Dict[str, Any]]:
+        """Resolve JSONB service references to full service objects, ordered by sort_order.
+        
+        Skips inactive or missing services and logs warnings.
+        If fewer than 2 active services remain, marks the package as inactive.
+        """
+        from src.services.database import get_database
+        db = get_database()
+        
+        services_ref = package.get('services', [])
+        if isinstance(services_ref, str):
+            services_ref = json.loads(services_ref)
+        
+        # Sort by sort_order
+        sorted_refs = sorted(services_ref, key=lambda s: s.get('sort_order', 0))
+        
+        resolved = []
+        for ref in sorted_refs:
+            service_id = ref.get('service_id')
+            if not service_id:
+                continue
+            
+            svc = db.get_service(service_id, company_id=company_id)
+            if not svc:
+                print(f"[WARNING] Package '{package.get('name')}' references missing service: {service_id}")
+                continue
+            
+            # Skip inactive services
+            if not svc.get('active', 1):
+                print(f"[WARNING] Package '{package.get('name')}' references inactive service: {svc.get('name', service_id)}")
+                continue
+            
+            resolved.append({
+                'service_id': service_id,
+                'name': svc.get('name', ''),
+                'duration_minutes': svc.get('duration_minutes', 0),
+                'price': svc.get('price', 0),
+                'price_max': svc.get('price_max'),
+                'sort_order': ref.get('sort_order', 0),
+            })
+        
+        # If fewer than 2 active services remain, mark package as inactive
+        if len(resolved) < 2 and package.get('active', 1):
+            pkg_id = package.get('id')
+            pkg_company = company_id or package.get('company_id')
+            if pkg_id:
+                print(f"[WARNING] Package '{package.get('name')}' has fewer than 2 active services ({len(resolved)}), marking inactive")
+                try:
+                    db.update_package(pkg_id, company_id=pkg_company, active=False)
+                except Exception as e:
+                    print(f"[ERROR] Failed to auto-deactivate package '{package.get('name')}': {e}")
+        
+        return resolved
+    
+    def calculate_package_duration(self, package: Dict[str, Any], company_id: int = None) -> Dict[str, Any]:
+        """Calculate total duration from constituent services.
+        
+        Returns dict with min_minutes, max_minutes, and human-readable label.
+        """
+        from src.services.calendar_tools import format_duration_label
+        
+        services = package.get('services', [])
+        if isinstance(services, str):
+            services = json.loads(services)
+        
+        min_minutes = 0
+        max_minutes = 0
+        for svc in services:
+            duration = svc.get('duration_minutes', 0)
+            min_minutes += duration
+            # Use price_max-style logic: if service has a max duration variant, use it
+            max_dur = svc.get('duration_max_minutes', duration)
+            max_minutes += max_dur
+        
+        # If max equals min, they're the same
+        if max_minutes <= min_minutes:
+            max_minutes = min_minutes
+        
+        label = format_duration_label(min_minutes) if min_minutes > 0 else "unknown"
+        
+        return {
+            'min_minutes': min_minutes,
+            'max_minutes': max_minutes,
+            'label': label,
+        }
+    
+    def calculate_package_price(self, package: Dict[str, Any], company_id: int = None) -> Dict[str, Any]:
+        """Calculate total price, respecting price_override if set.
+        
+        Returns dict with price and price_max.
+        """
+        services = package.get('services', [])
+        if isinstance(services, str):
+            services = json.loads(services)
+        
+        price_override = package.get('price_override')
+        price_max_override = package.get('price_max_override')
+        
+        if price_override is not None:
+            price = price_override
+        else:
+            price = sum(svc.get('price', 0) for svc in services)
+        
+        if price_max_override is not None:
+            price_max = price_max_override
+        else:
+            price_max = sum(
+                (svc.get('price_max') or svc.get('price', 0))
+                for svc in services
+            )
+        
+        return {
+            'price': price,
+            'price_max': price_max,
+        }
+    
+    def _validate_package_data(self, package_data: Dict[str, Any], company_id: int = None) -> Optional[str]:
+        """Validate package data. Returns error message string or None if valid."""
+        import json as _json
+
+        # Name validation
+        name = package_data.get('name', '')
+        if not name or not name.strip():
+            return "Package name is required"
+        if len(name) > 200:
+            return "Package name must be 200 characters or fewer"
+
+        # Services validation
+        services = package_data.get('services', [])
+        if isinstance(services, str):
+            services = _json.loads(services)
+
+        if len(services) < 2:
+            return "Package must contain at least 2 services"
+
+        # Check for duplicate service_ids
+        service_ids = [s.get('service_id') for s in services]
+        if len(service_ids) != len(set(service_ids)):
+            return "Package contains duplicate service references"
+
+        # Clarifying question validation (before DB check — no DB needed)
+        clarifying_question = package_data.get('clarifying_question')
+        if clarifying_question is not None and len(clarifying_question) > 500:
+            return "Clarifying question must be 500 characters or fewer"
+
+        # Price override validation (before DB check — no DB needed)
+        price_override = package_data.get('price_override')
+        if price_override is not None and price_override < 0:
+            return "Price override must be non-negative"
+
+        price_max_override = package_data.get('price_max_override')
+        if price_max_override is not None and price_max_override < 0:
+            return "Price max override must be non-negative"
+
+        # Validate all service_ids exist in the same company (requires DB)
+        from src.services.database import get_database
+        db = get_database()
+        for sid in service_ids:
+            svc = db.get_service(sid, company_id=company_id)
+            if not svc:
+                return f"Service '{sid}' not found in this company"
+
+        return None
+    
+    def add_package(self, package_data: Dict[str, Any], company_id: int = None) -> Dict[str, Any]:
+        """Add a new package with validation.
+        
+        Returns dict with 'success' bool and optionally 'error' string or 'package_id' string.
+        """
+        from src.services.database import get_database
+        db = get_database()
+        
+        # Validate
+        error = self._validate_package_data(package_data, company_id=company_id)
+        if error:
+            return {"success": False, "error": error}
+        
+        # Generate ID
+        package_id = f"pkg_{datetime.now().timestamp()}"
+        
+        services = package_data.get('services', [])
+        if isinstance(services, str):
+            services = json.loads(services)
+        
+        try:
+            success = db.add_package(
+                package_id=package_id,
+                company_id=company_id,
+                name=package_data['name'].strip(),
+                description=package_data.get('description'),
+                services=services,
+                price_override=package_data.get('price_override'),
+                price_max_override=package_data.get('price_max_override'),
+                use_when_uncertain=package_data.get('use_when_uncertain', False),
+                clarifying_question=package_data.get('clarifying_question'),
+                active=package_data.get('active', True),
+                image_url=package_data.get('image_url'),
+                sort_order=package_data.get('sort_order', 0),
+            )
+            if success:
+                return {"success": True, "package_id": package_id}
+            return {"success": False, "error": "Failed to insert package"}
+        except Exception as e:
+            print(f"Error adding package: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def update_package(self, package_id: str, package_data: Dict[str, Any], company_id: int = None) -> Dict[str, Any]:
+        """Update an existing package with validation.
+        
+        Returns dict with 'success' bool and optionally 'error' string.
+        """
+        from src.services.database import get_database
+        db = get_database()
+        
+        # Check package exists
+        existing = db.get_package(package_id, company_id=company_id)
+        if not existing:
+            return {"success": False, "error": "Package not found"}
+        
+        # Merge existing data with updates for validation
+        merged = {**existing}
+        merged.update(package_data)
+        
+        # Parse services if needed for validation
+        if 'services' in merged and isinstance(merged['services'], str):
+            merged['services'] = json.loads(merged['services'])
+        
+        # Validate merged data
+        error = self._validate_package_data(merged, company_id=company_id)
+        if error:
+            return {"success": False, "error": error}
+        
+        # Build kwargs for update
+        update_kwargs = {}
+        allowed = ['name', 'description', 'services', 'price_override', 'price_max_override',
+                    'use_when_uncertain', 'clarifying_question', 'active', 'image_url', 'sort_order']
+        for key in allowed:
+            if key in package_data:
+                update_kwargs[key] = package_data[key]
+        
+        try:
+            success = db.update_package(package_id, company_id=company_id, **update_kwargs)
+            if success:
+                return {"success": True}
+            return {"success": False, "error": "No rows updated"}
+        except Exception as e:
+            print(f"Error updating package: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def delete_package(self, package_id: str, company_id: int = None) -> Dict[str, Any]:
+        """Delete a package and return info about affected bookings."""
+        from src.services.database import get_database
+        db = get_database()
+        
+        try:
+            return db.delete_package(package_id, company_id=company_id)
+        except Exception as e:
+            print(f"Error deleting package: {e}")
+            return {"success": False, "error": str(e), "jobs_affected": 0}
 
 
 # Singleton instance

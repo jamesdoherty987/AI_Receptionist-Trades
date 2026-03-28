@@ -6,7 +6,11 @@ import {
   createService,
   updateService,
   deleteService,
-  getWorkers
+  getWorkers,
+  getPackages,
+  createPackage,
+  updatePackage,
+  deletePackage
 } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
@@ -30,7 +34,8 @@ function ServicesTab() {
     image_url: '', 
     workers_required: '1',
     worker_restrictions: { type: 'all', worker_ids: [] },
-    requires_callout: false
+    requires_callout: false,
+    package_only: false
   });
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, service: null });
 
@@ -89,7 +94,8 @@ function ServicesTab() {
         image_url: '', 
         workers_required: '1',
         worker_restrictions: { type: 'all', worker_ids: [] },
-        requires_callout: false
+        requires_callout: false,
+        package_only: false
       });
     },
     onError: () => addToast('Failed to add service', 'error'),
@@ -148,6 +154,7 @@ function ServicesTab() {
       workers_required: parseInt(formData.workers_required) || 1,
       worker_restrictions: restrictions,
       requires_callout: formData.requires_callout,
+      package_only: formData.package_only,
     });
   };
 
@@ -177,6 +184,7 @@ function ServicesTab() {
         workers_required: parseInt(service.workers_required) || 1,
         worker_restrictions: restrictions,
         requires_callout: service.requires_callout || false,
+        package_only: service.package_only || false,
       },
     });
   };
@@ -345,6 +353,27 @@ function ServicesTab() {
               </span>
             </div>
           </div>
+
+          {/* Package Only Toggle */}
+          <div className="callout-toggle-group">
+            <label>Package Only?</label>
+            <div className="callout-toggle-row">
+              <button
+                type="button"
+                className={`callout-toggle ${formData.package_only ? 'active' : ''}`}
+                onClick={() => setFormData({ ...formData, package_only: !formData.package_only })}
+                role="switch"
+                aria-checked={formData.package_only}
+              >
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">
+                {formData.package_only 
+                  ? 'Yes — only available as part of a package' 
+                  : 'No — available as a standalone service'}
+              </span>
+            </div>
+          </div>
           
           <div className="form-group">
             <label>Image (optional)</label>
@@ -424,6 +453,8 @@ function ServicesTab() {
           </div>
         </div>
       )}
+
+      <PackagesSection services={services} isSubscriptionActive={isSubscriptionActive} />
     </div>
   );
 }
@@ -679,6 +710,27 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               </span>
             </div>
           </div>
+
+          {/* Package Only Toggle */}
+          <div className="callout-toggle-group">
+            <label>Package Only?</label>
+            <div className="callout-toggle-row">
+              <button
+                type="button"
+                className={`callout-toggle ${editData.package_only ? 'active' : ''}`}
+                onClick={() => setEditData({ ...editData, package_only: !editData.package_only })}
+                role="switch"
+                aria-checked={editData.package_only}
+              >
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">
+                {editData.package_only 
+                  ? 'Yes — only available as part of a package' 
+                  : 'No — available as a standalone service'}
+              </span>
+            </div>
+          </div>
           
           <ImageUpload
             value={editData.image_url || ''}
@@ -736,6 +788,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               <i className="fas fa-phone-alt"></i> Callout first
             </span>
           )}
+          {service.package_only && (
+            <span className="meta-item callout-badge" title="Only available as part of a package">
+              <i className="fas fa-box"></i> Package only
+            </span>
+          )}
         </div>
       </div>
       <div className="service-actions">
@@ -743,6 +800,578 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           <i className="fas fa-edit"></i>
         </button>
         <button type="button" className="btn-icon danger" onClick={onDelete} title="Delete" aria-label="Delete service" disabled={isPending}>
+          <i className="fas fa-trash"></i>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PackagesSection({ services, isSubscriptionActive }) {
+  const queryClient = useQueryClient();
+  const { addToast } = useToast();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingPkgId, setEditingPkgId] = useState(null);
+  const [deletePkgConfirm, setDeletePkgConfirm] = useState({ show: false, pkg: null });
+  const [pkgFormData, setPkgFormData] = useState({
+    name: '',
+    description: '',
+    selectedServiceIds: [],
+    price_override: null,
+    price_max_override: null,
+    use_when_uncertain: false,
+    clarifying_question: '',
+  });
+
+  const { data: packagesData } = useQuery({
+    queryKey: ['packages'],
+    queryFn: async () => {
+      const response = await getPackages();
+      return response.data;
+    },
+  });
+
+  const packages = packagesData?.packages || packagesData || [];
+
+  // Handle escape key to close delete confirmation
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && deletePkgConfirm.show) {
+        setDeletePkgConfirm({ show: false, pkg: null });
+      }
+    };
+    if (deletePkgConfirm.show) {
+      document.addEventListener('keydown', handleEscape);
+    }
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [deletePkgConfirm.show]);
+
+  const createPkgMutation = useMutation({
+    mutationFn: createPackage,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['packages'] });
+      addToast('Package added!', 'success');
+      setShowAddForm(false);
+      resetForm();
+    },
+    onError: (err) => addToast(err?.response?.data?.error || 'Failed to add package', 'error'),
+  });
+
+  const updatePkgMutation = useMutation({
+    mutationFn: ({ id, data }) => updatePackage(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['packages'] });
+      addToast('Package updated!', 'success');
+      setEditingPkgId(null);
+    },
+    onError: (err) => addToast(err?.response?.data?.error || 'Failed to update package', 'error'),
+  });
+
+  const deletePkgMutation = useMutation({
+    mutationFn: deletePackage,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['packages'] });
+      addToast('Package deleted!', 'success');
+      setDeletePkgConfirm({ show: false, pkg: null });
+    },
+    onError: () => {
+      setDeletePkgConfirm({ show: false, pkg: null });
+      addToast('Failed to delete package', 'error');
+    },
+  });
+
+  const resetForm = () => {
+    setPkgFormData({
+      name: '',
+      description: '',
+      selectedServiceIds: [],
+      price_override: null,
+      price_max_override: null,
+      use_when_uncertain: false,
+      clarifying_question: '',
+    });
+  };
+
+  const handleAddClick = () => {
+    if (!isSubscriptionActive) {
+      addToast('You need an active subscription to add packages', 'warning');
+      return;
+    }
+    setShowAddForm(!showAddForm);
+    if (showAddForm) resetForm();
+  };
+
+  const buildServicesPayload = (selectedIds) => {
+    return selectedIds.map((id, idx) => ({ service_id: id, sort_order: idx }));
+  };
+
+  const handlePkgSubmit = (e) => {
+    e.preventDefault();
+    if (!pkgFormData.name.trim()) return;
+    if (pkgFormData.selectedServiceIds.length < 2) {
+      addToast('A package needs at least 2 services', 'warning');
+      return;
+    }
+
+    const payload = {
+      name: pkgFormData.name,
+      description: pkgFormData.description || '',
+      services: buildServicesPayload(pkgFormData.selectedServiceIds),
+      use_when_uncertain: pkgFormData.use_when_uncertain,
+      clarifying_question: pkgFormData.clarifying_question?.trim() || null,
+    };
+
+    if (pkgFormData.price_override !== null && pkgFormData.price_override !== undefined && pkgFormData.price_override !== '') {
+      payload.price_override = Math.round((parseFloat(pkgFormData.price_override) || 0) * 100) / 100;
+      if (pkgFormData.price_max_override !== null && pkgFormData.price_max_override !== undefined && pkgFormData.price_max_override !== '') {
+        payload.price_max_override = Math.round((parseFloat(pkgFormData.price_max_override) || 0) * 100) / 100;
+      }
+    }
+
+    createPkgMutation.mutate(payload);
+  };
+
+  const handlePkgUpdate = (pkgData) => {
+    if (!pkgData.name?.trim()) return;
+    if (pkgData.selectedServiceIds.length < 2) {
+      addToast('A package needs at least 2 services', 'warning');
+      return;
+    }
+
+    const payload = {
+      name: pkgData.name,
+      description: pkgData.description || '',
+      services: buildServicesPayload(pkgData.selectedServiceIds),
+      use_when_uncertain: pkgData.use_when_uncertain,
+      clarifying_question: pkgData.clarifying_question?.trim() || null,
+    };
+
+    if (pkgData.price_override !== null && pkgData.price_override !== undefined && pkgData.price_override !== '') {
+      payload.price_override = Math.round((parseFloat(pkgData.price_override) || 0) * 100) / 100;
+      if (pkgData.price_max_override !== null && pkgData.price_max_override !== undefined && pkgData.price_max_override !== '') {
+        payload.price_max_override = Math.round((parseFloat(pkgData.price_max_override) || 0) * 100) / 100;
+      }
+    } else {
+      payload.price_override = null;
+      payload.price_max_override = null;
+    }
+
+    updatePkgMutation.mutate({ id: pkgData.id, data: payload });
+  };
+
+  const confirmDeletePkg = () => {
+    if (deletePkgConfirm.pkg) {
+      deletePkgMutation.mutate(deletePkgConfirm.pkg.id);
+    }
+  };
+
+  const toggleServiceSelection = (serviceId) => {
+    setPkgFormData(prev => {
+      const ids = prev.selectedServiceIds.includes(serviceId)
+        ? prev.selectedServiceIds.filter(id => id !== serviceId)
+        : [...prev.selectedServiceIds, serviceId];
+      return { ...prev, selectedServiceIds: ids };
+    });
+  };
+
+  const moveService = (index, direction) => {
+    setPkgFormData(prev => {
+      const ids = [...prev.selectedServiceIds];
+      const newIndex = index + direction;
+      if (newIndex < 0 || newIndex >= ids.length) return prev;
+      [ids[index], ids[newIndex]] = [ids[newIndex], ids[index]];
+      return { ...prev, selectedServiceIds: ids };
+    });
+  };
+
+  // Calculate totals from selected services
+  const getSelectedServiceDetails = (selectedIds) => {
+    const selected = selectedIds
+      .map(id => services.find(s => s.id === id))
+      .filter(Boolean);
+    const totalDuration = selected.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+    const totalPrice = selected.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0);
+    const totalPriceMax = selected.reduce((sum, s) => sum + (parseFloat(s.price_max) || parseFloat(s.price) || 0), 0);
+    return { selected, totalDuration, totalPrice, totalPriceMax };
+  };
+
+  return (
+    <div className="packages-section">
+      <div className="packages-header">
+        <div>
+          <h2>📦 Packages</h2>
+          <p className="services-subtitle">Bundle multiple services into ordered sequences</p>
+        </div>
+        <div className="services-controls">
+          <button className="btn btn-primary" onClick={handleAddClick}>
+            <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Package
+          </button>
+        </div>
+      </div>
+
+      {showAddForm && (
+        <PackageForm
+          formData={pkgFormData}
+          setFormData={setPkgFormData}
+          services={services}
+          onSubmit={handlePkgSubmit}
+          onCancel={() => { setShowAddForm(false); resetForm(); }}
+          isPending={createPkgMutation.isPending}
+          toggleServiceSelection={toggleServiceSelection}
+          moveService={moveService}
+          getSelectedServiceDetails={getSelectedServiceDetails}
+          isNew
+        />
+      )}
+
+      {packages.length === 0 && !showAddForm ? (
+        <div className="empty-state">
+          <div className="empty-icon">📦</div>
+          <p>No packages yet</p>
+          <button className="btn btn-primary" onClick={handleAddClick}>
+            Create Your First Package
+          </button>
+        </div>
+      ) : (
+        <div className="services-list">
+          {packages.map((pkg) => (
+            <PackageCard
+              key={pkg.id}
+              pkg={pkg}
+              services={services}
+              isEditing={editingPkgId === pkg.id}
+              onEdit={() => setEditingPkgId(pkg.id)}
+              onSave={handlePkgUpdate}
+              onCancel={() => setEditingPkgId(null)}
+              onDelete={() => setDeletePkgConfirm({ show: true, pkg })}
+              isPending={updatePkgMutation.isPending || deletePkgMutation.isPending}
+              getSelectedServiceDetails={getSelectedServiceDetails}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Package Delete Confirmation Dialog */}
+      {deletePkgConfirm.show && deletePkgConfirm.pkg && (
+        <div className="delete-confirm-overlay">
+          <div className="delete-confirm-dialog">
+            <div className="delete-confirm-icon">
+              <i className="fas fa-exclamation-triangle"></i>
+            </div>
+            <h3>Delete Package?</h3>
+            <p className="delete-warning">
+              This will permanently delete <strong>{deletePkgConfirm.pkg.name}</strong>.
+            </p>
+            <p className="delete-cascade-warning">
+              <i className="fas fa-info-circle"></i>
+              The individual services in this package will not be affected.
+            </p>
+            <div className="delete-confirm-actions">
+              <button className="btn btn-secondary" onClick={() => setDeletePkgConfirm({ show: false, pkg: null })}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-danger"
+                onClick={confirmDeletePkg}
+                disabled={deletePkgMutation.isPending}
+              >
+                {deletePkgMutation.isPending ? 'Deleting...' : 'Delete Package'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPending, toggleServiceSelection, moveService, getSelectedServiceDetails, isNew }) {
+  const { selected, totalDuration, totalPrice, totalPriceMax } = getSelectedServiceDetails(formData.selectedServiceIds);
+  const hasPriceOverride = formData.price_override !== null && formData.price_override !== undefined && formData.price_override !== '';
+
+  return (
+    <form className="package-form-card" onSubmit={onSubmit}>
+      <h3>{isNew ? 'New Package' : 'Edit Package'}</h3>
+      <div className="form-grid">
+        <div className="form-group form-group-wide">
+          <label>Package Name *</label>
+          <input
+            type="text"
+            className="form-input"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            placeholder="e.g., Roof Leak Investigation"
+            required
+          />
+        </div>
+        <div className="form-group form-group-wide">
+          <label>Description (optional)</label>
+          <textarea
+            className="form-input"
+            value={formData.description}
+            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            placeholder="Describe what this package covers"
+            rows={2}
+          />
+        </div>
+      </div>
+
+      {/* Service Picker */}
+      <div className="service-picker">
+        <label>Select Services (min 2) *</label>
+        <div className="service-picker-list">
+          {services.map((svc) => (
+            <label key={svc.id} className="service-picker-item">
+              <input
+                type="checkbox"
+                checked={formData.selectedServiceIds.includes(svc.id)}
+                onChange={() => toggleServiceSelection(svc.id)}
+              />
+              <span className="service-picker-name">{svc.name}</span>
+              <span className="service-picker-meta">
+                {formatDuration(svc.duration_minutes)} · {formatPriceRange(svc.price, svc.price_max)}
+              </span>
+            </label>
+          ))}
+        </div>
+        {formData.selectedServiceIds.length > 0 && (
+          <div className="service-picker-order">
+            <label>Service Order</label>
+            <div className="service-order-list">
+              {formData.selectedServiceIds.map((id, idx) => {
+                const svc = services.find(s => s.id === id);
+                if (!svc) return null;
+                return (
+                  <div key={id} className="service-order-item">
+                    <span className="service-order-num">{idx + 1}</span>
+                    <span className="service-order-name">{svc.name}</span>
+                    <div className="service-order-btns">
+                      <button type="button" className="btn-icon" onClick={() => moveService(idx, -1)} disabled={idx === 0} title="Move up" aria-label="Move up">
+                        <i className="fas fa-chevron-up"></i>
+                      </button>
+                      <button type="button" className="btn-icon" onClick={() => moveService(idx, 1)} disabled={idx === formData.selectedServiceIds.length - 1} title="Move down" aria-label="Move down">
+                        <i className="fas fa-chevron-down"></i>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Calculated totals */}
+      {selected.length >= 2 && (
+        <div className="package-meta">
+          <span className="meta-item duration"><i className="fas fa-clock"></i> {formatDuration(totalDuration)}</span>
+          <span className="meta-item price">{formatPriceRange(totalPrice, totalPriceMax > totalPrice ? totalPriceMax : null)}</span>
+        </div>
+      )}
+
+      {/* Price Override */}
+      <div className="form-group" style={{ marginTop: '0.75rem' }}>
+        <div className="price-range-toggle-row">
+          <button
+            type="button"
+            className={`price-range-toggle ${hasPriceOverride ? 'active' : ''}`}
+            onClick={() => setFormData({ ...formData, price_override: hasPriceOverride ? null : '', price_max_override: null })}
+            role="switch"
+            aria-checked={hasPriceOverride}
+          >
+            <span className="price-range-toggle-slider" />
+          </button>
+          <span className="price-range-toggle-label">Override package price</span>
+        </div>
+        {hasPriceOverride && (
+          <div className="form-grid" style={{ marginTop: '0.5rem' }}>
+            <div className="form-group">
+              <label>Price (€)</label>
+              <input
+                type="number"
+                className="form-input"
+                value={formData.price_override}
+                onChange={(e) => setFormData({ ...formData, price_override: e.target.value })}
+                placeholder="0.00"
+                step="0.01"
+                min="0"
+              />
+            </div>
+            <div className="form-group">
+              <label>Max Price (€, optional)</label>
+              <input
+                type="number"
+                className="form-input"
+                value={formData.price_max_override || ''}
+                onChange={(e) => setFormData({ ...formData, price_max_override: e.target.value })}
+                placeholder="Max price"
+                step="0.01"
+                min="0"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Book when uncertain toggle */}
+      <div className="callout-toggle-group">
+        <label>Book when uncertain?</label>
+        <div className="callout-toggle-row">
+          <button
+            type="button"
+            className={`callout-toggle ${formData.use_when_uncertain ? 'active' : ''}`}
+            onClick={() => setFormData({ ...formData, use_when_uncertain: !formData.use_when_uncertain })}
+            role="switch"
+            aria-checked={formData.use_when_uncertain}
+            title="When enabled, the AI receptionist will prefer this package when the caller's issue is vague or ambiguous"
+          >
+            <span className="callout-toggle-slider" />
+          </button>
+          <span className="callout-toggle-label">
+            {formData.use_when_uncertain
+              ? 'Yes — AI prefers this package when the issue is vague'
+              : 'No — only match when clearly relevant'}
+          </span>
+        </div>
+      </div>
+
+      {/* Clarifying question */}
+      <div className="form-group" style={{ marginTop: '0.75rem' }}>
+        <label>Clarifying Question (optional)</label>
+        <textarea
+          className="form-input"
+          value={formData.clarifying_question}
+          onChange={(e) => setFormData({ ...formData, clarifying_question: e.target.value })}
+          placeholder="e.g., Do you know where the leak is coming from?"
+          rows={2}
+          maxLength={500}
+        />
+        <span className="form-hint">The AI receptionist will ask this question when this package is a potential match</span>
+      </div>
+
+      <div className="form-actions">
+        <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="btn btn-primary" disabled={isPending}>
+          {isPending ? 'Saving...' : (isNew ? 'Add Package' : 'Save Package')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDelete, isPending, getSelectedServiceDetails }) {
+  const resolvedServices = (pkg.services || [])
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    .map(ref => {
+      const svc = services.find(s => s.id === (ref.service_id || ref.id));
+      return svc ? { ...svc, sort_order: ref.sort_order } : (ref.name ? ref : null);
+    })
+    .filter(Boolean);
+
+  const [editData, setEditData] = useState({});
+
+  useEffect(() => {
+    if (isEditing) {
+      const serviceIds = (pkg.services || [])
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+        .map(ref => ref.service_id || ref.id)
+        .filter(Boolean);
+      setEditData({
+        id: pkg.id,
+        name: pkg.name || '',
+        description: pkg.description || '',
+        selectedServiceIds: serviceIds,
+        price_override: pkg.price_override != null ? pkg.price_override : null,
+        price_max_override: pkg.price_max_override != null ? pkg.price_max_override : null,
+        use_when_uncertain: pkg.use_when_uncertain || false,
+        clarifying_question: pkg.clarifying_question || '',
+      });
+    }
+  }, [isEditing, pkg]);
+
+  const editToggleService = (serviceId) => {
+    setEditData(prev => {
+      const ids = prev.selectedServiceIds.includes(serviceId)
+        ? prev.selectedServiceIds.filter(id => id !== serviceId)
+        : [...prev.selectedServiceIds, serviceId];
+      return { ...prev, selectedServiceIds: ids };
+    });
+  };
+
+  const editMoveService = (index, direction) => {
+    setEditData(prev => {
+      const ids = [...prev.selectedServiceIds];
+      const newIndex = index + direction;
+      if (newIndex < 0 || newIndex >= ids.length) return prev;
+      [ids[index], ids[newIndex]] = [ids[newIndex], ids[index]];
+      return { ...prev, selectedServiceIds: ids };
+    });
+  };
+
+  if (isEditing) {
+    return (
+      <div className="package-card editing">
+        <PackageForm
+          formData={editData}
+          setFormData={setEditData}
+          services={services}
+          onSubmit={(e) => { e.preventDefault(); onSave(editData); }}
+          onCancel={onCancel}
+          isPending={isPending}
+          toggleServiceSelection={editToggleService}
+          moveService={editMoveService}
+          getSelectedServiceDetails={getSelectedServiceDetails}
+          isNew={false}
+        />
+      </div>
+    );
+  }
+
+  const totalDuration = pkg.total_duration_minutes || resolvedServices.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+  const totalPrice = pkg.price_override != null ? pkg.price_override : (pkg.total_price || resolvedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0));
+  const totalPriceMax = pkg.price_max_override != null ? pkg.price_max_override : (pkg.total_price_max || resolvedServices.reduce((sum, s) => sum + (parseFloat(s.price_max) || parseFloat(s.price) || 0), 0));
+
+  return (
+    <div className="package-card">
+      <div className="service-image">
+        📦
+      </div>
+      <div className="service-content">
+        <h3 className="service-title">{pkg.name || 'Unnamed Package'}</h3>
+        <div className="package-services-list">
+          {resolvedServices.map((svc, idx) => (
+            <span key={svc.id || idx}>
+              {idx > 0 && <span className="service-arrow"> → </span>}
+              <span className="service-step">{svc.name}</span>
+            </span>
+          ))}
+        </div>
+        <div className="service-meta">
+          {totalPrice > 0 && (
+            <span className="meta-item price">{formatPriceRange(totalPrice, totalPriceMax > totalPrice ? totalPriceMax : null)}</span>
+          )}
+          {totalDuration > 0 && (
+            <span className="meta-item duration">
+              <i className="fas fa-clock"></i> {formatDuration(totalDuration)}
+            </span>
+          )}
+          {pkg.use_when_uncertain && (
+            <span className="badge-uncertain" title="AI prefers this package when the caller's issue is vague or ambiguous">
+              🤔 Book when uncertain
+            </span>
+          )}
+          {pkg.clarifying_question && (
+            <span className="badge-uncertain" title={`AI will ask: "${pkg.clarifying_question}"`}>
+              ❓ Has clarifying question
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="service-actions">
+        <button type="button" className="btn-icon" onClick={onEdit} title="Edit" aria-label="Edit package">
+          <i className="fas fa-edit"></i>
+        </button>
+        <button type="button" className="btn-icon danger" onClick={onDelete} title="Delete" aria-label="Delete package" disabled={isPending}>
           <i className="fas fa-trash"></i>
         </button>
       </div>

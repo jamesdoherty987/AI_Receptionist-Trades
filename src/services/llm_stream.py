@@ -254,6 +254,37 @@ def get_business_hours_from_menu():
         }
 
 
+def _build_packages_prompt_section(packages_list):
+    """Build the PACKAGES OFFERED section for the AI prompt.
+    Returns empty string if no packages exist (no prompt bloat)."""
+    if not packages_list:
+        return ""
+
+    lines = ["PACKAGES OFFERED (bundles of multiple services):"]
+    for pkg in packages_list:
+        service_names = " → ".join(s['name'] for s in pkg.get('services', []))
+        price = pkg.get('total_price', 0)
+        price_max = pkg.get('total_price_max')
+        duration_label = pkg.get('duration_label', '')
+
+        uncertain_hint = " [USE WHEN ISSUE IS UNCERTAIN]" if pkg.get('use_when_uncertain') else ""
+        line = f"📦 {pkg['name']}{uncertain_hint} | Services: {service_names}"
+
+        if price_max and float(price_max) > float(price):
+            line += f" | Price: €{price} to €{price_max}"
+        else:
+            line += f" | Price: €{price}"
+
+        line += f" | Duration: {duration_label}"
+
+        if pkg.get('clarifying_question'):
+            line += f' | Ask: "{pkg["clarifying_question"]}"'
+
+        lines.append(line)
+
+    return "\n".join(lines) + "\n"
+
+
 def load_system_prompt(company_id=None):
     """Load system prompt from file and inject business information.
     When company_id is provided, loads that company's specific info.
@@ -321,10 +352,44 @@ def load_system_prompt(company_id=None):
         prompt = prompt.replace("{{BUSINESS_HOURS}}", business_info.get("business_hours", "8 AM - 6 PM Mon-Sat (24/7 emergency available)"))
         prompt = prompt.replace("{{CALLOUT_FEE}}", services_menu.get('pricing_notes', {}).get('callout_fee', '€60'))
         
-        # Build services list from menu
+        # Load active packages for this company
+        from src.services.settings_manager import get_settings_manager
+        packages_list = []
+        try:
+            settings_mgr = get_settings_manager()
+            packages_list = settings_mgr.get_packages(company_id=company_id)
+        except Exception as e:
+            print(f"[WARNING] Error loading packages: {e}")
+            packages_list = []
+        
+        # Conditionally inject packages clarifying rules into prompt template
+        # Only include when active packages exist (Task 6.3)
+        if packages_list:
+            packages_rules = """PACKAGES (multi-service bundles for complex/ambiguous issues)
+• When a caller's issue is ambiguous or clearly needs multiple steps, suggest the matching package
+• Book the PACKAGE — the system handles the total duration automatically
+• Mention the package name and briefly what it includes
+• Quote the package price range if available
+
+CONFIDENCE-BASED CLARIFYING RULES:
+• If the caller's issue CLEARLY matches one service (high confidence), book it directly — no questions needed
+  Example: "I need my toilet replaced" → book Toilet Replacement immediately
+• If the issue COULD match multiple services or a package (grey zone), ask ONE clarifying question to narrow it down
+  Example: "I have a leak" → could be Toilet Leak Repair OR Roof Leak Investigation package → ask ONE question
+• If a package is marked [USE WHEN ISSUE IS UNCERTAIN], prefer it when the caller can't pinpoint the exact problem
+• If a package has a custom "Ask:" question, use that question when clarifying — it's written by the business owner for their specific trade
+• MAXIMUM ONE clarifying question — do NOT interrogate the caller or slow down the call
+• If still uncertain after one question, book the [USE WHEN ISSUE IS UNCERTAIN] package or fall back to General Service
+
+"""
+            prompt = prompt.replace("{{PACKAGES_CLARIFYING_RULES}}\n", packages_rules)
+        else:
+            prompt = prompt.replace("{{PACKAGES_CLARIFYING_RULES}}\n", "")
+        
+        # Build services list from menu (exclude package_only services)
         services_list = []
         for service in services_menu.get('services', []):
-            if service.get('active', True):
+            if service.get('active', True) and not service.get('package_only', False):
                 price = service['price']
                 price_max = service.get('price_max')
                 if price_max and float(price_max) > float(price):
@@ -381,6 +446,7 @@ DAYS OPEN: {days_str}
 SERVICES OFFERED:
 {chr(10).join('- ' + s for s in services_list) if services_list else '- General trade services'}
 
+{_build_packages_prompt_section(packages_list)}
 PRICING NOTES:
 - Callout fee: {services_menu.get('pricing_notes', {}).get('callout_fee', '€60 minimum')}
 - Hourly rate: {services_menu.get('pricing_notes', {}).get('hourly_rate', '€50 per hour')}

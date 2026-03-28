@@ -343,6 +343,40 @@ class PostgreSQLDatabaseWrapper:
                 END $$;
             """)
             
+            # Add package_only column if it doesn't exist (migration)
+            cursor.execute("""
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                   WHERE table_name='services' AND column_name='package_only') THEN
+                        ALTER TABLE services ADD COLUMN package_only BOOLEAN DEFAULT FALSE;
+                    END IF;
+                END $$;
+            """)
+            
+            # Packages table (bundles of multiple services)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS packages (
+                    id TEXT PRIMARY KEY,
+                    company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    services JSONB NOT NULL DEFAULT '[]',
+                    price_override REAL DEFAULT NULL,
+                    price_max_override REAL DEFAULT NULL,
+                    use_when_uncertain BOOLEAN DEFAULT FALSE,
+                    clarifying_question TEXT DEFAULT NULL,
+                    active INTEGER DEFAULT 1,
+                    image_url TEXT,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_packages_company ON packages(company_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_packages_active ON packages(company_id, active)")
+            
             # Business settings table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS business_settings (
@@ -3244,6 +3278,173 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
+    # ==========================================
+    # Package Methods (Service Bundles)
+    # ==========================================
+
+    def get_all_packages(self, active_only: bool = True, company_id: int = None) -> List[Dict]:
+        """Get all packages for a specific company"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            if company_id:
+                if active_only:
+                    cursor.execute("SELECT * FROM packages WHERE company_id = %s AND active = 1 ORDER BY sort_order, name", (company_id,))
+                else:
+                    cursor.execute("SELECT * FROM packages WHERE company_id = %s ORDER BY sort_order, name", (company_id,))
+            else:
+                if active_only:
+                    cursor.execute("SELECT * FROM packages WHERE active = 1 ORDER BY sort_order, name")
+                else:
+                    cursor.execute("SELECT * FROM packages ORDER BY sort_order, name")
+            
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            self.return_connection(conn)
+
+    def get_package(self, package_id: str, company_id: int = None) -> Optional[Dict]:
+        """Get package by ID, optionally filtered by company"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            if company_id:
+                cursor.execute("SELECT * FROM packages WHERE id = %s AND company_id = %s", (package_id, company_id))
+            else:
+                cursor.execute("SELECT * FROM packages WHERE id = %s", (package_id,))
+            row = cursor.fetchone()
+            if row:
+                result = dict(row)
+                return result
+            return None
+        finally:
+            self.return_connection(conn)
+
+    def add_package(self, package_id: str, company_id: int, name: str,
+                    description: str = None, services: list = None,
+                    price_override: float = None, price_max_override: float = None,
+                    use_when_uncertain: bool = False, clarifying_question: str = None,
+                    active: bool = True, image_url: str = None,
+                    sort_order: int = 0) -> bool:
+        """Add a new package for a specific company"""
+        import json
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            services_json = json.dumps(services or [])
+            cursor.execute("""
+                INSERT INTO packages (id, company_id, name, description, services,
+                                     price_override, price_max_override, use_when_uncertain,
+                                     clarifying_question, active, image_url, sort_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (package_id, company_id, name, description, services_json,
+                  price_override, price_max_override, use_when_uncertain,
+                  clarifying_question, 1 if active else 0, image_url, sort_order))
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Error adding package: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
+    def update_package(self, package_id: str, company_id: int = None, **kwargs) -> bool:
+        """Update package information for a specific company"""
+        import json
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            allowed_fields = ['name', 'description', 'services', 'price_override',
+                             'price_max_override', 'use_when_uncertain', 'clarifying_question',
+                             'active', 'image_url', 'sort_order']
+            
+            fields = []
+            values = []
+            for key, value in kwargs.items():
+                if key in allowed_fields:
+                    if key == 'active' and isinstance(value, bool):
+                        value = 1 if value else 0
+                    if key == 'services' and isinstance(value, list):
+                        value = json.dumps(value)
+                    fields.append(f"{key} = %s")
+                    values.append(value)
+            
+            if fields:
+                values.append(datetime.now())
+                values.append(package_id)
+                if company_id:
+                    values.append(company_id)
+                    query = f"UPDATE packages SET {', '.join(fields)}, updated_at = %s WHERE id = %s AND company_id = %s"
+                else:
+                    query = f"UPDATE packages SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
+                cursor.execute(query, values)
+                conn.commit()
+                success = cursor.rowcount > 0
+            else:
+                success = False
+            
+            return success
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Error updating package: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
+    def delete_package(self, package_id: str, company_id: int = None) -> dict:
+        """Delete a package for a specific company. Returns info about affected bookings."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        try:
+            # Get the package name to find affected bookings
+            if company_id:
+                cursor.execute("SELECT name FROM packages WHERE id = %s AND company_id = %s", (package_id, company_id))
+            else:
+                cursor.execute("SELECT name FROM packages WHERE id = %s", (package_id,))
+            
+            package = cursor.fetchone()
+            package_name = package['name'] if package else None
+            
+            # Count bookings that reference this package
+            jobs_count = 0
+            if package_name and company_id:
+                cursor.execute("""
+                    SELECT COUNT(*) as count FROM bookings 
+                    WHERE service_type = %s AND company_id = %s
+                """, (package_name, company_id))
+                result = cursor.fetchone()
+                jobs_count = result['count'] if result else 0
+            
+            # Delete the package
+            if company_id:
+                cursor.execute("DELETE FROM packages WHERE id = %s AND company_id = %s", (package_id, company_id))
+            else:
+                cursor.execute("DELETE FROM packages WHERE id = %s", (package_id,))
+            
+            package_deleted = cursor.rowcount > 0
+            conn.commit()
+            
+            return {
+                "success": package_deleted,
+                "jobs_affected": jobs_count
+            }
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Error deleting package: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "jobs_affected": 0
+            }
+        finally:
+            self.return_connection(conn)
 
     # ==========================================
     # Worker Account Methods (Worker Portal)

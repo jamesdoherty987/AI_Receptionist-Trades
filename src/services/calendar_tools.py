@@ -1410,27 +1410,59 @@ class ServiceMatcher:
         return (score, {"type": match_type, "matched": service_name, "tokens_matched": len(set(job_tokens) & set(service_tokens))})
     
     @classmethod
-    def match(cls, job_description: str, services: list, default_duration: int = 1440) -> dict:
+    def match(cls, job_description: str, services: list, default_duration: int = 1440, packages: list = None) -> dict:
         """
-        Match a job description to the best service.
+        Match a job description to the best service or package.
         
         Args:
             job_description: Description of the job from customer
             services: List of service dicts from database
             default_duration: Default duration if no match found (1 day for trades)
+            packages: Optional list of resolved package dicts for unified scoring
             
         Returns:
-            Dict with matched service info
+            Dict with matched service info, including confidence_tier and
+            needs_clarification fields when packages are in the pool.
         """
         if not job_description or not job_description.strip():
             return cls._create_general_fallback(services, default_duration, "empty_description")
+        
+        # Filter out package_only services from standalone matching
+        standalone_services = [s for s in services if not s.get('package_only', False)]
+        
+        # Convert packages to virtual service entries for unified scoring
+        virtual_entries = []
+        if packages:
+            for pkg in packages:
+                pkg_services = pkg.get('services', [])
+                service_names = [s.get('name', '') for s in pkg_services]
+                combined_desc = f"{pkg.get('description', '')} {' '.join(service_names)}"
+                duration = sum(s.get('duration_minutes', 0) for s in pkg_services)
+                price = pkg.get('price_override') or sum(s.get('price', 0) for s in pkg_services)
+                
+                virtual_entries.append({
+                    'id': pkg['id'],
+                    'name': pkg['name'],
+                    'description': combined_desc,
+                    'category': 'Package',
+                    'duration_minutes': duration,
+                    'price': price,
+                    'is_package': True,
+                    'use_when_uncertain': pkg.get('use_when_uncertain', False),
+                    'clarifying_question': pkg.get('clarifying_question'),
+                    '_package_data': pkg
+                })
+        
+        # Combine standalone services and virtual package entries
+        all_candidates = standalone_services + virtual_entries
         
         best_match = None
         best_score = 0
         best_details = {}
         general_service = None
+        all_scores = []
         
-        for service in services:
+        for service in all_candidates:
             service_name = (service.get('name') or '').lower()
             service_category = (service.get('category') or '').lower()
             
@@ -1440,6 +1472,7 @@ class ServiceMatcher:
                 continue  # Don't match against General service directly
             
             score, details = cls.calculate_match_score(job_description, service)
+            all_scores.append({'candidate': service, 'score': score, 'details': details})
             
             if score > best_score:
                 best_score = score
@@ -1450,21 +1483,79 @@ class ServiceMatcher:
         if best_match and best_score >= cls.MATCH_THRESHOLD:
             matched_name = best_match.get('name', 'Unknown')
             logger.debug(f"Service match: '{job_description}' -> '{matched_name}' (score: {best_score}, type: {best_details.get('type', 'unknown')})")
-            return {
+            result = {
                 'service': best_match,
                 'score': best_score,
                 'matched_name': matched_name,
                 'match_details': best_details,
                 'is_general': False
             }
+            
+            # Tag package results
+            if best_match.get('is_package'):
+                result['is_package'] = True
+            
+            # Add confidence tier classification
+            result.update(cls._classify_confidence(best_score, all_scores))
+            
+            return result
         
         # Fall back to General service
-        return cls._create_general_fallback(
-            services, 
+        fallback = cls._create_general_fallback(
+            standalone_services, 
             default_duration, 
             f"low_score:{best_score}" if best_match else "no_services",
             general_service
         )
+        # Add low confidence tier to fallback
+        fallback['confidence_tier'] = 'low'
+        fallback['needs_clarification'] = False
+        return fallback
+    
+    @classmethod
+    def _classify_confidence(cls, best_score: int, all_scores: list) -> dict:
+        """
+        Classify match confidence into tiers and identify close matches.
+        
+        Args:
+            best_score: The top match score
+            all_scores: List of dicts with 'candidate', 'score', 'details' for all scored candidates
+            
+        Returns:
+            Dict with confidence_tier, needs_clarification, and optionally close_matches/suggested_question
+        """
+        result = {}
+        
+        if best_score >= 80:
+            result['confidence_tier'] = 'high'
+            result['needs_clarification'] = False
+            return result
+        
+        # Collect close matches: scored within 30 points of top AND >= 40
+        close_matches = [
+            entry for entry in all_scores
+            if entry['score'] >= best_score - 30 and entry['score'] >= 40
+        ]
+        close_matches.sort(key=lambda x: x['score'], reverse=True)
+        
+        if best_score >= 40 and len(close_matches) >= 2:
+            result['confidence_tier'] = 'grey_zone'
+            result['needs_clarification'] = True
+            result['close_matches'] = [
+                {'candidate': cm['candidate'], 'score': cm['score']}
+                for cm in close_matches[:3]
+            ]
+            # Check for suggested question from uncertain package
+            for cm in close_matches:
+                candidate = cm['candidate']
+                if candidate.get('use_when_uncertain') and candidate.get('clarifying_question'):
+                    result['suggested_question'] = candidate['clarifying_question']
+                    break
+        else:
+            result['confidence_tier'] = 'low'
+            result['needs_clarification'] = False
+        
+        return result
     
     @classmethod
     def _create_general_fallback(cls, services: list, default_duration: int, reason: str, general_service: dict = None) -> dict:
@@ -1486,7 +1577,9 @@ class ServiceMatcher:
                 'score': 0,
                 'matched_name': general_service.get('name', 'General Service'),
                 'match_details': {'type': 'fallback', 'reason': reason},
-                'is_general': True
+                'is_general': True,
+                'confidence_tier': 'low',
+                'needs_clarification': False
             }
         
         # Find General service in list
@@ -1504,7 +1597,9 @@ class ServiceMatcher:
                     'score': 0,
                     'matched_name': service.get('name', 'General Callout'),
                     'match_details': {'type': 'fallback', 'reason': reason},
-                    'is_general': True
+                    'is_general': True,
+                    'confidence_tier': 'low',
+                    'needs_clarification': False
                 }
         
         # Create virtual General service with default charge
@@ -1522,7 +1617,9 @@ class ServiceMatcher:
             'score': 0,
             'matched_name': 'General Callout (default)',
             'match_details': {'type': 'virtual_fallback', 'reason': reason},
-            'is_general': True
+            'is_general': True,
+            'confidence_tier': 'low',
+            'needs_clarification': False
         }
 
 
@@ -1684,23 +1781,59 @@ def match_service(job_description: str, company_id: int = None, use_ai_fallback:
     from src.services.settings_manager import get_settings_manager
     
     try:
-        # Load services from database
+        # Load services and packages from database
         settings_mgr = get_settings_manager()
         services = settings_mgr.get_services(company_id=company_id)
+        packages = settings_mgr.get_packages(company_id=company_id)
         default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
         
-        # First try fast fuzzy matching
-        result = ServiceMatcher.match(job_description, services, default_duration)
+        # Filter package_only services from standalone pool
+        standalone_services = [s for s in services if not s.get('package_only', False)]
+        
+        # First try fast fuzzy matching with packages
+        result = ServiceMatcher.match(job_description, standalone_services, default_duration, packages=packages)
+        
+        # On low-confidence fallback (General Service), check for use_when_uncertain package
+        if result.get('is_general', False) and packages:
+            uncertain_pkg = next((p for p in packages if p.get('use_when_uncertain', False)), None)
+            if uncertain_pkg:
+                pkg_services = uncertain_pkg.get('services', [])
+                duration = sum(s.get('duration_minutes', 0) for s in pkg_services)
+                price = uncertain_pkg.get('price_override') or sum(s.get('price', 0) for s in pkg_services)
+                result = {
+                    'service': {
+                        'id': uncertain_pkg['id'],
+                        'name': uncertain_pkg['name'],
+                        'description': uncertain_pkg.get('description', ''),
+                        'category': 'Package',
+                        'duration_minutes': duration,
+                        'price': price,
+                        'is_package': True,
+                        '_package_data': uncertain_pkg
+                    },
+                    'score': result.get('score', 0),
+                    'matched_name': uncertain_pkg['name'],
+                    'match_details': {'type': 'uncertain_package_fallback'},
+                    'is_general': False,
+                    'is_package': True,
+                    'confidence_tier': 'low',
+                    'needs_clarification': False
+                }
+                logger.info(f"Low-confidence fallback to uncertain package: '{uncertain_pkg['name']}'")
+                return result
         
         # If fuzzy match has low confidence and we have multiple services, try AI matching
         # AI threshold: score < 50 means fuzzy match isn't confident
-        if use_ai_fallback and result.get('is_general', False) and len(services) > 1:
+        if use_ai_fallback and result.get('is_general', False) and len(standalone_services) > 1:
             logger.debug(f"Fuzzy match returned General Service (score: {result.get('score', 0)}) - trying AI matching")
             try:
-                ai_result = AIServiceMatcher.match(job_description, services, default_duration)
+                ai_result = AIServiceMatcher.match(job_description, standalone_services, default_duration)
                 # Only use AI result if it found a specific service (not General)
                 if not ai_result.get('is_general', True):
                     logger.info(f"AI match improved result: '{job_description}' -> '{ai_result['matched_name']}' (confidence: {ai_result.get('score', 0)})")
+                    # Tag package results from AI matcher
+                    if ai_result.get('service', {}).get('is_package'):
+                        ai_result['is_package'] = True
                     return ai_result
             except Exception as ai_error:
                 logger.warning(f"AI matching failed, using fuzzy result: {ai_error}")

@@ -788,3 +788,256 @@
   flex: 1;
 }
 
+
+/* ===== Packages Section ===== */
+.packages-section {
+  margin-top: 2.5rem;
+}
+
+.packages-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+  gap: 1rem;
+}
+
+.packages-header h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0 0 0.2rem 0;
+}
+
+/* Package Card */
+.package-card {
+  background: white;
+  border: 1px solid #e8ecf1;
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  transition: all 0.15s;
+}
+
+.package-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.package-card.editing {
+  padding: 0;
+  border: none;
+  box-shadow: none;
+}
+
+.package-card.editing .package-form-card {
+  margin-bottom: 0;
+}
+
+/* Package Services List (arrows) */
+.package-services-list {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.35rem;
+  line-height: 1.5;
+}
+
+.service-arrow {
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+
+.service-step {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Package Meta */
+.package-meta {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+/* Badge for "Book when uncertain" */
+.badge-uncertain {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: #ede9fe;
+  color: #6d28d9;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* Package Form Card */
+.package-form-card {
+  background: white;
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.package-form-card h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* Service Picker */
+.service-picker {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--bg-gray);
+  border-radius: 10px;
+}
+
+.service-picker > label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+  color: var(--text-primary);
+}
+
+.service-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.service-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.service-picker-item:hover {
+  border-color: var(--accent-blue);
+}
+
+.service-picker-item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent-blue);
+  flex-shrink: 0;
+}
+
+.service-picker-name {
+  font-weight: 500;
+  font-size: 0.9rem;
+  flex: 1;
+}
+
+.service-picker-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Service Order (reorder) */
+.service-picker-order {
+  margin-top: 1rem;
+}
+
+.service-picker-order > label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.service-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.service-order-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+
+.service-order-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.service-order-name {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.service-order-btns {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.service-order-btns .btn-icon {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 0.7rem;
+}
+
+/* Mobile adjustments for packages */
+@media (max-width: 768px) {
+  .packages-section {
+    margin-top: 2rem;
+  }
+
+  .packages-header {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .packages-header h2 {
+    font-size: 1.25rem;
+  }
+
+  .package-card {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 0.875rem;
+  }
+
+  .package-form-card {
+    padding: 1rem;
+  }
+
+  .service-picker-item {
+    flex-wrap: wrap;
+  }
+
+  .service-picker-meta {
+    width: 100%;
+    padding-left: 1.6rem;
+  }
+}

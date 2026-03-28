@@ -114,6 +114,12 @@ export const createService = (data) => api.post('/api/services/menu/service', da
 export const updateService = (id, data) => api.put(`/api/services/menu/service/${id}`, data);
 export const deleteService = (id) => api.delete(`/api/services/menu/service/${id}`);
 
+// Packages
+export const getPackages = () => api.get('/api/packages');
+export const createPackage = (data) => api.post('/api/packages', data);
+export const updatePackage = (id, data) => api.put(`/api/packages/${id}`, data);
+export const deletePackage = (id) => api.delete(`/api/packages/${id}`);
+
 // Materials Catalog
 export const getMaterials = () => api.get('/api/materials');
 export const createMaterial = (data) => api.post('/api/materials', data);

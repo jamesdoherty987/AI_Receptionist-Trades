@@ -4257,6 +4257,69 @@ def manage_service_api(service_id):
 
 
 # ============================================================
+# Packages API (Service Bundles)
+# ============================================================
+
+@app.route("/api/packages", methods=["GET"])
+@login_required
+def get_packages_api():
+    """Get all packages for the authenticated company"""
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    company_id = session.get('company_id')
+    packages = settings_mgr.get_packages(company_id=company_id)
+    return jsonify(packages)
+
+
+@app.route("/api/packages", methods=["POST"])
+@login_required
+def create_package_api():
+    """Create a new package"""
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    company_id = session.get('company_id')
+
+    db = get_database()
+    company = db.get_company(company_id)
+    subscription_info = get_subscription_info(company)
+    if not subscription_info['is_active']:
+        return jsonify({"error": "Active subscription required to create packages"}), 403
+
+    data = request.json or {}
+    result = settings_mgr.add_package(data, company_id=company_id)
+    if result.get('success'):
+        return jsonify({"message": "Package created", "package_id": result.get('package_id')})
+    return jsonify({"error": result.get('error', 'Failed to create package')}), 400
+
+
+@app.route("/api/packages/<package_id>", methods=["PUT"])
+@login_required
+def update_package_api(package_id):
+    """Update an existing package"""
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    company_id = session.get('company_id')
+    data = request.json or {}
+    result = settings_mgr.update_package(package_id, data, company_id=company_id)
+    if result.get('success'):
+        return jsonify({"message": "Package updated"})
+    return jsonify({"error": result.get('error', 'Package not found')}), 404
+
+
+@app.route("/api/packages/<package_id>", methods=["DELETE"])
+@login_required
+def delete_package_api(package_id):
+    """Delete a package"""
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    company_id = session.get('company_id')
+    result = settings_mgr.delete_package(package_id, company_id=company_id)
+    if result.get('success'):
+        return jsonify({"message": "Package deleted", "jobs_affected": result.get('jobs_affected', 0)})
+    return jsonify({"error": result.get('error', 'Package not found')}), 404
+
+
+# ============================================================
 # Materials Catalog & Job Materials API
 # ============================================================
 
