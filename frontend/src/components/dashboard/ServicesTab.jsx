@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -26,6 +26,10 @@ function ServicesTab() {
   const { addToast } = useToast();
   const [editingId, setEditingId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
+  const [viewMode, setViewMode] = useState('grid');
   const [formData, setFormData] = useState({ 
     name: '', 
     price: '', 
@@ -39,7 +43,6 @@ function ServicesTab() {
   });
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, service: null });
 
-  // Fetch workers for the worker restrictions selector
   const { data: workersData } = useQuery({
     queryKey: ['workers'],
     queryFn: async () => {
@@ -48,10 +51,8 @@ function ServicesTab() {
     },
   });
 
-  // API returns workers as array directly, not { workers: [...] }
   const workers = Array.isArray(workersData) ? workersData : (workersData?.workers || []);
 
-  // Handle escape key to close delete confirmation
   useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === 'Escape' && deleteConfirm.show) {
@@ -126,12 +127,10 @@ function ServicesTab() {
     },
   });
 
-
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name.trim()) return;
     
-    // Validate worker restrictions - if 'only' or 'except' is selected, must have workers
     const restrictionType = formData.worker_restrictions?.type;
     const hasWorkerIds = formData.worker_restrictions?.worker_ids?.length > 0;
     if ((restrictionType === 'only' || restrictionType === 'except') && !hasWorkerIds) {
@@ -159,7 +158,6 @@ function ServicesTab() {
   };
 
   const handleUpdate = (service) => {
-    // Validate worker restrictions - if 'only' or 'except' is selected, must have workers
     const restrictionType = service.worker_restrictions?.type;
     const hasWorkerIds = service.worker_restrictions?.worker_ids?.length > 0;
     if ((restrictionType === 'only' || restrictionType === 'except') && !hasWorkerIds) {
@@ -203,18 +201,64 @@ function ServicesTab() {
     setEditingId(service.id);
   };
 
+  const services = menu?.services || [];
+
+  // Filter and sort services
+  const filteredServices = useMemo(() => {
+    let result = [...services];
+    
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(s =>
+        s.name?.toLowerCase().includes(term)
+      );
+    }
+    
+    result.sort((a, b) => {
+      let cmp = 0;
+      switch (sortBy) {
+        case 'name':
+          cmp = (a.name || '').localeCompare(b.name || '');
+          break;
+        case 'price':
+          cmp = (parseFloat(a.price) || 0) - (parseFloat(b.price) || 0);
+          break;
+        case 'duration':
+          cmp = (a.duration_minutes || 0) - (b.duration_minutes || 0);
+          break;
+        case 'workers':
+          cmp = (a.workers_required || 1) - (b.workers_required || 1);
+          break;
+        default:
+          cmp = 0;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    
+    return result;
+  }, [services, searchTerm, sortBy, sortDir]);
+
+  const toggleSort = (field) => {
+    if (sortBy === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortDir('asc');
+    }
+  };
+
   if (isLoading) {
     return <LoadingSpinner message="Loading services..." />;
   }
-
-  const services = menu?.services || [];
 
   return (
     <div className="services-tab">
       <div className="services-header">
         <div>
           <h2>Services</h2>
-          <p className="services-subtitle">Manage your services and pricing</p>
+          <p className="services-subtitle">
+            {services.length} service{services.length !== 1 ? 's' : ''} · Manage your services and pricing
+          </p>
         </div>
         <div className="services-controls">
           <button 
@@ -326,14 +370,12 @@ function ServicesTab() {
             </div>
           </div>
           
-          {/* Worker Restrictions */}
           <WorkerRestrictions
             restrictions={formData.worker_restrictions}
             onChange={(restrictions) => setFormData({ ...formData, worker_restrictions: restrictions })}
             workers={workers}
           />
           
-          {/* Requires Callout Toggle */}
           <div className="callout-toggle-group">
             <label>Requires Initial Callout?</label>
             <div className="callout-toggle-row">
@@ -354,7 +396,6 @@ function ServicesTab() {
             </div>
           </div>
 
-          {/* Package Only Toggle */}
           <div className="callout-toggle-group">
             <label>Package Only?</label>
             <div className="callout-toggle-row">
@@ -394,6 +435,65 @@ function ServicesTab() {
         </form>
       )}
 
+      {services.length > 0 && (
+        <div className="svc-toolbar">
+          <div className="svc-search">
+            <i className="fas fa-search"></i>
+            <input
+              type="text"
+              placeholder="Search services..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+            {searchTerm && (
+              <button className="svc-search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search">
+                <i className="fas fa-times"></i>
+              </button>
+            )}
+          </div>
+          <div className="svc-toolbar-right">
+            <div className="svc-sort-chips">
+              {[
+                { key: 'name', label: 'Name', icon: 'fa-font' },
+                { key: 'price', label: 'Price', icon: 'fa-euro-sign' },
+                { key: 'duration', label: 'Duration', icon: 'fa-clock' },
+              ].map(s => (
+                <button
+                  key={s.key}
+                  className={`svc-sort-chip ${sortBy === s.key ? 'active' : ''}`}
+                  onClick={() => toggleSort(s.key)}
+                  title={`Sort by ${s.label}`}
+                >
+                  <i className={`fas ${s.icon}`}></i>
+                  <span className="svc-sort-chip-label">{s.label}</span>
+                  {sortBy === s.key && (
+                    <i className={`fas fa-arrow-${sortDir === 'asc' ? 'up' : 'down'} svc-sort-dir`}></i>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="svc-view-toggle">
+              <button
+                className={`svc-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                onClick={() => setViewMode('grid')}
+                title="Grid view"
+                aria-label="Grid view"
+              >
+                <i className="fas fa-th-large"></i>
+              </button>
+              <button
+                className={`svc-view-btn ${viewMode === 'list' ? 'active' : ''}`}
+                onClick={() => setViewMode('list')}
+                title="List view"
+                aria-label="List view"
+              >
+                <i className="fas fa-list"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {services.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">🔧</div>
@@ -405,9 +505,15 @@ function ServicesTab() {
             Add Your First Service
           </button>
         </div>
+      ) : filteredServices.length === 0 ? (
+        <div className="svc-no-results">
+          <i className="fas fa-search"></i>
+          <p>No services match "{searchTerm}"</p>
+          <button className="btn btn-secondary btn-sm" onClick={() => setSearchTerm('')}>Clear search</button>
+        </div>
       ) : (
-        <div className="services-list">
-          {services.map((service) => (
+        <div className={`services-list ${viewMode === 'grid' ? 'services-grid' : ''}`}>
+          {filteredServices.map((service) => (
             <ServiceCard
               key={service.id}
               service={service}
@@ -418,12 +524,12 @@ function ServicesTab() {
               onDelete={() => handleDelete(service)}
               isPending={updateMutation.isPending || deleteMutation.isPending}
               workers={workers}
+              viewMode={viewMode}
             />
           ))}
         </div>
       )}
 
-      {/* Delete Confirmation Dialog */}
       {deleteConfirm.show && deleteConfirm.service && (
         <div className="delete-confirm-overlay">
           <div className="delete-confirm-dialog">
@@ -474,7 +580,6 @@ function WorkerRestrictions({ restrictions, onChange, workers }) {
     onChange({ type, worker_ids: newIds });
   };
 
-  // If no workers, show a message
   if (!workers || workers.length === 0) {
     return (
       <div className="worker-restrictions">
@@ -549,11 +654,10 @@ function WorkerRestrictions({ restrictions, onChange, workers }) {
   );
 }
 
-function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, isPending, workers }) {
+function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, isPending, workers, viewMode }) {
   const [editData, setEditData] = useState(service);
   const [imageError, setImageError] = useState(false);
 
-  // Reset edit data when editing starts
   useEffect(() => {
     if (isEditing) {
       setEditData({
@@ -563,7 +667,6 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
     }
   }, [isEditing, service]);
 
-  // Reset image error when service changes
   useEffect(() => {
     setImageError(false);
   }, [service.image_url]);
@@ -573,7 +676,6 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
     onSave(editData);
   };
 
-  // Get worker restriction summary for display
   const getRestrictionSummary = () => {
     const restrictions = service.worker_restrictions;
     if (!restrictions || restrictions.type === 'all') return null;
@@ -690,7 +792,6 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
             workers={workers}
           />
           
-          {/* Requires Callout Toggle */}
           <div className="callout-toggle-group">
             <label>Requires Initial Callout?</label>
             <div className="callout-toggle-row">
@@ -711,7 +812,6 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
             </div>
           </div>
 
-          {/* Package Only Toggle */}
           <div className="callout-toggle-group">
             <label>Package Only?</label>
             <div className="callout-toggle-row">
@@ -749,10 +849,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
   }
 
   const restrictionSummary = getRestrictionSummary();
+  const isGrid = viewMode === 'grid';
 
   return (
-    <div className="service-card">
-      <div className="service-image">
+    <div className={`service-card ${isGrid ? 'service-card-grid' : ''}`}>
+      <div className={`service-image ${isGrid ? 'service-image-grid' : ''}`}>
         {service.image_url && !imageError ? (
           <img 
             src={service.image_url} 
@@ -766,8 +867,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
       </div>
       <div className="service-content">
         <h3 className="service-title">{service.name || 'Unnamed Service'}</h3>
+        {isGrid && service.price > 0 && (
+          <div className="service-grid-price">{formatPriceRange(service.price, service.price_max)}</div>
+        )}
         <div className="service-meta">
-          {service.price > 0 && (
+          {!isGrid && service.price > 0 && (
             <span className="meta-item price">{formatPriceRange(service.price, service.price_max)}</span>
           )}
           {(service.duration_minutes || service.duration) && (
@@ -776,7 +880,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
             </span>
           )}
           <span className="meta-item workers" title="Workers required for this job">
-            <i className="fas fa-user-hard-hat"></i> {service.workers_required || 1} worker{(service.workers_required || 1) !== 1 ? 's' : ''}
+            <i className="fas fa-user-hard-hat"></i> {service.workers_required || 1}
           </span>
           {restrictionSummary && (
             <span className="meta-item restriction" title="Worker restrictions">
@@ -785,17 +889,17 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           )}
           {service.requires_callout && (
             <span className="meta-item callout-badge" title="Requires initial callout visit">
-              <i className="fas fa-phone-alt"></i> Callout first
+              <i className="fas fa-phone-alt"></i> Callout
             </span>
           )}
           {service.package_only && (
             <span className="meta-item callout-badge" title="Only available as part of a package">
-              <i className="fas fa-box"></i> Package only
+              <i className="fas fa-box"></i> Pkg only
             </span>
           )}
         </div>
       </div>
-      <div className="service-actions">
+      <div className={`service-actions ${isGrid ? 'service-actions-grid' : ''}`}>
         <button type="button" className="btn-icon" onClick={onEdit} title="Edit" aria-label="Edit service">
           <i className="fas fa-edit"></i>
         </button>
@@ -832,7 +936,6 @@ function PackagesSection({ services, isSubscriptionActive }) {
 
   const packages = packagesData?.packages || packagesData || [];
 
-  // Handle escape key to close delete confirmation
   useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === 'Escape' && deletePkgConfirm.show) {
@@ -980,7 +1083,6 @@ function PackagesSection({ services, isSubscriptionActive }) {
     });
   };
 
-  // Calculate totals from selected services
   const getSelectedServiceDetails = (selectedIds) => {
     const selected = selectedIds
       .map(id => services.find(s => s.id === id))
@@ -1047,7 +1149,6 @@ function PackagesSection({ services, isSubscriptionActive }) {
         </div>
       )}
 
-      {/* Package Delete Confirmation Dialog */}
       {deletePkgConfirm.show && deletePkgConfirm.pkg && (
         <div className="delete-confirm-overlay">
           <div className="delete-confirm-dialog">
@@ -1111,7 +1212,6 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
         </div>
       </div>
 
-      {/* Service Picker */}
       <div className="service-picker">
         <label>Select Services (min 2) *</label>
         <div className="service-picker-list">
@@ -1156,14 +1256,12 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
         )}
       </div>
 
-      {/* Calculated totals */}
       {selected.length >= 2 && (
         <div className="package-meta">
           <span className="meta-item duration"><i className="fas fa-clock"></i> {formatDuration(totalDuration)}</span>
         </div>
       )}
 
-      {/* Package Price — auto-fills from services sum, with price range toggle */}
       <div className="form-group" style={{ marginTop: '0.75rem' }}>
         <label>Price (€)</label>
         {formData.price_max_override != null && (
@@ -1211,7 +1309,6 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
         )}
       </div>
 
-      {/* Requires investigation toggle */}
       <div className="callout-toggle-group">
         <label>Requires investigation first?</label>
         <div className="callout-toggle-row">

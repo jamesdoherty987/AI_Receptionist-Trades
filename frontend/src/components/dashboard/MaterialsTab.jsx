@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { getMaterials, createMaterial, updateMaterial, deleteMaterial } from '../../services/api';
@@ -40,6 +40,9 @@ function MaterialsTab() {
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortDir, setSortDir] = useState('asc');
+  const [viewMode, setViewMode] = useState('list');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [formData, setFormData] = useState({
     name: '', unit_price: '', unit: 'each', category: '', supplier: ''
@@ -96,35 +99,12 @@ function MaterialsTab() {
   if (isLoading) return <LoadingSpinner message="Loading materials..." />;
 
   const materials = data?.materials || [];
-
-  // Get unique categories from existing materials
   const existingCategories = [...new Set(materials.map(m => m.category).filter(Boolean))];
   const allCategories = [...new Set([...COMMON_CATEGORIES, ...existingCategories])].sort();
 
-  // Filter materials
-  let filtered = materials;
-  if (searchTerm.trim()) {
-    const term = searchTerm.toLowerCase();
-    filtered = filtered.filter(m =>
-      m.name.toLowerCase().includes(term) ||
-      m.supplier?.toLowerCase().includes(term) ||
-      m.category?.toLowerCase().includes(term)
-    );
-  }
-  if (filterCategory !== 'all') {
-    filtered = filtered.filter(m => m.category === filterCategory);
-  }
-
-  // Group by category
-  const grouped = {};
-  filtered.forEach(m => {
-    const cat = m.category || 'Uncategorised';
-    if (!grouped[cat]) grouped[cat] = [];
-    grouped[cat].push(m);
-  });
-
   const totalItems = materials.length;
   const totalValue = materials.reduce((sum, m) => sum + parseFloat(m.unit_price || 0), 0);
+  const categoryCount = existingCategories.length;
 
   return (
     <div className="materials-tab">
@@ -143,6 +123,24 @@ function MaterialsTab() {
           <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Material
         </button>
       </div>
+
+      {/* Stats bar */}
+      {totalItems > 0 && (
+        <div className="mat-stats-bar">
+          <div className="mat-stat">
+            <span className="mat-stat-value">{totalItems}</span>
+            <span className="mat-stat-label">Items</span>
+          </div>
+          <div className="mat-stat">
+            <span className="mat-stat-value">{categoryCount}</span>
+            <span className="mat-stat-label">Categories</span>
+          </div>
+          <div className="mat-stat">
+            <span className="mat-stat-value">{formatCurrency(totalValue / totalItems)}</span>
+            <span className="mat-stat-label">Avg Price</span>
+          </div>
+        </div>
+      )}
 
       {/* Add Form */}
       {showAddForm && (
@@ -192,62 +190,39 @@ function MaterialsTab() {
         </form>
       )}
 
-      {/* Search & Filter */}
+      {/* Toolbar: Search + Category Filter + Sort + View Toggle */}
       {materials.length > 0 && (
-        <div className="mat-controls">
-          <div className="mat-search">
-            <i className="fas fa-search"></i>
-            <input type="text" placeholder="Search materials..." value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)} />
-          </div>
-          {existingCategories.length > 0 && (
-            <div className="mat-filter">
-              <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
-                <option value="all">All Categories</option>
-                {existingCategories.sort().map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-          )}
-        </div>
+        <MaterialsToolbar
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          filterCategory={filterCategory}
+          setFilterCategory={setFilterCategory}
+          existingCategories={existingCategories}
+          sortBy={sortBy}
+          setSortBy={setSortBy}
+          sortDir={sortDir}
+          setSortDir={setSortDir}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+        />
       )}
 
       {/* Materials List */}
-      {materials.length === 0 ? (
-        <div className="mat-empty">
-          <div className="mat-empty-icon">🔩</div>
-          <h3>No materials yet</h3>
-          <p>Add the parts and materials you commonly use. They'll be available to pick from when logging materials on jobs.</p>
-          <button className="btn btn-primary" onClick={() => setShowAddForm(true)}>
-            Add Your First Material
-          </button>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="mat-empty">
-          <p>No materials match your search</p>
-        </div>
-      ) : (
-        <div className="mat-groups">
-          {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([category, items]) => (
-            <div key={category} className="mat-group">
-              <div className="mat-group-header">
-                <span className="mat-group-name">{category}</span>
-                <span className="mat-group-count">{items.length}</span>
-              </div>
-              <div className="mat-list">
-                {items.map(mat => (
-                  <MaterialCard key={mat.id} material={mat} isEditing={editingId === mat.id}
-                    onEdit={() => setEditingId(mat.id)}
-                    onSave={(data) => updateMut.mutate({ id: mat.id, data })}
-                    onCancel={() => setEditingId(null)}
-                    onDelete={() => setDeleteConfirm(mat)}
-                    isPending={updateMut.isPending}
-                    allCategories={allCategories} />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <MaterialsList
+        materials={materials}
+        searchTerm={searchTerm}
+        filterCategory={filterCategory}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        viewMode={viewMode}
+        editingId={editingId}
+        setEditingId={setEditingId}
+        updateMut={updateMut}
+        setDeleteConfirm={setDeleteConfirm}
+        setShowAddForm={setShowAddForm}
+        setSearchTerm={setSearchTerm}
+        allCategories={allCategories}
+      />
 
       {/* Delete Confirmation */}
       {deleteConfirm && (
@@ -274,7 +249,202 @@ function MaterialsTab() {
   );
 }
 
-function MaterialCard({ material, isEditing, onEdit, onSave, onCancel, onDelete, isPending, allCategories }) {
+function MaterialsToolbar({ searchTerm, setSearchTerm, filterCategory, setFilterCategory, existingCategories, sortBy, setSortBy, sortDir, setSortDir, viewMode, setViewMode }) {
+  const toggleSort = (field) => {
+    if (sortBy === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortDir('asc');
+    }
+  };
+
+  return (
+    <div className="mat-toolbar">
+      <div className="mat-toolbar-top">
+        <div className="mat-search">
+          <i className="fas fa-search"></i>
+          <input type="text" placeholder="Search materials..." value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)} />
+          {searchTerm && (
+            <button className="mat-search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search">
+              <i className="fas fa-times"></i>
+            </button>
+          )}
+        </div>
+        {existingCategories.length > 0 && (
+          <div className="mat-filter">
+            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+              <option value="all">All Categories</option>
+              {existingCategories.sort().map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+      <div className="mat-toolbar-bottom">
+        <div className="mat-sort-chips">
+          {[
+            { key: 'name', label: 'Name', icon: 'fa-font' },
+            { key: 'price', label: 'Price', icon: 'fa-euro-sign' },
+            { key: 'category', label: 'Category', icon: 'fa-tag' },
+            { key: 'supplier', label: 'Supplier', icon: 'fa-store' },
+          ].map(s => (
+            <button
+              key={s.key}
+              className={`mat-sort-chip ${sortBy === s.key ? 'active' : ''}`}
+              onClick={() => toggleSort(s.key)}
+              title={`Sort by ${s.label}`}
+            >
+              <i className={`fas ${s.icon}`}></i>
+              <span className="mat-sort-chip-label">{s.label}</span>
+              {sortBy === s.key && (
+                <i className={`fas fa-arrow-${sortDir === 'asc' ? 'up' : 'down'} mat-sort-dir`}></i>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="mat-view-toggle">
+          <button
+            className={`mat-view-btn ${viewMode === 'list' ? 'active' : ''}`}
+            onClick={() => setViewMode('list')}
+            title="List view"
+            aria-label="List view"
+          >
+            <i className="fas fa-list"></i>
+          </button>
+          <button
+            className={`mat-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
+            onClick={() => setViewMode('grid')}
+            title="Grid view"
+            aria-label="Grid view"
+          >
+            <i className="fas fa-th-large"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MaterialsList({ materials, searchTerm, filterCategory, sortBy, sortDir, viewMode, editingId, setEditingId, updateMut, setDeleteConfirm, setShowAddForm, setSearchTerm, allCategories }) {
+  const filtered = useMemo(() => {
+    let result = [...materials];
+
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(m =>
+        m.name.toLowerCase().includes(term) ||
+        m.supplier?.toLowerCase().includes(term) ||
+        m.category?.toLowerCase().includes(term)
+      );
+    }
+    if (filterCategory !== 'all') {
+      result = result.filter(m => m.category === filterCategory);
+    }
+
+    result.sort((a, b) => {
+      let cmp = 0;
+      switch (sortBy) {
+        case 'name':
+          cmp = (a.name || '').localeCompare(b.name || '');
+          break;
+        case 'price':
+          cmp = (parseFloat(a.unit_price) || 0) - (parseFloat(b.unit_price) || 0);
+          break;
+        case 'category':
+          cmp = (a.category || 'zzz').localeCompare(b.category || 'zzz');
+          break;
+        case 'supplier':
+          cmp = (a.supplier || 'zzz').localeCompare(b.supplier || 'zzz');
+          break;
+        default:
+          cmp = 0;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+
+    return result;
+  }, [materials, searchTerm, filterCategory, sortBy, sortDir]);
+
+  // Group by category for list view
+  const grouped = useMemo(() => {
+    if (viewMode === 'grid') return null;
+    const g = {};
+    filtered.forEach(m => {
+      const cat = m.category || 'Uncategorised';
+      if (!g[cat]) g[cat] = [];
+      g[cat].push(m);
+    });
+    return g;
+  }, [filtered, viewMode]);
+
+  if (materials.length === 0) {
+    return (
+      <div className="mat-empty">
+        <div className="mat-empty-icon">🔩</div>
+        <h3>No materials yet</h3>
+        <p>Add the parts and materials you commonly use. They'll be available to pick from when logging materials on jobs.</p>
+        <button className="btn btn-primary" onClick={() => setShowAddForm(true)}>
+          Add Your First Material
+        </button>
+      </div>
+    );
+  }
+
+  if (filtered.length === 0) {
+    return (
+      <div className="mat-no-results">
+        <i className="fas fa-search"></i>
+        <p>No materials match your search</p>
+        <button className="btn btn-secondary btn-sm" onClick={() => setSearchTerm('')}>Clear search</button>
+      </div>
+    );
+  }
+
+  if (viewMode === 'grid') {
+    return (
+      <div className="mat-grid">
+        {filtered.map(mat => (
+          <MaterialCard key={mat.id} material={mat} isEditing={editingId === mat.id}
+            onEdit={() => setEditingId(mat.id)}
+            onSave={(data) => updateMut.mutate({ id: mat.id, data })}
+            onCancel={() => setEditingId(null)}
+            onDelete={() => setDeleteConfirm(mat)}
+            isPending={updateMut.isPending}
+            allCategories={allCategories}
+            viewMode={viewMode} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mat-groups">
+      {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([category, items]) => (
+        <div key={category} className="mat-group">
+          <div className="mat-group-header">
+            <span className="mat-group-name">{category}</span>
+            <span className="mat-group-count">{items.length}</span>
+          </div>
+          <div className="mat-list">
+            {items.map(mat => (
+              <MaterialCard key={mat.id} material={mat} isEditing={editingId === mat.id}
+                onEdit={() => setEditingId(mat.id)}
+                onSave={(data) => updateMut.mutate({ id: mat.id, data })}
+                onCancel={() => setEditingId(null)}
+                onDelete={() => setDeleteConfirm(mat)}
+                isPending={updateMut.isPending}
+                allCategories={allCategories}
+                viewMode={viewMode} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MaterialCard({ material, isEditing, onEdit, onSave, onCancel, onDelete, isPending, allCategories, viewMode }) {
   const [editData, setEditData] = useState(material);
 
   useEffect(() => { if (isEditing) setEditData(material); }, [isEditing, material]);
@@ -327,19 +497,29 @@ function MaterialCard({ material, isEditing, onEdit, onSave, onCancel, onDelete,
     );
   }
 
+  const isGrid = viewMode === 'grid';
+
   return (
-    <div className="mat-card">
-      <div className="mat-card-icon">
+    <div className={`mat-card ${isGrid ? 'mat-card-grid' : ''}`}>
+      <div className={`mat-card-icon ${isGrid ? 'mat-card-icon-grid' : ''}`}>
         <i className="fas fa-cube"></i>
       </div>
       <div className="mat-card-content">
         <span className="mat-card-name">{material.name}</span>
+        {isGrid && (
+          <div className="mat-card-grid-price">
+            {formatCurrency(material.unit_price)}<span className="mat-unit">/{material.unit || 'each'}</span>
+          </div>
+        )}
         <div className="mat-card-meta">
-          <span className="mat-price">{formatCurrency(material.unit_price)}<span className="mat-unit">/{material.unit || 'each'}</span></span>
+          {!isGrid && (
+            <span className="mat-price">{formatCurrency(material.unit_price)}<span className="mat-unit">/{material.unit || 'each'}</span></span>
+          )}
           {material.supplier && <span className="mat-supplier"><i className="fas fa-store"></i> {material.supplier}</span>}
+          {isGrid && material.category && <span className="mat-category-badge"><i className="fas fa-tag"></i> {material.category}</span>}
         </div>
       </div>
-      <div className="mat-card-actions">
+      <div className={`mat-card-actions ${isGrid ? 'mat-card-actions-grid' : ''}`}>
         <button className="btn-icon" onClick={onEdit} title="Edit"><i className="fas fa-edit"></i></button>
         <button className="btn-icon danger" onClick={onDelete} title="Delete"><i className="fas fa-trash"></i></button>
       </div>

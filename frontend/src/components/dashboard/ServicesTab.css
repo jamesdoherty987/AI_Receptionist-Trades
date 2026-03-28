@@ -27,6 +27,161 @@
   gap: 0.5rem;
 }
 
+/* ===== Toolbar: Search + Sort + View Toggle ===== */
+.svc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.svc-search {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  background: white;
+  transition: border-color 0.2s;
+}
+
+.svc-search:focus-within {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+}
+
+.svc-search i {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.svc-search input {
+  border: none;
+  outline: none;
+  flex: 1;
+  font-size: 0.95rem;
+  font-family: inherit;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.svc-search-clear {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  font-size: 0.8rem;
+  line-height: 1;
+  border-radius: 50%;
+  transition: color 0.15s;
+}
+
+.svc-search-clear:hover {
+  color: var(--text-primary);
+}
+
+.svc-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.svc-sort-chips {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.svc-sort-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.4rem 0.65rem;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.svc-sort-chip:hover {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.svc-sort-chip.active {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: white;
+}
+
+.svc-sort-chip i {
+  font-size: 0.7rem;
+}
+
+.svc-sort-dir {
+  font-size: 0.65rem;
+  margin-left: 0.1rem;
+}
+
+.svc-view-toggle {
+  display: flex;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.svc-view-btn {
+  background: white;
+  border: none;
+  padding: 0.4rem 0.55rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  transition: all 0.15s;
+}
+
+.svc-view-btn:first-child {
+  border-right: 1px solid var(--border-color);
+}
+
+.svc-view-btn:hover {
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.svc-view-btn.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
+/* No results */
+.svc-no-results {
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+  color: var(--text-secondary);
+}
+
+.svc-no-results i {
+  font-size: 1.5rem;
+  opacity: 0.4;
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.svc-no-results p {
+  margin: 0 0 0.75rem 0;
+}
+
 /* Add Form */
 .service-form-card {
   background: white;
@@ -267,13 +422,21 @@
   margin-top: 1rem;
 }
 
-/* Services List */
+/* ===== Services List (default = list view) ===== */
 .services-list {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
+/* Grid view */
+.services-list.services-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.85rem;
+}
+
+/* ===== Service Card ===== */
 .service-card {
   background: white;
   border: 1px solid #e8ecf1;
@@ -292,6 +455,55 @@
 
 .service-card.editing {
   padding: 1.25rem;
+}
+
+/* Grid card variant */
+.service-card.service-card-grid {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
+}
+
+.service-card.service-card-grid .service-image {
+  width: 100%;
+  height: 120px;
+  border-radius: 0;
+  font-size: 2rem;
+}
+
+.service-card.service-card-grid .service-image.service-image-grid {
+  width: 100%;
+  height: 120px;
+  border-radius: 0;
+}
+
+.service-card.service-card-grid .service-content {
+  padding: 0.75rem 1rem 0.5rem;
+}
+
+.service-card.service-card-grid .service-title {
+  font-size: 0.95rem;
+  margin-bottom: 0.2rem;
+}
+
+.service-grid-price {
+  font-weight: 700;
+  color: var(--accent-blue);
+  font-size: 1rem;
+  margin-bottom: 0.35rem;
+}
+
+.service-card.service-card-grid .service-meta {
+  gap: 0.5rem;
+}
+
+.service-card.service-card-grid .service-actions-grid {
+  padding: 0 1rem 0.75rem;
+  justify-content: flex-end;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
 }
 
 .service-image {
@@ -315,7 +527,6 @@
   display: block;
 }
 
-/* Hide broken image icon/alt text */
 .service-image img[src=""],
 .service-image img:not([src]) {
   display: none;
@@ -477,6 +688,33 @@
   .services-controls .btn {
     flex: 1;
     justify-content: center;
+  }
+
+  .svc-toolbar {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .svc-search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .svc-toolbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .svc-sort-chip-label {
+    display: none;
+  }
+
+  .svc-sort-chip {
+    padding: 0.4rem 0.5rem;
+  }
+
+  .services-list.services-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 
   .service-form-card {
