@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getBookings, getWorkers, getBusinessHours, getCompanyTimeOffRequests, getBusinessSettings } from '../../services/api';
-import { getStatusBadgeClass } from '../../utils/helpers';
+import { getStatusBadgeClass, parseServerDate } from '../../utils/helpers';
 import LoadingSpinner from '../LoadingSpinner';
 import JobDetailModal from '../modals/JobDetailModal';
 import './CalendarTab.css';
@@ -67,7 +67,7 @@ const getMultiDayJobEnd = (startDate, durationMinutes, openDayIndices, closingHo
 const formatTimeRange = (appointmentTime, durationMinutes) => {
   if (!appointmentTime) return '';
   
-  const start = new Date(appointmentTime);
+  const start = parseServerDate(appointmentTime);
   
   // Multi-day job (> 24 hours)
   if (durationMinutes > 1440) {
@@ -258,7 +258,7 @@ function CalendarTab() {
     if (!filteredBookings) return [];
     const openSet = new Set(openDayIndices);
     return filteredBookings.filter(booking => {
-      const bookingDate = new Date(booking.appointment_time);
+      const bookingDate = parseServerDate(booking.appointment_time);
       // Job starts on this date
       if (bookingDate.toDateString() === date.toDateString()) return true;
       // Multi-day job: started before this date but duration extends into it
@@ -271,7 +271,7 @@ function CalendarTab() {
         if (bookingDate < dayStart && bookingEnd > dayStart) return true;
       }
       return false;
-    }).sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
+    }).sort((a, b) => parseServerDate(a.appointment_time) - parseServerDate(b.appointment_time));
   };
 
   // Get events for selected date (including multi-day continuations)
@@ -280,7 +280,7 @@ function CalendarTab() {
     const openSet = new Set(openDayIndices);
     return filteredBookings
       .filter(booking => {
-        const bookingDate = new Date(booking.appointment_time);
+        const bookingDate = parseServerDate(booking.appointment_time);
         if (bookingDate.toDateString() === selectedDate.toDateString()) return true;
         const duration = booking.duration_minutes || 60;
         if (duration > 1440) {
@@ -292,7 +292,7 @@ function CalendarTab() {
         }
         return false;
       })
-      .sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
+      .sort((a, b) => parseServerDate(a.appointment_time) - parseServerDate(b.appointment_time));
   }, [selectedDate, filteredBookings, openDayIndices, closingHour]);
 
   // Get time-off events for a specific date
@@ -656,11 +656,11 @@ function CalendarTab() {
                 
                 // Sort events by start time
                 const sortedEvents = [...events].sort((a, b) => 
-                  new Date(a.appointment_time) - new Date(b.appointment_time)
+                  parseServerDate(a.appointment_time) - parseServerDate(b.appointment_time)
                 );
                 
                 sortedEvents.forEach(event => {
-                  const eventStart = new Date(event.appointment_time);
+                  const eventStart = parseServerDate(event.appointment_time);
                   const duration = event.duration_minutes || 60;
                   const isFullDay = duration >= 480;
                   
@@ -721,7 +721,7 @@ function CalendarTab() {
                     
                     {/* Events positioned absolutely with overlap handling */}
                     {eventLayouts.map(({ event, column, totalColumns }) => {
-                      const eventTime = new Date(event.appointment_time);
+                      const eventTime = parseServerDate(event.appointment_time);
                       const startHour = eventTime.getHours() + eventTime.getMinutes() / 60;
                       const duration = event.duration_minutes || 60;
                       const durationHours = duration / 60;

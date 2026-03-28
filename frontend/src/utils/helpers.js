@@ -1,6 +1,40 @@
+/**
+ * Parse a server datetime string as local time (no timezone conversion).
+ * The server stores times as "wall clock" times (11am means 11am for the business).
+ * JavaScript's new Date() can interpret ISO strings as UTC, causing a 1-hour shift
+ * in timezones like IST/BST. This function parses the components directly.
+ * @param {string|Date} dateStr - Server datetime string or Date object
+ * @returns {Date} - Date object representing the time as-is (local)
+ */
+export const parseServerDate = (dateStr) => {
+  if (!dateStr) return new Date(NaN);
+  if (dateStr instanceof Date) return dateStr;
+  
+  // Remove trailing Z or timezone offset — treat as local time
+  const cleaned = String(dateStr).replace(/[Z]$/i, '').replace(/[+-]\d{2}:\d{2}$/, '');
+  
+  // Parse "YYYY-MM-DDTHH:MM:SS" or "YYYY-MM-DD HH:MM:SS"
+  const match = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):?(\d{2})?/);
+  if (match) {
+    return new Date(
+      parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]),
+      parseInt(match[4]), parseInt(match[5]), parseInt(match[6] || 0)
+    );
+  }
+  
+  // Fallback for date-only "YYYY-MM-DD"
+  const dateOnly = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return new Date(parseInt(dateOnly[1]), parseInt(dateOnly[2]) - 1, parseInt(dateOnly[3]));
+  }
+  
+  // Last resort fallback
+  return new Date(dateStr);
+};
+
 export const formatDate = (date) => {
   if (!date) return '';
-  const d = new Date(date);
+  const d = parseServerDate(date);
   return d.toLocaleDateString('en-US', { 
     year: 'numeric', 
     month: 'short', 
@@ -10,7 +44,7 @@ export const formatDate = (date) => {
 
 export const formatDateTime = (date) => {
   if (!date) return '';
-  const d = new Date(date);
+  const d = parseServerDate(date);
   return d.toLocaleString('en-US', { 
     year: 'numeric', 
     month: 'short', 
@@ -22,7 +56,7 @@ export const formatDateTime = (date) => {
 
 export const formatTime = (date) => {
   if (!date) return '';
-  const d = new Date(date);
+  const d = parseServerDate(date);
   return d.toLocaleTimeString('en-US', { 
     hour: '2-digit', 
     minute: '2-digit' 

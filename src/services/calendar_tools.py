@@ -2592,7 +2592,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             worker_restrictions = matched_service.get('worker_restrictions')
             is_full_day = service_duration >= 480
             
-            logger.info(f"[GET_NEXT_AVAIL] Job: '{job_description}' -> {service_duration} mins, {workers_required} worker(s), full_day={is_full_day}")
+            logger.info(f"[GET_NEXT_AVAIL] Job: '{job_description}' -> matched='{match_result['matched_name']}', "
+                        f"duration={service_duration} mins, {workers_required} worker(s), full_day={is_full_day}, "
+                        f"is_package={match_result.get('is_package', False)}, "
+                        f"worker_restrictions={worker_restrictions}, requires_callout={matched_service.get('requires_callout')}")
             
             # Search from today through N weeks
             from collections import defaultdict
@@ -5122,7 +5125,11 @@ Return ONLY valid JSON, no explanation."""
             matched_service = match_result['service']
             matched_service_name = match_result['matched_name']
             service_duration = matched_service.get('duration_minutes', 60)
-            logger.info(f"[BOOK_JOB] Matched service: {matched_service_name}, Duration: {service_duration} mins")
+            logger.info(f"[BOOK_JOB] Matched service: {matched_service_name}, Duration: {service_duration} mins, "
+                        f"is_package={match_result.get('is_package', False)}, score={match_result.get('score', 0)}, "
+                        f"workers_required={matched_service.get('workers_required')}, "
+                        f"worker_restrictions={matched_service.get('worker_restrictions')}, "
+                        f"requires_callout={matched_service.get('requires_callout')}")
             
             # CALLOUT LOGIC: If the matched service requires an initial callout,
             # book using the "General Callout" service duration instead of the full job duration.
@@ -5249,6 +5256,32 @@ Return ONLY valid JSON, no explanation."""
                     logger.warning(f"[BOOK_JOB] Not enough workers available: need {workers_required}, have {len(available_workers)}")
                     day_name = parsed_time.strftime('%A')
                     
+                    # Find the next available slot on the SAME day to suggest
+                    next_slot_msg = ""
+                    try:
+                        check_time = parsed_time + timedelta(minutes=30)
+                        day_end = parsed_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
+                        while check_time + timedelta(minutes=service_duration) <= day_end:
+                            alt_workers = db.find_available_workers_for_slot(
+                                appointment_time=check_time,
+                                duration_minutes=service_duration,
+                                company_id=company_id
+                            )
+                            if alt_workers and worker_restrictions:
+                                rt = worker_restrictions.get('type', 'all')
+                                rids = worker_restrictions.get('worker_ids', [])
+                                if rt == 'only' and rids:
+                                    alt_workers = [w for w in alt_workers if w['id'] in rids]
+                                elif rt == 'except' and rids:
+                                    alt_workers = [w for w in alt_workers if w['id'] not in rids]
+                            if alt_workers and len(alt_workers) >= workers_required:
+                                next_slot_msg = f" The next available time on {day_name} is {check_time.strftime('%I:%M %p').lstrip('0')}."
+                                logger.info(f"[BOOK_JOB] Found alternative slot on same day: {check_time.strftime('%I:%M %p')}")
+                                break
+                            check_time += timedelta(minutes=30)
+                    except Exception as e:
+                        logger.warning(f"[BOOK_JOB] Could not find alternative slot: {e}")
+                    
                     # Provide more helpful error message based on whether restrictions are in play
                     has_restrictions = worker_restrictions and worker_restrictions.get('type') in ['only', 'except']
                     
@@ -5256,7 +5289,7 @@ Return ONLY valid JSON, no explanation."""
                         if has_restrictions:
                             return {
                                 "success": False,
-                                "error": f"No qualified workers are available for this type of job at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
+                                "error": f"No qualified workers are available for this type of job at {parsed_time.strftime('%I:%M %p on %A, %B %d')}.{next_slot_msg}" if next_slot_msg else f"No qualified workers are available for this type of job at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
                                 "failed_day": day_name,
                                 "failed_time": parsed_time.strftime('%I:%M %p'),
                                 "service_duration": service_duration
@@ -5264,7 +5297,7 @@ Return ONLY valid JSON, no explanation."""
                         else:
                             return {
                                 "success": False,
-                                "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time when a worker is free.",
+                                "error": f"That time isn't available.{next_slot_msg}" if next_slot_msg else f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
                                 "failed_day": day_name,
                                 "failed_time": parsed_time.strftime('%I:%M %p'),
                                 "service_duration": service_duration
@@ -5272,7 +5305,7 @@ Return ONLY valid JSON, no explanation."""
                     else:
                         return {
                             "success": False,
-                            "error": f"This job requires {workers_required} workers but only {len(available_workers)} {'is' if len(available_workers) == 1 else 'are'} available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
+                            "error": f"This job requires {workers_required} workers but only {len(available_workers)} {'is' if len(available_workers) == 1 else 'are'} available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}.{next_slot_msg}" if next_slot_msg else f"This job requires {workers_required} workers but only {len(available_workers)} {'is' if len(available_workers) == 1 else 'are'} available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
                             "failed_day": day_name,
                             "failed_time": parsed_time.strftime('%I:%M %p'),
                             "service_duration": service_duration

@@ -2994,15 +2994,6 @@ class PostgreSQLDatabaseWrapper:
                                         company_id: int = None, trade_specialty: str = None) -> Optional[List[Dict]]:
         """
         Find all workers who are available at a specific time slot.
-        
-        Args:
-            appointment_time: The appointment start time (datetime or string)
-            duration_minutes: Duration of the appointment in minutes (default 1 day for trades)
-            company_id: Company ID for data isolation (required)
-            trade_specialty: Optional filter by worker's trade specialty
-            
-        Returns:
-            List of available worker dicts. Returns None on error (distinct from empty list).
         """
         if not company_id:
             return []
@@ -3012,6 +3003,7 @@ class PostgreSQLDatabaseWrapper:
             all_workers = self.get_all_workers(company_id=company_id)
             
             if not all_workers:
+                print(f"[WORKER_AVAIL] No workers found for company {company_id}")
                 return []
             
             available_workers = []
@@ -3046,6 +3038,9 @@ class PostgreSQLDatabaseWrapper:
                         'email': worker.get('email'),
                         'trade_specialty': worker.get('trade_specialty')
                     })
+                else:
+                    # Log why this worker is unavailable (helps debug availability mismatches)
+                    print(f"[WORKER_AVAIL] {worker_name} (id={worker['id']}) NOT available at {appointment_time} for {duration_minutes}min: {availability.get('message', 'unknown')}")
             
             # Sort by least busy (fewest upcoming bookings first) to balance workload
             if len(available_workers) > 1:
