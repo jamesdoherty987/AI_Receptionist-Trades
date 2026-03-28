@@ -362,7 +362,8 @@ class SettingsManager:
                 worker_restrictions=service.get('worker_restrictions'),
                 requires_callout=service.get('requires_callout', False),
                 package_only=service.get('package_only', False),
-                company_id=company_id
+                company_id=company_id,
+                default_materials=service.get('default_materials', [])
             )
         except Exception as e:
             print(f"Error adding service: {e}")
@@ -814,6 +815,7 @@ class SettingsManager:
                 active=package_data.get('active', True),
                 image_url=package_data.get('image_url'),
                 sort_order=package_data.get('sort_order', 0),
+                default_materials=package_data.get('default_materials', []),
             )
             if success:
                 return {"success": True, "package_id": package_id}
@@ -851,7 +853,7 @@ class SettingsManager:
         # Build kwargs for update
         update_kwargs = {}
         allowed = ['name', 'description', 'services', 'price_override', 'price_max_override',
-                    'duration_override', 'use_when_uncertain', 'clarifying_question', 'active', 'image_url', 'sort_order']
+                    'duration_override', 'use_when_uncertain', 'clarifying_question', 'active', 'image_url', 'sort_order', 'default_materials']
         for key in allowed:
             if key in package_data:
                 update_kwargs[key] = package_data[key]

@@ -10,7 +10,8 @@ import {
   getPackages,
   createPackage,
   updatePackage,
-  deletePackage
+  deletePackage,
+  getMaterials
 } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
@@ -42,7 +43,8 @@ function ServicesTab() {
     worker_restrictions: { type: 'all', worker_ids: [] },
     requires_callout: false,
     package_only: false,
-    show_price_duration: false
+    show_price_duration: false,
+    default_materials: []
   });
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, service: null });
 
@@ -55,6 +57,15 @@ function ServicesTab() {
   });
 
   const workers = Array.isArray(workersData) ? workersData : (workersData?.workers || []);
+
+  const { data: materialsData } = useQuery({
+    queryKey: ['materials'],
+    queryFn: async () => {
+      const response = await getMaterials();
+      return response.data;
+    },
+  });
+  const materialsCatalog = materialsData?.materials || [];
 
   useEffect(() => {
     const handleEscape = (e) => {
@@ -101,7 +112,8 @@ function ServicesTab() {
         worker_restrictions: { type: 'all', worker_ids: [] },
         requires_callout: false,
         package_only: false,
-        show_price_duration: false
+        show_price_duration: false,
+        default_materials: []
       });
     },
     onError: () => addToast('Failed to add service', 'error'),
@@ -160,6 +172,7 @@ function ServicesTab() {
       worker_restrictions: restrictions,
       requires_callout: formData.requires_callout,
       package_only: formData.package_only,
+      default_materials: formData.default_materials || [],
     });
   };
 
@@ -190,6 +203,7 @@ function ServicesTab() {
         worker_restrictions: restrictions,
         requires_callout: service.requires_callout || false,
         package_only: service.package_only || false,
+        default_materials: service.default_materials || [],
       },
     });
   };
@@ -473,6 +487,11 @@ function ServicesTab() {
               placeholder="Upload Image"
             />
           </div>
+          <DefaultMaterialsPicker
+            materials={materialsCatalog}
+            selectedMaterials={formData.default_materials}
+            onChange={(mats) => setFormData({ ...formData, default_materials: mats })}
+          />
           <div className="form-actions">
             <button type="button" className="btn btn-secondary" onClick={() => setShowAddForm(false)}>
               Cancel
@@ -574,6 +593,7 @@ function ServicesTab() {
               isPending={updateMutation.isPending || deleteMutation.isPending}
               workers={workers}
               viewMode={viewMode}
+              materialsCatalog={materialsCatalog}
             />
           ))}
         </div>
@@ -609,7 +629,129 @@ function ServicesTab() {
         </div>
       )}
 
-      <PackagesSection services={services} isSubscriptionActive={isSubscriptionActive} />
+      <PackagesSection services={services} isSubscriptionActive={isSubscriptionActive} materialsCatalog={materialsCatalog} />
+    </div>
+  );
+}
+
+function DefaultMaterialsPicker({ materials, selectedMaterials, onChange }) {
+  const [search, setSearch] = useState('');
+  const catalog = materials || [];
+  const selected = Array.isArray(selectedMaterials) ? selectedMaterials : [];
+  
+  const filtered = catalog.filter(m => 
+    !search || m.name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const addMaterial = (mat) => {
+    const exists = selected.find(m => m.material_id === mat.id);
+    if (exists) return;
+    onChange([...selected, {
+      material_id: mat.id,
+      name: mat.name,
+      unit_price: parseFloat(mat.unit_price) || 0,
+      unit: mat.unit || 'each',
+      quantity: 1
+    }]);
+  };
+
+  const removeMaterial = (idx) => {
+    onChange(selected.filter((_, i) => i !== idx));
+  };
+
+  const updateQuantity = (idx, rawVal) => {
+    const updated = [...selected];
+    // Allow empty string while typing, store as empty string
+    if (rawVal === '' || rawVal === undefined) {
+      updated[idx] = { ...updated[idx], quantity: '' };
+    } else {
+      const parsed = parseFloat(rawVal);
+      updated[idx] = { ...updated[idx], quantity: isNaN(parsed) ? '' : parsed };
+    }
+    onChange(updated);
+  };
+
+  const finalizeQuantity = (idx) => {
+    const updated = [...selected];
+    const val = parseFloat(updated[idx].quantity);
+    updated[idx] = { ...updated[idx], quantity: isNaN(val) || val <= 0 ? 1 : val };
+    onChange(updated);
+  };
+
+  const safePrice = (mat) => {
+    const price = parseFloat(mat.unit_price) || 0;
+    const qty = parseFloat(mat.quantity) || 0;
+    return (price * qty).toFixed(2);
+  };
+
+  const totalCost = selected.reduce((sum, m) => {
+    return sum + (parseFloat(m.unit_price) || 0) * (parseFloat(m.quantity) || 0);
+  }, 0).toFixed(2);
+
+  return (
+    <div className="default-materials-picker">
+      <label>Default Materials <span className="form-hint-inline">— auto-added when a job is created</span></label>
+      {selected.length > 0 && (
+        <div className="dm-selected-list">
+          {selected.map((mat, idx) => (
+            <div key={mat.material_id || idx} className="dm-selected-item">
+              <span className="dm-item-name">{mat.name}</span>
+              <div className="dm-item-qty">
+                <input
+                  type="number"
+                  value={mat.quantity}
+                  onChange={(e) => updateQuantity(idx, e.target.value)}
+                  onBlur={() => finalizeQuantity(idx)}
+                  min="0.01"
+                  step="0.01"
+                  className="dm-qty-input"
+                />
+                <span className="dm-item-unit">{mat.unit || 'each'}</span>
+              </div>
+              <span className="dm-item-price">€{safePrice(mat)}</span>
+              <button type="button" className="dm-remove-btn" onClick={() => removeMaterial(idx)} title="Remove" aria-label="Remove material">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+          ))}
+          <div className="dm-total">
+            Total: €{totalCost}
+          </div>
+        </div>
+      )}
+      {catalog.length > 0 ? (
+        <div className="dm-catalog">
+          {catalog.length > 5 && (
+            <input
+              type="text"
+              className="dm-search"
+              placeholder="Search materials..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          )}
+          <div className="dm-catalog-list">
+            {filtered.slice(0, 20).map(mat => {
+              const alreadyAdded = selected.some(m => m.material_id === mat.id);
+              return (
+                <button
+                  key={mat.id}
+                  type="button"
+                  className={`dm-catalog-item ${alreadyAdded ? 'dm-added' : ''}`}
+                  onClick={() => !alreadyAdded && addMaterial(mat)}
+                  disabled={alreadyAdded}
+                >
+                  <span className="dm-cat-name">{mat.name}</span>
+                  <span className="dm-cat-price">€{(parseFloat(mat.unit_price) || 0).toFixed(2)}/{mat.unit || 'each'}</span>
+                  {alreadyAdded && <i className="fas fa-check dm-check"></i>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <p className="dm-empty-hint">Add materials in the Materials tab first to use this feature.</p>
+      )}
     </div>
   );
 }
@@ -703,7 +845,7 @@ function WorkerRestrictions({ restrictions, onChange, workers }) {
   );
 }
 
-function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, isPending, workers, viewMode }) {
+function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, isPending, workers, viewMode, materialsCatalog }) {
   const [editData, setEditData] = useState(service);
   const [imageError, setImageError] = useState(false);
 
@@ -715,7 +857,9 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
         ...service,
         price_max: hasRange ? service.price_max : null,
         worker_restrictions: service.worker_restrictions || { type: 'all', worker_ids: [] },
-        show_price_duration: service.package_only ? (parseFloat(service.price) > 0) : false
+        show_price_duration: service.package_only ? (parseFloat(service.price) > 0) : false,
+        default_materials: Array.isArray(service.default_materials) ? service.default_materials : 
+          (typeof service.default_materials === 'string' ? JSON.parse(service.default_materials || '[]') : [])
       });
     }
   }, [isEditing, service]);
@@ -950,6 +1094,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           </div>
           )}
           
+          <DefaultMaterialsPicker
+            materials={materialsCatalog}
+            selectedMaterials={editData.default_materials || []}
+            onChange={(mats) => setEditData({ ...editData, default_materials: mats })}
+          />
           <ImageUpload
             value={editData.image_url || ''}
             onChange={(value) => setEditData({ ...editData, image_url: value })}
@@ -1018,6 +1167,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               <i className="fas fa-box"></i> Pkg only
             </span>
           )}
+          {service.default_materials?.length > 0 && (
+            <span className="meta-item callout-badge" title={`${service.default_materials.length} default material${service.default_materials.length !== 1 ? 's' : ''}`}>
+              <i className="fas fa-cubes"></i> {service.default_materials.length} material{service.default_materials.length !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
       </div>
       <div className={`service-actions ${isGrid ? 'service-actions-grid' : ''}`}>
@@ -1032,7 +1186,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
   );
 }
 
-function PackagesSection({ services, isSubscriptionActive }) {
+function PackagesSection({ services, isSubscriptionActive, materialsCatalog }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1046,6 +1200,7 @@ function PackagesSection({ services, isSubscriptionActive }) {
     price_max_override: null,
     duration_override: null,
     use_when_uncertain: false,
+    default_materials: [],
   });
 
   const { data: packagesData } = useQuery({
@@ -1113,6 +1268,7 @@ function PackagesSection({ services, isSubscriptionActive }) {
       price_max_override: null,
       duration_override: null,
       use_when_uncertain: false,
+      default_materials: [],
     });
   };
 
@@ -1142,6 +1298,7 @@ function PackagesSection({ services, isSubscriptionActive }) {
       description: pkgFormData.description || '',
       services: buildServicesPayload(pkgFormData.selectedServiceIds),
       use_when_uncertain: pkgFormData.use_when_uncertain,
+      default_materials: pkgFormData.default_materials || [],
     };
 
     if (pkgFormData.price_override !== null && pkgFormData.price_override !== undefined && pkgFormData.price_override !== '') {
@@ -1170,6 +1327,7 @@ function PackagesSection({ services, isSubscriptionActive }) {
       description: pkgData.description || '',
       services: buildServicesPayload(pkgData.selectedServiceIds),
       use_when_uncertain: pkgData.use_when_uncertain,
+      default_materials: pkgData.default_materials || [],
     };
 
     if (pkgData.price_override !== null && pkgData.price_override !== undefined && pkgData.price_override !== '') {
@@ -1252,6 +1410,7 @@ function PackagesSection({ services, isSubscriptionActive }) {
           moveService={moveService}
           getSelectedServiceDetails={getSelectedServiceDetails}
           isNew
+          materialsCatalog={materialsCatalog}
         />
       )}
 
@@ -1277,6 +1436,7 @@ function PackagesSection({ services, isSubscriptionActive }) {
               onDelete={() => setDeletePkgConfirm({ show: true, pkg })}
               isPending={updatePkgMutation.isPending || deletePkgMutation.isPending}
               getSelectedServiceDetails={getSelectedServiceDetails}
+              materialsCatalog={materialsCatalog}
             />
           ))}
         </div>
@@ -1315,7 +1475,7 @@ function PackagesSection({ services, isSubscriptionActive }) {
   );
 }
 
-function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPending, toggleServiceSelection, moveService, getSelectedServiceDetails, isNew }) {
+function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPending, toggleServiceSelection, moveService, getSelectedServiceDetails, isNew, materialsCatalog }) {
   const { selected } = getSelectedServiceDetails(formData.selectedServiceIds);
 
   return (
@@ -1475,6 +1635,12 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
         </span>
       </div>
 
+      <DefaultMaterialsPicker
+        materials={materialsCatalog}
+        selectedMaterials={formData.default_materials || []}
+        onChange={(mats) => setFormData({ ...formData, default_materials: mats })}
+      />
+
       <div className="form-actions">
         <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button>
         <button type="submit" className="btn btn-primary" disabled={isPending}>
@@ -1485,7 +1651,7 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
   );
 }
 
-function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDelete, isPending, getSelectedServiceDetails }) {
+function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDelete, isPending, getSelectedServiceDetails, materialsCatalog }) {
   const resolvedServices = (pkg.services || [])
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
     .map(ref => {
@@ -1503,6 +1669,7 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
     price_max_override: null,
     duration_override: null,
     use_when_uncertain: false,
+    default_materials: [],
   });
 
   useEffect(() => {
@@ -1520,6 +1687,8 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
         price_max_override: pkg.price_max_override != null ? pkg.price_max_override : null,
         duration_override: pkg.duration_override != null ? pkg.duration_override : null,
         use_when_uncertain: pkg.use_when_uncertain || false,
+        default_materials: Array.isArray(pkg.default_materials) ? pkg.default_materials :
+          (typeof pkg.default_materials === 'string' ? JSON.parse(pkg.default_materials || '[]') : []),
       });
     }
   }, [isEditing, pkg]);
@@ -1557,6 +1726,7 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
           moveService={editMoveService}
           getSelectedServiceDetails={getSelectedServiceDetails}
           isNew={false}
+          materialsCatalog={materialsCatalog}
         />
       </div>
     );
@@ -1593,6 +1763,11 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
           {pkg.use_when_uncertain && (
             <span className="badge-uncertain" title="Worker needs to assess/investigate before starting — time and scope may vary">
               🔍 Requires investigation
+            </span>
+          )}
+          {pkg.default_materials?.length > 0 && (
+            <span className="meta-item callout-badge" title={`${pkg.default_materials.length} default material${pkg.default_materials.length !== 1 ? 's' : ''}`}>
+              <i className="fas fa-cubes"></i> {pkg.default_materials.length} material{pkg.default_materials.length !== 1 ? 's' : ''}
             </span>
           )}
         </div>

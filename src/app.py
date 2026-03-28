@@ -4164,7 +4164,8 @@ def add_service_api():
         'description': data.get('description', '').strip() if data.get('description') else None,
         'workers_required': max(1, int(data.get('workers_required', 1)) if data.get('workers_required') else 1),
         'worker_restrictions': restrictions,
-        'requires_callout': bool(data.get('requires_callout', False))
+        'requires_callout': bool(data.get('requires_callout', False)),
+        'default_materials': data.get('default_materials', [])
     }
     
     success = settings_mgr.add_service(sanitized_data, company_id=company_id)
@@ -5428,6 +5429,67 @@ def bookings_api():
                 update_client_description(client_id, company_id=company_id)
             except Exception as e:
                 print(f"[WARNING] Could not update client description: {e}")
+            
+            # Auto-attach default materials from service/package
+            try:
+                default_materials = []
+                # Check if this is a package first, then fall back to service
+                all_packages = settings_mgr.get_packages(company_id=company_id, active_only=True)
+                matched_package = next((p for p in all_packages if p.get('name') == service_type), None)
+                if matched_package and matched_package.get('default_materials'):
+                    dm = matched_package['default_materials']
+                    if isinstance(dm, str):
+                        import json as _json
+                        dm = _json.loads(dm)
+                    default_materials = dm if isinstance(dm, list) else []
+                else:
+                    service = settings_mgr.get_service_by_name(service_type, company_id=company_id)
+                    if service and service.get('default_materials'):
+                        dm = service['default_materials']
+                        if isinstance(dm, str):
+                            import json as _json
+                            dm = _json.loads(dm)
+                        default_materials = dm if isinstance(dm, list) else []
+                
+                if default_materials:
+                    conn = db.get_connection()
+                    cursor = conn.cursor()
+                    try:
+                        attached_count = 0
+                        for mat in default_materials:
+                            if not isinstance(mat, dict):
+                                continue
+                            mat_name = mat.get('name', '')
+                            if not mat_name:
+                                continue
+                            try:
+                                mat_price = float(mat.get('unit_price', 0) or 0)
+                            except (ValueError, TypeError):
+                                mat_price = 0
+                            try:
+                                mat_qty = float(mat.get('quantity', 1) or 1)
+                            except (ValueError, TypeError):
+                                mat_qty = 1
+                            mat_unit = mat.get('unit', 'each') or 'each'
+                            mat_id = mat.get('material_id')
+                            total = round(mat_price * mat_qty, 2)
+                            cursor.execute(
+                                """INSERT INTO job_materials (booking_id, company_id, material_id, name, unit_price, unit, quantity, total_cost, added_by)
+                                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                                (booking_id, company_id, mat_id, mat_name, mat_price, mat_unit, mat_qty, total, 'auto')
+                            )
+                            attached_count += 1
+                        conn.commit()
+                        if attached_count > 0:
+                            print(f"[INFO] Auto-attached {attached_count} default materials to booking {booking_id}")
+                    except Exception as mat_err:
+                        conn.rollback()
+                        print(f"[WARNING] Could not auto-attach materials: {mat_err}")
+                    finally:
+                        cursor.close()
+                        db.return_connection(conn)
+            except Exception as e:
+                print(f"[WARNING] Default materials lookup failed: {e}")
             
             # Sync to Google Calendar if connected
             try:

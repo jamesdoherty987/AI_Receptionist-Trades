@@ -24,9 +24,8 @@
 }
 
 .help-tooltip-bubble {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: -8px;
+  position: fixed;
+  transform: translateX(-50%);
   background: var(--text-primary);
   color: #fff;
   font-size: 0.78rem;
@@ -36,36 +35,20 @@
   border-radius: var(--radius-sm);
   white-space: normal;
   width: max-content;
-  max-width: 240px;
+  max-width: min(240px, calc(100vw - 32px));
   box-shadow: var(--shadow-lg);
-  z-index: 1000;
+  z-index: 9999999;
   pointer-events: auto;
   animation: helpTooltipIn 0.15s ease-out;
-}
-
-.help-tooltip-bubble::after {
-  content: '';
-  position: absolute;
-  bottom: 100%;
-  right: 12px;
-  border: 5px solid transparent;
-  border-bottom-color: var(--text-primary);
 }
 
 @keyframes helpTooltipIn {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateX(-50%) translateY(-4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (max-width: 600px) {
-  .help-tooltip-bubble {
-    max-width: 200px;
-    font-size: 0.75rem;
+    transform: translateX(-50%) translateY(0);
   }
 }

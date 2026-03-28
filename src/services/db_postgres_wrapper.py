@@ -3119,7 +3119,7 @@ class PostgreSQLDatabaseWrapper:
                    image_url: str = None, sort_order: int = 0,
                    workers_required: int = 1, worker_restrictions: dict = None,
                    requires_callout: bool = False, package_only: bool = False,
-                   company_id: int = None) -> bool:
+                   company_id: int = None, default_materials: list = None) -> bool:
         """Add a new service for a specific company (default 1 day duration for trades)"""
         import json
         conn = self.get_connection()
@@ -3130,14 +3130,15 @@ class PostgreSQLDatabaseWrapper:
         
         # Convert worker_restrictions to JSON string if provided
         restrictions_json = json.dumps(worker_restrictions) if worker_restrictions else None
+        materials_json = json.dumps(default_materials) if default_materials else '[]'
         
         try:
             cursor.execute("""
                 INSERT INTO services (id, category, name, description, duration_minutes,
-                                    price, price_max, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, requires_callout, package_only, company_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    price, price_max, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, requires_callout, package_only, company_id, default_materials)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (service_id, category, name, description, duration_minutes,
-                  price, price_max, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, requires_callout, package_only, company_id))
+                  price, price_max, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, requires_callout, package_only, company_id, materials_json))
             
             conn.commit()
             return True
@@ -3199,7 +3200,7 @@ class PostgreSQLDatabaseWrapper:
             allowed_fields = ['category', 'name', 'description', 'duration_minutes',
                              'price', 'price_max', 'emergency_price', 'currency', 'active',
                              'image_url', 'sort_order', 'workers_required', 'worker_restrictions',
-                             'requires_callout', 'package_only']
+                             'requires_callout', 'package_only', 'default_materials']
             
             fields = []
             values = []
@@ -3209,6 +3210,9 @@ class PostgreSQLDatabaseWrapper:
                         value = 1 if value else 0
                     # Convert worker_restrictions dict to JSON
                     if key == 'worker_restrictions' and isinstance(value, dict):
+                        value = json.dumps(value)
+                    # Convert default_materials list to JSON
+                    if key == 'default_materials' and isinstance(value, list):
                         value = json.dumps(value)
                     fields.append(f"{key} = %s")
                     values.append(value)
@@ -3338,7 +3342,7 @@ class PostgreSQLDatabaseWrapper:
                     duration_override: int = None,
                     use_when_uncertain: bool = False, clarifying_question: str = None,
                     active: bool = True, image_url: str = None,
-                    sort_order: int = 0) -> bool:
+                    sort_order: int = 0, default_materials: list = None) -> bool:
         """Add a new package for a specific company"""
         import json
         conn = self.get_connection()
@@ -3346,16 +3350,17 @@ class PostgreSQLDatabaseWrapper:
         
         try:
             services_json = json.dumps(services or [])
+            materials_json = json.dumps(default_materials) if default_materials else '[]'
             cursor.execute("""
                 INSERT INTO packages (id, company_id, name, description, services,
                                      price_override, price_max_override, duration_override,
                                      use_when_uncertain,
-                                     clarifying_question, active, image_url, sort_order)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                     clarifying_question, active, image_url, sort_order, default_materials)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (package_id, company_id, name, description, services_json,
                   price_override, price_max_override, duration_override,
                   use_when_uncertain,
-                  clarifying_question, 1 if active else 0, image_url, sort_order))
+                  clarifying_question, 1 if active else 0, image_url, sort_order, materials_json))
             
             conn.commit()
             return True
@@ -3376,7 +3381,7 @@ class PostgreSQLDatabaseWrapper:
             allowed_fields = ['name', 'description', 'services', 'price_override',
                              'price_max_override', 'duration_override', 'use_when_uncertain',
                              'clarifying_question',
-                             'active', 'image_url', 'sort_order']
+                             'active', 'image_url', 'sort_order', 'default_materials']
             
             fields = []
             values = []
@@ -3385,6 +3390,8 @@ class PostgreSQLDatabaseWrapper:
                     if key == 'active' and isinstance(value, bool):
                         value = 1 if value else 0
                     if key == 'services' and isinstance(value, list):
+                        value = json.dumps(value)
+                    if key == 'default_materials' and isinstance(value, list):
                         value = json.dumps(value)
                     fields.append(f"{key} = %s")
                     values.append(value)
