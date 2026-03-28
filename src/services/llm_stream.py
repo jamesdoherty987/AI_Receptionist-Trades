@@ -2356,14 +2356,32 @@ TOOL RULES:
                     matches = result_content.get("matches", [])
                     top_score = result_content.get("top_score", 0)
                     has_investigation = result_content.get("has_investigation_option", False)
+                    needs_clarification = result_content.get("needs_clarification", False)
                     
                     # Check if the TOP match itself requires investigation
                     top_is_investigation = matches[0].get('requires_investigation', False) if matches else False
                     
+                    # Check if multiple matches are close in score (within 25 points of top)
+                    # This catches cases like "Leak Fix" (service) vs "Leak Fix and Investigation" (package)
+                    close_matches = [m for m in matches if m['score'] >= top_score - 25] if matches else []
+                    multiple_close = len(close_matches) > 1
+                    
                     if not matches:
                         direct_response = "I'm not sure I have a service that matches. Could you describe the issue in a bit more detail?"
+                    elif multiple_close or needs_clarification:
+                        # Multiple close-scoring matches — ask caller to clarify
+                        # This prevents auto-picking "Leak Fix" when "Leak Fix and Investigation" is also a strong match
+                        if has_investigation:
+                            direct_response = "Do you know what's causing the issue, or would you like us to investigate it first?"
+                        else:
+                            # List the top 2 options for the caller to choose
+                            option_names = [m['name'] for m in close_matches[:2]]
+                            if len(option_names) == 2:
+                                direct_response = f"We have a {option_names[0].lower()} and a {option_names[1].lower()}. Which one sounds right for you?"
+                            else:
+                                direct_response = "Can you tell me a bit more about the issue so I can match you with the right service?"
                     elif top_score >= 80 and not top_is_investigation:
-                        # Clear high-confidence match to a specific service (not investigation) — confirm it
+                        # Clear high-confidence match with no close competitors — confirm it
                         direct_response = f"A {matches[0]['name'].lower()}, is that correct?"
                     elif top_score >= 80 and top_is_investigation:
                         # High confidence but it's an investigation package — still confirm but mention investigation
