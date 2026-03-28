@@ -377,6 +377,23 @@ CALENDAR_TOOLS = [
                 "required": ["appointment_datetime"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "match_issue",
+            "description": "Match a caller's issue description against all available services and packages. Call this FIRST when the caller describes their problem. Returns ALL possible matches ranked by confidence so you can ask clarifying questions to narrow down to the right one. ALWAYS call this before confirming any service or package.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "issue_description": {
+                        "type": "string",
+                        "description": "The caller's description of their issue, in their own words"
+                    }
+                },
+                "required": ["issue_description"]
+            }
+        }
     }
 ]
 
@@ -2068,6 +2085,117 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
         }
     
     try:
+        if tool_name == "match_issue":
+            logger.info(f"[MATCH_ISSUE] ========== MATCHING ISSUE ==========")
+            issue_description = arguments.get('issue_description', '')
+            
+            if not issue_description:
+                return {"success": False, "error": "Issue description is required"}
+            
+            from src.services.settings_manager import get_settings_manager
+            settings_mgr = get_settings_manager()
+            
+            # Load all services and packages
+            all_services = settings_mgr.get_services(company_id=company_id)
+            all_packages = settings_mgr.get_packages(company_id=company_id)
+            
+            # Filter out package_only services from standalone matching
+            standalone_services = [s for s in all_services if not s.get('package_only', False)]
+            
+            # Score every service
+            matches = []
+            for svc in standalone_services:
+                svc_name = (svc.get('name') or '').lower()
+                if 'general' in svc_name:
+                    continue  # Skip General Service
+                score, details = ServiceMatcher.calculate_match_score(issue_description, svc)
+                if score >= 15:
+                    matches.append({
+                        'name': svc.get('name', 'Unknown'),
+                        'type': 'service',
+                        'score': score,
+                        'description': svc.get('description', ''),
+                        'requires_investigation': False,
+                        'duration_minutes': svc.get('duration_minutes', 0),
+                        'price': svc.get('price', 0),
+                    })
+            
+            # Score every package
+            for pkg in all_packages:
+                # Build virtual entry for scoring
+                pkg_services = pkg.get('services', [])
+                service_names = [s.get('name', '') for s in pkg_services]
+                combined_desc = f"{pkg.get('description', '')} {' '.join(service_names)}"
+                virtual = {
+                    'name': pkg.get('name', ''),
+                    'description': combined_desc,
+                    'category': 'Package',
+                }
+                score, details = ServiceMatcher.calculate_match_score(issue_description, virtual)
+                if score >= 15:
+                    matches.append({
+                        'name': pkg.get('name', 'Unknown'),
+                        'type': 'package',
+                        'score': score,
+                        'description': pkg.get('description', ''),
+                        'requires_investigation': pkg.get('use_when_uncertain', False),
+                        'services_included': ' → '.join(service_names),
+                        'duration_minutes': pkg.get('total_duration_minutes', 0),
+                        'price': pkg.get('total_price', 0),
+                    })
+            
+            # Sort by score descending
+            matches.sort(key=lambda x: x['score'], reverse=True)
+            
+            # Build response
+            if not matches:
+                tool_duration = time_module.time() - tool_start_time
+                print(f"[TOOL_TIMING] ✅ match_issue completed in {tool_duration:.3f}s (0 matches)")
+                return {
+                    "success": True,
+                    "matches": [],
+                    "message": "No matching services found. Ask the caller for more details about their issue, or book a General Service.",
+                    "total_matches": 0
+                }
+            
+            # Format matches for the AI
+            match_lines = []
+            for i, m in enumerate(matches[:10]):  # Cap at 10
+                line = f"{i+1}. {m['name']} ({m['type']}) — confidence: {m['score']}%"
+                if m.get('description'):
+                    line += f" — {m['description'][:80]}"
+                if m.get('requires_investigation'):
+                    line += " [REQUIRES INVESTIGATION]"
+                if m.get('services_included'):
+                    line += f" — includes: {m['services_included']}"
+                match_lines.append(line)
+            
+            has_investigation = any(m.get('requires_investigation') for m in matches)
+            top_score = matches[0]['score'] if matches else 0
+            multiple_close = len([m for m in matches if m['score'] >= top_score - 25]) > 1
+            
+            # Build instruction for the AI
+            if top_score >= 80 and not multiple_close and not has_investigation:
+                instruction = f"High confidence match: {matches[0]['name']}. Confirm with the caller."
+            elif multiple_close or has_investigation:
+                instruction = "Multiple possible matches or investigation may be needed. Ask the caller a clarifying question to narrow down — ask about the cause, location, or whether they know what's wrong. If they don't know the cause, prefer the [REQUIRES INVESTIGATION] option."
+            else:
+                instruction = "Low confidence. Ask the caller for more details about their issue."
+            
+            tool_duration = time_module.time() - tool_start_time
+            print(f"[TOOL_TIMING] ✅ match_issue completed in {tool_duration:.3f}s ({len(matches)} matches)")
+            
+            return {
+                "success": True,
+                "matches": matches[:10],
+                "matches_summary": "\n".join(match_lines),
+                "instruction": instruction,
+                "total_matches": len(matches),
+                "has_investigation_option": has_investigation,
+                "top_score": top_score,
+                "needs_clarification": multiple_close or has_investigation or top_score < 70
+            }
+
         if tool_name == "check_availability":
             logger.info(f"[CHECK_AVAIL] ========== CHECKING AVAILABILITY ==========")
             start_date_str = arguments.get('start_date')

@@ -660,8 +660,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
 
   useEffect(() => {
     if (isEditing) {
+      // Only show price range toggle as "on" if there's a real max price > min price
+      const hasRange = service.price_max != null && parseFloat(service.price_max) > (parseFloat(service.price) || 0);
       setEditData({
         ...service,
+        price_max: hasRange ? service.price_max : null,
         worker_restrictions: service.worker_restrictions || { type: 'all', worker_ids: [] }
       });
     }
@@ -705,7 +708,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           <div className="edit-row">
             <div className="form-group">
               <label>Price (€)</label>
-              {editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined && (
+              {editData.price_max != null && (
                 <span className="price-from-label">from</span>
               )}
               <input
@@ -720,23 +723,23 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               <div className="price-range-toggle-row">
                 <button
                   type="button"
-                  className={`price-range-toggle ${editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined ? 'active' : ''}`}
-                  onClick={() => setEditData({ ...editData, price_max: editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined ? null : '' })}
+                  className={`price-range-toggle ${editData.price_max != null ? 'active' : ''}`}
+                  onClick={() => setEditData({ ...editData, price_max: editData.price_max != null ? null : '' })}
                   role="switch"
-                  aria-checked={editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined}
+                  aria-checked={editData.price_max != null}
                 >
                   <span className="price-range-toggle-slider" />
                 </button>
                 <span className="price-range-toggle-label">Price range</span>
               </div>
-              {editData.price_max !== '' && editData.price_max !== null && editData.price_max !== undefined && (
+              {editData.price_max != null && (
                 <div className="price-max-row">
                   <div className="price-max-field">
                     <span className="price-max-label">to</span>
                     <input
                       type="number"
                       className="form-input"
-                      value={editData.price_max || ''}
+                      value={editData.price_max}
                       onChange={(e) => setEditData({ ...editData, price_max: e.target.value })}
                       placeholder="Max price"
                       step="0.01"

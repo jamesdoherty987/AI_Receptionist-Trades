@@ -234,7 +234,7 @@ class TestPromptBuilder:
         from src.services.llm_stream import _build_packages_prompt_section
         result = _build_packages_prompt_section(SAMPLE_PACKAGES)
         assert '📦 Roof Leak Investigation' in result
-        assert '[USE WHEN ISSUE IS UNCERTAIN]' in result
+        assert '[REQUIRES INVESTIGATION' in result
         assert 'Roof Inspection → Leak Finding → Roof Repair' in result
 
     def test_build_packages_prompt_no_uncertain_tag(self):
