@@ -2027,7 +2027,7 @@ TOOL RULES:
                             # Build response based on what we need to confirm
                             if phone_matches and last_address:
                                 # We have matching phone AND address - just confirm address
-                                direct_response = f"Great to hear from you again, {first_name}! Same address as before - {last_address}?"
+                                direct_response = f"Great to hear from you again, {first_name}! Is it the same address as before - {last_address}?"
                             elif phone_matches and not last_address:
                                 # We have matching phone but no address - ask for address
                                 direct_response = f"Great to hear from you again, {first_name}! What's the address for this job?"

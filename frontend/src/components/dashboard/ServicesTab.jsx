@@ -1354,7 +1354,15 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
     })
     .filter(Boolean);
 
-  const [editData, setEditData] = useState({});
+  const [editData, setEditData] = useState({
+    id: null,
+    name: '',
+    description: '',
+    selectedServiceIds: [],
+    price_override: null,
+    price_max_override: null,
+    use_when_uncertain: false,
+  });
 
   useEffect(() => {
     if (isEditing) {
