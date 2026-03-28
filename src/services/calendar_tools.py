@@ -1012,7 +1012,9 @@ def _format_slot_ranges(day_slots: list) -> str:
     ranges.append((range_start, range_end))
     
     def fmt(t):
-        return t.strftime('%I %p').lstrip('0').lower()
+        if t.minute == 0:
+            return t.strftime('%I %p').lstrip('0').lower()
+        return t.strftime('%I:%M %p').lstrip('0').lower()
     
     # Single range
     if len(ranges) == 1:
@@ -2406,7 +2408,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                         available_workers = [w for w in available_workers if w['id'] in restricted_ids]
                                     elif restriction_type == 'except' and restricted_ids:
                                         available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                if available_workers is None or len(available_workers) >= workers_required:
+                                if available_workers is not None and len(available_workers) >= workers_required:
                                     day_slots = [biz_open]
                             logger.info(f"[CHECK_AVAIL] Full-day fast path: {'1 slot' if day_slots else 'no slots'}")
                         else:
@@ -2437,7 +2439,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                     elif restriction_type == 'except' and restricted_ids:
                                         available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
                                 
-                                if available_workers is None or len(available_workers) >= workers_required:
+                                if available_workers is not None and len(available_workers) >= workers_required:
                                     day_slots.append(slot_time)
                                 
                                 slot_time += timedelta(minutes=30)
@@ -2500,6 +2502,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             # Build natural language summary for each day
             day_summaries = []
+            def _fmt_time(t):
+                if t.minute == 0:
+                    return t.strftime('%I %p').lstrip('0').lower().replace(' 0', ' ')
+                return t.strftime('%I:%M %p').lstrip('0').lower().replace(' 0', ' ')
             for day_key in sorted_day_keys:
                 day_slots = slots_by_day[day_key]
                 day_date = datetime.strptime(day_key, '%Y-%m-%d')
@@ -2513,8 +2519,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     day_name = "tomorrow"
                 
                 # Get first and last available times
-                first_time = day_slots[0].strftime('%I %p').lstrip('0').lower().replace(' 0', ' ')
-                last_time = day_slots[-1].strftime('%I %p').lstrip('0').lower().replace(' 0', ' ')
+                first_time = _fmt_time(day_slots[0])
+                last_time = _fmt_time(day_slots[-1])
                 
                 # For full-day services (8+ hours), describe as "full day" instead of time range
                 if service_duration >= 480:  # 8 hours or more
@@ -2525,7 +2531,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     summary = f"{day_name}: free {slot_range_str}"
                 else:
                     # Few slots - list them specifically
-                    times = [s.strftime('%I %p').lstrip('0').lower().replace(' 0', ' ') for s in day_slots]
+                    times = [_fmt_time(s) for s in day_slots]
                     if len(times) == 1:
                         summary = f"{day_name}: {times[0]} only"
                     elif len(times) == 2:
@@ -2647,7 +2653,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                         available_workers = [w for w in available_workers if w['id'] in restricted_ids]
                                     elif restriction_type == 'except' and restricted_ids:
                                         available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                if available_workers is None or len(available_workers) >= workers_required:
+                                if available_workers is not None and len(available_workers) >= workers_required:
                                     day_slots = [biz_open]
                         else:
                             # Short jobs: check every 30-min slot
@@ -2679,7 +2685,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                     elif restriction_type == 'except' and restricted_ids:
                                         available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
                                 
-                                if available_workers is None or len(available_workers) >= workers_required:
+                                if available_workers is not None and len(available_workers) >= workers_required:
                                     day_slots.append(slot_time)
                                 
                                 slot_time += timedelta(minutes=30)
@@ -3491,7 +3497,7 @@ Return ONLY valid JSON, no explanation."""
                                         available_workers = [w for w in available_workers if w['id'] in restricted_ids]
                                     elif restriction_type == 'except' and restricted_ids:
                                         available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                if available_workers is None or len(available_workers) >= workers_required:
+                                if available_workers is not None and len(available_workers) >= workers_required:
                                     day_slots = [biz_open]
                     else:
                         # Short jobs: check every 30-min slot
@@ -3549,7 +3555,7 @@ Return ONLY valid JSON, no explanation."""
                                         available_workers = [w for w in available_workers if w['id'] in restricted_ids]
                                     elif restriction_type == 'except' and restricted_ids:
                                         available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                if available_workers is None or len(available_workers) >= workers_required:
+                                if available_workers is not None and len(available_workers) >= workers_required:
                                     day_slots.append(slot_time)
                             
                             slot_time += timedelta(minutes=30)
@@ -3635,7 +3641,7 @@ Return ONLY valid JSON, no explanation."""
                                                 available_workers = [w for w in available_workers if w['id'] in restricted_ids]
                                             elif restriction_type == 'except' and restricted_ids:
                                                 available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                        if available_workers is None or len(available_workers) >= workers_required:
+                                        if available_workers is not None and len(available_workers) >= workers_required:
                                             day_slots = [biz_open]
                             else:
                                 slot_time = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
@@ -3665,7 +3671,7 @@ Return ONLY valid JSON, no explanation."""
                                                 available_workers = [w for w in available_workers if w['id'] in restricted_ids]
                                             elif restriction_type == 'except' and restricted_ids:
                                                 available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                        if available_workers is None or len(available_workers) >= workers_required:
+                                        if available_workers is not None and len(available_workers) >= workers_required:
                                             day_slots.append(slot_time)
                                     slot_time += timedelta(minutes=30)
                         
@@ -4337,6 +4343,68 @@ Return ONLY valid JSON, no explanation."""
                     
                     # Add note with original customer request
                     db.add_appointment_note(booking_id, f"Booked via AI receptionist.\nService: {matched_service_name}\nCustomer Request: {reason}\nDuration: {appointment_duration} mins", created_by="system")
+                    
+                    # Auto-attach default materials from matched service/package
+                    try:
+                        from src.services.settings_manager import get_settings_manager as _get_sm
+                        _sm = _get_sm()
+                        _default_materials = []
+                        _all_packages = _sm.get_packages(company_id=company_id, active_only=True)
+                        _matched_pkg = next((p for p in _all_packages if p.get('name') == matched_service_name), None)
+                        if _matched_pkg and _matched_pkg.get('default_materials'):
+                            _dm = _matched_pkg['default_materials']
+                            if isinstance(_dm, str):
+                                import json as _json
+                                _dm = _json.loads(_dm)
+                            _default_materials = _dm if isinstance(_dm, list) else []
+                        else:
+                            _svc = _sm.get_service_by_name(matched_service_name, company_id=company_id)
+                            if _svc and _svc.get('default_materials'):
+                                _dm = _svc['default_materials']
+                                if isinstance(_dm, str):
+                                    import json as _json
+                                    _dm = _json.loads(_dm)
+                                _default_materials = _dm if isinstance(_dm, list) else []
+                        
+                        if _default_materials:
+                            _conn = db.get_connection()
+                            _cur = _conn.cursor()
+                            try:
+                                _attached = 0
+                                for _mat in _default_materials:
+                                    if not isinstance(_mat, dict):
+                                        continue
+                                    _mat_name = _mat.get('name', '')
+                                    if not _mat_name:
+                                        continue
+                                    try:
+                                        _mat_price = float(_mat.get('unit_price', 0) or 0)
+                                    except (ValueError, TypeError):
+                                        _mat_price = 0
+                                    try:
+                                        _mat_qty = float(_mat.get('quantity', 1) or 1)
+                                    except (ValueError, TypeError):
+                                        _mat_qty = 1
+                                    _mat_unit = _mat.get('unit', 'each') or 'each'
+                                    _mat_id = _mat.get('material_id')
+                                    _total = round(_mat_price * _mat_qty, 2)
+                                    _cur.execute(
+                                        """INSERT INTO job_materials (booking_id, company_id, material_id, name, unit_price, unit, quantity, total_cost, added_by)
+                                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                                        (booking_id, company_id, _mat_id, _mat_name, _mat_price, _mat_unit, _mat_qty, _total, 'auto')
+                                    )
+                                    _attached += 1
+                                _conn.commit()
+                                if _attached > 0:
+                                    logger.info(f"[BOOK_APPT] ✅ Auto-attached {_attached} default materials to booking {booking_id}")
+                            except Exception as _mat_err:
+                                _conn.rollback()
+                                logger.warning(f"[BOOK_APPT] ⚠️ Could not auto-attach materials: {_mat_err}")
+                            finally:
+                                _cur.close()
+                                db.return_connection(_conn)
+                    except Exception as _e:
+                        logger.warning(f"[BOOK_APPT] ⚠️ Default materials lookup failed: {_e}")
                     
                     # Auto-assign workers if any were selected
                     if assigned_workers:
@@ -5439,6 +5507,69 @@ Return ONLY valid JSON, no explanation."""
                                 logger.warning(f"[BOOK_JOB] ⚠️ Could not save address audio URL: {audio_err}")
                         else:
                             logger.info(f"[BOOK_JOB] 🎙️ No address audio URL available (upload may still be in progress)")
+                    
+                    # Auto-attach default materials from matched service/package
+                    try:
+                        from src.services.settings_manager import get_settings_manager as _get_sm
+                        _sm = _get_sm()
+                        _default_materials = []
+                        # Check packages first, then fall back to service
+                        _all_packages = _sm.get_packages(company_id=company_id, active_only=True)
+                        _matched_pkg = next((p for p in _all_packages if p.get('name') == matched_service_name), None)
+                        if _matched_pkg and _matched_pkg.get('default_materials'):
+                            _dm = _matched_pkg['default_materials']
+                            if isinstance(_dm, str):
+                                import json as _json
+                                _dm = _json.loads(_dm)
+                            _default_materials = _dm if isinstance(_dm, list) else []
+                        else:
+                            _svc = _sm.get_service_by_name(matched_service_name, company_id=company_id)
+                            if _svc and _svc.get('default_materials'):
+                                _dm = _svc['default_materials']
+                                if isinstance(_dm, str):
+                                    import json as _json
+                                    _dm = _json.loads(_dm)
+                                _default_materials = _dm if isinstance(_dm, list) else []
+                        
+                        if _default_materials:
+                            _conn = db.get_connection()
+                            _cur = _conn.cursor()
+                            try:
+                                _attached = 0
+                                for _mat in _default_materials:
+                                    if not isinstance(_mat, dict):
+                                        continue
+                                    _mat_name = _mat.get('name', '')
+                                    if not _mat_name:
+                                        continue
+                                    try:
+                                        _mat_price = float(_mat.get('unit_price', 0) or 0)
+                                    except (ValueError, TypeError):
+                                        _mat_price = 0
+                                    try:
+                                        _mat_qty = float(_mat.get('quantity', 1) or 1)
+                                    except (ValueError, TypeError):
+                                        _mat_qty = 1
+                                    _mat_unit = _mat.get('unit', 'each') or 'each'
+                                    _mat_id = _mat.get('material_id')
+                                    _total = round(_mat_price * _mat_qty, 2)
+                                    _cur.execute(
+                                        """INSERT INTO job_materials (booking_id, company_id, material_id, name, unit_price, unit, quantity, total_cost, added_by)
+                                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                                        (booking_id, company_id, _mat_id, _mat_name, _mat_price, _mat_unit, _mat_qty, _total, 'auto')
+                                    )
+                                    _attached += 1
+                                _conn.commit()
+                                if _attached > 0:
+                                    logger.info(f"[BOOK_JOB] ✅ Auto-attached {_attached} default materials to booking {booking_id}")
+                            except Exception as _mat_err:
+                                _conn.rollback()
+                                logger.warning(f"[BOOK_JOB] ⚠️ Could not auto-attach materials: {_mat_err}")
+                            finally:
+                                _cur.close()
+                                db.return_connection(_conn)
+                    except Exception as _e:
+                        logger.warning(f"[BOOK_JOB] ⚠️ Default materials lookup failed: {_e}")
                     
                     # Auto-assign workers if any were selected
                     if assigned_workers:

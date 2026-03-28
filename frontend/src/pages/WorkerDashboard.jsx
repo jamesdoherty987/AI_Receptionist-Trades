@@ -1071,7 +1071,7 @@ function WorkerDashboard() {
                 {/* In Progress — always visible at top */}
                 {(inProgressJobs.length > 0 || justCompletedFromProgress.length > 0) && (
                   <div className="wj-section wj-in-progress">
-                    <h2><i className="fas fa-wrench"></i> In Progress ({inProgressJobs.length}{justCompletedFromProgress.length > 0 ? ` + ${justCompletedFromProgress.length} done` : ''})</h2>
+                    <h2><i className="fas fa-wrench"></i> In Progress: {inProgressJobs.length}{justCompletedFromProgress.length > 0 ? `, Done: ${justCompletedFromProgress.length}` : ''}</h2>
                     <div className="worker-job-list">
                       {inProgressJobs.map(job => {
                         const dirUrl = getDirectionsUrl(job);
