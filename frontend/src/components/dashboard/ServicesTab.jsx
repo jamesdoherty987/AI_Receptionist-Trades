@@ -489,7 +489,7 @@ function ServicesTab() {
           </div>
           <DefaultMaterialsPicker
             materials={materialsCatalog}
-            selectedMaterials={formData.default_materials}
+            selectedMaterials={formData.default_materials || []}
             onChange={(mats) => setFormData({ ...formData, default_materials: mats })}
           />
           <div className="form-actions">
