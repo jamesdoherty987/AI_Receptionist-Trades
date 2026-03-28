@@ -442,6 +442,7 @@ function ServicesTab() {
             workers={workers}
           />
           
+          {!formData.package_only && (
           <div className="callout-toggle-group">
             <label>Requires Initial Callout?</label>
             <div className="callout-toggle-row">
@@ -461,6 +462,7 @@ function ServicesTab() {
               </span>
             </div>
           </div>
+          )}
           
           <div className="form-group">
             <label>Image (optional)</label>
@@ -925,6 +927,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
             workers={workers}
           />
           
+          {!editData.package_only && (
           <div className="callout-toggle-group">
             <label>Requires Initial Callout?</label>
             <div className="callout-toggle-row">
@@ -944,6 +947,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               </span>
             </div>
           </div>
+          )}
           
           <ImageUpload
             value={editData.image_url || ''}
