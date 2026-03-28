@@ -5390,10 +5390,6 @@ Return ONLY valid JSON, no explanation."""
                     # Add booking with validated address information, correct charge, and duration
                     # MUST pass company_id for data isolation
                     logger.info(f"[BOOK_JOB] Adding booking to database...")
-                    # DEBUG: Log timezone info to diagnose +1 hour display issue
-                    import time as _time_mod
-                    logger.info(f"[TZ_DEBUG] parsed_time={parsed_time}, parsed_time.tzinfo={parsed_time.tzinfo if hasattr(parsed_time, 'tzinfo') else 'N/A'}")
-                    logger.info(f"[TZ_DEBUG] datetime.now()={datetime.now()}, TZ env={os.environ.get('TZ', 'NOT SET')}, time.timezone={_time_mod.timezone}, time.tzname={_time_mod.tzname}")
                     booking_id = db.add_booking(
                         client_id=client_id,
                         calendar_event_id=event.get('id'),

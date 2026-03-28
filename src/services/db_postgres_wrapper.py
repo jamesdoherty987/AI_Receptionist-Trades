@@ -1191,6 +1191,9 @@ class PostgreSQLDatabaseWrapper:
             if row:
                 result = dict(row)
                 result['company_id'] = row.get('company_id')
+                # Convert datetime to ISO string to prevent Flask's "GMT" serialization
+                if hasattr(result.get('appointment_time'), 'isoformat'):
+                    result['appointment_time'] = result['appointment_time'].isoformat()
                 return result
             return None
         finally:
@@ -1399,14 +1402,14 @@ class PostgreSQLDatabaseWrapper:
                 'id': row['id'],
                 'client_id': row['client_id'],
                 'calendar_event_id': row['calendar_event_id'],
-                'appointment_time': row['appointment_time'],
+                'appointment_time': row['appointment_time'].isoformat() if hasattr(row['appointment_time'], 'isoformat') else row['appointment_time'],
                 'service_type': row['service_type'],
                 'service': row['service_type'],  # Alias for compatibility
                 'status': row['status'],
                 'phone_number': row['phone_number'],
                 'phone': row['phone_number'] or row['client_phone'],  # Use booking phone or client phone as fallback
                 'email': row['email'] or row['client_email'],  # Use booking email or client email as fallback
-                'created_at': row['created_at'],
+                'created_at': row['created_at'].isoformat() if hasattr(row.get('created_at'), 'isoformat') else row['created_at'],
                 'charge': row['charge'],
                 'charge_max': row.get('charge_max'),
                 'estimated_charge': row['charge'],  # Alias for compatibility
