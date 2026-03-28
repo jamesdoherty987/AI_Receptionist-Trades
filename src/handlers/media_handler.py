@@ -74,7 +74,8 @@ ADDRESS_CONFIRM_PATTERNS = ['confirm', 'correct?', 'right?', 'is it', 'is that',
                             'booked in for', 'booked for', 'job at', 'job for',
                             'i have your address', 'i have the address', 'your address is',
                             'your address as', 'the address as', 'address on file',
-                            'address we have']
+                            'address we have', 'same address', 'still the same address',
+                            'same address as before', 'address as before', 'address still']
 
 
 def ai_asked_for_address(text: str) -> bool:

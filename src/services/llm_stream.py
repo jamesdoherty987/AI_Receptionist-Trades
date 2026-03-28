@@ -2336,6 +2336,31 @@ TOOL RULES:
                     
                     print(f"   ⚡ [DIRECT] transfer -> '{direct_response}'")
                 
+                # ========== MATCH_ISSUE — NEVER use direct response ==========
+                elif tool_name == "match_issue":
+                    # match_issue returns ranked matches that the AI needs to READ and RESPOND to
+                    # Build a natural response based on the match results
+                    matches = result_content.get("matches", [])
+                    needs_clarification = result_content.get("needs_clarification", False)
+                    top_score = result_content.get("top_score", 0)
+                    has_investigation = result_content.get("has_investigation_option", False)
+                    
+                    if not matches:
+                        direct_response = "I'm not sure I have a service that matches. Could you describe the issue in a bit more detail?"
+                    elif top_score >= 80 and not needs_clarification:
+                        # Clear match — confirm it
+                        direct_response = f"A {matches[0]['name'].lower()}, is that correct?"
+                    elif has_investigation:
+                        # Investigation option exists — ask if they know the cause
+                        direct_response = "Do you know what's causing the issue, or do you think it will need investigation first?"
+                    elif len(matches) > 1:
+                        # Multiple matches — ask a narrowing question
+                        direct_response = "Can you tell me a bit more about the issue so I can match you with the right service?"
+                    else:
+                        direct_response = f"That sounds like it could be a {matches[0]['name'].lower()}. Is that right?"
+                    
+                    print(f"   ⚡ [DIRECT] match_issue -> '{direct_response[:50]}...' ({len(matches)} matches, top={top_score})")
+                
                 # ========== FALLBACK FOR ANY OTHER TOOL ==========
                 else:
                     # Generic fallback for unknown tools
