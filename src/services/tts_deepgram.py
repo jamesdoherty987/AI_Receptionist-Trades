@@ -124,13 +124,14 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn, on_audio_
                         except asyncio.TimeoutError:
                             if sender_done.is_set():
                                 quiet_timeouts += 1
-                                # Reduced from 2/4 to 1/2 for faster exit after audio done
-                                if got_any_audio and quiet_timeouts >= 1:
+                                # Wait for Flushed signal — only exit on quiet timeout if enough silence
+                                # (2 timeouts = 0.6s of no data after all text sent)
+                                if got_any_audio and quiet_timeouts >= 2:
                                     print(f"[TTS] ✅ Done. Sent {chunks_sent} chunks")
                                     _notify_audio_done()
                                     return
-                                if quiet_timeouts >= 2:
-                                    print(f"[TTS] ⚠️ TIMEOUT: No audio after 2 quiet timeouts (1s total). Sent {chunks_sent} chunks")
+                                if quiet_timeouts >= 4:
+                                    print(f"[TTS] ⚠️ TIMEOUT: No audio after 4 quiet timeouts (1.2s total). Sent {chunks_sent} chunks")
                                     _notify_audio_done()
                                     return
                             continue
