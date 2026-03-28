@@ -2,7 +2,15 @@
 Flask application for Twilio voice webhook
 Secured against OWASP Top 10 vulnerabilities
 """
+# Set process timezone to business timezone so datetime.now() returns local time.
+# This must happen before any datetime usage.
 import os
+import time as _time
+if not os.environ.get("TZ"):
+    os.environ["TZ"] = os.getenv("CALENDAR_TIMEZONE", "Europe/Dublin")
+    if hasattr(_time, 'tzset'):
+        _time.tzset()
+
 import sys
 import secrets
 import stripe
@@ -5089,6 +5097,20 @@ def bookings_api():
     
     if request.method == "GET":
         bookings = db.get_all_bookings(company_id=company_id)
+        # DEBUG: Log appointment_time types and values to diagnose timezone display issues
+        if bookings:
+            sample = bookings[0]
+            raw_time = sample.get('appointment_time')
+            from datetime import datetime as _dt
+            print(f"[TZ_DEBUG] Server datetime.now()={_dt.now()}, sample appointment_time={raw_time} (type={type(raw_time).__name__})")
+            if hasattr(raw_time, 'tzinfo'):
+                print(f"[TZ_DEBUG] appointment_time.tzinfo={raw_time.tzinfo}")
+            import json
+            try:
+                serialized = json.dumps(raw_time, default=str)
+                print(f"[TZ_DEBUG] JSON serialized: {serialized}")
+            except:
+                pass
         return jsonify(bookings)
     
     elif request.method == "POST":

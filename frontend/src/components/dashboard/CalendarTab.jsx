@@ -69,6 +69,14 @@ const formatTimeRange = (appointmentTime, durationMinutes) => {
   
   const start = parseServerDate(appointmentTime);
   
+  // DEBUG: Log timezone conversion to diagnose +1 hour issue
+  if (typeof appointmentTime === 'string' && appointmentTime.includes('T')) {
+    const rawDate = new Date(appointmentTime);
+    if (rawDate.getHours() !== start.getHours()) {
+      console.warn(`[TZ_DEBUG] Time mismatch! raw="${appointmentTime}" -> new Date().getHours()=${rawDate.getHours()}, parseServerDate().getHours()=${start.getHours()}, tzOffset=${rawDate.getTimezoneOffset()}min`);
+    }
+  }
+  
   // Multi-day job (> 24 hours)
   if (durationMinutes > 1440) {
     const days = Math.round(durationMinutes / 1440);

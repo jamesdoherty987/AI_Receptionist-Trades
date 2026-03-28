@@ -16,10 +16,16 @@ export const parseServerDate = (dateStr) => {
   // Parse "YYYY-MM-DDTHH:MM:SS" or "YYYY-MM-DD HH:MM:SS"
   const match = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):?(\d{2})?/);
   if (match) {
-    return new Date(
+    const result = new Date(
       parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]),
       parseInt(match[4]), parseInt(match[5]), parseInt(match[6] || 0)
     );
+    // DEBUG: detect timezone mismatch
+    const rawDate = new Date(dateStr);
+    if (rawDate.getHours() !== result.getHours()) {
+      console.warn(`[parseServerDate] TZ FIX APPLIED: "${dateStr}" raw=${rawDate.getHours()}:00 -> fixed=${result.getHours()}:00 (offset=${rawDate.getTimezoneOffset()}min)`);
+    }
+    return result;
   }
   
   // Fallback for date-only "YYYY-MM-DD"

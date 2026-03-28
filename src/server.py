@@ -9,8 +9,18 @@ This is required for hosting on platforms like Render that only expose one port.
 Usage:
   uvicorn src.server:app --host 0.0.0.0 --port 5000
 """
-import asyncio
+# CRITICAL: Set process timezone to business timezone BEFORE any imports.
+# Render servers run in UTC, but datetime.now() must return the business's
+# local time so bookings are stored correctly (e.g., "11am" means 11am Irish time,
+# not 11am UTC which would be 12pm during BST).
 import os
+import time as _time
+_tz = os.getenv("CALENDAR_TIMEZONE", "Europe/Dublin")
+os.environ["TZ"] = _tz
+if hasattr(_time, 'tzset'):
+    _time.tzset()
+
+import asyncio
 import sys
 import time
 from pathlib import Path
