@@ -267,7 +267,7 @@ def _build_packages_prompt_section(packages_list):
         price_max = pkg.get('total_price_max')
         duration_label = pkg.get('duration_label', '')
 
-        uncertain_hint = " [USE WHEN ISSUE IS UNCERTAIN]" if pkg.get('use_when_uncertain') else ""
+        uncertain_hint = " [REQUIRES INVESTIGATION — use when caller's issue needs diagnosing first]" if pkg.get('use_when_uncertain') else ""
         line = f"📦 {pkg['name']}{uncertain_hint} | Services: {service_names}"
 
         if price_max and float(price_max) > float(price):

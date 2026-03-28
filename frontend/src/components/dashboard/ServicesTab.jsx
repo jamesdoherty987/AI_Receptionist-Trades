@@ -1211,9 +1211,9 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
         )}
       </div>
 
-      {/* Book when uncertain toggle */}
+      {/* Requires investigation toggle */}
       <div className="callout-toggle-group">
-        <label>Book when uncertain?</label>
+        <label>Requires investigation first?</label>
         <div className="callout-toggle-row">
           <button
             type="button"
@@ -1221,16 +1221,18 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
             onClick={() => setFormData({ ...formData, use_when_uncertain: !formData.use_when_uncertain })}
             role="switch"
             aria-checked={formData.use_when_uncertain}
-            title="When enabled, the AI receptionist will prefer this package when the caller's issue is vague or ambiguous"
           >
             <span className="callout-toggle-slider" />
           </button>
           <span className="callout-toggle-label">
             {formData.use_when_uncertain
-              ? 'Yes — AI prefers this package when the issue is vague'
-              : 'No — only match when clearly relevant'}
+              ? 'Yes — the worker needs to assess/investigate before starting the actual work'
+              : 'No — the worker can start the job straight away'}
           </span>
         </div>
+        <span className="form-hint">
+          Turn this on when the caller's issue needs diagnosing first and the time/scope isn't predictable. E.g., a "Leak Investigation" where the source is unknown, or an "Electrical Fault Finding" where the cause needs tracing.
+        </span>
       </div>
 
       <div className="form-actions">
@@ -1339,8 +1341,8 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
             </span>
           )}
           {pkg.use_when_uncertain && (
-            <span className="badge-uncertain" title="AI prefers this package when the caller's issue is vague or ambiguous">
-              🤔 Book when uncertain
+            <span className="badge-uncertain" title="Worker needs to assess/investigate before starting — time and scope may vary">
+              🔍 Requires investigation
             </span>
           )}
         </div>
