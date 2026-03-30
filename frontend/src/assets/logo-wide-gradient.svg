@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 64" fill="none">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#ec4899"/>
+    </linearGradient>
+  </defs>
+  <!-- Icon -->
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="url(#grad)"/>
+  <path d="M36 8 L18 34 L28 34 L24 56 L46 28 L35 28 Z" fill="white"/>
+  <!-- Wordmark -->
+  <text x="74" y="42" font-family="'Outfit', 'Inter', system-ui, sans-serif" font-size="28" font-weight="700" fill="#0f172a">Booked<tspan fill="url(#grad)">ForYou</tspan></text>
+</svg>

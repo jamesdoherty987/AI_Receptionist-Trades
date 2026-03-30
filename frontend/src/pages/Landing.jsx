@@ -387,7 +387,7 @@ function Landing() {
             <div className="phone-demo-text">
               <span className="section-badge">Hear It In Action</span>
               <h2>Your AI receptionist <span className="gradient-text">answers every call</span></h2>
-              <p>While you're on a job, your AI handles incoming calls professionally — booking appointments, answering questions, and never putting a customer on hold.</p>
+              <p>While you're on a job, your AI handles incoming calls professionally - booking appointments, answering questions, and never putting a customer on hold.</p>
               <button className="demo-call-btn" onClick={toggleDemoCall}>
                 <i className={`fas ${isCallPlaying ? 'fa-pause' : 'fa-play'}`}></i>
                 {isCallPlaying ? 'Pause Demo Call' : 'Listen to a Demo Call'}

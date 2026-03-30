@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 68 68" fill="none">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0ea5e9"/>
+      <stop offset="100%" stop-color="#ec4899"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0ea5e9" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <!-- Rounded square with drop shadow -->
+  <rect x="6" y="6" width="56" height="56" rx="14" fill="url(#grad)" filter="url(#shadow)"/>
+  <!-- Bolt with rounded corners -->
+  <path d="M38 10 L20 36 L30 36 L26 58 L48 30 L37 30 Z" fill="white" stroke="white" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>
