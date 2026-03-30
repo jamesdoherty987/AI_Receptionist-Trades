@@ -316,46 +316,64 @@ function MiniChart() {
   );
 }
 
-// 4. Mini Worker Schedule (Worker Management)
+// 4. Mini Worker Dispatch Board (Worker Management)
 function MiniWorkerSchedule() {
-  const [assignedJobs, setAssignedJobs] = useState([]);
+  const [step, setStep] = useState(-1);
   const workers = [
-    { name: 'Mike', color: '#0ea5e9', jobs: ['Pipe repair — 9am', 'Boiler service — 2pm'] },
-    { name: 'Sarah', color: '#ec4899', jobs: ['Drain cleaning — 10am'] },
-    { name: 'James', color: '#8b5cf6', jobs: ['Radiator install — 11am', 'Callout — 4pm'] },
+    { name: 'Mike', initials: 'M', color: '#0ea5e9', icon: 'fa-wrench' },
+    { name: 'Sarah', initials: 'S', color: '#ec4899', icon: 'fa-toolbox' },
+    { name: 'James', initials: 'J', color: '#8b5cf6', icon: 'fa-hard-hat' },
   ];
+  const jobs = [
+    { label: 'Pipe repair', time: '9am', worker: 0 },
+    { label: 'Drain clean', time: '10am', worker: 1 },
+    { label: 'Radiator install', time: '11am', worker: 2 },
+    { label: 'Boiler service', time: '2pm', worker: 0 },
+  ];
+
   useEffect(() => {
-    let i = 0;
-    const total = workers.reduce((s, w) => s + w.jobs.length, 0);
+    let i = -1;
     const interval = setInterval(() => {
-      if (i >= total) { setAssignedJobs([]); i = 0; return; }
-      setAssignedJobs(prev => [...prev, i]);
       i++;
-    }, 900);
+      if (i > jobs.length) { i = -1; setStep(-1); return; }
+      setStep(i);
+    }, 1100);
     return () => clearInterval(interval);
   }, []);
 
-  let jobIndex = 0;
   return (
-    <div className="mini-schedule">
-      {workers.map((w, wi) => (
-        <div key={wi} className="mini-sched-worker">
-          <div className="mini-sched-avatar" style={{ background: w.color }}>{w.name[0]}</div>
-          <div className="mini-sched-info">
-            <span className="mini-sched-name">{w.name}</span>
-            <div className="mini-sched-jobs">
-              {w.jobs.map((job, ji) => {
-                const idx = jobIndex++;
-                return (
-                  <span key={ji} className={`mini-sched-job ${assignedJobs.includes(idx) ? 'assigned' : ''}`}>
-                    {job}
-                  </span>
-                );
-              })}
+    <div className="dispatch-board">
+      <div className="dispatch-workers">
+        {workers.map((w, wi) => {
+          const active = jobs.some((j, ji) => j.worker === wi && ji <= step);
+          const pinging = jobs.some((j, ji) => j.worker === wi && ji === step);
+          return (
+            <div key={wi} className={`dispatch-avatar ${active ? 'active' : ''} ${pinging ? 'ping' : ''}`}>
+              <div className="dispatch-avatar-circle" style={{ background: w.color }}>
+                <i className={`fas ${w.icon}`}></i>
+              </div>
+              <span className="dispatch-avatar-name">{w.name}</span>
+              {active && <span className="dispatch-status-dot"></span>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="dispatch-feed">
+        {jobs.map((job, ji) => (
+          <div key={ji} className={`dispatch-job ${ji <= step ? 'dispatched' : ''} ${ji === step ? 'latest' : ''}`}>
+            <div className="dispatch-job-line" style={{ background: workers[job.worker].color }}></div>
+            <div className="dispatch-job-content">
+              <span className="dispatch-job-label">{job.label}</span>
+              <span className="dispatch-job-meta">
+                <i className="far fa-clock"></i> {job.time} · {workers[job.worker].name}
+              </span>
+            </div>
+            <div className={`dispatch-job-badge ${ji <= step ? 'show' : ''}`} style={{ background: workers[job.worker].color }}>
+              <i className="fas fa-check"></i>
             </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
