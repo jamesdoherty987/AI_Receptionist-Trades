@@ -91,7 +91,8 @@ def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
     
     Uses an adaptive noise-floor approach for the leading edge:
     - Estimates the noise floor from the quietest 25% of packets
-    - Sets the effective threshold at max(energy_threshold, noise_floor * 3)
+    - Sets the effective threshold at max(energy_threshold, noise_floor * 2.5)
+      capped at 2x the fixed threshold to avoid being too aggressive
     - This reliably cuts through line noise / ambient hum that sits just
       below the fixed threshold on phone calls (typically RMS 10-30)
     

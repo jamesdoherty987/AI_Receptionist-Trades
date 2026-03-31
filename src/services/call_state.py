@@ -84,6 +84,9 @@ class CallState:
     # --- LLM response control ---
     skip_llm_response: bool = False
     
+    # --- Match issue tracking (prevents infinite loop when no service matches) ---
+    match_issue_fail_count: int = 0
+    
     def reset(self):
         """Reset all state to initial values."""
         self.active_booking = False
@@ -122,6 +125,7 @@ class CallState:
         self.cancel_final_asked = False
         self.skip_llm_response = False
         self.suggested_dates = []
+        self.match_issue_fail_count = 0
         self.address_audio_url = None
         self.address_audio_captured = False
         self.awaiting_address_audio = False
