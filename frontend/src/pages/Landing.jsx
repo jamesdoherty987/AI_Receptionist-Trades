@@ -582,7 +582,7 @@ function MeshGradient() {
 
 // ---- Main Landing Component ----
 function Landing() {
-  const CONTACT_EMAIL = 'j.p.enterprisehq@gmail.com';
+  const CONTACT_EMAIL = 'contact@bookedforyou.ie';
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isMuted, setIsMuted] = useState(true);

@@ -5,7 +5,6 @@ import {
   interpolate,
   spring,
   Sequence,
-  Easing,
 } from "remotion";
 
 // ─── Color palette ───
@@ -149,7 +148,6 @@ const HeroScene: React.FC = () => {
 
 // ─── Scene 2: The Problem ───
 const ProblemScene: React.FC = () => {
-  const frame = useCurrentFrame();
   const items = [
     { icon: "📵", text: "Missed calls = lost revenue" },
     { icon: "😩", text: "Can't answer while on a job" },

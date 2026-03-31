@@ -209,7 +209,7 @@ function TermsOfService() {
             If you have any questions about these Terms of Service, please contact us at:
           </p>
           <p className="contact-info">
-            Email: <a href="mailto:j.p.enterprisehq@gmail.com">j.p.enterprisehq@gmail.com</a>
+            Email: <a href="mailto:contact@bookedforyou.ie">contact@bookedforyou.ie</a>
           </p>
         </section>
       </div>

@@ -7837,7 +7837,7 @@ def send_email_to_client():
             }), 400
         
         # Get email configuration from environment - prefer SMTP_FROM_EMAIL, fallback to FROM_EMAIL
-        from_email = os.getenv('SMTP_FROM_EMAIL') or os.getenv('FROM_EMAIL', 'j.p.enterprisehq@gmail.com')
+        from_email = os.getenv('SMTP_FROM_EMAIL') or os.getenv('FROM_EMAIL', 'contact@bookedforyou.ie')
         smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
         smtp_port = int(os.getenv('SMTP_PORT', '587'))
         smtp_user = os.getenv('SMTP_USER', from_email)
