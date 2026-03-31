@@ -231,7 +231,7 @@ function SubscriptionManager() {
             {isTrial && isActive && !isPro && (
               <span className="price free">Free</span>
             )}
-            {!isPro && (isNone || isExpired) && (
+            {!isPro && isNone && (
               <span className="price inactive-price">&euro;0</span>
             )}
           </div>
