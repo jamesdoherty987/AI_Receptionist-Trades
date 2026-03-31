@@ -71,7 +71,7 @@ const NightSky: React.FC = () => {
     <AbsoluteFill>
       <div style={{ width: "100%", height: "100%", background: "linear-gradient(180deg,#0a0a2e 0%,#1a1a3e 40%,#0f1b3d 100%)" }} />
       {/* Moon */}
-      <div style={{ position: "absolute", top: 220, right: 100, width: 70, height: 70, borderRadius: "50%", background: "#fef3c7", boxShadow: "0 0 40px rgba(254,243,199,0.4),0 0 80px rgba(254,243,199,0.2)" }} />
+      <div style={{ position: "absolute", top: 280, right: 100, width: 70, height: 70, borderRadius: "50%", background: "#fef3c7", boxShadow: "0 0 40px rgba(254,243,199,0.4),0 0 80px rgba(254,243,199,0.2)" }} />
       {/* Stars */}
       {Array.from({ length: 40 }, (_, i) => {
         const seed = i * 97.3;
@@ -304,7 +304,7 @@ const ProfileCard: React.FC<{ emoji: string; name: string; traits: { icon: strin
   const swipeRot = swiped ? interpolate(f, [swipeDelay, swipeDelay + 12], [0, swiped === "left" ? -20 : 20], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 0;
   const swipeOp = swiped ? interpolate(f, [swipeDelay, swipeDelay + 12], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }) : 1;
   return (
-    <div style={{ opacity: entryOp * swipeOp, transform: `translateY(${interpolate(entryS, [0, 1], [50, 0])}px) translateX(${swipeX}px) rotate(${swipeRot}deg)`, position: "absolute", left: 30, right: 30, top: 310, bottom: 120 }}>
+    <div style={{ opacity: entryOp * swipeOp, transform: `translateY(${interpolate(entryS, [0, 1], [50, 0])}px) translateX(${swipeX}px) rotate(${swipeRot}deg)`, position: "absolute", left: 30, right: 30, top: 370, bottom: 120 }}>
       <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 32, padding: "40px 28px", textAlign: "center", height: "100%", display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <div style={{ fontSize: 100, marginBottom: 16 }}>{emoji}</div>
         <div style={{ fontSize: 36, fontWeight: 800, color: C.white, marginBottom: 24 }}>{name}</div>
@@ -333,7 +333,7 @@ const ProfileCard: React.FC<{ emoji: string; name: string; traits: { icon: strin
 const V17_S1: React.FC = () => (
   <AbsoluteFill>
     <BG /><Orbs colors={["rgba(255,0,110,0.15)", C.purpleGlow]} />
-    <div style={{ position: "absolute", top: 200, left: 0, right: 0, textAlign: "center", zIndex: 10 }}>
+    <div style={{ position: "absolute", top: 260, left: 0, right: 0, textAlign: "center", zIndex: 10 }}>
       <Boom text="Hiring a receptionist?" delay={0} size={42} color={C.gray} dur={90} />
       <Boom text="Swipe right 💕" delay={12} size={50} color={C.pink} dur={78} />
     </div>
@@ -349,7 +349,7 @@ const V17_S1: React.FC = () => (
 const V17_S2: React.FC = () => (
   <AbsoluteFill>
     <BG /><Orbs colors={[C.cyanGlow, C.purpleGlow]} />
-    <div style={{ position: "absolute", top: 200, left: 0, right: 0, textAlign: "center", zIndex: 10 }}>
+    <div style={{ position: "absolute", top: 260, left: 0, right: 0, textAlign: "center", zIndex: 10 }}>
       <Boom text="Next profile..." delay={0} size={42} color={C.gray} dur={100} />
     </div>
     <ProfileCard emoji="🤖" name="AI Receptionist" traits={[

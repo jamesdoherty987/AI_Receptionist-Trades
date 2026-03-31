@@ -1071,6 +1071,8 @@
   flex-direction: column;
   gap: 3px;
   padding-right: 50px;
+  text-align: left;
+  align-items: flex-start;
 }
 .reel-username {
   font-size: 0.65rem;
@@ -2152,6 +2154,54 @@
   .status-dynamic-island {
     width: 80px;
     height: 24px;
+  }
+
+  /* Fix status bar spacing on mobile */
+  .iphone-status-bar {
+    padding: 10px 16px 0;
+    height: 44px;
+  }
+
+  .status-time {
+    font-size: 0.65rem;
+    width: 40px;
+  }
+
+  .status-icons {
+    font-size: 0.55rem;
+    gap: 3px;
+    width: 40px;
+  }
+
+  /* Move progress bars below status bar on mobile */
+  .reel-progress {
+    top: 42px;
+    left: 8px;
+    right: 8px;
+    gap: 2px;
+  }
+
+  /* Reel overlay mobile adjustments */
+  .reel-overlay {
+    padding: 0 8px 30px;
+  }
+
+  .reel-bottom {
+    align-items: flex-start;
+  }
+
+  .reel-sidebar {
+    right: 6px;
+    bottom: 60px;
+    gap: 12px;
+  }
+
+  .reel-sidebar-btn i {
+    font-size: 0.9rem;
+  }
+
+  .reel-sidebar-btn span {
+    font-size: 0.42rem;
   }
 
   .phone-demo-layout {

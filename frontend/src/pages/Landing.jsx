@@ -693,9 +693,40 @@ function PhoneWithReels({ isCallPlaying, toggleDemoCall, isMobile }) {
   const [commentCount, setCommentCount] = useState(128);
   const [shared, setShared] = useState(false);
   const [heartBurst, setHeartBurst] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
   const videoRefs = useRef([]);
   const progressFillRefs = useRef([]);
   const rafRef = useRef(null);
+  const phoneRef = useRef(null);
+  const pausedByScrollRef = useRef(false);
+
+  // Track visibility with IntersectionObserver
+  useEffect(() => {
+    const el = phoneRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setIsVisible(entry.isIntersecting),
+      { threshold: 0.25 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // Pause/resume when visibility changes
+  useEffect(() => {
+    const vid = videoRefs.current[currentReel];
+    if (!isVisible) {
+      if (vid && !vid.paused) {
+        vid.pause();
+        pausedByScrollRef.current = true;
+      }
+    } else if (pausedByScrollRef.current) {
+      pausedByScrollRef.current = false;
+      if (vid && vid.paused) {
+        vid.play().catch(() => {});
+      }
+    }
+  }, [isVisible]);
 
   // Animate progress bars by reading directly from the video element
   useEffect(() => {
@@ -720,9 +751,11 @@ function PhoneWithReels({ isCallPlaying, toggleDemoCall, isMobile }) {
 
   // Play the current reel when it's ready and we're not in call mode
   useEffect(() => {
-    if (isCallPlaying || showCallUI || nextReel !== null) return;
+    if (isCallPlaying || showCallUI || nextReel !== null || !isVisible || pausedByScrollRef.current) return;
     const vid = videoRefs.current[currentReel];
     if (!vid) return;
+    // Don't restart if already playing (e.g. resumed by scroll)
+    if (!vid.paused) return;
 
     const playVideo = () => {
       vid.currentTime = 0;
@@ -737,7 +770,7 @@ function PhoneWithReels({ isCallPlaying, toggleDemoCall, isMobile }) {
       vid.load();
       return () => vid.removeEventListener('canplay', onReady);
     }
-  }, [currentReel, isCallPlaying, showCallUI, nextReel]);
+  }, [currentReel, isCallPlaying, showCallUI, nextReel, isVisible]);
 
   // Listen for video ended to trigger swipe
   useEffect(() => {
@@ -794,7 +827,7 @@ function PhoneWithReels({ isCallPlaying, toggleDemoCall, isMobile }) {
   }, [isCallPlaying, showCallUI]);
 
   return (
-    <div className={`iphone-frame ${showCallUI ? 'call-active' : ''}`}>
+    <div ref={phoneRef} className={`iphone-frame ${showCallUI ? 'call-active' : ''}`}>
       <div className="iphone-btn-silent"></div>
       <div className="iphone-btn-vol-up"></div>
       <div className="iphone-btn-vol-down"></div>
