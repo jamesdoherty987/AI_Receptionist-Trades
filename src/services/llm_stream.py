@@ -1228,7 +1228,7 @@ TOOL RULES:
                     "model": config.CHAT_MODEL,
                     "stream": True,
                     "temperature": 0.1,
-                    "max_tokens": 120,  # Reduced from 180 - phone responses are short
+                    "max_tokens": 180,
                     "presence_penalty": 0.1,
                     "frequency_penalty": 0.1,
                     "messages": [{"role": "system", "content": system_prompt_with_time}, *final_messages],

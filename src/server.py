@@ -21,6 +21,7 @@ if hasattr(_time, 'tzset'):
     _time.tzset()
 
 import asyncio
+import json
 import sys
 import time
 from pathlib import Path
@@ -155,14 +156,26 @@ async def startup_event():
     except Exception as e:
         print(f"[STARTUP] ⚠️ OpenAI warmup failed: {e}")
     
-    # Start background keepalive task to prevent connection going cold
-    global _keepalive_task
+    # --- TIMING: ElevenLabs warmup (startup only, no keepalive to save credits) ---
+    try:
+        el_warmup_start = time.time()
+        await warmup_elevenlabs()
+        el_warmup_time = time.time() - el_warmup_start
+        print(f"[STARTUP] ✅ ElevenLabs warmup completed in {el_warmup_time:.3f}s")
+    except Exception as e:
+        print(f"[STARTUP] ⚠️ ElevenLabs warmup failed: {e}")
+    
+    # Start background keepalive tasks to prevent connections going cold
+    # NOTE: Only OpenAI gets a keepalive loop. ElevenLabs warmup happens per-call
+    # in media_handler.py (during greeting playback) to avoid burning credits.
+    global _keepalive_task, _elevenlabs_keepalive_task
     _keepalive_task = asyncio.create_task(openai_keepalive_loop())
+    _elevenlabs_keepalive_task = None  # No ElevenLabs keepalive - too expensive (3 credits per ping)
     
     total_startup = time.time() - startup_start
     print(f"\n{'='*70}")
     print(f"[STARTUP] ✅ All startup tasks complete in {total_startup:.3f}s")
-    print(f"[STARTUP] 🟢 SERVER READY FOR CALLS - OpenAI warmed up, fillers loaded")
+    print(f"[STARTUP] 🟢 SERVER READY FOR CALLS - OpenAI warmed up, ElevenLabs warmed up, fillers loaded")
     print(f"{'='*70}\n")
 
 
@@ -202,6 +215,7 @@ async def warmup_openai():
 
 OPENAI_KEEPALIVE_INTERVAL = 60  # Ping every 60 seconds to keep connection warm
 _keepalive_task = None  # Track task for graceful shutdown
+_elevenlabs_keepalive_task = None  # Not used - per-call warmup only (credits too expensive)
 
 
 async def openai_keepalive_loop():
@@ -271,21 +285,85 @@ async def openai_keepalive_loop():
                 consecutive_failures = 0  # Reset to avoid continuous logging
 
 
+async def warmup_elevenlabs():
+    """
+    Warmup ElevenLabs TTS WebSocket to avoid cold start on first real call.
+    Opens a WebSocket, sends a tiny text, receives audio, then closes.
+    This ensures ElevenLabs has our voice model loaded and ready.
+    """
+    import time
+    from src.utils.config import config
+    
+    if config.TTS_PROVIDER != 'elevenlabs':
+        print("[STARTUP] Skipping ElevenLabs warmup (TTS provider is not elevenlabs)")
+        return
+    
+    if not config.ELEVENLABS_API_KEY or not config.ELEVENLABS_VOICE_ID:
+        print("[STARTUP] Skipping ElevenLabs warmup (missing API key or voice ID)")
+        return
+    
+    voice_id = config.ELEVENLABS_VOICE_ID
+    uri = (
+        f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input"
+        f"?model_id=eleven_turbo_v2_5"
+        f"&output_format=ulaw_8000"
+        f"&optimize_streaming_latency=4"
+    )
+    
+    print(f"[STARTUP] Warming up ElevenLabs TTS (voice: {voice_id})...")
+    start = time.time()
+    
+    try:
+        async with websockets.connect(
+            uri,
+            extra_headers={"xi-api-key": config.ELEVENLABS_API_KEY},
+            open_timeout=10,
+            close_timeout=5,
+        ) as tts:
+            # Send init + a short word + end-of-text to trigger audio generation
+            await tts.send(json.dumps({
+                "text": " ",
+                "voice_settings": {"stability": 0.5, "similarity_boost": 0.8},
+            }))
+            await tts.send(json.dumps({"text": "Hi.", "try_trigger_generation": True}))
+            await tts.send(json.dumps({"text": ""}))
+            
+            # Consume audio response (we don't need it, just warming the connection)
+            chunks = 0
+            while True:
+                try:
+                    msg = await asyncio.wait_for(tts.recv(), timeout=5.0)
+                    data = json.loads(msg)
+                    if data.get("audio"):
+                        chunks += 1
+                    if data.get("isFinal"):
+                        break
+                except asyncio.TimeoutError:
+                    break
+            
+            elapsed = time.time() - start
+            print(f"[STARTUP] ElevenLabs warmup complete in {elapsed:.2f}s ({chunks} audio chunks received)")
+    except Exception as e:
+        elapsed = time.time() - start
+        print(f"[STARTUP] ElevenLabs warmup failed after {elapsed:.2f}s: {e}")
+
+
 async def shutdown_event():
     """Clean up background tasks on shutdown"""
-    global _keepalive_task
+    global _keepalive_task, _elevenlabs_keepalive_task
     
     print("\n" + "="*70)
     print("[SHUTDOWN] ⚠️ Server shutting down - cleaning up...")
     print("[SHUTDOWN] Active WebSocket connections will be terminated")
     print("="*70 + "\n")
     
-    if _keepalive_task and not _keepalive_task.done():
-        _keepalive_task.cancel()
-        try:
-            await _keepalive_task
-        except asyncio.CancelledError:
-            pass
+    for task in (_keepalive_task, _elevenlabs_keepalive_task):
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
     
     # Give active calls a moment to wrap up (Render sends SIGTERM then waits)
     print("[SHUTDOWN] Waiting 2s for active calls to finish...")

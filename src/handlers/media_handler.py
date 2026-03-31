@@ -141,6 +141,9 @@ async def media_handler(ws):
     
     # Tracking
     last_committed = ""
+    last_committed_at = 0.0  # When last_committed was set (monotonic time)
+    last_tts_success = True  # Whether the last TTS response actually delivered audio
+    DUPLICATE_EXPIRY = 10.0  # Allow repeats after this many seconds of silence
     response_times = []
     
     # Config
@@ -173,10 +176,10 @@ async def media_handler(ws):
         
         Key insight: Don't wait for filler to finish before starting LLM work!
         """
-        nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at, llm_processing, last_tts_audio_done
+        nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at, llm_processing, last_tts_audio_done, last_tts_success
 
         async def run():
-            nonlocal speaking, tts_started_at, tts_ended_at, llm_processing, conversation_log, response_times, last_tts_audio_done
+            nonlocal speaking, tts_started_at, tts_ended_at, llm_processing, conversation_log, response_times, last_tts_audio_done, last_tts_success
             speaking = True
             interrupt = False
             tts_started_at = asyncio.get_event_loop().time()
@@ -325,9 +328,10 @@ async def media_handler(ws):
                     tts_stream_start = time_module.time()
                     _queued_audio_done_fired = False
                     def _on_queued_audio_done():
-                        nonlocal last_tts_audio_done, _queued_audio_done_fired, speaking, tts_ended_at
+                        nonlocal last_tts_audio_done, _queued_audio_done_fired, speaking, tts_ended_at, last_tts_success
                         last_tts_audio_done = asyncio.get_event_loop().time()
                         _queued_audio_done_fired = True
+                        last_tts_success = True
                         # Clear stale ASR state NOW — the audio just finished sending.
                         asr.clear()
                         # CRITICAL: Mark speaking as done NOW, not when run() returns.
@@ -343,6 +347,7 @@ async def media_handler(ws):
                         asr.clear()  # Fallback clear if callback didn't fire
                         speaking = False
                         tts_ended_at = last_tts_audio_done
+                        last_tts_success = False  # TTS didn't deliver audio — allow caller to repeat
                         print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False (fallback — callback didn't fire)")
                     tts_stream_time = time_module.time() - tts_stream_start
                     print(f"[PIPELINE] ⏱️ TTS streaming took {tts_stream_time:.3f}s")
@@ -396,9 +401,10 @@ async def media_handler(ws):
                     tts_call_start = time_module.time()
                     _direct_audio_done_fired = False
                     def _on_direct_audio_done():
-                        nonlocal last_tts_audio_done, _direct_audio_done_fired, speaking, tts_ended_at
+                        nonlocal last_tts_audio_done, _direct_audio_done_fired, speaking, tts_ended_at, last_tts_success
                         last_tts_audio_done = asyncio.get_event_loop().time()
                         _direct_audio_done_fired = True
+                        last_tts_success = True
                         # Clear stale ASR state NOW — the audio just finished sending.
                         # Anything Deepgram captured during playback is stale echo.
                         # Anything the caller says AFTER this point is their real response.
@@ -416,6 +422,7 @@ async def media_handler(ws):
                         asr.clear()  # Fallback clear if callback didn't fire
                         speaking = False
                         tts_ended_at = last_tts_audio_done
+                        last_tts_success = False  # TTS didn't deliver audio — allow caller to repeat
                         print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False (fallback — callback didn't fire)")
                     tts_call_end = time_module.time()
                     direct_time = tts_call_end - direct_start
@@ -598,6 +605,41 @@ async def media_handler(ws):
                         print(f"⚠️ Warmup failed: {e}")
                 asyncio.create_task(warmup())
 
+                # Warmup ElevenLabs TTS (belt-and-suspenders alongside server keepalive)
+                async def warmup_tts():
+                    try:
+                        if config.TTS_PROVIDER != 'elevenlabs' or not config.ELEVENLABS_API_KEY:
+                            return
+                        import websockets as ws_lib
+                        voice_id = config.ELEVENLABS_VOICE_ID
+                        uri = (
+                            f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input"
+                            f"?model_id=eleven_turbo_v2_5&output_format=ulaw_8000&optimize_streaming_latency=4"
+                        )
+                        async with ws_lib.connect(
+                            uri,
+                            extra_headers={"xi-api-key": config.ELEVENLABS_API_KEY},
+                            open_timeout=8, close_timeout=3,
+                        ) as tts:
+                            await tts.send(json.dumps({
+                                "text": " ",
+                                "voice_settings": {"stability": 0.5, "similarity_boost": 0.8},
+                            }))
+                            await tts.send(json.dumps({"text": "Hi.", "try_trigger_generation": True}))
+                            await tts.send(json.dumps({"text": ""}))
+                            while True:
+                                try:
+                                    msg = await asyncio.wait_for(tts.recv(), timeout=5.0)
+                                    data_msg = json.loads(msg)
+                                    if data_msg.get("isFinal"):
+                                        break
+                                except asyncio.TimeoutError:
+                                    break
+                        print(f"🔥 ElevenLabs TTS warmed up")
+                    except Exception as e:
+                        print(f"⚠️ ElevenLabs warmup failed: {e}")
+                asyncio.create_task(warmup_tts())
+
             elif event == "media":
                 if not stream_sid:
                     continue
@@ -684,10 +726,15 @@ async def media_handler(ws):
                         print(f"[DEBUG] Dropped (MIN_WORDS): '{text}' words={len(text.split())}")
                         continue
                     
-                    # Duplicate check
+                    # Duplicate check — allow repeats if TTS failed or enough time passed
                     if norm_text(text) == norm_text(last_committed):
-                        print(f"[DEBUG] Dropped (DUPLICATE): '{text}' == '{last_committed}'")
-                        continue
+                        time_since_committed = time_module.time() - last_committed_at
+                        if last_tts_success and time_since_committed < DUPLICATE_EXPIRY:
+                            print(f"[DEBUG] Dropped (DUPLICATE): '{text}' == '{last_committed}'")
+                            continue
+                        else:
+                            reason = "TTS failed" if not last_tts_success else f"expired ({time_since_committed:.1f}s > {DUPLICATE_EXPIRY}s)"
+                            print(f"[DEBUG] Allowing repeat: '{text}' ({reason})")
                     
                     # LLM timeout check
                     if llm_processing and (now - llm_started_at) > LLM_PROCESSING_TIMEOUT:
@@ -707,6 +754,7 @@ async def media_handler(ws):
                     
                     conversation_log.append({"role": "user", "content": text, "timestamp": now})
                     last_committed = text
+                    last_committed_at = time_module.time()
                     conversation.append({"role": "user", "content": text})
                     
                     # Address audio capture — DEFERRED approach
