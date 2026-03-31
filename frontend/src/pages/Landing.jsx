@@ -140,8 +140,8 @@ function WordRotator() {
   useEffect(() => {
     const interval = setInterval(() => {
       setIsAnimating(true);
-      setTimeout(() => { setIndex(i => (i + 1) % HERO_WORDS.length); setIsAnimating(false); }, 400);
-    }, 3000);
+      setTimeout(() => { setIndex(i => (i + 1) % HERO_WORDS.length); setIsAnimating(false); }, 250);
+    }, 1800);
     return () => clearInterval(interval);
   }, []);
   return <span className={`word-rotator ${isAnimating ? 'exit' : 'enter'}`}>{HERO_WORDS[index]}</span>;
@@ -222,31 +222,125 @@ function MiniCalendar() {
 
 // 2. Mini Contact Stack (Customer Management)
 function MiniContactStack() {
-  const [active, setActive] = useState(0);
+  const [phase, setPhase] = useState(0);
+  const [aiTyping, setAiTyping] = useState(false);
+  const [aiText, setAiText] = useState('');
+  const [prevPhase, setPrevPhase] = useState(-1);
+
   const contacts = [
-    { name: "Sarah M.", color: '#0ea5e9' },
-    { name: "James K.", color: '#ec4899' },
-    { name: "Emma W.", color: '#8b5cf6' },
+    {
+      name: "Sarah M.", color: '#0ea5e9', jobs: 12, revenue: '€3,240', tag: 'VIP',
+      lastJob: 'Boiler repair', daysAgo: 6, nextAction: 'Annual service',
+      aiNote: "Sarah's last job was a boiler repair 6 days ago. Since then, she's requested a quote for radiator installation — her annual service is due in 2 weeks.",
+    },
+    {
+      name: "James K.", color: '#ec4899', jobs: 5, revenue: '€1,870', tag: 'New',
+      lastJob: 'Pipe fitting', daysAgo: 3, nextAction: 'Follow up',
+      aiNote: "James' last job was a pipe fitting 3 days ago. Since then, he's been quoted €4,200 for a full bathroom renovation — recommend a follow-up call.",
+    },
+    {
+      name: "Emma W.", color: '#8b5cf6', jobs: 8, revenue: '€2,560', tag: 'Loyal',
+      lastJob: 'Rewire', daysAgo: 12, nextAction: 'Send invoice',
+      aiNote: "Emma's last job was an electrical rewire 12 days ago. Since then, she's referred 3 new customers and left a 5-star review. Invoice still pending.",
+    },
   ];
+
+  const activities = [
+    { icon: 'fa-phone', text: 'AI answered call — Sarah M.', time: '2m ago', color: '#0ea5e9' },
+    { icon: 'fa-calendar-check', text: 'Auto-booked — James K.', time: '15m', color: '#10b981' },
+    { icon: 'fa-star', text: 'New 5★ review — Emma W.', time: '1h', color: '#f59e0b' },
+  ];
+
   useEffect(() => {
-    const interval = setInterval(() => setActive(a => (a + 1) % contacts.length), 2000);
+    const interval = setInterval(() => {
+      setPhase(p => {
+        setPrevPhase(p);
+        return (p + 1) % contacts.length;
+      });
+    }, 4500);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    setAiTyping(true);
+    setAiText('');
+    const note = contacts[phase].aiNote;
+    let i = 0;
+    const typeTimer = setTimeout(() => {
+      const charInterval = setInterval(() => {
+        if (i < note.length) { setAiText(note.slice(0, i + 1)); i++; }
+        else { clearInterval(charInterval); setAiTyping(false); }
+      }, 18);
+      return () => clearInterval(charInterval);
+    }, 500);
+    return () => clearTimeout(typeTimer);
+  }, [phase]);
+
+  const c = contacts[phase];
+
   return (
-    <div className="mini-contacts">
-      {contacts.map((c, i) => {
-        const offset = ((i - active + contacts.length) % contacts.length);
-        return (
-          <div key={i} className={`mini-contact-card ${offset === 0 ? 'front' : ''}`}
-            style={{ transform: `translateY(${offset * 8}px) scale(${1 - offset * 0.05})`, zIndex: contacts.length - offset, opacity: 1 - offset * 0.2 }}>
-            <div className="mini-contact-avatar" style={{ background: c.color }}>{c.name[0]}</div>
-            <div className="mini-contact-info">
-              <span className="mini-contact-name">{c.name}</span>
-              <span className="mini-contact-sub">3 jobs completed</span>
-            </div>
+    <div className="mini-crm">
+      {/* Profile card with transition */}
+      <div className="crm-profile-card" key={phase}>
+        <div className="crm-profile-header">
+          <div className="crm-avatar-wrap">
+            <div className="crm-avatar" style={{ background: `linear-gradient(135deg, ${c.color}, ${c.color}dd)` }}>{c.name[0]}</div>
+            <div className="crm-avatar-status"></div>
           </div>
-        );
-      })}
+          <div className="crm-profile-meta">
+            <div className="crm-name-row">
+              <span className="crm-name">{c.name}</span>
+              <span className={`crm-tag crm-tag-${c.tag.toLowerCase()}`}>{c.tag}</span>
+            </div>
+            <span className="crm-subtitle">Last job: {c.lastJob} · {c.daysAgo}d ago</span>
+          </div>
+        </div>
+        <div className="crm-stats-row">
+          <div className="crm-stat">
+            <span className="crm-stat-val">{c.jobs}</span>
+            <span className="crm-stat-lbl">Jobs</span>
+            <div className="crm-stat-bar"><div className="crm-stat-bar-fill" style={{ width: `${(c.jobs / 15) * 100}%`, background: c.color }}></div></div>
+          </div>
+          <div className="crm-stat">
+            <span className="crm-stat-val">{c.revenue}</span>
+            <span className="crm-stat-lbl">Revenue</span>
+          </div>
+          <div className="crm-stat crm-stat-action">
+            <span className="crm-stat-val">{c.nextAction}</span>
+            <span className="crm-stat-lbl">Next</span>
+          </div>
+        </div>
+      </div>
+
+      {/* AI insight — narrative style */}
+      <div className="crm-ai-bar">
+        <div className="crm-ai-header">
+          <div className="crm-ai-icon"><i className="fas fa-brain"></i><span className="crm-ai-icon-ring"></span></div>
+          <span className="crm-ai-label">AI Insight</span>
+          <span className="crm-ai-badge">LIVE</span>
+        </div>
+        <div className="crm-ai-body">
+          <span className="crm-ai-text">{aiText}{aiTyping && <span className="crm-ai-cursor"></span>}</span>
+        </div>
+      </div>
+
+      {/* Compact activity feed */}
+      <div className="crm-activity-feed">
+        {activities.map((a, i) => (
+          <div key={i} className="crm-activity-item" style={{ animationDelay: `${i * 0.1}s` }}>
+            <div className="crm-activity-dot" style={{ background: a.color }}><i className={`fas ${a.icon}`}></i></div>
+            <span className="crm-activity-text">{a.text}</span>
+            <span className="crm-activity-time">{a.time}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Dots */}
+      <div className="crm-dots">
+        {contacts.map((ct, i) => (
+          <div key={i} className={`crm-dot ${i === phase ? 'active' : ''}`} style={{ '--dot-color': ct.color }} />
+        ))}
+      </div>
     </div>
   );
 }
