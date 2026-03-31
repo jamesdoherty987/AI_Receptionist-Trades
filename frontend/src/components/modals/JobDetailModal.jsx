@@ -217,6 +217,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
       setIsEditing(false);
       addToast('Job updated successfully!', 'success');
     },
@@ -236,6 +237,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
       addToast('Status updated successfully!', 'success');
     },
     onError: (error, variables, context) => {
@@ -265,6 +267,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['job-workers', jobId] });
       queryClient.invalidateQueries({ queryKey: ['available-workers', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
       setShowAssignWorker(false);
       setSelectedWorkerId('');
       setForceAssign(false);
@@ -300,6 +303,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['job-workers', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
       addToast('Worker removed', 'success');
     },
     onError: (error, variables, context) => {

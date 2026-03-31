@@ -57,6 +57,23 @@ api.interceptors.response.use(
         }
       }
     }
+
+    // Handle 403 subscription required — update cached subscription state
+    // so the UI can show the expired/inactive banner immediately
+    if (
+      error.response?.status === 403 &&
+      error.response?.data?.subscription_status === 'inactive'
+    ) {
+      const subData = error.response.data.subscription;
+      if (subData) {
+        sessionStorage.setItem('authSubscription', JSON.stringify(subData));
+      }
+      // Redirect to settings subscription tab if not already there
+      if (!window.location.pathname.startsWith('/settings')) {
+        window.location.href = '/settings?tab=subscription';
+      }
+    }
+
     return Promise.reject(error);
   }
 );

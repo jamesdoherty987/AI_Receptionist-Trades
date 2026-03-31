@@ -20,10 +20,25 @@
 
 .banner-expired {
   background: linear-gradient(135deg, #ef4444, #dc2626);
+  border: none;
   box-shadow: 0 1px 6px rgba(239, 68, 68, 0.2);
+  color: white;
 }
 
-/* Left side */
+.banner-expired .banner-text strong,
+.banner-expired .banner-sub,
+.banner-expired .banner-icon {
+  color: #1f2937;
+}
+
+.banner-expired .banner-btn {
+  color: #1f2937;
+  background: white;
+}
+
+.banner-expired .banner-btn i {
+  color: #1f2937;
+}
 .banner-left {
   display: flex;
   align-items: center;
@@ -113,10 +128,6 @@
 }
 
 /* banner-urgent .banner-btn removed - no longer used */
-
-.banner-expired .banner-btn {
-  color: #dc2626;
-}
 
 .banner-btn:hover {
   transform: translateY(-1px);

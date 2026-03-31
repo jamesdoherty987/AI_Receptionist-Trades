@@ -700,6 +700,18 @@ function PhoneWithReels({ isCallPlaying, toggleDemoCall, isMobile }) {
   const phoneRef = useRef(null);
   const pausedByScrollRef = useRef(false);
 
+  // Live clock in Ireland timezone
+  const [clockTime, setClockTime] = useState(() =>
+    new Date().toLocaleTimeString('en-IE', { hour: 'numeric', minute: '2-digit', timeZone: 'Europe/Dublin' })
+  );
+  useEffect(() => {
+    const tick = () => setClockTime(
+      new Date().toLocaleTimeString('en-IE', { hour: 'numeric', minute: '2-digit', timeZone: 'Europe/Dublin' })
+    );
+    const interval = setInterval(tick, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Track visibility with IntersectionObserver
   useEffect(() => {
     const el = phoneRef.current;
@@ -835,7 +847,7 @@ function PhoneWithReels({ isCallPlaying, toggleDemoCall, isMobile }) {
       <div className="iphone-bezel">
         <div className="iphone-screen">
           <div className="iphone-status-bar">
-            <span className="status-time">9:41</span>
+            <span className="status-time">{clockTime}</span>
             <div className="status-dynamic-island"><div className="island-camera"></div></div>
             <div className="status-icons">
               <i className="fas fa-signal"></i>
@@ -1018,8 +1030,8 @@ function Landing() {
   ];
 
   const pricingPlans = [
-    { name: "Free Trial", price: "Free", period: "for 14 days", description: "Try everything risk-free", features: ["All features included", "Unlimited AI calls", "Smart scheduling", "Customer management", "Worker management", "Financial tracking", "No credit card required"], cta: "Start Free Trial", highlighted: false },
-    { name: "Pro", price: "€99", period: "/month", description: "Full access to grow your business", features: ["All features included", "Unlimited AI calls", "Smart scheduling", "Customer management", "Worker management", "Financial tracking & invoicing", "Priority support"], cta: "Get Started", highlighted: true },
+    { name: "Free Trial", price: "Free", period: "for 14 days", description: "Try everything risk-free", features: ["All features included", "Unlimited AI calls", "Smart scheduling", "Customer management", "Worker management", "Financial tracking", "No credit card required"], cta: "Start Free Trial", highlighted: false, link: "/signup" },
+    { name: "Pro", price: "Custom", period: "pricing", description: "Tailored to your business size", features: ["All features included", "Unlimited AI calls", "Smart scheduling", "Customer management", "Worker management", "Financial tracking & invoicing", "Priority support"], cta: "Contact Us for Pricing", highlighted: true, link: "mailto:contact@bookedforyou.ie?subject=Pro Plan Pricing Enquiry" },
   ];
 
   const BENTO_TINTS = [
@@ -1194,8 +1206,8 @@ function Landing() {
         <SectionReveal id="pricing" className="pricing">
           <div className="section-container">
             <div className="section-header">
-              <h2 style={{ textAlign: 'center' }}>Simple, <span className="gradient-text">transparent pricing</span></h2>
-              <p style={{ textAlign: 'center' }}>No hidden fees. Cancel anytime.</p>
+              <h2 style={{ textAlign: 'center' }}>Simple, <span className="gradient-text">flexible pricing</span></h2>
+              <p style={{ textAlign: 'center' }}>Start free. Scale as you grow.</p>
             </div>
             <div className="pricing-grid">
               {pricingPlans.map((plan, i) => (
@@ -1205,7 +1217,11 @@ function Landing() {
                   <div className="price"><span className="amount">{plan.price}</span><span className="period">{plan.period}</span></div>
                   <p className="plan-description">{plan.description}</p>
                   <ul className="plan-features">{plan.features.map((f, j) => <li key={j}><i className="fas fa-check"></i>{f}</li>)}</ul>
-                  <Link to="/signup" className={`plan-btn ${plan.highlighted ? 'primary' : 'secondary'}`}>{plan.cta}</Link>
+                  {plan.link?.startsWith('mailto:') ? (
+                    <a href={plan.link} className={`plan-btn ${plan.highlighted ? 'primary' : 'secondary'}`}>{plan.cta}</a>
+                  ) : (
+                    <Link to={plan.link || '/signup'} className={`plan-btn ${plan.highlighted ? 'primary' : 'secondary'}`}>{plan.cta}</Link>
+                  )}
                 </SpotlightCard>
               ))}
             </div>

@@ -70,6 +70,30 @@
   border: 1px solid #f59e0b;
 }
 
+.settings-message-row {
+  display: flex;
+  gap: 0.5rem;
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  max-width: 720px;
+  width: calc(100% - 2rem);
+  animation: slideDown 0.3s ease;
+}
+
+.settings-message-row .settings-message {
+  position: static;
+  transform: none;
+  animation: none;
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  max-width: none;
+  margin-bottom: 0;
+}
+
 /* Setup Progress Card */
 .setup-progress-card {
   background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
@@ -1182,6 +1206,23 @@
     transform: none;
     width: auto;
     max-width: none;
+  }
+
+  .settings-message-row {
+    position: fixed;
+    bottom: 80px;
+    top: auto;
+    left: 1rem;
+    right: 1rem;
+    transform: none;
+    width: auto;
+    max-width: none;
+    flex-direction: column;
+    animation: slideUp 0.3s ease-out;
+  }
+
+  .settings-message-row .settings-message {
+    position: static;
   }
 
   @keyframes slideUp {

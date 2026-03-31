@@ -19,7 +19,7 @@ function WorkerLogin() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!rateLimiter.isAllowed('worker-login', 5, 60000)) {
+    if (!rateLimiter.isAllowed('worker-login', 10, 60000)) {
       setError('Too many login attempts. Please wait a moment.');
       return;
     }

@@ -40,6 +40,7 @@ function Settings() {
   const [deleteError, setDeleteError] = useState('');
   const [gcalConnecting, setGcalConnecting] = useState(false);
   const [gcalSyncing, setGcalSyncing] = useState(false);
+  const [workerWarning, setWorkerWarning] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   // Bypass numbers state
   const [bypassNumbers, setBypassNumbers] = useState([]);
@@ -515,7 +516,7 @@ function Settings() {
     setGcalSyncing(true);
     try {
       const response = await syncGoogleCalendar();
-      const { message, push_created, push_updated, pull_imported, errors } = response.data;
+      const { message, push_created, push_updated, pull_imported, errors, jobs_without_workers } = response.data;
 
       // Build a friendly summary
       const parts = [];
@@ -525,9 +526,14 @@ function Settings() {
       if (!push_created && !push_updated && !pull_imported) parts.push('Already in sync');
       if (errors) parts.push(`${errors} failed`);
 
-      const summary = `✅ Sync complete — ${parts.join(', ')}`;
+      let summary = `✅ Sync complete — ${parts.join(', ')}`;
       setSaveMessage(summary);
-      setTimeout(() => setSaveMessage(''), 6000);
+      if (jobs_without_workers > 0) {
+        setWorkerWarning(`${jobs_without_workers} job${jobs_without_workers > 1 ? 's' : ''} without a worker assigned`);
+      } else {
+        setWorkerWarning('');
+      }
+      setTimeout(() => { setSaveMessage(''); setWorkerWarning(''); }, jobs_without_workers > 0 ? 10000 : 6000);
     } catch (error) {
       const errorMsg = error?.response?.data?.error || 'Failed to sync calendars';
       setSaveMessage(`❌ ${errorMsg}`);
@@ -575,10 +581,20 @@ function Settings() {
           </div>
           
           {/* Success/Error Message */}
-          {saveMessage && (
-            <div className={`settings-message ${saveMessage.includes('cancelled') || saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'warning' : 'success'}`}>
-              <i className={`fas ${saveMessage.includes('cancelled') || saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'fa-exclamation-circle' : 'fa-check-circle'}`}></i>
-              {saveMessage}
+          {(saveMessage || workerWarning) && (
+            <div className="settings-message-row">
+              {saveMessage && (
+                <div className={`settings-message ${saveMessage.includes('cancelled') || saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'warning' : 'success'}`}>
+                  <i className={`fas ${saveMessage.includes('cancelled') || saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'fa-exclamation-circle' : 'fa-check-circle'}`}></i>
+                  {saveMessage}
+                </div>
+              )}
+              {workerWarning && (
+                <div className="settings-message warning">
+                  <i className="fas fa-exclamation-triangle"></i>
+                  {workerWarning}
+                </div>
+              )}
             </div>
           )}
 

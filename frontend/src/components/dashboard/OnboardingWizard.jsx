@@ -36,18 +36,18 @@ const STEPS = [
     description: 'Bank details for invoices'
   },
   {
-    id: 'services',
-    title: 'Add Services',
-    icon: 'fa-concierge-bell',
-    iconClass: 'services-icon',
-    description: 'What services do you offer?'
-  },
-  {
     id: 'workers',
     title: 'Add Workers',
     icon: 'fa-hard-hat',
     iconClass: 'workers-icon',
     description: 'Who does the work?'
+  },
+  {
+    id: 'services',
+    title: 'Add Services',
+    icon: 'fa-concierge-bell',
+    iconClass: 'services-icon',
+    description: 'What services do you offer?'
   },
   {
     id: 'materials',
@@ -98,13 +98,38 @@ function OnboardingWizard({ onComplete }) {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [completedSteps, setCompletedSteps] = useState([]);
+  const [completedSteps, setCompletedSteps] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`onboarding_completed_steps_${userKey}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [hidden, setHidden] = useState(() => localStorage.getItem(`onboarding_hidden_${userKey}`) === 'true');
 
   // Re-sync hidden state when user loads (userKey changes from 'default' to actual email)
   useEffect(() => {
     setHidden(localStorage.getItem(`onboarding_hidden_${userKey}`) === 'true');
   }, [userKey]);
+
+  // Re-sync completedSteps from localStorage when userKey changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`onboarding_completed_steps_${userKey}`);
+      if (saved) {
+        setCompletedSteps(prev => {
+          const merged = new Set([...prev, ...JSON.parse(saved)]);
+          return [...merged];
+        });
+      }
+    } catch { /* ignore */ }
+  }, [userKey]);
+
+  // Persist completedSteps to localStorage whenever they change
+  useEffect(() => {
+    if (completedSteps.length > 0) {
+      localStorage.setItem(`onboarding_completed_steps_${userKey}`, JSON.stringify(completedSteps));
+    }
+  }, [completedSteps, userKey]);
 
   const handleHide = () => {
     setHidden(true);
@@ -361,9 +386,9 @@ function OnboardingWizard({ onComplete }) {
     if (stepId === 'service-area') return !!(settings?.business_address && settings?.coverage_area && settings?.business_hours) || completedSteps.includes('service-area');
     if (stepId === 'company-details') return !!settings?.company_context || completedSteps.includes('company-details');
     if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder) || isPaymentSkipped() || completedSteps.includes('payment');
-    if (stepId === 'services') return localStorage.getItem(`services_setup_visited_${userKey}`) === 'true';
-    if (stepId === 'workers') return localStorage.getItem(`workers_setup_visited_${userKey}`) === 'true';
-    if (stepId === 'materials') return localStorage.getItem(`materials_setup_visited_${userKey}`) === 'true';
+    if (stepId === 'services') return servicesData === undefined || (servicesData?.services || []).length > 0 || localStorage.getItem(`services_setup_visited_${userKey}`) === 'true';
+    if (stepId === 'workers') return workersData === undefined || (Array.isArray(workersData) ? workersData : []).length > 0 || localStorage.getItem(`workers_setup_visited_${userKey}`) === 'true';
+    if (stepId === 'materials') return materialsData === undefined || (materialsData?.materials || []).length > 0 || localStorage.getItem(`materials_setup_visited_${userKey}`) === 'true';
     return completedSteps.includes(stepId);
   };
 

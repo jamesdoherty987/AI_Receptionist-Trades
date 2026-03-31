@@ -155,7 +155,7 @@ class RateLimiter:
         
         # Configuration
         self.max_requests_per_minute = 60
-        self.max_login_attempts = 5
+        self.max_login_attempts = 10
         self.login_window_seconds = 300  # 5 minutes
         self.block_duration_seconds = 900  # 15 minutes
     

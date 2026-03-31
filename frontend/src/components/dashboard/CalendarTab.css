@@ -1072,3 +1072,20 @@
   color: #f59e0b;
   margin-left: 2px;
 }
+
+
+/* No worker warning — calendar events panel */
+.event-no-worker-warning {
+  display: flex; align-items: center; gap: 0.3rem;
+  font-size: 0.72rem; color: #92400e; background: #fef3c7;
+  padding: 0.15rem 0.45rem; border-radius: 4px; margin-top: 0.15rem;
+  width: fit-content;
+}
+.event-no-worker-warning i { font-size: 0.62rem; color: #d97706; }
+
+/* No worker warning — week view event bubble */
+.week-event-no-worker {
+  position: absolute; top: 2px; right: 2px;
+  color: #fbbf24; font-size: 0.6rem; line-height: 1;
+  filter: drop-shadow(0 0 1px rgba(0,0,0,0.3));
+}

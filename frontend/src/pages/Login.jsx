@@ -26,7 +26,7 @@ function Login() {
     e.preventDefault();
     
     // Client-side rate limiting to prevent rapid-fire login attempts
-    if (!rateLimiter.isAllowed('login', 5, 60000)) {
+    if (!rateLimiter.isAllowed('login', 10, 60000)) {
       setError('Too many login attempts. Please wait a moment before trying again.');
       return;
     }

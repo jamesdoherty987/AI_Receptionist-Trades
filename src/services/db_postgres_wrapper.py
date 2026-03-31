@@ -1050,7 +1050,8 @@ class PostgreSQLDatabaseWrapper:
                               'send_confirmation_sms', 'send_reminder_sms',
                               'gcal_invite_workers',
                               'bypass_numbers',
-                              'setup_wizard_complete']
+                              'setup_wizard_complete',
+                              'has_used_trial']
             
             # Get actual columns that exist in the database
             cursor.execute("""

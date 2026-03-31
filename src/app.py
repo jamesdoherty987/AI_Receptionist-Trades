@@ -359,6 +359,149 @@ def start_scheduler_once():
             pass
 
 
+# ============================================
+# Subscription helpers (must be defined before routes that use @subscription_required)
+# ============================================
+
+def get_subscription_info(company: dict) -> dict:
+    """Get comprehensive subscription info for a company"""
+    now = datetime.now()
+    
+    subscription_tier = company.get('subscription_tier', 'none')
+    subscription_status = company.get('subscription_status', 'inactive')
+    trial_end = company.get('trial_end')
+    current_period_end = company.get('subscription_current_period_end')
+    cancel_at_period_end = bool(company.get('subscription_cancel_at_period_end', 0))
+    
+    print(f"[GET_SUB_INFO] Company {company.get('id')} raw data:")
+    print(f"[GET_SUB_INFO]   - subscription_tier: {subscription_tier}")
+    print(f"[GET_SUB_INFO]   - subscription_status: {subscription_status}")
+    print(f"[GET_SUB_INFO]   - trial_end: {trial_end}")
+    print(f"[GET_SUB_INFO]   - current_period_end: {current_period_end}")
+    print(f"[GET_SUB_INFO]   - cancel_at_period_end: {cancel_at_period_end}")
+    print(f"[GET_SUB_INFO]   - stripe_customer_id: {company.get('stripe_customer_id')}")
+    print(f"[GET_SUB_INFO]   - stripe_subscription_id: {company.get('stripe_subscription_id')}")
+    
+    # Parse dates if they're strings and ensure they're timezone-naive for comparison
+    if isinstance(trial_end, str):
+        try:
+            parsed = datetime.fromisoformat(trial_end.replace('Z', '+00:00'))
+            # Convert to naive datetime for comparison with datetime.now()
+            trial_end = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+        except:
+            trial_end = None
+    elif trial_end and hasattr(trial_end, 'tzinfo') and trial_end.tzinfo:
+        # If it's already a datetime with timezone, make it naive
+        trial_end = trial_end.replace(tzinfo=None)
+    
+    if isinstance(current_period_end, str):
+        try:
+            parsed = datetime.fromisoformat(current_period_end.replace('Z', '+00:00'))
+            current_period_end = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+        except:
+            current_period_end = None
+    elif current_period_end and hasattr(current_period_end, 'tzinfo') and current_period_end.tzinfo:
+        current_period_end = current_period_end.replace(tzinfo=None)
+    
+    # Normalize legacy tier names (must happen before any tier-dependent logic)
+    if subscription_tier == 'professional':
+        subscription_tier = 'pro'
+    
+    # Calculate trial days remaining (round up to include partial days)
+    trial_days_remaining = 0
+    if subscription_tier == 'trial' and trial_end:
+        # Calculate days remaining, rounding up for partial days
+        import math
+        seconds_remaining = (trial_end - now).total_seconds()
+        if seconds_remaining > 0:
+            trial_days_remaining = math.ceil(seconds_remaining / 86400)
+        else:
+            trial_days_remaining = 0
+    
+    # Determine if subscription is active (can use the app)
+    is_active = False
+    if subscription_tier == 'trial':
+        is_active = bool(trial_end and trial_end > now)
+        print(f"[GET_SUB_INFO] Trial check: trial_end={trial_end}, now={now}, is_active={is_active}")
+        # Fix stale subscription_status in DB when trial has expired
+        if not is_active and subscription_status == 'active' and company.get('id'):
+            try:
+                db = get_database()
+                db.update_company(company['id'], subscription_status='expired')
+                subscription_status = 'expired'
+                print(f"[GET_SUB_INFO] Updated stale subscription_status to 'expired' for company {company['id']}")
+            except Exception as e:
+                print(f"[GET_SUB_INFO] Failed to update stale status: {e}")
+    elif subscription_tier == 'pro':
+        # Pro is active if status is active, trialing, or past_due (grace period)
+        is_active = subscription_status in ('active', 'trialing', 'past_due')
+        print(f"[GET_SUB_INFO] Pro check: status={subscription_status}, is_active={is_active}")
+    else:
+        print(f"[GET_SUB_INFO] Unknown tier '{subscription_tier}', is_active=False")
+    
+    result = {
+        'tier': subscription_tier,
+        'status': subscription_status,
+        'is_active': is_active,
+        'trial_end': trial_end.isoformat() if trial_end else None,
+        'trial_days_remaining': trial_days_remaining,
+        'current_period_end': current_period_end.isoformat() if current_period_end else None,
+        'cancel_at_period_end': cancel_at_period_end,
+        'has_used_trial': bool(company.get('has_used_trial', 0)),
+        'stripe_customer_id': company.get('stripe_customer_id'),
+        'stripe_subscription_id': company.get('stripe_subscription_id')
+    }
+    
+    print(f"[GET_SUB_INFO] Returning: tier={result['tier']}, is_active={result['is_active']}")
+    
+    return result
+
+
+def subscription_required(f):
+    """Decorator to require active subscription for write operations.
+    
+    GET requests are always allowed so users can browse the app.
+    POST/PUT/DELETE requests require an active subscription (trial or pro).
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # Allow GET requests through — users can look around without a subscription
+        if request.method == 'GET':
+            return f(*args, **kwargs)
+        
+        # For write operations, check subscription status
+        # Check session cookie first, fall back to auth token header
+        if 'company_id' not in session:
+            token = request.headers.get('X-Auth-Token')
+            if token:
+                payload = verify_auth_token(token)
+                if payload:
+                    session['company_id'] = payload['cid']
+                    session['email'] = payload['email']
+            
+            if 'company_id' not in session:
+                return jsonify({"error": "Authentication required"}), 401
+        
+        db = get_database()
+        company = db.get_company(session['company_id'])
+        
+        if not company:
+            return jsonify({"error": "Company not found"}), 404
+        
+        subscription_info = get_subscription_info(company)
+        
+        if not subscription_info['is_active']:
+            return jsonify({
+                "error": "Subscription required",
+                "subscription_status": "inactive",
+                "message": "Your trial has expired or subscription is inactive. Please subscribe to continue.",
+                "subscription": subscription_info
+            }), 403
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 # Initialize scheduler on first request (lazy init)
 _scheduler_initialized = False
 
@@ -858,8 +1001,8 @@ def login():
             "code": "MISSING_CREDENTIALS"
         }), 400
     
-    # Check if this IP/email is blocked due to too many failed attempts
-    if rate_limiter.is_blocked(email) or rate_limiter.is_blocked(client_ip):
+    # Check if this email is blocked due to too many failed attempts
+    if rate_limiter.is_blocked(email):
         security_logger.log_failed_auth(
             '/api/auth/login',
             client_ip,
@@ -876,7 +1019,6 @@ def login():
     if not company:
         # Record failed attempt but don't reveal if email exists
         rate_limiter.record_failed_login(email)
-        rate_limiter.record_failed_login(client_ip)
         security_logger.log_login_attempt(email, client_ip, False)
         print(f"[LOGIN] FAILED - User not found: {email}")
         
@@ -888,7 +1030,6 @@ def login():
     if not verify_password(password, company['password_hash']):
         # Record failed attempt
         should_block = rate_limiter.record_failed_login(email)
-        rate_limiter.record_failed_login(client_ip)
         security_logger.log_login_attempt(email, client_ip, False)
         print(f"[LOGIN] FAILED - Invalid password for: {email}")
         
@@ -907,7 +1048,6 @@ def login():
     
     # Successful login - clear failed attempts
     rate_limiter.clear_failed_logins(email)
-    rate_limiter.clear_failed_logins(client_ip)
     security_logger.log_login_attempt(email, client_ip, True)
     
     # Check if password hash needs upgrade (migrate from weak hash)
@@ -1561,6 +1701,7 @@ def worker_set_password():
 
 @app.route("/api/worker/invite", methods=["POST"])
 @login_required
+@subscription_required
 def invite_worker():
     """Create a worker account and generate invite link (owner only)"""
     company_id = session.get('company_id')
@@ -2375,6 +2516,7 @@ def get_time_off_requests():
 
 @app.route("/api/time-off/requests/<int:request_id>", methods=["PUT"])
 @login_required
+@subscription_required
 def review_time_off_request(request_id):
     """Approve or deny a time-off request (owner only)"""
     company_id = session.get('company_id')
@@ -2505,6 +2647,7 @@ def get_available_phone_numbers():
 
 @app.route("/api/phone-numbers/assign", methods=["POST"])
 @login_required
+@subscription_required
 def assign_phone_number():
     """Assign a phone number to the current company"""
     data = request.json
@@ -2595,132 +2738,6 @@ def _ensure_payment_columns(db):
                 conn.rollback()
     finally:
         db.return_connection(conn)
-
-
-def get_subscription_info(company: dict) -> dict:
-    """Get comprehensive subscription info for a company"""
-    now = datetime.now()
-    
-    subscription_tier = company.get('subscription_tier', 'none')
-    subscription_status = company.get('subscription_status', 'inactive')
-    trial_end = company.get('trial_end')
-    current_period_end = company.get('subscription_current_period_end')
-    cancel_at_period_end = bool(company.get('subscription_cancel_at_period_end', 0))
-    
-    print(f"[GET_SUB_INFO] Company {company.get('id')} raw data:")
-    print(f"[GET_SUB_INFO]   - subscription_tier: {subscription_tier}")
-    print(f"[GET_SUB_INFO]   - subscription_status: {subscription_status}")
-    print(f"[GET_SUB_INFO]   - trial_end: {trial_end}")
-    print(f"[GET_SUB_INFO]   - current_period_end: {current_period_end}")
-    print(f"[GET_SUB_INFO]   - cancel_at_period_end: {cancel_at_period_end}")
-    print(f"[GET_SUB_INFO]   - stripe_customer_id: {company.get('stripe_customer_id')}")
-    print(f"[GET_SUB_INFO]   - stripe_subscription_id: {company.get('stripe_subscription_id')}")
-    
-    # Parse dates if they're strings and ensure they're timezone-naive for comparison
-    if isinstance(trial_end, str):
-        try:
-            parsed = datetime.fromisoformat(trial_end.replace('Z', '+00:00'))
-            # Convert to naive datetime for comparison with datetime.now()
-            trial_end = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
-        except:
-            trial_end = None
-    elif trial_end and hasattr(trial_end, 'tzinfo') and trial_end.tzinfo:
-        # If it's already a datetime with timezone, make it naive
-        trial_end = trial_end.replace(tzinfo=None)
-    
-    if isinstance(current_period_end, str):
-        try:
-            parsed = datetime.fromisoformat(current_period_end.replace('Z', '+00:00'))
-            current_period_end = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
-        except:
-            current_period_end = None
-    elif current_period_end and hasattr(current_period_end, 'tzinfo') and current_period_end.tzinfo:
-        current_period_end = current_period_end.replace(tzinfo=None)
-    
-    # Calculate trial days remaining (round up to include partial days)
-    trial_days_remaining = 0
-    if subscription_tier == 'trial' and trial_end:
-        # Calculate days remaining, rounding up for partial days
-        import math
-        seconds_remaining = (trial_end - now).total_seconds()
-        if seconds_remaining > 0:
-            trial_days_remaining = math.ceil(seconds_remaining / 86400)
-        else:
-            trial_days_remaining = 0
-    
-    # Determine if subscription is active (can use the app)
-    is_active = False
-    if subscription_tier == 'trial':
-        is_active = bool(trial_end and trial_end > now)
-        print(f"[GET_SUB_INFO] Trial check: trial_end={trial_end}, now={now}, is_active={is_active}")
-        # Fix stale subscription_status in DB when trial has expired
-        if not is_active and subscription_status == 'active' and company.get('id'):
-            try:
-                db = get_database()
-                db.update_company(company['id'], subscription_status='expired')
-                subscription_status = 'expired'
-                print(f"[GET_SUB_INFO] Updated stale subscription_status to 'expired' for company {company['id']}")
-            except Exception as e:
-                print(f"[GET_SUB_INFO] Failed to update stale status: {e}")
-    elif subscription_tier == 'pro':
-        # Pro is active if status is active, trialing, or past_due (grace period)
-        is_active = subscription_status in ('active', 'trialing', 'past_due')
-        print(f"[GET_SUB_INFO] Pro check: status={subscription_status}, is_active={is_active}")
-    else:
-        print(f"[GET_SUB_INFO] Unknown tier '{subscription_tier}', is_active=False")
-    
-    result = {
-        'tier': subscription_tier,
-        'status': subscription_status,
-        'is_active': is_active,
-        'trial_end': trial_end.isoformat() if trial_end else None,
-        'trial_days_remaining': trial_days_remaining,
-        'current_period_end': current_period_end.isoformat() if current_period_end else None,
-        'cancel_at_period_end': cancel_at_period_end,
-        'has_used_trial': bool(company.get('has_used_trial', 0)),
-        'stripe_customer_id': company.get('stripe_customer_id'),
-        'stripe_subscription_id': company.get('stripe_subscription_id')
-    }
-    
-    print(f"[GET_SUB_INFO] Returning: tier={result['tier']}, is_active={result['is_active']}")
-    
-    return result
-
-
-def subscription_required(f):
-    """Decorator to require active subscription for API endpoints"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # Check session cookie first, fall back to auth token header
-        if 'company_id' not in session:
-            token = request.headers.get('X-Auth-Token')
-            if token:
-                payload = verify_auth_token(token)
-                if payload:
-                    session['company_id'] = payload['cid']
-                    session['email'] = payload['email']
-            
-            if 'company_id' not in session:
-                return jsonify({"error": "Authentication required"}), 401
-        
-        db = get_database()
-        company = db.get_company(session['company_id'])
-        
-        if not company:
-            return jsonify({"error": "Company not found"}), 404
-        
-        subscription_info = get_subscription_info(company)
-        
-        if not subscription_info['is_active']:
-            return jsonify({
-                "error": "Subscription required",
-                "subscription_status": "inactive",
-                "message": "Your trial has expired or subscription is inactive. Please subscribe to continue.",
-                "subscription": subscription_info
-            }), 403
-        
-        return f(*args, **kwargs)
-    return decorated_function
 
 
 @app.route("/api/subscription/status", methods=["GET"])
@@ -3818,6 +3835,7 @@ def developer_settings_page():
 
 @app.route("/api/settings/business", methods=["GET", "POST"])
 @login_required
+@subscription_required
 def business_settings_api():
     """Get or update business settings (now stored in companies table)"""
     db = get_database()
@@ -3980,6 +3998,7 @@ def business_settings_api():
 
 @app.route("/api/ai-receptionist/toggle", methods=["GET", "POST"])
 @login_required
+@subscription_required
 def ai_receptionist_toggle_api():
     """Get or toggle AI receptionist status (now stored in companies table)"""
     db = get_database()
@@ -4069,6 +4088,7 @@ def settings_history_api():
 
 @app.route("/api/services/menu", methods=["GET", "POST"])
 @login_required
+@subscription_required
 def services_menu_api():
     """Get or update services menu"""
     from src.services.settings_manager import get_settings_manager
@@ -4089,6 +4109,7 @@ def services_menu_api():
 
 @app.route("/api/services/menu/service", methods=["POST"])
 @login_required
+@subscription_required
 def add_service_api():
     """Add a new service"""
     from src.services.settings_manager import get_settings_manager
@@ -4177,6 +4198,7 @@ def add_service_api():
 
 @app.route("/api/services/menu/service/<service_id>", methods=["PUT", "DELETE"])
 @login_required
+@subscription_required
 def manage_service_api(service_id):
     """Update or delete a service"""
     from src.services.settings_manager import get_settings_manager
@@ -4294,6 +4316,7 @@ def get_packages_api():
 
 @app.route("/api/packages", methods=["POST"])
 @login_required
+@subscription_required
 def create_package_api():
     """Create a new package"""
     from src.services.settings_manager import get_settings_manager
@@ -4315,6 +4338,7 @@ def create_package_api():
 
 @app.route("/api/packages/<package_id>", methods=["PUT"])
 @login_required
+@subscription_required
 def update_package_api(package_id):
     """Update an existing package"""
     from src.services.settings_manager import get_settings_manager
@@ -4329,6 +4353,7 @@ def update_package_api(package_id):
 
 @app.route("/api/packages/<package_id>", methods=["DELETE"])
 @login_required
+@subscription_required
 def delete_package_api(package_id):
     """Delete a package"""
     from src.services.settings_manager import get_settings_manager
@@ -4346,6 +4371,7 @@ def delete_package_api(package_id):
 
 @app.route("/api/materials", methods=["GET", "POST"])
 @login_required
+@subscription_required
 def materials_api():
     """Get all materials or create a new one"""
     company_id = session.get('company_id')
@@ -4408,6 +4434,7 @@ def materials_api():
 
 @app.route("/api/materials/<int:material_id>", methods=["PUT", "DELETE"])
 @login_required
+@subscription_required
 def material_detail_api(material_id):
     """Update or delete a material"""
     company_id = session.get('company_id')
@@ -4474,6 +4501,7 @@ def material_detail_api(material_id):
 
 @app.route("/api/bookings/<int:booking_id>/materials", methods=["GET", "POST"])
 @login_required
+@subscription_required
 def job_materials_api(booking_id):
     """Get or add materials for a job"""
     company_id = session.get('company_id')
@@ -4542,6 +4570,7 @@ def job_materials_api(booking_id):
 
 @app.route("/api/bookings/<int:booking_id>/materials/<int:item_id>", methods=["PUT", "DELETE"])
 @login_required
+@subscription_required
 def job_material_detail_api(booking_id, item_id):
     """Update or delete a job material item"""
     company_id = session.get('company_id')
@@ -4742,6 +4771,7 @@ def worker_delete_job_material(job_id, item_id):
 
 @app.route("/api/services/business-hours", methods=["GET", "POST"])
 @login_required
+@subscription_required
 def business_hours_api():
     """Get or update business hours"""
     from src.services.settings_manager import get_settings_manager
@@ -4820,6 +4850,7 @@ def business_hours_api():
 
 @app.route("/api/clients", methods=["GET", "POST"])
 @login_required
+@subscription_required
 @rate_limit(max_requests=30, window_seconds=60)
 def clients_api():
     """Get all clients or create a new client"""
@@ -4883,6 +4914,7 @@ def clients_api():
 
 @app.route("/api/clients/<int:client_id>", methods=["GET", "PUT", "DELETE"])
 @login_required
+@subscription_required
 def client_api(client_id):
     """Get, update or delete a specific client"""
     db = get_database()
@@ -4972,6 +5004,7 @@ def client_api(client_id):
 
 @app.route("/api/clients/<int:client_id>/notes", methods=["POST"])
 @login_required
+@subscription_required
 def add_note_api(client_id):
     """Add a note to a client"""
     print(f"[ADD_NOTE] Adding note for client {client_id}")
@@ -4998,6 +5031,7 @@ def add_note_api(client_id):
 
 @app.route("/api/bookings/<int:booking_id>/notes", methods=["GET", "POST"])
 @login_required
+@subscription_required
 def appointment_notes_api(booking_id):
     """Get or add notes for a specific appointment"""
     db = get_database()
@@ -5041,6 +5075,7 @@ def appointment_notes_api(booking_id):
 
 @app.route("/api/bookings/<int:booking_id>/notes/<int:note_id>", methods=["PUT", "DELETE"])
 @login_required
+@subscription_required
 def appointment_note_api(booking_id, note_id):
     """Update or delete a specific appointment note"""
     db = get_database()
@@ -5098,6 +5133,7 @@ def appointment_note_api(booking_id, note_id):
 
 @app.route("/api/bookings", methods=["GET", "POST"])
 @login_required
+@subscription_required
 @rate_limit(max_requests=30, window_seconds=60)
 def bookings_api():
     """Get all bookings or create a new booking"""
@@ -6183,6 +6219,7 @@ def check_monthly_availability_api():
 
 @app.route("/api/bookings/<int:booking_id>", methods=["GET", "PUT", "DELETE"])
 @login_required
+@subscription_required
 def booking_detail_api(booking_id):
     """Get, update or delete a specific booking"""
     db = get_database()
@@ -6360,6 +6397,7 @@ def booking_detail_api(booking_id):
 
 @app.route("/api/bookings/<int:booking_id>/photos", methods=["POST"])
 @login_required
+@subscription_required
 @rate_limit(max_requests=20, window_seconds=60)
 def upload_job_photo_api(booking_id):
     """Upload a photo or video to a job card, stored in R2.
@@ -6471,6 +6509,7 @@ def upload_job_photo_api(booking_id):
 
 @app.route("/api/bookings/<int:booking_id>/photos/delete", methods=["POST"])
 @login_required
+@subscription_required
 def delete_job_photo_api(booking_id):
     """Delete a photo from a job card"""
     db = get_database()
@@ -6526,6 +6565,7 @@ def delete_job_photo_api(booking_id):
 
 @app.route("/api/bookings/<int:booking_id>/complete", methods=["POST"])
 @login_required
+@subscription_required
 def complete_booking_api(booking_id):
     """Mark appointment as complete and update client description using AI"""
     db = get_database()
@@ -6658,6 +6698,7 @@ def get_invoice_config():
 
 @app.route("/api/bookings/<int:booking_id>/send-invoice", methods=["POST"])
 @login_required
+@subscription_required
 def send_invoice_api(booking_id):
     """Send invoice via SMS"""
     db = get_database()
@@ -7217,6 +7258,7 @@ def get_messages(worker_id):
 
 @app.route("/api/messages/<int:worker_id>", methods=["POST"])
 @login_required
+@subscription_required
 @rate_limit(max_requests=60, window_seconds=60)
 def send_message_to_worker(worker_id):
     """Owner sends a message to a worker."""
@@ -7335,6 +7377,7 @@ def worker_unread_count():
 
 @app.route("/api/workers", methods=["GET", "POST"])
 @login_required
+@subscription_required
 @rate_limit(max_requests=30, window_seconds=60)
 def workers_api():
     """Get all workers or create a new worker"""
@@ -7397,6 +7440,7 @@ def workers_api():
 
 @app.route("/api/workers/<int:worker_id>", methods=["GET", "PUT", "DELETE"])
 @login_required
+@subscription_required
 def worker_api(worker_id):
     """Get, update or delete a specific worker"""
     db = get_database()
@@ -7476,6 +7520,7 @@ def worker_api(worker_id):
 
 @app.route("/api/bookings/<int:booking_id>/assign-worker", methods=["POST"])
 @login_required
+@subscription_required
 def assign_worker_to_job_api(booking_id):
     """Assign a worker to a job with availability checking"""
     db = get_database()
@@ -7593,6 +7638,7 @@ def assign_worker_to_job_api(booking_id):
 
 @app.route("/api/bookings/<int:booking_id>/remove-worker", methods=["POST"])
 @login_required
+@subscription_required
 def remove_worker_from_job_api(booking_id):
     """Remove a worker from a job"""
     db = get_database()
@@ -8184,6 +8230,7 @@ def get_finances():
 
 @app.route("/api/finances/mark-paid", methods=["POST"])
 @login_required
+@subscription_required
 def mark_bookings_paid():
     """Bulk mark past bookings as paid.
     
@@ -8290,6 +8337,7 @@ def google_calendar_status():
 
 @app.route("/api/google-calendar/connect", methods=["POST"])
 @login_required
+@subscription_required
 def google_calendar_connect():
     """Start the Google Calendar OAuth flow — returns the auth URL."""
     try:
@@ -8473,6 +8521,7 @@ def google_calendar_callback():
 
 @app.route("/api/google-calendar/disconnect", methods=["POST"])
 @login_required
+@subscription_required
 def google_calendar_disconnect():
     """Disconnect Google Calendar for this company."""
     try:
@@ -8488,6 +8537,7 @@ def google_calendar_disconnect():
 
 @app.route("/api/google-calendar/sync", methods=["POST"])
 @login_required
+@subscription_required
 def google_calendar_sync():
     """Bidirectional sync between the database and Google Calendar.
 
@@ -8718,6 +8768,19 @@ def google_calendar_sync():
         f"pull(imported={pull_imported}, skipped={pull_skipped}, errors={pull_errors})"
     )
 
+    # Count active jobs without workers assigned (for warning)
+    jobs_without_workers = 0
+    try:
+        all_bookings_check = db.get_all_bookings(company_id=company_id)
+        for b in all_bookings_check:
+            if b.get('status') in ('completed', 'paid', 'cancelled'):
+                continue
+            workers = db.get_job_workers(b['id'], company_id=company_id)
+            if not workers:
+                jobs_without_workers += 1
+    except Exception:
+        pass
+
     parts = []
     if push_created:
         parts.append(f"{push_created} pushed to Google")
@@ -8737,6 +8800,7 @@ def google_calendar_sync():
         'push_updated': push_updated,
         'pull_imported': pull_imported,
         'errors': total_errors,
+        'jobs_without_workers': jobs_without_workers,
         'message': msg
     })
 

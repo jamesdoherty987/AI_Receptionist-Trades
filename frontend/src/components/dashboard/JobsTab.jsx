@@ -249,6 +249,11 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                       <div className="jt-card-body">
                         <div className="jt-card-top">
                           <h4>{job.customer_name || 'Unknown'}</h4>
+                          {(!job.assigned_worker_ids || job.assigned_worker_ids.length === 0) && !['completed', 'paid', 'cancelled'].includes(job.status) && (
+                            <span className="jt-no-worker-badge" title="No worker assigned to this job">
+                              <i className="fas fa-exclamation-triangle"></i> No Worker
+                            </span>
+                          )}
                           <span className={`jt-status-badge jt-status-${job.status}`}>{job.status === 'in-progress' ? 'In Progress' : job.status}</span>
                         </div>
                         <div className="jt-card-info">
