@@ -1878,37 +1878,14 @@ def match_service(job_description: str, company_id: int = None, use_ai_fallback:
         # Filter package_only services from standalone pool
         standalone_services = [s for s in services if not s.get('package_only', False)]
         
+        # Short-circuit: if explicitly requesting General Callout/Service, return it directly
+        # This prevents the use_when_uncertain package from overriding an intentional general booking
+        desc_lower = (job_description or '').strip().lower()
+        if desc_lower in ('general callout', 'general service', 'general'):
+            return ServiceMatcher._create_general_fallback(standalone_services, default_duration, "explicit_general_request")
+        
         # First try fast fuzzy matching with packages
         result = ServiceMatcher.match(job_description, standalone_services, default_duration, packages=packages)
-        
-        # On low-confidence fallback (General Service), check for use_when_uncertain package
-        if result.get('is_general', False) and packages:
-            uncertain_pkg = next((p for p in packages if p.get('use_when_uncertain', False)), None)
-            if uncertain_pkg:
-                pkg_services = uncertain_pkg.get('services', [])
-                duration = uncertain_pkg.get('duration_override') or uncertain_pkg.get('total_duration_minutes') or sum(s.get('duration_minutes', 0) for s in pkg_services)
-                price = uncertain_pkg.get('price_override') or uncertain_pkg.get('total_price') or sum(s.get('price', 0) for s in pkg_services)
-                result = {
-                    'service': {
-                        'id': uncertain_pkg['id'],
-                        'name': uncertain_pkg['name'],
-                        'description': uncertain_pkg.get('description', ''),
-                        'category': 'Package',
-                        'duration_minutes': duration,
-                        'price': price,
-                        'is_package': True,
-                        '_package_data': uncertain_pkg
-                    },
-                    'score': result.get('score', 0),
-                    'matched_name': uncertain_pkg['name'],
-                    'match_details': {'type': 'uncertain_package_fallback'},
-                    'is_general': False,
-                    'is_package': True,
-                    'confidence_tier': 'low',
-                    'needs_clarification': False
-                }
-                logger.info(f"Low-confidence fallback to uncertain package: '{uncertain_pkg['name']}'")
-                return result
         
         # If fuzzy match has low confidence and we have multiple services, try AI matching
         # AI threshold: score < 50 means fuzzy match isn't confident
