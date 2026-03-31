@@ -89,7 +89,13 @@ def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
     """
     Trim leading and trailing silence from a list of mulaw audio packets.
     
-    Uses a sliding-window approach to detect speech onset/offset:
+    Uses an adaptive noise-floor approach for the leading edge:
+    - Estimates the noise floor from the quietest 25% of packets
+    - Sets the effective threshold at max(energy_threshold, noise_floor * 3)
+    - This reliably cuts through line noise / ambient hum that sits just
+      below the fixed threshold on phone calls (typically RMS 10-30)
+    
+    Then uses a sliding-window to detect speech onset/offset:
     - Scans with a window of WINDOW_SIZE packets
     - Speech starts when MIN_ACTIVE packets in the window exceed the threshold
     - This catches the beginning of speech even if the first syllable is soft
@@ -110,6 +116,20 @@ def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
     n = len(packets)
     energies = [ulaw_energy(p) for p in packets]
     
+    # Adaptive noise floor: sort energies, take the 25th percentile as the
+    # noise floor estimate. Real speech is typically 5-10x louder than line noise.
+    # Use max(caller's threshold, noise_floor * 2.5) so we reliably cut through
+    # whatever ambient level this particular call has.
+    # Cap at 2x the fixed threshold so we never get too aggressive on noisy calls
+    # (e.g. mobile with noise_floor=25 → adaptive=62, not 75).
+    sorted_energies = sorted(energies)
+    noise_floor_idx = min(max(0, n // 4 - 1), n - 1)  # Clamp to valid index
+    noise_floor = sorted_energies[noise_floor_idx] if sorted_energies else 0
+    adaptive_threshold = min(
+        max(energy_threshold, noise_floor * 2.5),
+        energy_threshold * 2.0  # Never more than 2x the caller's threshold
+    )
+    
     # Sliding window parameters: look for 3+ active packets in a window of 5
     # Each packet is ~20ms, so window = 100ms, need 60ms of energy = speech onset
     WINDOW_SIZE = 5
@@ -119,12 +139,12 @@ def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
     first_voice = -1
     for i in range(n - WINDOW_SIZE + 1):
         window = energies[i:i + WINDOW_SIZE]
-        active = sum(1 for e in window if e >= energy_threshold)
+        active = sum(1 for e in window if e >= adaptive_threshold)
         if active >= MIN_ACTIVE:
             # Speech detected — but the actual start might be a few packets
             # before this window. Walk backwards to find the first packet in
             # this cluster that's above threshold (or a lower "onset" threshold).
-            onset_threshold = energy_threshold * 0.5  # Catch soft starts
+            onset_threshold = adaptive_threshold * 0.5  # Catch soft starts
             first_voice = i
             for j in range(i, max(-1, i - pad_packets), -1):
                 if energies[j] >= onset_threshold:
@@ -138,6 +158,8 @@ def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
         return b''.join(packets)
     
     # Find speech end: last window where enough packets are above threshold
+    # Use the original (lower) threshold for the trailing edge — we'd rather
+    # keep a bit of trailing silence than clip the end of an eircode.
     last_voice = first_voice
     for i in range(n - WINDOW_SIZE, first_voice - 1, -1):
         window = energies[i:i + WINDOW_SIZE]
@@ -153,8 +175,11 @@ def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
                     break
             break
     
-    # Add padding
-    start = max(0, first_voice - pad_packets)
+    # Leading padding: 10 packets (~200ms) — enough to catch soft speech onset
+    # without letting seconds of dead air through. Still conservative.
+    # Trailing padding: full pad_packets to avoid clipping final syllable.
+    lead_pad = min(pad_packets, 10)
+    start = max(0, first_voice - lead_pad)
     end = min(n, last_voice + pad_packets + 1)
     
     trimmed = b''.join(packets[start:end])
@@ -163,13 +188,15 @@ def trim_silence_mulaw(packets: list, energy_threshold: float = 100.0,
     original_duration = total_bytes / sample_rate
     
     # Log energy distribution for debugging
-    above_threshold = sum(1 for e in energies if e >= energy_threshold)
+    above_threshold = sum(1 for e in energies if e >= adaptive_threshold)
     max_energy = max(energies) if energies else 0
     min_energy = min(energies) if energies else 0
     avg_energy = sum(energies) / len(energies) if energies else 0
     
     print(f"🎙️ [ADDR_AUDIO] Trimmed: {original_duration:.1f}s → {trimmed_duration:.1f}s "
-          f"(packets {start}-{end-1} of {n}, threshold={energy_threshold})")
+          f"(packets {start}-{end-1} of {n})")
+    print(f"🎙️ [ADDR_AUDIO] Threshold: fixed={energy_threshold}, noise_floor={noise_floor:.0f}, "
+          f"adaptive={adaptive_threshold:.0f}")
     print(f"🎙️ [ADDR_AUDIO] Energy: min={min_energy:.0f}, max={max_energy:.0f}, avg={avg_energy:.0f}, "
           f"above_threshold={above_threshold}/{n}, first_voice={first_voice}, last_voice={last_voice}")
     

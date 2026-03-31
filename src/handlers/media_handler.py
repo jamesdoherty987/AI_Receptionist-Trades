@@ -835,15 +835,15 @@ async def media_handler(ws):
                         now_mono = asyncio.get_event_loop().time()
                         
                         # Time-window: from when TTS finished (AI stopped talking) to now
-                        # +3s padding before to catch overlap (caller starts while AI finishes)
+                        # +2s padding before to catch overlap (caller starts while AI finishes)
                         if last_tts_audio_done > 0:
                             since_audio_end = now_mono - last_tts_audio_done
-                            window_seconds = since_audio_end + 3.0
+                            window_seconds = since_audio_end + 2.0
                             packets_to_take = int(window_seconds * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
                             packets_to_take = min(packets_to_take, total_packets)
                             buffer_snapshot = full_buffer[-packets_to_take:] if packets_to_take > 0 else full_buffer
                             print(f"🎙️ [ADDR_AUDIO] Time-window: since_audio_end={since_audio_end:.1f}s, "
-                                  f"+3s padding, window={window_seconds:.1f}s, "
+                                  f"+2s padding, window={window_seconds:.1f}s, "
                                   f"taking={len(buffer_snapshot)}/{total_packets} packets")
                         elif phase1_time and phase1_time > 0:
                             elapsed = time_module.time() - phase1_time
@@ -860,10 +860,12 @@ async def media_handler(ws):
                         print(f"🎙️ [ADDR_AUDIO] Buffer: {len(buffer_snapshot)} packets, "
                               f"{raw_total} bytes, ~{raw_total / MULAW_SAMPLE_RATE:.1f}s")
                         
-                        # Light trim — only strip dead silence at edges. Very conservative:
-                        # threshold 30 (barely above line noise ~10-20), generous 25-packet
-                        # padding (~500ms). This is async playback, so extra silence is fine.
-                        captured_audio = trim_silence_mulaw(buffer_snapshot, energy_threshold=30.0, pad_packets=25)
+                        # Light trim — strip line noise / ambient at the leading edge.
+                        # Adaptive threshold auto-adjusts to the call's noise floor.
+                        # Leading pad reduced to 10 packets (~200ms) — enough for speech
+                        # onset without letting seconds of empty sound through.
+                        # Trailing pad stays generous (25) to avoid clipping final syllable.
+                        captured_audio = trim_silence_mulaw(buffer_snapshot, energy_threshold=30.0, pad_packets=10)
                         cap_bytes = len(captured_audio)
                         cap_duration = cap_bytes / MULAW_SAMPLE_RATE
                         
