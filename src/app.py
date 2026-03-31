@@ -447,7 +447,7 @@ def get_subscription_info(company: dict) -> dict:
         'trial_days_remaining': trial_days_remaining,
         'current_period_end': current_period_end.isoformat() if current_period_end else None,
         'cancel_at_period_end': cancel_at_period_end,
-        'has_used_trial': bool(company.get('has_used_trial', 0)),
+        'has_used_trial': bool(company.get('has_used_trial', 0)) or bool(company.get('trial_start')),
         'stripe_customer_id': company.get('stripe_customer_id'),
         'stripe_subscription_id': company.get('stripe_subscription_id')
     }
@@ -2845,7 +2845,8 @@ def start_trial():
         return jsonify({"error": "You already have an active trial"}), 400
     
     # Prevent re-use of the free trial
-    if company.get('has_used_trial'):
+    # Also check trial_start/trial_end for legacy accounts created before has_used_trial column existed
+    if company.get('has_used_trial') or company.get('trial_start'):
         return jsonify({"error": "Free trial has already been used. Please subscribe to continue."}), 400
     
     # Start 14-day trial

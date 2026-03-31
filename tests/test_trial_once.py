@@ -227,3 +227,70 @@ class TestStartTrialEndpoint:
         response = app_client.post('/api/subscription/start-trial')
         assert response.status_code == 400
         mock_db.update_company.assert_not_called()
+
+    def test_legacy_account_without_has_used_trial_but_with_trial_start(self, app_client, mock_db):
+        """Legacy account created before has_used_trial column — trial_start exists but has_used_trial is 0/missing"""
+        # Clear rate limiter state from previous tests
+        from src.utils.security import get_rate_limiter
+        limiter = get_rate_limiter()
+        limiter._requests.clear()
+
+        mock_db.get_company.return_value = {
+            'id': 1,
+            'email': 'test@example.com',
+            'subscription_tier': 'none',
+            'subscription_status': 'inactive',
+            'trial_start': (datetime.now() - timedelta(days=30)).isoformat(),
+            'trial_end': (datetime.now() - timedelta(days=16)).isoformat(),
+            'has_used_trial': 0,  # Legacy: column was added after account created
+            'subscription_current_period_end': None,
+            'subscription_cancel_at_period_end': 0,
+            'stripe_customer_id': None,
+            'stripe_subscription_id': None,
+        }
+
+        response = app_client.post('/api/subscription/start-trial')
+        assert response.status_code == 400
+        data = response.get_json()
+        assert 'already been used' in data['error']
+        mock_db.update_company.assert_not_called()
+
+
+class TestGetSubscriptionInfoLegacyAccounts:
+    """Test that get_subscription_info handles legacy accounts correctly"""
+
+    def test_legacy_account_trial_start_implies_has_used_trial(self):
+        """If trial_start exists but has_used_trial is 0, has_used_trial should still be True"""
+        from src.app import get_subscription_info
+
+        company = {
+            'subscription_tier': 'none',
+            'subscription_status': 'inactive',
+            'trial_start': (datetime.now() - timedelta(days=30)).isoformat(),
+            'trial_end': (datetime.now() - timedelta(days=16)).isoformat(),
+            'has_used_trial': 0,
+            'subscription_current_period_end': None,
+            'subscription_cancel_at_period_end': 0,
+            'stripe_customer_id': None,
+            'stripe_subscription_id': None,
+        }
+        info = get_subscription_info(company)
+        assert info['has_used_trial'] is True
+
+    def test_fresh_account_no_trial_start(self):
+        """A truly fresh account with no trial_start should have has_used_trial=False"""
+        from src.app import get_subscription_info
+
+        company = {
+            'subscription_tier': 'none',
+            'subscription_status': 'inactive',
+            'trial_start': None,
+            'trial_end': None,
+            'has_used_trial': 0,
+            'subscription_current_period_end': None,
+            'subscription_cancel_at_period_end': 0,
+            'stripe_customer_id': None,
+            'stripe_subscription_id': None,
+        }
+        info = get_subscription_info(company)
+        assert info['has_used_trial'] is False
