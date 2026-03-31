@@ -448,18 +448,49 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
             print(f"[DATE_FIX] AI used day_of_week but explicit day number {explicit_day_num} present - will find matching date")
             # Set the day so the specific date logic handles it
             parsed["day"] = explicit_day_num
-            # Try to find the month where this weekday falls on this day
-            target_weekday = weekday_names[detected_weekday]
-            search_date = now
-            for _ in range(365):  # Search up to a year ahead
-                if search_date.day == explicit_day_num and search_date.weekday() == target_weekday:
-                    parsed["month"] = search_date.month
-                    parsed["year"] = search_date.year
-                    parsed["day_of_week"] = None  # Clear day_of_week so specific date logic is used
-                    parsed["relative_days"] = None  # Clear relative_days so specific date logic is used
-                    print(f"[DATE_FIX] Found matching date: {search_date.strftime('%B %d, %Y')} is a {detected_weekday.capitalize()}")
+            
+            # Check if the input text contains an explicit month name — if so, trust month+day over day_of_week
+            month_names_map = {
+                'january': 1, 'february': 2, 'march': 3, 'april': 4,
+                'may': 5, 'june': 6, 'july': 7, 'august': 8,
+                'september': 9, 'october': 10, 'november': 11, 'december': 12
+            }
+            text_lower_check = text.lower()
+            explicit_month = None
+            for mname, mnum in month_names_map.items():
+                if mname in text_lower_check:
+                    explicit_month = mnum
                     break
-                search_date += timedelta(days=1)
+            
+            if explicit_month:
+                # Month was explicitly mentioned — trust month+day, ignore wrong day_of_week
+                parsed["month"] = explicit_month
+                parsed["day_of_week"] = None
+                parsed["relative_days"] = None
+                # Determine year: if month+day is in the past, use next year
+                try:
+                    candidate = now.replace(month=explicit_month, day=explicit_day_num)
+                    if candidate.date() < now.date():
+                        parsed["year"] = now.year + 1
+                    else:
+                        parsed["year"] = now.year
+                except ValueError:
+                    parsed["year"] = now.year
+                actual_weekday = datetime(parsed["year"], explicit_month, explicit_day_num).strftime('%A')
+                print(f"[DATE_FIX] Input has explicit month '{mname}' — using {actual_weekday} {explicit_month}/{explicit_day_num}/{parsed['year']} (ignoring LLM day_of_week '{detected_weekday}')")
+            else:
+                # No explicit month — search for matching weekday+day combo
+                target_weekday = weekday_names[detected_weekday]
+                search_date = now
+                for _ in range(365):  # Search up to a year ahead
+                    if search_date.day == explicit_day_num and search_date.weekday() == target_weekday:
+                        parsed["month"] = search_date.month
+                        parsed["year"] = search_date.year
+                        parsed["day_of_week"] = None  # Clear day_of_week so specific date logic is used
+                        parsed["relative_days"] = None  # Clear relative_days so specific date logic is used
+                        print(f"[DATE_FIX] Found matching date: {search_date.strftime('%B %d, %Y')} is a {detected_weekday.capitalize()}")
+                        break
+                    search_date += timedelta(days=1)
         elif detected_weekday and explicit_day_num and parsed.get("day") and not parsed.get("month") and not parsed.get("day_of_week"):
             # AI returned just day number without month or day_of_week (e.g., "Wednesday the 25th" -> {day: 25})
             # We need to find the next occurrence of that weekday that falls on that day number
