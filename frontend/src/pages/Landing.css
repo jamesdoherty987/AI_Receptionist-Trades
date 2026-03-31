@@ -635,7 +635,7 @@
   height: 54px;
   flex-shrink: 0;
   position: relative;
-  z-index: 10;
+  z-index: 15;
 }
 
 .status-time {
@@ -723,15 +723,19 @@
 
 /* Call UI */
 .call-ui {
-  flex: 1;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
   padding: 0.5rem 1.5rem 0;
-  position: relative;
   z-index: 5;
+  transition: opacity 0.4s ease, transform 0.4s ease;
 }
 
 .caller-avatar {
@@ -905,6 +909,194 @@
   background: rgba(255, 255, 255, 0.25);
   border-radius: 4px;
   z-index: 15;
+}
+
+/* ---- Reels / TikTok Feed inside iPhone ---- */
+.reels-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  overflow: hidden;
+  border-radius: inherit;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.reels-container.reels-hidden {
+  opacity: 0;
+  transform: scale(0.95);
+  pointer-events: none;
+}
+.reels-viewport {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+.reel-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.reel-video.reel-active {
+  opacity: 1;
+  z-index: 1;
+}
+/* TikTok swipe: current video slides up and out */
+.reel-video.reel-swipe-out {
+  animation: reelSwipeUp 0.7s cubic-bezier(0.32, 0, 0.67, 0) forwards;
+}
+/* TikTok swipe: next video slides up from below */
+.reel-video.reel-swipe-in {
+  animation: reelSlideIn 0.7s cubic-bezier(0.32, 0, 0.67, 0) forwards;
+}
+@keyframes reelSwipeUp {
+  0% { transform: translateY(0) scale(1); }
+  100% { transform: translateY(-105%) scale(0.92); }
+}
+@keyframes reelSlideIn {
+  0% { transform: translateY(100%); }
+  100% { transform: translateY(0); }
+}
+
+/* Reel overlay — TikTok-style UI */
+.reel-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 12px 40px;
+}
+
+/* Progress bars at top (Instagram Stories style) */
+.reel-progress {
+  position: absolute;
+  top: 48px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  gap: 3px;
+  z-index: 3;
+}
+.reel-progress-bar {
+  flex: 1;
+  height: 2.5px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.reel-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 2px;
+}
+
+/* Sidebar buttons */
+.reel-sidebar {
+  position: absolute;
+  right: 8px;
+  bottom: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  z-index: 3;
+}
+.reel-sidebar-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.reel-sidebar-btn i {
+  font-size: 1.1rem;
+  color: white;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
+  transition: transform 0.2s;
+}
+.reel-sidebar-btn:hover i {
+  transform: scale(1.15);
+}
+/* Liked state */
+.reel-sidebar-btn.reel-liked i {
+  color: #ff2d55;
+}
+/* Heart pop animation */
+.reel-sidebar-btn i.reel-heart-pop {
+  animation: heartPop 0.5s cubic-bezier(0.17, 0.89, 0.32, 1.49);
+}
+@keyframes heartPop {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.6); }
+  60% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+/* Shared state */
+.reel-sidebar-btn.reel-shared span {
+  color: #10b981;
+}
+.reel-sidebar-btn i.reel-share-fly {
+  animation: shareFly 0.4s ease-out;
+  color: #10b981;
+}
+@keyframes shareFly {
+  0% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.3) translateY(-4px); }
+  100% { transform: scale(1) translateY(0); }
+}
+.reel-sidebar-btn span {
+  font-size: 0.5rem;
+  color: white;
+  font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* Bottom info */
+.reel-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 50px;
+}
+.reel-username {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+.reel-caption {
+  font-size: 0.55rem;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* Call UI visibility toggle */
+.call-ui.call-ui-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(20px);
+  z-index: 4;
+}
+.call-ui.call-ui-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition: opacity 0.4s ease, transform 0.4s ease;
+  z-index: 10;
 }
 
 /* ========================================

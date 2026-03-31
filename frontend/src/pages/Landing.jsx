@@ -225,7 +225,6 @@ function MiniContactStack() {
   const [phase, setPhase] = useState(0);
   const [aiTyping, setAiTyping] = useState(false);
   const [aiText, setAiText] = useState('');
-  const [prevPhase, setPrevPhase] = useState(-1);
 
   const contacts = [
     {
@@ -253,10 +252,7 @@ function MiniContactStack() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setPhase(p => {
-        setPrevPhase(p);
-        return (p + 1) % contacts.length;
-      });
+      setPhase(p => (p + 1) % contacts.length);
     }, 4500);
     return () => clearInterval(interval);
   }, []);
@@ -266,14 +262,17 @@ function MiniContactStack() {
     setAiText('');
     const note = contacts[phase].aiNote;
     let i = 0;
+    let charInterval = null;
     const typeTimer = setTimeout(() => {
-      const charInterval = setInterval(() => {
+      charInterval = setInterval(() => {
         if (i < note.length) { setAiText(note.slice(0, i + 1)); i++; }
-        else { clearInterval(charInterval); setAiTyping(false); }
+        else { clearInterval(charInterval); charInterval = null; setAiTyping(false); }
       }, 18);
-      return () => clearInterval(charInterval);
     }, 500);
-    return () => clearTimeout(typeTimer);
+    return () => {
+      clearTimeout(typeTimer);
+      if (charInterval) clearInterval(charInterval);
+    };
   }, [phase]);
 
   const c = contacts[phase];
@@ -674,6 +673,239 @@ function MeshGradient() {
 }
 
 
+// ---- Phone with Reels + Call Demo ----
+const CDN_BASE = 'https://pub-6d2ed0f2cb5645b68bd219a42aed3749.r2.dev/assets';
+const LOCAL_BASE = '/assets';
+const ASSET_BASE = import.meta.env.DEV ? LOCAL_BASE : CDN_BASE;
+
+const REEL_VIDEOS = [
+  `${ASSET_BASE}/social-17-swipe-right.mp4`,
+  `${ASSET_BASE}/social-15-storytime.mp4`,
+  `${ASSET_BASE}/social-4-listicle.mp4`,
+];
+
+function PhoneWithReels({ isCallPlaying, toggleDemoCall, isMobile }) {
+  const [currentReel, setCurrentReel] = useState(0);
+  const [nextReel, setNextReel] = useState(null);
+  const [showCallUI, setShowCallUI] = useState(false);
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(4200);
+  const [commentCount, setCommentCount] = useState(128);
+  const [shared, setShared] = useState(false);
+  const [heartBurst, setHeartBurst] = useState(false);
+  const videoRefs = useRef([]);
+  const progressFillRefs = useRef([]);
+  const rafRef = useRef(null);
+
+  // Animate progress bars by reading directly from the video element
+  useEffect(() => {
+    const animate = () => {
+      REEL_VIDEOS.forEach((_, i) => {
+        const fill = progressFillRefs.current[i];
+        if (!fill) return;
+        const vid = videoRefs.current[i];
+        if (i === currentReel && nextReel === null && vid && vid.duration && isFinite(vid.duration) && !vid.paused) {
+          fill.style.width = `${(vid.currentTime / vid.duration) * 100}%`;
+        } else if (i < currentReel || (i === currentReel && nextReel !== null)) {
+          fill.style.width = '100%';
+        } else if (i > currentReel) {
+          fill.style.width = '0%';
+        }
+      });
+      rafRef.current = requestAnimationFrame(animate);
+    };
+    rafRef.current = requestAnimationFrame(animate);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [currentReel, nextReel]);
+
+  // Play the current reel when it's ready and we're not in call mode
+  useEffect(() => {
+    if (isCallPlaying || showCallUI || nextReel !== null) return;
+    const vid = videoRefs.current[currentReel];
+    if (!vid) return;
+
+    const playVideo = () => {
+      vid.currentTime = 0;
+      vid.play().catch(() => {});
+    };
+
+    if (vid.readyState >= 3) {
+      playVideo();
+    } else {
+      const onReady = () => playVideo();
+      vid.addEventListener('canplay', onReady, { once: true });
+      vid.load();
+      return () => vid.removeEventListener('canplay', onReady);
+    }
+  }, [currentReel, isCallPlaying, showCallUI, nextReel]);
+
+  // Listen for video ended to trigger swipe
+  useEffect(() => {
+    if (isCallPlaying || showCallUI) return;
+    const vid = videoRefs.current[currentReel];
+    if (!vid) return;
+
+    const onEnded = () => {
+      const next = (currentReel + 1) % REEL_VIDEOS.length;
+      // Preload next video
+      const nextVid = videoRefs.current[next];
+      if (nextVid) { nextVid.currentTime = 0; nextVid.load(); }
+      // Start swipe transition
+      setNextReel(next);
+      // After animation completes, commit the switch
+      setTimeout(() => {
+        setCurrentReel(next);
+        setNextReel(null);
+      }, 700);
+    };
+
+    vid.addEventListener('ended', onEnded);
+    return () => vid.removeEventListener('ended', onEnded);
+  }, [currentReel, isCallPlaying, showCallUI]);
+
+  // Fallback: if video doesn't end after a reasonable time, advance anyway
+  useEffect(() => {
+    if (isCallPlaying || showCallUI || nextReel !== null) return;
+    const fallback = setTimeout(() => {
+      const vid = videoRefs.current[currentReel];
+      if (vid && (vid.paused || !vid.duration || vid.currentTime === 0)) {
+        const next = (currentReel + 1) % REEL_VIDEOS.length;
+        setNextReel(next);
+        setTimeout(() => { setCurrentReel(next); setNextReel(null); }, 700);
+      }
+    }, 15000);
+    return () => clearTimeout(fallback);
+  }, [currentReel, isCallPlaying, showCallUI, nextReel]);
+
+  // When call starts, transition to call UI
+  useEffect(() => {
+    if (isCallPlaying) {
+      setShowCallUI(true);
+      videoRefs.current.forEach(v => { if (v) v.pause(); });
+    }
+  }, [isCallPlaying]);
+
+  // When call stops, go back to reels
+  useEffect(() => {
+    if (!isCallPlaying && showCallUI) {
+      const t = setTimeout(() => { setShowCallUI(false); }, 600);
+      return () => clearTimeout(t);
+    }
+  }, [isCallPlaying, showCallUI]);
+
+  return (
+    <div className={`iphone-frame ${showCallUI ? 'call-active' : ''}`}>
+      <div className="iphone-btn-silent"></div>
+      <div className="iphone-btn-vol-up"></div>
+      <div className="iphone-btn-vol-down"></div>
+      <div className="iphone-btn-power"></div>
+      <div className="iphone-bezel">
+        <div className="iphone-screen">
+          <div className="iphone-status-bar">
+            <span className="status-time">9:41</span>
+            <div className="status-dynamic-island"><div className="island-camera"></div></div>
+            <div className="status-icons">
+              <i className="fas fa-signal"></i>
+              <i className="fas fa-wifi"></i>
+              <div className="status-battery"><div className="battery-body"><div className="battery-fill"></div></div><div className="battery-nub"></div></div>
+            </div>
+          </div>
+
+          {/* Reels layer */}
+          <div className={`reels-container ${showCallUI ? 'reels-hidden' : ''}`}>
+            <div className="reels-viewport">
+              {REEL_VIDEOS.map((src, i) => {
+                let className = 'reel-video';
+                let style = {};
+                if (nextReel !== null) {
+                  // During swipe: current slides up, next slides in from below
+                  if (i === currentReel) {
+                    className += ' reel-swipe-out';
+                    style = { opacity: 1, zIndex: 2 };
+                  } else if (i === nextReel) {
+                    className += ' reel-swipe-in';
+                    style = { opacity: 1, zIndex: 1 };
+                  }
+                } else if (i === currentReel) {
+                  className += ' reel-active';
+                }
+                return (
+                  <video
+                    key={i}
+                    ref={el => { videoRefs.current[i] = el; }}
+                    className={className}
+                    style={style}
+                    src={src}
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
+                );
+              })}
+            </div>
+            {/* Reel UI overlay — TikTok style */}
+            <div className="reel-overlay">
+              <div className="reel-sidebar">
+                <div className={`reel-sidebar-btn ${liked ? 'reel-liked' : ''}`} onClick={() => {
+                  if (!liked) { setLikeCount(c => c + 1); setHeartBurst(true); setTimeout(() => setHeartBurst(false), 600); }
+                  else { setLikeCount(c => c - 1); }
+                  setLiked(l => !l);
+                }}>
+                  <i className={`fas fa-heart ${heartBurst ? 'reel-heart-pop' : ''}`}></i>
+                  <span>{likeCount >= 1000 ? `${(likeCount / 1000).toFixed(1)}K` : likeCount}</span>
+                </div>
+                <div className="reel-sidebar-btn" onClick={() => setCommentCount(c => c + 1)}>
+                  <i className="fas fa-comment"></i>
+                  <span>{commentCount}</span>
+                </div>
+                <div className={`reel-sidebar-btn ${shared ? 'reel-shared' : ''}`} onClick={() => { navigator.clipboard.writeText('https://bookedforyou.ie').catch(() => {}); setShared(true); setTimeout(() => setShared(false), 1500); }}>
+                  <i className={`fas fa-share ${shared ? 'reel-share-fly' : ''}`}></i>
+                  <span>{shared ? 'Copied!' : 'Share'}</span>
+                </div>
+              </div>
+              <div className="reel-bottom">
+                <span className="reel-username">@bookedforyou</span>
+                <span className="reel-caption">AI receptionist for tradespeople 🔧</span>
+              </div>
+              <div className="reel-progress">
+                {REEL_VIDEOS.map((_, i) => (
+                  <div key={i} className="reel-progress-bar">
+                    <div
+                      ref={el => { progressFillRefs.current[i] = el; }}
+                      className="reel-progress-fill"
+                    ></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Call UI layer */}
+          <div className={`call-ui ${showCallUI ? 'call-ui-visible' : 'call-ui-hidden'}`}>
+            <div className="caller-avatar"><i className="fas fa-phone-alt"></i></div>
+            <div className="caller-info">
+              <span className="caller-name">{isCallPlaying ? "Mary O'Brien" : 'Incoming Call'}</span>
+              <span className="caller-number">{isCallPlaying ? '087 654 3210' : 'New Customer'}</span>
+            </div>
+            <div className="ai-badge"><span className="ai-pulse"></span>{isCallPlaying ? 'AI Connected' : 'AI Answering...'}</div>
+            <div className="call-wave"><span></span><span></span><span></span><span></span><span></span></div>
+            <div className="call-actions">
+              <div className="call-action-btn"><div className="action-circle"><i className="fas fa-microphone-slash"></i></div><span>mute</span></div>
+              <div className="call-action-btn"><div className="action-circle"><i className="fas fa-th"></i></div><span>keypad</span></div>
+              <div className="call-action-btn"><div className="action-circle"><i className="fas fa-volume-up"></i></div><span>speaker</span></div>
+            </div>
+            <div className="call-end-row"><div className="call-end-btn"><i className="fas fa-phone-alt"></i></div></div>
+          </div>
+
+          <div className="iphone-home-indicator"></div>
+          <div className="iphone-screen-glare"></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // ---- Main Landing Component ----
 function Landing() {
   const CONTACT_EMAIL = 'contact@bookedforyou.ie';
@@ -720,7 +952,7 @@ function Landing() {
   const callAudioRef = useRef(null);
   const toggleDemoCall = () => {
     if (!callAudioRef.current) {
-      callAudioRef.current = new Audio('https://pub-6d2ed0f2cb5645b68bd219a42aed3749.r2.dev/assets/demo-call.mp3');
+      callAudioRef.current = new Audio(`${ASSET_BASE}/demo-call.mp3`);
       callAudioRef.current.volume = 0.8;
       callAudioRef.current.addEventListener('ended', () => setIsCallPlaying(false));
     }
@@ -826,7 +1058,7 @@ function Landing() {
         <div className="hero-visual">
           <div className="hero-video-container">
             <video ref={videoRef} className="hero-video" autoPlay muted loop playsInline controls>
-              <source src="https://pub-6d2ed0f2cb5645b68bd219a42aed3749.r2.dev/assets/cinematic-explainer.mp4" type="video/mp4" />
+              <source src={`${ASSET_BASE}/cinematic-explainer.mp4`} type="video/mp4" />
             </video>
             {isMuted && <span className="video-sound-hint" onClick={toggleMute} role="button" tabIndex={0}>🔊 Sound on</span>}
           </div>
@@ -907,30 +1139,7 @@ function Landing() {
             </div>
             <div className="phone-demo-visual">
               <Tilt tiltMaxAngleX={isMobile ? 8 : 15} tiltMaxAngleY={isMobile ? 8 : 15} perspective={1000} scale={1.02} transitionSpeed={2000} gyroscope={false} className="phone-tilt-wrapper">
-                <div className={`iphone-frame ${isCallPlaying ? 'call-active' : ''}`}>
-                  <div className="iphone-btn-silent"></div><div className="iphone-btn-vol-up"></div><div className="iphone-btn-vol-down"></div><div className="iphone-btn-power"></div>
-                  <div className="iphone-bezel"><div className="iphone-screen">
-                    <div className="iphone-status-bar">
-                      <span className="status-time">9:41</span>
-                      <div className="status-dynamic-island"><div className="island-camera"></div></div>
-                      <div className="status-icons"><i className="fas fa-signal"></i><i className="fas fa-wifi"></i><div className="status-battery"><div className="battery-body"><div className="battery-fill"></div></div><div className="battery-nub"></div></div></div>
-                    </div>
-                    <div className="call-ui">
-                      <div className="caller-avatar"><i className="fas fa-phone-alt"></i></div>
-                      <div className="caller-info"><span className="caller-name">{isCallPlaying ? "Mary O'Brien" : 'Incoming Call'}</span><span className="caller-number">{isCallPlaying ? '087 654 3210' : 'New Customer'}</span></div>
-                      <div className="ai-badge"><span className="ai-pulse"></span>{isCallPlaying ? 'AI Connected' : 'AI Answering...'}</div>
-                      <div className="call-wave"><span></span><span></span><span></span><span></span><span></span></div>
-                      <div className="call-actions">
-                        <div className="call-action-btn"><div className="action-circle"><i className="fas fa-microphone-slash"></i></div><span>mute</span></div>
-                        <div className="call-action-btn"><div className="action-circle"><i className="fas fa-th"></i></div><span>keypad</span></div>
-                        <div className="call-action-btn"><div className="action-circle"><i className="fas fa-volume-up"></i></div><span>speaker</span></div>
-                      </div>
-                      <div className="call-end-row"><div className="call-end-btn"><i className="fas fa-phone-alt"></i></div></div>
-                    </div>
-                    <div className="iphone-home-indicator"></div>
-                    <div className="iphone-screen-glare"></div>
-                  </div></div>
-                </div>
+                <PhoneWithReels isCallPlaying={isCallPlaying} toggleDemoCall={toggleDemoCall} isMobile={isMobile} />
               </Tilt>
             </div>
           </div>

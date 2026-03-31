@@ -412,9 +412,9 @@ const V4_S1: React.FC = () => (
   <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: "0 50px" }}>
     <Orbs colors={["rgba(255,50,50,0.15)", C.purpleGlow]} />
     <div style={{ textAlign: "center" }}>
-      <Boom text="3 things" delay={0} size={52} />
-      <Boom text="your receptionist" delay={10} size={44} color={C.gray} />
-      <Boom text="CAN'T do 🚫" delay={22} size={60} color={C.red} />
+      <Boom text="3 things" delay={0} size={62} />
+      <Boom text="your receptionist" delay={10} size={52} color={C.gray} />
+      <Boom text="CAN'T do 🚫" delay={22} size={70} color={C.red} />
     </div>
   </AbsoluteFill>
 );
@@ -427,11 +427,11 @@ const V4_Item: React.FC<{ num: string; text: string; emoji: string; color: strin
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: "0 50px" }}>
       <Orbs colors={[`${color}30`, C.purpleGlow]} />
       <div style={{ textAlign: "center" }}>
-        <div style={{ transform: `scale(${numS})`, marginBottom: 16 }}>
-          <div style={{ width: 90, height: 90, borderRadius: "50%", background: `linear-gradient(135deg,${color},${C.purple})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 44, fontWeight: 900, color: C.white, margin: "0 auto", boxShadow: `0 0 40px ${color}40` }}>{num}</div>
+        <div style={{ transform: `scale(${numS})`, marginBottom: 20 }}>
+          <div style={{ width: 100, height: 100, borderRadius: "50%", background: `linear-gradient(135deg,${color},${C.purple})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 52, fontWeight: 900, color: C.white, margin: "0 auto", boxShadow: `0 0 40px ${color}40` }}>{num}</div>
         </div>
-        <Boom text={emoji} delay={10} size={72} />
-        <Boom text={text} delay={20} size={44} color={C.white} />
+        <Boom text={emoji} delay={10} size={82} />
+        <Boom text={text} delay={20} size={52} color={C.white} />
       </div>
     </AbsoluteFill>
   );
@@ -441,11 +441,11 @@ const V4_But: React.FC = () => (
   <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: "0 50px" }}>
     <Orbs colors={[C.cyanGlow, C.purpleGlow]} />
     <div style={{ textAlign: "center" }}>
-      <Boom text="But our AI?" delay={0} size={48} color={C.gray} />
-      <Boom text="Does ALL of it" delay={15} size={56} color={C.cyan} />
-      <Boom text="24/7 ⚡" delay={30} size={72} color={C.white} />
-      <Pop delay={45} scale><Logo size={40} /></Pop>
-      <Pop delay={52} style={{ marginTop: 8 }}><span style={{ fontSize: 16, color: C.gray }}>bookedforyou.ie</span></Pop>
+      <Boom text="But our AI?" delay={0} size={56} color={C.gray} />
+      <Boom text="Does ALL of it" delay={15} size={66} color={C.cyan} />
+      <Boom text="24/7 ⚡" delay={30} size={82} color={C.white} />
+      <Pop delay={45} scale><Logo size={44} /></Pop>
+      <Pop delay={52} style={{ marginTop: 8 }}><span style={{ fontSize: 18, color: C.gray }}>bookedforyou.ie</span></Pop>
     </div>
   </AbsoluteFill>
 );

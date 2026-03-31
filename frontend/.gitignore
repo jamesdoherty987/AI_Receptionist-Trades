@@ -28,3 +28,6 @@ Thumbs.db
 
 # Misc
 *.log
+
+# Local dev assets (large video files served from public/)
+public/assets/
