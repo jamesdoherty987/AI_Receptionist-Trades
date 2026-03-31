@@ -1844,6 +1844,129 @@ class AIServiceMatcher:
             return ServiceMatcher._create_general_fallback(services, default_duration, f"ai_error")
 
 
+def lookup_service_by_name(service_name: str, company_id: int = None) -> dict:
+    """
+    Look up a service by name, preferring exact matches but tolerating slight variations.
+    
+    Used by tool handlers (book_job, get_next_available, etc.) where the service was
+    already confirmed with the caller — we trust the name and just need to resolve
+    it to a service record for duration/price/metadata.
+    
+    Searches all services (including package_only) and packages.
+    Prefers standalone services over packages when names are equally close.
+    Falls back to match_service() only if nothing scores well.
+    """
+    from src.services.settings_manager import get_settings_manager
+    from difflib import SequenceMatcher
+    
+    if not service_name or not service_name.strip():
+        return match_service(service_name, company_id=company_id)
+    
+    query = service_name.strip().lower()
+    settings_mgr = get_settings_manager()
+    all_services = settings_mgr.get_services(company_id=company_id)
+    all_packages = settings_mgr.get_packages(company_id=company_id)
+    
+    # Build candidates: all services (including package_only) + packages
+    candidates = []
+    
+    for svc in all_services:
+        svc_name = (svc.get('name') or '').strip().lower()
+        if not svc_name or 'general' in svc_name:
+            continue  # Skip general services — handled by short-circuit in match_service
+        candidates.append({
+            'name_lower': svc_name,
+            'record': svc,
+            'type': 'service',
+            'is_general': False,
+        })
+    
+    for pkg in all_packages:
+        pkg_name = (pkg.get('name') or '').strip().lower()
+        if not pkg_name:
+            continue
+        pkg_services = pkg.get('services', [])
+        duration = pkg.get('duration_override') or pkg.get('total_duration_minutes') or sum(s.get('duration_minutes', 0) for s in pkg_services)
+        price = pkg.get('price_override') or pkg.get('total_price') or sum(s.get('price', 0) for s in pkg_services)
+        candidates.append({
+            'name_lower': pkg_name,
+            'record': {
+                'id': pkg['id'], 'name': pkg['name'],
+                'description': pkg.get('description', ''),
+                'category': 'Package', 'duration_minutes': duration,
+                'price': price, 'is_package': True, '_package_data': pkg
+            },
+            'type': 'package',
+            'is_general': False,
+        })
+    
+    # Score each candidate
+    best = None
+    best_score = 0
+    
+    for c in candidates:
+        name = c['name_lower']
+        
+        # Exact match = 100
+        if name == query:
+            score = 100
+        # Query is contained in name or vice versa
+        elif query in name:
+            # "leak fix" in "leak fix and investigation" → penalize longer names
+            score = 95 - (len(name) - len(query))
+        elif name in query:
+            # "leak fix" contains "leak" → penalize shorter names
+            score = 90 - (len(query) - len(name))
+        else:
+            # Fuzzy similarity
+            score = int(SequenceMatcher(None, query, name).ratio() * 85)
+        
+        # Tie-breaker: prefer standalone services over packages
+        if c['type'] == 'service':
+            score += 0.5  # Tiny boost so services win ties
+        
+        if score > best_score:
+            best_score = score
+            best = c
+    
+    # Accept if score is reasonable (>= 70)
+    if best and best_score >= 70:
+        record = best['record']
+        matched_name = record.get('name', service_name)
+        match_type = 'exact_lookup' if best_score >= 99 else 'name_lookup'
+        
+        print(f"[LOOKUP_SERVICE] ✅ {match_type} (score={best_score:.0f}): '{service_name}' -> {best['type']} '{matched_name}'")
+        
+        result = {
+            'service': record,
+            'score': int(best_score),
+            'matched_name': matched_name,
+            'match_details': {'type': match_type},
+            'is_general': best['is_general'],
+        }
+        if best['type'] == 'package':
+            result['is_package'] = True
+        return result
+    
+    # Also check General Callout/Service explicitly
+    for svc in all_services:
+        svc_name = (svc.get('name') or '').strip().lower()
+        if 'general' in svc_name:
+            if query in svc_name or svc_name in query or 'general' in query:
+                print(f"[LOOKUP_SERVICE] ✅ General service match: '{service_name}' -> '{svc.get('name')}'")
+                return {
+                    'service': svc,
+                    'score': 90,
+                    'matched_name': svc.get('name', 'General Callout'),
+                    'match_details': {'type': 'general_lookup'},
+                    'is_general': True,
+                }
+    
+    # Nothing matched well — fall back to full match_service
+    print(f"[LOOKUP_SERVICE] ⚠️ No good match for '{service_name}' (best={best_score:.0f}) — falling back to match_service")
+    return match_service(service_name, company_id=company_id)
+
+
 def match_service(job_description: str, company_id: int = None, use_ai_fallback: bool = True) -> dict:
     """
     Match a job description to a service from the services menu.
@@ -1879,9 +2002,11 @@ def match_service(job_description: str, company_id: int = None, use_ai_fallback:
         standalone_services = [s for s in services if not s.get('package_only', False)]
         
         # Short-circuit: if explicitly requesting General Callout/Service, return it directly
-        # This prevents the use_when_uncertain package from overriding an intentional general booking
+        # This prevents other matchers from overriding an intentional general booking
         desc_lower = (job_description or '').strip().lower()
-        if desc_lower in ('general callout', 'general service', 'general'):
+        if desc_lower in ('general callout', 'general service', 'general') or desc_lower.startswith('general callout') or desc_lower.startswith('general service'):
+            logger.info(f"[MATCH_SERVICE] Short-circuit: explicit general request '{job_description}'")
+            print(f"[MATCH_SERVICE] ⚡ Short-circuit to General Callout for '{job_description}'")
             return ServiceMatcher._create_general_fallback(standalone_services, default_duration, "explicit_general_request")
         
         # First try fast fuzzy matching with packages
@@ -2279,14 +2404,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             # Get service duration and workers_required - prefer job_description over service_type for trades
             if job_description:
-                match_result = match_service(job_description, company_id=company_id)
+                match_result = lookup_service_by_name(job_description, company_id=company_id)
                 matched_service = match_result['service']
                 service_duration = _resolve_quote_duration(matched_service, company_id=company_id) if matched_service.get("requires_quote") else _resolve_callout_duration(matched_service, company_id=company_id)
                 workers_required = matched_service.get('workers_required', 1) or 1
                 worker_restrictions = matched_service.get('worker_restrictions')
                 logger.info(f"[CHECK_AVAIL] Service from job_description '{job_description}': {service_duration} mins, {workers_required} worker(s)")
             else:
-                match_result = match_service(service_type, company_id=company_id)
+                match_result = lookup_service_by_name(service_type, company_id=company_id)
                 matched_service = match_result['service']
                 service_duration = _resolve_quote_duration(matched_service, company_id=company_id) if matched_service.get("requires_quote") else _resolve_callout_duration(matched_service, company_id=company_id)
                 workers_required = matched_service.get('workers_required', 1) or 1
@@ -2593,7 +2718,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             weeks_to_search = arguments.get('weeks_to_search', 3)
             
             # Get service info
-            match_result = match_service(job_description, company_id=company_id)
+            match_result = lookup_service_by_name(job_description, company_id=company_id)
             matched_service = match_result['service']
             service_duration = _resolve_quote_duration(matched_service, company_id=company_id) if matched_service.get("requires_quote") else _resolve_callout_duration(matched_service, company_id=company_id)
             workers_required = matched_service.get('workers_required', 1) or 1
@@ -3184,7 +3309,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             logger.info(f"[SEARCH_AVAIL] Query: '{query}', Job: '{job_description}', Skip dates: {skip_dates}")
             
             # Get service info
-            match_result = match_service(job_description, company_id=company_id)
+            match_result = lookup_service_by_name(job_description, company_id=company_id)
             matched_service = match_result['service']
             service_duration = _resolve_quote_duration(matched_service, company_id=company_id) if matched_service.get("requires_quote") else _resolve_callout_duration(matched_service, company_id=company_id)
             workers_required = matched_service.get('workers_required', 1) or 1
@@ -4233,8 +4358,8 @@ Return ONLY valid JSON, no explanation."""
                 }
             
             # Get service duration based on reason/service type
-            logger.info(f"[BOOK_APPT] Matching service for reason: {reason}")
-            match_result = match_service(reason, company_id=company_id)
+            logger.info(f"[BOOK_APPT] Looking up service for reason: {reason}")
+            match_result = lookup_service_by_name(reason, company_id=company_id)
             matched_service_name = match_result['matched_name']
             appointment_duration = match_result['service'].get('duration_minutes', 60)
             workers_required = match_result['service'].get('workers_required', 1) or 1
@@ -5086,7 +5211,7 @@ Return ONLY valid JSON, no explanation."""
             # PRE-CHECK: For full-day services, auto-add start time if only day is provided
             # This prevents the "Could not parse date/time: 'Tuesday'" error for full-day jobs
             # Use callout/quote-resolved duration so callout/quote services don't incorrectly trigger full-day logic
-            match_result_precheck = match_service(job_description, company_id=company_id)
+            match_result_precheck = lookup_service_by_name(job_description, company_id=company_id)
             precheck_service = match_result_precheck['service']
             if precheck_service.get('requires_quote'):
                 service_duration_precheck = _resolve_quote_duration(precheck_service, company_id=company_id)
@@ -5200,8 +5325,9 @@ Return ONLY valid JSON, no explanation."""
             
             # Check if slot is available - use service duration
             # Get matched service info for duration, price, and service name
-            logger.info(f"[BOOK_JOB] Matching service for: {job_description}")
-            match_result = match_service(job_description, company_id=company_id)
+            # Use exact name lookup — the service was already confirmed with the caller
+            logger.info(f"[BOOK_JOB] Looking up service: {job_description}")
+            match_result = lookup_service_by_name(job_description, company_id=company_id)
             matched_service = match_result['service']
             matched_service_name = match_result['matched_name']
             service_duration = matched_service.get('duration_minutes', 60)
@@ -5957,7 +6083,7 @@ Return ONLY valid JSON, no explanation."""
             
             if new_job_description:
                 # Re-match service based on new description
-                match_result = match_service(new_job_description, company_id=company_id)
+                match_result = lookup_service_by_name(new_job_description, company_id=company_id)
                 matched_service = match_result['service']
                 matched_service_name = match_result['matched_name']
                 
@@ -5993,7 +6119,7 @@ Return ONLY valid JSON, no explanation."""
                 # recalculate the charge based on the current service type
                 if not new_job_description and current_booking.get('service_type'):
                     try:
-                        match_result = match_service(current_booking['service_type'], company_id=company_id)
+                        match_result = lookup_service_by_name(current_booking['service_type'], company_id=company_id)
                         matched_service = match_result['service']
                         if new_urgency == 'emergency' and matched_service.get('emergency_price'):
                             update_fields['charge'] = float(matched_service['emergency_price'])
