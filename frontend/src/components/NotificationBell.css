@@ -181,10 +181,16 @@
 }
 
 /* Mobile adjustments */
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   .notification-dropdown {
-    width: calc(100vw - 32px);
-    right: -60px;
+    position: fixed;
+    top: 60px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: calc(100vh - 80px);
+    z-index: 1000;
+    border-radius: 12px;
   }
 
   .notification-bell-btn {

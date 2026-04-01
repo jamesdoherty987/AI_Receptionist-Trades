@@ -32,9 +32,7 @@ function NotificationBell({ onNavigate }) {
   const notifications = data?.notifications || [];
   const unseenCount = notifications.filter(n => !seenIds.includes(n.id)).length;
 
-  // Close dropdown when clicking outside
-  // Use mousedown only — touchstart + mousedown causes double-firing on mobile
-  // which races with onClick and prevents the dropdown from toggling properly
+  // Close dropdown when clicking/tapping outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -42,8 +40,10 @@ function NotificationBell({ onNavigate }) {
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
     };
   }, []);
 
