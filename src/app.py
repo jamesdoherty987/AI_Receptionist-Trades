@@ -139,8 +139,9 @@ def generate_auth_token(company_id: int, email: str) -> str:
     """Generate a signed auth token encoding company_id and email."""
     return _token_serializer.dumps({'cid': company_id, 'email': email})
 
-def verify_auth_token(token: str, max_age: int = 86400) -> dict | None:
-    """Verify and decode an auth token. Returns payload or None."""
+def verify_auth_token(token: str, max_age: int = 432000) -> dict | None:
+    """Verify and decode an auth token. Returns payload or None.
+    max_age=432000 = 5 days, matching PERMANENT_SESSION_LIFETIME."""
     try:
         return _token_serializer.loads(token, max_age=max_age)
     except (BadSignature, SignatureExpired):
@@ -1500,8 +1501,9 @@ def generate_worker_auth_token(worker_id: int, company_id: int, email: str) -> s
     })
 
 
-def verify_worker_auth_token(token: str, max_age: int = 86400) -> dict | None:
-    """Verify and decode a worker auth token. Returns payload or None."""
+def verify_worker_auth_token(token: str, max_age: int = 432000) -> dict | None:
+    """Verify and decode a worker auth token. Returns payload or None.
+    max_age=432000 = 5 days, matching PERMANENT_SESSION_LIFETIME."""
     try:
         return _worker_token_serializer.loads(token, max_age=max_age)
     except (BadSignature, SignatureExpired):

@@ -127,7 +127,7 @@ function Settings() {
         
         // Get fresh subscription data from the query cache
         const cachedData = queryClient.getQueryData(['subscription-status']);
-        const authSub = JSON.parse(sessionStorage.getItem('authSubscription') || '{}');
+        const authSub = JSON.parse(localStorage.getItem('authSubscription') || '{}');
         
         console.log('[SUBSCRIPTION] Cached data tier:', cachedData?.tier);
         console.log('[SUBSCRIPTION] Auth session tier:', authSub.tier);

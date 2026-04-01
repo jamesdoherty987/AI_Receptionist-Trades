@@ -15,7 +15,7 @@ const api = axios.create({
 // Request interceptor: attach auth token header on every request.
 // This is the reliable fallback when cross-origin cookies are blocked.
 api.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('authToken');
+  const token = localStorage.getItem('authToken');
   if (token) {
     config.headers['X-Auth-Token'] = token;
     // Debug: log that we're attaching the token (only for auth endpoints)
@@ -37,11 +37,11 @@ api.interceptors.response.use(
     ) {
       // Only wipe auth if we don't have a token — if we do, the token
       // itself is expired/invalid and we should force re-login.
-      const hasToken = !!sessionStorage.getItem('authToken');
+      const hasToken = !!localStorage.getItem('authToken');
       if (hasToken) {
-        sessionStorage.removeItem('authUser');
-        sessionStorage.removeItem('authSubscription');
-        sessionStorage.removeItem('authToken');
+        localStorage.removeItem('authUser');
+        localStorage.removeItem('authSubscription');
+        localStorage.removeItem('authToken');
         if (window.location.pathname !== '/login' && 
             window.location.pathname !== '/signup' &&
             window.location.pathname !== '/' &&
@@ -66,7 +66,7 @@ api.interceptors.response.use(
     ) {
       const subData = error.response.data.subscription;
       if (subData) {
-        sessionStorage.setItem('authSubscription', JSON.stringify(subData));
+        localStorage.setItem('authSubscription', JSON.stringify(subData));
       }
       // Redirect to settings subscription tab if not already there
       if (!window.location.pathname.startsWith('/settings')) {

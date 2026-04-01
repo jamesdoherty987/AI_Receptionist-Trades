@@ -8,13 +8,13 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     try {
-      const cached = sessionStorage.getItem('authUser');
+      const cached = localStorage.getItem('authUser');
       return cached ? JSON.parse(cached) : null;
     } catch { return null; }
   });
   const [subscription, setSubscription] = useState(() => {
     try {
-      const cached = sessionStorage.getItem('authSubscription');
+      const cached = localStorage.getItem('authSubscription');
       return cached ? JSON.parse(cached) : null;
     } catch { return null; }
   });
@@ -24,19 +24,19 @@ export function AuthProvider({ children }) {
   const clearAuth = useCallback(() => {
     setUser(null);
     setSubscription(null);
-    sessionStorage.removeItem('authUser');
-    sessionStorage.removeItem('authSubscription');
-    sessionStorage.removeItem('authToken');
+    localStorage.removeItem('authUser');
+    localStorage.removeItem('authSubscription');
+    localStorage.removeItem('authToken');
   }, []);
 
   const checkAuth = useCallback(async () => {
-    const token = sessionStorage.getItem('authToken');
+    const token = localStorage.getItem('authToken');
     console.log('[AUTH] checkAuth called, token exists:', !!token);
     
     // Determine if this is a worker session from cached user
     let isWorkerSession = false;
     try {
-      const cachedUser = sessionStorage.getItem('authUser');
+      const cachedUser = localStorage.getItem('authUser');
       isWorkerSession = cachedUser ? JSON.parse(cachedUser)?.role === 'worker' : false;
     } catch {
       isWorkerSession = false;
@@ -53,9 +53,9 @@ export function AuthProvider({ children }) {
           : response.data.user;
         setUser(userData);
         setSubscription(isWorkerSession ? null : (response.data.subscription || null));
-        sessionStorage.setItem('authUser', JSON.stringify(userData));
+        localStorage.setItem('authUser', JSON.stringify(userData));
         if (!isWorkerSession && response.data.subscription) {
-          sessionStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
+          localStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
         }
       } else {
         console.log('[AUTH] Server returned authenticated: false, clearing auth');
@@ -88,16 +88,16 @@ export function AuthProvider({ children }) {
         
         const userData = response.data.user;
         setUser(userData);
-        sessionStorage.setItem('authUser', JSON.stringify(userData));
+        localStorage.setItem('authUser', JSON.stringify(userData));
 
         // Store auth token for cross-origin cookie fallback
         if (response.data.auth_token) {
-          sessionStorage.setItem('authToken', response.data.auth_token);
+          localStorage.setItem('authToken', response.data.auth_token);
         }
 
         if (response.data.subscription) {
           setSubscription(response.data.subscription);
-          sessionStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
+          localStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
         }
 
         return { success: true };
@@ -130,10 +130,10 @@ export function AuthProvider({ children }) {
         
         const newUser = response.data.user;
         setUser(newUser);
-        sessionStorage.setItem('authUser', JSON.stringify(newUser));
+        localStorage.setItem('authUser', JSON.stringify(newUser));
 
         if (response.data.auth_token) {
-          sessionStorage.setItem('authToken', response.data.auth_token);
+          localStorage.setItem('authToken', response.data.auth_token);
         }
 
         if (newUser.subscription_tier) {
@@ -145,7 +145,7 @@ export function AuthProvider({ children }) {
             trial_days_remaining: newUser.subscription_tier === 'trial' ? 14 : 0,
           };
           setSubscription(sub);
-          sessionStorage.setItem('authSubscription', JSON.stringify(sub));
+          localStorage.setItem('authSubscription', JSON.stringify(sub));
         } else {
           // No subscription tier means no active subscription
           const sub = {
@@ -156,7 +156,7 @@ export function AuthProvider({ children }) {
             trial_days_remaining: 0,
           };
           setSubscription(sub);
-          sessionStorage.setItem('authSubscription', JSON.stringify(sub));
+          localStorage.setItem('authSubscription', JSON.stringify(sub));
         }
 
         return { success: true };
@@ -180,7 +180,6 @@ export function AuthProvider({ children }) {
       setUser(null);
       setSubscription(null);
       clearSensitiveData();
-      sessionStorage.removeItem('authToken');
       // Clear React Query cache to prevent data leakage between users
       queryClient.clear();
     }
@@ -191,7 +190,7 @@ export function AuthProvider({ children }) {
       const response = await api.put('/api/auth/profile', profileData);
       if (response.data.success) {
         setUser(response.data.user);
-        sessionStorage.setItem('authUser', JSON.stringify(response.data.user));
+        localStorage.setItem('authUser', JSON.stringify(response.data.user));
         return { success: true };
       }
       return { success: false, error: response.data.error };
@@ -251,13 +250,13 @@ export function AuthProvider({ children }) {
         queryClient.clear();
         const userData = { ...response.data.user, role: 'worker' };
         setUser(userData);
-        sessionStorage.setItem('authUser', JSON.stringify(userData));
+        localStorage.setItem('authUser', JSON.stringify(userData));
         if (response.data.auth_token) {
-          sessionStorage.setItem('authToken', response.data.auth_token);
+          localStorage.setItem('authToken', response.data.auth_token);
         }
         // Workers don't have subscriptions
         setSubscription(null);
-        sessionStorage.removeItem('authSubscription');
+        localStorage.removeItem('authSubscription');
         return { success: true };
       }
       return { success: false, error: response.data.error || 'Login failed' };
