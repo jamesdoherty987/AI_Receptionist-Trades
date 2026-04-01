@@ -215,6 +215,15 @@
     max-height: calc(100vh - 80px);
     z-index: 1000;
     border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .notification-list {
+    max-height: none;
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .notification-bell-btn {
