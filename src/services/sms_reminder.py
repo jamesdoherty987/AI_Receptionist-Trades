@@ -77,144 +77,66 @@ class SMSReminderService:
     
     def send_reminder(self, to_number: str, appointment_time: datetime, 
                      customer_name: str, service_type: str = "appointment") -> bool:
-        """
-        Send an appointment reminder SMS
-        
-        Args:
-            to_number: Recipient phone number
-            appointment_time: Appointment datetime
-            customer_name: Customer's name
-            service_type: Type of appointment/service
-            
-        Returns:
-            True if sent successfully, False otherwise
-        """
+        """Send an appointment reminder SMS (kept under 160 chars, no emojis)."""
         if not self.client:
-            print("❌ SMS service not configured")
             return False
         
-        # Normalize phone number to include country code (default: Ireland +353)
         to_number = normalize_phone_number(to_number)
         
         try:
-            # Format the appointment time nicely
-            time_str = appointment_time.strftime('%B %d at %I:%M %p')
+            time_str = appointment_time.strftime('%b %d %I:%M%p')
+            message_body = f"Reminder: {customer_name}, your {service_type} is tomorrow {time_str}. Reply YES to confirm or CANCEL."
             
-            # Create reminder message
-            message_body = (
-                f"Hi {customer_name}! This is a reminder about your {service_type} "
-                f"appointment tomorrow ({time_str}). "
-                f"Reply YES to confirm or CANCEL to cancel your appointment."
-            )
-            
-            # Send SMS
             message = self.client.messages.create(
-                body=message_body,
-                from_=self.from_number,
-                to=to_number
+                body=message_body, from_=self.from_number, to=to_number
             )
-            
-            print(f"✅ SMS reminder sent to {to_number}")
-            print(f"   Message SID: {message.sid}")
+            print(f"[SMS] Reminder sent to {to_number} (SID: {message.sid})")
             return True
-            
-        except TwilioRestException as e:
-            print(f"❌ Failed to send SMS: {e}")
-            return False
         except Exception as e:
-            print(f"❌ Error sending SMS reminder: {e}")
+            print(f"[SMS] Failed to send reminder: {e}")
             return False
 
     def send_day_before_reminder(self, to_number: str, appointment_time: datetime,
                                   customer_name: str, service_type: str = "appointment",
                                   company_name: str = None,
                                   worker_names: list = None) -> bool:
-        """
-        Send a day-before SMS reminder with company name and job details.
-
-        Args:
-            to_number: Recipient phone number
-            appointment_time: Appointment datetime
-            customer_name: Customer's name
-            service_type: Type of service/job
-            company_name: Business name
-            worker_names: List of assigned worker names
-
-        Returns:
-            True if sent successfully, False otherwise
-        """
+        """Send a day-before SMS reminder (kept under 160 chars, no emojis)."""
         if not self.client:
-            print("SMS service not configured")
             return False
 
         to_number = normalize_phone_number(to_number)
 
         try:
-            time_str = appointment_time.strftime('%I:%M %p')
-            date_str = appointment_time.strftime('%A, %B %d')
-            business = company_name or 'Your service provider'
+            time_str = appointment_time.strftime('%I:%M%p')
+            date_str = appointment_time.strftime('%b %d')
+            business = company_name or 'Your provider'
 
-            lines = [
-                f"Hi {customer_name}, this is a reminder from {business}.",
-                f"",
-                f"You have a {service_type} appointment tomorrow ({date_str}) at {time_str}.",
-            ]
-
-            if worker_names:
-                names = ", ".join(worker_names)
-                lines.append(f"Assigned: {names}")
-
-            lines.append("")
-            lines.append("If you need to cancel or reschedule, please contact us as soon as possible.")
-
-            message_body = "\n".join(lines)
+            message_body = f"{business}: Hi {customer_name}, reminder - {service_type} tomorrow {date_str} at {time_str}. Contact us to cancel/reschedule."
 
             message = self.client.messages.create(
-                body=message_body,
-                from_=self.from_number,
-                to=to_number
+                body=message_body, from_=self.from_number, to=to_number
             )
-
-            print(f"Day-before SMS reminder sent to {to_number} (SID: {message.sid})")
+            print(f"[SMS] Day-before reminder sent to {to_number} (SID: {message.sid})")
             return True
-
-        except TwilioRestException as e:
-            print(f"Failed to send day-before SMS reminder: {e}")
-            return False
         except Exception as e:
-            print(f"Error sending day-before SMS reminder: {e}")
+            print(f"[SMS] Failed to send day-before reminder: {e}")
             return False
 
     def send_confirmation_reply(self, to_number: str, message: str) -> bool:
-        """
-        Send a reply to user's SMS response
-        
-        Args:
-            to_number: Recipient phone number
-            message: Message to send
-            
-        Returns:
-            True if sent successfully, False otherwise
-        """
+        """Send a reply to user's SMS response."""
         if not self.client:
-            print("❌ SMS service not configured")
             return False
         
-        # Normalize phone number to include country code (default: Ireland +353)
         to_number = normalize_phone_number(to_number)
         
         try:
             msg = self.client.messages.create(
-                body=message,
-                from_=self.from_number,
-                to=to_number
+                body=message, from_=self.from_number, to=to_number
             )
-            
-            print(f"✅ SMS reply sent to {to_number}")
+            print(f"[SMS] Reply sent to {to_number}")
             return True
-            
-        except TwilioRestException as e:
-            print(f"❌ Failed to send SMS reply: {e}")
+        except Exception as e:
+            print(f"[SMS] Failed to send reply: {e}")
             return False
 
     def send_booking_confirmation(self, to_number: str, appointment_time: datetime,
@@ -222,117 +144,81 @@ class SMSReminderService:
                                    company_name: str = None,
                                    worker_names: list = None,
                                    address: str = None) -> bool:
-        """
-        Send an SMS confirmation immediately after a booking is created.
-
-        Args:
-            to_number: Recipient phone number
-            appointment_time: Appointment datetime
-            customer_name: Customer's name
-            service_type: Type of service/job
-            company_name: Business name
-            worker_names: List of assigned worker names
-            address: Job address if applicable
-
-        Returns:
-            True if sent successfully, False otherwise
-        """
+        """Send booking confirmation SMS (kept under 160 chars, no emojis)."""
         if not self.client:
-            print("[SMS-CONFIRM] SMS service not configured")
             return False
 
         to_number = normalize_phone_number(to_number)
 
         try:
-            time_str = appointment_time.strftime('%I:%M %p')
-            date_str = appointment_time.strftime('%A, %B %d')
-            business = company_name or 'Your service provider'
+            time_str = appointment_time.strftime('%I:%M%p')
+            date_str = appointment_time.strftime('%b %d')
+            business = company_name or 'Your provider'
 
-            lines = [
-                f"Hi {customer_name}, your {service_type} booking with {business} is confirmed.",
-                f"",
-                f"Date: {date_str}",
-                f"Time: {time_str}",
-            ]
-
+            message_body = f"{business}: {customer_name}, your {service_type} is confirmed for {date_str} at {time_str}."
             if address:
-                lines.append(f"Address: {address}")
-
-            if worker_names:
-                names = ", ".join(worker_names)
-                lines.append(f"Assigned: {names}")
-
-            lines.append("")
-            lines.append("If you need to cancel or reschedule, please contact us.")
-
-            message_body = "\n".join(lines)
+                # Only append address if it fits in 160 chars
+                with_addr = message_body + f" At: {address}"
+                if len(with_addr) <= 160:
+                    message_body = with_addr
 
             message = self.client.messages.create(
-                body=message_body,
-                from_=self.from_number,
-                to=to_number
+                body=message_body, from_=self.from_number, to=to_number
             )
-
-            print(f"[SMS-CONFIRM] Booking confirmation sent to {to_number} (SID: {message.sid})")
+            print(f"[SMS] Booking confirmation sent to {to_number} (SID: {message.sid})")
             return True
-
-        except TwilioRestException as e:
-            print(f"[SMS-CONFIRM] Failed to send booking confirmation: {e}")
-            return False
         except Exception as e:
-            print(f"[SMS-CONFIRM] Error sending booking confirmation: {e}")
+            print(f"[SMS] Failed to send booking confirmation: {e}")
             return False
 
     def send_cancellation_sms(self, to_number: str, customer_name: str,
                               appointment_time: datetime, service_type: str = "appointment",
                               company_name: str = None, is_full_day: bool = False) -> bool:
-        """Send a short SMS confirming a booking has been cancelled."""
+        """Send cancellation SMS (kept under 160 chars, no emojis)."""
         if not self.client:
-            print("[SMS-CANCEL] SMS service not configured")
             return False
 
         to_number = normalize_phone_number(to_number)
         try:
-            date_str = appointment_time.strftime('%A, %B %d')
-            business = company_name or 'Your service provider'
+            date_str = appointment_time.strftime('%b %d')
+            business = company_name or 'Your provider'
 
             if is_full_day:
-                body = f"Hi {customer_name}, your {service_type} with {business} on {date_str} has been cancelled. If you need to rebook, give us a call."
+                body = f"{business}: {customer_name}, your {service_type} on {date_str} has been cancelled. Call us to rebook."
             else:
-                time_str = appointment_time.strftime('%I:%M %p')
-                body = f"Hi {customer_name}, your {service_type} with {business} on {date_str} at {time_str} has been cancelled. If you need to rebook, give us a call."
+                time_str = appointment_time.strftime('%I:%M%p')
+                body = f"{business}: {customer_name}, your {service_type} on {date_str} at {time_str} has been cancelled. Call us to rebook."
 
             message = self.client.messages.create(body=body, from_=self.from_number, to=to_number)
-            print(f"[SMS-CANCEL] Cancellation SMS sent to {to_number} (SID: {message.sid})")
+            print(f"[SMS] Cancellation sent to {to_number} (SID: {message.sid})")
             return True
         except Exception as e:
-            print(f"[SMS-CANCEL] Failed to send cancellation SMS: {e}")
+            print(f"[SMS] Failed to send cancellation: {e}")
             return False
 
     def send_reschedule_sms(self, to_number: str, customer_name: str,
                             new_time: datetime, service_type: str = "appointment",
                             company_name: str = None, is_full_day: bool = False) -> bool:
-        """Send a short SMS confirming a booking has been rescheduled."""
+        """Send reschedule SMS (kept under 160 chars, no emojis)."""
         if not self.client:
-            print("[SMS-RESCHED] SMS service not configured")
             return False
 
         to_number = normalize_phone_number(to_number)
         try:
-            new_date_str = new_time.strftime('%A, %B %d')
-            business = company_name or 'Your service provider'
+            new_date_str = new_time.strftime('%b %d')
+            business = company_name or 'Your provider'
 
             if is_full_day:
-                body = f"Hi {customer_name}, your {service_type} with {business} has been moved to {new_date_str}. See you then!"
+                body = f"{business}: {customer_name}, your {service_type} has been moved to {new_date_str}. See you then!"
             else:
-                new_time_str = new_time.strftime('%I:%M %p')
-                body = f"Hi {customer_name}, your {service_type} with {business} has been moved to {new_date_str} at {new_time_str}. See you then!"
+                new_time_str = new_time.strftime('%I:%M%p')
+                body = f"{business}: {customer_name}, your {service_type} has been moved to {new_date_str} at {new_time_str}. See you then!"
 
             message = self.client.messages.create(body=body, from_=self.from_number, to=to_number)
-            print(f"[SMS-RESCHED] Reschedule SMS sent to {to_number} (SID: {message.sid})")
+            print(f"[SMS] Reschedule sent to {to_number} (SID: {message.sid})")
             return True
         except Exception as e:
-            print(f"[SMS-RESCHED] Failed to send reschedule SMS: {e}")
+            print(f"[SMS] Failed to send reschedule: {e}")
             return False
 
     
@@ -342,120 +228,53 @@ class SMSReminderService:
                     appointment_time: datetime = None, company_name: str = None,
                     bank_details: dict = None, revolut_phone: str = None) -> bool:
         """
-        Send an invoice via SMS with optional Stripe payment link and bank details
-        
-        Args:
-            to_number: Recipient phone number
-            customer_name: Customer's name
-            service_type: Type of service performed
-            charge: Amount to charge
-            invoice_number: Unique invoice number (optional)
-            stripe_payment_link: Stripe payment URL (optional)
-            job_address: Address where service was performed (optional)
-            appointment_time: Appointment datetime for the job (optional)
-            company_name: Business name to show on invoice
-            bank_details: Dict with iban, bic, bank_name, account_holder (optional)
-            revolut_phone: Revolut phone number for payment (optional)
-            
-        Returns:
-            True if sent successfully, False otherwise
+        Send a compact invoice SMS. If a Stripe payment link is provided,
+        the message is kept to essentials + link (aim for 1-2 segments).
+        No emojis to stay in GSM-7 encoding.
         """
         if not self.client:
-            print("❌ SMS service not configured")
             return False
         
-        # Normalize phone number to include country code (default: Ireland +353)
         to_number = normalize_phone_number(to_number)
         
         try:
-            from src.services.settings_manager import get_settings_manager
             from datetime import datetime as dt
             
-            # Get business name from settings if not provided
             business_name = company_name or 'Your Business'
             if not company_name:
                 try:
+                    from src.services.settings_manager import get_settings_manager
                     settings_mgr = get_settings_manager()
                     settings = settings_mgr.get_business_settings()
                     if settings and settings.get('business_name'):
                         business_name = settings['business_name']
-                except Exception as e:
-                    print(f"[WARNING] Could not load business name: {e}")
+                except Exception:
+                    pass
             
-            # Generate invoice number if not provided
             if not invoice_number:
                 invoice_number = f"INV-{dt.now().strftime('%Y%m%d%H%M%S')}"
             
-            # Build the SMS message
-            lines = [
-                f"📄 INVOICE from {business_name}",
-                f"Invoice #: {invoice_number}",
-                f"",
-                f"Hi {customer_name},",
-                f"",
-                f"Service: {service_type}",
-            ]
-            
-            if job_address:
-                lines.append(f"Location: {job_address}")
-            
-            if appointment_time:
-                time_str = appointment_time.strftime('%B %d, %Y')
-                lines.append(f"Date: {time_str}")
-            
-            lines.append(f"")
-            lines.append(f"💰 AMOUNT DUE: EUR {charge:.2f}")
-            
-            # Add Stripe payment link if available
+            # Build compact message — prioritize payment link
             if stripe_payment_link:
-                lines.append(f"")
-                lines.append(f"💳 Pay online:")
-                lines.append(stripe_payment_link)
+                message_body = f"{business_name}: Invoice {invoice_number} for {service_type} - EUR {charge:.2f}. Pay here: {stripe_payment_link}"
+            else:
+                # No payment link — include bank/revolut details compactly
+                parts = [f"{business_name}: Invoice {invoice_number} for {service_type} - EUR {charge:.2f}."]
+                if bank_details and bank_details.get('iban'):
+                    parts.append(f"IBAN: {bank_details['iban']} Ref: {invoice_number}")
+                if revolut_phone:
+                    parts.append(f"Revolut: {revolut_phone}")
+                if not bank_details and not revolut_phone:
+                    parts.append("Payment: cash or card on completion.")
+                message_body = " ".join(parts)
             
-            # Add bank transfer details if available
-            if bank_details and bank_details.get('iban'):
-                lines.append(f"")
-                lines.append(f"🏦 Bank Transfer:")
-                lines.append(f"IBAN: {bank_details['iban']}")
-                if bank_details.get('bic'):
-                    lines.append(f"BIC: {bank_details['bic']}")
-                if bank_details.get('account_holder'):
-                    lines.append(f"Name: {bank_details['account_holder']}")
-                lines.append(f"Ref: {invoice_number}")
-            
-            # Add Revolut details if available
-            if revolut_phone:
-                lines.append(f"")
-                lines.append(f"📱 Revolut: {revolut_phone}")
-                lines.append(f"Ref: {invoice_number}")
-            
-            # If no payment methods configured, add note
-            if not stripe_payment_link and not (bank_details and bank_details.get('iban')) and not revolut_phone:
-                lines.append(f"")
-                lines.append(f"Payment: Cash or card on completion")
-            
-            lines.append(f"")
-            lines.append(f"Thank you for your business!")
-            
-            message_body = "\n".join(lines)
-            
-            # Send SMS
             message = self.client.messages.create(
-                body=message_body,
-                from_=self.from_number,
-                to=to_number
+                body=message_body, from_=self.from_number, to=to_number
             )
-            
-            print(f"✅ Invoice SMS sent to {to_number}")
-            print(f"   Message SID: {message.sid}")
-            print(f"   Invoice #: {invoice_number}")
+            print(f"[SMS] Invoice sent to {to_number} (SID: {message.sid}, Inv: {invoice_number})")
             return True
-            
-        except TwilioRestException as e:
-            print(f"❌ Failed to send invoice SMS: {e}")
-            return False
         except Exception as e:
-            print(f"❌ Error sending invoice SMS: {e}")
+            print(f"[SMS] Failed to send invoice: {e}")
             import traceback
             traceback.print_exc()
             return False
