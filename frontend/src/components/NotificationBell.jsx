@@ -111,15 +111,24 @@ function NotificationBell({ onNavigate }) {
         <div className="notification-dropdown">
           <div className="notification-header">
             <span>Notifications</span>
-            {notifications.length > 0 && (
+            <div className="notification-header-actions">
+              {notifications.length > 0 && (
+                <button 
+                  className="refresh-btn"
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ['notifications'] })}
+                  aria-label="Refresh notifications"
+                >
+                  <i className="fas fa-sync-alt"></i>
+                </button>
+              )}
               <button 
-                className="refresh-btn"
-                onClick={() => queryClient.invalidateQueries({ queryKey: ['notifications'] })}
-                aria-label="Refresh notifications"
+                className="notification-close-btn"
+                onClick={() => setIsOpen(false)}
+                aria-label="Close notifications"
               >
-                <i className="fas fa-sync-alt"></i>
+                <i className="fas fa-times"></i>
               </button>
-            )}
+            </div>
           </div>
           
           <div className="notification-list">

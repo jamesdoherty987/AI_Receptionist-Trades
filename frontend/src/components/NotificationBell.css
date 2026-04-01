@@ -65,6 +65,30 @@
   color: #374151;
 }
 
+.notification-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.notification-close-btn {
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: #9ca3af;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  font-size: 0.95rem;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.notification-close-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
 .refresh-btn {
   background: none;
   border: none;
