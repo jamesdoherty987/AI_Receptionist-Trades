@@ -212,7 +212,7 @@
     right: 12px;
     left: 12px;
     width: auto;
-    max-height: calc(100vh - 80px);
+    max-height: 380px;
     z-index: 1000;
     border-radius: 12px;
     display: flex;
