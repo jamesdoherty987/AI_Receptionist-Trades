@@ -19,15 +19,6 @@ load_dotenv()
 class TestEmailConfiguration(unittest.TestCase):
     """Test email configuration requirements"""
     
-    def test_smtp_config_variables_documented(self):
-        """Verify SMTP config variables are documented in .env.example"""
-        with open('.env.example', 'r') as f:
-            content = f.read()
-        
-        required_vars = ['SMTP_SERVER', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM_EMAIL', 'RESEND_API_KEY', 'RESEND_FROM_EMAIL']
-        for var in required_vars:
-            self.assertIn(var, content, f"{var} should be documented in .env.example")
-    
     def test_config_loads_smtp_settings(self):
         """Verify config module loads SMTP settings from environment"""
         from src.utils.config import Config

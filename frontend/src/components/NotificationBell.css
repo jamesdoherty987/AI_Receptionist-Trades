@@ -12,6 +12,8 @@
   border-radius: 8px;
   transition: all 0.2s ease;
   position: relative;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .notification-bell-btn:hover {
@@ -110,6 +112,8 @@
 
 .notification-item.clickable {
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .notification-item.clickable:hover {
@@ -181,6 +185,20 @@
   .notification-dropdown {
     width: calc(100vw - 32px);
     right: -60px;
+  }
+
+  .notification-bell-btn {
+    padding: 10px 14px;
+    font-size: 1.2rem;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .notification-item {
+    padding: 14px 16px;
   }
 }
 
