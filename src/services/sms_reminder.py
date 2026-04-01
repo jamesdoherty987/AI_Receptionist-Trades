@@ -84,8 +84,12 @@ class SMSReminderService:
         to_number = normalize_phone_number(to_number)
         
         try:
-            time_str = appointment_time.strftime('%b %d %I:%M%p')
-            message_body = f"Reminder: {customer_name}, your {service_type} is tomorrow {time_str}. Reply YES to confirm or CANCEL."
+            time_str = appointment_time.strftime('%b %-d at %-I:%M %p')
+            message_body = (
+                f"Hi {customer_name}, reminder:\n"
+                f"{service_type} - tomorrow {time_str}\n"
+                f"Reply YES to confirm or CANCEL."
+            )
             
             message = self.client.messages.create(
                 body=message_body, from_=self.from_number, to=to_number
@@ -107,11 +111,21 @@ class SMSReminderService:
         to_number = normalize_phone_number(to_number)
 
         try:
-            time_str = appointment_time.strftime('%I:%M%p')
-            date_str = appointment_time.strftime('%b %d')
-            business = company_name or 'Your provider'
+            time_str = appointment_time.strftime('%-I:%M %p')
+            date_str = appointment_time.strftime('%b %-d')
+            business = company_name or 'Your service provider'
 
-            message_body = f"{business}: Hi {customer_name}, reminder - {service_type} tomorrow {date_str} at {time_str}. Contact us to cancel/reschedule."
+            lines = [
+                f"{business}",
+                f"Hi {customer_name}, reminder:",
+                f"{service_type} - {date_str} at {time_str}",
+            ]
+            if worker_names:
+                worker_line = f"Assigned: {', '.join(worker_names)}"
+                if len("\n".join(lines + [worker_line, "To cancel/reschedule, contact us."])) <= 160:
+                    lines.append(worker_line)
+            lines.append("To cancel/reschedule, contact us.")
+            message_body = "\n".join(lines)
 
             message = self.client.messages.create(
                 body=message_body, from_=self.from_number, to=to_number
@@ -151,16 +165,24 @@ class SMSReminderService:
         to_number = normalize_phone_number(to_number)
 
         try:
-            time_str = appointment_time.strftime('%I:%M%p')
-            date_str = appointment_time.strftime('%b %d')
-            business = company_name or 'Your provider'
+            time_str = appointment_time.strftime('%-I:%M %p')
+            date_str = appointment_time.strftime('%b %-d')
+            business = company_name or 'Your service provider'
 
-            message_body = f"{business}: {customer_name}, your {service_type} is confirmed for {date_str} at {time_str}."
+            lines = [
+                f"{business}",
+                f"Hi {customer_name}, confirmed:",
+                f"{service_type} - {date_str} at {time_str}",
+            ]
+            if worker_names:
+                worker_line = f"With: {', '.join(worker_names)}"
+                if len("\n".join(lines + [worker_line])) <= 160:
+                    lines.append(worker_line)
             if address:
-                # Only append address if it fits in 160 chars
-                with_addr = message_body + f" At: {address}"
-                if len(with_addr) <= 160:
-                    message_body = with_addr
+                addr_line = f"At: {address}"
+                if len("\n".join(lines + [addr_line])) <= 160:
+                    lines.append(addr_line)
+            message_body = "\n".join(lines)
 
             message = self.client.messages.create(
                 body=message_body, from_=self.from_number, to=to_number
@@ -180,14 +202,20 @@ class SMSReminderService:
 
         to_number = normalize_phone_number(to_number)
         try:
-            date_str = appointment_time.strftime('%b %d')
-            business = company_name or 'Your provider'
+            date_str = appointment_time.strftime('%b %-d')
+            business = company_name or 'Your service provider'
 
             if is_full_day:
-                body = f"{business}: {customer_name}, your {service_type} on {date_str} has been cancelled. Call us to rebook."
+                when = date_str
             else:
-                time_str = appointment_time.strftime('%I:%M%p')
-                body = f"{business}: {customer_name}, your {service_type} on {date_str} at {time_str} has been cancelled. Call us to rebook."
+                time_str = appointment_time.strftime('%-I:%M %p')
+                when = f"{date_str} at {time_str}"
+
+            body = (
+                f"{business}\n"
+                f"Hi {customer_name}, your {service_type} on {when} has been cancelled.\n"
+                f"Contact us to rebook."
+            )
 
             message = self.client.messages.create(body=body, from_=self.from_number, to=to_number)
             print(f"[SMS] Cancellation sent to {to_number} (SID: {message.sid})")
@@ -205,14 +233,20 @@ class SMSReminderService:
 
         to_number = normalize_phone_number(to_number)
         try:
-            new_date_str = new_time.strftime('%b %d')
-            business = company_name or 'Your provider'
+            new_date_str = new_time.strftime('%b %-d')
+            business = company_name or 'Your service provider'
 
             if is_full_day:
-                body = f"{business}: {customer_name}, your {service_type} has been moved to {new_date_str}. See you then!"
+                when = new_date_str
             else:
-                new_time_str = new_time.strftime('%I:%M%p')
-                body = f"{business}: {customer_name}, your {service_type} has been moved to {new_date_str} at {new_time_str}. See you then!"
+                new_time_str = new_time.strftime('%-I:%M %p')
+                when = f"{new_date_str} at {new_time_str}"
+
+            body = (
+                f"{business}\n"
+                f"Hi {customer_name}, your {service_type} has been moved to {when}.\n"
+                f"See you then!"
+            )
 
             message = self.client.messages.create(body=body, from_=self.from_number, to=to_number)
             print(f"[SMS] Reschedule sent to {to_number} (SID: {message.sid})")
@@ -256,17 +290,35 @@ class SMSReminderService:
             
             # Build compact message — prioritize payment link
             if stripe_payment_link:
-                message_body = f"{business_name}: Invoice {invoice_number} for {service_type} - EUR {charge:.2f}. Pay here: {stripe_payment_link}"
+                message_body = (
+                    f"{business_name}\n"
+                    f"{service_type} - EUR {charge:.2f}\n"
+                    f"Pay here: {stripe_payment_link}"
+                )
+                # If there's room, add the customer greeting
+                with_name = (
+                    f"{business_name}\n"
+                    f"Hi {customer_name}, your invoice:\n"
+                    f"{service_type} - EUR {charge:.2f}\n"
+                    f"Pay here: {stripe_payment_link}"
+                )
+                if len(with_name) <= 160:
+                    message_body = with_name
             else:
                 # No payment link — include bank/revolut details compactly
-                parts = [f"{business_name}: Invoice {invoice_number} for {service_type} - EUR {charge:.2f}."]
+                lines = [
+                    f"{business_name}",
+                    f"Hi {customer_name}, your invoice:",
+                    f"{service_type} - EUR {charge:.2f}",
+                ]
                 if bank_details and bank_details.get('iban'):
-                    parts.append(f"IBAN: {bank_details['iban']} Ref: {invoice_number}")
+                    lines.append(f"IBAN: {bank_details['iban']}")
+                    lines.append(f"Ref: {invoice_number}")
                 if revolut_phone:
-                    parts.append(f"Revolut: {revolut_phone}")
+                    lines.append(f"Revolut: {revolut_phone}")
                 if not bank_details and not revolut_phone:
-                    parts.append("Payment: cash or card on completion.")
-                message_body = " ".join(parts)
+                    lines.append("Pay by cash or card on completion.")
+                message_body = "\n".join(lines)
             
             message = self.client.messages.create(
                 body=message_body, from_=self.from_number, to=to_number

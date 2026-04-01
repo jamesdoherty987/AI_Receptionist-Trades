@@ -166,7 +166,7 @@ class TestSendDayBeforeReminder:
         )
 
         body = svc.client.messages.create.call_args.kwargs["body"]
-        assert "cancel or reschedule" in body.lower()
+        assert "cancel" in body.lower() and "reschedule" in body.lower()
 
 
 # ---------------------------------------------------------------------------
