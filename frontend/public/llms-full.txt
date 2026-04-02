@@ -1,0 +1,101 @@
+# BookedForYou — Complete Product Information
+
+> AI-powered receptionist and business management platform for tradespeople in Ireland.
+
+## What is BookedForYou?
+
+BookedForYou is a SaaS platform that replaces the need for a human receptionist in trade businesses. When a customer calls a tradesperson's business number, the AI receptionist answers the call professionally, understands what the customer needs, checks the tradesperson's calendar for availability, and books the appointment — all without the tradesperson needing to answer the phone.
+
+This solves the #1 problem for tradespeople: missing calls while they're on a job, which means losing potential customers to competitors who answer first.
+
+## How It Works
+
+1. Sign Up: Create an account and set up your business profile in under 5 minutes
+2. Connect Your Phone: Forward your business calls to your new AI receptionist number
+3. Start Growing: The AI handles calls, books jobs, and manages your schedule automatically
+
+## Detailed Feature Breakdown
+
+### AI Receptionist
+- Answers every call professionally, day or night
+- Understands natural conversation — customers don't realize it's AI
+- Captures caller details: name, phone number, address, job description
+- Handles enquiries about services, pricing, and availability
+- Transfers urgent calls or takes messages when needed
+
+### Smart Scheduling
+- Checks real-time calendar availability before booking
+- Prevents double bookings and scheduling conflicts
+- Supports multi-day jobs and different service durations
+- Syncs bidirectionally with Google Calendar
+- Respects worker time off and business hours
+
+### Customer Management
+- Stores all customer details and contact information
+- Tracks complete job history per customer
+- Records customer preferences and notes
+- Searchable customer database
+
+### Worker Management
+- Add team members with individual schedules
+- Assign jobs to specific workers based on skills and availability
+- Workers get their own portal to view their schedule
+- Prevents scheduling conflicts across the team
+- Supports worker time off management
+
+### Materials & Invoicing
+- Track materials used per job with costs
+- Default materials lists per service type
+- Generate and send professional invoices
+- Track payment status
+
+### Financial Tracking
+- Revenue dashboard with charts and trends
+- Track payments received vs outstanding
+- Job-level cost and profit tracking
+- Export financial data
+
+### Communication
+- Automated SMS booking confirmations to customers
+- Day-before appointment reminders via SMS
+- Call logs with AI-generated summaries
+- In-app messaging
+
+## Supported Trades
+
+BookedForYou works for any service-based trade business, including but not limited to:
+- Plumbers
+- Electricians
+- Roofers
+- Carpenters
+- Painters and decorators
+- HVAC technicians
+- Landscapers
+- Tilers
+- Plasterers
+- General contractors
+- Locksmiths
+- Window cleaners
+- Pest control
+- Appliance repair
+
+## Pricing
+
+- Free Trial: 14 days with all features, no credit card required
+- Pro Plan: Custom pricing based on business size and needs
+
+## Company Information
+
+- Name: BookedForYou
+- Website: https://bookedforyou.ie
+- Email: contact@bookedforyou.ie
+- Location: Ireland
+- Founded: 2025
+
+## Links
+
+- Homepage: https://bookedforyou.ie
+- Sign Up: https://bookedforyou.ie/signup
+- Login: https://bookedforyou.ie/login
+- Privacy Policy: https://bookedforyou.ie/privacy
+- Terms of Service: https://bookedforyou.ie/terms

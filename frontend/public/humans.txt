@@ -1,0 +1,9 @@
+/* TEAM */
+Name: BookedForYou
+Site: https://bookedforyou.ie
+Location: Ireland
+
+/* TECHNOLOGY */
+Frontend: React, Vite
+AI: OpenAI, Deepgram
+Hosting: Cloud

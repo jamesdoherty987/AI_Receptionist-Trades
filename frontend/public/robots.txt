@@ -1,0 +1,65 @@
+# BookedForYou — https://bookedforyou.ie
+
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /signup
+Allow: /privacy
+Allow: /terms
+Allow: /llms.txt
+Allow: /llms-full.txt
+
+# Block authenticated/private areas
+Disallow: /dashboard
+Disallow: /settings
+Disallow: /worker-dashboard
+Disallow: /worker/
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /assets/
+
+Crawl-delay: 1
+
+Sitemap: https://bookedforyou.ie/sitemap.xml
+
+# Google
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 0
+
+# Bing
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 1
+
+# AI / LLM Crawlers — welcome
+User-agent: GPTBot
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+Disallow: /dashboard
+Disallow: /settings
+Disallow: /worker/
+
+User-agent: ChatGPT-User
+Allow: /
+Allow: /llms.txt
+Allow: /llms-full.txt
+Disallow: /dashboard
+Disallow: /settings
+Disallow: /worker/
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: CCBot
+Allow: /

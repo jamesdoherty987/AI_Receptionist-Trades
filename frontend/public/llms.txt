@@ -1,0 +1,33 @@
+# BookedForYou
+
+> AI-powered receptionist and business management platform for tradespeople in Ireland.
+
+BookedForYou is a SaaS product that provides an AI receptionist for trade businesses like plumbers, electricians, roofers, carpenters, painters, and HVAC technicians. The AI answers business phone calls 24/7, books appointments automatically by checking calendar availability, and manages customer relationships.
+
+## Core Features
+
+- AI Receptionist: Answers business calls professionally, 24 hours a day, 7 days a week
+- Smart Scheduling: Automatically books appointments and syncs with Google Calendar
+- Customer Management: Tracks clients, job history, and preferences
+- Worker Management: Assigns jobs to team members and prevents scheduling conflicts
+- Materials & Invoicing: Tracks materials, costs, and sends professional invoices
+- Financial Tracking: Monitors revenue, payments, and business performance
+- SMS Notifications: Sends booking confirmations and day-before reminders
+- Call Summaries: AI-generated summaries of every call
+
+## Pricing
+
+- Free Trial: 14 days, all features included, no credit card required
+- Pro Plan: Custom pricing tailored to business size
+
+## Target Audience
+
+Small to medium trade businesses in Ireland who miss calls while on the job and lose potential customers as a result. Typical users are sole traders or small teams of 1-10 workers.
+
+## Links
+
+- Website: https://bookedforyou.ie
+- Sign Up: https://bookedforyou.ie/signup
+- Contact: contact@bookedforyou.ie
+- Privacy Policy: https://bookedforyou.ie/privacy
+- Terms of Service: https://bookedforyou.ie/terms

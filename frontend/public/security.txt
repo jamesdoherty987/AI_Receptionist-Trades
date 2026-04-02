@@ -1,0 +1,6 @@
+# BookedForYou Security Contact
+# https://securitytxt.org/
+
+Contact: mailto:contact@bookedforyou.ie
+Preferred-Languages: en
+Canonical: https://bookedforyou.ie/.well-known/security.txt

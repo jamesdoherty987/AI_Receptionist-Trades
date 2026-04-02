@@ -1,0 +1,21 @@
+{
+  "name": "BookedForYou — AI Receptionist for Tradespeople",
+  "short_name": "BookedForYou",
+  "description": "AI-powered receptionist and business management for tradespeople. Never miss a call again.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0a1a",
+  "theme_color": "#6366f1",
+  "lang": "en-IE",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
