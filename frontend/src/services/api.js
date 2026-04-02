@@ -120,7 +120,12 @@ export const getDeveloperSettings = () => api.get('/api/settings/developer');
 export const updateDeveloperSettings = (data) => api.post('/api/settings/developer', data);
 
 export const getAIReceptionistStatus = () => api.get('/api/ai-receptionist/toggle');
-export const toggleAIReceptionist = (enabled) => api.post('/api/ai-receptionist/toggle', { enabled });
+export const toggleAIReceptionist = (enabled, ai_schedule_override) => {
+  const data = { enabled };
+  if (ai_schedule_override !== undefined) data.ai_schedule_override = ai_schedule_override;
+  return api.post('/api/ai-receptionist/toggle', data);
+};
+export const updateAISchedule = (enabled, ai_schedule) => api.post('/api/ai-receptionist/toggle', { enabled, ai_schedule });
 
 export const getSettingsHistory = () => api.get('/api/settings/history');
 

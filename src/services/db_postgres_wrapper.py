@@ -646,6 +646,8 @@ class PostgreSQLDatabaseWrapper:
             'address': 'TEXT',
             'logo_url': 'TEXT',
             'ai_enabled': 'BOOLEAN DEFAULT true',
+            'ai_schedule': 'TEXT DEFAULT NULL',
+            'ai_schedule_override': 'BOOLEAN DEFAULT false',
             # Setup wizard completion flag — once true, wizard never shows again
             'setup_wizard_complete': 'BOOLEAN DEFAULT false',
         }
@@ -1051,7 +1053,9 @@ class PostgreSQLDatabaseWrapper:
                               'gcal_invite_workers',
                               'bypass_numbers',
                               'setup_wizard_complete',
-                              'has_used_trial']
+                              'has_used_trial',
+                              'ai_schedule',
+                              'ai_schedule_override']
             
             # Get actual columns that exist in the database
             cursor.execute("""

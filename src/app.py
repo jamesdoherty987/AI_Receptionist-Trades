@@ -571,14 +571,65 @@ def twilio_voice():
     # Check if AI receptionist is enabled
     ai_enabled = company.get('ai_enabled', True)
     
+    # Check if AI should be off based on schedule
+    ai_schedule_off = False
+    if ai_enabled:
+        # Check for manual override first
+        ai_override = company.get('ai_schedule_override', False)
+        ai_schedule_raw = company.get('ai_schedule', '')
+        if ai_schedule_raw:
+            try:
+                import json as _json
+                schedule = _json.loads(ai_schedule_raw) if isinstance(ai_schedule_raw, str) else ai_schedule_raw
+                if schedule and schedule.get('enabled') and schedule.get('slots'):
+                    from datetime import datetime as _dt
+                    from dateutil import tz as _tz
+                    tzinfo = _tz.gettz(schedule.get('timezone', 'Europe/Dublin'))
+                    if tzinfo is None:
+                        tzinfo = _tz.gettz('Europe/Dublin')
+                    now = _dt.now(tzinfo)
+                    current_day = now.strftime('%A').lower()
+                    current_minutes = now.hour * 60 + now.minute
+                    
+                    in_schedule = False
+                    for slot in schedule['slots']:
+                        if current_day in [d.lower() for d in slot.get('days', [])]:
+                            start_mins = slot.get('startMinutes', 0)
+                            end_mins = slot.get('endMinutes', 0)
+                            if start_mins <= current_minutes < end_mins:
+                                in_schedule = True
+                                break
+                    
+                    if ai_override and in_schedule:
+                        # We're back in scheduled hours — auto-clear the override
+                        try:
+                            db.update_company(company_id, ai_schedule_override=False)
+                            print(f"[AI-SCHEDULE] Auto-cleared override — back in scheduled hours")
+                        except Exception:
+                            pass
+                    elif ai_override and not in_schedule:
+                        # Override active, outside hours — AI stays on
+                        print(f"[AI-SCHEDULE] Override active — AI stays on outside scheduled hours")
+                    elif not in_schedule:
+                        ai_schedule_off = True
+                        print(f"[AI-SCHEDULE] AI receptionist is outside scheduled hours ({current_day} {now.strftime('%H:%M')})")
+            except Exception as e:
+                print(f"[WARNING] Error checking AI schedule: {e}")
+        elif ai_override:
+            # Override set but no schedule — clear it
+            try:
+                db.update_company(company_id, ai_schedule_override=False)
+            except Exception:
+                pass
+    
     twiml = VoiceResponse()
     
-    if not ai_enabled or bypass_forward:
+    if not ai_enabled or bypass_forward or ai_schedule_off:
         # AI is disabled - forward to business phone number
         business_phone = company.get('phone') if company else None
         
         print("=" * 60)
-        print(f"📞 Incoming Twilio Call - {'BYPASS NUMBER' if bypass_forward else 'AI DISABLED'}")
+        print(f"📞 Incoming Twilio Call - {'BYPASS NUMBER' if bypass_forward else 'SCHEDULED OFF' if ai_schedule_off else 'AI DISABLED'}")
         print(f"[PHONE] Caller: {caller_phone}")
         print(f"[PHONE] Forwarding to business phone: {business_phone or 'No phone number set!'}")
         print("=" * 60)
@@ -3885,6 +3936,8 @@ def business_settings_api():
             'gcal_invite_workers': company.get('gcal_invite_workers', False) if company.get('gcal_invite_workers') is not None else False,
             # Bypass numbers - always forward to fallback
             'bypass_numbers': company.get('bypass_numbers', '[]'),
+            # AI receptionist schedule (auto off times)
+            'ai_schedule': company.get('ai_schedule', ''),
             # Setup wizard permanently dismissed
             'setup_wizard_complete': bool(company.get('setup_wizard_complete', False)),
         }
@@ -3946,6 +3999,7 @@ def business_settings_api():
             'send_reminder_sms': 'send_reminder_sms',
             'gcal_invite_workers': 'gcal_invite_workers',
             'bypass_numbers': 'bypass_numbers',
+            'ai_schedule': 'ai_schedule',
             'setup_wizard_complete': 'setup_wizard_complete',
         }
         
@@ -4014,15 +4068,20 @@ def ai_receptionist_toggle_api():
         
         enabled = company.get('ai_enabled', True)
         business_phone = company.get('phone')
+        ai_schedule = company.get('ai_schedule', '')
+        ai_schedule_override = company.get('ai_schedule_override', False)
         
         return jsonify({
             "enabled": bool(enabled) if isinstance(enabled, int) else enabled,
-            "business_phone": business_phone
+            "business_phone": business_phone,
+            "ai_schedule": ai_schedule,
+            "ai_schedule_override": bool(ai_schedule_override) if ai_schedule_override is not None else False
         })
     
     elif request.method == "POST":
         data = request.json
         enabled = data.get("enabled", True)
+        ai_schedule = data.get("ai_schedule", None)
         
         print(f"[AI-TOGGLE] Received request to set ai_enabled={enabled} for company {company_id}")
         
@@ -4044,9 +4103,36 @@ def ai_receptionist_toggle_api():
                     "error": "Cannot disable AI receptionist without a business phone number configured. Please add your business phone in settings first."
                 }), 400
         
+        # Validation: Cannot set a schedule without a business phone (calls need somewhere to go)
+        if ai_schedule:
+            try:
+                import json as _json
+                sched = _json.loads(ai_schedule) if isinstance(ai_schedule, str) else ai_schedule
+                if sched and sched.get('enabled') and sched.get('slots'):
+                    business_phone = company.get('phone')
+                    if not business_phone or business_phone.strip() == '':
+                        return jsonify({
+                            "error": "Cannot set an AI schedule without a business phone number configured. Calls need a fallback number outside scheduled hours."
+                        }), 400
+            except Exception:
+                pass  # Invalid JSON will just be stored as-is (harmless)
+        
+        # Build update kwargs
+        update_kwargs = {'ai_enabled': enabled}
+        if ai_schedule is not None:
+            update_kwargs['ai_schedule'] = ai_schedule
+        # Clear override when toggling off, or when saving a new schedule
+        if not enabled:
+            update_kwargs['ai_schedule_override'] = False
+        if ai_schedule is not None:
+            update_kwargs['ai_schedule_override'] = False
+        # Check if caller explicitly set override
+        if data.get('ai_schedule_override') is not None:
+            update_kwargs['ai_schedule_override'] = data.get('ai_schedule_override')
+        
         # Update AI status in companies table (use boolean for PostgreSQL)
         try:
-            success = db.update_company(company_id, ai_enabled=enabled)
+            success = db.update_company(company_id, **update_kwargs)
             print(f"[AI-TOGGLE] Update result: success={success}")
             
             if success:

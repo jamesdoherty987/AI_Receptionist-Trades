@@ -668,7 +668,7 @@ ALLOWED_BOOKING_FIELDS = frozenset([
 
 ALLOWED_COMPANY_FIELDS = frozenset([
     'company_name', 'owner_name', 'phone', 'trade_type', 'address',
-    'logo_url', 'business_hours', 'ai_enabled'
+    'logo_url', 'business_hours', 'ai_enabled', 'ai_schedule', 'ai_schedule_override'
 ])
 
 ALLOWED_WORKER_FIELDS = frozenset([

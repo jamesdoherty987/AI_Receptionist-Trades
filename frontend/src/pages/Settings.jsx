@@ -14,6 +14,7 @@ import {
   updateBusinessSettings,
   getAIReceptionistStatus,
   toggleAIReceptionist,
+  updateAISchedule,
   syncSubscription,
   deleteAccount,
   getGoogleCalendarStatus,
@@ -51,6 +52,17 @@ function Settings() {
   const [editBypassPhone, setEditBypassPhone] = useState('');
   // Flag to hide Stripe Connect component
   const hideStripeConnect = REMOVE_STRIPE_CONNECT;
+  // AI schedule state
+  const [showScheduleEditor, setShowScheduleEditor] = useState(false);
+  const [aiSchedule, setAiSchedule] = useState({ enabled: false, slots: [], timezone: 'Europe/Dublin' });
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  // Per-day schedule config: { monday: { enabled: true, startHour: '9', startPeriod: 'AM', endHour: '5', endPeriod: 'PM' }, ... }
+  const [daySchedules, setDaySchedules] = useState(() => {
+    const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+    const init = {};
+    days.forEach(d => { init[d] = { enabled: false, startHour: '9', startPeriod: 'AM', endHour: '5', endPeriod: 'PM' }; });
+    return init;
+  });
   
   // Handle subscription redirect messages and tab param
   useEffect(() => {
@@ -337,7 +349,7 @@ function Settings() {
   });
 
   const toggleMutation = useMutation({
-    mutationFn: (enabled) => toggleAIReceptionist(enabled),
+    mutationFn: ({ enabled, override }) => toggleAIReceptionist(enabled, override),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['ai-status'] });
       const status = response.data?.enabled ? 'enabled' : 'disabled';
@@ -448,9 +460,236 @@ function Settings() {
   };
 
   const handleToggleAI = () => {
-    const newStatus = !aiStatus?.enabled;
-    toggleMutation.mutate(newStatus);
+    if (!aiEffectivelyOn) {
+      // Turning ON
+      const needsOverride = hasSchedule && aiManuallyEnabled && !isWithinSchedule;
+      toggleMutation.mutate({ enabled: true, override: needsOverride });
+    } else {
+      // Turning OFF — also clear any override
+      toggleMutation.mutate({ enabled: false, override: false });
+    }
   };
+
+  // Parse AI schedule from server
+  useEffect(() => {
+    if (aiStatus?.ai_schedule) {
+      try {
+        const parsed = typeof aiStatus.ai_schedule === 'string' 
+          ? JSON.parse(aiStatus.ai_schedule) 
+          : aiStatus.ai_schedule;
+        if (parsed && typeof parsed === 'object') {
+          setAiSchedule(parsed);
+          // Convert slots to per-day config
+          if (parsed.slots?.length) {
+            setDaySchedules(prev => {
+              const updated = { ...prev };
+              Object.keys(updated).forEach(d => { updated[d] = { ...updated[d], enabled: false }; });
+              parsed.slots.forEach(slot => {
+                const start = minutesToTime(slot.startMinutes);
+                const end = minutesToTime(slot.endMinutes);
+                (slot.days || []).forEach(day => {
+                  const key = day.toLowerCase();
+                  if (updated[key]) {
+                    updated[key] = { enabled: true, startHour: start.hour, startPeriod: start.period, endHour: end.hour, endPeriod: end.period };
+                  }
+                });
+              });
+              return updated;
+            });
+          } else {
+            // Schedule object exists but no slots — reset
+            setDaySchedules(prev => {
+              const updated = { ...prev };
+              Object.keys(updated).forEach(d => { updated[d] = { ...updated[d], enabled: false }; });
+              return updated;
+            });
+          }
+        }
+      } catch { /* ignore parse errors */ }
+    } else if (aiStatus && !aiStatus.ai_schedule) {
+      // Schedule was cleared on server — reset local state
+      setAiSchedule({ enabled: false, slots: [], timezone: 'Europe/Dublin' });
+      setDaySchedules(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(d => { updated[d] = { ...updated[d], enabled: false }; });
+        return updated;
+      });
+    }
+  }, [aiStatus]);
+
+  const timeToMinutes = (hour, period) => {
+    let h = parseInt(hour);
+    if (period === 'PM' && h !== 12) h += 12;
+    if (period === 'AM' && h === 12) h = 0;
+    return h * 60;
+  };
+
+  const minutesToTime = (mins) => {
+    let h = Math.floor(mins / 60);
+    const period = h >= 12 ? 'PM' : 'AM';
+    if (h > 12) h -= 12;
+    if (h === 0) h = 12;
+    return { hour: String(h), period };
+  };
+
+  const handleDayScheduleToggle = (day) => {
+    setDaySchedules(prev => ({
+      ...prev,
+      [day]: { ...prev[day], enabled: !prev[day].enabled }
+    }));
+  };
+
+  const handleDayTimeChange = (day, field, value) => {
+    setDaySchedules(prev => ({
+      ...prev,
+      [day]: { ...prev[day], [field]: value }
+    }));
+  };
+
+  // Build slots from per-day config (groups days with same times)
+  const buildSlotsFromDaySchedules = () => {
+    const dayOrder = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+    const enabledDays = dayOrder.filter(d => daySchedules[d].enabled);
+    if (enabledDays.length === 0) return [];
+    
+    // Group by time
+    const groups = {};
+    enabledDays.forEach(d => {
+      const cfg = daySchedules[d];
+      const key = `${cfg.startHour}-${cfg.startPeriod}-${cfg.endHour}-${cfg.endPeriod}`;
+      if (!groups[key]) groups[key] = { days: [], cfg };
+      groups[key].days.push(d);
+    });
+    
+    return Object.values(groups).map(g => ({
+      days: g.days,
+      startMinutes: timeToMinutes(g.cfg.startHour, g.cfg.startPeriod),
+      endMinutes: timeToMinutes(g.cfg.endHour, g.cfg.endPeriod),
+    }));
+  };
+
+  const handleSaveSchedule = async () => {
+    // Validate all enabled days have valid times
+    const dayOrder = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+    const enabledDays = dayOrder.filter(d => daySchedules[d].enabled);
+    
+    for (const d of enabledDays) {
+      const cfg = daySchedules[d];
+      const startMins = timeToMinutes(cfg.startHour, cfg.startPeriod);
+      const endMins = timeToMinutes(cfg.endHour, cfg.endPeriod);
+      if (endMins <= startMins) {
+        const dayLabel = d.charAt(0).toUpperCase() + d.slice(1);
+        setSaveMessage(`${dayLabel}: end time must be after start time`);
+        setTimeout(() => setSaveMessage(''), 4000);
+        return;
+      }
+    }
+    
+    setScheduleSaving(true);
+    try {
+      const slots = buildSlotsFromDaySchedules();
+      const scheduleObj = { enabled: slots.length > 0, slots, timezone: 'Europe/Dublin' };
+      const scheduleData = slots.length > 0 ? JSON.stringify(scheduleObj) : '';
+      // Always enable AI when saving a schedule — the schedule controls on/off from here
+      await updateAISchedule(true, scheduleData);
+      setAiSchedule(scheduleObj);
+      queryClient.invalidateQueries({ queryKey: ['ai-status'] });
+      setSaveMessage('AI schedule saved!');
+      setTimeout(() => setSaveMessage(''), 3000);
+      setShowScheduleEditor(false);
+    } catch (error) {
+      const errorMsg = error?.response?.data?.error || 'Failed to save AI schedule';
+      setSaveMessage(errorMsg);
+      setTimeout(() => setSaveMessage(''), 5000);
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const handleClearSchedule = async () => {
+    setScheduleSaving(true);
+    try {
+      // Clear schedule and enable AI — back to always-on default
+      await updateAISchedule(true, '');
+      setAiSchedule({ enabled: false, slots: [], timezone: 'Europe/Dublin' });
+      setDaySchedules(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(d => { updated[d] = { ...updated[d], enabled: false }; });
+        return updated;
+      });
+      queryClient.invalidateQueries({ queryKey: ['ai-status'] });
+      setSaveMessage('Schedule cleared — AI is now always on');
+      setTimeout(() => setSaveMessage(''), 3000);
+      setShowScheduleEditor(false);
+    } catch (error) {
+      setSaveMessage('Failed to clear schedule');
+      setTimeout(() => setSaveMessage(''), 5000);
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const formatScheduleSummary = (schedule) => {
+    if (!schedule?.slots?.length) return null;
+    
+    const dayOrder = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const dayAbbrev = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' };
+    
+    return schedule.slots.map(slot => {
+      const sortedDays = [...slot.days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+      const start = minutesToTime(slot.startMinutes);
+      const end = minutesToTime(slot.endMinutes);
+      const timeStr = `${start.hour} ${start.period} – ${end.hour} ${end.period}`;
+      
+      const allWeekdays = ['monday','tuesday','wednesday','thursday','friday'];
+      const allWeekend = ['saturday','sunday'];
+      const allDays = [...allWeekdays, ...allWeekend];
+      
+      const isWeekdays = allWeekdays.every(d => sortedDays.includes(d)) && sortedDays.length === 5;
+      const isWeekend = allWeekend.every(d => sortedDays.includes(d)) && sortedDays.length === 2;
+      const isDaily = allDays.every(d => sortedDays.includes(d));
+      
+      const formatDayRange = (days) => {
+        if (isDaily) return 'Daily';
+        if (isWeekdays) return 'Weekdays';
+        if (isWeekend) return 'Weekends';
+        
+        const indices = days.map(d => dayOrder.indexOf(d)).sort((a, b) => a - b);
+        const isConsecutive = indices.every((val, i) => i === 0 || val === indices[i - 1] + 1);
+        
+        if (isConsecutive && days.length >= 2) {
+          return `${dayAbbrev[days[0]]}–${dayAbbrev[days[days.length - 1]]}`;
+        }
+        return days.map(d => dayAbbrev[d]).join(', ');
+      };
+      
+      return `${formatDayRange(sortedDays)} ${timeStr}`;
+    });
+  };
+
+  // Check if we're currently within the schedule (for display purposes)
+  const hasSchedule = aiSchedule.slots.length > 0 && aiSchedule.enabled;
+  const isWithinSchedule = (() => {
+    if (!hasSchedule) return true; // No schedule = always on
+    const now = new Date();
+    const dayNames = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+    const currentDay = dayNames[now.getDay()];
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    
+    for (const slot of aiSchedule.slots) {
+      if (slot.days.map(d => d.toLowerCase()).includes(currentDay)) {
+        if (slot.startMinutes <= currentMinutes && currentMinutes < slot.endMinutes) {
+          return true;
+        }
+      }
+    }
+    return false;
+  })();
+
+  // Determine the effective AI state for display
+  const aiManuallyEnabled = aiStatus?.enabled || false;
+  const aiOverrideActive = aiStatus?.ai_schedule_override || false;
+  const aiEffectivelyOn = aiManuallyEnabled && (!hasSchedule || isWithinSchedule || aiOverrideActive);
 
   const handlePhoneConfigSuccess = (phoneNumber) => {
     // Refresh settings to show the new phone number
@@ -683,30 +922,230 @@ function Settings() {
                       AI Receptionist
                     </h3>
                     <p>
-                      {aiStatus?.enabled 
-                        ? 'AI is currently handling your calls' 
-                        : 'Calls are being forwarded to your fallback number'}
+                      {!aiManuallyEnabled && hasSchedule && isWithinSchedule
+                        ? 'Manually turned off — schedule paused'
+                        : !aiManuallyEnabled && !hasSchedule
+                          ? 'Calls are being forwarded to your fallback number'
+                          : hasSchedule && !isWithinSchedule && !aiOverrideActive
+                            ? 'Currently off — outside scheduled hours'
+                            : hasSchedule && !isWithinSchedule && aiOverrideActive
+                              ? 'AI is on — manually overriding schedule'
+                              : 'AI is currently handling your calls'}
                     </p>
                   </div>
                   <label className="toggle-switch">
                     <input
                       type="checkbox"
-                      checked={aiStatus?.enabled || false}
+                      checked={aiEffectivelyOn}
                       onChange={handleToggleAI}
-                      disabled={toggleMutation.isPending}
+                      disabled={toggleMutation.isPending || scheduleSaving}
                     />
                     <span className="toggle-slider"></span>
                   </label>
                 </div>
                 <div className="toggle-status">
-                  <span className={`status-badge ${aiStatus?.enabled ? 'active' : 'inactive'}`}>
-                    {aiStatus?.enabled ? 'Active' : 'Inactive'}
+                  <span className={`status-badge ${aiEffectivelyOn ? (aiOverrideActive && hasSchedule && !isWithinSchedule ? 'override' : 'active') : hasSchedule && !isWithinSchedule ? 'scheduled' : 'inactive'}`}>
+                    {aiEffectivelyOn ? (aiOverrideActive && hasSchedule && !isWithinSchedule ? 'Override' : 'Active') : hasSchedule && !isWithinSchedule ? 'Scheduled' : 'Inactive'}
                   </span>
+                  {hasSchedule && aiManuallyEnabled && !isWithinSchedule && !aiOverrideActive && (
+                    <span className="schedule-status-hint">
+                      <i className="far fa-clock"></i>
+                      Outside scheduled hours
+                    </span>
+                  )}
+                  {hasSchedule && !isWithinSchedule && aiOverrideActive && (
+                    <span className="schedule-status-hint override">
+                      <i className="fas fa-hand-paper"></i>
+                      Manually overriding schedule
+                    </span>
+                  )}
+                  {hasSchedule && !aiManuallyEnabled && isWithinSchedule && (
+                    <span className="schedule-status-hint override">
+                      <i className="fas fa-hand-paper"></i>
+                      Manually turned off — schedule paused
+                    </span>
+                  )}
+                  {hasSchedule && !aiManuallyEnabled && !isWithinSchedule && (
+                    <span className="schedule-status-hint">
+                      <i className="far fa-clock"></i>
+                      Outside scheduled hours
+                    </span>
+                  )}
                   {aiStatus?.business_phone && (
                     <span className="fallback-info">
                       <i className="fas fa-phone"></i>
                       Fallback: {aiStatus.business_phone}
                     </span>
+                  )}
+                </div>
+
+                {/* AI Schedule */}
+                <div className="ai-schedule-section">
+                  {hasSchedule && !showScheduleEditor ? (
+                    <div className="ai-schedule-summary">
+                      <div className="ai-schedule-summary-left">
+                        <i className="far fa-clock"></i>
+                        <div className="ai-schedule-summary-text">
+                          <span className="ai-schedule-label">Active hours</span>
+                          <span className="ai-schedule-times">
+                            {formatScheduleSummary(aiSchedule)?.join(' · ')}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="ai-schedule-summary-actions">
+                        <button 
+                          type="button" 
+                          className="ai-schedule-edit-btn"
+                          onClick={() => setShowScheduleEditor(true)}
+                        >
+                          <i className="fas fa-pen"></i>
+                          Edit
+                        </button>
+                        <button 
+                          type="button" 
+                          className="ai-schedule-reset-btn-sm"
+                          onClick={handleClearSchedule}
+                          disabled={scheduleSaving}
+                          title="Reset to Default (Always On)"
+                        >
+                          <i className="fas fa-undo"></i>
+                        </button>
+                      </div>
+                    </div>
+                  ) : !showScheduleEditor ? (
+                    <button 
+                      type="button" 
+                      className="ai-schedule-set-btn"
+                      onClick={() => setShowScheduleEditor(true)}
+                    >
+                      <i className="far fa-clock"></i>
+                      Set Schedule
+                    </button>
+                  ) : null}
+
+                  {showScheduleEditor && (
+                    <div className="ai-schedule-editor">
+                      <div className="ai-schedule-editor-header">
+                        <div>
+                          <span>Active hours</span>
+                          <small>Set when the AI receptionist answers calls. Outside these hours, calls go to your phone.</small>
+                        </div>
+                      </div>
+
+                      <div className="ai-schedule-day-list">
+                        {[
+                          { key: 'monday', label: 'Monday' },
+                          { key: 'tuesday', label: 'Tuesday' },
+                          { key: 'wednesday', label: 'Wednesday' },
+                          { key: 'thursday', label: 'Thursday' },
+                          { key: 'friday', label: 'Friday' },
+                          { key: 'saturday', label: 'Saturday' },
+                          { key: 'sunday', label: 'Sunday' }
+                        ].map((day, idx) => (
+                          <div key={day.key} className={`ai-schedule-day-row ${daySchedules[day.key].enabled ? 'active' : ''}`}>
+                            <label className="ai-schedule-day-toggle">
+                              <input
+                                type="checkbox"
+                                checked={daySchedules[day.key].enabled}
+                                onChange={() => handleDayScheduleToggle(day.key)}
+                              />
+                              <span className="ai-schedule-day-name">{day.label}</span>
+                            </label>
+                            {daySchedules[day.key].enabled && (
+                              <div className="ai-schedule-day-times">
+                                <select value={daySchedules[day.key].startHour} onChange={e => handleDayTimeChange(day.key, 'startHour', e.target.value)}>
+                                  {[...Array(12)].map((_, i) => (
+                                    <option key={i+1} value={String(i+1)}>{i+1}</option>
+                                  ))}
+                                </select>
+                                <select value={daySchedules[day.key].startPeriod} onChange={e => handleDayTimeChange(day.key, 'startPeriod', e.target.value)}>
+                                  <option value="AM">AM</option>
+                                  <option value="PM">PM</option>
+                                </select>
+                                <span className="ai-schedule-time-sep">–</span>
+                                <select value={daySchedules[day.key].endHour} onChange={e => handleDayTimeChange(day.key, 'endHour', e.target.value)}>
+                                  {[...Array(12)].map((_, i) => (
+                                    <option key={i+1} value={String(i+1)}>{i+1}</option>
+                                  ))}
+                                </select>
+                                <select value={daySchedules[day.key].endPeriod} onChange={e => handleDayTimeChange(day.key, 'endPeriod', e.target.value)}>
+                                  <option value="AM">AM</option>
+                                  <option value="PM">PM</option>
+                                </select>
+                              </div>
+                            )}
+                            {!daySchedules[day.key].enabled && (
+                              <span className="ai-schedule-day-off">Off</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="ai-schedule-editor-actions">
+                        {hasSchedule && (
+                          <button 
+                            type="button" 
+                            className="ai-schedule-reset-btn"
+                            onClick={handleClearSchedule}
+                            disabled={scheduleSaving}
+                          >
+                            <i className="fas fa-undo"></i>
+                            Reset to Default (Always On)
+                          </button>
+                        )}
+                        <div className="ai-schedule-editor-actions-right">
+                          <button 
+                            type="button" 
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              // Reset to server state
+                              if (aiStatus?.ai_schedule) {
+                                try {
+                                  const parsed = typeof aiStatus.ai_schedule === 'string' ? JSON.parse(aiStatus.ai_schedule) : aiStatus.ai_schedule;
+                                  const sched = parsed || { enabled: false, slots: [], timezone: 'Europe/Dublin' };
+                                  setAiSchedule(sched);
+                                  setDaySchedules(prev => {
+                                    const updated = { ...prev };
+                                    Object.keys(updated).forEach(d => { updated[d] = { ...updated[d], enabled: false }; });
+                                    if (sched.slots?.length) {
+                                      sched.slots.forEach(slot => {
+                                        const start = minutesToTime(slot.startMinutes);
+                                        const end = minutesToTime(slot.endMinutes);
+                                        (slot.days || []).forEach(day => {
+                                          const k = day.toLowerCase();
+                                          if (updated[k]) updated[k] = { enabled: true, startHour: start.hour, startPeriod: start.period, endHour: end.hour, endPeriod: end.period };
+                                        });
+                                      });
+                                    }
+                                    return updated;
+                                  });
+                                } catch {
+                                  setAiSchedule({ enabled: false, slots: [], timezone: 'Europe/Dublin' });
+                                }
+                              } else {
+                                setAiSchedule({ enabled: false, slots: [], timezone: 'Europe/Dublin' });
+                                setDaySchedules(prev => {
+                                  const updated = { ...prev };
+                                  Object.keys(updated).forEach(d => { updated[d] = { ...updated[d], enabled: false }; });
+                                  return updated;
+                                });
+                              }
+                              setShowScheduleEditor(false);
+                            }}
+                          >
+                            Cancel
+                          </button>
+                          <button 
+                            type="button" 
+                            className="btn btn-primary btn-sm"
+                            onClick={handleSaveSchedule}
+                            disabled={scheduleSaving}
+                          >
+                            {scheduleSaving ? 'Saving...' : 'Save Schedule'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
