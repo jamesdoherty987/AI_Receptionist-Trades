@@ -15,7 +15,7 @@ function PrivacyPolicy() {
 
       <div className="privacy-container">
         <h1>Privacy Policy</h1>
-        <p className="privacy-updated">Last updated: March 25, 2026</p>
+        <p className="privacy-updated">Last updated: April 2, 2026</p>
 
         <section className="privacy-section">
           <h2>1. Introduction</h2>
@@ -81,42 +81,70 @@ function PrivacyPolicy() {
           </ul>
 
           <h3>3.2 How We Use Google Data</h3>
-          <p>We use your Google Calendar data solely to:</p>
+          <p>
+            We use your Google Calendar data exclusively to provide the calendar 
+            synchronization feature within BookedForYou. Specifically, we use it to:
+          </p>
           <ul>
             <li>Display your existing calendar events within the BookedForYou scheduling interface</li>
             <li>Create new calendar events when bookings are made through our AI receptionist</li>
             <li>Update or cancel calendar events when bookings are modified or cancelled</li>
             <li>Check availability to prevent double-bookings</li>
           </ul>
+          <p>
+            Google user data is not used for any other purpose.
+          </p>
 
           <h3>3.3 How We Store Google Data</h3>
           <p>
-            Google Calendar data is cached temporarily in our secure database to provide 
-            the scheduling functionality. We store OAuth refresh tokens securely to maintain 
-            your calendar connection. Calendar event data is synced in real-time and is not 
-            retained beyond what is necessary to provide the Service.
+            We store your Google OAuth refresh token in our encrypted database solely to 
+            maintain your calendar connection. Calendar event data (titles, times, descriptions) 
+            is stored in our database only as needed to display your schedule and prevent 
+            booking conflicts. No Google user data is stored beyond what is required to 
+            provide the calendar synchronization feature.
           </p>
 
           <h3>3.4 How We Share Google Data</h3>
           <p>
-            We do not sell, share, or transfer your Google user data to any third parties, 
-            except as necessary to provide the Service (e.g., creating calendar events on 
-            your behalf). We do not use Google user data for advertising purposes.
+            We do not share, sell, or transfer your Google user data to any third parties 
+            for any reason. Google user data is only transmitted back to Google via the 
+            Google Calendar API to create, update, or delete calendar events on your behalf. 
+            No human at BookedForYou accesses your Google user data except for responding 
+            to your direct support requests, with your permission.
           </p>
 
-          <h3>3.5 Revoking Access</h3>
+          <h3>3.5 Prohibited Uses of Google Data</h3>
+          <p>
+            BookedForYou does not use Google user data for any purpose other than providing 
+            the user-facing calendar synchronization feature described above. We do not use 
+            Google user data for:
+          </p>
+          <ul>
+            <li>Advertising of any kind, including targeted, personalized, retargeted, or interest-based advertising</li>
+            <li>Selling or providing data to third parties, data brokers, or information resellers</li>
+            <li>Determining credit-worthiness or for lending purposes</li>
+            <li>Training artificial intelligence or machine learning models of any kind</li>
+            <li>Building or augmenting user profiles, contact databases, or any dataset unrelated to the calendar synchronization feature</li>
+            <li>Any purpose other than providing the calendar synchronization feature to you</li>
+          </ul>
+
+          <h3>3.6 Revoking Access</h3>
           <p>
             You can disconnect your Google Calendar at any time from your BookedForYou 
             settings page. You can also revoke access directly from your{' '}
             <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">
               Google Account permissions page
-            </a>. Upon revocation, we will delete your stored Google OAuth tokens.
+            </a>. When you disconnect or revoke access, we immediately delete your stored 
+            Google OAuth tokens and cease all access to your Google Calendar data.
           </p>
         </section>
 
         <section className="privacy-section">
           <h2>4. How We Use Your Information</h2>
-          <p>We use the information we collect to:</p>
+          <p>
+            We use the information we collect (other than Google user data, which is 
+            governed exclusively by Section 3 above) to:
+          </p>
           <ul>
             <li>Provide, operate, and maintain the Service</li>
             <li>Process your transactions and manage your subscription</li>
@@ -125,20 +153,24 @@ function PrivacyPolicy() {
             <li>Send you SMS reminders and notifications related to bookings</li>
             <li>Send you service-related communications (e.g., account verification, billing)</li>
             <li>Respond to your support requests</li>
-            <li>Improve and develop new features for the Service</li>
             <li>Detect, prevent, and address technical issues or abuse</li>
           </ul>
         </section>
 
         <section className="privacy-section">
           <h2>5. Data Sharing and Disclosure</h2>
-          <p>We do not sell your personal information. We may share your information with:</p>
+          <p>We do not sell your personal information. We may share information (excluding Google user data) with:</p>
           <ul>
-            <li>Service providers: third-party companies that help us operate the Service (e.g., hosting, payment processing, telephony, AI/ML providers). These providers are contractually obligated to protect your data.</li>
+            <li>Service providers: third-party companies that help us operate the Service (e.g., hosting, payment processing, telephony). These providers are contractually obligated to protect your data.</li>
             <li>Legal requirements: if required by law, regulation, or legal process</li>
             <li>Business transfers: in connection with a merger, acquisition, or sale of assets, with notice to you</li>
             <li>With your consent: when you explicitly authorize us to share information</li>
           </ul>
+          <p>
+            Google user data is never shared with any third party for any reason. It is 
+            only transmitted back to Google via the Google Calendar API to provide the 
+            calendar synchronization feature. See Section 3 for full details.
+          </p>
         </section>
 
         <section className="privacy-section">
