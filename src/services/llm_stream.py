@@ -1251,19 +1251,6 @@ TOOL RULES:
                 print(f"[LLM_DEBUG] ❌ OpenAI API failed after {(api_done - api_start)*1000:.0f}ms: {e}")
                 raise
         
-        # Heartbeat to show we're still waiting
-        heartbeat_stop = threading.Event()
-        def heartbeat():
-            count = 0
-            while not heartbeat_stop.is_set():
-                heartbeat_stop.wait(3.0)  # Wait 3 seconds
-                if not heartbeat_stop.is_set():
-                    count += 1
-                    print(f"   💓 [HEARTBEAT] Still waiting for OpenAI... ({count * 3}s)")
-        
-        heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
-        heartbeat_thread.start()
-        
         # CRITICAL FIX: Use asyncio.to_thread to avoid blocking the event loop
         # The old code used future.result() which blocks synchronously
         try:
@@ -1271,9 +1258,7 @@ TOOL RULES:
                 asyncio.to_thread(create_stream),
                 timeout=8.0
             )
-            heartbeat_stop.set()
         except asyncio.TimeoutError:
-            heartbeat_stop.set()
             print(f"❌ [LLM_ERROR] OpenAI stream creation timed out after 8s!")
             print(f"[LLM_ERROR] Message roles: {[m.get('role') for m in final_messages]}")
             # Log the actual messages for debugging
