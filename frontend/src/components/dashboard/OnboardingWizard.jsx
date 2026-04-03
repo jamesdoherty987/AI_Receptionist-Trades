@@ -460,12 +460,12 @@ function OnboardingWizard({ onComplete }) {
                 ) : (
                   <>
                     <p className="subscription-cta-text">
-                      {subscriptionData?.has_used_trial
+                      {subscriptionData?.has_used_trial !== false
                         ? 'Subscribe to unlock all features.'
                         : 'Start with a free 14-day trial or subscribe to unlock all features.'}
                     </p>
                     <div className="step-actions subscription-actions-col">
-                      {!subscriptionData?.has_used_trial && (
+                      {subscriptionData?.has_used_trial === false && (
                         <button
                           className="btn btn-success"
                           onClick={() => trialMutation.mutate()}
