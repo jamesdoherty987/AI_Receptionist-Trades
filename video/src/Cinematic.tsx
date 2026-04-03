@@ -903,11 +903,10 @@ const StatsExplosionScene: React.FC = () => {
   const { fps } = useVideoConfig();
   const stats = [
     { value: "24/7", sub: "Always On", icon: "🕐", color: C.cyan },
-    { value: "€99/mo", sub: "Not €2,500+", icon: "💰", color: C.gold },
+    { value: "5min", sub: "Setup Time", icon: "⚡", color: C.gold },
     { value: "∞", sub: "Concurrent Calls", icon: "📞", color: C.purple },
     { value: "0", sub: "Missed Calls", icon: "🎯", color: C.pink },
   ];
-  const centerScale = spring({ frame: frame - 50, fps, config: { damping: 8, mass: 0.3, stiffness: 200 } });
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
       <OrbBlobs colors={[C.purpleGlow, C.cyanGlow, C.pinkGlow, "rgba(255,214,10,0.2)"]} speed={1.5} />
@@ -936,24 +935,12 @@ const StatsExplosionScene: React.FC = () => {
             );
           })}
         </div>
-        {/* vs badge below */}
-        <div style={{ marginTop: 30, transform: `scale(${centerScale})` }}>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 14,
-            background: C.card, border: `1px solid ${C.cardBorder}`,
-            borderRadius: 16, padding: "12px 28px",
-          }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: "50%",
-              background: `linear-gradient(135deg, ${C.purple}, ${C.cyan})`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: `0 0 20px ${C.purpleGlow}`,
-            }}>
-              <span style={{ fontSize: 18, fontWeight: 900, color: C.white }}>vs</span>
-            </div>
-            <span style={{ fontSize: 18, color: C.gray }}>A real receptionist costs <span style={{ color: "#ff6b6b", fontWeight: 800 }}>€2,500+/mo</span></span>
-          </div>
-        </div>
+        {/* Tagline below */}
+        <Pop delay={50} direction="up">
+          <p style={{ fontSize: 22, color: C.gray, marginTop: 30, fontWeight: 600 }}>
+            Everything you need. Nothing you don't.
+          </p>
+        </Pop>
       </div>
     </AbsoluteFill>
   );

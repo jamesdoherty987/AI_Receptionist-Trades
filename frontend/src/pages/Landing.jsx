@@ -1256,6 +1256,12 @@ function Landing() {
               <div className="footer-column"><h4>Legal</h4><Link to="/privacy" onClick={() => window.scrollTo(0, 0)}>Privacy Policy</Link><Link to="/terms" onClick={() => window.scrollTo(0, 0)}>Terms of Service</Link><Link to="/privacy" onClick={() => window.scrollTo(0, 0)}>Cookie Policy</Link></div>
             </div>
           </div>
+          <div className="footer-ai-transparency" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '20px 0 0', marginTop: 24, textAlign: 'center' }}>
+            <p style={{ fontSize: 13, color: '#94a3b8', margin: 0, lineHeight: 1.6 }}>
+              <i className="fas fa-robot" style={{ marginRight: 6, opacity: 0.7 }}></i>
+              <strong style={{ color: '#cbd5e1' }}>AI Transparency:</strong> BookedForYou uses <a href="https://openai.com" target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9', textDecoration: 'none' }}>OpenAI GPT</a> to power our AI receptionist conversations, <a href="https://deepgram.com" target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9', textDecoration: 'none' }}>Deepgram</a> for speech recognition and text-to-speech, and <a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer" style={{ color: '#0ea5e9', textDecoration: 'none' }}>Google Calendar</a> for scheduling integration.
+            </p>
+          </div>
           <div className="footer-bottom"><p>&copy; 2026 BookedForYou. All rights reserved.</p></div>
         </div>
       </footer>
