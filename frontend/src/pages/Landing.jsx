@@ -1248,7 +1248,7 @@ function Landing() {
             <div className="footer-brand">
               <div className="footer-logo"><i className="fas fa-bolt"></i><span>BookedForYou</span></div>
               <p>AI-powered receptionist and business management for tradespeople.</p>
-              <div className="social-links"><a href="https://www.linkedin.com/company/bookedforyou" target="_blank" rel="noopener noreferrer"><i className="fab fa-linkedin"></i></a><a href="#"><i className="fab fa-facebook"></i></a></div>
+              <div className="social-links"><a href="https://www.linkedin.com/company/bookedforyou" target="_blank" rel="noopener noreferrer"><i className="fab fa-linkedin"></i></a><a href="#"><i className="fab fa-instagram"></i></a></div>
             </div>
             <div className="footer-links">
               <div className="footer-column"><h4>Product</h4><a href="#features">Features</a>{showPricing && <a href="#pricing">Pricing</a>}{showReviews && <a href="#testimonials">Testimonials</a>}</div>
