@@ -61,18 +61,32 @@ function Dashboard() {
 
   // Sync backend setup_wizard_complete flag → localStorage so wizard stays dismissed across devices
   // Also auto-dismiss for legacy accounts that have used a trial but never had setup_wizard_complete set
+  // Note: We track whether subscription data was already present on first load to avoid
+  // falsely treating a fresh trial-start (during the wizard) as a legacy account.
+  const [initialSubLoaded, setInitialSubLoaded] = useState(false);
+  const [wasLegacyTrial, setWasLegacyTrial] = useState(false);
+
+  useEffect(() => {
+    if (subscriptionData && !initialSubLoaded) {
+      setInitialSubLoaded(true);
+      if (subscriptionData.has_used_trial) {
+        setWasLegacyTrial(true);
+      }
+    }
+  }, [subscriptionData, initialSubLoaded]);
+
   useEffect(() => {
     if (onboardingDismissed) return;
     if (settings?.setup_wizard_complete) {
       localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
       setOnboardingDismissed(true);
-    } else if (subscriptionData?.has_used_trial && settings && !settings.setup_wizard_complete) {
-      // Legacy account: used a trial before setup_wizard_complete existed — backfill the flag
+    } else if (wasLegacyTrial && settings && !settings.setup_wizard_complete) {
+      // Legacy account: had a trial before setup_wizard_complete existed — backfill the flag
       localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
       setOnboardingDismissed(true);
       updateBusinessSettings({ setup_wizard_complete: true }).catch(() => {});
     }
-  }, [settings, subscriptionData, userKey, onboardingDismissed]);
+  }, [settings, wasLegacyTrial, userKey, onboardingDismissed]);
 
   // Scroll to top when dashboard loads
   useEffect(() => {
@@ -168,6 +182,8 @@ function Dashboard() {
     if (tabs.length === 0) return;
     const label = tabs[activeTab]?.label;
     if (label === 'Services') localStorage.setItem(`services_setup_visited_${userKey}`, 'true');
+    if (label === 'Workers') localStorage.setItem(`workers_setup_visited_${userKey}`, 'true');
+    if (label === 'Materials') localStorage.setItem(`materials_setup_visited_${userKey}`, 'true');
   }, [activeTab, tabs, userKey]);
 
   // Map notification types to tab labels for navigation
