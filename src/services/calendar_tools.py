@@ -5687,7 +5687,18 @@ Return ONLY valid JSON, no explanation."""
                             except Exception as audio_err:
                                 logger.warning(f"[BOOK_JOB] ⚠️ Could not save address audio URL: {audio_err}")
                         else:
-                            logger.info(f"[BOOK_JOB] 🎙️ No address audio URL available (upload may still be in progress)")
+                            # No audio captured this call — returning customer who didn't
+                            # need to say their address again.  Carry over the recording
+                            # from their most recent previous booking so the job card
+                            # still has the audio playback button.
+                            logger.info(f"[BOOK_JOB] 🎙️ No address audio URL available — checking previous bookings for client {client_id}")
+                            try:
+                                prev = db.get_client_last_booking_with_address(client_id)
+                                if prev and prev.get('address_audio_url'):
+                                    db.update_booking(booking_id, address_audio_url=prev['address_audio_url'])
+                                    logger.info(f"[BOOK_JOB] 🎙️ Carried over address audio from previous booking: {prev['address_audio_url']}")
+                            except Exception as prev_err:
+                                logger.warning(f"[BOOK_JOB] ⚠️ Could not carry over previous address audio: {prev_err}")
                     
                     # Auto-attach default materials from matched service/package
                     try:

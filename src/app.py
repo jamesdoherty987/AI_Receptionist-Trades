@@ -5422,21 +5422,24 @@ def bookings_api():
             job_property_type = job_property_type if job_property_type else None
             
             # If address not provided, try to get from client's previous bookings
-            if not job_address or not job_eircode or not job_property_type:
-                previous_booking = db.get_client_last_booking_with_address(client_id)
+            previous_address_audio_url = None
+            previous_booking = db.get_client_last_booking_with_address(client_id)
+            if previous_booking:
+                if not job_address and previous_booking['address']:
+                    job_address = previous_booking['address']
+                    print(f"[INFO] Using address from previous booking: {job_address}")
                 
-                if previous_booking:
-                    if not job_address and previous_booking['address']:
-                        job_address = previous_booking['address']
-                        print(f"[INFO] Using address from previous booking: {job_address}")
-                    
-                    if not job_eircode and previous_booking['eircode']:
-                        job_eircode = previous_booking['eircode']
-                        print(f"[INFO] Using eircode from previous booking: {job_eircode}")
-                    
-                    if not job_property_type and previous_booking.get('property_type'):
-                        job_property_type = previous_booking['property_type']
-                        print(f"[INFO] Using property type from previous booking: {job_property_type}")
+                if not job_eircode and previous_booking['eircode']:
+                    job_eircode = previous_booking['eircode']
+                    print(f"[INFO] Using eircode from previous booking: {job_eircode}")
+                
+                if not job_property_type and previous_booking.get('property_type'):
+                    job_property_type = previous_booking['property_type']
+                    print(f"[INFO] Using property type from previous booking: {job_property_type}")
+                
+                if previous_booking.get('address_audio_url'):
+                    previous_address_audio_url = previous_booking['address_audio_url']
+                    print(f"[INFO] Will carry over address audio from previous booking: {previous_address_audio_url}")
             
             # Create booking - accept both 'charge' and 'estimated_charge' from frontend
             # Sanitize charge value
@@ -5488,6 +5491,14 @@ def bookings_api():
                     note=data['notes'],
                     created_by="user"
                 )
+            
+            # Carry over address audio recording from previous booking for returning customers
+            if previous_address_audio_url and booking_id:
+                try:
+                    db.update_booking(booking_id, address_audio_url=previous_address_audio_url)
+                    print(f"[INFO] Address audio URL carried over to booking {booking_id}: {previous_address_audio_url}")
+                except Exception as e:
+                    print(f"[WARNING] Could not carry over address audio URL: {e}")
             
             # Assign worker(s) — reuse the worker_ids parsed earlier for conflict checking
             assigned_worker_ids_for_notif = []

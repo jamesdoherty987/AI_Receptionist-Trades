@@ -1340,7 +1340,8 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
     
     def get_client_last_booking_with_address(self, client_id: int) -> Optional[Dict]:
-        """Get most recent booking for client that has address/eircode/property_type"""
+        """Get most recent booking for client that has address/eircode/property_type.
+        Also returns address_audio_url if one exists (may come from a different booking)."""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
@@ -1355,13 +1356,34 @@ class PostgreSQLDatabaseWrapper:
             """, (client_id,))
             
             row = cursor.fetchone()
-            if row:
-                return {
-                    'address': row['address'],
-                    'eircode': row['eircode'],
-                    'property_type': row['property_type']
-                }
-            return None
+            if not row:
+                return None
+            
+            result = {
+                'address': row['address'],
+                'eircode': row['eircode'],
+                'property_type': row['property_type'],
+                'address_audio_url': None
+            }
+            
+            # Address audio may have been captured on a different call than the
+            # most recent address booking.  Fetch the latest non-null audio URL
+            # across ALL of this client's bookings so returning customers always
+            # have their recording attached.
+            cursor.execute("""
+                SELECT address_audio_url
+                FROM bookings
+                WHERE client_id = %s
+                AND address_audio_url IS NOT NULL
+                ORDER BY appointment_time DESC
+                LIMIT 1
+            """, (client_id,))
+            audio_row = cursor.fetchone()
+            if audio_row:
+                result['address_audio_url'] = audio_row['address_audio_url']
+                print(f"[DB] Found previous address audio for client {client_id}: {audio_row['address_audio_url']}")
+            
+            return result
         finally:
             cursor.close()
             self.return_connection(conn)
