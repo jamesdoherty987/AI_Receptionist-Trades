@@ -386,7 +386,7 @@ function OnboardingWizard({ onComplete }) {
     if (stepId === 'service-area') return !!(settings?.business_address && settings?.coverage_area && settings?.business_hours) || completedSteps.includes('service-area');
     if (stepId === 'company-details') return !!settings?.company_context || completedSteps.includes('company-details');
     if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder) || isPaymentSkipped() || completedSteps.includes('payment');
-    if (stepId === 'services') return servicesData === undefined || (servicesData?.services || []).length > 0 || localStorage.getItem(`services_setup_visited_${userKey}`) === 'true';
+    if (stepId === 'services') return localStorage.getItem(`services_setup_visited_${userKey}`) === 'true' || completedSteps.includes('services');
     if (stepId === 'workers') return workersData === undefined || (Array.isArray(workersData) ? workersData : []).length > 0 || localStorage.getItem(`workers_setup_visited_${userKey}`) === 'true';
     if (stepId === 'materials') return materialsData === undefined || (materialsData?.materials || []).length > 0 || localStorage.getItem(`materials_setup_visited_${userKey}`) === 'true' || completedSteps.includes('materials');
     return completedSteps.includes(stepId);

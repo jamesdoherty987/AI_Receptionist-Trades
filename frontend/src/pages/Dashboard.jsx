@@ -95,6 +95,13 @@ function Dashboard() {
   // Controlled tab state for notification navigation
   const [activeTab, setActiveTab] = useState(0);
 
+  // Mark onboarding steps as visited when user navigates to the corresponding tab
+  useEffect(() => {
+    if (tabs.length === 0) return;
+    const label = tabs[activeTab]?.label;
+    if (label === 'Services') localStorage.setItem(`services_setup_visited_${userKey}`, 'true');
+  }, [activeTab, tabs, userKey]);
+
   const tabs = useMemo(() => [
     // Day-to-day
     {
