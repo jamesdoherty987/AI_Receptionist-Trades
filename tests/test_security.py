@@ -74,11 +74,14 @@ class TestPasswordHashing:
 class TestInputSanitization:
     """Test input sanitization functions"""
     
-    def test_sanitize_string_html(self):
-        """Should escape HTML characters"""
+    def test_sanitize_string_strips_html_tags(self):
+        """Should strip HTML tags without entity-encoding"""
         result = sanitize_string("<script>alert('xss')</script>")
         assert "<script>" not in result
-        assert "&lt;script&gt;" in result
+        assert "alert('xss')" in result
+        # Apostrophes and other normal chars should NOT be entity-encoded
+        assert "&#x27;" not in sanitize_string("Smith's Plumbing")
+        assert sanitize_string("Smith's Plumbing") == "Smith's Plumbing"
     
     def test_sanitize_string_max_length(self):
         """Should truncate to max length"""

@@ -273,14 +273,11 @@ def sanitize_string(value: str, max_length: int = 1000,
     value = value[:max_length]
     
     if not allow_html:
-        # Escape HTML special characters
-        value = (value
-            .replace('&', '&amp;')
-            .replace('<', '&lt;')
-            .replace('>', '&gt;')
-            .replace('"', '&quot;')
-            .replace("'", '&#x27;')
-        )
+        # Strip HTML tags but don't entity-encode characters.
+        # Entity encoding causes double-escaping when React (or any
+        # template engine) renders the stored value.
+        import re
+        value = re.sub(r'<[^>]*>', '', value)
     
     # Remove null bytes and other dangerous characters
     value = value.replace('\x00', '')

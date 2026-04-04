@@ -1,0 +1,864 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{needspace}
+
+% Code listing style — numbers outside the frame with xleftmargin
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  frame=single,
+  language=Python,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=8pt,
+  xleftmargin=15pt,
+  framexleftmargin=15pt,
+  keywordstyle=\color{blue},
+  commentstyle=\color{green!50!black},
+  stringstyle=\color{red!60!black},
+  showstringspaces=false,
+  tabsize=2,
+  captionpos=b
+}
+
+\begin{document}
+
+\title{BookedForYou: An AI-Powered Receptionist and Business Management Platform for Trade Service Enterprises}
+
+\author{\IEEEauthorblockN{James Doherty}
+\IEEEauthorblockA{\textit{Department of Computer Science} \\
+\textit{University of Limerick}\\
+Limerick, Ireland \\
+23374039@studentmail.ul.ie}
+\and
+\IEEEauthorblockN{Supervisor: Dr.\ Mark Burkley}
+\IEEEauthorblockA{\textit{Department of Computer Science} \\
+\textit{University of Limerick}\\
+Limerick, Ireland \\
+mark.burkley@ul.ie}}
+
+\maketitle
+
+\begin{abstract}
+This paper presents the design, development, and evaluation of BookedForYou, a full-stack AI-powered receptionist and business management platform purpose-built for small and medium-sized trade service enterprises. The system addresses a critical operational gap in the trades sector, specifically the inability of small businesses to consistently capture and convert inbound phone enquiries into booked jobs. It achieves this by deploying a real-time conversational AI agent capable of answering phone calls, booking appointments, managing schedules, and integrating with existing business workflows. The project follows a two-phase methodology: an initial rapid prototype constructed using no-code platforms (Retell AI, Make.com, Cal.com) to validate market demand, followed by a complete ground-up rebuild using custom APIs and open-source frameworks to achieve production-grade reliability, lower operational costs, and full data ownership. The final platform integrates OpenAI GPT-4o-mini for natural language understanding, Deepgram for automatic speech recognition, ElevenLabs for text-to-speech synthesis, Twilio for telephony, Google Calendar and an internal database for scheduling, Stripe for subscription billing, and Cloudflare R2 for object storage, all served through a Python Flask/Starlette backend and a React 18 frontend. Extensive real-world testing with tradespeople in Ireland informed iterative design decisions, particularly around call latency optimisation, Irish address transcription accuracy, and regulatory compliance with Ireland's telecommunications laws. The system is deployed in production and serves active customers at \url{https://bookedforyou.ie}.
+\end{abstract}
+
+\begin{IEEEkeywords}
+conversational AI, voice AI, automatic speech recognition, trade services, business management, large language models, real-time systems
+\end{IEEEkeywords}
+
+
+\section{Introduction}
+
+\subsection{Problem Identification}
+
+Small and medium-sized enterprises (SMEs) in the trades sector (plumbing, electrical, heating, and general construction) face a persistent operational challenge: the inability to consistently answer inbound phone calls during working hours. Research by BIA/Kelsey \cite{b12} found that 62\% of calls to small service businesses go unanswered during business hours, while a study by Invoca \cite{b14} found that 75\% of consumers consider phone calls the quickest way to get a response from a company. For a sole trader or small team actively engaged in on-site work, answering every call is physically impractical. The result is a measurable loss of revenue: missed calls translate directly into lost jobs.
+
+Traditional solutions such as hiring a receptionist, using answering services, or relying on voicemail each present significant drawbacks for SMEs. A full-time receptionist represents a fixed cost of approximately \texteuro{}28,000 to \texteuro{}35,000 annually in Ireland \cite{b5}, which is prohibitive for businesses with fewer than five employees. Third-party answering services, while cheaper, lack the contextual knowledge to book appointments, check availability, or answer business-specific questions. Voicemail, meanwhile, has a notoriously low callback rate; industry research consistently indicates that fewer than 20\% of callers leave a voicemail when a business does not answer \cite{b13}, meaning the vast majority of missed calls result in permanently lost leads.
+
+The convergence of advances in large language models (LLMs), real-time automatic speech recognition (ASR), and neural text-to-speech (TTS) has created a technological window in which a fully autonomous AI receptionist is feasible. This project investigates whether such a system can be built, deployed, and commercially validated for the Irish trades market. The resulting platform, BookedForYou, is deployed in production at \url{https://bookedforyou.ie}.
+
+\subsection{Objectives}
+
+The objectives of this project are as follows:
+
+\begin{enumerate}
+\item To design and implement a no-code prototype AI receptionist using existing platforms (Retell AI, Make.com, Cal.com) to validate market demand and identify functional requirements through real customer interactions.
+\item To develop a production-grade, custom-coded AI receptionist and business management platform from scratch, achieving superior performance, lower cost, and full data ownership compared to the prototype.
+\item To optimise real-time voice conversation latency to achieve natural, human-like call quality, targeting sub-second response times.
+\item To evaluate the system through real-world deployment with Irish trade businesses, gathering qualitative and quantitative feedback.
+\item To address regulatory, privacy, and compliance requirements specific to the Irish market, including GDPR, telecommunications regulations, and Google API verification.
+\end{enumerate}
+
+\subsection{Expected Impact}
+
+The expected impact of this project is threefold. Commercially, the platform aims to eliminate missed calls for trade businesses, directly increasing job conversion rates and revenue. Technically, the project contributes a documented architecture for building low-latency, multi-turn voice AI systems using commodity cloud APIs. Academically, the project provides a comparative analysis of no-code versus custom-coded approaches to AI product development, contributing to the growing body of literature on low-code/no-code (LCNC) platform evaluation \cite{b2}.
+
+
+\section{Background and Literature Review}
+
+\subsection{Conversational AI in Service Industries}
+
+The application of conversational AI to front-office automation has accelerated significantly since the introduction of transformer-based language models. Devlin et al.\ \cite{b7} demonstrated with BERT that pre-trained language models could achieve state-of-the-art performance on a wide range of natural language understanding tasks, while Brown et al.\ \cite{b3} showed with GPT-3 that sufficiently large models exhibit emergent few-shot learning capabilities suitable for open-domain dialogue. More recently, OpenAI's GPT-4 family \cite{b16} has demonstrated the ability to follow complex multi-step instructions, use external tools via function calling, and maintain coherent multi-turn conversations, capabilities essential for an autonomous receptionist.
+
+In the speech domain, Baevski et al.\ \cite{b1} introduced wav2vec 2.0, a self-supervised framework for learning speech representations that significantly reduced the data requirements for ASR training. Commercial ASR providers such as Deepgram have built on these advances to offer real-time streaming transcription with word error rates below 10\% for English conversational speech \cite{b6}. On the synthesis side, neural TTS systems such as ElevenLabs' Turbo v2.5 model can generate natural-sounding speech with latencies under 300 milliseconds \cite{b9}, making real-time voice conversation feasible.
+
+\subsection{AI Adoption in SMEs}
+
+The adoption of AI technologies by SMEs remains uneven. A European Commission report \cite{b10} found that while 42\% of enterprises in the EU had adopted at least one AI technology, adoption among SMEs was significantly lower, with cost, technical complexity, and lack of in-house expertise cited as the primary barriers. This aligns with findings by Huang and Rust \cite{b11}, who proposed a strategic framework for AI in marketing that distinguishes between mechanical AI (repetitive tasks), thinking AI (pattern recognition), and feeling AI (emotional intelligence). An AI receptionist for trades businesses falls primarily into the mechanical and thinking categories, automating the repetitive task of call answering while requiring pattern recognition to understand diverse customer requests and match them to appropriate services.
+
+Car et al.\ \cite{b4} conducted a scoping review of conversational agents in healthcare and found that well-designed agents could improve access to services and reduce administrative burden, but emphasised the importance of reliable back-end integrations and clear conversation design. These findings are directly transferable to the trades context, where the AI must not only converse naturally but also execute complex back-end operations such as checking calendar availability, matching services, and creating bookings in real time.
+
+\subsection{No-Code/Low-Code Platforms}
+
+The no-code/low-code (NCLC) movement has significantly lowered the barrier to building software products. Gartner \cite{b17} forecast that the worldwide low-code development technologies market would grow 20\% in 2023, reaching \$26.9 billion. Bock and Frank \cite{b2} provided a conceptual analysis of low-code platforms, identifying key benefits (rapid prototyping, accessibility for non-developers) alongside risks (vendor lock-in, limited customisation, scalability constraints). Ries \cite{b18} advocated for the Lean Startup methodology of building a minimum viable product (MVP) to validate assumptions before committing to full development, a philosophy that directly informed the two-phase approach adopted in this project.
+
+The literature converges on a pragmatic conclusion: NCLC platforms excel at early-stage validation and rapid iteration, but production systems requiring fine-grained control over performance, security, and data governance ultimately demand custom engineering \cite{b15, b8}. This project provides empirical evidence for this position through a direct comparison of both approaches applied to the same product.
+
+\subsection{Real-Time Voice AI Architecture}
+
+Building a real-time voice AI system requires orchestrating multiple services with strict latency constraints. The critical path in a voice conversation is: user speech, then ASR transcription, then LLM inference, then TTS synthesis, then audio playback. Each stage introduces latency, and the cumulative delay determines whether the conversation feels natural or robotic. Research on turn-taking in spoken dialogue systems indicates that the modal gap between conversational turns in human dialogue is approximately 200 milliseconds, and that response delays exceeding approximately one second are generally perceived as unnatural by users \cite{b19, b20}.
+
+Twilio's Media Streams API \cite{b21} provides the telephony infrastructure for real-time voice applications, streaming 8kHz $\mu$-law encoded audio over WebSocket connections. This enables developers to intercept and process call audio in real time without the latency overhead of traditional IVR systems. The combination of Twilio Media Streams with streaming ASR (Deepgram) and streaming TTS (ElevenLabs or Deepgram Aura) creates a pipeline where each component can begin processing before the previous component has finished, significantly reducing end-to-end latency.
+
+
+\section{Methodology}
+
+\subsection{Overview}
+
+The project follows a two-phase iterative methodology grounded in Lean Startup principles \cite{b18} and agile development practices. Phase~1 involved rapid prototyping using no-code tools to validate the core value proposition with real customers. Phase~2 involved a complete ground-up rebuild using custom code, informed by the lessons learned and requirements gathered during Phase~1. Throughout both phases, real-world feedback was gathered through meetings with tradespeople in the Limerick and Munster regions of Ireland.
+
+\subsection{Phase 1: No-Code Prototype}
+
+The initial prototype was constructed using three primary platforms:
+
+\begin{itemize}
+\item \textbf{Retell AI}: Managed natural voice interaction, conversation logic, and dialogue flow. Retell AI provides a hosted voice agent platform with built-in ASR and TTS capabilities.
+\item \textbf{Cal.com}: Provided calendar integration and appointment scheduling via its REST API. Cal.com is an open-source scheduling platform that supports availability checking and booking creation.
+\item \textbf{Make.com}: Automated workflows for rescheduling, cancellation, and data synchronisation between Retell AI and Cal.com. Make.com (formerly Integromat) is a visual workflow automation platform.
+\end{itemize}
+
+The prototype was initially built using Autocalls AI, which was quickly abandoned due to limited rescheduling functionality and lower call quality despite a monthly subscription cost of \texteuro{}34. The switch to Retell AI provided improved flexibility and a pay-as-you-go pricing model more suitable for the experimental phase.
+
+The AI receptionist's behaviour was governed by a custom prompt defining tone, constraints, and operational rules. The prompt integrated timezone handling (Europe/Dublin), input normalisation for Irish phone numbers (+353 prefix), and standardised booking payloads for Cal.com's API. Rescheduling and cancellation workflows were implemented using Make.com webhooks, as these operations were not natively supported within Retell AI's built-in function framework.
+
+\subsubsection{Customer Discovery}
+
+During the prototype phase, cold outreach was conducted to potential customers in the physiotherapy and wellness sectors. Multiple video calls were held with business owners to demonstrate the prototype and gather feedback. Key issues identified during these meetings included:
+
+\begin{itemize}
+\item \textbf{Lack of personalisation}: The no-code platform could not be deeply customised to reflect each business's unique services, pricing, and terminology.
+\item \textbf{Integration limitations}: Connecting the AI to a comprehensive business management application was not feasible within the no-code framework.
+\item \textbf{Cost at scale}: Pay-as-you-go pricing for Retell AI, combined with Make.com and Cal.com subscriptions, projected to approximately \texteuro{}50 to \texteuro{}60 per month per customer at moderate call volumes, a price point that, while lower than a full receptionist, still constrained margins at the target subscription price.
+\item \textbf{Reliability concerns}: Occasional API failures from third-party services affected call reliability, and debugging was difficult within the visual workflow environment.
+\item \textbf{Data ownership}: Customer data was distributed across three separate platforms, each with its own data retention and privacy policies, creating GDPR compliance challenges.
+\end{itemize}
+
+These findings validated the core value proposition (businesses wanted an AI receptionist) while simultaneously demonstrating that a custom-coded solution was necessary for commercial viability.
+
+\subsection{Phase 2: Custom-Coded Platform}
+
+\subsubsection{Technology Stack}
+
+The production platform was built from scratch using the following technology stack:
+
+\textbf{Backend (Python):}
+\begin{itemize}
+\item Flask 3.0: HTTP API server with 100+ REST endpoints for dashboard operations, authentication, settings management, and webhook handling
+\item Starlette/Uvicorn: ASGI server wrapping Flask via WSGIMiddleware, enabling both HTTP and WebSocket protocols on a single port for production deployment on platforms such as Render
+\item PostgreSQL: Relational database with connection pooling (psycopg2 ThreadedConnectionPool) for multi-tenant data isolation
+\item OpenAI GPT-4o-mini: Large language model for real-time conversation, function calling, call summarisation, date parsing, and service matching
+\item Deepgram Nova-2: Real-time streaming ASR with voice activity detection (VAD), utterance end detection, and speech\_final signalling
+\item ElevenLabs Turbo v2.5: Neural TTS with streaming WebSocket output in $\mu$-law 8kHz format, with Deepgram Aura as a configurable alternative
+\item Twilio: Programmable Voice for inbound/outbound calls via Media Streams WebSocket, and Programmable Messaging for SMS reminders, booking confirmations, and invoice delivery
+\item Stripe: Subscription billing (\texteuro{}99/month with 14-day free trial), Checkout Sessions, Customer Portal, and webhook-driven lifecycle management
+\item Google Calendar API: OAuth 2.0 per-company calendar integration with bidirectional sync (create, update, delete events)
+\item Cloudflare R2: S3-compatible object storage for job photos, worker images, company logos, and pre-recorded filler audio files
+\item Resend: Transactional email API for invoice delivery and appointment reminders
+\item bcrypt: Password hashing with cost factor 12, with PBKDF2-SHA256 fallback
+\end{itemize}
+
+\textbf{Frontend (JavaScript/React):}
+\begin{itemize}
+\item React 18 with Vite build tooling
+\item TanStack Query (React Query) v5 for server state management and caching
+\item React Router v6 for client-side routing
+\item Recharts for data visualisation in the Finances and Insights tabs
+\item Axios for HTTP client communication
+\item date-fns for date manipulation
+\item react-parallax-tilt for landing page visual effects
+\item Lottie React for animated illustrations
+\end{itemize}
+
+\textbf{Video Generation:}
+\begin{itemize}
+\item Remotion: React-based programmatic video generation framework used to create a cinematic marketing video for the landing page, featuring animated scenes showcasing AI phone conversations, calendar scheduling, customer management, finances, and worker management
+\end{itemize}
+
+\subsubsection{System Architecture}
+
+The production system employs a combined HTTP + WebSocket architecture served through a single Starlette ASGI application. This design was necessitated by hosting constraints on Render, which exposes only a single port per service. The \texttt{server.py} module mounts Flask as a WSGI sub-application via Starlette's WSGIMiddleware, while a dedicated WebSocket route at \texttt{/media} handles Twilio Media Stream connections. This architecture enables the system to serve both the REST API (for the dashboard) and real-time voice streams (for phone calls) from a single deployment.
+
+The real-time voice pipeline operates as follows:
+
+\begin{enumerate}
+\item An inbound call arrives at the Twilio phone number. Twilio's webhook triggers the \texttt{/voice} endpoint, which returns TwiML instructing Twilio to open a Media Stream WebSocket connection to the server's \texttt{/media} endpoint.
+\item The \texttt{media\_handler.py} module accepts the WebSocket connection and initialises per-call state via the \texttt{CallState} dataclass (see Appendix~A, Snippet~4), ensuring complete isolation between concurrent calls.
+\item Inbound audio (8kHz $\mu$-law) is forwarded to Deepgram's streaming ASR via a separate WebSocket connection. Deepgram returns interim and final transcriptions with \texttt{speech\_final} and \texttt{UtteranceEnd} signals.
+\item A three-layer end-of-speech detection system determines when the caller has finished speaking: (a) Deepgram's \texttt{speech\_final} signal based on VAD silence detection ($\sim$1.2 seconds), (b) Deepgram's \texttt{UtteranceEnd} signal based on word-timing gap detection, and (c) a 5-second fallback timer as a safety net.
+\item The finalised transcription is passed to the LLM (GPT-4o-mini) via OpenAI's streaming API with function calling enabled. The LLM's system prompt is dynamically generated per-company, incorporating the business's name, services, pricing, hours, coverage area, and custom context.
+\item If the LLM invokes a tool (e.g., \texttt{get\_next\_available}, \texttt{book\_job}, \texttt{match\_issue}, \texttt{lookup\_customer}), a pre-recorded filler audio phrase (e.g., ``One moment,'' ``Let me check that for you'') is immediately played to the caller while the tool executes in the background (see Appendix~A, Snippet~2). These filler phrases are pre-generated using the same ElevenLabs voice as the live TTS, stored in Cloudflare R2, and cached in memory at server startup for zero-latency playback. This technique eliminates the perceived delay during tool execution, which can take 500 to 2000 milliseconds depending on the operation.
+\item The LLM's streamed text response is forwarded token-by-token to the TTS engine (ElevenLabs or Deepgram Aura) via a streaming WebSocket connection (see Appendix~A, Snippet~7). The TTS engine returns audio chunks as they are generated, which are immediately forwarded to Twilio for playback. This streaming architecture means the caller begins hearing the response before the LLM has finished generating it, achieving first-audio latencies as low as 400 to 600 milliseconds from the end of the caller's speech.
+\item Barge-in detection monitors inbound audio energy levels during TTS playback. If the caller interrupts (energy exceeding a configurable threshold of 2800), TTS playback is immediately halted and the system returns to listening mode. A 1.5-second no-barge-in window after TTS begins prevents false interruptions from audio echo.
+\end{enumerate}
+
+
+\subsubsection{Latency Optimisation Strategies}
+
+Achieving natural conversation quality required extensive latency optimisation across every component of the pipeline. The following strategies were implemented:
+
+\textbf{OpenAI Connection Warmup and Keepalive:} Cold starts on the OpenAI API can add 1 to 3 seconds to the first request. The server performs a warmup request at startup that includes the full tool definitions (matching the actual call path), and a background keepalive task pings OpenAI every 60 seconds with a streaming request including tools to prevent the connection from going cold. This reduces first-call latency from approximately 2.5 seconds to under 800 milliseconds.
+
+\textbf{Pre-recorded Filler Audio:} A library of 35+ contextually appropriate filler phrases is pre-generated using ElevenLabs and stored in Cloudflare R2. At server startup, all phrases are downloaded and cached in memory. When the LLM decides to call a tool, the system selects a context-appropriate filler (e.g., booking-specific fillers for \texttt{book\_job}, name confirmation fillers for \texttt{lookup\_customer}, transfer fillers for \texttt{transfer\_to\_human}) and plays it directly to Twilio as raw $\mu$-law audio, bypassing the TTS engine entirely (see Appendix~A, Snippet~2). This provides instant auditory feedback to the caller, masking the tool execution latency.
+
+\textbf{Fast-Path Date Parsing:} The natural language date parser (\texttt{date\_parser.py}) implements regex-based fast paths for common patterns (ISO dates, ``tomorrow at 2pm'', ``Monday at 10am'', ``in 2 weeks'') that resolve in under 1 millisecond, falling back to an OpenAI function-calling request only for ambiguous or complex expressions. This eliminates a 300 to 500 millisecond API call for the majority of date references.
+
+\textbf{TTS Text Formatting for Clarity:} A custom \texttt{format\_for\_tts\_spelling} function adds spaces between characters in spelled-out content (names, eircodes, phone numbers) to prevent the TTS engine from rushing through them (see Appendix~A, Snippet~1). For example, ``D-O-2-W-R-9-7'' is reformatted to ``D~-~O~-~2~-~W~-~R~-~9~-~7'' and phone numbers like ``085 263 5954'' become ``0~8~5~\ldots~2~6~3~\ldots~5~9~5~4'' with pause markers.
+
+\textbf{LLM Configuration Tuning:} The LLM is configured with a temperature of 0.3 (for consistent, predictable responses), a maximum token limit of 150 (to keep responses concise and phone-appropriate), and the \texttt{gpt-4o-mini} model (which offers significantly lower latency than \texttt{gpt-4o} while maintaining sufficient quality for structured conversation).
+
+
+\subsubsection{Service Matching Algorithm}
+
+A critical component of the booking flow is the \texttt{match\_issue} tool, which maps a caller's natural language description of their problem to the business's configured services and packages (see Appendix~A, Snippet~6). The matching algorithm operates in two stages:
+
+\textbf{Keyword and Fuzzy Matching:} Each service in the database has associated keywords (e.g., a ``Burst Pipe Repair'' service might have keywords: ``burst'', ``pipe'', ``leak'', ``water'', ``flooding''). The algorithm tokenises the caller's description, computes overlap scores against each service's keyword set, and ranks matches by confidence. Fuzzy string matching using the \texttt{difflib.SequenceMatcher} is applied to handle phonetic variations introduced by ASR errors (e.g., ``boiler'' transcribed as ``boyler'').
+
+\textbf{AI Fallback:} If keyword matching produces no high-confidence results, the full service catalogue is passed to GPT-4o-mini with the caller's description, and the model returns ranked matches with confidence scores and clarifying questions. Services marked as requiring a callout visit or a free quote are flagged accordingly, and the AI adjusts its booking flow to schedule only the initial visit rather than the full job.
+
+The algorithm also handles service packages, which are bundled services with fixed durations and pricing (e.g., a ``Full Bathroom Refit'' package spanning 5 business days). Multi-day jobs are automatically blocked across consecutive business days in the calendar, with the system intelligently skipping weekends and holidays.
+
+\subsubsection{Availability and Worker Scheduling}
+
+The availability checking system (\texttt{calendar\_tools.py}) implements a sophisticated algorithm that considers multiple constraints simultaneously:
+
+\begin{itemize}
+\item \textbf{Business hours}: Configurable per-company opening and closing times with per-day granularity (e.g., Monday to Friday 8\,AM to 6\,PM, Saturday 9\,AM to 1\,PM).
+\item \textbf{Existing bookings}: All confirmed bookings in the database are checked for time conflicts, with buffer periods between appointments.
+\item \textbf{Worker availability}: If workers are configured, the system checks each worker's schedule, service restrictions (e.g., a plumber cannot be assigned electrical work), and time-off requests. A job is only offered if at least one qualified worker is available.
+\item \textbf{Multi-day job blocking}: For jobs spanning multiple days (e.g., a week-long renovation), the system verifies that all required consecutive business days are free before offering the slot.
+\item \textbf{Previously suggested dates}: The system tracks which dates have already been offered to the caller (via the \texttt{suggested\_dates} field in \texttt{CallState}) and excludes them when the caller asks for alternative options, preventing repetitive suggestions.
+\end{itemize}
+
+The \texttt{get\_next\_available} tool returns 2 to 4 available days with natural language summaries, while \texttt{search\_availability} handles specific customer requests such as ``after 4pm next week'' or ``any morning slots in 2 weeks'' by parsing the natural language query and filtering results accordingly.
+
+
+\subsubsection{Post-Call Processing}
+
+After each call ends, several asynchronous post-call processes execute:
+
+\textbf{Call Summarisation:} The \texttt{call\_summarizer.py} module uses GPT-4o-mini with structured function calling to extract job-relevant details from the conversation transcript. The extraction schema captures job description, urgency level, location details, property information, access instructions, special requirements, previous work history, and customer availability preferences. The summary is attached as a note to the booking, providing the technician with comprehensive context before arriving on site. A separate \texttt{generate\_call\_log\_summary} function runs for every call regardless of outcome, classifying calls as \textit{booked}, \textit{cancelled}, \textit{rescheduled}, \textit{lost\_job}, \textit{enquiry}, \textit{wrong\_number}, or \textit{hung\_up}. The lost job detection is particularly valuable for business intelligence; it identifies callers who expressed interest in a service but did not complete a booking, along with the reason (e.g., ``no availability on requested date,'' ``caller hung up during booking flow,'' ``caller said they would call back'').
+
+\textbf{Address Re-transcription:} A significant challenge encountered during development was the poor accuracy of real-time ASR when transcribing Irish addresses and eircodes (Ireland's 7-character alphanumeric postal codes, e.g., V95H5P2). Deepgram's Nova-2 model, optimised for conversational English, frequently mangled Irish place names (e.g., ``Ballinacurra'' transcribed as ``Ballina Cura'') and misinterpreted spelled-out eircodes. To address this, a deferred address capture and re-transcription pipeline was implemented:
+
+During the call, when the AI asks for the caller's address or eircode, the \texttt{media\_handler.py} begins buffering the raw inbound $\mu$-law audio (up to 17 seconds at 8kHz, approximately 500 packets of 160 bytes each). This audio is converted to WAV format and uploaded to Cloudflare R2. After the call ends, the \texttt{address\_retranscriber.py} module downloads the audio and re-transcribes it using OpenAI's \texttt{gpt-4o-transcribe} model (see Appendix~A, Snippet~3), which has significantly lower word error rates than real-time ASR, particularly for accented English and proper nouns. The transcription prompt is specifically tuned for Irish eircodes and addresses, instructing the model to reconstruct spelled-out codes and strip conversational filler. A validation pipeline then checks the refined transcription against the original ASR result using word overlap analysis and fuzzy matching (via \texttt{difflib.SequenceMatcher}) to reject hallucinated transcriptions (see Appendix~A, Snippet~5). If the refined address shares zero meaningful words with the original even after fuzzy matching, it is discarded as a probable hallucination. If the original address resembles a short code ($\leq$7 characters) but the refined result is a full street address, the system rejects it as a model confabulation. Only validated refinements are written to the database, after which the booking confirmation SMS is sent with the corrected address.
+
+
+\textbf{Call Logging:} Every call, regardless of outcome, is logged to the \texttt{call\_logs} table with metadata including caller phone number, duration, AI-generated summary, call outcome classification, and lost job detection. This data feeds the Call Logs tab in the dashboard, providing business owners with a complete audit trail of all inbound communications.
+
+\textbf{Booking Confirmation SMS:} Upon successful booking, a confirmation SMS is sent to the caller via Twilio containing the appointment date, time, service type, and business contact information. If address re-transcription is pending, the SMS is deferred until the refined address is available.
+
+\subsection{Telephony and Regulatory Compliance}
+
+\subsubsection{Ireland's Telecommunications Landscape}
+
+Deploying an AI phone system in Ireland presented unique regulatory challenges. Ireland's Commission for Communications Regulation (ComReg) enforces strict rules on the use of phone numbers, particularly regarding SMS origination. Irish mobile numbers (+353) purchased through Twilio can receive and make voice calls but cannot send SMS messages due to regulatory restrictions on A2P (Application-to-Person) messaging from virtual numbers. To circumvent this limitation while remaining compliant, the system uses a Swedish phone number (+46) for outbound SMS delivery, as Swedish regulations permit A2P SMS from Twilio virtual numbers. This is configured via the \texttt{TWILIO\_SMS\_NUMBER} environment variable, separate from the \texttt{TWILIO\_PHONE\_NUMBER} used for voice calls.
+
+\subsubsection{Phone Number Forwarding Architecture}
+
+Rather than requiring customers to advertise a new phone number, the system leverages call forwarding from the customer's existing business phone number to their assigned Twilio number. When a call arrives at the customer's existing number, it is forwarded to the Twilio number, which triggers the AI receptionist. This approach has several advantages: the business retains its established phone number, the AI can be toggled on and off without changing any public-facing contact information, and the business owner can configure bypass numbers, a list of phone numbers that should ring through directly to the owner rather than being answered by the AI (e.g., the owner's spouse, key suppliers, or existing clients who prefer human contact). The bypass number feature is implemented by checking the inbound caller ID against the company's bypass list before initiating the AI conversation flow.
+
+
+\subsubsection{Google Calendar Verification}
+
+Integrating with Google Calendar required completing Google's OAuth verification process, which involves submitting the application for review, providing a privacy policy and terms of service that comply with Google's API Services User Data Policy, and demonstrating that the application's use of calendar data is limited to the stated purposes. The platform's Privacy Policy (accessible at \url{https://bookedforyou.ie/privacy}) explicitly documents the Google Calendar data scope, the purposes for which data is accessed (displaying events, creating bookings, checking availability, syncing changes), storage practices (OAuth tokens stored securely in the database, event data cached temporarily), and the user's right to revoke access at any time. The Terms of Service (accessible at \url{https://bookedforyou.ie/terms}) documents the AI receptionist's limitations and the user's responsibility to review AI-generated bookings.
+
+\subsection{Ethical Considerations}
+
+The project raises several ethical considerations that were addressed during development:
+
+\textbf{Research Ethics:} Qualitative feedback was gathered from tradespeople through voluntary, informal business meetings and product demonstrations. Participants were not subjected to experimental conditions, and no sensitive personal data was collected during these sessions beyond general business feedback. The feedback gathering was conducted as part of normal customer discovery and product validation rather than formal research on human subjects.
+
+\textbf{Data Privacy and GDPR:} The platform processes personal data including names, phone numbers, addresses, and call recordings. A comprehensive Privacy Policy was developed in accordance with GDPR requirements, documenting data collection practices, processing purposes, third-party data sharing (limited to service providers under contractual obligation), data retention periods (deleted within 30 days of account deletion), and user rights (access, correction, deletion, portability, objection). The system uses essential cookies only and does not employ analytics or advertising trackers.
+
+\textbf{AI Transparency:} The Terms of Service explicitly states that the AI receptionist is an automated system, that it may occasionally misinterpret caller requests, and that the business owner is responsible for reviewing and confirming bookings. The AI is not designed to deceive callers into believing they are speaking with a human. The system prompt instructs the AI to maintain a ``realistic, friendly, human tone'' but does not instruct it to claim to be human.
+
+\textbf{Security:} The application implements OWASP Top 10 mitigations including bcrypt password hashing (cost factor 12), rate limiting on authentication endpoints (5 failed attempts triggers a 15-minute lockout), input sanitisation to prevent injection attacks, parameterised SQL queries, CSRF token protection, security headers (X-Frame-Options, Content-Security-Policy, Strict-Transport-Security), and a dedicated security logging system for audit trails.
+
+\subsection{Practical Considerations}
+
+\textbf{Feasibility:} The project was developed by a single developer over approximately six months, with the no-code prototype completed in the first three weeks and the custom-coded platform developed iteratively over the remaining period. The total infrastructure cost for development and testing was approximately \texteuro{}50 to \texteuro{}80 per month (Twilio usage, OpenAI API, Deepgram API, ElevenLabs API, Render hosting, Cloudflare R2 storage).
+
+\textbf{Time Management:} Development was structured around weekly sprints with prioritisation based on customer feedback. The most time-intensive components were the real-time voice pipeline (approximately 6 weeks of iterative optimisation), the availability scheduling algorithm (3 weeks), and the React dashboard (4 weeks).
+
+
+\section{Primary Research and Deliverable}
+
+\subsection{The BookedForYou Platform}
+
+The primary deliverable of this project is BookedForYou (\url{https://bookedforyou.ie}), a production-deployed AI receptionist and business management platform. The complete source code is available at \url{https://github.com/jamesdoherty987/AI_Receptionist-Trades}. The platform comprises approximately 34,000 lines of Python backend code, 42,000 lines of React frontend code (JSX, JavaScript, and CSS), 53 automated test files, 41 database migration scripts, and a Remotion-based video generation system. The following subsections detail each major feature area.
+
+\subsection{AI Receptionist Call Flow}
+
+The AI receptionist handles the complete lifecycle of an inbound phone call through a structured conversation flow:
+
+\begin{enumerate}
+\item \textbf{Greeting}: A pre-recorded greeting (``Hi, thank you for calling. How can I help you today?'') is played instantly from the audio cache, eliminating TTS latency for the first interaction.
+\item \textbf{Issue Identification}: When the caller describes their problem, the AI immediately invokes the \texttt{match\_issue} tool to identify matching services. If multiple matches exist, the AI asks clarifying questions (up to two) to narrow the selection.
+\item \textbf{Name Collection}: The AI asks for the caller's name, spells it back character by character for confirmation, and calls \texttt{lookup\_customer} to check if they are a returning customer.
+\item \textbf{Returning Customer Handling}: If the customer is found in the database, their stored address, phone number, and history are retrieved. The AI confirms the stored address is still current rather than re-asking for it.
+\item \textbf{New Customer Data Collection}: For new customers, the AI confirms the caller ID phone number, then asks for an eircode (preferred) or full address. Eircodes are spelled back character by character; full addresses are not repeated back (the system verifies them post-call via re-transcription).
+\item \textbf{Availability Presentation}: The AI calls \texttt{get\_next\_available} with the job description, which returns 2 to 4 available days. The AI presents these naturally, always prefixing with the job duration (e.g., ``That's about a two-and-a-half-hour job. I have Thursday and Friday available this week'').
+\item \textbf{Booking Confirmation}: After the caller selects a day and time, the AI confirms the key details (name, day, service) and calls \texttt{book\_job} to create the booking.
+\item \textbf{Special Job Types}: Callout services (requiring an initial site visit) and quote services (requiring a free assessment) are handled with modified flows where only the initial visit is booked, and the AI explains the two-stage process to the caller.
+\end{enumerate}
+
+The system also handles cancellations and rescheduling through a two-step verification process: the AI first asks for the day of the appointment, the system returns all bookings on that day, the caller confirms which booking by name, and then the cancellation or reschedule is executed.
+
+
+\subsection{Business Management Dashboard}
+
+The React dashboard provides a comprehensive business management interface organised into ten tabs:
+
+\textbf{Jobs Tab:} Displays all bookings with status tracking through a lifecycle of pending, confirmed, scheduled, in-progress, completed, and paid. Business owners can create manual bookings, edit job details, assign workers, add notes, set charges, and track materials used. Jobs are colour-coded by status and sortable by date, customer, or worker.
+
+\textbf{Call Logs Tab:} Shows a chronological list of all inbound calls with AI-generated summaries, call duration, outcome classification (booked, lost job, enquiry, etc.), and caller information. Lost jobs are highlighted with the reason for loss, enabling business owners to identify patterns and follow up with potential customers.
+
+\textbf{Calendar Tab:} Integrates with Google Calendar via OAuth 2.0, displaying a weekly calendar view with all bookings and external events. The calendar supports bidirectional sync: bookings created through the AI or dashboard appear in Google Calendar, and events created directly in Google Calendar are reflected in the dashboard. Multi-day jobs span across consecutive business days visually.
+
+\textbf{Workers Tab:} Manages the team with features including worker profiles, service restrictions (limiting which services each worker can be assigned), weekly hours tracking, time-off request management with conflict detection, and in-app messaging between the business owner and workers. Workers have their own dedicated portal (WorkerDashboard) with a separate authentication system.
+
+\textbf{Customers Tab:} Maintains a searchable client database with contact information, address history, job history, and total spend. The AI automatically creates client records during calls and links subsequent calls to existing records using phone number matching with normalisation for Irish number formats (converting local 085\ldots\ to international +353 85\ldots).
+
+\textbf{Services Tab:} Allows business owners to configure their service catalogue with names, descriptions, keywords for AI matching, durations (from 30 minutes to multi-week projects), pricing (fixed or hourly with callout fees), and flags for callout-required or quote-required services. Services can be grouped into packages, which are bundled offerings with fixed durations and pricing that span multiple days.
+
+\textbf{Materials Tab:} Provides a material catalogue where business owners can define commonly used materials with unit prices. Workers can log materials used on each job from the field via the Worker Portal, and the cost is automatically deducted from the job revenue to calculate gross profit.
+
+
+\textbf{Finances Tab:} Presents a comprehensive financial overview including total revenue, collected payments, outstanding invoices, materials costs, and gross profit with margin percentage. A custom SVG area chart (built using monotone cubic Hermite spline interpolation for smooth curves without overshoot) displays daily revenue trends over configurable time ranges (past month, past year, all time). Revenue breakdown by service type and top customers by spend are displayed as secondary analytics. Business owners can send invoices via SMS or email with one click, mark individual jobs or batches as paid, and include bank transfer details (IBAN/BIC) and Stripe payment links on invoices.
+
+\textbf{Insights Tab:} Aggregates business intelligence metrics including call volume trends, booking conversion rates, lost job analysis, average job values, and worker utilisation statistics.
+
+\textbf{Chat Tab:} Provides in-app messaging between the business owner and workers, enabling coordination without leaving the platform.
+
+\subsection{Worker Portal}
+
+The Worker Portal is a dedicated mobile-optimised interface for field workers, accessible via a separate authentication system (workers set their own passwords via a secure link). Key features include:
+
+\begin{itemize}
+\item \textbf{Smart Job Grouping}: Jobs are automatically grouped into contextual categories: in-progress (with live timer), overdue, today, tomorrow, this week, and later. This prioritisation ensures workers see their most urgent tasks first.
+\item \textbf{Live Job Timer}: When a worker marks a job as ``in-progress,'' a real-time stopwatch begins tracking elapsed time, displayed as HH:MM:SS. This data feeds into the hours tracking system.
+\item \textbf{On-Site Photo and Video Capture}: Workers can photograph job sites before, during, and after work. Media is uploaded to Cloudflare R2 with per-company folder isolation for security.
+\item \textbf{Materials Logging}: Workers can search the company's material catalogue and log materials used on each job with quantities. Custom materials can be added on the fly with name and unit price.
+\item \textbf{Job Notes}: Free-text notes can be added to any job, creating a chronological record visible to both the worker and the business owner.
+\item \textbf{Time-Off Requests}: Workers can submit time-off requests specifying date ranges, type (vacation, sick, personal), and reason. The system checks for conflicts with existing bookings and alerts the business owner for approval.
+\item \textbf{Bulk Job Completion}: At the end of a workday, workers can select multiple completed jobs and mark them all as done in a single action.
+\end{itemize}
+
+
+\subsection{Subscription and Payment Strategy}
+
+The platform employs a freemium-to-subscription business model managed through Stripe:
+
+\begin{itemize}
+\item \textbf{14-Day Free Trial}: New users can activate a full-featured trial without providing payment information, reducing friction in the onboarding funnel. The trial is enforced as a one-time offer per company; the \texttt{has\_used\_trial} flag in the database prevents abuse.
+\item \textbf{Monthly Subscription (\texteuro{}99/month)}: After the trial, continued access requires an active subscription managed through Stripe Checkout Sessions and the Stripe Customer Portal. The pricing was determined through competitive analysis of existing answering services (typically \texteuro{}100 to \texteuro{}300/month) and validated through customer conversations. The \texteuro{}99/month entry price is designed to acquire early customers and build market presence; as the platform matures and the customer base grows, the pricing strategy includes tiered plans scaling to approximately \texteuro{}500/month for larger companies with higher call volumes and multiple workers, which is consistent with premium business management software in the trades sector.
+\item \textbf{Stripe Webhooks}: Subscription lifecycle events (payment success, payment failure, cancellation, trial expiration) are handled via Stripe webhooks, automatically updating the company's subscription status in the database.
+\item \textbf{Feature Gating}: Certain features (invoice sending, SMS reminders) are gated behind an active subscription, while core dashboard functionality remains accessible to encourage re-subscription.
+\end{itemize}
+
+\subsection{Onboarding Experience}
+
+A guided onboarding wizard walks new users through eight setup steps: subscription activation, service area configuration (address, coverage area, business hours), company details (custom context for the AI), payment details (bank IBAN/BIC for invoices), service catalogue setup, worker addition, materials catalogue, and AI phone number configuration. Each step can be completed independently and in any order, with progress tracked via a combination of backend database flags and localStorage persistence. The wizard automatically detects completion of each step by checking for the presence of required data (e.g., the service-area step is marked complete when business address, coverage area, and business hours are all populated). When all eight steps are complete, the wizard auto-dismisses and persists the completion state to the backend so it survives across devices and browsers. Users can hide the wizard temporarily and restore it at any time.
+
+
+\subsection{Landing Page and Customer Acquisition Strategy}
+
+The landing page was designed as a conversion-optimised marketing page employing several modern web design techniques:
+
+\begin{itemize}
+\item \textbf{Animated Hero Section}: A word rotator cycles through value propositions (``Never Sleeps,'' ``Books Jobs,'' ``Never Misses,'' ``Saves You Money,'' ``Works 24/7'') with CSS enter/exit animations, immediately communicating the product's core benefits. An interactive mesh gradient canvas background responds to mouse movement, creating a premium visual impression.
+\item \textbf{Live Conversation Transcript}: A simulated AI phone conversation auto-plays in the hero section, showing message bubbles appearing sequentially with typing indicators, demonstrating the AI's conversational capability in real time. This serves as an interactive product demo without requiring the visitor to sign up.
+\item \textbf{Remotion Marketing Video}: A programmatic video was created using Remotion, a React-based framework for generating videos with code. The video comprises multiple animated scenes: an explosive brand intro with particle effects and star fields, an AI phone receptionist demonstration with animated chat bubbles and sound wave visualisations, a smart calendar scene showing bookings populating a weekly grid, a customer management scene with animated client cards, a finances scene with animated bar charts and revenue cards, and a worker management scene with team member profiles. The video uses spring-based animations, gradient text effects, and cinematic glow orbs to create a polished, professional aesthetic. This video is embedded on the landing page and serves as the primary conversion tool for visitors who prefer visual content over text.
+\item \textbf{Dashboard Preview Carousel}: Screenshots of the actual dashboard (Jobs, Calendar, Finances tabs) are hosted on Cloudflare R2 and displayed in an auto-rotating carousel with tab-style navigation, giving visitors a preview of the product interface before signing up.
+\item \textbf{Social Proof}: A marquee-style testimonial carousel displays customer reviews with star ratings, names, and company affiliations, building trust through social proof. Animated number tickers count up to key statistics (e.g., calls answered, jobs booked) as they scroll into view, using IntersectionObserver for scroll-triggered activation.
+\item \textbf{Parallax Tilt Effects}: The react-parallax-tilt library is applied to key visual elements, creating a subtle 3D depth effect that responds to mouse movement, enhancing the premium feel of the page.
+\end{itemize}
+
+\subsection{Multi-Tenant Architecture}
+
+The platform is designed as a multi-tenant SaaS application where each company's data is fully isolated through \texttt{company\_id} foreign keys on all database tables. This architecture enables a single deployment to serve multiple businesses simultaneously. Per-company isolation extends to Google Calendar OAuth tokens (stored encrypted in the companies table), business settings, service catalogues, worker teams, phone number assignments, and subscription status. The \texttt{CallState} dataclass ensures that concurrent phone calls for different companies (or even the same company) are completely isolated, with no shared mutable state between call handlers.
+
+
+\subsection{Testing}
+
+The project includes over 50 automated test files covering the full spectrum of functionality. Tests are implemented using pytest and cover booking flows (creation, cancellation, rescheduling), ASR and LLM integration, Google Calendar synchronisation (including bidirectional sync), SMS reminders and booking confirmations, worker availability and service restrictions, service matching and package handling, Stripe subscription lifecycle, invoice generation and delivery, job photo uploads, materials tracking, time-off conflict detection, concurrent call handling, edge cases in date parsing, and security (input validation, data isolation between tenants, CRUD operation authorisation). The test suite was instrumental in catching regressions during the rapid iteration cycles of development, particularly in the complex availability scheduling algorithm where edge cases around multi-day jobs, adjacent-day conflicts, and worker buffer times required extensive validation.
+
+\section{Analysis}
+
+\subsection{Comparative Analysis: No-Code vs.\ Custom-Coded}
+
+Table~\ref{tab:comparison} presents a comparative analysis of the no-code prototype and the custom-coded production system across eight evaluation criteria.
+
+\begin{table*}[htbp]
+\caption{Comparative Analysis: No-Code Prototype vs.\ Custom-Coded Platform}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Criterion} & \textbf{No-Code Prototype} & \textbf{Custom-Coded Platform} \\
+\midrule
+Development Time & 3 weeks & 5+ months \\
+Monthly Operating Cost (per customer) & \texteuro{}50 to \texteuro{}60 (Retell AI + Make.com + Cal.com) & \texteuro{}15 to \texteuro{}30 (API usage only) \\
+Call Quality / Latency & Good (managed by Retell AI) & Excellent (sub-800ms with optimisations) \\
+Customisation & Limited (constrained by platform APIs) & Full (every aspect configurable per company) \\
+Reliability & Dependent on 3 third-party uptime SLAs & Developer-controlled with graceful degradation \\
+Data Ownership & Distributed across 3 platforms & Fully owned in single PostgreSQL database \\
+Scalability & Constrained by platform pricing tiers & Horizontally scalable via standard infrastructure \\
+Feature Breadth & Phone calls + basic booking only & Full business management suite (10+ modules) \\
+\bottomrule
+\end{tabular}
+\label{tab:comparison}
+\end{center}
+\end{table*}
+
+The most significant finding is the cost differential. The no-code prototype's per-customer operating cost of \texteuro{}50 to \texteuro{}60/month left minimal margin at the target price point of \texteuro{}99/month after accounting for support, development, and infrastructure overhead. The custom-coded platform reduces per-customer operating costs to approximately \texteuro{}15 to \texteuro{}30/month (comprising Twilio voice minutes, OpenAI API tokens, Deepgram ASR, ElevenLabs TTS, and proportional hosting costs), yielding a gross margin of approximately 70 to 85\% at the \texteuro{}99/month subscription price. This validates the literature's position that NCLC platforms are optimal for validation but insufficient for production economics \cite{b2}.
+
+
+\subsection{Latency Performance}
+
+Table~\ref{tab:latency} summarises the measured latency contributions of each pipeline component under production conditions.
+
+\begin{table*}[htbp]
+\caption{Voice Pipeline Latency Measurements}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Component} & \textbf{Typical Latency} & \textbf{Optimised Latency} \\
+\midrule
+Deepgram ASR (speech\_final) & 1,000 to 1,500\,ms & 900 to 1,200\,ms (tuned VAD) \\
+OpenAI GPT-4o-mini (first token, no tools) & 400 to 800\,ms & 300 to 500\,ms (warm connection) \\
+OpenAI GPT-4o-mini (first token, with tool call) & 800 to 1,500\,ms & Masked by filler audio \\
+ElevenLabs TTS (first audio chunk) & 200 to 400\,ms & 200 to 350\,ms (Turbo v2.5) \\
+Deepgram Aura TTS (first audio chunk) & 150 to 300\,ms & 150 to 250\,ms \\
+End-to-end (speech end to first audio) & 1,800 to 3,000\,ms & 600 to 1,200\,ms \\
+\bottomrule
+\end{tabular}
+\label{tab:latency}
+\end{center}
+\end{table*}
+
+The combination of connection warmup, keepalive pinging, pre-recorded filler audio, and streaming architecture reduces the perceived end-to-end latency from a baseline of approximately 2.5 seconds to under 1.2 seconds for non-tool responses and near-zero perceived delay for tool-calling responses (where filler audio plays instantly). This places the system well within the approximately one-second conversational threshold identified in the turn-taking literature \cite{b19, b20}.
+
+\subsection{Customer Feedback}
+
+Qualitative feedback was gathered through in-person and video meetings with tradespeople in the Limerick region, including plumbers, electricians, and general builders. Key findings included:
+
+\textbf{Call Quality:} All participants rated the AI's conversational quality as ``good'' or ``excellent,'' with several noting that callers were unlikely to realise they were speaking with an AI. The Irish-accented ElevenLabs voice was particularly well-received.
+
+\textbf{Booking Accuracy:} Participants confirmed that the AI correctly captured customer names, phone numbers, and service requirements in the majority of test calls. Address capture was identified as the weakest point, which led to the development of the post-call re-transcription pipeline.
+
+\textbf{Dashboard Usability:} The tabbed dashboard interface was described as ``intuitive'' and ``easy to navigate'' by participants with varying levels of technical proficiency. The onboarding wizard was praised for reducing setup friction.
+
+\textbf{Feature Requests:} Common requests included integration with accounting software (e.g., Xero, QuickBooks), the ability to send quotes via the AI, and support for multiple phone lines. These have been noted for future development.
+
+\textbf{Pricing Acceptance:} The \texteuro{}99/month price point was considered ``fair'' and ``good value'' by all participants when compared to the cost of a part-time receptionist or answering service.
+
+
+\subsection{Technical Challenges and Solutions}
+
+Several significant technical challenges were encountered and resolved during development:
+
+\textbf{Concurrent Call Isolation:} Early versions of the system used global state for appointment booking, causing data leakage between simultaneous calls. This was resolved by introducing the \texttt{CallState} dataclass (see Appendix~A, Snippet~4), which encapsulates all per-call state (booking details, reschedule flow, cancel flow, address capture, suggested dates) in an isolated object passed through the entire call pipeline.
+
+\textbf{Deepgram Speech Detection Reliability:} Deepgram's \texttt{speech\_final} signal occasionally failed to fire in noisy environments, causing the system to wait indefinitely for the caller to ``finish speaking.'' A three-layer detection system was implemented: (1) \texttt{speech\_final} from VAD, (2) \texttt{UtteranceEnd} from word-timing gap detection, and (3) a 5-second fallback timer that promotes accumulated \texttt{is\_final} segments if neither primary signal arrives.
+
+\textbf{TTS Spelling Speed:} When the AI spells out names or eircodes (e.g., ``J-O-H-N''), the TTS engine tends to rush through the characters, making them unintelligible. The \texttt{format\_for\_tts\_spelling} function was developed to insert spaces and pause markers between characters, significantly improving clarity (see Appendix~A, Snippet~1).
+
+\textbf{Timezone Handling on Cloud Hosting:} The production server runs on Render, which defaults to UTC. Since bookings must be stored in the business's local time (Europe/Dublin), the server process timezone is explicitly set via \texttt{os.environ["TZ"]} and \texttt{time.tzset()} at the very start of the application, before any datetime operations occur. This ensures that \texttt{datetime.now()} returns Irish local time, correctly handling both GMT and BST (British Summer Time) transitions.
+
+\textbf{Database Connection Pool Exhaustion:} Under high load, the PostgreSQL connection pool (configured with 2 to 10 connections via ThreadedConnectionPool) could become exhausted, causing requests to hang. A timeout-based fallback was implemented: if a connection cannot be obtained from the pool within 5 seconds, a direct connection is created as a fallback, and dead connections are detected and replaced via a \texttt{SELECT 1} health check on each checkout.
+
+
+\section{Summary, Conclusions, and Recommendations}
+
+\subsection{Summary}
+
+This project has successfully designed, developed, and deployed BookedForYou, a production-grade AI receptionist and business management platform for trade service enterprises. The two-phase methodology, combining rapid no-code prototyping followed by custom-coded development, proved effective for validating market demand while building a commercially viable product. The no-code prototype demonstrated that tradespeople are receptive to AI-powered call handling, while the custom-coded platform achieved the performance, cost efficiency, and feature breadth necessary for sustainable commercial operation.
+
+The platform integrates nine external services (OpenAI, Deepgram, ElevenLabs, Twilio, Google Calendar, Stripe, Cloudflare R2, Resend, and PostgreSQL) into a cohesive system that handles the complete lifecycle of a trade business's customer interactions, from the initial phone call through booking, job execution, invoicing, and payment collection. The real-time voice pipeline achieves sub-1.2-second response latency through a combination of connection warmup, pre-recorded filler audio, streaming architecture, and fast-path date parsing. The post-call address re-transcription pipeline addresses the specific challenge of Irish address and eircode recognition, improving accuracy by leveraging OpenAI's higher-quality offline transcription model.
+
+\subsection{Conclusions}
+
+The following conclusions are drawn from this project:
+
+\begin{enumerate}
+\item AI receptionist technology is technically feasible for production deployment in the trades sector, with current LLM, ASR, and TTS capabilities sufficient to handle the majority of routine booking conversations without human intervention.
+\item No-code platforms are valuable for rapid prototyping and market validation but are unsuitable for production deployment due to limited customisation and data ownership concerns. The custom-coded platform reduced per-customer operating costs by approximately 50 to 60\% compared to the no-code prototype while simultaneously delivering a far broader feature set.
+\item Latency optimisation is the single most critical factor in voice AI quality. The difference between a 2.5-second and a 0.8-second response time is the difference between a robotic and a natural conversation. Pre-recorded filler audio, connection warmup, and streaming architecture are essential techniques.
+\item Real-world customer feedback is indispensable for identifying requirements that cannot be anticipated through technical analysis alone. The address re-transcription pipeline, bypass number feature, and callout/quote service flows all emerged from direct customer conversations.
+\item The Irish telecommunications regulatory environment presents unique challenges for AI phone systems, particularly around SMS origination restrictions, that require creative technical solutions (e.g., Swedish SMS numbers) while maintaining compliance.
+\end{enumerate}
+
+
+\subsection{Recommendations and Future Work}
+
+Based on the findings of this project, the following recommendations are made for future development:
+
+\begin{itemize}
+\item \textbf{Outbound Calling}: Extend the AI to make outbound calls for appointment reminders, follow-ups on lost jobs, and customer satisfaction surveys.
+\item \textbf{Multilingual Support}: Add support for additional languages to serve Ireland's increasingly diverse population and enable expansion into European markets.
+\item \textbf{Accounting Integration}: Integrate with popular accounting platforms (Xero, QuickBooks) to automatically sync invoices and payments.
+\item \textbf{AI Quote Generation}: Enable the AI to provide preliminary quotes based on the service catalogue and job description, reducing the need for in-person quote visits for straightforward jobs.
+\item \textbf{Mobile Native Application}: Develop native iOS and Android applications for the Worker Portal to improve the field experience with push notifications, offline support, and camera integration.
+\item \textbf{Advanced Analytics}: Implement predictive analytics for demand forecasting, optimal pricing suggestions, and customer churn prediction using the accumulated call and booking data.
+\item \textbf{White-Label Deployment}: Enable franchise and multi-location businesses to deploy branded instances of the platform with centralised management.
+\end{itemize}
+
+
+\section*{Declaration on Academic Integrity}
+I declare that this report is entirely my own work, except where otherwise stated, and that all sources have been acknowledged and referenced in accordance with the University of Limerick's academic integrity policy. No part of this work has been submitted for any other assessment at this or any other institution.
+
+Generative AI (ChatGPT, GitHub Copilot) was used during the project exclusively for planning and brainstorming during the development process. The use of generative AI is also an integral part of the project itself, as the platform deploys OpenAI GPT-4o-mini as its core conversational engine; this usage is discussed in full throughout the report. All code, system design, and written content in this report are the original work of the author.
+
+\begin{thebibliography}{00}
+
+\bibitem{b1} A.~Baevski, H.~Zhou, A.~Mohamed, and M.~Auli, ``wav2vec 2.0: A framework for self-supervised learning of speech representations,'' \textit{Advances in Neural Information Processing Systems}, vol.~33, pp.~12449--12460, 2020. [Online]. Available: \url{https://arxiv.org/abs/2006.11477}
+
+\bibitem{b2} A.-C.~Bock and U.~Frank, ``Low-Code Platform,'' \textit{Business \& Information Systems Engineering}, vol.~63, no.~6, pp.~733--740, 2021. [Online]. Available: \url{https://doi.org/10.1007/s12599-021-00726-8}
+
+\bibitem{b3} T.~B.~Brown \textit{et al.}, ``Language models are few-shot learners,'' \textit{Advances in Neural Information Processing Systems}, vol.~33, pp.~1877--1901, 2020. [Online]. Available: \url{https://arxiv.org/abs/2005.14165}
+
+\bibitem{b4} L.~T.~Car, D.~A.~Dhinagaran, B.~M.~Kyaw, T.~Kowatsch, S.~Joty, and R.~Atun, ``Conversational agents in health care: Scoping review and conceptual analysis,'' \textit{Journal of Medical Internet Research}, vol.~22, no.~8, e17158, 2020. [Online]. Available: \url{https://doi.org/10.2196/17158}
+
+\bibitem{b5} Indeed Ireland, ``Receptionist Salary in Ireland,'' 2024. [Online]. Available: \url{https://ie.indeed.com/career/receptionist/salaries}
+
+\bibitem{b6} Deepgram, ``Nova-2 Speech Recognition Model Documentation,'' 2024. [Online]. Available: \url{https://developers.deepgram.com/docs/models}
+
+\bibitem{b7} J.~Devlin, M.-W.~Chang, K.~Lee, and K.~Toutanova, ``BERT: Pre-training of deep bidirectional transformers for language understanding,'' in \textit{Proc. 2019 Conf. North American Chapter Assoc. Computational Linguistics (NAACL-HLT)}, 2019, pp.~4171--4186. [Online]. Available: \url{https://arxiv.org/abs/1810.04805}
+
+\bibitem{b8} N.~Dragoni, I.~Lanese, S.~T.~Larsen, M.~Mazzara, R.~Mustafin, and L.~Safina, ``Microservices: How to make your application scale,'' in \textit{Perspectives of System Informatics (PSI 2017)}, LNCS 10742. Cham: Springer, 2018, pp.~95--104. [Online]. Available: \url{https://doi.org/10.1007/978-3-319-74313-4_8}
+
+\bibitem{b9} ElevenLabs, ``Turbo v2.5 Text-to-Speech Model,'' 2024. [Online]. Available: \url{https://elevenlabs.io/docs}
+
+\bibitem{b10} European Commission, ``European Enterprise Survey on the Use of Technologies Based on Artificial Intelligence,'' 2023. [Online]. Available: \url{https://digital-strategy.ec.europa.eu/en/library/european-enterprise-survey-use-technologies-based-artificial-intelligence}
+
+\bibitem{b11} M.-H.~Huang and R.~T.~Rust, ``A strategic framework for artificial intelligence in marketing,'' \textit{Journal of the Academy of Marketing Science}, vol.~49, no.~1, pp.~30--50, 2021. [Online]. Available: \url{https://doi.org/10.1007/s11747-020-00749-9}
+
+\bibitem{b12} BIA/Kelsey, ``Local Commerce Report: Call Volume and Conversion Trends,'' as cited in SchedulingKit, ``30 Missed Call Statistics,'' 2026. [Online]. Available: \url{https://schedulingkit.com/statistics/missed-call-statistics}
+
+\bibitem{b13} Invincible Media, ``The Missed Call Problem: How Much Is It Actually Costing Your Business?,'' 2025. [Online]. Available: \url{https://invinciblemedia.co.uk/blog/missed-call-problem}
+
+\bibitem{b14} Invoca, ``New Research from Invoca Reveals Key Drivers in Omni-Channel Path to Purchase,'' 2015. [Online]. Available: \url{https://www.prnewswire.com/news-releases/new-research-from-invoca-reveals-key-drivers-in-omni-channel-path-to-purchase-300078558.html}
+
+\bibitem{b15} A.~Sahay, A.~Indamutsa, D.~Di~Ruscio, and A.~Pierantonio, ``Supporting the understanding and comparison of low-code development platforms,'' in \textit{Proc. 23rd ACM/IEEE Int. Conf. Model Driven Engineering Languages and Systems (MODELS '20)}, 2020, pp.~171--178. [Online]. Available: \url{https://doi.org/10.1145/3417990.3420204}
+
+\bibitem{b16} OpenAI, ``GPT-4 Technical Report,'' 2023. [Online]. Available: \url{https://arxiv.org/abs/2303.08774}
+
+\bibitem{b17} Gartner, ``Gartner Forecasts Worldwide Low-Code Development Technologies Market to Grow 20\% in 2023,'' 2022. [Online]. Available: \url{https://www.gartner.com/en/newsroom/press-releases/2022-12-13-gartner-forecasts-worldwide-low-code-development-technologies-market-to-grow-20-percent-in-2023}
+
+\bibitem{b18} E.~Ries, \textit{The Lean Startup: How Today's Entrepreneurs Use Continuous Innovation to Create Radically Successful Businesses}. New York: Crown Business, 2011. [Online]. Available: \url{https://theleanstartup.com}
+
+\bibitem{b19} G.~Skantze, ``Turn-taking in conversational systems and human-robot interaction: A review,'' \textit{Computer Speech \& Language}, vol.~67, 101178, 2021. [Online]. Available: \url{https://doi.org/10.1016/j.csl.2020.101178}
+
+\bibitem{b20} S.~C.~Levinson and F.~Torreira, ``Timing in turn-taking and its implications for processing models of language,'' \textit{Frontiers in Psychology}, vol.~6, 731, 2015. [Online]. Available: \url{https://doi.org/10.3389/fpsyg.2015.00731}
+
+\bibitem{b21} Twilio, ``Media Streams Documentation,'' 2024. [Online]. Available: \url{https://www.twilio.com/docs/voice/media-streams}
+
+\end{thebibliography}
+
+
+\appendices
+
+\section{Code Snippets}
+
+\needspace{20\baselineskip}
+\subsection*{Snippet 1: TTS Spelling Formatter (\texttt{llm\_stream.py})}
+\begin{lstlisting}[caption={TTS spelling formatter for Irish phone numbers and eircodes}]
+def format_for_tts_spelling(text: str) -> str:
+    """Format text for TTS to read spelled-out content
+    more slowly. When the AI spells out names, eircodes,
+    or phone numbers, the TTS tends to rush through
+    them. This adds spaces between letters."""
+    if not text:
+        return text
+
+    # Single characters separated by dashes
+    spelled_pattern = re.compile(
+        r'\b([A-Z0-9]-)+[A-Z0-9]\b', re.IGNORECASE)
+
+    def add_spaces_to_spelled(match):
+        return match.group(0).replace('-', ' - ')
+
+    result = spelled_pattern.sub(
+        add_spaces_to_spelled, text)
+
+    # Irish phone numbers (085 263 5954)
+    irish_phone_pattern = re.compile(
+        r'\b(0\d{2})\s+(\d{3})\s+(\d{4})\b')
+
+    def space_irish_phone(match):
+        g1, g2, g3 = match.groups()
+        return (f"{' '.join(g1)} ... "
+                f"{' '.join(g2)} ... "
+                f"{' '.join(g3)}")
+
+    result = irish_phone_pattern.sub(
+        space_irish_phone, result)
+
+    # Eircodes (V95H5P2 or V95 H5P2)
+    eircode_pattern = re.compile(
+        r'\b([A-Z]\d{2})\s?([A-Z0-9]{4})\b',
+        re.IGNORECASE)
+
+    def space_eircode(match):
+        part1, part2 = match.groups()
+        return (f"{' '.join(part1.upper())} ... "
+                f"{' '.join(part2.upper())}")
+
+    result = eircode_pattern.sub(
+        space_eircode, result)
+    return result
+\end{lstlisting}
+
+
+\needspace{20\baselineskip}
+\subsection*{Snippet 2: Pre-recorded Filler Audio Playback (\texttt{prerecorded\_audio.py})}
+\begin{lstlisting}[caption={Zero-latency filler audio playback bypassing TTS}]
+async def send_prerecorded_audio(
+    websocket, stream_sid: str, audio_data: bytes
+):
+    """Send pre-recorded mulaw audio directly to
+    Twilio -- instant playback. Bypasses TTS entirely
+    for zero latency on filler phrases."""
+    chunk_size = 160  # 20ms packets for mulaw 8kHz
+    audio_duration_ms = len(audio_data) / 8
+
+    for i in range(0, len(audio_data), chunk_size):
+        chunk = audio_data[i:i + chunk_size]
+        payload = base64.b64encode(
+            chunk).decode('utf-8')
+        await websocket.send(json.dumps({
+            "event": "media",
+            "streamSid": stream_sid,
+            "media": {"payload": payload},
+        }))
+\end{lstlisting}
+
+\needspace{20\baselineskip}
+\subsection*{Snippet 3: Post-Call Address Re-transcription (\texttt{address\_retranscriber.py})}
+\begin{lstlisting}[caption={Offline re-transcription using OpenAI gpt-4o-transcribe}]
+def transcribe_address_audio(
+    audio_url: str
+) -> Optional[str]:
+    """Re-transcribe address audio using OpenAI
+    gpt-4o-transcribe. Runs after the call ends --
+    no time pressure."""
+    resp = httpx.get(audio_url, timeout=30.0)
+    audio_bytes = resp.content
+
+    client = _get_client()
+    audio_file = io.BytesIO(audio_bytes)
+    audio_file.name = "address.wav"
+
+    transcript = client.audio.transcriptions.create(
+        model="gpt-4o-transcribe",
+        file=audio_file,
+        prompt=(
+            "Transcribe ONLY the address or eircode "
+            "from this audio. The caller may be saying "
+            "an Irish eircode (7-character alphanumeric "
+            "code like V95H5P2, D02WR97). If they "
+            "spell out individual letters and numbers, "
+            "reconstruct the eircode. Return just the "
+            "address or eircode -- no filler words."
+        ),
+    )
+    return transcript.text.strip() \
+        if transcript.text else None
+\end{lstlisting}
+
+
+\needspace{20\baselineskip}
+\subsection*{Snippet 4: Per-Call State Isolation (\texttt{call\_state.py})}
+\begin{lstlisting}[caption={Dataclass ensuring complete isolation between concurrent calls}]
+@dataclass
+class CallState:
+    """Encapsulates all per-call state for appointment
+    booking. Each phone call gets its own instance,
+    ensuring complete isolation between concurrent
+    calls."""
+    # Appointment booking state
+    active_booking: bool = False
+    customer_name: Optional[str] = None
+    datetime: Optional[str] = None
+    service_type: Optional[str] = None
+    job_address: Optional[str] = None
+    job_description: Optional[str] = None
+    phone_number: Optional[str] = None
+    already_booked: bool = False
+
+    # Reschedule flow state
+    reschedule_active: bool = False
+    reschedule_found_appointment: Optional[Dict] = None
+    reschedule_new_datetime: Optional[str] = None
+
+    # Cancel flow state
+    cancel_active: bool = False
+    cancel_found_appointment: Optional[Dict] = None
+
+    # Address audio capture
+    address_audio_url: Optional[str] = None
+    address_audio_captured: bool = False
+
+    # Availability tracking (server-side)
+    suggested_dates: List[str] = field(
+        default_factory=list)
+\end{lstlisting}
+
+\needspace{20\baselineskip}
+\subsection*{Snippet 5: Address Hallucination Detection (\texttt{address\_retranscriber.py})}
+\begin{lstlisting}[caption={Validation of re-transcribed addresses against original ASR output}]
+def _is_plausible_address(
+    refined: str, original: str
+) -> bool:
+    """Validate a re-transcribed address against the
+    original ASR result. Rejects hallucinated
+    transcriptions using fuzzy word overlap."""
+    refined_lower = refined.lower().strip()
+    original_lower = original.lower().strip()
+
+    # Eircodes are always plausible
+    if _looks_like_eircode(refined):
+        return True
+
+    # Reject if original is a short code but
+    # refined is a full address
+    original_cleaned = re.sub(
+        r'[-\s]', '', original_lower)
+    if (len(original_cleaned) <= 7
+            and len(original.strip().split()) <= 2
+            and re.match(
+                r'^[a-z0-9]{2,7}$', original_cleaned)
+            and len(refined_lower.split()) >= 3):
+        return False  # Probable hallucination
+
+    # Reject conversational filler
+    filler = ['perfect', 'thanks', 'great', 'okay',
+              'grand', 'cheers', 'bye']
+    if refined_lower.rstrip('.,!? ') in filler:
+        return False
+
+    # Fuzzy word overlap analysis
+    from difflib import SequenceMatcher
+    stop_words = {'the', 'a', 'of', 'in', 'at', 'to',
+                  'and', 'street', 'road', 'avenue',
+                  'drive', 'lane', 'grove', 'park'}
+
+    def meaningful_words(text):
+        return (set(re.findall(r'\b\w+\b',
+                text.lower())) - stop_words)
+
+    def has_fuzzy_overlap(words_a, words_b,
+                          threshold=0.6):
+        for wa in words_a:
+            for wb in words_b:
+                if (SequenceMatcher(None, wa, wb)
+                        .ratio() >= threshold):
+                    return True
+        return False
+
+    refined_words = meaningful_words(refined)
+    original_words = meaningful_words(original)
+
+    if refined_words and original_words:
+        overlap = refined_words & original_words
+        if (not overlap and not has_fuzzy_overlap(
+                refined_words, original_words)):
+            return False  # Zero overlap
+
+    return True
+\end{lstlisting}
+
+
+\needspace{20\baselineskip}
+\subsection*{Snippet 6: Service Matching Algorithm (\texttt{calendar\_tools.py})}
+\begin{lstlisting}[caption={Service and package matching with confidence scoring}]
+# From execute_tool_call, match_issue branch:
+for svc in standalone_services:
+    score, details = (
+        ServiceMatcher.calculate_match_score(
+            issue_description, svc))
+    if score >= 15:  # Minimum confidence threshold
+        matches.append({
+            'name': svc.get('name'),
+            'type': 'service',
+            'score': score,
+            'requires_callout':
+                svc.get('requires_callout', False),
+            'requires_quote':
+                svc.get('requires_quote', False),
+            'duration_minutes':
+                svc.get('duration_minutes', 0),
+        })
+
+# Also score packages (bundled multi-day services)
+for pkg in all_packages:
+    service_names = [s.get('name', '')
+                     for s in pkg.get('services', [])]
+    combined_desc = (
+        f"{pkg.get('description', '')} "
+        f"{' '.join(service_names)}")
+    virtual = {
+        'name': pkg.get('name'),
+        'description': combined_desc}
+    score, details = (
+        ServiceMatcher.calculate_match_score(
+            issue_description, virtual))
+    if score >= 15:
+        matches.append({
+            'name': pkg.get('name'),
+            'type': 'package',
+            'score': score,
+            'requires_investigation':
+                pkg.get('use_when_uncertain', False),
+        })
+
+matches.sort(
+    key=lambda x: x['score'], reverse=True)
+\end{lstlisting}
+
+\needspace{20\baselineskip}
+\subsection*{Snippet 7: Streaming TTS: Token-by-Token Audio Pipeline (\texttt{tts\_deepgram.py})}
+\begin{lstlisting}[caption={Concurrent sender/receiver for real-time TTS streaming}]
+async def sender():
+    """Send LLM text tokens to Deepgram TTS
+    one at a time"""
+    async for token in _aiter(text_stream):
+        if interrupt_fn():
+            return  # Barge-in detected -- stop
+        await tts.send(json.dumps(
+            {"type": "Speak", "text": token}))
+    await tts.send(json.dumps({"type": "Flush"}))
+
+async def receiver():
+    """Forward TTS audio chunks to Twilio
+    in real time"""
+    while True:
+        msg = await asyncio.wait_for(
+            tts.recv(), timeout=0.3)
+        if isinstance(msg, bytes):
+            payload = base64.b64encode(
+                msg).decode('utf-8')
+            await websocket.send(json.dumps({
+                "event": "media",
+                "streamSid": stream_sid,
+                "media": {"payload": payload},
+            }))
+
+# Run sender and receiver concurrently -- audio
+# starts playing before the LLM finishes generating
+await asyncio.gather(sender(), receiver())
+\end{lstlisting}
+
+\end{document}
