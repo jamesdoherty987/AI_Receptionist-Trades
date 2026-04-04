@@ -67,7 +67,7 @@ const STEPS = [
 
 function OnboardingWizard({ onComplete }) {
   const queryClient = useQueryClient();
-  const { user, hasActiveSubscription, getSubscriptionTier, checkAuth } = useAuth();
+  const { user, subscription, hasActiveSubscription, getSubscriptionTier, checkAuth } = useAuth();
   const userKey = user?.email || 'default';
   const [currentStepIndex, setCurrentStepIndex] = useState(null);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
@@ -381,7 +381,7 @@ function OnboardingWizard({ onComplete }) {
   };
 
   const isStepComplete = (stepId) => {
-    if (stepId === 'subscription') return hasActiveSubscription();
+    if (stepId === 'subscription') return subscription?.is_active === true;
     if (stepId === 'phone') return !!settings?.twilio_phone_number || completedSteps.includes('phone');
     if (stepId === 'service-area') return !!(settings?.business_address && settings?.coverage_area && settings?.business_hours) || completedSteps.includes('service-area');
     if (stepId === 'company-details') return !!settings?.company_context || completedSteps.includes('company-details');

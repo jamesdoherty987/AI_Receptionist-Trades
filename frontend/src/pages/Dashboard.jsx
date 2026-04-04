@@ -17,7 +17,7 @@ import ServicesTab from '../components/dashboard/ServicesTab';
 import MaterialsTab from '../components/dashboard/MaterialsTab';
 import InsightsTab from '../components/dashboard/InsightsTab';
 import CallLogsTab from '../components/dashboard/CallLogsTab';
-import { getDashboardData, getBusinessSettings, getSubscriptionStatus, updateBusinessSettings } from '../services/api';
+import { getDashboardData, getBusinessSettings, updateBusinessSettings } from '../services/api';
 import './Dashboard.css';
 
 function Dashboard() {
@@ -50,43 +50,14 @@ function Dashboard() {
     },
   });
 
-  // Fetch subscription status to detect legacy accounts that completed setup before setup_wizard_complete existed
-  const { data: subscriptionData } = useQuery({
-    queryKey: ['subscription-status'],
-    queryFn: async () => {
-      const response = await getSubscriptionStatus();
-      return response.data.subscription;
-    },
-  });
-
   // Sync backend setup_wizard_complete flag → localStorage so wizard stays dismissed across devices
-  // Also auto-dismiss for legacy accounts that have used a trial but never had setup_wizard_complete set
-  // Note: We track whether subscription data was already present on first load to avoid
-  // falsely treating a fresh trial-start (during the wizard) as a legacy account.
-  const [initialSubLoaded, setInitialSubLoaded] = useState(false);
-  const [wasLegacyTrial, setWasLegacyTrial] = useState(false);
-
-  useEffect(() => {
-    if (subscriptionData && !initialSubLoaded) {
-      setInitialSubLoaded(true);
-      if (subscriptionData.has_used_trial) {
-        setWasLegacyTrial(true);
-      }
-    }
-  }, [subscriptionData, initialSubLoaded]);
-
   useEffect(() => {
     if (onboardingDismissed) return;
     if (settings?.setup_wizard_complete) {
       localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
       setOnboardingDismissed(true);
-    } else if (wasLegacyTrial && settings && !settings.setup_wizard_complete) {
-      // Legacy account: had a trial before setup_wizard_complete existed — backfill the flag
-      localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
-      setOnboardingDismissed(true);
-      updateBusinessSettings({ setup_wizard_complete: true }).catch(() => {});
     }
-  }, [settings, wasLegacyTrial, userKey, onboardingDismissed]);
+  }, [settings, userKey, onboardingDismissed]);
 
   // Scroll to top when dashboard loads
   useEffect(() => {
