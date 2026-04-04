@@ -585,22 +585,28 @@ async def media_handler(ws):
                 
                 asyncio.create_task(greet())
                 
-                # Warmup OpenAI
+                # Warmup OpenAI with real system prompt to prime prompt cache
                 async def warmup():
                     try:
-                        from src.services.llm_stream import get_openai_client
+                        from src.services.llm_stream import get_openai_client, get_cached_system_prompt
                         from src.services.calendar_tools import CALENDAR_TOOLS
                         client = get_openai_client()
+                        # Load the actual company system prompt — primes both
+                        # local _company_prompt_cache AND OpenAI's server-side prompt cache
+                        system_prompt = get_cached_system_prompt(company_id=company_id)
                         def do_warmup():
                             stream = client.chat.completions.create(
                                 model=config.CHAT_MODEL,
-                                messages=[{"role": "user", "content": "hi"}],
+                                messages=[
+                                    {"role": "system", "content": system_prompt},
+                                    {"role": "user", "content": "hi"},
+                                ],
                                 max_tokens=1, stream=True, temperature=0.1,
                                 tools=CALENDAR_TOOLS, tool_choice="none",
                             )
                             for _ in stream: pass
                         await asyncio.to_thread(do_warmup)
-                        print(f"🔥 OpenAI warmed up")
+                        print(f"🔥 OpenAI warmed up (prompt cache primed for company {company_id})")
                     except Exception as e:
                         print(f"⚠️ Warmup failed: {e}")
                 asyncio.create_task(warmup())
