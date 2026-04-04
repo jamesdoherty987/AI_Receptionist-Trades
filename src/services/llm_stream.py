@@ -977,12 +977,25 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
             has_day = any(day in user_message for day in day_names)
             has_time = any(t in user_message for t in time_phrases)
             
+            # GUARD: If user's message contains soft confirmation language ("sounds good",
+            # "that works", etc.) alongside day+time, the LLM often does a confirmation
+            # round ("Just to confirm, that's X on Y at Z. Correct?") instead of immediately
+            # calling the booking tool. Don't trigger filler in this case — it causes misfires
+            # where the filler says "Grand, let me book that" but the LLM just asks to confirm.
+            soft_confirm_phrases = ["sounds good", "that works", "that's good", "that's great",
+                                    "perfect", "that'll work", "works for me", "suits me"]
+            user_soft_confirming = any(phrase in user_message for phrase in soft_confirm_phrases)
+            
             # Only trigger if user gives a clear pick (day+time, or explicit pick phrase with day or time)
-            if time_offered and (has_explicit_pick or (has_day and has_time)):
+            # BUT skip if user is soft-confirming — LLM will likely confirm details first, not book immediately
+            if time_offered and (has_explicit_pick or (has_day and has_time)) and not user_soft_confirming:
                 likely_needs_tool = True
                 detected_intent = "TIME_SELECTED"
                 checking_msg = "Grand, let me book that."
                 print(f"   ✅ [PRE-CHECK] Detected: TIME SELECTED")
+            elif time_offered and (has_day and has_time) and user_soft_confirming:
+                detected_intent = "TIME_SELECTED_SOFT_CONFIRM"
+                print(f"   ℹ️ [PRE-CHECK] Detected: TIME SELECTED but user soft-confirming (no filler - LLM will confirm details)")
         
         # 7. CANCEL/MODIFY JOB - broader detection
         if not likely_needs_tool:
