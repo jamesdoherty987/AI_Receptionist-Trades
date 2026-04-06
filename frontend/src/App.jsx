@@ -17,6 +17,8 @@ import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import WorkerLogin from './pages/WorkerLogin'
 import WorkerSetPassword from './pages/WorkerSetPassword'
+import WorkerForgotPassword from './pages/WorkerForgotPassword'
+import WorkerResetPassword from './pages/WorkerResetPassword'
 import WorkerDashboard from './pages/WorkerDashboard'
 
 // Loading component
@@ -179,6 +181,8 @@ function AppRoutes() {
       {/* Worker Portal routes */}
       <Route path="/worker/login" element={<WorkerLogin />} />
       <Route path="/worker/set-password" element={<WorkerSetPassword />} />
+      <Route path="/worker/forgot-password" element={<WorkerForgotPassword />} />
+      <Route path="/worker/reset-password" element={<WorkerResetPassword />} />
       <Route 
         path="/worker/dashboard" 
         element={

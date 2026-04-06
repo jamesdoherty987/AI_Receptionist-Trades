@@ -3635,6 +3635,57 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
 
+    def get_worker_account_by_reset_token(self, token: str) -> Optional[Dict]:
+        """Get worker account by password reset token"""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("SELECT * FROM worker_accounts WHERE reset_token = %s", (token,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        finally:
+            cursor.close()
+            self.return_connection(conn)
+
+    def update_worker_account_reset_token(self, account_id: int, reset_token, reset_token_expires) -> bool:
+        """Set or clear the password reset token for a worker account"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE worker_accounts SET reset_token = %s, reset_token_expires = %s WHERE id = %s",
+                (reset_token, reset_token_expires, account_id)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"Error updating worker reset token: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
+    def reset_worker_account_password(self, account_id: int, password_hash: str) -> bool:
+        """Reset password for a worker account (forgot password flow)"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE worker_accounts
+                SET password_hash = %s, password_set = TRUE,
+                    reset_token = NULL, reset_token_expires = NULL,
+                    updated_at = NOW()
+                WHERE id = %s
+            """, (password_hash, account_id))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"Error resetting worker password: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
     def delete_worker_account(self, worker_id: int) -> bool:
         """Delete worker account when worker is deleted"""
         conn = self.get_connection()

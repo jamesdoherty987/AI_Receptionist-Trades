@@ -52,7 +52,9 @@ api.interceptors.response.use(
         }
         if (window.location.pathname.startsWith('/worker/') &&
             window.location.pathname !== '/worker/login' &&
-            window.location.pathname !== '/worker/set-password') {
+            window.location.pathname !== '/worker/set-password' &&
+            window.location.pathname !== '/worker/forgot-password' &&
+            window.location.pathname !== '/worker/reset-password') {
           window.location.href = '/worker/login';
         }
       }
@@ -253,6 +255,8 @@ export const workerLogin = (email, password) => api.post('/api/worker/auth/login
 export const workerLogout = () => api.post('/api/worker/auth/logout');
 export const getWorkerMe = () => api.get('/api/worker/auth/me');
 export const workerSetPassword = (token, password) => api.post('/api/worker/auth/set-password', { token, password });
+export const workerForgotPassword = (email) => api.post('/api/worker/auth/forgot-password', { email });
+export const workerResetPassword = (token, newPassword) => api.post('/api/worker/auth/reset-password', { token, new_password: newPassword });
 export const inviteWorker = (workerId) => api.post('/api/worker/invite', { worker_id: workerId });
 export const getWorkerDashboard = () => api.get('/api/worker/dashboard');
 export const updateWorkerProfile = (data) => api.put('/api/worker/profile', data);

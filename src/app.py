@@ -1752,6 +1752,125 @@ def worker_set_password():
     return jsonify({"error": "Failed to set password. Please try again."}), 500
 
 
+@app.route("/api/worker/auth/forgot-password", methods=["POST"])
+@rate_limit(max_requests=5, window_seconds=300)
+def worker_forgot_password():
+    """Send password reset email for a worker account"""
+    import secrets
+    from datetime import datetime, timedelta
+
+    data = request.json
+    email = data.get('email', '').lower().strip()
+
+    if not email or not validate_email(email):
+        return jsonify({"error": "Please provide a valid email address"}), 400
+
+    success_msg = {
+        "success": True,
+        "message": "If a worker account with that email exists, we've sent a password reset link."
+    }
+
+    db = get_database()
+    account = db.get_worker_account_by_email(email)
+
+    if not account:
+        print(f"[WORKER-FORGOT-PW] No worker account found for {email}", flush=True)
+        return jsonify(success_msg)
+
+    if not account.get('password_set'):
+        print(f"[WORKER-FORGOT-PW] Worker {email} hasn't set password yet - they should use invite link", flush=True)
+        return jsonify(success_msg)
+
+    print(f"[WORKER-FORGOT-PW] Account found for {email} (ID: {account['id']})", flush=True)
+
+    reset_token = secrets.token_urlsafe(32)
+    reset_expires = datetime.now() + timedelta(hours=1)
+
+    db.update_worker_account_reset_token(account['id'], reset_token, reset_expires.isoformat())
+
+    origin = request.headers.get('Origin', '')
+    if not origin:
+        origin = os.getenv('PUBLIC_URL', request.host_url.rstrip('/'))
+    reset_link = f"{origin}/worker/reset-password?token={reset_token}"
+
+    print(f"[WORKER-FORGOT-PW] Reset link: {reset_link}", flush=True)
+
+    try:
+        from src.services.email_reminder import get_email_service
+        email_service = get_email_service()
+
+        company = db.get_company(account['company_id'])
+        business_name = company.get('company_name', 'BookedForYou') if company else 'BookedForYou'
+
+        email_sent = email_service.send_password_reset(email, reset_link, business_name)
+        if email_sent:
+            print(f"[WORKER-FORGOT-PW] Reset email sent to {email}", flush=True)
+        else:
+            print(f"[WORKER-FORGOT-PW] Email service not configured - link logged above", flush=True)
+    except Exception as e:
+        print(f"[WORKER-FORGOT-PW] Email send error: {e}", flush=True)
+
+    return jsonify(success_msg)
+
+
+@app.route("/api/worker/auth/reset-password", methods=["POST"])
+@rate_limit(max_requests=10, window_seconds=300)
+def worker_reset_password():
+    """Reset password for a worker account using token"""
+    from datetime import datetime
+
+    data = request.json
+    token = data.get('token', '').strip()
+    new_password = data.get('new_password', '')
+
+    if not token:
+        return jsonify({"error": "Reset token is required"}), 400
+
+    if not new_password:
+        return jsonify({"error": "New password is required"}), 400
+
+    password_error = _validate_password(new_password)
+    if password_error:
+        return jsonify({"error": password_error}), 400
+
+    db = get_database()
+    account = db.get_worker_account_by_reset_token(token)
+
+    if not account:
+        get_security_logger().log_failed_auth(
+            '/api/worker/auth/reset-password',
+            get_client_ip(),
+            'Invalid worker reset token'
+        )
+        return jsonify({"error": "Invalid or expired reset link. Please request a new one."}), 400
+
+    token_expires = account.get('reset_token_expires')
+    if token_expires:
+        if isinstance(token_expires, str):
+            try:
+                token_expires = datetime.fromisoformat(token_expires)
+            except ValueError:
+                token_expires = None
+        if token_expires and datetime.now() > token_expires:
+            db.update_worker_account_reset_token(account['id'], None, None)
+            return jsonify({"error": "Reset link has expired. Please request a new one."}), 400
+
+    new_hash = hash_password(new_password)
+    success = db.reset_worker_account_password(account['id'], new_hash)
+
+    if success:
+        get_security_logger().log_password_change(
+            f"worker:{account['id']}",
+            get_client_ip()
+        )
+        return jsonify({
+            "success": True,
+            "message": "Password has been reset successfully. You can now log in."
+        })
+
+    return jsonify({"error": "Failed to reset password. Please try again."}), 500
+
+
 @app.route("/api/worker/invite", methods=["POST"])
 @login_required
 @subscription_required
