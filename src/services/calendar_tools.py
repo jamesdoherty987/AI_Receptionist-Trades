@@ -71,31 +71,8 @@ CALENDAR_TOOLS = [
             }
         }
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "check_availability",
-            "description": "LEGACY - prefer get_next_available or search_availability. Check available time slots for a specific date range.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "start_date": {
-                        "type": "string",
-                        "description": "Start date in ISO format or natural language"
-                    },
-                    "end_date": {
-                        "type": "string",
-                        "description": "End date in ISO format or natural language"
-                    },
-                    "job_description": {
-                        "type": "string",
-                        "description": "Description of the job/service needed"
-                    }
-                },
-                "required": ["start_date"]
-            }
-        }
-    },
+    # NOTE: check_availability removed from tool definitions (LEGACY, never used by prompt).
+    # Execution handler still exists in execute_tool_call as a safety net.
     {
         "type": "function",
         "function": {
@@ -117,85 +94,10 @@ CALENDAR_TOOLS = [
             }
         }
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "book_appointment",
-            "description": "Book a new appointment for a customer. CRITICAL: You MUST have a SPECIFIC date and time before calling this (e.g., 'tomorrow at 2pm', 'Monday at 9am'). DO NOT call this with vague times like 'within 2 hours', 'as soon as possible', or 'ASAP'. For urgent requests, suggest the next available time slot using check_availability first. Required info: name, phone, SPECIFIC appointment datetime, and reason.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "customer_name": {
-                        "type": "string",
-                        "description": "Customer's full name"
-                    },
-                    "phone": {
-                        "type": "string",
-                        "description": "Customer's phone number (MANDATORY) - use the caller's number unless they provide a different one"
-                    },
-                    "appointment_datetime": {
-                        "type": "string",
-                        "description": "Date and time for the appointment. ALWAYS include the month name (e.g., 'Monday, March 31st at 9am', 'January 20th at 2pm'). Must be SPECIFIC. If the user says just a day like 'Tuesday the 31st', resolve the month from context before calling."
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Reason for visit (e.g., 'injury', 'checkup', 'general')"
-                    }
-                },
-                "required": ["customer_name", "phone", "appointment_datetime"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "cancel_appointment",
-            "description": "Cancel an existing appointment. WORKFLOW: 1) Ask customer what DAY the booking is for (not time - there may be multiple jobs or full-day jobs). 2) Call this with ONLY appointment_date (the day). 3) System returns ALL jobs on that day with customer names. 4) Read the names to the caller and ask them to confirm which one is theirs. 5) Listen to their response and call again with appointment_date AND customer_name to complete cancellation.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "appointment_date": {
-                        "type": "string",
-                        "description": "The DAY of the appointment to cancel. IMPORTANT: Pass the FULL date expression the caller used, including any relative context like 'Monday 2 weeks', 'Monday the 30th', 'next next Monday', 'in 2 weeks'. Do NOT strip relative context - e.g., if caller says 'Monday in 2 weeks', pass 'Monday in 2 weeks', NOT just 'Monday'. Examples: 'Monday', 'Thursday the 30th', 'Monday in 2 weeks', 'January 15th'. Do NOT include time."
-                    },
-                    "customer_name": {
-                        "type": "string",
-                        "description": "Customer name - ONLY provide this AFTER the caller confirms which name is theirs from the list of jobs on that day."
-                    }
-                },
-                "required": ["appointment_date"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "reschedule_appointment",
-            "description": "Reschedule an existing appointment to a new time. WORKFLOW: 1) Ask customer what DAY the booking is for (not time - there may be multiple jobs or full-day jobs). 2) Call this with ONLY current_date (the day). 3) System returns ALL jobs on that day with customer names. 4) Read the names to the caller and ask them to confirm which one is theirs. 5) Listen to their response, then ask what day they want to reschedule to. 6) Call again with current_date, customer_name, AND new_datetime to complete. IMPORTANT: If the customer asks for different/later/other availability options, use search_reschedule_availability (NOT search_availability) — do NOT pass new_datetime until the customer has explicitly chosen a specific day.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "current_date": {
-                        "type": "string",
-                        "description": "The DAY of the current appointment. IMPORTANT: Pass the FULL date expression the caller used, including any relative context like 'Monday 2 weeks', 'Monday the 30th', 'in 2 weeks'. Do NOT strip relative context. Examples: 'Monday', 'Thursday the 30th', 'Monday in 2 weeks', 'January 15th'. Do NOT include time."
-                    },
-                    "new_datetime": {
-                        "type": "string",
-                        "description": "New date and time for the appointment. ONLY provide this AFTER the customer has explicitly chosen a specific day from the options presented."
-                    },
-                    "customer_name": {
-                        "type": "string",
-                        "description": "Customer name - ONLY provide this AFTER the caller confirms which name is theirs from the list of jobs on that day."
-                    },
-                    "confirmed": {
-                        "type": "boolean",
-                        "description": "Set to true ONLY after the customer has verbally confirmed the reschedule details (new date). The system will ask for confirmation first — then call again with confirmed=true."
-                    }
-                },
-                "required": ["current_date"]
-            }
-        }
-    },
+    # NOTE: book_appointment removed from tool definitions (superseded by book_job).
+    # NOTE: cancel_appointment removed from tool definitions (superseded by cancel_job).
+    # NOTE: reschedule_appointment removed from tool definitions (superseded by reschedule_job).
+    # Execution handlers still exist in execute_tool_call for backwards compatibility.
     {
         "type": "function",
         "function": {

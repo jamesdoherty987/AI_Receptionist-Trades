@@ -1011,30 +1011,22 @@ async def media_handler(ws):
             # Address audio captured but no deferred SMS (no booking made, or SMS already sent)
             print(f"🎙️ Address audio captured but no deferred SMS — skipping retranscription pipeline")
         
-        # Save call summary
-        if conversation_log and caller_phone:
-            try:
-                from src.services.call_summarizer import add_call_summary_to_booking
-                company_id_int = int(company_id) if company_id else None
-                await add_call_summary_to_booking(conversation_log, caller_phone, company_id_int)
-            except Exception as e:
-                print(f"⚠️ Summary error: {e}")
-        
-        # Log EVERY call to call_logs table (regardless of outcome)
+        # Combined post-call summarization: single LLM call for both job notes + call log
         call_log_id = None
-        if company_id:
+        if conversation_log and company_id:
             try:
-                from src.services.call_summarizer import log_call
-                call_log_id = await log_call(
+                from src.services.call_summarizer import summarize_and_log_call
+                company_id_int = int(company_id) if company_id else None
+                call_log_id = await summarize_and_log_call(
                     conversation_log=conversation_log,
                     caller_phone=caller_phone,
-                    company_id=company_id,
+                    company_id=company_id_int,
                     duration_seconds=int(total_duration),
                     call_sid=call_sid,
                     call_state=call_state,
                 )
             except Exception as e:
-                print(f"⚠️ Call log error: {e}")
+                print(f"⚠️ Post-call summary/log error: {e}")
         
         # Upload full call recording to R2 (async, non-blocking)
         if company_id and full_call_audio and len(full_call_audio) > 50:
