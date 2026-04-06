@@ -394,6 +394,31 @@ CALENDAR_TOOLS = [
                 "required": ["issue_description"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_bookings",
+            "description": "Search for existing bookings using any combination of customer name, phone number, or date. Use when a caller asks about their existing booking — e.g., 'do I have a booking?', 'what time is my appointment?', 'when am I booked in?'. You only need ONE piece of info to search (name OR phone OR date). Returns matching bookings with date, time, service, and status.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "customer_name": {
+                        "type": "string",
+                        "description": "Customer's name (full or partial). Optional if phone or date provided."
+                    },
+                    "phone": {
+                        "type": "string",
+                        "description": "Customer's phone number. Optional if name or date provided."
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Date to search for bookings (natural language like 'tomorrow', 'next Monday', or ISO format). Optional if name or phone provided."
+                    }
+                },
+                "required": []
+            }
+        }
     }
 ]
 
@@ -948,6 +973,15 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
     
     logger.info(f"[FIND_JOBS] Found {len(jobs_on_day)} jobs on {target_date.strftime('%Y-%m-%d')}: {[j['name'] for j in jobs_on_day]}")
     return jobs_on_day
+
+
+def _parse_booking_date(date_iso: str):
+    """Parse an ISO date string and return just the date portion."""
+    from datetime import datetime as dt_cls
+    try:
+        return dt_cls.fromisoformat(date_iso).date()
+    except (ValueError, TypeError):
+        return None
 
 
 def format_duration_label(duration_minutes: int) -> str:
@@ -6193,6 +6227,135 @@ Return ONLY valid JSON, no explanation."""
                     "success": False,
                     "error": f"Error updating booking: {str(e)}"
                 }
+        
+        elif tool_name == "search_bookings":
+            """Search for existing bookings by name, phone, or date"""
+            logger.info(f"[SEARCH_BOOKINGS] ========== SEARCHING BOOKINGS ==========")
+            customer_name = arguments.get('customer_name')
+            phone = arguments.get('phone')
+            date_query = arguments.get('date')
+            
+            if not customer_name and not phone and not date_query:
+                return {"success": False, "error": "Please provide at least one of: customer name, phone number, or date."}
+            
+            if not db:
+                return {"success": False, "error": "Database service is not available. Please try again later."}
+            
+            # Find matching client IDs
+            client_ids = set()
+            client_map = {}  # id -> name
+            
+            # Search by name
+            if customer_name:
+                clients = db.get_clients_by_name(customer_name.lower(), company_id=company_id)
+                if not clients:
+                    # Try fuzzy match across all clients if exact match fails
+                    all_bookings = db.get_all_bookings(company_id=company_id)
+                    all_names = list(set(b.get('client_name') or b.get('customer_name') or '' for b in all_bookings if b.get('client_name') or b.get('customer_name')))
+                    best_match, score, _ = fuzzy_match_name(customer_name, all_names)
+                    if best_match and score >= 60:
+                        clients = db.get_clients_by_name(best_match.lower(), company_id=company_id)
+                for c in clients:
+                    client_ids.add(c['id'])
+                    client_map[c['id']] = c['name']
+            
+            # Search by phone
+            if phone:
+                client = db.find_client_by_phone(phone, company_id=company_id)
+                if client:
+                    client_ids.add(client['id'])
+                    client_map[client['id']] = client['name']
+            
+            # Gather bookings for matched clients
+            matched_bookings = []
+            for cid in client_ids:
+                bookings = db.get_client_bookings(cid, company_id=company_id)
+                for b in bookings:
+                    if b.get('status', '').lower() == 'cancelled':
+                        continue
+                    matched_bookings.append({
+                        'booking_id': b['id'],
+                        'customer_name': client_map.get(cid, 'Unknown'),
+                        'date': b['appointment_time'].strftime('%A, %B %d at %I:%M %p') if hasattr(b.get('appointment_time'), 'strftime') else str(b.get('appointment_time', '')),
+                        'date_iso': b['appointment_time'].isoformat() if hasattr(b.get('appointment_time'), 'isoformat') else str(b.get('appointment_time', '')),
+                        'service': b.get('service_type', 'N/A'),
+                        'status': b.get('status', 'unknown'),
+                        'address': b.get('address', ''),
+                        'duration_minutes': b.get('duration_minutes'),
+                    })
+            
+            # If date provided, filter by date
+            if date_query:
+                from ..utils.date_parser import parse_datetime
+                parsed_date = parse_datetime(date_query)
+                if parsed_date:
+                    target_date = parsed_date.date()
+                    if matched_bookings:
+                        # Filter existing results by date
+                        from datetime import datetime as dt_cls
+                        matched_bookings = [
+                            b for b in matched_bookings
+                            if _parse_booking_date(b.get('date_iso', '')) == target_date
+                        ]
+                    elif not client_ids:
+                        # No name/phone given — search all bookings on that date
+                        from datetime import datetime as dt_conv
+                        target_datetime = dt_conv.combine(target_date, dt_conv.min.time())
+                        jobs = find_jobs_on_day(target_datetime, db, company_id)
+                        for j in jobs:
+                            matched_bookings.append({
+                                'booking_id': j.get('booking_id'),
+                                'customer_name': j.get('name', 'Unknown'),
+                                'date': f"{target_date.strftime('%A, %B %d')} at {j.get('time', 'N/A')}",
+                                'date_iso': j.get('appointment_time', str(target_date)),
+                                'service': j.get('service', 'N/A'),
+                                'status': 'scheduled',
+                                'address': '',
+                                'duration_minutes': j.get('duration_minutes'),
+                            })
+            
+            # Only keep upcoming bookings (today or future), sorted soonest first
+            from datetime import datetime as dt_cls
+            now = dt_cls.now()
+            upcoming = []
+            past = []
+            for b in matched_bookings:
+                try:
+                    bdt = dt_cls.fromisoformat(b['date_iso']) if b.get('date_iso') else None
+                    if bdt and bdt >= now.replace(hour=0, minute=0, second=0):
+                        upcoming.append(b)
+                    else:
+                        past.append(b)
+                except (ValueError, TypeError):
+                    upcoming.append(b)
+            
+            # Sort upcoming soonest first
+            upcoming.sort(key=lambda x: x.get('date_iso', ''))
+            
+            tool_duration = time_module.time() - tool_start_time
+            print(f"[TOOL_TIMING] ✅ search_bookings completed in {tool_duration:.3f}s")
+            
+            if not upcoming and not past:
+                return {
+                    "success": True,
+                    "found": False,
+                    "message": "No bookings found matching that information."
+                }
+            
+            # Return upcoming bookings (max 5), mention if there are past ones too
+            display = upcoming[:5]
+            msg_parts = []
+            for b in display:
+                msg_parts.append(f"{b['customer_name']} — {b['service']} on {b['date']} (status: {b['status']})")
+            
+            return {
+                "success": True,
+                "found": True,
+                "bookings": display,
+                "total_upcoming": len(upcoming),
+                "total_past": len(past),
+                "message": f"Found {len(upcoming)} upcoming booking(s):\n" + "\n".join(msg_parts)
+            }
         
         elif tool_name == "transfer_to_human":
             """Transfer call to a real human"""
