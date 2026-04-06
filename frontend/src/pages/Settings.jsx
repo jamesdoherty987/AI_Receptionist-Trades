@@ -25,7 +25,7 @@ import {
 import './Settings.css';
 
 // Global flag to remove Stripe Connect from UI
-const REMOVE_STRIPE_CONNECT = true;
+const REMOVE_STRIPE_CONNECT = false;
 
 function Settings() {
   const queryClient = useQueryClient();

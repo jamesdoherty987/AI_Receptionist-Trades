@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 // Global flag to remove Stripe Connect from UI
-const REMOVE_STRIPE_CONNECT = true;
+const REMOVE_STRIPE_CONNECT = false;
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {

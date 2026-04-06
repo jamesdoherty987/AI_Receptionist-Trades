@@ -3915,6 +3915,30 @@ def stripe_connect_webhook():
     return jsonify({"received": True})
 
 
+@app.route("/payment-success")
+def payment_success_page():
+    """Simple thank-you page shown after a customer pays an invoice via Stripe"""
+    return """<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Payment Successful</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f0fdf4;color:#166534}
+.card{text-align:center;background:#fff;padding:48px 40px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:440px}
+.icon{font-size:64px;margin-bottom:16px}h1{margin:0 0 12px;font-size:24px}p{margin:0;color:#4b5563;line-height:1.6}</style></head>
+<body><div class="card"><div class="icon">✅</div><h1>Payment Received</h1><p>Thank you! Your payment has been processed successfully. You can close this page.</p></div></body></html>""", 200
+
+
+@app.route("/payment-cancelled")
+def payment_cancelled_page():
+    """Page shown when a customer cancels the Stripe checkout"""
+    return """<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Payment Cancelled</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fefce8;color:#854d0e}
+.card{text-align:center;background:#fff;padding:48px 40px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:440px}
+.icon{font-size:64px;margin-bottom:16px}h1{margin:0 0 12px;font-size:24px}p{margin:0;color:#4b5563;line-height:1.6}</style></head>
+<body><div class="card"><div class="icon">↩️</div><h1>Payment Cancelled</h1><p>No worries — your payment was not processed. You can use the payment link again whenever you're ready.</p></div></body></html>""", 200
+
+
 @app.route("/twilio/sms", methods=["POST"])
 def twilio_sms():
     """
