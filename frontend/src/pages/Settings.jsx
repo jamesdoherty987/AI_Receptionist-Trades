@@ -1686,20 +1686,7 @@ function Settings() {
                       <span className="toggle-slider"></span>
                     </label>
                   </div>
-                  <div className="toggle-row">
-                    <div className="toggle-row-info">
-                      <div className="toggle-row-label">Day-Before Reminder SMS</div>
-                      <div className="toggle-row-desc">Send a reminder SMS to the customer the day before their appointment</div>
-                    </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={formData.send_reminder_sms !== false}
-                        onChange={(e) => { setFormData(prev => ({ ...prev, send_reminder_sms: e.target.checked })); setHasUnsavedChanges(true); }}
-                      />
-                      <span className="toggle-slider"></span>
-                    </label>
-                  </div>
+                  {/* Day-Before Reminder SMS — hidden for now (cost reduction) */}
                 </div>
               </div>
 

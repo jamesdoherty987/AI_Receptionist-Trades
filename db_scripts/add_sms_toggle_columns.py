@@ -22,7 +22,7 @@ def migrate():
 
     columns = {
         'send_confirmation_sms': 'BOOLEAN DEFAULT TRUE',
-        'send_reminder_sms': 'BOOLEAN DEFAULT TRUE',
+        'send_reminder_sms': 'BOOLEAN DEFAULT FALSE',
     }
 
     added = []

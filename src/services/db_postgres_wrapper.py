@@ -141,7 +141,7 @@ class PostgreSQLDatabaseWrapper:
                     show_insights_tab BOOLEAN DEFAULT true,
                     show_invoice_buttons BOOLEAN DEFAULT true,
                     send_confirmation_sms BOOLEAN DEFAULT true,
-                    send_reminder_sms BOOLEAN DEFAULT true,
+                    send_reminder_sms BOOLEAN DEFAULT false,
                     gcal_invite_workers BOOLEAN DEFAULT false,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -637,7 +637,7 @@ class PostgreSQLDatabaseWrapper:
             'show_invoice_buttons': 'BOOLEAN DEFAULT true',
             # SMS toggles
             'send_confirmation_sms': 'BOOLEAN DEFAULT true',
-            'send_reminder_sms': 'BOOLEAN DEFAULT true',
+            'send_reminder_sms': 'BOOLEAN DEFAULT false',
             # Google Calendar
             'gcal_invite_workers': 'BOOLEAN DEFAULT false',
             # Business settings (may have been missed in original schema)

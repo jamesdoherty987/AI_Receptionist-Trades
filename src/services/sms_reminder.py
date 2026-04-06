@@ -378,7 +378,7 @@ def send_day_before_reminders() -> int:
                 b.phone_number, b.company_id,
                 c.name AS client_name, c.phone AS client_phone,
                 comp.company_name,
-                COALESCE(comp.send_reminder_sms, TRUE) AS send_reminder_sms,
+                COALESCE(comp.send_reminder_sms, FALSE) AS send_reminder_sms,
                 ARRAY_AGG(w.name) FILTER (WHERE w.name IS NOT NULL) AS worker_names
             FROM bookings b
             LEFT JOIN clients c ON b.client_id = c.id

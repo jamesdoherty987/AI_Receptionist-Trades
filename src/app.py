@@ -3931,7 +3931,7 @@ def business_settings_api():
             'show_invoice_buttons': company.get('show_invoice_buttons', True) if company.get('show_invoice_buttons') is not None else True,
             # SMS toggles
             'send_confirmation_sms': company.get('send_confirmation_sms', True) if company.get('send_confirmation_sms') is not None else True,
-            'send_reminder_sms': company.get('send_reminder_sms', True) if company.get('send_reminder_sms') is not None else True,
+            'send_reminder_sms': company.get('send_reminder_sms', False) if company.get('send_reminder_sms') is not None else False,
             # Google Calendar worker invites toggle
             'gcal_invite_workers': company.get('gcal_invite_workers', False) if company.get('gcal_invite_workers') is not None else False,
             # Bypass numbers - always forward to fallback
