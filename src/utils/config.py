@@ -42,6 +42,7 @@ class Config:
     
     # Models
     CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4o-mini")  # Fast and cost-effective for real-time
+    SUMMARIZER_MODEL = os.getenv("SUMMARIZER_MODEL", "gpt-4o-mini")  # Cheaper model for post-call summaries
     TTS_MODEL = os.getenv("TTS_MODEL", "gpt-4o-mini-tts")
     TTS_VOICE = os.getenv("TTS_VOICE", "alloy")
     TTS_PROVIDER = os.getenv("TTS_PROVIDER", "deepgram")  # elevenlabs or deepgram
@@ -49,6 +50,14 @@ class Config:
     # LLM Performance Settings
     LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", 0.3))  # Lower = more consistent responses
     LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", 150))  # Keep responses concise for phone
+
+    @staticmethod
+    def max_tokens_param(model: str = None, value: int = None) -> dict:
+        """Return the correct max tokens parameter for the given model.
+        GPT-5.4+ models require 'max_completion_tokens' instead of 'max_tokens'."""
+        model = model or Config.CHAT_MODEL
+        key = "max_completion_tokens" if model.startswith("gpt-5") else "max_tokens"
+        return {key: value if value is not None else Config.LLM_MAX_TOKENS}
     
     # VAD Settings
     VAD_END_SILENCE_MS = int(os.getenv("VAD_END_SILENCE_MS", 900))

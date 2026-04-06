@@ -113,7 +113,7 @@ Write a 2-3 sentence summary in this style:
 Keep it concise and natural. Use "they/their" pronouns. Focus on the medical/injury progression."""
 
     response = client_openai.chat.completions.create(
-        model="gpt-4o-mini",  # Cheap and fast model
+        model=config.CHAT_MODEL,
         messages=[
             {
                 "role": "system", 
@@ -125,7 +125,7 @@ Keep it concise and natural. Use "they/their" pronouns. Focus on the medical/inj
             }
         ],
         temperature=0.7,
-        max_tokens=150
+        **config.max_tokens_param(value=150)
     )
     
     description = response.choices[0].message.content.strip()

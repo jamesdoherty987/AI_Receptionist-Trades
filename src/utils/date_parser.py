@@ -314,7 +314,7 @@ def parse_datetime(text: str, require_time: bool = True, default_time: tuple = N
         
         # Use AI to parse the date/time with structured output
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=config.CHAT_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -354,7 +354,7 @@ Remember: Today is {current_day_name}. If user says "{current_day_name}", that m
             tools=[{"type": "function", "function": DATETIME_PARSE_FUNCTION}],
             tool_choice={"type": "function", "function": {"name": "parse_datetime"}},
             temperature=0.1,
-            max_tokens=200
+            **config.max_tokens_param(value=200)
         )
         
         # Extract the parsed data

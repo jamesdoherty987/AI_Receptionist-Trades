@@ -1241,12 +1241,12 @@ TOOL RULES:
                     "model": config.CHAT_MODEL,
                     "stream": True,
                     "temperature": 0.1,
-                    "max_tokens": 180,
                     "presence_penalty": 0.1,
                     "frequency_penalty": 0.1,
                     "messages": [{"role": "system", "content": system_prompt_with_time}, *final_messages],
                     "top_p": 0.9,
-                    "stream_options": {"include_usage": False}
+                    "stream_options": {"include_usage": False},
+                    **config.max_tokens_param(value=180)
                 }
                 
                 # Only add tools if enabled

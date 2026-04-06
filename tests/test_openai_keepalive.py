@@ -28,6 +28,7 @@ class TestOpenAIWarmup:
         with patch('src.server.get_openai_client', return_value=mock_client):
             with patch('src.server.config') as mock_config:
                 mock_config.CHAT_MODEL = 'gpt-4o-mini'
+                mock_config.max_tokens_param = lambda model=None, value=None: {"max_tokens": value if value is not None else 150}
                 
                 # Should not raise
                 await warmup_openai()
@@ -36,7 +37,7 @@ class TestOpenAIWarmup:
                 mock_client.chat.completions.create.assert_called_once()
                 call_kwargs = mock_client.chat.completions.create.call_args
                 assert call_kwargs.kwargs['max_tokens'] == 1
-                assert call_kwargs.kwargs['stream'] == False
+                assert call_kwargs.kwargs['stream'] == True
     
     @pytest.mark.asyncio
     async def test_warmup_handles_api_error(self):
@@ -49,6 +50,7 @@ class TestOpenAIWarmup:
         with patch('src.server.get_openai_client', return_value=mock_client):
             with patch('src.server.config') as mock_config:
                 mock_config.CHAT_MODEL = 'gpt-4o-mini'
+                mock_config.max_tokens_param = lambda model=None, value=None: {"max_tokens": value if value is not None else 150}
                 
                 # Should not raise - just logs warning
                 await warmup_openai()
@@ -68,6 +70,7 @@ class TestOpenAIKeepalive:
         with patch('src.server.get_openai_client', return_value=mock_client):
             with patch('src.server.config') as mock_config:
                 mock_config.CHAT_MODEL = 'gpt-4o-mini'
+                mock_config.max_tokens_param = lambda model=None, value=None: {"max_tokens": value if value is not None else 150}
                 
                 # Start the keepalive loop
                 task = asyncio.create_task(openai_keepalive_loop())
@@ -102,6 +105,7 @@ class TestOpenAIKeepalive:
         with patch('src.server.get_openai_client', return_value=mock_client):
             with patch('src.server.config') as mock_config:
                 mock_config.CHAT_MODEL = 'gpt-4o-mini'
+                mock_config.max_tokens_param = lambda model=None, value=None: {"max_tokens": value if value is not None else 150}
                 # Use short interval for testing
                 with patch('src.server.OPENAI_KEEPALIVE_INTERVAL', 0.05):
                     
@@ -136,6 +140,7 @@ class TestShutdown:
         with patch('src.server.get_openai_client', return_value=mock_client):
             with patch('src.server.config') as mock_config:
                 mock_config.CHAT_MODEL = 'gpt-4o-mini'
+                mock_config.max_tokens_param = lambda model=None, value=None: {"max_tokens": value if value is not None else 150}
                 
                 # Start a keepalive task
                 server_module._keepalive_task = asyncio.create_task(openai_keepalive_loop())

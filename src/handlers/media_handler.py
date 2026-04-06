@@ -601,8 +601,9 @@ async def media_handler(ws):
                                     {"role": "system", "content": system_prompt},
                                     {"role": "user", "content": "hi"},
                                 ],
-                                max_tokens=1, stream=True, temperature=0.1,
+                                stream=True, temperature=0.1,
                                 tools=CALENDAR_TOOLS, tool_choice="none",
+                                **config.max_tokens_param(value=1)
                             )
                             for _ in stream: pass
                         await asyncio.to_thread(do_warmup)

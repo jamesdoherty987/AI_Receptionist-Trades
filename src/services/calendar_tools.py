@@ -1174,7 +1174,7 @@ def naturalize_availability_summary(day_summaries: list, is_full_day: bool = Fal
             system_prompt = "Convert availability into ONE natural sentence. ALWAYS include the FULL date labels exactly as given (e.g. 'Wednesday the 25th of March') — never shorten to just the day name. Mention 2-4 days with times. Example: 'I have Wednesday the 25th of March at 2 pm, Thursday the 26th at 10 am, and Friday the 27th from 9 am to 5 pm'. Be brief."
         
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=config.CHAT_MODEL,
             messages=[
                 {
                     "role": "system",
@@ -1185,7 +1185,7 @@ def naturalize_availability_summary(day_summaries: list, is_full_day: bool = Fal
                     "content": raw_summary
                 }
             ],
-            max_tokens=100,
+            **config.max_tokens_param(value=100),
             temperature=0.7
         )
         
@@ -1819,7 +1819,7 @@ class AIServiceMatcher:
             services_text = "\n".join(service_list)
             
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=config.CHAT_MODEL,
                 messages=[
                     {
                         "role": "system",
@@ -1831,7 +1831,7 @@ class AIServiceMatcher:
                     }
                 ],
                 temperature=0,
-                max_tokens=50  # Minimal tokens for speed
+                **config.max_tokens_param(value=50)
             )
             
             result_text = response.choices[0].message.content.strip()
@@ -3511,9 +3511,9 @@ Return ONLY valid JSON, no explanation."""
 
                 try:
                     parse_response = client.chat.completions.create(
-                        model="gpt-4o-mini",
+                        model=config.CHAT_MODEL,
                         messages=[{"role": "user", "content": parse_prompt}],
-                        max_tokens=200,
+                        **config.max_tokens_param(value=200),
                         temperature=0
                     )
                     

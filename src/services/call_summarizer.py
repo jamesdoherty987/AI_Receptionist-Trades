@@ -140,7 +140,7 @@ Write the job_description as a detailed narrative paragraph (2-4 sentences minim
 If the call doesn't contain any real job information (e.g., wrong number, just checking hours, no actual service request), set has_job_content to false."""
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=config.SUMMARIZER_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Extract job details from this call transcript:\n\n{transcript}"}
@@ -148,7 +148,7 @@ If the call doesn't contain any real job information (e.g., wrong number, just c
             tools=[{"type": "function", "function": CALL_SUMMARY_FUNCTION}],
             tool_choice={"type": "function", "function": {"name": "extract_job_details"}},
             temperature=0.1,
-            max_tokens=1000
+            **config.max_tokens_param(model=config.SUMMARIZER_MODEL, value=1000)
         )
         
         duration_ms = (time.time() - start_time) * 1000
@@ -442,7 +442,7 @@ def generate_call_log_summary(conversation_log: List[Dict[str, Any]]) -> Optiona
     try:
         client = get_openai_client()
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=config.SUMMARIZER_MODEL,
             messages=[
                 {"role": "system", "content": "You extract a brief summary and caller details from phone call transcripts for a trades/service business. Be concise and factual. If information wasn't mentioned, leave the field as an empty string.\n\nIMPORTANT classification guidance:\n- If the caller mentioned ANY specific problem, service need, or job they want done and did NOT end up with a confirmed booking, classify as call_outcome='lost_job' with is_lost_job=true. This is the most common scenario for unbooked calls.\n- Only use call_outcome='enquiry' for purely informational calls where the caller had genuinely NO intent to get work done (e.g., asking business hours, general questions about the company, following up on an existing booking).\n- When in doubt between 'enquiry' and 'lost_job', ALWAYS choose 'lost_job'. A caller who discusses a specific service need is a lost job, not an enquiry."},
                 {"role": "user", "content": f"Summarize this call:\n\n{transcript}"}
@@ -450,7 +450,7 @@ def generate_call_log_summary(conversation_log: List[Dict[str, Any]]) -> Optiona
             tools=[{"type": "function", "function": CALL_LOG_FUNCTION}],
             tool_choice={"type": "function", "function": {"name": "extract_call_log"}},
             temperature=0.1,
-            max_tokens=500
+            **config.max_tokens_param(model=config.SUMMARIZER_MODEL, value=500)
         )
 
         tool_calls = response.choices[0].message.tool_calls

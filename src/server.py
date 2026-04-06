@@ -201,10 +201,10 @@ async def warmup_openai():
             client.chat.completions.create,
             model=config.CHAT_MODEL,
             messages=[{"role": "user", "content": "hi"}],
-            max_tokens=1,
             stream=True,  # Use streaming to match actual calls
             tools=CALENDAR_TOOLS,  # Include tools to warm up full path
             tool_choice="none",  # Don't actually call tools
+            **config.max_tokens_param(value=1)
         )
         elapsed = time.time() - start
         print(f"[STARTUP] OpenAI warmup complete in {elapsed:.2f}s (with {len(CALENDAR_TOOLS)} tools)")
@@ -254,11 +254,11 @@ async def openai_keepalive_loop():
                 stream = client.chat.completions.create(
                     model=config.CHAT_MODEL,
                     messages=[{"role": "user", "content": "hi"}],
-                    max_tokens=1,
                     stream=True,  # CRITICAL: Match actual LLM calls
                     temperature=0.1,
                     tools=CALENDAR_TOOLS,  # CRITICAL: Include tools
                     tool_choice="none",  # Don't actually call tools
+                    **config.max_tokens_param(value=1)
                 )
                 # Consume the stream to complete the request
                 for _ in stream:
