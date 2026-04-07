@@ -35,10 +35,16 @@ function AdminPanel() {
     emergency: true,
   });
 
-  const adminHeaders = useCallback(() => ({
-    'X-Admin-Secret': localStorage.getItem(ADMIN_SECRET_KEY) || '',
-    'Content-Type': 'application/json',
-  }), []);
+  const adminHeaders = useCallback(() => {
+    const secret = (localStorage.getItem(ADMIN_SECRET_KEY) || '').replace(/[^\x20-\x7E]/g, '').trim();
+    return { 'X-Admin-Secret': secret, 'Content-Type': 'application/json' };
+  }, []);
+
+  // Use a helper that works with both proxy (local) and direct (production)
+  const adminFetch = useCallback(async (path, options = {}) => {
+    const url = `${api.defaults.baseURL}${path}`;
+    return fetch(url, { ...options, headers: { ...adminHeaders(), ...(options.headers || {}) } });
+  }, [adminHeaders]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 5000); };
 
@@ -65,21 +71,30 @@ function AdminPanel() {
   // Auth
   const handleAuth = async () => {
     setAuthError('');
+    // Sanitize: strip any non-ASCII characters that break fetch headers
+    const cleanSecret = secretInput.replace(/[^\x20-\x7E]/g, '').trim();
+    if (!cleanSecret) { setAuthError('Please enter the admin secret'); return; }
     try {
+      console.log('[ADMIN] Authenticating...');
       const res = await fetch(`${api.defaults.baseURL}/api/admin/accounts`, {
-        headers: { 'X-Admin-Secret': secretInput },
+        headers: { 'X-Admin-Secret': cleanSecret, 'Content-Type': 'application/json' },
       });
-      if (res.ok) { localStorage.setItem(ADMIN_SECRET_KEY, secretInput); setAuthed(true); }
+      console.log('[ADMIN] Auth response:', res.status);
+      if (res.ok) { localStorage.setItem(ADMIN_SECRET_KEY, cleanSecret); setAuthed(true); }
       else setAuthError('Invalid admin secret');
-    } catch { setAuthError('Cannot connect to server'); }
+    } catch (err) { console.error('[ADMIN] Auth error:', err); setAuthError('Cannot connect to server: ' + err.message); }
   };
 
   useEffect(() => {
     const saved = localStorage.getItem(ADMIN_SECRET_KEY);
     if (saved) {
+      // Sanitize stored value too
+      const clean = saved.replace(/[^\x20-\x7E]/g, '').trim();
+      if (!clean) { localStorage.removeItem(ADMIN_SECRET_KEY); return; }
+      if (clean !== saved) localStorage.setItem(ADMIN_SECRET_KEY, clean);
       fetch(`${api.defaults.baseURL}/api/admin/accounts`, {
-        headers: { 'X-Admin-Secret': saved },
-      }).then(r => { if (r.ok) setAuthed(true); });
+        headers: { 'X-Admin-Secret': clean, 'Content-Type': 'application/json' },
+      }).then(r => { if (r.ok) setAuthed(true); }).catch(() => {});
     }
   }, []);
 
@@ -87,7 +102,7 @@ function AdminPanel() {
   const loadAccounts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${api.defaults.baseURL}/api/admin/accounts`, { headers: adminHeaders() });
+      const res = await adminFetch('/api/admin/accounts');
       const data = await res.json();
       if (data.success) setAccounts(data.accounts);
     } catch { showToast('Failed to load accounts'); }
@@ -100,7 +115,7 @@ function AdminPanel() {
   const loadPhones = useCallback(async () => {
     setPhonesLoading(true);
     try {
-      const res = await fetch(`${api.defaults.baseURL}/api/admin/phone-numbers/available`, { headers: adminHeaders() });
+      const res = await adminFetch('/api/admin/phone-numbers/available');
       const data = await res.json();
       if (data.success) setAvailablePhones(data.numbers || []);
     } catch { /* ignore */ }
@@ -123,8 +138,8 @@ function AdminPanel() {
         workers: newWorkers.filter(w => w.name),
         services: newServices.filter(s => s.name),
       };
-      const res = await fetch(`${api.defaults.baseURL}/api/admin/create-account`, {
-        method: 'POST', headers: adminHeaders(), body: JSON.stringify(payload),
+      const res = await adminFetch('/api/admin/create-account', {
+        method: 'POST', body: JSON.stringify(payload),
       });
       let data;
       try { data = await res.json(); } catch { data = { error: `Server returned ${res.status}` }; }
@@ -150,8 +165,8 @@ function AdminPanel() {
   // Impersonate — log in as a customer
   const handleImpersonate = async (accountId) => {
     try {
-      const res = await fetch(`${api.defaults.baseURL}/api/admin/accounts/${accountId}/impersonate`, {
-        method: 'POST', headers: adminHeaders(),
+      const res = await adminFetch(`/api/admin/accounts/${accountId}/impersonate`, {
+        method: 'POST',
       });
       const data = await res.json();
       if (data.success) {
@@ -167,8 +182,8 @@ function AdminPanel() {
   // Resend invite
   const handleResendInvite = async (accountId) => {
     try {
-      const res = await fetch(`${api.defaults.baseURL}/api/admin/accounts/${accountId}/resend-invite`, {
-        method: 'POST', headers: adminHeaders(),
+      const res = await adminFetch(`/api/admin/accounts/${accountId}/resend-invite`, {
+        method: 'POST',
         body: JSON.stringify({ frontend_url: window.location.origin }),
       });
       const data = await res.json();
