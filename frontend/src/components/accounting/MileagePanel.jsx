@@ -1,22 +1,20 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency, formatDate } from '../../utils/helpers';
-import { getMileageLogs, createMileageLog, deleteMileageLog } from '../../services/api';
+import { getMileageLogs, createMileageLog, updateMileageLog, deleteMileageLog } from '../../services/api';
 import { useToast } from '../Toast';
 import LoadingSpinner from '../LoadingSpinner';
 
 const DEFAULT_RATE = 0.338; // Irish Revenue civil service rate per km
+const EMPTY_FORM = { date: new Date().toISOString().split('T')[0], from_location: '', to_location: '', distance_km: '', notes: '', rate_per_km: DEFAULT_RATE, driver_name: '' };
 
 function MileagePanel() {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    from_location: '', to_location: '', distance_km: '', notes: '',
-    rate_per_km: DEFAULT_RATE,
-  });
+  const [formData, setFormData] = useState({ ...EMPTY_FORM });
 
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['mileage'],
@@ -29,10 +27,22 @@ function MileagePanel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mileage'] });
       addToast('Trip logged', 'success');
-      setFormData({ date: new Date().toISOString().split('T')[0], from_location: '', to_location: '', distance_km: '', notes: '', rate_per_km: DEFAULT_RATE });
+      setFormData({ ...EMPTY_FORM });
       setShowForm(false);
     },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to log trip', 'error'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }) => updateMileageLog(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mileage'] });
+      addToast('Trip updated', 'success');
+      setFormData({ ...EMPTY_FORM });
+      setShowForm(false);
+      setEditingId(null);
+    },
+    onError: (e) => addToast(e.response?.data?.error || 'Failed to update trip', 'error'),
   });
 
   const deleteMut = useMutation({
@@ -53,6 +63,38 @@ function MileagePanel() {
   }, [logs]);
 
   const estCost = (parseFloat(formData.distance_km) || 0) * (parseFloat(formData.rate_per_km) || DEFAULT_RATE);
+
+  const startEdit = (log) => {
+    setFormData({
+      date: log.date?.split('T')[0] || '',
+      from_location: log.from_location || '',
+      to_location: log.to_location || '',
+      distance_km: log.distance_km || '',
+      rate_per_km: log.rate_per_km || DEFAULT_RATE,
+      driver_name: log.driver_name || '',
+      notes: log.notes || '',
+    });
+    setEditingId(log.id);
+    setShowForm(true);
+  };
+
+  const cancelForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setFormData({ ...EMPTY_FORM });
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.distance_km) { addToast('Enter distance', 'warning'); return; }
+    if (editingId) {
+      updateMut.mutate({ id: editingId, data: formData });
+    } else {
+      createMut.mutate(formData);
+    }
+  };
+
+  const isSaving = createMut.isPending || updateMut.isPending;
 
   if (isLoading) return <LoadingSpinner message="Loading mileage..." />;
 
@@ -98,15 +140,15 @@ function MileagePanel() {
       </div>
 
       <div className="acct-toolbar">
-        <button className="acct-btn-primary" onClick={() => setShowForm(!showForm)}>
+        <button className="acct-btn-primary" onClick={() => { if (showForm) cancelForm(); else setShowForm(true); }}>
           <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'}`}></i>
           {showForm ? 'Cancel' : 'Log Trip'}
         </button>
         {logs.length > 0 && (
           <button className="acct-btn-secondary" style={{ marginLeft: 'auto', fontSize: '0.78rem' }}
             onClick={() => {
-              const rows = [['Date', 'From', 'To', 'Distance (km)', 'Rate/km', 'Cost', 'Notes']];
-              logs.forEach(l => rows.push([l.date, l.from_location || '', l.to_location || '', l.distance_km, l.rate_per_km, l.cost, l.notes || '']));
+              const rows = [['Date', 'From', 'To', 'Distance (km)', 'Rate/km', 'Cost', 'Driver', 'Notes']];
+              logs.forEach(l => rows.push([l.date, l.from_location || '', l.to_location || '', l.distance_km, l.rate_per_km, l.cost, l.driver_name || '', l.notes || '']));
               const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
               const blob = new Blob([csv], { type: 'text/csv' });
               const url = URL.createObjectURL(blob);
@@ -119,7 +161,7 @@ function MileagePanel() {
       </div>
 
       {showForm && (
-        <form className="acct-form" onSubmit={e => { e.preventDefault(); if (!formData.distance_km) { addToast('Enter distance', 'warning'); return; } createMut.mutate(formData); }}>
+        <form className="acct-form" onSubmit={handleSubmit}>
           <div className="acct-form-grid">
             <div className="acct-field">
               <label>Date</label>
@@ -141,6 +183,11 @@ function MileagePanel() {
                 onChange={e => setFormData({ ...formData, to_location: e.target.value })} />
             </div>
             <div className="acct-field">
+              <label>Driver</label>
+              <input type="text" placeholder="Name of driver" value={formData.driver_name}
+                onChange={e => setFormData({ ...formData, driver_name: e.target.value })} />
+            </div>
+            <div className="acct-field">
               <label>Rate (€/km)</label>
               <input type="number" step="0.001" min="0" value={formData.rate_per_km}
                 onChange={e => setFormData({ ...formData, rate_per_km: e.target.value })} />
@@ -157,9 +204,9 @@ function MileagePanel() {
             </div>
           </div>
           <div className="acct-form-actions">
-            <button type="button" className="acct-btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-            <button type="submit" className="acct-btn-primary" disabled={createMut.isPending}>
-              <i className={`fas ${createMut.isPending ? 'fa-spinner fa-spin' : 'fa-check'}`}></i> Log Trip
+            <button type="button" className="acct-btn-secondary" onClick={cancelForm}>Cancel</button>
+            <button type="submit" className="acct-btn-primary" disabled={isSaving}>
+              <i className={`fas ${isSaving ? 'fa-spinner fa-spin' : 'fa-check'}`}></i> {editingId ? 'Update Trip' : 'Log Trip'}
             </button>
           </div>
         </form>
@@ -183,6 +230,7 @@ function MileagePanel() {
               <div className="acct-list-meta">
                 <span><i className="fas fa-calendar"></i> {formatDate(l.date)}</span>
                 <span><i className="fas fa-road"></i> {l.distance_km} km</span>
+                {l.driver_name && <span><i className="fas fa-user"></i> {l.driver_name}</span>}
                 {l.notes && <span><i className="fas fa-sticky-note"></i> {l.notes}</span>}
               </div>
             </div>
@@ -193,7 +241,10 @@ function MileagePanel() {
                 <button className="acct-btn-secondary-sm" onClick={() => setDeleteConfirm(null)}>Cancel</button>
               </div>
             ) : (
-              <button className="acct-btn-icon acct-btn-icon-danger" onClick={() => setDeleteConfirm(l.id)}><i className="fas fa-trash"></i></button>
+              <div style={{ display: 'flex', gap: '0.25rem' }}>
+                <button className="acct-btn-icon" onClick={() => startEdit(l)} title="Edit trip"><i className="fas fa-pen"></i></button>
+                <button className="acct-btn-icon acct-btn-icon-danger" onClick={() => setDeleteConfirm(l.id)} title="Delete trip"><i className="fas fa-trash"></i></button>
+              </div>
             )}
           </div>
         ))}

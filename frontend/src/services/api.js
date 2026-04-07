@@ -285,6 +285,7 @@ export const generatePOFromJob = (bookingId) => api.post(`/api/purchase-orders/g
 // Mileage Tracking
 export const getMileageLogs = () => api.get('/api/mileage');
 export const createMileageLog = (data) => api.post('/api/mileage', data);
+export const updateMileageLog = (id, data) => api.put(`/api/mileage/${id}`, data);
 export const deleteMileageLog = (id) => api.delete(`/api/mileage/${id}`);
 
 // Credit Notes

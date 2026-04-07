@@ -10153,17 +10153,56 @@ def create_mileage_log():
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             INSERT INTO mileage_logs (company_id, date, from_location, to_location,
-                                      distance_km, rate_per_km, cost, booking_id, notes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
+                                      distance_km, rate_per_km, cost, booking_id, driver_name, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
         """, (company_id, data.get('date'), data.get('from_location', ''),
               data.get('to_location', ''), distance, rate, cost,
-              data.get('booking_id'), data.get('notes', '')))
+              data.get('booking_id') or None, data.get('driver_name', ''), data.get('notes', '')))
         log = cur.fetchone()
         conn.commit()
         cur.close()
         log['distance_km'] = float(log.get('distance_km', 0) or 0)
         log['cost'] = float(log.get('cost', 0) or 0)
         return jsonify(log), 201
+    except Exception as ex:
+        conn.rollback()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/mileage/<int:log_id>", methods=["PUT"])
+@login_required
+@subscription_required
+def update_mileage_log(log_id):
+    """Update a mileage log"""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    distance = float(data.get('distance_km', 0) or 0)
+    if distance <= 0:
+        return jsonify({"error": "Distance is required"}), 400
+    rate = float(data.get('rate_per_km', 0.338) or 0.338)
+    cost = round(distance * rate, 2)
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            UPDATE mileage_logs SET date = %s, from_location = %s, to_location = %s,
+                distance_km = %s, rate_per_km = %s, cost = %s, driver_name = %s, notes = %s
+            WHERE id = %s AND company_id = %s RETURNING *
+        """, (data.get('date'), data.get('from_location', ''), data.get('to_location', ''),
+              distance, rate, cost, data.get('driver_name', ''), data.get('notes', ''),
+              log_id, company_id))
+        log = cur.fetchone()
+        conn.commit()
+        cur.close()
+        if not log:
+            return jsonify({"error": "Not found"}), 404
+        log['distance_km'] = float(log.get('distance_km', 0) or 0)
+        log['cost'] = float(log.get('cost', 0) or 0)
+        return jsonify(log)
     except Exception as ex:
         conn.rollback()
         return jsonify({"error": str(ex)}), 500
@@ -10235,7 +10274,8 @@ def create_credit_note():
     if amount <= 0:
         return jsonify({"error": "Amount is required"}), 400
     
-    booking_id = data.get('booking_id')
+    booking_id = data.get('booking_id') or None
+    client_id = data.get('client_id') or None
     process_stripe_refund = data.get('stripe_refund', False)
     stripe_refund_id = None
     stripe_refund_error = None
@@ -10292,7 +10332,7 @@ def create_credit_note():
             INSERT INTO credit_notes (company_id, credit_note_number, client_id, booking_id,
                                       amount, reason, notes, stripe_refund_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
-        """, (company_id, cn_num, data.get('client_id'), booking_id,
+        """, (company_id, cn_num, client_id, booking_id,
               amount, data.get('reason', ''), data.get('notes', ''), stripe_refund_id))
         note = cur.fetchone()
         conn.commit()

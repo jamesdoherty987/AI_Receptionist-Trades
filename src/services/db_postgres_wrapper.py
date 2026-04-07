@@ -1019,6 +1019,7 @@ class PostgreSQLDatabaseWrapper:
                 rate_per_km NUMERIC(6, 4) DEFAULT 0.338,
                 cost NUMERIC(10, 2) DEFAULT 0,
                 booking_id BIGINT REFERENCES bookings(id) ON DELETE SET NULL,
+                driver_name TEXT,
                 notes TEXT,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             )
