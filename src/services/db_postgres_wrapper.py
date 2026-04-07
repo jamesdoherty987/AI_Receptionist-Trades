@@ -1351,6 +1351,7 @@ class PostgreSQLDatabaseWrapper:
             # Uses savepoints so missing tables (un-migrated) don't abort the txn.
             optional_deletes = [
                 # Tables referencing bookings(id)
+                ("job_materials", f"booking_id IN ({booking_subq})"),
                 ("job_tasks", f"booking_id IN ({booking_subq})"),
                 ("job_workers", f"booking_id IN ({booking_subq})"),
                 ("worker_assignments", f"booking_id IN ({booking_subq})"),
@@ -1363,6 +1364,7 @@ class PostgreSQLDatabaseWrapper:
                 ("mileage_logs", "company_id = %s"),
                 ("purchase_orders", "company_id = %s"),
                 ("expenses", "company_id = %s"),
+                ("materials", "company_id = %s"),
                 ("messages", "company_id = %s"),
                 ("worker_accounts", "company_id = %s"),
                 ("worker_time_off", "company_id = %s"),
@@ -1370,6 +1372,7 @@ class PostgreSQLDatabaseWrapper:
                 ("packages", "company_id = %s"),
             ]
             
+            print(f"[DELETE_ACCOUNT] Starting cascading delete for company {company_id} (v2)")
             for table, where_clause in optional_deletes:
                 cursor.execute("SAVEPOINT sp_del")
                 try:
