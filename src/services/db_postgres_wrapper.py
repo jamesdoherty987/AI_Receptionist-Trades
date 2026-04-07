@@ -96,6 +96,10 @@ class PostgreSQLDatabaseWrapper:
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
+            # Set a statement timeout so DDL never blocks forever
+            # (e.g. if another connection holds a lock)
+            cursor.execute("SET statement_timeout = '15s'")
+            
             # Companies/Users table MUST be created first (other tables reference it)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS companies (

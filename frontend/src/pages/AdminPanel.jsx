@@ -126,8 +126,9 @@ function AdminPanel() {
       const res = await fetch(`${api.defaults.baseURL}/api/admin/create-account`, {
         method: 'POST', headers: adminHeaders(), body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (data.success) {
+      let data;
+      try { data = await res.json(); } catch { data = { error: `Server returned ${res.status}` }; }
+      if (res.ok && data.success) {
         setLastInviteLink(data.invite_link);
         setLastEmailSent(data.email_sent);
         showToast('Account created!');
@@ -140,8 +141,9 @@ function AdminPanel() {
         setNewWorkers([]);
         setNewServices([]);
         loadAccounts();
-      } else { showToast(data.error || 'Failed to create account'); }
-    } catch { showToast('Failed to create account'); }
+        loadPhones();
+      } else { showToast(data.error || `Failed (${res.status})`); }
+    } catch (err) { showToast('Failed to create account: ' + (err.message || 'network error')); }
     setLoading(false);
   };
 
