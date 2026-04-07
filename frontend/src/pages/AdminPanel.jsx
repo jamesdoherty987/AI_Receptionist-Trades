@@ -21,10 +21,12 @@ function AdminPanel() {
     company_name: '', owner_name: '', email: '', phone: '', trade_type: '',
     company_context: '', coverage_area: '', address: '',
     business_hours: '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
-    auto_assign_phone: true, subscription_tier: 'pro', subscription_status: 'active',
+    auto_assign_phone: false, phone_number: '', subscription_tier: 'none', subscription_status: 'inactive',
   });
   const [newWorkers, setNewWorkers] = useState([]);
   const [newServices, setNewServices] = useState([]);
+  const [availablePhones, setAvailablePhones] = useState([]);
+  const [phonesLoading, setPhonesLoading] = useState(false);
 
   // Business hours picker state
   const [hoursConfig, setHoursConfig] = useState({
@@ -94,6 +96,19 @@ function AdminPanel() {
 
   useEffect(() => { if (authed) loadAccounts(); }, [authed, loadAccounts]);
 
+  // Load available phone numbers
+  const loadPhones = useCallback(async () => {
+    setPhonesLoading(true);
+    try {
+      const res = await fetch(`${api.defaults.baseURL}/api/admin/phone-numbers/available`, { headers: adminHeaders() });
+      const data = await res.json();
+      if (data.success) setAvailablePhones(data.numbers || []);
+    } catch { /* ignore */ }
+    setPhonesLoading(false);
+  }, [adminHeaders]);
+
+  useEffect(() => { if (authed && view === 'create') loadPhones(); }, [authed, view, loadPhones]);
+
   // Create account
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -120,7 +135,7 @@ function AdminPanel() {
           company_name: '', owner_name: '', email: '', phone: '', trade_type: '',
           company_context: '', coverage_area: '', address: '',
           business_hours: formatHours(),
-          auto_assign_phone: true, subscription_tier: 'pro', subscription_status: 'active',
+          auto_assign_phone: false, phone_number: '', subscription_tier: 'none', subscription_status: 'inactive',
         });
         setNewWorkers([]);
         setNewServices([]);
@@ -393,17 +408,24 @@ function AdminPanel() {
                 <h3><i className="fas fa-cog"></i> Phone & Subscription</h3>
                 <div className="admin-form-grid">
                   <div className="admin-field">
-                    <label className="admin-checkbox-label">
-                      <input type="checkbox" checked={createForm.auto_assign_phone} onChange={e => setCreateForm(p => ({...p, auto_assign_phone: e.target.checked}))} />
-                      Auto-assign AI phone number
-                    </label>
+                    <label>AI Phone Number</label>
+                    <select value={createForm.phone_number} onChange={e => setCreateForm(p => ({...p, phone_number: e.target.value}))}>
+                      <option value="">Don't assign yet</option>
+                      {phonesLoading && <option disabled>Loading...</option>}
+                      {availablePhones.map(p => (
+                        <option key={p.phone_number} value={p.phone_number}>{p.phone_number}</option>
+                      ))}
+                    </select>
+                    {!phonesLoading && availablePhones.length === 0 && (
+                      <small style={{color: '#f87171', marginTop: '0.25rem', display: 'block'}}>No phone numbers available in pool</small>
+                    )}
                   </div>
                   <div className="admin-field">
                     <label>Subscription</label>
-                    <select value={createForm.subscription_tier} onChange={e => setCreateForm(p => ({...p, subscription_tier: e.target.value}))}>
-                      <option value="pro">Pro (Active)</option>
-                      <option value="trial">Trial</option>
+                    <select value={createForm.subscription_tier} onChange={e => setCreateForm(p => ({...p, subscription_tier: e.target.value, subscription_status: e.target.value === 'none' ? 'inactive' : 'active'}))}>
                       <option value="none">None</option>
+                      <option value="trial">Trial</option>
+                      <option value="pro">Pro (Active)</option>
                     </select>
                   </div>
                 </div>

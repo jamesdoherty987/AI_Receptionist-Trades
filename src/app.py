@@ -3251,6 +3251,18 @@ def admin_impersonate(company_id):
     })
 
 
+@app.route("/api/admin/phone-numbers/available", methods=["GET"])
+@admin_required
+def admin_available_phone_numbers():
+    """Get available phone numbers (admin only)."""
+    db = get_database()
+    try:
+        available_numbers = db.get_available_phone_numbers()
+        return jsonify({"success": True, "numbers": available_numbers, "count": len(available_numbers)})
+    except Exception as e:
+        return jsonify({"success": False, "numbers": [], "error": str(e)}), 500
+
+
 @app.route("/api/owner/set-password", methods=["POST"])
 @rate_limit(max_requests=10, window_seconds=300)
 def owner_set_password():
