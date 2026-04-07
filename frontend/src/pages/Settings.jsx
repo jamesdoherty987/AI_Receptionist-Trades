@@ -1698,7 +1698,7 @@ function Settings() {
                 </div>
                 <p className="section-description">
                   {isManagedAccount
-                    ? 'Your AI receptionist details were configured during setup. You can update your coverage area below. To change the AI context, contact us.'
+                    ? 'Your AI receptionist details were configured during setup. To change the AI context, contact us.'
                     : 'Give your AI receptionist context about your business. This information helps it answer customer questions more accurately — things like where to park, your company history, specific policies, certifications, or any other details callers might ask about.'}
                 </p>
                 <div className="form-grid">

@@ -213,3 +213,41 @@
   .admin-table { font-size: 0.75rem; }
   .admin-table th, .admin-table td { padding: 0.5rem; }
 }
+
+/* Hours picker */
+.admin-hours-picker { display: flex; flex-direction: column; gap: 0.75rem; }
+.admin-hours-time { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.admin-time-group { display: flex; align-items: center; gap: 0.4rem; }
+.admin-time-group label { font-size: 0.8rem; color: #94a3b8; min-width: 35px; }
+.admin-time-group select {
+  padding: 0.5rem; border-radius: 6px; border: 1px solid #475569;
+  background: #0f172a; color: #e2e8f0; font-size: 0.9rem;
+}
+.admin-time-sep { color: #64748b; font-size: 0.9rem; }
+.admin-hours-days { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.admin-day-chip {
+  padding: 0.4rem 0.75rem; border-radius: 8px; border: 1px solid #475569;
+  background: #0f172a; color: #94a3b8; font-size: 0.8rem; cursor: pointer;
+  transition: all 0.15s; user-select: none;
+}
+.admin-day-chip input { display: none; }
+.admin-day-chip.active { background: #1e3a5f; border-color: #7dd3fc; color: #7dd3fc; }
+.admin-emergency-check {
+  display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: #e2e8f0; cursor: pointer;
+}
+.admin-emergency-check input { accent-color: #818cf8; }
+.admin-hours-preview { font-size: 0.8rem; color: #64748b; font-style: italic; }
+.admin-checkbox-label {
+  display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: #e2e8f0; cursor: pointer;
+}
+.admin-checkbox-label input { accent-color: #818cf8; }
+
+/* Actions cell */
+.actions-cell { display: flex; gap: 0.35rem; }
+
+/* Invite dismiss */
+.invite-dismiss {
+  background: none; border: none; color: #6ee7b7; cursor: pointer; font-size: 1rem;
+  padding: 0; flex-shrink: 0; opacity: 0.6;
+}
+.invite-dismiss:hover { opacity: 1; }

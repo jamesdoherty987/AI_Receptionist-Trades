@@ -3217,6 +3217,40 @@ def admin_assign_phone(company_id):
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/api/admin/accounts/<int:company_id>/impersonate", methods=["POST"])
+@admin_required
+def admin_impersonate(company_id):
+    """Log in as a specific company account (admin only).
+    Returns an auth token that the frontend can use to access the account.
+    """
+    db = get_database()
+    company = db.get_company(company_id)
+    if not company:
+        return jsonify({"error": "Account not found"}), 404
+
+    # Generate an auth token for this company
+    auth_token = generate_auth_token(company['id'], company['email'])
+
+    return jsonify({
+        "success": True,
+        "auth_token": auth_token,
+        "user": {
+            "id": company['id'],
+            "company_name": company['company_name'],
+            "owner_name": company['owner_name'],
+            "email": company['email'],
+            "phone": company['phone'],
+            "trade_type": company['trade_type'],
+            "address": company.get('address'),
+            "logo_url": company.get('logo_url'),
+            "subscription_tier": company['subscription_tier'],
+            "subscription_status": company['subscription_status'],
+            "twilio_phone_number": company.get('twilio_phone_number'),
+            "easy_setup": company.get('easy_setup', True)
+        }
+    })
+
+
 @app.route("/api/owner/set-password", methods=["POST"])
 @rate_limit(max_requests=10, window_seconds=300)
 def owner_set_password():
