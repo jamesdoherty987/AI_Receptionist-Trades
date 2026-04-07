@@ -94,7 +94,7 @@ export const forgotPassword = (email) => api.post('/api/auth/forgot-password', {
 export const resetPassword = (token, newPassword) => 
   api.post('/api/auth/reset-password', { token, new_password: newPassword });
 export const deleteAccount = (confirmation) => 
-  api.post('/api/auth/delete-account', { confirmation });
+  api.post('/api/auth/delete-account', { confirmation }, { timeout: 120000 });
 
 // Bookings / Jobs
 export const getBookings = () => api.get('/api/bookings');

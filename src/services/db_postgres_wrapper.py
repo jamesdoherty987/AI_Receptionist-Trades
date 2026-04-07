@@ -1344,70 +1344,45 @@ class PostgreSQLDatabaseWrapper:
         
         try:
             booking_subq = "SELECT id FROM bookings WHERE company_id = %s"
-            worker_subq = "SELECT id FROM workers WHERE company_id = %s"
             client_subq = "SELECT id FROM clients WHERE company_id = %s"
             
-            # --- Tables that reference bookings/workers/clients (delete first) ---
+            # All tables that may reference bookings/workers/clients/services
+            # and need to be deleted before the core tables.
+            # Uses savepoints so missing tables (un-migrated) don't abort the txn.
+            optional_deletes = [
+                # Tables referencing bookings(id)
+                ("job_tasks", f"booking_id IN ({booking_subq})"),
+                ("job_workers", f"booking_id IN ({booking_subq})"),
+                ("worker_assignments", f"booking_id IN ({booking_subq})"),
+                ("appointment_notes", f"booking_id IN ({booking_subq})"),
+                # Tables referencing clients(id)
+                ("notes", f"client_id IN ({client_subq})"),
+                # Tables with company_id that may not exist
+                ("quotes", "company_id = %s"),
+                ("credit_notes", "company_id = %s"),
+                ("mileage_logs", "company_id = %s"),
+                ("purchase_orders", "company_id = %s"),
+                ("expenses", "company_id = %s"),
+                ("messages", "company_id = %s"),
+                ("worker_accounts", "company_id = %s"),
+                ("worker_time_off", "company_id = %s"),
+                ("notifications", "company_id = %s"),
+                ("packages", "company_id = %s"),
+            ]
             
-            # job_tasks references bookings(id)
-            cursor.execute(f"DELETE FROM job_tasks WHERE booking_id IN ({booking_subq})", (company_id,))
-            
-            # job_workers references bookings(id) and workers(id)
-            cursor.execute(f"DELETE FROM job_workers WHERE booking_id IN ({booking_subq})", (company_id,))
-            
-            # worker_assignments references bookings(id) and workers(id)
-            cursor.execute(f"DELETE FROM worker_assignments WHERE booking_id IN ({booking_subq})", (company_id,))
-            
-            # appointment_notes references bookings(id)
-            cursor.execute(f"DELETE FROM appointment_notes WHERE booking_id IN ({booking_subq})", (company_id,))
-            
-            # notes references clients(id)
-            cursor.execute(f"DELETE FROM notes WHERE client_id IN ({client_subq})", (company_id,))
-            
-            # quotes references clients(id) and bookings(id)
-            cursor.execute("DELETE FROM quotes WHERE company_id = %s", (company_id,))
-            
-            # credit_notes references clients(id) and bookings(id)
-            cursor.execute("DELETE FROM credit_notes WHERE company_id = %s", (company_id,))
-            
-            # mileage_logs references bookings(id)
-            cursor.execute("DELETE FROM mileage_logs WHERE company_id = %s", (company_id,))
-            
-            # purchase_orders references company
-            cursor.execute("DELETE FROM purchase_orders WHERE company_id = %s", (company_id,))
-            
-            # expenses references company
-            cursor.execute("DELETE FROM expenses WHERE company_id = %s", (company_id,))
-            
-            # Optional tables that may not exist on all deployments
-            for table, col in [
-                ("messages", "company_id"),
-                ("worker_accounts", "company_id"),
-                ("worker_time_off", "company_id"),
-                ("notifications", "company_id"),
-            ]:
-                cursor.execute("SAVEPOINT sp_optional")
+            for table, where_clause in optional_deletes:
+                cursor.execute("SAVEPOINT sp_del")
                 try:
-                    cursor.execute(f"DELETE FROM {table} WHERE {col} = %s", (company_id,))
+                    cursor.execute(f"DELETE FROM {table} WHERE {where_clause}", (company_id,))
+                    cursor.execute("RELEASE SAVEPOINT sp_del")
                 except Exception:
-                    cursor.execute("ROLLBACK TO SAVEPOINT sp_optional")
-                else:
-                    cursor.execute("RELEASE SAVEPOINT sp_optional")
+                    cursor.execute("ROLLBACK TO SAVEPOINT sp_del")
             
-            # --- Core tables ---
-            
-            # Delete bookings (after all booking-referencing tables)
+            # --- Core tables (these always exist) ---
             cursor.execute("DELETE FROM bookings WHERE company_id = %s", (company_id,))
-            
-            # Delete workers (after all worker-referencing tables)
             cursor.execute("DELETE FROM workers WHERE company_id = %s", (company_id,))
-            
-            # Delete clients (after all client-referencing tables)
             cursor.execute("DELETE FROM clients WHERE company_id = %s", (company_id,))
-            
-            # Delete services and packages
             cursor.execute("DELETE FROM services WHERE company_id = %s", (company_id,))
-            cursor.execute("DELETE FROM packages WHERE company_id = %s", (company_id,))
             
             # Release the phone number back to the pool
             cursor.execute("UPDATE twilio_phone_numbers SET assigned_to_company_id = NULL, status = 'available' WHERE assigned_to_company_id = %s", (company_id,))
@@ -1420,7 +1395,9 @@ class PostgreSQLDatabaseWrapper:
             return True
         except Exception as e:
             conn.rollback()
+            import traceback
             print(f"[ERROR] Failed to delete company {company_id}: {e}")
+            traceback.print_exc()
             return False
         finally:
             cursor.close()
