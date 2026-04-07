@@ -1,14 +1,14 @@
 .finances-tab {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.5rem;
 }
 
 /* Revenue Cards */
 .revenue-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
 }
 
 .revenue-card {
@@ -44,10 +44,13 @@
 }
 
 .revenue-value {
-  font-size: 1.4rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: #1e293b;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .revenue-label {
@@ -471,8 +474,8 @@
 /* Quick Insights Row */
 .insights-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 0.75rem;
 }
 
 .insight-card {
@@ -788,4 +791,136 @@
 }
 .transaction-profit.profit-negative {
   color: #ef4444;
+}
+
+/* Section Visibility Toggle */
+.fin-section-toggle-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.fin-section-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.fin-section-toggle-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.fin-section-toggle-btn i {
+  font-size: 0.7rem;
+}
+
+.fin-section-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 1;
+}
+
+.fin-section-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.fin-section-chip:hover {
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+
+.fin-section-chip.active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #3b82f6;
+}
+
+.fin-section-chip i:first-child {
+  font-size: 0.65rem;
+}
+
+.fin-section-chip i:last-child {
+  font-size: 0.6rem;
+  opacity: 0.6;
+}
+
+@media (max-width: 768px) {
+  .fin-section-toggle-bar {
+    flex-direction: column;
+  }
+  .fin-section-picker {
+    gap: 0.25rem;
+  }
+  .fin-section-chip {
+    font-size: 0.65rem;
+    padding: 0.3rem 0.5rem;
+  }
+}
+
+/* Quick Action Buttons */
+.fin-quick-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.fin-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  background: white;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #6366f1;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.fin-quick-btn:hover {
+  background: #f5f3ff;
+  border-color: #6366f1;
+  border-style: solid;
+}
+
+.fin-quick-btn i {
+  font-size: 0.65rem;
+}
+
+@media (max-width: 768px) {
+  .fin-quick-actions {
+    gap: 0.3rem;
+  }
+  .fin-quick-btn {
+    font-size: 0.72rem;
+    padding: 0.35rem 0.6rem;
+  }
 }

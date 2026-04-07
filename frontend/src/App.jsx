@@ -17,6 +17,8 @@ import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import WorkerLogin from './pages/WorkerLogin'
 import WorkerSetPassword from './pages/WorkerSetPassword'
+import SetPassword from './pages/SetPassword'
+import AdminPanel from './pages/AdminPanel'
 import WorkerForgotPassword from './pages/WorkerForgotPassword'
 import WorkerResetPassword from './pages/WorkerResetPassword'
 import WorkerDashboard from './pages/WorkerDashboard'
@@ -146,6 +148,10 @@ function AppRoutes() {
           </PublicRoute>
         } 
       />
+      <Route 
+        path="/set-password" 
+        element={<SetPassword />} 
+      />
 
       {/* Protected routes - allow viewing without subscription but show upgrade prompts */}
       <Route 
@@ -191,6 +197,9 @@ function AppRoutes() {
           </WorkerRoute>
         } 
       />
+
+      {/* Admin Panel — obscure route, self-authenticating */}
+      <Route path="/bfy-ops" element={<AdminPanel />} />
 
       {/* Catch all - redirect to landing */}
       <Route path="*" element={<Navigate to="/" replace />} />

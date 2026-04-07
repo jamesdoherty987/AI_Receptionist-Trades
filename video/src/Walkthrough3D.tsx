@@ -380,10 +380,10 @@ const Finale: React.FC = () => {
             <span style={{ fontSize: 56, fontWeight: 900, color: C.white, letterSpacing: -2 }}>BookedForYou</span>
           </div>
         </div>
-        <BigWord text="Try It Free" delay={15} size={64} y={520} color={C.white} />
+        <BigWord text="Get Started" delay={15} size={64} y={520} color={C.white} />
         <div style={{ position: "absolute", left: "50%", top: 600, transform: `translate(-50%) scale(${btnS})`, zIndex: 10 }}>
           <div style={{ display: "inline-block", background: `linear-gradient(135deg,${C.purple},${C.cyan})`, borderRadius: 20, padding: "22px 58px", boxShadow: `0 0 ${55 * glow}px ${C.purpleGlow},0 0 ${90 * glow}px ${C.cyanGlow}` }}>
-            <span style={{ fontSize: 28, fontWeight: 900, color: C.white }}>Start Free Trial →</span>
+            <span style={{ fontSize: 28, fontWeight: 900, color: C.white }}>Get Started →</span>
           </div>
         </div>
         <BigWord text="bookedforyou.ie" delay={45} size={28} y={700} color={C.purpleLight} />

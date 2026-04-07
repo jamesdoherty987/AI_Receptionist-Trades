@@ -1664,3 +1664,43 @@
     gap: 1rem;
   }
 }
+
+/* Managed account read-only fields */
+.managed-field-readonly {
+  background: var(--bg-secondary, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  padding: 0.875rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.managed-field-value {
+  color: var(--text-primary, #1e293b);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  flex: 1;
+}
+
+.managed-change-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--primary, #4a90d9);
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--primary, #4a90d9);
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.managed-change-link:hover {
+  background: var(--primary, #4a90d9);
+  color: #fff;
+}

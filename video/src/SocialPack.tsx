@@ -268,7 +268,7 @@ const V2_CTA: React.FC = () => {
         <Boom text="Save €28,000/yr" delay={10} size={48} color={C.cyan} />
         <Pop delay={22} scale style={{ marginTop: 16 }}>
           <div style={{ display: "inline-block", background: `linear-gradient(135deg,${C.purple},${C.cyan})`, borderRadius: 16, padding: "16px 40px", transform: `scale(${btnS})` }}>
-            <span style={{ fontSize: 22, fontWeight: 900, color: C.white }}>Start Free Trial →</span>
+            <span style={{ fontSize: 22, fontWeight: 900, color: C.white }}>Get Started →</span>
           </div>
         </Pop>
       </div>

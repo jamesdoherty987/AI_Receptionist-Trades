@@ -176,3 +176,145 @@
     justify-content: center;
   }
 }
+
+/* PDF-style Invoice Preview */
+.inv-preview-doc {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.inv-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #6366f1;
+}
+
+.inv-preview-company {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.inv-preview-addr {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin-top: 0.15rem;
+}
+
+.inv-preview-right {
+  text-align: right;
+}
+
+.inv-preview-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #6366f1;
+  letter-spacing: 0.08em;
+}
+
+.inv-preview-num {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+  margin-top: 0.2rem;
+}
+
+.inv-preview-date {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 0.1rem;
+}
+
+.inv-preview-billto {
+  margin-bottom: 1rem;
+}
+
+.inv-preview-billto-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.25rem;
+}
+
+.inv-preview-billto-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.inv-preview-billto-addr {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.inv-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+
+.inv-preview-table th {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.inv-preview-table td {
+  padding: 0.6rem 0.75rem;
+  color: #374151;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.inv-preview-totals {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+  margin-bottom: 1rem;
+}
+
+.inv-preview-total-row {
+  display: flex;
+  justify-content: space-between;
+  width: 200px;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.inv-preview-grand-total {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1e293b;
+  padding-top: 0.4rem;
+  border-top: 2px solid #e2e8f0;
+  margin-top: 0.2rem;
+}
+
+.inv-preview-terms {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  margin-top: 0.5rem;
+}
+
+.inv-preview-footer {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-style: italic;
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #e2e8f0;
+}

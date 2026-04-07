@@ -304,7 +304,7 @@ const FeaturesScene: React.FC = () => {
 const HowItWorksScene: React.FC = () => {
   const frame = useCurrentFrame();
   const steps = [
-    { num: "1", title: "Sign Up", desc: "Set up your profile in 5 minutes" },
+    { num: "1", title: "Get in Touch", desc: "We set up everything for you" },
     { num: "2", title: "Connect Phone", desc: "Forward calls to your AI number" },
     { num: "3", title: "Start Growing", desc: "Never miss a call again" },
   ];
@@ -424,7 +424,7 @@ const CTAScene: React.FC = () => {
         </FadeIn>
         <FadeIn delay={16} direction="up">
           <p style={{ fontSize: 24, color: COLORS.gray, margin: "0 0 40px" }}>
-            Start your free 14-day trial. No credit card required.
+            We handle the setup. You handle the business.
           </p>
         </FadeIn>
         <FadeIn delay={24} direction="up">
@@ -436,7 +436,7 @@ const CTAScene: React.FC = () => {
             boxShadow: `0 0 ${40 * glow}px ${COLORS.accentGlow}`,
           }}>
             <span style={{ fontSize: 24, fontWeight: 800, color: COLORS.white }}>
-              Get Started Free →
+              Get Started →
             </span>
           </div>
         </FadeIn>

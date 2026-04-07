@@ -293,16 +293,16 @@ class SMSReminderService:
                 message_body = (
                     f"{business_name}\n"
                     f"{service_type} - EUR {charge:.2f}\n"
-                    f"Pay here: {stripe_payment_link}"
+                    f"Pay now: {stripe_payment_link}"
                 )
                 # If there's room, add the customer greeting
                 with_name = (
                     f"{business_name}\n"
-                    f"Hi {customer_name}, your invoice:\n"
+                    f"Hi {customer_name},\n"
                     f"{service_type} - EUR {charge:.2f}\n"
-                    f"Pay here: {stripe_payment_link}"
+                    f"Pay now: {stripe_payment_link}"
                 )
-                if len(with_name) <= 160:
+                if len(with_name) <= 320:
                     message_body = with_name
             else:
                 # No payment link — include bank/revolut details compactly

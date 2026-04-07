@@ -806,88 +806,101 @@ const SMSReminderScene: React.FC = () => {
 
 
 // ═══════════════════════════════════════════════════════════
-// SCENE 9: SETUP SPEED — onboarding in 5 minutes
+// SCENE 9: ACCOUNTING — invoicing, P&L, expenses
 // ═══════════════════════════════════════════════════════════
-const SetupSpeedScene: React.FC = () => {
+const AccountingScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const steps = [
-    { icon: "👑", label: "Subscribe", color: C.gold },
-    { icon: "📍", label: "Service Area", color: C.blue },
-    { icon: "🏢", label: "Company", color: C.purple },
-    { icon: "🏦", label: "Payment", color: C.cyan },
-    { icon: "🔧", label: "Services", color: C.orange },
-    { icon: "👷", label: "Workers", color: C.pink },
-    { icon: "📞", label: "Go Live!", color: C.cyan },
+  // Animated revenue counter
+  const revenue = Math.floor(interpolate(frame, [20, 80], [0, 14280], { extrapolateRight: "clamp" }));
+  const expenses = Math.floor(interpolate(frame, [30, 80], [0, 4120], { extrapolateRight: "clamp" }));
+  const profit = revenue - expenses;
+  // Invoice items appearing
+  const invoices = [
+    { client: "John Murphy", amount: "€280", status: "Paid", color: C.cyan, delay: 25 },
+    { client: "Sarah O'Connor", amount: "€1,200", status: "Sent", color: C.gold, delay: 40 },
+    { client: "Emma Walsh", amount: "€450", status: "Paid", color: C.cyan, delay: 55 },
+    { client: "Tom Kelly", amount: "€3,500", status: "Overdue", color: C.orange, delay: 70 },
   ];
-  // Progress bar filling
-  const progress = interpolate(frame, [20, 110], [0, 100], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  // Timer counting
-  const minutes = Math.min(Math.floor(interpolate(frame, [20, 110], [0, 5], { extrapolateRight: "clamp" })), 5);
-  const seconds = Math.floor(interpolate(frame, [20, 110], [0, 300], { extrapolateRight: "clamp" }) % 60);
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
-      <OrbBlobs colors={[C.purpleGlow, C.cyanGlow]} />
-      <div style={{ textAlign: "center", zIndex: 1, maxWidth: 1000 }}>
-        <Pop delay={0} direction="scale">
-          <h2 style={{ fontSize: 52, fontWeight: 900, color: C.white, margin: "0 0 8px" }}>
-            Live in <Grad from={C.cyan} to={C.purple}>5 minutes</Grad>
-          </h2>
-        </Pop>
-        <Pop delay={8} direction="up">
-          <p style={{ fontSize: 22, color: C.gray, margin: "0 0 40px" }}>
-            Our guided wizard gets you from zero to answering calls
-          </p>
-        </Pop>
-        {/* Timer */}
-        <Pop delay={12} direction="scale">
+      <OrbBlobs colors={[C.purpleGlow, C.cyanGlow, "rgba(255,214,10,0.2)"]} speed={0.8} />
+      <div style={{ display: "flex", gap: 60, alignItems: "center", zIndex: 1, padding: "0 80px", width: "100%" }}>
+        {/* Left: P&L summary */}
+        <div style={{ flex: 1 }}>
+          <Pop delay={0} direction="up">
+            <h2 style={{ fontSize: 48, fontWeight: 900, color: C.white, margin: "0 0 24px", lineHeight: 1.15 }}>
+              Built-in <Grad from={C.gold} to={C.orange}>Accounting</Grad>
+            </h2>
+          </Pop>
+          <Pop delay={10} direction="left">
+            <div style={{
+              background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 22, padding: 24,
+              backdropFilter: "blur(20px)", marginBottom: 20,
+              boxShadow: `0 10px 40px rgba(0,0,0,0.3)`,
+            }}>
+              <p style={{ fontSize: 16, fontWeight: 700, color: C.gray, margin: "0 0 16px", textTransform: "uppercase", letterSpacing: 2 }}>Profit & Loss — This Month</p>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ fontSize: 18, color: C.lightGray }}>Revenue</span>
+                <span style={{ fontSize: 22, fontWeight: 900, color: C.cyan, fontFamily: "monospace" }}>€{revenue.toLocaleString()}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ fontSize: 18, color: C.lightGray }}>Expenses</span>
+                <span style={{ fontSize: 22, fontWeight: 900, color: C.orange, fontFamily: "monospace" }}>-€{expenses.toLocaleString()}</span>
+              </div>
+              <div style={{ height: 1, background: C.cardBorder, margin: "8px 0" }} />
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 20, fontWeight: 800, color: C.white }}>Net Profit</span>
+                <span style={{ fontSize: 28, fontWeight: 900, color: C.cyan, fontFamily: "monospace", textShadow: `0 0 20px ${C.cyanGlow}` }}>€{profit.toLocaleString()}</span>
+              </div>
+            </div>
+          </Pop>
+          {[
+            { icon: "🧾", text: "One-click invoicing", delay: 30 },
+            { icon: "📊", text: "Profit & loss reports", delay: 40 },
+            { icon: "💳", text: "Stripe payment links", delay: 50 },
+            { icon: "📈", text: "Expense tracking", delay: 60 },
+            { icon: "⏳", text: "Aging receivables", delay: 70 },
+          ].map((item, i) => (
+            <Pop key={i} delay={item.delay} direction="left">
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 12,
+                  background: C.card, border: `1px solid ${C.cardBorder}`,
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
+                }}>{item.icon}</div>
+                <span style={{ fontSize: 19, color: C.lightGray, fontWeight: 600 }}>{item.text}</span>
+              </div>
+            </Pop>
+          ))}
+        </div>
+        {/* Right: Invoice list */}
+        <Pop delay={15} direction="right" style={{ flex: 1 }}>
           <div style={{
-            display: "inline-flex", alignItems: "center", gap: 12,
-            background: C.card, border: `1px solid ${C.cardBorder}`,
-            borderRadius: 16, padding: "12px 28px", marginBottom: 30,
+            background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 22, padding: 24,
+            backdropFilter: "blur(20px)",
+            boxShadow: `0 20px 60px rgba(0,0,0,0.4), 0 0 40px ${C.purpleGlow}`,
           }}>
-            <span style={{ fontSize: 18 }}>⏱️</span>
-            <span style={{ fontSize: 28, fontWeight: 900, fontFamily: "monospace", color: C.cyan }}>
-              {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
-            </span>
-          </div>
-        </Pop>
-        {/* Steps */}
-        <Pop delay={15} direction="up">
-          <div style={{
-            background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 24,
-            padding: "32px 40px", backdropFilter: "blur(20px)",
-            boxShadow: `0 20px 60px rgba(0,0,0,0.4)`,
-          }}>
-            {/* Progress bar */}
-            <div style={{ width: "100%", height: 6, background: C.cardBorder, borderRadius: 3, marginBottom: 30, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, paddingBottom: 14, borderBottom: `1px solid ${C.cardBorder}` }}>
               <div style={{
-                width: `${progress}%`, height: "100%", borderRadius: 3,
-                background: `linear-gradient(90deg, ${C.purple}, ${C.cyan})`,
-                boxShadow: `0 0 15px ${C.cyanGlow}`,
-              }} />
+                width: 40, height: 40, borderRadius: "50%",
+                background: `linear-gradient(135deg, ${C.gold}, ${C.orange})`,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+              }}>🧾</div>
+              <span style={{ fontSize: 18, fontWeight: 800, color: C.white }}>Recent Invoices</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              {steps.map((s, i) => {
-                const stepProgress = progress / 100 * steps.length;
-                const isComplete = i < stepProgress;
-                const isCurrent = i >= stepProgress - 1 && i < stepProgress;
-                return (
-                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, width: 100 }}>
-                    <div style={{
-                      width: 56, height: 56, borderRadius: 16,
-                      background: isComplete ? `linear-gradient(135deg, ${C.purple}, ${C.cyan})` : C.card,
-                      border: isCurrent ? `2px solid ${C.cyan}` : `1px solid ${isComplete ? "transparent" : C.cardBorder}`,
-                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26,
-                      boxShadow: isCurrent ? `0 0 25px ${C.cyanGlow}` : isComplete ? `0 0 15px ${C.purpleGlow}` : "none",
-                      transition: "all 0.3s",
-                    }}>
-                      {isComplete && !isCurrent ? <span style={{ fontSize: 22 }}>✓</span> : s.icon}
-                    </div>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: isComplete ? C.white : C.gray }}>{s.label}</span>
+            {invoices.map((inv, i) => {
+              const opacity = interpolate(frame, [inv.delay, inv.delay + 8], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+              const y = interpolate(frame, [inv.delay, inv.delay + 8], [12, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+              return (
+                <div key={i} style={{ opacity, transform: `translateY(${y}px)`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: i < invoices.length - 1 ? `1px solid ${C.cardBorder}` : "none" }}>
+                  <div>
+                    <p style={{ fontSize: 16, fontWeight: 700, color: C.white, margin: 0 }}>{inv.client}</p>
+                    <p style={{ fontSize: 13, color: C.gray, margin: 0 }}>{inv.amount}</p>
                   </div>
-                );
-              })}
-            </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: inv.color, padding: "4px 12px", borderRadius: 8, background: `${inv.color}15`, border: `1px solid ${inv.color}33` }}>{inv.status}</span>
+                </div>
+              );
+            })}
           </div>
         </Pop>
       </div>
@@ -903,7 +916,7 @@ const StatsExplosionScene: React.FC = () => {
   const { fps } = useVideoConfig();
   const stats = [
     { value: "24/7", sub: "Always On", icon: "🕐", color: C.cyan },
-    { value: "5min", sub: "Setup Time", icon: "⚡", color: C.gold },
+    { value: "€0", sub: "Missed Revenue", icon: "💰", color: C.gold },
     { value: "∞", sub: "Concurrent Calls", icon: "📞", color: C.purple },
     { value: "0", sub: "Missed Calls", icon: "🎯", color: C.pink },
   ];
@@ -1011,7 +1024,7 @@ const ExplosiveFinale: React.FC = () => {
         </Pop>
         <Pop delay={25} direction="up">
           <p style={{ fontSize: 24, color: C.gray, margin: "0 0 36px" }}>
-            14-day free trial. No credit card. Cancel anytime.
+            Every call answered. Every job booked. Every invoice sent.
           </p>
         </Pop>
         <Pop delay={35} direction="scale">
@@ -1023,7 +1036,7 @@ const ExplosiveFinale: React.FC = () => {
             boxShadow: `0 0 ${60 * glow}px ${C.purpleGlow}, 0 0 ${100 * glow}px ${C.cyanGlow}`,
           }}>
             <span style={{ fontSize: 28, fontWeight: 900, color: C.white }}>
-              Get Started Free →
+              Get Started →
             </span>
           </div>
         </Pop>
@@ -1067,7 +1080,7 @@ export const CinematicVideo: React.FC = () => {
     { component: CalendarZoomScene, duration: 150 },        // 5s — calendar filling up
     { component: DashboardMontageScene, duration: 165 },    // 5.5s — 4-panel dashboard
     { component: SMSReminderScene, duration: 150 },         // 5s — SMS flow
-    { component: SetupSpeedScene, duration: 150 },          // 5s — onboarding wizard
+    { component: AccountingScene, duration: 150 },          // 5s — accounting & invoicing
     { component: StatsExplosionScene, duration: 120 },      // 4s — stats flying in
     { component: ExplosiveFinale, duration: 135 },          // 4.5s — CTA
   ];

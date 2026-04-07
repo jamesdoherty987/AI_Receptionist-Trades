@@ -1011,7 +1011,7 @@ const DemoFinaleScene: React.FC = () => {
         </Pop>
         <Pop delay={30} direction="up">
           <p style={{ fontSize: 22, color: C.gray, margin: "0 0 30px" }}>
-            14-day free trial. No credit card required.
+            We handle the setup. You handle the business.
           </p>
         </Pop>
         <Pop delay={35} direction="scale">

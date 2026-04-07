@@ -290,12 +290,42 @@ function OnboardingWizard({ onComplete }) {
       if (settings.twilio_phone_number) {
         completed.push('phone');
       }
+      if (settings.setup_wizard_complete) {
+        // If wizard was already completed on backend, mark all done
+        STEPS.forEach(s => completed.push(s.id));
+      }
       setCompletedSteps(prev => {
         const merged = new Set([...prev, ...completed]);
         return [...merged];
       });
     }
   }, [settings]);
+
+  // Auto-mark workers/services/materials complete when actual data exists
+  useEffect(() => {
+    const newCompleted = [];
+    const workers = Array.isArray(workersData) ? workersData : [];
+    if (workers.length > 0 && !completedSteps.includes('workers')) {
+      newCompleted.push('workers');
+      localStorage.setItem(`workers_setup_visited_${userKey}`, 'true');
+    }
+    const services = servicesData?.services || [];
+    if (services.length > 0 && !completedSteps.includes('services')) {
+      newCompleted.push('services');
+      localStorage.setItem(`services_setup_visited_${userKey}`, 'true');
+    }
+    const materials = materialsData?.materials || [];
+    if (materials.length > 0 && !completedSteps.includes('materials')) {
+      newCompleted.push('materials');
+      localStorage.setItem(`materials_setup_visited_${userKey}`, 'true');
+    }
+    if (newCompleted.length > 0) {
+      setCompletedSteps(prev => {
+        const merged = new Set([...prev, ...newCompleted]);
+        return [...merged];
+      });
+    }
+  }, [workersData, servicesData, materialsData, userKey]);
 
   const saveMutation = useMutation({
     mutationFn: updateBusinessSettings,
@@ -386,9 +416,9 @@ function OnboardingWizard({ onComplete }) {
     if (stepId === 'service-area') return !!(settings?.business_address && settings?.coverage_area && settings?.business_hours) || completedSteps.includes('service-area');
     if (stepId === 'company-details') return !!settings?.company_context || completedSteps.includes('company-details');
     if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder) || isPaymentSkipped() || completedSteps.includes('payment');
-    if (stepId === 'services') return localStorage.getItem(`services_setup_visited_${userKey}`) === 'true' || completedSteps.includes('services');
-    if (stepId === 'workers') return localStorage.getItem(`workers_setup_visited_${userKey}`) === 'true' || completedSteps.includes('workers');
-    if (stepId === 'materials') return localStorage.getItem(`materials_setup_visited_${userKey}`) === 'true' || completedSteps.includes('materials');
+    if (stepId === 'services') return (servicesData?.services || []).length > 0 || localStorage.getItem(`services_setup_visited_${userKey}`) === 'true' || completedSteps.includes('services');
+    if (stepId === 'workers') return (Array.isArray(workersData) ? workersData : []).length > 0 || localStorage.getItem(`workers_setup_visited_${userKey}`) === 'true' || completedSteps.includes('workers');
+    if (stepId === 'materials') return (materialsData?.materials || []).length > 0 || localStorage.getItem(`materials_setup_visited_${userKey}`) === 'true' || completedSteps.includes('materials');
     return completedSteps.includes(stepId);
   };
 
@@ -849,7 +879,7 @@ function OnboardingWizard({ onComplete }) {
           <div className="overview-title">
             <i className="fas fa-clipboard-check"></i>
             <div>
-              <h3>Quick Setup</h3>
+              <h3>Setup Guide</h3>
               <p>{completedCount} of {STEPS.length} complete</p>
             </div>
           </div>

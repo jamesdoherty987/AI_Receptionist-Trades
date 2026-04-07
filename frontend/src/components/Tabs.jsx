@@ -1,31 +1,37 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import './Tabs.css';
 
 function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
   const [internalTab, setInternalTab] = useState(defaultTab);
   const activeTab = controlledTab !== undefined ? controlledTab : internalTab;
-  const setActiveTab = (idx) => {
+  const setActiveTab = useCallback((idx) => {
     setInternalTab(idx);
     if (onTabChange) onTabChange(idx);
-  };
+  }, [onTabChange]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('sidebar_collapsed') === 'true'; } catch { return false; }
+  });
 
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 768);
-    };
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  const toggleSidebar = () => {
+    const next = !sidebarCollapsed;
+    setSidebarCollapsed(next);
+    try { localStorage.setItem('sidebar_collapsed', String(next)); } catch {}
+  };
 
   const handleTabSelect = (index) => {
     setActiveTab(index);
     setMenuOpen(false);
   };
 
-  // Build grouped structure for rendering
   const groupedTabs = useMemo(() => {
     const groups = [];
     let currentGroup = null;
@@ -49,7 +55,7 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
               {tabs[activeTab]?.icon && <i className={tabs[activeTab].icon}></i>}
               {tabs[activeTab]?.label}
             </span>
-            <button 
+            <button
               className={`hamburger-btn ${menuOpen ? 'open' : ''}`}
               onClick={() => setMenuOpen(!menuOpen)}
               aria-label="Toggle menu"
@@ -85,32 +91,47 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
               ))}
             </div>
           </div>
+          <div className="tabs-content">
+            {tabs[activeTab]?.content}
+          </div>
         </>
       ) : (
-        <div className="tabs-header">
-          {groupedTabs.map((group, gi) => (
-            <div key={group.name} className="tab-group">
-              {group.name && <span className="tab-group-label">{group.name}</span>}
-              <div className="tab-group-buttons">
-                {group.tabs.map((tab) => (
-                  <button
-                    key={tab.index}
-                    className={`tab-button ${activeTab === tab.index ? 'active' : ''}`}
-                    onClick={() => setActiveTab(tab.index)}
-                  >
-                    {tab.icon && <i className={tab.icon}></i>}
-                    {tab.label}
-                  </button>
-                ))}
-                {gi < groupedTabs.length - 1 && <span className="tab-group-divider" />}
-              </div>
+        <div className={`sidebar-layout ${sidebarCollapsed ? 'collapsed' : ''}`}>
+          {/* Sidebar */}
+          <nav className="sidebar-nav" role="navigation" aria-label="Dashboard navigation">
+            <div className="sidebar-toggle" onClick={toggleSidebar} title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+              <i className={`fas fa-chevron-${sidebarCollapsed ? 'right' : 'left'}`}></i>
             </div>
-          ))}
+            <div className="sidebar-items">
+              {groupedTabs.map((group, gi) => (
+                <div key={group.name} className="sidebar-group">
+                  {group.name && !sidebarCollapsed && (
+                    <div className="sidebar-group-label">{group.name}</div>
+                  )}
+                  {group.name && sidebarCollapsed && gi > 0 && (
+                    <div className="sidebar-group-dot"></div>
+                  )}
+                  {group.tabs.map((tab) => (
+                    <button
+                      key={tab.index}
+                      className={`sidebar-item ${activeTab === tab.index ? 'active' : ''}`}
+                      onClick={() => setActiveTab(tab.index)}
+                      title={sidebarCollapsed ? tab.label : undefined}
+                    >
+                      {tab.icon && <i className={tab.icon}></i>}
+                      {!sidebarCollapsed && <span className="sidebar-item-label">{tab.label}</span>}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </nav>
+          {/* Content */}
+          <div className="tabs-content">
+            {tabs[activeTab]?.content}
+          </div>
         </div>
       )}
-      <div className="tabs-content">
-        {tabs[activeTab]?.content}
-      </div>
     </div>
   );
 }

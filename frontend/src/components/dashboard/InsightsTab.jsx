@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { formatCurrency } from '../../utils/helpers';
 import './InsightsTab.css';
 
@@ -11,6 +11,25 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => {
 });
 
 function InsightsTab({ bookings = [], clients = [], workers = [] }) {
+  // Graph visibility toggles (persisted in localStorage)
+  const [showSections, setShowSections] = useState(() => {
+    try {
+      const saved = localStorage.getItem('insights_visible_sections');
+      return saved ? JSON.parse(saved) : {
+        overviewCards: true, statsCards: true, bookingActivity: true,
+        clientGrowth: true, servicePopularity: true, workerLeaderboard: true, heatmap: true,
+        revenueTrend: true, cancellationTrend: false, durationDistribution: false
+      };
+    } catch { return { overviewCards: true, statsCards: true, bookingActivity: true, clientGrowth: true, servicePopularity: true, workerLeaderboard: true, heatmap: true, revenueTrend: true, cancellationTrend: false, durationDistribution: false }; }
+  });
+  const [showSectionPicker, setShowSectionPicker] = useState(false);
+
+  const toggleSection = (key) => {
+    const next = { ...showSections, [key]: !showSections[key] };
+    setShowSections(next);
+    localStorage.setItem('insights_visible_sections', JSON.stringify(next));
+  };
+
   const stats = useMemo(() => {
     const now = new Date();
     const nonCancelled = bookings.filter(b => b.status !== 'cancelled');
@@ -140,6 +159,69 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
 
+    // Revenue trend (last 6 months)
+    const monthlyRevenue = {};
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthlyRevenue[key] = 0;
+    }
+    nonCancelled.forEach(b => {
+      if (b.appointment_time && (b.charge || b.estimated_charge)) {
+        const d = new Date(b.appointment_time);
+        if (!isNaN(d)) {
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          if (key in monthlyRevenue) monthlyRevenue[key] += parseFloat(b.charge || b.estimated_charge || 0);
+        }
+      }
+    });
+    const revenueTrendData = Object.entries(monthlyRevenue).map(([month, revenue]) => {
+      const [y, m] = month.split('-');
+      const label = new Date(+y, +m - 1).toLocaleDateString('en-IE', { month: 'short' });
+      return { month, label, revenue };
+    });
+
+    // Cancellation trend (last 6 months)
+    const monthlyCancellations = {};
+    const monthlyTotal = {};
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthlyCancellations[key] = 0;
+      monthlyTotal[key] = 0;
+    }
+    bookings.forEach(b => {
+      if (b.appointment_time) {
+        const d = new Date(b.appointment_time);
+        if (!isNaN(d)) {
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          if (key in monthlyTotal) {
+            monthlyTotal[key]++;
+            if (b.status === 'cancelled') monthlyCancellations[key]++;
+          }
+        }
+      }
+    });
+    const cancellationTrendData = Object.entries(monthlyCancellations).map(([month, cancelled]) => {
+      const [y, m] = month.split('-');
+      const label = new Date(+y, +m - 1).toLocaleDateString('en-IE', { month: 'short' });
+      const total = monthlyTotal[month] || 1;
+      return { month, label, cancelled, total, rate: Math.round((cancelled / total) * 100) };
+    });
+
+    // Duration distribution
+    const durationBuckets = { '< 1h': 0, '1-2h': 0, '2-4h': 0, '4-8h': 0, 'Full day': 0 };
+    nonCancelled.forEach(b => {
+      const d = b.duration_minutes;
+      if (!d || d <= 0) return;
+      if (d < 60) durationBuckets['< 1h']++;
+      else if (d <= 120) durationBuckets['1-2h']++;
+      else if (d <= 240) durationBuckets['2-4h']++;
+      else if (d <= 480) durationBuckets['4-8h']++;
+      else durationBuckets['Full day']++;
+    });
+    const durationDistData = Object.entries(durationBuckets).map(([label, count]) => ({ label, count }));
+
     return {
       totalClients: clients.length,
       totalJobs: nonCancelled.length,
@@ -154,15 +236,61 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
       avgDurationMins,
       avgLeadDays,
       servicePopularity,
+      revenueTrendData,
+      cancellationTrendData,
+      durationDistData,
     };
   }, [bookings, clients, workers]);
 
   const maxActivity = Math.max(1, ...stats.activityData.map(d => d.count));
   const maxClientGrowth = Math.max(1, ...stats.clientGrowthData.map(d => d.count));
+  const maxRevenueTrend = Math.max(1, ...stats.revenueTrendData.map(d => d.revenue));
+  const maxDurationDist = Math.max(1, ...stats.durationDistData.map(d => d.count));
 
   return (
     <div className="insights-tab">
+      {/* Page Header */}
+      <div className="tab-page-header">
+        <div>
+          <h2 className="tab-page-title">Insights</h2>
+          <p className="tab-page-subtitle">Business analytics and performance metrics</p>
+        </div>
+        <div className="tab-page-actions">
+          <button className="fin-section-toggle-btn" onClick={() => setShowSectionPicker(!showSectionPicker)}>
+            <i className={`fas ${showSectionPicker ? 'fa-times' : 'fa-sliders-h'}`}></i>
+            {showSectionPicker ? 'Done' : 'Customize'}
+          </button>
+        </div>
+      </div>
+
+      {/* Section Visibility Toggle */}
+      {showSectionPicker && (
+      <div className="fin-section-toggle-bar">
+        <div className="fin-section-picker">
+          {[
+              { key: 'overviewCards', label: 'Overview Cards', icon: 'fa-th-large' },
+              { key: 'statsCards', label: 'Stats Cards', icon: 'fa-chart-pie' },
+              { key: 'bookingActivity', label: 'Booking Activity', icon: 'fa-chart-bar' },
+              { key: 'clientGrowth', label: 'Client Growth', icon: 'fa-user-plus' },
+              { key: 'servicePopularity', label: 'Service Popularity', icon: 'fa-concierge-bell' },
+              { key: 'workerLeaderboard', label: 'Worker Leaderboard', icon: 'fa-trophy' },
+              { key: 'heatmap', label: 'Busiest Hours', icon: 'fa-clock' },
+              { key: 'revenueTrend', label: 'Revenue Trend', icon: 'fa-euro-sign' },
+              { key: 'cancellationTrend', label: 'Cancellation Trend', icon: 'fa-times-circle' },
+              { key: 'durationDistribution', label: 'Job Durations', icon: 'fa-hourglass-half' },
+            ].map(s => (
+              <button key={s.key} className={`fin-section-chip ${showSections[s.key] ? 'active' : ''}`}
+                onClick={() => toggleSection(s.key)}>
+                <i className={`fas ${s.icon}`}></i> {s.label}
+                <i className={`fas ${showSections[s.key] ? 'fa-eye' : 'fa-eye-slash'}`}></i>
+              </button>
+            ))}
+          </div>
+      </div>
+      )}
+
       {/* Overview Cards */}
+      {showSections.overviewCards && (
       <div className="insights-overview">
         <div className="overview-card">
           <div className="overview-icon" style={{ background: 'rgba(59, 130, 246, 0.1)' }}>
@@ -201,8 +329,10 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
           </div>
         </div>
       </div>
+      )}
 
       {/* Second row of stats */}
+      {showSections.statsCards && (
       <div className="insights-overview">
         <div className="overview-card">
           <div className="overview-icon" style={{ background: stats.repeatRate >= 30 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)' }}>
@@ -241,10 +371,13 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
           </div>
         </div>
       </div>
+      )}
 
       {/* Two-column layout: Activity + Client Growth */}
+      {(showSections.bookingActivity || showSections.clientGrowth) && (
       <div className="insights-charts-row">
         {/* Booking Activity */}
+        {showSections.bookingActivity && (
         <div className="insights-card">
           <h3><i className="fas fa-chart-bar"></i> Booking Activity</h3>
           <div className="bar-chart">
@@ -262,8 +395,10 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
             ))}
           </div>
         </div>
+        )}
 
         {/* Client Growth */}
+        {showSections.clientGrowth && (
         <div className="insights-card">
           <h3><i className="fas fa-user-plus"></i> New Clients</h3>
           <div className="bar-chart">
@@ -281,11 +416,15 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
             ))}
           </div>
         </div>
+        )}
       </div>
+      )}
 
       {/* Service Popularity + Worker Leaderboard */}
+      {(showSections.servicePopularity || showSections.workerLeaderboard) && (
       <div className="insights-charts-row">
         {/* Service Popularity */}
+        {showSections.servicePopularity && (
         <div className="insights-card">
           <h3><i className="fas fa-concierge-bell"></i> Service Popularity</h3>
           {stats.servicePopularity.length === 0 ? (
@@ -311,8 +450,10 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
             </div>
           )}
         </div>
+        )}
 
         {/* Worker Leaderboard */}
+        {showSections.workerLeaderboard && (
         <div className="insights-card">
           <h3><i className="fas fa-trophy"></i> Worker Leaderboard</h3>
           {stats.workerLeaderboard.length === 0 ? (
@@ -340,9 +481,69 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
             </div>
           )}
         </div>
+        )}
       </div>
+      )}
+
+      {/* Revenue Trend */}
+      {showSections.revenueTrend && (
+      <div className="insights-card">
+        <h3><i className="fas fa-euro-sign"></i> Revenue Trend</h3>
+        <div className="bar-chart">
+          {stats.revenueTrendData.map((d, i) => (
+            <div key={i} className="bar-col">
+              <div className="bar-wrapper">
+                <div className="bar-fill" style={{ height: `${(d.revenue / maxRevenueTrend) * 100}%`, background: 'linear-gradient(180deg, #10b981, #059669)' }} />
+              </div>
+              <span className="bar-count" style={{ color: '#10b981' }}>{formatCurrency(d.revenue)}</span>
+              <span className="bar-label">{d.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      )}
+
+      {/* Cancellation Trend + Duration Distribution */}
+      {(showSections.cancellationTrend || showSections.durationDistribution) && (
+      <div className="insights-charts-row">
+        {showSections.cancellationTrend && (
+        <div className="insights-card">
+          <h3><i className="fas fa-times-circle"></i> Cancellation Trend</h3>
+          <div className="bar-chart">
+            {stats.cancellationTrendData.map((d, i) => (
+              <div key={i} className="bar-col">
+                <div className="bar-wrapper">
+                  <div className="bar-fill" style={{ height: `${Math.max(d.rate, d.cancelled > 0 ? 5 : 0)}%`, background: '#ef4444' }} />
+                </div>
+                <span className="bar-count" style={{ color: d.rate > 15 ? '#ef4444' : '#94a3b8' }}>{d.rate}%</span>
+                <span className="bar-label">{d.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        )}
+
+        {showSections.durationDistribution && (
+        <div className="insights-card">
+          <h3><i className="fas fa-hourglass-half"></i> Job Duration Distribution</h3>
+          <div className="bar-chart">
+            {stats.durationDistData.map((d, i) => (
+              <div key={i} className="bar-col">
+                <div className="bar-wrapper">
+                  <div className="bar-fill bar-fill-green" style={{ height: `${(d.count / maxDurationDist) * 100}%` }} />
+                </div>
+                <span className="bar-count">{d.count}</span>
+                <span className="bar-label">{d.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        )}
+      </div>
+      )}
 
       {/* Busiest Hours Heatmap — full width */}
+      {showSections.heatmap && (
       <div className="insights-card">
         <h3><i className="fas fa-clock"></i> Busiest Hours</h3>
         {stats.totalJobs === 0 ? (
@@ -394,6 +595,7 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

@@ -19,7 +19,12 @@ import {
   deleteJobMaterial,
   getMaterials,
   getServicesMenu,
-  getPackages
+  getPackages,
+  getJobTasks,
+  createJobTask,
+  updateJobTask,
+  deleteJobTask,
+  generatePOFromJob
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
@@ -51,6 +56,10 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const [materialSearch, setMaterialSearch] = useState('');
   const [customMaterial, setCustomMaterial] = useState({ name: '', unit_price: '', quantity: '1', unit: 'each' });
   const [showServiceDetail, setShowServiceDetail] = useState(false);
+
+  // Sub-tasks state
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTask, setNewTask] = useState({ title: '', description: '', estimated_cost: '' });
 
   const { data: job, isLoading } = useQuery({
     queryKey: ['booking', jobId],
@@ -131,6 +140,49 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     staleTime: 60 * 1000,
   });
 
+  // Sub-tasks
+  const { data: jobTasks = [] } = useQuery({
+    queryKey: ['job-tasks', jobId],
+    queryFn: async () => (await getJobTasks(jobId)).data,
+    enabled: isOpen && !!jobId,
+    staleTime: 30 * 1000,
+  });
+
+  const createTaskMut = useMutation({
+    mutationFn: (data) => createJobTask(jobId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-tasks', jobId] });
+      setShowAddTask(false);
+      setNewTask({ title: '', description: '', estimated_cost: '' });
+      addToast('Task added', 'success');
+    },
+    onError: () => addToast('Failed to add task', 'error'),
+  });
+
+  const updateTaskMut = useMutation({
+    mutationFn: ({ taskId, data }) => updateJobTask(jobId, taskId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-tasks', jobId] });
+    },
+  });
+
+  const deleteTaskMut = useMutation({
+    mutationFn: (taskId) => deleteJobTask(jobId, taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['job-tasks', jobId] });
+      addToast('Task removed', 'success');
+    },
+  });
+
+  const generatePOMut = useMutation({
+    mutationFn: () => generatePOFromJob(jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      addToast('Purchase order created from job materials', 'success');
+    },
+    onError: (e) => addToast(e.response?.data?.error || 'Failed to generate PO', 'error'),
+  });
+
   const { data: servicesMenu } = useQuery({
     queryKey: ['services-menu'],
     queryFn: async () => { const r = await getServicesMenu(); return r.data; },
@@ -207,8 +259,10 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       setIsEditing(false);
       setShowAddMaterial(false);
       setShowServiceDetail(false);
+      setShowAddTask(false);
       setMaterialSearch('');
       setCustomMaterial({ name: '', unit_price: '', quantity: '1', unit: 'each' });
+      setNewTask({ title: '', description: '', estimated_cost: '' });
     }
   }, [isOpen]);
 
@@ -1012,9 +1066,77 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     <span>Total</span>
                     <span className="jm-total-amount">€{parseFloat(jobMaterialsData.total_cost).toFixed(2)}</span>
                   </div>
+                  <button className="btn btn-sm btn-secondary" style={{ marginTop: '0.4rem', fontSize: '0.72rem' }}
+                    onClick={() => generatePOMut.mutate()} disabled={generatePOMut.isPending}>
+                    <i className={`fas ${generatePOMut.isPending ? 'fa-spinner fa-spin' : 'fa-file-export'}`}></i>
+                    {generatePOMut.isPending ? 'Creating...' : 'Generate Purchase Order'}
+                  </button>
                 </div>
               ) : (
                 <div className="empty-workers"><i className="fas fa-cubes"></i><p>No materials logged</p></div>
+              )}
+            </div>
+
+            {/* Sub-Tasks / Task Breakdown */}
+            <div className="info-card">
+              <div className="card-header-row">
+                <h3><i className="fas fa-tasks"></i> Tasks</h3>
+                <button className="btn btn-sm btn-primary" onClick={() => setShowAddTask(!showAddTask)}>
+                  <i className="fas fa-plus"></i> Add
+                </button>
+              </div>
+              {showAddTask && (
+                <div className="assign-box" style={{ marginBottom: '0.5rem' }}>
+                  <input type="text" className="form-select" placeholder="Task title *" value={newTask.title}
+                    onChange={e => setNewTask({ ...newTask, title: e.target.value })} autoFocus />
+                  <input type="text" className="form-select" placeholder="Description (optional)" value={newTask.description}
+                    onChange={e => setNewTask({ ...newTask, description: e.target.value })} />
+                  <input type="number" className="form-select" placeholder="Est. cost €" min="0" step="0.01" value={newTask.estimated_cost}
+                    onChange={e => setNewTask({ ...newTask, estimated_cost: e.target.value })} />
+                  <div className="assign-buttons">
+                    <button className="btn btn-sm btn-secondary" onClick={() => setShowAddTask(false)}>Cancel</button>
+                    <button className="btn btn-sm btn-primary" disabled={!newTask.title.trim() || createTaskMut.isPending}
+                      onClick={() => createTaskMut.mutate(newTask)}>
+                      {createTaskMut.isPending ? 'Adding...' : 'Add Task'}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {jobTasks.length > 0 ? (
+                <div className="jm-list">
+                  {jobTasks.map(task => (
+                    <div key={task.id} className="jm-item" style={{ alignItems: 'flex-start' }}>
+                      <button className="jdm-task-check" title={task.status === 'completed' ? 'Mark pending' : 'Mark complete'}
+                        onClick={() => updateTaskMut.mutate({ taskId: task.id, data: { status: task.status === 'completed' ? 'pending' : 'completed' } })}>
+                        <i className={`fas ${task.status === 'completed' ? 'fa-check-circle' : 'fa-circle'}`}
+                          style={{ color: task.status === 'completed' ? '#10b981' : '#cbd5e1' }}></i>
+                      </button>
+                      <div className="jm-item-info" style={{ flex: 1 }}>
+                        <span className="jm-item-name" style={{ textDecoration: task.status === 'completed' ? 'line-through' : 'none', opacity: task.status === 'completed' ? 0.6 : 1 }}>
+                          {task.title}
+                        </span>
+                        {task.description && <span className="jm-item-detail">{task.description}</span>}
+                      </div>
+                      {task.estimated_cost > 0 && (
+                        <span className="jm-item-total" style={{ fontSize: '0.78rem' }}>€{parseFloat(task.estimated_cost).toFixed(2)}</span>
+                      )}
+                      <button className="btn-remove" onClick={() => deleteTaskMut.mutate(task.id)} title="Remove">
+                        <i className="fas fa-times"></i>
+                      </button>
+                    </div>
+                  ))}
+                  {jobTasks.some(t => t.estimated_cost > 0) && (
+                    <div className="jm-total">
+                      <span>Est. Total</span>
+                      <span className="jm-total-amount">€{jobTasks.reduce((s, t) => s + (t.estimated_cost || 0), 0).toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.3rem', fontSize: '0.7rem', color: '#94a3b8' }}>
+                    <span>{jobTasks.filter(t => t.status === 'completed').length}/{jobTasks.length} completed</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-workers"><i className="fas fa-tasks"></i><p>No tasks yet. Break this job into smaller tasks.</p></div>
               )}
             </div>
 

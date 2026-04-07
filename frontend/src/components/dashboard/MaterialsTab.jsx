@@ -105,15 +105,16 @@ function MaterialsTab() {
   const totalItems = materials.length;
   const totalValue = materials.reduce((sum, m) => sum + parseFloat(m.unit_price || 0), 0);
   const categoryCount = existingCategories.length;
+  const supplierCount = [...new Set(materials.map(m => m.supplier).filter(Boolean))].length;
+  const avgPrice = totalItems > 0 ? totalValue / totalItems : 0;
 
   return (
     <div className="materials-tab">
       <div className="materials-header">
         <div>
-          <h2>Materials</h2>
-          <p className="materials-subtitle">
-            Your price list — {totalItems} item{totalItems !== 1 ? 's' : ''}
-            {totalItems > 0 && <span className="materials-avg"> · avg {formatCurrency(totalValue / totalItems)}/item</span>}
+          <h2 className="tab-page-title">Materials Catalog</h2>
+          <p className="tab-page-subtitle">
+            Your price list for parts and materials used on jobs
           </p>
         </div>
         <button className="btn btn-primary" onClick={() => {
@@ -136,7 +137,11 @@ function MaterialsTab() {
             <span className="mat-stat-label">Categories</span>
           </div>
           <div className="mat-stat">
-            <span className="mat-stat-value">{formatCurrency(totalValue / totalItems)}</span>
+            <span className="mat-stat-value">{supplierCount}</span>
+            <span className="mat-stat-label">Suppliers</span>
+          </div>
+          <div className="mat-stat">
+            <span className="mat-stat-value">{formatCurrency(avgPrice)}</span>
             <span className="mat-stat-label">Avg Price</span>
           </div>
         </div>

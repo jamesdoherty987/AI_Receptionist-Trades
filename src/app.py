@@ -114,7 +114,7 @@ if public_url:
 
 CORS(app, resources={r"/api/*": {
     "origins": allowed_origins,
-    "allow_headers": ["Content-Type", "X-Auth-Token"],
+    "allow_headers": ["Content-Type", "X-Auth-Token", "X-Admin-Secret"],
     "expose_headers": ["X-Auth-Token"],
 }}, supports_credentials=True)
 
@@ -1017,7 +1017,8 @@ def signup():
                 "owner_name": company['owner_name'],
                 "email": company['email'],
                 "subscription_tier": 'none',
-                "twilio_phone_number": company.get('twilio_phone_number')
+                "twilio_phone_number": company.get('twilio_phone_number'),
+                "easy_setup": company.get('easy_setup', True)
             }
         }), 201
     else:
@@ -1136,7 +1137,8 @@ def login():
             "trade_type": company['trade_type'],
             "logo_url": company['logo_url'],
             "subscription_tier": company['subscription_tier'],
-            "twilio_phone_number": company.get('twilio_phone_number')
+            "twilio_phone_number": company.get('twilio_phone_number'),
+            "easy_setup": company.get('easy_setup', True)
         },
         "subscription": get_subscription_info(company)
     })
@@ -1261,7 +1263,8 @@ def get_current_user():
             "logo_url": company['logo_url'],
             "subscription_tier": company['subscription_tier'],
             "subscription_status": company['subscription_status'],
-            "twilio_phone_number": company.get('twilio_phone_number')
+            "twilio_phone_number": company.get('twilio_phone_number'),
+            "easy_setup": company.get('easy_setup', True)
         },
         "subscription": subscription_info
     })
@@ -2870,6 +2873,414 @@ def get_current_phone_number():
 
 
 # ============================================
+# ADMIN MANAGED SETUP ENDPOINTS
+# ============================================
+
+from datetime import datetime, timedelta  # ensure available for admin endpoints
+
+ADMIN_SECRET = os.getenv('ADMIN_SECRET', '')
+
+
+def admin_required(f):
+    """Decorator to require admin secret for admin-only endpoints."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_header = request.headers.get('X-Admin-Secret', '')
+        if not ADMIN_SECRET or auth_header != ADMIN_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@app.route("/api/admin/create-account", methods=["POST"])
+@admin_required
+@rate_limit(max_requests=20, window_seconds=60)
+def admin_create_account():
+    """Admin endpoint to create a managed account (easy_setup=false).
+    Creates the company, optionally assigns phone, sets context, adds workers, etc.
+    Returns an invite link for the owner to set their password.
+    """
+    data = request.json or {}
+
+    # Validate required fields
+    required = ['company_name', 'owner_name', 'email']
+    for field in required:
+        if not data.get(field, '').strip():
+            return jsonify({"error": f"{field.replace('_', ' ').title()} is required"}), 400
+
+    email = data['email'].lower().strip()
+    if not validate_email(email):
+        return jsonify({"error": "Invalid email format"}), 400
+
+    company_name = sanitize_string(data['company_name'], max_length=200)
+    owner_name = sanitize_string(data['owner_name'], max_length=200)
+
+    db = get_database()
+
+    # Check if email already exists
+    existing = db.get_company_by_email(email)
+    if existing:
+        return jsonify({"error": "An account with this email already exists"}), 409
+
+    # Create with a placeholder password hash (owner will set real password via invite)
+    placeholder_hash = hash_password(secrets.token_hex(32))
+    company_id = db.create_company(
+        company_name=company_name,
+        owner_name=owner_name,
+        email=email,
+        password_hash=placeholder_hash,
+        phone=sanitize_string(data.get('phone', ''), max_length=20),
+        trade_type=sanitize_string(data.get('trade_type', ''), max_length=100)
+    )
+
+    if not company_id:
+        return jsonify({"error": "Failed to create account"}), 500
+
+    # Set managed setup flags
+    update_fields = {
+        'easy_setup': False,
+        'setup_wizard_complete': True,
+    }
+
+    # Set subscription (admin can activate directly)
+    sub_tier = data.get('subscription_tier', 'pro')
+    sub_status = data.get('subscription_status', 'active')
+    update_fields['subscription_tier'] = sub_tier
+    update_fields['subscription_status'] = sub_status
+
+    # Optional fields the admin can set
+    if data.get('company_context'):
+        update_fields['company_context'] = sanitize_string(data['company_context'], max_length=5000)
+    if data.get('coverage_area'):
+        update_fields['coverage_area'] = sanitize_string(data['coverage_area'], max_length=1000)
+    if data.get('business_hours'):
+        update_fields['business_hours'] = data['business_hours']
+    if data.get('address'):
+        update_fields['address'] = sanitize_string(data['address'], max_length=500)
+
+    # Generate owner invite token (7-day expiry)
+    invite_token = secrets.token_urlsafe(32)
+    invite_expires = datetime.now() + timedelta(days=7)
+    update_fields['owner_invite_token'] = invite_token
+    update_fields['owner_invite_expires'] = invite_expires
+
+    db.update_company(company_id, **update_fields)
+
+    # Assign phone number if requested
+    assigned_phone = None
+    if data.get('phone_number'):
+        try:
+            assigned_phone = db.assign_phone_number(company_id, data['phone_number'])
+        except Exception as e:
+            print(f"[ADMIN] Phone assignment failed: {e}")
+    elif data.get('auto_assign_phone'):
+        try:
+            assigned_phone = db.assign_phone_number(company_id)
+        except Exception as e:
+            print(f"[ADMIN] Auto phone assignment failed: {e}")
+
+    # Add workers if provided
+    workers_created = []
+    for worker_data in data.get('workers', []):
+        if not worker_data.get('name'):
+            continue
+        try:
+            worker_id = db.add_worker(
+                name=sanitize_string(worker_data['name'], max_length=200),
+                phone=sanitize_string(worker_data.get('phone', ''), max_length=20),
+                email=worker_data.get('email', '').lower().strip() if worker_data.get('email') else None,
+                trade_specialty=sanitize_string(worker_data.get('trade_specialty', ''), max_length=200),
+                company_id=company_id
+            )
+            if worker_id:
+                workers_created.append({'id': worker_id, 'name': worker_data['name']})
+        except Exception as e:
+            print(f"[ADMIN] Worker creation failed: {e}")
+
+    # Add services if provided
+    services_created = []
+    for svc in data.get('services', []):
+        if not svc.get('name'):
+            continue
+        try:
+            from src.services.settings_manager import get_settings_manager
+            mgr = get_settings_manager()
+            svc_dict = {
+                'id': f"admin_{company_id}_{secrets.token_hex(4)}",
+                'category': svc.get('category', 'General'),
+                'name': svc['name'],
+                'description': svc.get('description', ''),
+                'duration_minutes': int(svc.get('duration_minutes', 60)),
+                'price': float(svc.get('price', 0)),
+                'emergency_price': float(svc['emergency_price']) if svc.get('emergency_price') else None,
+                'currency': svc.get('currency', 'EUR'),
+                'active': True,
+                'sort_order': svc.get('sort_order', 100),
+                'requires_callout': svc.get('requires_callout', False),
+                'requires_quote': svc.get('requires_quote', False),
+            }
+            mgr.add_service(svc_dict, company_id=company_id)
+            services_created.append(svc['name'])
+        except Exception as e:
+            print(f"[ADMIN] Service creation failed: {e}")
+
+    # Build invite link
+    # Admin calls come from curl/API tools, not the browser, so we can't rely on Origin header.
+    # Use explicit frontend_url param, or fall back to the first production frontend origin.
+    frontend_url = data.get('frontend_url', '').strip()
+    if not frontend_url:
+        # Try Origin header (in case called from a browser)
+        frontend_url = request.headers.get('Origin', '').strip()
+    if not frontend_url:
+        # Fall back to PUBLIC_URL (works when frontend is served from same domain as backend)
+        frontend_url = os.getenv('PUBLIC_URL', request.host_url.rstrip('/'))
+    invite_link = f"{frontend_url}/set-password?token={invite_token}"
+
+    # Try to send invite email
+    email_sent = False
+    try:
+        from src.services.email_reminder import get_email_service
+        email_service = get_email_service()
+        email_sent = email_service.send_password_reset(
+            to_email=email,
+            reset_link=invite_link,
+            business_name=company_name
+        )
+    except Exception as e:
+        print(f"[ADMIN] Email send error: {e}")
+
+    return jsonify({
+        "success": True,
+        "company_id": company_id,
+        "invite_link": invite_link,
+        "email_sent": email_sent,
+        "phone_number": assigned_phone,
+        "workers_created": workers_created,
+        "services_created": services_created,
+        "message": f"Account created for {company_name}. {'Invite email sent to ' + email if email_sent else 'Share the invite link manually.'}"
+    }), 201
+
+
+@app.route("/api/admin/accounts", methods=["GET"])
+@admin_required
+def admin_list_accounts():
+    """List all company accounts for admin management."""
+    db = get_database()
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT id, company_name, owner_name, email, phone, trade_type,
+                   subscription_tier, subscription_status, twilio_phone_number,
+                   easy_setup, setup_wizard_complete, created_at
+            FROM companies ORDER BY id DESC
+        """)
+        accounts = [dict(row) for row in cursor.fetchall()]
+        cursor.close()
+        # Convert datetime objects to strings
+        for acc in accounts:
+            for key in list(acc.keys()):
+                if acc.get(key) and hasattr(acc[key], 'isoformat'):
+                    acc[key] = acc[key].isoformat()
+        return jsonify({"success": True, "accounts": accounts})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/admin/accounts/<int:company_id>", methods=["GET"])
+@admin_required
+def admin_get_account(company_id):
+    """Get full details of a specific account."""
+    db = get_database()
+    company = db.get_company(company_id)
+    if not company:
+        return jsonify({"error": "Account not found"}), 404
+
+    # Get workers for this company
+    workers = db.get_all_workers(company_id=company_id)
+
+    # Convert datetime fields in company
+    for key in list(company.keys()):
+        if company.get(key) and hasattr(company[key], 'isoformat'):
+            company[key] = company[key].isoformat()
+
+    # Convert datetime fields in workers
+    for w in workers:
+        for key in list(w.keys()):
+            if w.get(key) and hasattr(w[key], 'isoformat'):
+                w[key] = w[key].isoformat()
+
+    return jsonify({
+        "success": True,
+        "account": company,
+        "workers": workers
+    })
+
+
+@app.route("/api/admin/accounts/<int:company_id>", methods=["PUT"])
+@admin_required
+def admin_update_account(company_id):
+    """Update any field on a company account (admin only)."""
+    data = request.json or {}
+    db = get_database()
+
+    company = db.get_company(company_id)
+    if not company:
+        return jsonify({"error": "Account not found"}), 404
+
+    update_fields = {}
+    # Allow admin to update these fields
+    admin_updatable = [
+        'company_name', 'owner_name', 'phone', 'email', 'trade_type',
+        'address', 'business_hours', 'company_context', 'coverage_area',
+        'subscription_tier', 'subscription_status', 'ai_enabled',
+        'easy_setup', 'setup_wizard_complete',
+        'send_confirmation_sms', 'send_reminder_sms',
+        'show_finances_tab', 'show_insights_tab', 'show_invoice_buttons',
+        'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
+        'revolut_phone', 'bypass_numbers', 'ai_schedule',
+    ]
+    for field in admin_updatable:
+        if field in data:
+            update_fields[field] = data[field]
+
+    if update_fields:
+        db.update_company(company_id, **update_fields)
+
+    return jsonify({"success": True, "message": "Account updated"})
+
+
+@app.route("/api/admin/accounts/<int:company_id>/resend-invite", methods=["POST"])
+@admin_required
+def admin_resend_invite(company_id):
+    """Regenerate and resend the owner invite link."""
+    db = get_database()
+    company = db.get_company(company_id)
+    if not company:
+        return jsonify({"error": "Account not found"}), 404
+
+    invite_token = secrets.token_urlsafe(32)
+    invite_expires = datetime.now() + timedelta(days=7)
+    db.update_company(company_id,
+                      owner_invite_token=invite_token,
+                      owner_invite_expires=invite_expires)
+
+    data = request.json or {}
+    frontend_url = data.get('frontend_url', '').strip()
+    if not frontend_url:
+        frontend_url = request.headers.get('Origin', '').strip()
+    if not frontend_url:
+        frontend_url = os.getenv('PUBLIC_URL', request.host_url.rstrip('/'))
+    invite_link = f"{frontend_url}/set-password?token={invite_token}"
+
+    email_sent = False
+    try:
+        from src.services.email_reminder import get_email_service
+        email_service = get_email_service()
+        email_sent = email_service.send_password_reset(
+            to_email=company['email'],
+            reset_link=invite_link,
+            business_name=company.get('company_name', 'Your Business')
+        )
+    except Exception as e:
+        print(f"[ADMIN] Resend invite email error: {e}")
+
+    return jsonify({
+        "success": True,
+        "invite_link": invite_link,
+        "email_sent": email_sent
+    })
+
+
+@app.route("/api/admin/accounts/<int:company_id>/assign-phone", methods=["POST"])
+@admin_required
+def admin_assign_phone(company_id):
+    """Assign a phone number to a company (admin)."""
+    data = request.json or {}
+    phone_number = data.get('phone_number')
+
+    db = get_database()
+    company = db.get_company(company_id)
+    if not company:
+        return jsonify({"error": "Account not found"}), 404
+
+    if company.get('twilio_phone_number'):
+        return jsonify({"error": "Company already has a phone number assigned"}), 400
+
+    try:
+        assigned = db.assign_phone_number(company_id, phone_number)
+        return jsonify({"success": True, "phone_number": assigned})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/owner/set-password", methods=["POST"])
+@rate_limit(max_requests=10, window_seconds=300)
+def owner_set_password():
+    """Set password for an owner account using invite token (managed setup flow)."""
+    data = request.json or {}
+    token = data.get('token', '').strip()
+    new_password = data.get('password', '')
+
+    if not token:
+        return jsonify({"error": "Invite token is required"}), 400
+
+    if not new_password:
+        return jsonify({"error": "Password is required"}), 400
+
+    password_error = _validate_password(new_password)
+    if password_error:
+        return jsonify({"error": password_error}), 400
+
+    db = get_database()
+
+    # Find company by invite token
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            "SELECT * FROM companies WHERE owner_invite_token = %s",
+            (token,)
+        )
+        company = cursor.fetchone()
+        cursor.close()
+    finally:
+        db.return_connection(conn)
+
+    if not company:
+        return jsonify({"error": "Invalid or expired invite link."}), 400
+
+    # Check expiry
+    expires = company.get('owner_invite_expires')
+    if expires:
+        if isinstance(expires, str):
+            try:
+                expires = datetime.fromisoformat(expires)
+            except ValueError:
+                expires = None
+        if expires and datetime.now() > expires:
+            return jsonify({"error": "Invite link has expired. Please contact support for a new one."}), 400
+
+    # Set the password and clear the invite token
+    password_hash_val = hash_password(new_password)
+    db.update_company(
+        company['id'],
+        password_hash=password_hash_val,
+        owner_invite_token=None,
+        owner_invite_expires=None
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Password set successfully! You can now log in."
+    })
+
+
+# ============================================
 # SUBSCRIPTION & STRIPE ENDPOINTS
 # ============================================
 
@@ -3939,6 +4350,42 @@ def payment_cancelled_page():
 <body><div class="card"><div class="icon">↩️</div><h1>Payment Cancelled</h1><p>No worries — your payment was not processed. You can use the payment link again whenever you're ready.</p></div></body></html>""", 200
 
 
+@app.route("/pay/<int:booking_id>")
+def short_payment_redirect(booking_id):
+    """Short URL redirect to Stripe checkout for invoice payments.
+    
+    This allows SMS invoices to use a clean short URL like:
+    yourdomain.com/pay/1234
+    instead of the long Stripe checkout URL.
+    """
+    db = get_database()
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT stripe_checkout_url, company_id FROM bookings WHERE id = %s", (booking_id,))
+        row = cur.fetchone()
+        cur.close()
+        
+        if row and row.get('stripe_checkout_url'):
+            from flask import redirect
+            return redirect(row['stripe_checkout_url'])
+        
+        # No stored URL — show a friendly error page
+        return """<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Payment Link</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;color:#475569}
+.card{text-align:center;background:#fff;padding:48px 40px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:440px}
+.icon{font-size:64px;margin-bottom:16px}h1{margin:0 0 12px;font-size:24px}p{margin:0;color:#64748b;line-height:1.6}</style></head>
+<body><div class="card"><div class="icon">🔗</div><h1>Payment Link Expired</h1><p>This payment link is no longer active. Please contact the business for a new invoice.</p></div></body></html>""", 404
+    except Exception as e:
+        print(f"[PAY] Error: {e}")
+        return "Payment link not found", 404
+    finally:
+        db.return_connection(conn)
+
+
 @app.route("/twilio/sms", methods=["POST"])
 def twilio_sms():
     """
@@ -4083,6 +4530,8 @@ def business_settings_api():
             'ai_schedule': company.get('ai_schedule', ''),
             # Setup wizard permanently dismissed
             'setup_wizard_complete': bool(company.get('setup_wizard_complete', False)),
+            # Managed setup mode
+            'easy_setup': company.get('easy_setup', True),
         }
         return jsonify(settings)
     
@@ -4144,6 +4593,7 @@ def business_settings_api():
             'bypass_numbers': 'bypass_numbers',
             'ai_schedule': 'ai_schedule',
             'setup_wizard_complete': 'setup_wizard_complete',
+            'easy_setup': 'easy_setup',
         }
         
         for frontend_field, db_field in field_mapping.items():
@@ -6006,7 +6456,7 @@ def check_availability_api():
                     appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00').replace('+00:00', ''))
                 if not appt_time:
                     continue
-                booking_duration = booking.get('duration_minutes', default_duration)
+                booking_duration = booking.get('duration_minutes') or default_duration
                 booking_end = _compute_booking_end(appt_time, booking_duration)
                 if (day_start <= appt_time < day_end) or (appt_time < day_start and booking_end > day_start):
                     result.append({
@@ -6283,7 +6733,7 @@ def check_monthly_availability_api():
                         continue
                 if not appt:
                     continue
-                dur = b.get('duration_minutes', default_duration)
+                dur = b.get('duration_minutes') or default_duration
                 result.append({'start': appt, 'duration': dur, 'booking': b})
             return result
 
@@ -7124,6 +7574,29 @@ def send_invoice_api(booking_id):
                 
                 stripe_payment_link = checkout_session.url
                 print(f"[SUCCESS] Stripe payment link created: {stripe_payment_link}")
+                
+                # Store the Stripe URL and session ID on the booking so /pay/<id> can redirect
+                try:
+                    db.update_booking(booking_id, company_id=company_id,
+                                      stripe_checkout_url=stripe_payment_link)
+                    # Store checkout session ID to retrieve payment_intent later
+                    conn2 = db.get_connection()
+                    try:
+                        cur2 = conn2.cursor()
+                        cur2.execute("UPDATE bookings SET stripe_checkout_session_id = %s WHERE id = %s AND company_id = %s",
+                                     (checkout_session.id, booking_id, company_id))
+                        conn2.commit()
+                        cur2.close()
+                    finally:
+                        db.return_connection(conn2)
+                except Exception:
+                    pass  # Non-critical
+                
+                # Use short URL for SMS — much cleaner than the long Stripe URL
+                public_url = os.getenv('PUBLIC_URL', '').rstrip('/')
+                if public_url:
+                    stripe_payment_link = f"{public_url}/pay/{booking_id}"
+                    print(f"[SUCCESS] Short payment URL: {stripe_payment_link}")
             except Exception as stripe_error:
                 print(f"[WARNING] Could not create Stripe payment link: {stripe_error}")
                 import traceback
@@ -8550,6 +9023,1312 @@ def mark_bookings_paid():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+
+
+# ============================================
+# EXPENSES API
+# ============================================
+
+@app.route("/api/expenses", methods=["GET"])
+@login_required
+def get_expenses():
+    """Get all expenses for the company"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            "SELECT * FROM expenses WHERE company_id = %s ORDER BY date DESC",
+            (company_id,)
+        )
+        expenses = cur.fetchall()
+        cur.close()
+        # Convert Decimal to float for JSON
+        for e in expenses:
+            e['amount'] = float(e.get('amount', 0) or 0)
+        return jsonify(expenses)
+    except Exception as ex:
+        import traceback; traceback.print_exc()
+        return jsonify([])
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/expenses", methods=["POST"])
+@login_required
+@subscription_required
+def create_expense():
+    """Create a new expense"""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    amount = data.get('amount')
+    if not amount or float(amount) <= 0:
+        return jsonify({"error": "Amount is required and must be positive"}), 400
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            INSERT INTO expenses (company_id, amount, category, description, vendor, date,
+                                  receipt_url, is_recurring, recurring_frequency, tax_deductible, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+        """, (
+            company_id, float(amount), data.get('category', 'other'),
+            data.get('description', ''), data.get('vendor', ''),
+            data.get('date', None), data.get('receipt_url'),
+            data.get('is_recurring', False), data.get('recurring_frequency'),
+            data.get('tax_deductible', True), data.get('notes', '')
+        ))
+        expense = cur.fetchone()
+        conn.commit()
+        cur.close()
+        expense['amount'] = float(expense.get('amount', 0) or 0)
+        return jsonify(expense), 201
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/expenses/<int:expense_id>", methods=["PUT"])
+@login_required
+@subscription_required
+def update_expense(expense_id):
+    """Update an expense"""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id FROM expenses WHERE id = %s AND company_id = %s", (expense_id, company_id))
+        if not cur.fetchone():
+            cur.close()
+            return jsonify({"error": "Expense not found"}), 404
+        fields = []
+        values = []
+        for key in ['amount', 'category', 'description', 'vendor', 'date',
+                     'receipt_url', 'is_recurring', 'recurring_frequency', 'tax_deductible', 'notes']:
+            if key in data:
+                fields.append(f"{key} = %s")
+                values.append(data[key])
+        if not fields:
+            return jsonify({"error": "No fields to update"}), 400
+        fields.append("updated_at = CURRENT_TIMESTAMP")
+        values.extend([expense_id, company_id])
+        cur.execute(f"UPDATE expenses SET {', '.join(fields)} WHERE id = %s AND company_id = %s RETURNING *", values)
+        expense = cur.fetchone()
+        conn.commit()
+        cur.close()
+        expense['amount'] = float(expense.get('amount', 0) or 0)
+        return jsonify(expense)
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/expenses/<int:expense_id>", methods=["DELETE"])
+@login_required
+@subscription_required
+def delete_expense(expense_id):
+    """Delete an expense"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM expenses WHERE id = %s AND company_id = %s", (expense_id, company_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True})
+    except Exception as ex:
+        conn.rollback()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+# ============================================
+# QUOTES / ESTIMATES API
+# ============================================
+
+@app.route("/api/quotes", methods=["GET"])
+@login_required
+def get_quotes():
+    """Get all quotes for the company"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT q.*, c.name as client_name, c.phone as client_phone, c.email as client_email
+            FROM quotes q
+            LEFT JOIN clients c ON q.client_id = c.id
+            WHERE q.company_id = %s
+            ORDER BY q.created_at DESC
+        """, (company_id,))
+        quotes = cur.fetchall()
+        cur.close()
+        for q in quotes:
+            for f in ['subtotal', 'tax_rate', 'tax_amount', 'total']:
+                q[f] = float(q.get(f, 0) or 0)
+        return jsonify(quotes)
+    except Exception as ex:
+        import traceback; traceback.print_exc()
+        return jsonify([])
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/quotes", methods=["POST"])
+@login_required
+@subscription_required
+def create_quote():
+    """Create a new quote/estimate"""
+    import json
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    
+    # Generate quote number
+    company = db.get_company(company_id)
+    prefix = company.get('invoice_prefix', 'INV') if company else 'INV'
+    next_num = int(company.get('invoice_next_number', 1) or 1)
+    quote_number = f"QTE-{next_num:04d}"
+    
+    line_items = data.get('line_items', [])
+    tax_rate = float(data.get('tax_rate', company.get('tax_rate', 0) or 0))
+    subtotal = sum(float(item.get('amount', 0)) * float(item.get('quantity', 1)) for item in line_items)
+    tax_amount = round(subtotal * tax_rate / 100, 2)
+    total = round(subtotal + tax_amount, 2)
+    
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            INSERT INTO quotes (company_id, client_id, quote_number, title, description,
+                                line_items, subtotal, tax_rate, tax_amount, total,
+                                status, valid_until, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+        """, (
+            company_id, data.get('client_id'), quote_number,
+            data.get('title', ''), data.get('description', ''),
+            json.dumps(line_items), subtotal, tax_rate, tax_amount, total,
+            'draft', data.get('valid_until'), data.get('notes', '')
+        ))
+        quote = cur.fetchone()
+        conn.commit()
+        cur.close()
+        for f in ['subtotal', 'tax_rate', 'tax_amount', 'total']:
+            quote[f] = float(quote.get(f, 0) or 0)
+        return jsonify(quote), 201
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/quotes/<int:quote_id>", methods=["PUT"])
+@login_required
+@subscription_required
+def update_quote(quote_id):
+    """Update a quote"""
+    import json
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM quotes WHERE id = %s AND company_id = %s", (quote_id, company_id))
+        existing = cur.fetchone()
+        if not existing:
+            cur.close()
+            return jsonify({"error": "Quote not found"}), 404
+        
+        line_items = data.get('line_items', existing.get('line_items', []))
+        if isinstance(line_items, str):
+            line_items = json.loads(line_items)
+        
+        company = db.get_company(company_id)
+        tax_rate = float(data.get('tax_rate', existing.get('tax_rate', 0) or 0))
+        subtotal = sum(float(item.get('amount', 0)) * float(item.get('quantity', 1)) for item in line_items)
+        tax_amount = round(subtotal * tax_rate / 100, 2)
+        total = round(subtotal + tax_amount, 2)
+        
+        cur.execute("""
+            UPDATE quotes SET client_id = %s, title = %s, description = %s,
+                line_items = %s, subtotal = %s, tax_rate = %s, tax_amount = %s, total = %s,
+                status = %s, valid_until = %s, notes = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND company_id = %s RETURNING *
+        """, (
+            data.get('client_id', existing.get('client_id')),
+            data.get('title', existing.get('title', '')),
+            data.get('description', existing.get('description', '')),
+            json.dumps(line_items), subtotal, tax_rate, tax_amount, total,
+            data.get('status', existing.get('status', 'draft')),
+            data.get('valid_until', existing.get('valid_until')),
+            data.get('notes', existing.get('notes', '')),
+            quote_id, company_id
+        ))
+        quote = cur.fetchone()
+        conn.commit()
+        cur.close()
+        for f in ['subtotal', 'tax_rate', 'tax_amount', 'total']:
+            quote[f] = float(quote.get(f, 0) or 0)
+        return jsonify(quote)
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/quotes/<int:quote_id>", methods=["DELETE"])
+@login_required
+@subscription_required
+def delete_quote(quote_id):
+    """Delete a quote"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM quotes WHERE id = %s AND company_id = %s", (quote_id, company_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True})
+    except Exception as ex:
+        conn.rollback()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/quotes/<int:quote_id>/convert", methods=["POST"])
+@login_required
+@subscription_required
+def convert_quote_to_job(quote_id):
+    """Convert an accepted quote into a booking/job"""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM quotes WHERE id = %s AND company_id = %s", (quote_id, company_id))
+        quote = cur.fetchone()
+        if not quote:
+            cur.close()
+            return jsonify({"error": "Quote not found"}), 404
+        
+        appointment_time = data.get('appointment_time')
+        if not appointment_time:
+            return jsonify({"error": "appointment_time is required"}), 400
+        
+        # Create booking from quote
+        cur.execute("""
+            INSERT INTO bookings (company_id, client_id, appointment_time, service_type,
+                                  charge, status, payment_status, address, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, 'scheduled', 'unpaid', %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id
+        """, (
+            company_id, quote.get('client_id'), appointment_time,
+            quote.get('title', 'Service'), float(quote.get('total', 0)),
+            data.get('address', '')
+        ))
+        booking = cur.fetchone()
+        booking_id = booking['id']
+        
+        # Mark quote as converted
+        cur.execute("""
+            UPDATE quotes SET status = 'converted', converted_booking_id = %s,
+                              accepted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND company_id = %s
+        """, (booking_id, quote_id, company_id))
+        
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True, "booking_id": booking_id})
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+# ============================================
+# TAX SETTINGS API
+# ============================================
+
+@app.route("/api/settings/tax", methods=["GET"])
+@login_required
+def get_tax_settings():
+    """Get tax/invoice configuration"""
+    db = get_database()
+    company_id = session.get('company_id')
+    company = db.get_company(company_id)
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+    return jsonify({
+        "tax_rate": float(company.get('tax_rate', 0) or 0),
+        "tax_id_number": company.get('tax_id_number', ''),
+        "tax_id_label": company.get('tax_id_label', 'VAT'),
+        "invoice_prefix": company.get('invoice_prefix', 'INV'),
+        "invoice_next_number": int(company.get('invoice_next_number', 1) or 1),
+        "invoice_payment_terms_days": int(company.get('invoice_payment_terms_days', 14) or 14),
+        "invoice_footer_note": company.get('invoice_footer_note', ''),
+        "default_expense_categories": company.get('default_expense_categories', ''),
+    })
+
+
+@app.route("/api/settings/tax", methods=["POST"])
+@login_required
+@subscription_required
+def update_tax_settings():
+    """Update tax/invoice configuration"""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    conn = db.get_connection()
+    try:
+        fields = []
+        values = []
+        allowed = ['tax_rate', 'tax_id_number', 'tax_id_label', 'invoice_prefix',
+                    'invoice_next_number', 'invoice_payment_terms_days',
+                    'invoice_footer_note', 'default_expense_categories']
+        for key in allowed:
+            if key in data:
+                fields.append(f"{key} = %s")
+                values.append(data[key])
+        if fields:
+            values.append(company_id)
+            cur = conn.cursor()
+            cur.execute(f"UPDATE companies SET {', '.join(fields)} WHERE id = %s", values)
+            conn.commit()
+            cur.close()
+        return jsonify({"success": True})
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+# ============================================
+# P&L REPORT API
+# ============================================
+
+@app.route("/api/reports/pnl", methods=["GET"])
+@login_required
+def get_pnl_report():
+    """Get Profit & Loss report"""
+    from datetime import datetime, timedelta
+    from collections import defaultdict
+    
+    db = get_database()
+    company_id = session.get('company_id')
+    period = request.args.get('period', 'year')  # month, quarter, year, all
+    
+    now = datetime.now()
+    if period == 'month':
+        start_date = now.replace(day=1)
+    elif period == 'quarter':
+        quarter_month = ((now.month - 1) // 3) * 3 + 1
+        start_date = now.replace(month=quarter_month, day=1)
+    elif period == 'all':
+        start_date = datetime(2020, 1, 1)
+    else:
+        start_date = now.replace(month=1, day=1)
+    
+    try:
+        bookings = db.get_all_bookings(company_id=company_id)
+        
+        # Revenue from bookings
+        revenue_by_month = defaultdict(float)
+        total_revenue = 0
+        for b in bookings:
+            if b.get('status') == 'cancelled':
+                continue
+            charge = float(b.get('charge', 0) or 0)
+            if charge <= 0:
+                continue
+            appt = b.get('appointment_time')
+            if not appt:
+                continue
+            if isinstance(appt, str):
+                try:
+                    appt = datetime.fromisoformat(appt.replace('Z', '+00:00')).replace(tzinfo=None)
+                except Exception:
+                    continue
+            if appt < start_date:
+                continue
+            month_key = appt.strftime('%Y-%m')
+            revenue_by_month[month_key] += charge
+            total_revenue += charge
+        
+        # Materials costs
+        conn = db.get_connection()
+        try:
+            from psycopg2.extras import RealDictCursor
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            
+            cur.execute("""
+                SELECT jm.booking_id, SUM(jm.total_cost) as cost
+                FROM job_materials jm
+                WHERE jm.company_id = %s
+                GROUP BY jm.booking_id
+            """, (company_id,))
+            materials_by_booking = {}
+            total_materials = 0
+            for row in cur.fetchall():
+                materials_by_booking[row['booking_id']] = float(row['cost'] or 0)
+                total_materials += float(row['cost'] or 0)
+            
+            # Expenses
+            cur.execute("""
+                SELECT category, SUM(amount) as total, COUNT(*) as count
+                FROM expenses
+                WHERE company_id = %s AND date >= %s
+                GROUP BY category
+                ORDER BY total DESC
+            """, (company_id, start_date.date()))
+            expense_categories = []
+            total_expenses = 0
+            for row in cur.fetchall():
+                amt = float(row['total'] or 0)
+                expense_categories.append({
+                    'category': row['category'],
+                    'total': amt,
+                    'count': row['count']
+                })
+                total_expenses += amt
+            
+            # Monthly expense breakdown
+            cur.execute("""
+                SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(amount) as total
+                FROM expenses
+                WHERE company_id = %s AND date >= %s
+                GROUP BY TO_CHAR(date, 'YYYY-MM')
+                ORDER BY month
+            """, (company_id, start_date.date()))
+            expenses_by_month = {}
+            for row in cur.fetchall():
+                expenses_by_month[row['month']] = float(row['total'] or 0)
+            
+            # Monthly materials breakdown (from bookings appointment_time)
+            materials_by_month = defaultdict(float)
+            for b in bookings:
+                if b.get('status') == 'cancelled':
+                    continue
+                bid = b.get('id')
+                mat_cost = materials_by_booking.get(bid, 0)
+                if mat_cost <= 0:
+                    continue
+                appt = b.get('appointment_time')
+                if not appt:
+                    continue
+                if isinstance(appt, str):
+                    try:
+                        appt = datetime.fromisoformat(appt.replace('Z', '+00:00')).replace(tzinfo=None)
+                    except Exception:
+                        continue
+                if appt < start_date:
+                    continue
+                materials_by_month[appt.strftime('%Y-%m')] += mat_cost
+            
+            cur.close()
+        finally:
+            db.return_connection(conn)
+        
+        # Build monthly P&L (expenses + materials combined)
+        all_months = sorted(set(list(revenue_by_month.keys()) + list(expenses_by_month.keys()) + list(materials_by_month.keys())))
+        monthly_pnl = []
+        for month in all_months:
+            rev = revenue_by_month.get(month, 0)
+            exp = expenses_by_month.get(month, 0) + materials_by_month.get(month, 0)
+            monthly_pnl.append({
+                'month': month,
+                'revenue': round(rev, 2),
+                'expenses': round(exp, 2),
+                'net_profit': round(rev - exp, 2)
+            })
+        
+        total_all_costs = total_materials + total_expenses
+        net_profit = total_revenue - total_all_costs
+        
+        return jsonify({
+            "period": period,
+            "start_date": start_date.strftime('%Y-%m-%d'),
+            "total_revenue": round(total_revenue, 2),
+            "total_materials": round(total_materials, 2),
+            "total_expenses": round(total_expenses, 2),
+            "total_costs": round(total_all_costs, 2),
+            "net_profit": round(net_profit, 2),
+            "profit_margin": round((net_profit / total_revenue * 100) if total_revenue > 0 else 0, 1),
+            "expense_categories": expense_categories,
+            "monthly_pnl": monthly_pnl,
+        })
+    except Exception as e:
+        print(f"P&L error: {e}")
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# INVOICE AGING API
+# ============================================
+
+@app.route("/api/finances/aging", methods=["GET"])
+@login_required
+def get_invoice_aging():
+    """Get accounts receivable aging report"""
+    from datetime import datetime, timedelta
+    
+    db = get_database()
+    company_id = session.get('company_id')
+    
+    try:
+        bookings = db.get_all_bookings(company_id=company_id)
+        now = datetime.now()
+        
+        buckets = {
+            'current': {'label': 'Current (0-14 days)', 'total': 0, 'count': 0, 'items': []},
+            '15_30': {'label': '15-30 days', 'total': 0, 'count': 0, 'items': []},
+            '31_60': {'label': '31-60 days', 'total': 0, 'count': 0, 'items': []},
+            '61_90': {'label': '61-90 days', 'total': 0, 'count': 0, 'items': []},
+            'over_90': {'label': '90+ days', 'total': 0, 'count': 0, 'items': []},
+        }
+        
+        for b in bookings:
+            if b.get('status') in ['completed', 'paid', 'cancelled']:
+                continue
+            if b.get('payment_status') == 'paid':
+                continue
+            charge = float(b.get('charge', 0) or 0)
+            if charge <= 0:
+                continue
+            
+            # Use invoice_due_date if set, otherwise appointment_time
+            due_date = b.get('invoice_due_date') or b.get('appointment_time')
+            if not due_date:
+                continue
+            if isinstance(due_date, str):
+                try:
+                    due_date = datetime.fromisoformat(due_date.replace('Z', '+00:00')).replace(tzinfo=None)
+                except Exception:
+                    continue
+            elif hasattr(due_date, 'replace'):
+                due_date = due_date.replace(tzinfo=None)
+            
+            days_overdue = (now - due_date).days
+            if days_overdue < 0:
+                days_overdue = 0
+            
+            # Get customer name
+            customer_name = b.get('customer_name') or b.get('client_name', 'Unknown')
+            if not customer_name or customer_name == 'Unknown':
+                if b.get('client_id'):
+                    client = db.get_client(b['client_id'], company_id=company_id)
+                    if client:
+                        customer_name = client.get('name', 'Unknown')
+            
+            item = {
+                'booking_id': b['id'],
+                'customer_name': customer_name,
+                'service': b.get('service_type', 'Service'),
+                'amount': charge,
+                'date': b.get('appointment_time').isoformat() if hasattr(b.get('appointment_time'), 'isoformat') else str(b.get('appointment_time', '')),
+                'days_overdue': days_overdue,
+            }
+            
+            if days_overdue <= 14:
+                bucket = 'current'
+            elif days_overdue <= 30:
+                bucket = '15_30'
+            elif days_overdue <= 60:
+                bucket = '31_60'
+            elif days_overdue <= 90:
+                bucket = '61_90'
+            else:
+                bucket = 'over_90'
+            
+            buckets[bucket]['total'] += charge
+            buckets[bucket]['count'] += 1
+            buckets[bucket]['items'].append(item)
+        
+        # Round totals
+        for b in buckets.values():
+            b['total'] = round(b['total'], 2)
+        
+        total_outstanding = sum(b['total'] for b in buckets.values())
+        
+        return jsonify({
+            "buckets": buckets,
+            "total_outstanding": round(total_outstanding, 2),
+        })
+    except Exception as e:
+        print(f"Aging error: {e}")
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================
+# JOB SUB-TASKS API
+# ============================================
+
+@app.route("/api/bookings/<int:booking_id>/tasks", methods=["GET"])
+@login_required
+def get_job_tasks(booking_id):
+    """Get sub-tasks for a job"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT * FROM job_tasks
+            WHERE booking_id = %s AND company_id = %s
+            ORDER BY sort_order, created_at
+        """, (booking_id, company_id))
+        tasks = cur.fetchall()
+        cur.close()
+        for t in tasks:
+            t['estimated_cost'] = float(t.get('estimated_cost', 0) or 0)
+        return jsonify(tasks)
+    except Exception as ex:
+        import traceback; traceback.print_exc()
+        return jsonify([])
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/bookings/<int:booking_id>/tasks", methods=["POST"])
+@login_required
+@subscription_required
+def create_job_task(booking_id):
+    """Add a sub-task to a job"""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    
+    # Verify booking belongs to company
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
+        return jsonify({"error": "Booking not found"}), 404
+    
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            INSERT INTO job_tasks (booking_id, company_id, title, description, status,
+                                   estimated_cost, assigned_worker_id, sort_order)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+        """, (
+            booking_id, company_id, data.get('title', ''),
+            data.get('description', ''), data.get('status', 'pending'),
+            float(data.get('estimated_cost', 0) or 0),
+            data.get('assigned_worker_id'), data.get('sort_order', 0)
+        ))
+        task = cur.fetchone()
+        conn.commit()
+        cur.close()
+        task['estimated_cost'] = float(task.get('estimated_cost', 0) or 0)
+        return jsonify(task), 201
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/bookings/<int:booking_id>/tasks/<int:task_id>", methods=["PUT"])
+@login_required
+@subscription_required
+def update_job_task(booking_id, task_id):
+    """Update a sub-task"""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        fields = []
+        values = []
+        for key in ['title', 'description', 'status', 'estimated_cost', 'assigned_worker_id', 'sort_order']:
+            if key in data:
+                fields.append(f"{key} = %s")
+                values.append(data[key])
+        if not fields:
+            return jsonify({"error": "No fields to update"}), 400
+        fields.append("updated_at = CURRENT_TIMESTAMP")
+        values.extend([task_id, booking_id, company_id])
+        cur.execute(f"UPDATE job_tasks SET {', '.join(fields)} WHERE id = %s AND booking_id = %s AND company_id = %s RETURNING *", values)
+        task = cur.fetchone()
+        if not task:
+            cur.close()
+            return jsonify({"error": "Task not found"}), 404
+        conn.commit()
+        cur.close()
+        task['estimated_cost'] = float(task.get('estimated_cost', 0) or 0)
+        return jsonify(task)
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/bookings/<int:booking_id>/tasks/<int:task_id>", methods=["DELETE"])
+@login_required
+@subscription_required
+def delete_job_task(booking_id, task_id):
+    """Delete a sub-task"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM job_tasks WHERE id = %s AND booking_id = %s AND company_id = %s", (task_id, booking_id, company_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True})
+    except Exception as ex:
+        conn.rollback()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+# ============================================
+# PURCHASE ORDERS API
+# ============================================
+
+@app.route("/api/purchase-orders", methods=["GET"])
+@login_required
+def get_purchase_orders():
+    """Get all purchase orders"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT * FROM purchase_orders
+            WHERE company_id = %s
+            ORDER BY created_at DESC
+        """, (company_id,))
+        orders = cur.fetchall()
+        cur.close()
+        for o in orders:
+            o['total'] = float(o.get('total', 0) or 0)
+        return jsonify(orders)
+    except Exception as ex:
+        import traceback; traceback.print_exc()
+        return jsonify([])
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/purchase-orders", methods=["POST"])
+@login_required
+@subscription_required
+def create_purchase_order():
+    """Create a purchase order (optionally auto-generated from job materials)"""
+    import json
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    
+    # Generate PO number
+    company = db.get_company(company_id)
+    prefix = company.get('invoice_prefix', 'INV') if company else 'INV'
+    
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get next PO number
+        cur.execute("SELECT COALESCE(MAX(id), 0) + 1 as next_num FROM purchase_orders WHERE company_id = %s", (company_id,))
+        next_num = cur.fetchone()['next_num']
+        po_number = f"PO-{next_num:04d}"
+        
+        items = data.get('items', [])
+        total = sum(float(i.get('unit_price', 0)) * float(i.get('quantity', 1)) for i in items)
+        
+        cur.execute("""
+            INSERT INTO purchase_orders (company_id, po_number, supplier, items, total,
+                                         status, notes, booking_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+        """, (
+            company_id, po_number, data.get('supplier', ''),
+            json.dumps(items), total, 'draft',
+            data.get('notes', ''), data.get('booking_id')
+        ))
+        order = cur.fetchone()
+        conn.commit()
+        cur.close()
+        order['total'] = float(order.get('total', 0) or 0)
+        return jsonify(order), 201
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/purchase-orders/<int:po_id>", methods=["PUT"])
+@login_required
+@subscription_required
+def update_purchase_order(po_id):
+    """Update a purchase order status"""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        fields = []
+        values = []
+        for key in ['supplier', 'status', 'notes']:
+            if key in data:
+                fields.append(f"{key} = %s")
+                values.append(data[key])
+        if 'items' in data:
+            import json
+            fields.append("items = %s")
+            values.append(json.dumps(data['items']))
+            total = sum(float(i.get('unit_price', 0)) * float(i.get('quantity', 1)) for i in data['items'])
+            fields.append("total = %s")
+            values.append(total)
+        if not fields:
+            return jsonify({"error": "No fields to update"}), 400
+        fields.append("updated_at = CURRENT_TIMESTAMP")
+        values.extend([po_id, company_id])
+        cur.execute(f"UPDATE purchase_orders SET {', '.join(fields)} WHERE id = %s AND company_id = %s RETURNING *", values)
+        order = cur.fetchone()
+        if not order:
+            cur.close()
+            return jsonify({"error": "Purchase order not found"}), 404
+        conn.commit()
+        cur.close()
+        order['total'] = float(order.get('total', 0) or 0)
+        return jsonify(order)
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/purchase-orders/<int:po_id>", methods=["DELETE"])
+@login_required
+@subscription_required
+def delete_purchase_order(po_id):
+    """Delete a purchase order"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM purchase_orders WHERE id = %s AND company_id = %s", (po_id, company_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True})
+    except Exception as ex:
+        conn.rollback()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/purchase-orders/generate-from-job/<int:booking_id>", methods=["POST"])
+@login_required
+@subscription_required
+def generate_po_from_job(booking_id):
+    """Auto-generate a purchase order from a job's materials"""
+    import json
+    db = get_database()
+    company_id = session.get('company_id')
+    
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
+        return jsonify({"error": "Booking not found"}), 404
+    
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get job materials
+        cur.execute("SELECT * FROM job_materials WHERE booking_id = %s AND company_id = %s", (booking_id, company_id))
+        materials = cur.fetchall()
+        if not materials:
+            cur.close()
+            return jsonify({"error": "No materials on this job to create a PO from"}), 400
+        
+        # Group by supplier from catalog
+        items = []
+        supplier_name = ''
+        for m in materials:
+            # Try to get supplier from catalog
+            if m.get('material_id'):
+                cur.execute("SELECT supplier FROM materials WHERE id = %s AND company_id = %s", (m['material_id'], company_id))
+                cat_mat = cur.fetchone()
+                if cat_mat and cat_mat.get('supplier'):
+                    supplier_name = cat_mat['supplier']
+            items.append({
+                'name': m['name'],
+                'unit_price': float(m.get('unit_price', 0) or 0),
+                'quantity': float(m.get('quantity', 1) or 1),
+                'unit': m.get('unit', 'each'),
+            })
+        
+        total = sum(i['unit_price'] * i['quantity'] for i in items)
+        
+        cur.execute("SELECT COALESCE(MAX(id), 0) + 1 as next_num FROM purchase_orders WHERE company_id = %s", (company_id,))
+        next_num = cur.fetchone()['next_num']
+        po_number = f"PO-{next_num:04d}"
+        
+        customer_name = booking.get('customer_name') or booking.get('client_name') or 'Unknown'
+        service = booking.get('service_type') or 'Service'
+        
+        cur.execute("""
+            INSERT INTO purchase_orders (company_id, po_number, supplier, items, total,
+                                         status, notes, booking_id)
+            VALUES (%s, %s, %s, %s, %s, 'draft', %s, %s)
+            RETURNING *
+        """, (
+            company_id, po_number, supplier_name,
+            json.dumps(items), total,
+            f"Materials for {service} - {customer_name}",
+            booking_id
+        ))
+        order = cur.fetchone()
+        conn.commit()
+        cur.close()
+        order['total'] = float(order.get('total', 0) or 0)
+        return jsonify(order), 201
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+# ============================================
+# MILEAGE TRACKING API
+# ============================================
+
+@app.route("/api/mileage", methods=["GET"])
+@login_required
+def get_mileage_logs():
+    """Get mileage logs"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM mileage_logs WHERE company_id = %s ORDER BY date DESC", (company_id,))
+        logs = cur.fetchall()
+        cur.close()
+        for l in logs:
+            l['distance_km'] = float(l.get('distance_km', 0) or 0)
+            l['cost'] = float(l.get('cost', 0) or 0)
+        return jsonify(logs)
+    except Exception:
+        return jsonify([])
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/mileage", methods=["POST"])
+@login_required
+@subscription_required
+def create_mileage_log():
+    """Log a mileage trip"""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    distance = float(data.get('distance_km', 0) or 0)
+    if distance <= 0:
+        return jsonify({"error": "Distance is required"}), 400
+    rate = float(data.get('rate_per_km', 0.338) or 0.338)  # Irish Revenue rate
+    cost = round(distance * rate, 2)
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            INSERT INTO mileage_logs (company_id, date, from_location, to_location,
+                                      distance_km, rate_per_km, cost, booking_id, notes)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
+        """, (company_id, data.get('date'), data.get('from_location', ''),
+              data.get('to_location', ''), distance, rate, cost,
+              data.get('booking_id'), data.get('notes', '')))
+        log = cur.fetchone()
+        conn.commit()
+        cur.close()
+        log['distance_km'] = float(log.get('distance_km', 0) or 0)
+        log['cost'] = float(log.get('cost', 0) or 0)
+        return jsonify(log), 201
+    except Exception as ex:
+        conn.rollback()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/mileage/<int:log_id>", methods=["DELETE"])
+@login_required
+@subscription_required
+def delete_mileage_log(log_id):
+    """Delete a mileage log"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM mileage_logs WHERE id = %s AND company_id = %s", (log_id, company_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True})
+    except Exception as ex:
+        conn.rollback()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+# ============================================
+# CREDIT NOTES API
+# ============================================
+
+@app.route("/api/credit-notes", methods=["GET"])
+@login_required
+def get_credit_notes():
+    """Get credit notes"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT cn.*, c.name as client_name
+            FROM credit_notes cn
+            LEFT JOIN clients c ON cn.client_id = c.id
+            WHERE cn.company_id = %s ORDER BY cn.created_at DESC
+        """, (company_id,))
+        notes = cur.fetchall()
+        cur.close()
+        for n in notes:
+            n['amount'] = float(n.get('amount', 0) or 0)
+        return jsonify(notes)
+    except Exception:
+        return jsonify([])
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/credit-notes", methods=["POST"])
+@login_required
+@subscription_required
+def create_credit_note():
+    """Create a credit note / refund. Optionally process Stripe refund."""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    amount = float(data.get('amount', 0) or 0)
+    if amount <= 0:
+        return jsonify({"error": "Amount is required"}), 400
+    
+    booking_id = data.get('booking_id')
+    process_stripe_refund = data.get('stripe_refund', False)
+    stripe_refund_id = None
+    stripe_refund_error = None
+    
+    # Attempt Stripe refund if requested
+    if process_stripe_refund and booking_id:
+        try:
+            booking = db.get_booking(booking_id, company_id=company_id)
+            if booking:
+                company = db.get_company(company_id)
+                connected_account_id = company.get('stripe_connect_account_id') if company else None
+                session_id = booking.get('stripe_checkout_session_id')
+                
+                if connected_account_id and session_id:
+                    import stripe
+                    from src.utils.config import config
+                    stripe.api_key = getattr(config, 'STRIPE_SECRET_KEY', None) or os.getenv('STRIPE_SECRET_KEY')
+                    
+                    if stripe.api_key:
+                        # Retrieve the checkout session to get the payment_intent
+                        checkout = stripe.checkout.Session.retrieve(
+                            session_id, stripe_account=connected_account_id
+                        )
+                        payment_intent_id = checkout.get('payment_intent')
+                        
+                        if payment_intent_id:
+                            amount_cents = int(amount * 100)
+                            refund = stripe.Refund.create(
+                                payment_intent=payment_intent_id,
+                                amount=amount_cents,
+                                stripe_account=connected_account_id
+                            )
+                            stripe_refund_id = refund.id
+                            print(f"[REFUND] Stripe refund {refund.id} created for €{amount} on PI {payment_intent_id}")
+                        else:
+                            stripe_refund_error = "No payment found for this booking"
+                    else:
+                        stripe_refund_error = "Stripe not configured"
+                else:
+                    stripe_refund_error = "No Stripe payment on record for this booking"
+        except Exception as e:
+            stripe_refund_error = str(e)
+            print(f"[REFUND] Stripe refund failed: {e}")
+            import traceback; traceback.print_exc()
+    
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Generate credit note number
+        cur.execute("SELECT COALESCE(MAX(id), 0) + 1 as n FROM credit_notes WHERE company_id = %s", (company_id,))
+        cn_num = f"CN-{cur.fetchone()['n']:04d}"
+        cur.execute("""
+            INSERT INTO credit_notes (company_id, credit_note_number, client_id, booking_id,
+                                      amount, reason, notes, stripe_refund_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
+        """, (company_id, cn_num, data.get('client_id'), booking_id,
+              amount, data.get('reason', ''), data.get('notes', ''), stripe_refund_id))
+        note = cur.fetchone()
+        conn.commit()
+        cur.close()
+        note['amount'] = float(note.get('amount', 0) or 0)
+        
+        result = dict(note)
+        if stripe_refund_id:
+            result['stripe_refund_id'] = stripe_refund_id
+            result['stripe_refund_status'] = 'success'
+        elif stripe_refund_error:
+            result['stripe_refund_error'] = stripe_refund_error
+            result['stripe_refund_status'] = 'failed'
+        
+        return jsonify(result), 201
+    except Exception as ex:
+        conn.rollback()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+# ============================================
+# CUSTOMER STATEMENTS API
+# ============================================
+
+@app.route("/api/clients/<int:client_id>/statement", methods=["GET"])
+@login_required
+def get_customer_statement(client_id):
+    """Get a customer statement showing all invoices, payments, and balance"""
+    db = get_database()
+    company_id = session.get('company_id')
+    client = db.get_client(client_id, company_id=company_id)
+    if not client:
+        return jsonify({"error": "Client not found"}), 404
+    
+    bookings = db.get_all_bookings(company_id=company_id)
+    client_bookings = [b for b in bookings if b.get('client_id') == client_id]
+    
+    items = []
+    total_charged = 0
+    total_paid = 0
+    
+    for b in sorted(client_bookings, key=lambda x: x.get('appointment_time', '') or ''):
+        charge = float(b.get('charge', 0) or 0)
+        if charge <= 0:
+            continue
+        is_paid = b.get('status') in ['completed', 'paid'] or b.get('payment_status') == 'paid'
+        total_charged += charge
+        if is_paid:
+            total_paid += charge
+        items.append({
+            'date': str(b.get('appointment_time', '')),
+            'description': b.get('service_type', 'Service'),
+            'amount': charge,
+            'status': 'paid' if is_paid else 'unpaid',
+            'booking_id': b.get('id'),
+        })
+    
+    # Get credit notes for this client
+    conn = db.get_connection()
+    total_credits = 0
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM credit_notes WHERE company_id = %s AND client_id = %s ORDER BY created_at", (company_id, client_id))
+        for cn in cur.fetchall():
+            amt = float(cn.get('amount', 0) or 0)
+            total_credits += amt
+            items.append({
+                'date': str(cn.get('created_at', '')),
+                'description': f"Credit Note {cn.get('credit_note_number', '')} - {cn.get('reason', 'Refund')}",
+                'amount': -amt,
+                'status': 'credit',
+                'booking_id': cn.get('booking_id'),
+            })
+        cur.close()
+    except Exception:
+        pass
+    finally:
+        db.return_connection(conn)
+    
+    balance = total_charged - total_paid - total_credits
+    
+    return jsonify({
+        "client": {"id": client.get('id'), "name": client.get('name'), "phone": client.get('phone'), "email": client.get('email')},
+        "items": items,
+        "total_charged": round(total_charged, 2),
+        "total_paid": round(total_paid, 2),
+        "total_credits": round(total_credits, 2),
+        "balance_due": round(balance, 2),
+    })
 
 
 @app.route("/api/calendar/events", methods=["GET"])

@@ -906,12 +906,12 @@ const FinalCTAScene: React.FC = () => {
             boxShadow: `0 0 ${50 * glow}px ${C.purpleGlow}, 0 0 ${80 * glow}px ${C.cyanGlow}`,
           }}>
             <span style={{ fontSize: 26, fontWeight: 900, color: C.white }}>
-              Start Your Free Trial →
+              Get Started →
             </span>
           </div>
         </Pop>
         <Pop delay={45} direction="up">
-          <p style={{ fontSize: 18, color: C.gray, marginTop: 20 }}>14 days free · No credit card required</p>
+          <p style={{ fontSize: 18, color: C.gray, marginTop: 20 }}>We handle the setup for you</p>
         </Pop>
         <Pop delay={55} direction="up">
           <p style={{ fontSize: 22, fontWeight: 700, color: C.purpleLight, marginTop: 16 }}>bookedforyou.ie</p>

@@ -646,7 +646,7 @@ const L8_CTA: React.FC = () => (
     <div style={{ textAlign: "center", zIndex: 2 }}>
       <Boom text="Make 2025 your year" delay={0} size={48} />
       <Pop delay={15} scale><Logo size={56} /></Pop>
-      <Boom text="Start your free trial" delay={22} size={36} color={C.cyan} />
+      <Boom text="Get started today" delay={22} size={36} color={C.cyan} />
       <Pop delay={38} style={{ marginTop: 8 }}><span style={{ fontSize: 22, color: C.gray }}>bookedforyou.ie</span></Pop>
     </div>
   </WrappedSlide>

@@ -10,7 +10,7 @@ This solves the #1 problem for tradespeople: missing calls while they're on a jo
 
 ## How It Works
 
-1. Sign Up: Create an account and set up your business profile in under 5 minutes
+1. Get in Touch: Contact us and we set up your account tailored to your business
 2. Connect Your Phone: Forward your business calls to your new AI receptionist number
 3. Start Growing: The AI handles calls, books jobs, and manages your schedule automatically
 
@@ -81,7 +81,7 @@ BookedForYou works for any service-based trade business, including but not limit
 
 ## Pricing
 
-- Free Trial: 14 days with all features, no credit card required
+- Starter: 14 days free trial with all features, personalised setup
 - Pro Plan: Custom pricing based on business size and needs
 
 ## Company Information
@@ -95,7 +95,7 @@ BookedForYou works for any service-based trade business, including but not limit
 ## Links
 
 - Homepage: https://bookedforyou.ie
-- Sign Up: https://bookedforyou.ie/signup
+- Contact: mailto:contact@bookedforyou.ie
 - Login: https://bookedforyou.ie/login
 - Privacy Policy: https://bookedforyou.ie/privacy
 - Terms of Service: https://bookedforyou.ie/terms

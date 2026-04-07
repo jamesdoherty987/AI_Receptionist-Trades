@@ -397,6 +397,11 @@ function CalendarTab() {
 
   return (
     <div className="calendar-tab">
+      {/* Page Header */}
+      <div className="tab-page-header">
+        <h2 className="tab-page-title">Calendar</h2>
+      </div>
+
       {/* Calendar Header */}
       <div className="calendar-header">
         <div className="calendar-nav">

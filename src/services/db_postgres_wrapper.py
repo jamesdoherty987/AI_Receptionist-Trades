@@ -650,6 +650,11 @@ class PostgreSQLDatabaseWrapper:
             'ai_schedule_override': 'BOOLEAN DEFAULT false',
             # Setup wizard completion flag — once true, wizard never shows again
             'setup_wizard_complete': 'BOOLEAN DEFAULT false',
+            # Managed setup flag — false means admin set up the account
+            'easy_setup': 'BOOLEAN DEFAULT true',
+            # Owner invite token for managed setup password flow
+            'owner_invite_token': 'TEXT',
+            'owner_invite_expires': 'TIMESTAMP',
         }
         
         # Also migrate business_settings table for bank details
@@ -858,6 +863,182 @@ class PostgreSQLDatabaseWrapper:
                     print(f"[SUCCESS] Added {col_name} column to call_logs table")
                 except Exception as e:
                     print(f"[WARNING] Could not add {col_name} to call_logs: {e}")
+        
+        # ============================================
+        # Accounting tables: expenses, quotes, invoice/tax columns
+        # ============================================
+        
+        # Expenses table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS expenses (
+                id BIGSERIAL PRIMARY KEY,
+                company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
+                category VARCHAR(100) NOT NULL DEFAULT 'other',
+                description TEXT,
+                vendor VARCHAR(255),
+                date DATE NOT NULL DEFAULT CURRENT_DATE,
+                receipt_url TEXT,
+                is_recurring BOOLEAN DEFAULT FALSE,
+                recurring_frequency VARCHAR(20),
+                tax_deductible BOOLEAN DEFAULT TRUE,
+                notes TEXT,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_expenses_company ON expenses(company_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category)")
+        
+        # Quotes / Estimates table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quotes (
+                id BIGSERIAL PRIMARY KEY,
+                company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                client_id BIGINT REFERENCES clients(id) ON DELETE SET NULL,
+                quote_number VARCHAR(50),
+                title VARCHAR(255),
+                description TEXT,
+                line_items JSONB DEFAULT '[]',
+                subtotal NUMERIC(10, 2) DEFAULT 0,
+                tax_rate NUMERIC(5, 2) DEFAULT 0,
+                tax_amount NUMERIC(10, 2) DEFAULT 0,
+                total NUMERIC(10, 2) DEFAULT 0,
+                status VARCHAR(30) DEFAULT 'draft',
+                valid_until DATE,
+                notes TEXT,
+                converted_booking_id BIGINT REFERENCES bookings(id) ON DELETE SET NULL,
+                sent_at TIMESTAMPTZ,
+                accepted_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_quotes_company ON quotes(company_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_quotes_status ON quotes(status)")
+        
+        # Invoice/tax columns on bookings
+        booking_acct_cols = {
+            'invoice_number': 'VARCHAR(50)',
+            'invoice_sent_at': 'TIMESTAMPTZ',
+            'invoice_due_date': 'DATE',
+            'tax_rate': 'NUMERIC(5, 2) DEFAULT 0',
+            'tax_amount': 'NUMERIC(10, 2) DEFAULT 0',
+            'stripe_checkout_url': 'TEXT',
+            'stripe_checkout_session_id': 'TEXT',
+        }
+        for col_name, col_type in booking_acct_cols.items():
+            cursor.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='bookings' AND column_name=%s",
+                (col_name,)
+            )
+            if not cursor.fetchone():
+                try:
+                    cursor.execute(f"ALTER TABLE bookings ADD COLUMN {col_name} {col_type}")
+                    print(f"[SUCCESS] Added {col_name} column to bookings table")
+                except Exception as e:
+                    print(f"[WARNING] Could not add {col_name} to bookings: {e}")
+        
+        # Tax/invoice settings on companies
+        company_acct_cols = {
+            'tax_rate': 'NUMERIC(5, 2) DEFAULT 0',
+            'tax_id_number': 'VARCHAR(100)',
+            'tax_id_label': "VARCHAR(50) DEFAULT 'VAT'",
+            'invoice_prefix': "VARCHAR(20) DEFAULT 'INV'",
+            'invoice_next_number': 'INTEGER DEFAULT 1',
+            'invoice_payment_terms_days': 'INTEGER DEFAULT 14',
+            'invoice_footer_note': 'TEXT',
+            'default_expense_categories': 'TEXT',
+        }
+        for col_name, col_type in company_acct_cols.items():
+            if col_name not in existing_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE companies ADD COLUMN {col_name} {col_type}")
+                    print(f"[SUCCESS] Added {col_name} column to companies table")
+                except Exception as e:
+                    print(f"[WARNING] Could not add {col_name} to companies: {e}")
+        
+        print("[INFO] Accounting migrations complete")
+        
+        # ============================================
+        # Job sub-tasks table
+        # ============================================
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS job_tasks (
+                id BIGSERIAL PRIMARY KEY,
+                booking_id BIGINT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+                company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                title VARCHAR(255) NOT NULL,
+                description TEXT,
+                status VARCHAR(30) DEFAULT 'pending',
+                estimated_cost NUMERIC(10, 2) DEFAULT 0,
+                assigned_worker_id BIGINT REFERENCES workers(id) ON DELETE SET NULL,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_tasks_booking ON job_tasks(booking_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_tasks_company ON job_tasks(company_id)")
+        
+        # Purchase orders table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS purchase_orders (
+                id BIGSERIAL PRIMARY KEY,
+                company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                po_number VARCHAR(50),
+                supplier VARCHAR(255),
+                items JSONB DEFAULT '[]',
+                total NUMERIC(10, 2) DEFAULT 0,
+                status VARCHAR(30) DEFAULT 'draft',
+                notes TEXT,
+                booking_id BIGINT REFERENCES bookings(id) ON DELETE SET NULL,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_purchase_orders_company ON purchase_orders(company_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_purchase_orders_status ON purchase_orders(status)")
+        
+        print("[INFO] Sub-tasks and purchase orders migrations complete")
+        
+        # Mileage logs table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mileage_logs (
+                id BIGSERIAL PRIMARY KEY,
+                company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                date DATE NOT NULL DEFAULT CURRENT_DATE,
+                from_location TEXT,
+                to_location TEXT,
+                distance_km NUMERIC(8, 2) DEFAULT 0,
+                rate_per_km NUMERIC(6, 4) DEFAULT 0.338,
+                cost NUMERIC(10, 2) DEFAULT 0,
+                booking_id BIGINT REFERENCES bookings(id) ON DELETE SET NULL,
+                notes TEXT,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mileage_company ON mileage_logs(company_id)")
+        
+        # Credit notes table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS credit_notes (
+                id BIGSERIAL PRIMARY KEY,
+                company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                credit_note_number VARCHAR(50),
+                client_id BIGINT REFERENCES clients(id) ON DELETE SET NULL,
+                booking_id BIGINT REFERENCES bookings(id) ON DELETE SET NULL,
+                amount NUMERIC(10, 2) NOT NULL DEFAULT 0,
+                reason TEXT,
+                notes TEXT,
+                stripe_refund_id TEXT,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_credit_notes_company ON credit_notes(company_id)")
+        
+        print("[INFO] Mileage and credit notes migrations complete")
     
     def _convert_query(self, query: str) -> str:
         """Convert ? placeholders to %s for parameterized queries"""
@@ -1035,6 +1216,7 @@ class PostgreSQLDatabaseWrapper:
         try:
             allowed_fields = ['company_name', 'owner_name', 'phone', 'email', 'trade_type', 
                               'address', 'logo_url', 'business_hours', 'ai_enabled',
+                              'password_hash',
                               'subscription_tier', 'subscription_status',
                               'stripe_customer_id', 'stripe_subscription_id',
                               'stripe_connect_account_id', 'stripe_connect_status',
@@ -1055,7 +1237,10 @@ class PostgreSQLDatabaseWrapper:
                               'setup_wizard_complete',
                               'has_used_trial',
                               'ai_schedule',
-                              'ai_schedule_override']
+                              'ai_schedule_override',
+                              'easy_setup',
+                              'owner_invite_token',
+                              'owner_invite_expires']
             
             # Get actual columns that exist in the database
             cursor.execute("""

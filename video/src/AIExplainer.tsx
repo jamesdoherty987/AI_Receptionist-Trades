@@ -798,7 +798,7 @@ const ExplainerFinale: React.FC = () => {
         </Pop>
         <Pop delay={30} direction="up">
           <p style={{ fontSize: 22, color: C.gray, margin: "0 0 28px" }}>
-            14-day free trial. Set up in 5 minutes. No credit card.
+            We handle the setup. You handle the business.
           </p>
         </Pop>
         <Pop delay={38} direction="scale">
@@ -809,7 +809,7 @@ const ExplainerFinale: React.FC = () => {
             transform: `scale(${btnScale})`,
             boxShadow: `0 0 ${55 * glow}px ${C.purpleGlow}, 0 0 ${90 * glow}px ${C.cyanGlow}`,
           }}>
-            <span style={{ fontSize: 28, fontWeight: 900, color: C.white }}>Get Started Free →</span>
+            <span style={{ fontSize: 28, fontWeight: 900, color: C.white }}>Get Started →</span>
           </div>
         </Pop>
         <Pop delay={50} direction="up">

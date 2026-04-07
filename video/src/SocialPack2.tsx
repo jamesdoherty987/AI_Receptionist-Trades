@@ -493,7 +493,7 @@ const L2_CTA: React.FC = () => {
         <Boom text="Stop losing money" delay={8} size={48} />
         <Pop delay={18} scale style={{ marginTop: 16 }}>
           <div style={{ display: "inline-block", background: `linear-gradient(135deg,${C.purple},${C.cyan})`, borderRadius: 18, padding: "18px 50px", transform: `scale(${btnS})`, boxShadow: `0 0 ${50 * glow}px ${C.purpleGlow}` }}>
-            <span style={{ fontSize: 26, fontWeight: 900, color: C.white }}>Start Free Trial →</span>
+            <span style={{ fontSize: 26, fontWeight: 900, color: C.white }}>Get Started →</span>
           </div>
         </Pop>
         <Pop delay={30} style={{ marginTop: 10 }}><span style={{ fontSize: 20, color: C.gray }}>bookedforyou.ie</span></Pop>

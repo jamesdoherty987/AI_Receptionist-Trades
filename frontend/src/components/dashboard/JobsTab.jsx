@@ -192,6 +192,11 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
   return (
     <div className="jobs-tab">
+      {/* Page Header */}
+      <div className="tab-page-header">
+        <h2 className="tab-page-title">Jobs</h2>
+      </div>
+
       {/* Header with search and add */}
       <div className="jt-header">
         <div className="jt-search">

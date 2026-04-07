@@ -114,9 +114,55 @@ body {
 
 /* Utility Classes */
 .container {
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 24px;
+}
+
+/* Shared Tab Page Header */
+.tab-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.tab-page-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.tab-page-title i {
+  color: #6366f1;
+  font-size: 1.1rem;
+}
+
+.tab-page-subtitle {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  margin: 0.15rem 0 0;
+}
+
+.tab-page-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .tab-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+  .tab-page-title {
+    font-size: 1.15rem;
+  }
 }
 
 .glass {

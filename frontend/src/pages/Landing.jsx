@@ -1030,7 +1030,7 @@ function Landing() {
   ];
 
   const pricingPlans = [
-    { name: "Free Trial", price: "Free", period: "for 14 days", description: "Try everything risk-free", features: ["All features included", "Unlimited AI calls", "Smart scheduling", "Customer management", "Worker management", "Financial tracking", "No credit card required"], cta: "Start Free Trial", highlighted: false, link: "/signup" },
+    { name: "Starter", price: "Free", period: "for 14 days", description: "Try everything risk-free", features: ["All features included", "Unlimited AI calls", "Smart scheduling", "Customer management", "Worker management", "Financial tracking", "Personalised setup"], cta: "Get in Touch", highlighted: false, link: "mailto:contact@bookedforyou.ie?subject=BookedForYou Starter Plan" },
     { name: "Pro", price: "Custom", period: "pricing", description: "Tailored to your business size", features: ["All features included", "Unlimited AI calls", "Smart scheduling", "Customer management", "Worker management", "Financial tracking & invoicing", "Priority support"], cta: "Contact Us for Pricing", highlighted: true, link: "mailto:contact@bookedforyou.ie?subject=Pro Plan Pricing Enquiry" },
   ];
 
@@ -1071,7 +1071,7 @@ function Landing() {
             {showReviews && <a href="#testimonials">Testimonials</a>}
             {showPricing && <a href="#pricing">Pricing</a>}
             <Link to="/login" className="nav-link-btn">Log In</Link>
-            <Link to="/signup" className="nav-btn-primary">Get Started</Link>
+            <a href="mailto:contact@bookedforyou.ie?subject=Get Started with BookedForYou" className="nav-btn-primary">Get Started</a>
           </div>
         </div>
       </nav>
@@ -1087,7 +1087,7 @@ function Landing() {
             <Typewriter text={heroSubtitle} speed={30} delay={600} />
           </p>
           <div className="hero-cta">
-            <Link to="/signup" className="btn-hero-primary"><i className="fas fa-rocket"></i> Start Free Trial</Link>
+            <a href="mailto:contact@bookedforyou.ie?subject=Get Started with BookedForYou" className="btn-hero-primary"><i className="fas fa-rocket"></i> Get Started</a>
             {showWatchDemo && <a href="#demo" className="btn-hero-secondary"><i className="fas fa-play-circle"></i> Watch Demo</a>}
           </div>
           <ParallaxLayer speed={-0.04} className="hero-stats-parallax">
@@ -1139,7 +1139,7 @@ function Landing() {
             <h2 style={{ textAlign: 'center' }}>Get started in <span className="gradient-text">3 simple steps</span></h2>
           </div>
           <div className="steps">
-            <div className="step reveal-child" style={{ transitionDelay: '0.1s' }}><div className="step-number">1</div><h3>Sign Up</h3><p>Create your account and set up your business profile in under 5 minutes.</p></div>
+            <div className="step reveal-child" style={{ transitionDelay: '0.1s' }}><div className="step-number">1</div><h3>Get in Touch</h3><p>Contact us and we'll set up your account with everything tailored to your business.</p></div>
             <div className="step-connector reveal-child" style={{ transitionDelay: '0.25s' }}><div className="connector-beam"></div></div>
             <div className="step reveal-child" style={{ transitionDelay: '0.35s' }}><div className="step-number">2</div><h3>Connect Your Phone</h3><p>Forward your business calls to your new AI receptionist number.</p></div>
             <div className="step-connector reveal-child" style={{ transitionDelay: '0.5s' }}><div className="connector-beam"></div></div>
@@ -1207,7 +1207,7 @@ function Landing() {
           <div className="section-container">
             <div className="section-header">
               <h2 style={{ textAlign: 'center' }}>Simple, <span className="gradient-text">flexible pricing</span></h2>
-              <p style={{ textAlign: 'center' }}>Start free. Scale as you grow.</p>
+              <p style={{ textAlign: 'center' }}>We handle the setup. You handle the business.</p>
             </div>
             <div className="pricing-grid">
               {pricingPlans.map((plan, i) => (
@@ -1237,7 +1237,7 @@ function Landing() {
           <div className="cta-content">
             <h2>Ready to never miss a call again?</h2>
             <p>Join hundreds of tradespeople who are growing their business with BookedForYou.</p>
-            <Link to="/signup" className="btn-cta">Get Started Free <i className="fas fa-arrow-right"></i></Link>
+            <a href="mailto:contact@bookedforyou.ie?subject=Get Started with BookedForYou" className="btn-cta">Get Started <i className="fas fa-arrow-right"></i></a>
           </div>
         </div>
       </SectionReveal>
@@ -1248,7 +1248,7 @@ function Landing() {
             <div className="footer-brand">
               <div className="footer-logo"><i className="fas fa-bolt"></i><span>BookedForYou</span></div>
               <p>AI-powered receptionist and business management for tradespeople.</p>
-              <div className="social-links"><a href="https://www.linkedin.com/company/bookedforyou" target="_blank" rel="noopener noreferrer"><i className="fab fa-linkedin"></i></a><a href="#"><i className="fab fa-instagram"></i></a></div>
+              <div className="social-links"><a href="https://www.linkedin.com/company/bookedforyou" target="_blank" rel="noopener noreferrer"><i className="fab fa-linkedin"></i></a><a href="https://www.instagram.com/bookedforyou.ie" target="_blank" rel="noopener noreferrer"><i className="fab fa-instagram"></i></a><a href="https://www.tiktok.com/@bookedforyou_" target="_blank" rel="noopener noreferrer"><i className="fab fa-tiktok"></i></a></div>
             </div>
             <div className="footer-links">
               <div className="footer-column"><h4>Product</h4><a href="#features">Features</a>{showPricing && <a href="#pricing">Pricing</a>}{showReviews && <a href="#testimonials">Testimonials</a>}</div>

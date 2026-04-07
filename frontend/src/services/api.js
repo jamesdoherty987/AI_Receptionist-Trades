@@ -47,6 +47,8 @@ api.interceptors.response.use(
             window.location.pathname !== '/' &&
             window.location.pathname !== '/forgot-password' &&
             window.location.pathname !== '/reset-password' &&
+            window.location.pathname !== '/set-password' &&
+            window.location.pathname !== '/bfy-ops' &&
             !window.location.pathname.startsWith('/worker/')) {
           window.location.href = '/login';
         }
@@ -246,6 +248,52 @@ export const getConnectPayouts = () => api.get('/api/connect/payouts');
 export const saveBankDetails = (data) => api.post('/api/settings/business', data);
 export const getBankDetails = () => api.get('/api/settings/business');
 
+// Expenses
+export const getExpenses = () => api.get('/api/expenses');
+export const createExpense = (data) => api.post('/api/expenses', data);
+export const updateExpense = (id, data) => api.put(`/api/expenses/${id}`, data);
+export const deleteExpense = (id) => api.delete(`/api/expenses/${id}`);
+
+// Quotes / Estimates
+export const getQuotes = () => api.get('/api/quotes');
+export const createQuote = (data) => api.post('/api/quotes', data);
+export const updateQuote = (id, data) => api.put(`/api/quotes/${id}`, data);
+export const deleteQuote = (id) => api.delete(`/api/quotes/${id}`);
+export const convertQuoteToJob = (id, data) => api.post(`/api/quotes/${id}/convert`, data);
+
+// Tax Settings
+export const getTaxSettings = () => api.get('/api/settings/tax');
+export const updateTaxSettings = (data) => api.post('/api/settings/tax', data);
+
+// Reports
+export const getPnlReport = (period = 'year') => api.get('/api/reports/pnl', { params: { period } });
+export const getInvoiceAging = () => api.get('/api/finances/aging');
+
+// Job Sub-Tasks
+export const getJobTasks = (bookingId) => api.get(`/api/bookings/${bookingId}/tasks`);
+export const createJobTask = (bookingId, data) => api.post(`/api/bookings/${bookingId}/tasks`, data);
+export const updateJobTask = (bookingId, taskId, data) => api.put(`/api/bookings/${bookingId}/tasks/${taskId}`, data);
+export const deleteJobTask = (bookingId, taskId) => api.delete(`/api/bookings/${bookingId}/tasks/${taskId}`);
+
+// Purchase Orders
+export const getPurchaseOrders = () => api.get('/api/purchase-orders');
+export const createPurchaseOrder = (data) => api.post('/api/purchase-orders', data);
+export const updatePurchaseOrder = (id, data) => api.put(`/api/purchase-orders/${id}`, data);
+export const deletePurchaseOrder = (id) => api.delete(`/api/purchase-orders/${id}`);
+export const generatePOFromJob = (bookingId) => api.post(`/api/purchase-orders/generate-from-job/${bookingId}`);
+
+// Mileage Tracking
+export const getMileageLogs = () => api.get('/api/mileage');
+export const createMileageLog = (data) => api.post('/api/mileage', data);
+export const deleteMileageLog = (id) => api.delete(`/api/mileage/${id}`);
+
+// Credit Notes
+export const getCreditNotes = () => api.get('/api/credit-notes');
+export const createCreditNote = (data) => api.post('/api/credit-notes', data);
+
+// Customer Statements
+export const getCustomerStatement = (clientId) => api.get(`/api/clients/${clientId}/statement`);
+
 // Notifications
 export const getNotifications = (since = null) => 
   api.get('/api/notifications', { params: since ? { since } : {} });
@@ -255,6 +303,7 @@ export const workerLogin = (email, password) => api.post('/api/worker/auth/login
 export const workerLogout = () => api.post('/api/worker/auth/logout');
 export const getWorkerMe = () => api.get('/api/worker/auth/me');
 export const workerSetPassword = (token, password) => api.post('/api/worker/auth/set-password', { token, password });
+export const ownerSetPassword = (token, password) => api.post('/api/owner/set-password', { token, password });
 export const workerForgotPassword = (email) => api.post('/api/worker/auth/forgot-password', { email });
 export const workerResetPassword = (token, newPassword) => api.post('/api/worker/auth/reset-password', { token, new_password: newPassword });
 export const inviteWorker = (workerId) => api.post('/api/worker/invite', { worker_id: workerId });

@@ -17,7 +17,7 @@ BookedForYou is a SaaS product that provides an AI receptionist for trade busine
 
 ## Pricing
 
-- Free Trial: 14 days, all features included, no credit card required
+- Starter: 14 days free trial, all features included, personalised setup
 - Pro Plan: Custom pricing tailored to business size
 
 ## Target Audience
@@ -27,7 +27,7 @@ Small to medium trade businesses in Ireland who miss calls while on the job and 
 ## Links
 
 - Website: https://bookedforyou.ie
-- Sign Up: https://bookedforyou.ie/signup
+- Contact: mailto:contact@bookedforyou.ie
 - Contact: contact@bookedforyou.ie
 - Privacy Policy: https://bookedforyou.ie/privacy
 - Terms of Service: https://bookedforyou.ie/terms

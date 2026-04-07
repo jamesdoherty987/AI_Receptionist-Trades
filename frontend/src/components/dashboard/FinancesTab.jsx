@@ -2,14 +2,37 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDateTime } from '../../utils/helpers';
-import { getFinances, sendInvoice, markBookingsPaid, updateBooking } from '../../services/api';
+import { getFinances, sendInvoice, markBookingsPaid, updateBooking, getExpenses } from '../../services/api';
 import { useToast } from '../Toast';
 import LoadingSpinner from '../LoadingSpinner';
+import ExpensesPanel from '../accounting/ExpensesPanel';
+import QuotesPanel from '../accounting/QuotesPanel';
+import AgingPanel from '../accounting/AgingPanel';
+import PnlPanel from '../accounting/PnlPanel';
+import TaxSettings from '../accounting/TaxSettings';
+import PurchaseOrdersPanel from '../accounting/PurchaseOrdersPanel';
+import MileagePanel from '../accounting/MileagePanel';
+import CreditNotesPanel from '../accounting/CreditNotesPanel';
+import '../accounting/Accounting.css';
 import './FinancesTab.css';
+
+const ACCT_TABS = [
+  { key: 'overview', label: 'Overview', icon: 'fa-chart-line' },
+  { key: 'expenses', label: 'Expenses', icon: 'fa-receipt' },
+  { key: 'mileage', label: 'Mileage', icon: 'fa-car' },
+  { key: 'quotes', label: 'Quotes', icon: 'fa-file-invoice' },
+  { key: 'purchase-orders', label: 'POs', icon: 'fa-file-export' },
+  { key: 'unpaid', label: 'Unpaid', icon: 'fa-hourglass-half' },
+  { key: 'credits', label: 'Credits', icon: 'fa-undo' },
+  { key: 'pnl', label: 'P&L', icon: 'fa-file-invoice-dollar' },
+  { key: 'tax', label: 'Settings', icon: 'fa-cog' },
+];
 
 function FinancesTab({ showInvoiceButtons = true }) {
   const queryClient = useQueryClient();
   const { hasActiveSubscription } = useAuth();
+  const [acctTab, setAcctTab] = useState('overview');
+
   const isSubscriptionActive = hasActiveSubscription();
   const [filterMode, setFilterMode] = useState('unpaid');
   const [sendingInvoice, setSendingInvoice] = useState(null);
@@ -17,6 +40,24 @@ function FinancesTab({ showInvoiceButtons = true }) {
   const [chartRange, setChartRange] = useState('year');
   const [markingPaidId, setMarkingPaidId] = useState(null);
   const { addToast } = useToast();
+
+  // Graph visibility toggles (persisted in localStorage)
+  const [showSections, setShowSections] = useState(() => {
+    try {
+      const saved = localStorage.getItem('finances_visible_sections');
+      return saved ? JSON.parse(saved) : {
+        revenueCards: true, revenueChart: true, quickInsights: true,
+        serviceBreakdown: true, topCustomers: true, jobsList: true
+      };
+    } catch { return { revenueCards: true, revenueChart: true, quickInsights: true, serviceBreakdown: true, topCustomers: true, jobsList: true }; }
+  });
+  const [showSectionPicker, setShowSectionPicker] = useState(false);
+
+  const toggleSection = (key) => {
+    const next = { ...showSections, [key]: !showSections[key] };
+    setShowSections(next);
+    localStorage.setItem('finances_visible_sections', JSON.stringify(next));
+  };
 
   // Fetch finances data with chart range
   const { data: finances, isLoading } = useQuery({
@@ -39,6 +80,16 @@ function FinancesTab({ showInvoiceButtons = true }) {
     transactions = [],
     daily_revenue = []
   } = finances || {};
+
+  // Fetch expenses for cash flow widget
+  const { data: expensesData } = useQuery({
+    queryKey: ['expenses'],
+    queryFn: async () => (await getExpenses()).data,
+    staleTime: 30000,
+    enabled: acctTab === 'overview',
+  });
+  const totalExpenses = (expensesData || []).reduce((s, e) => s + (e.amount || 0), 0);
+  const netCashFlow = paid_revenue - totalExpenses - total_materials_cost;
 
   // Filter transactions based on selected mode
   const { unpaidTransactions, paidTransactions, displayedTransactions } = useMemo(() => {
@@ -346,7 +397,77 @@ function FinancesTab({ showInvoiceButtons = true }) {
 
   return (
     <div className="finances-tab">
+      {/* Page Header */}
+      <div className="tab-page-header">
+        <h2 className="tab-page-title">Finances</h2>
+      </div>
+
+      {/* Accounting Sub-Navigation */}
+      <div className="acct-subnav">
+        {ACCT_TABS.map(tab => (
+          <button key={tab.key}
+            className={`acct-subnav-btn ${acctTab === tab.key ? 'active' : ''}`}
+            onClick={() => setAcctTab(tab.key)}>
+            <i className={`fas ${tab.icon}`}></i>
+            <span className="acct-subnav-label">{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Render active sub-panel */}
+      {acctTab === 'overview' && (
+        <div className="fin-quick-actions">
+          <button className="fin-quick-btn" onClick={() => setAcctTab('expenses')}>
+            <i className="fas fa-plus"></i> New Expense
+          </button>
+          <button className="fin-quick-btn" onClick={() => setAcctTab('quotes')}>
+            <i className="fas fa-plus"></i> New Quote
+          </button>
+          <button className="fin-quick-btn" onClick={() => setAcctTab('purchase-orders')}>
+            <i className="fas fa-plus"></i> New PO
+          </button>
+          <div style={{ marginLeft: 'auto' }}>
+            <button className="fin-section-toggle-btn" onClick={() => setShowSectionPicker(!showSectionPicker)}>
+              <i className={`fas ${showSectionPicker ? 'fa-times' : 'fa-sliders-h'}`}></i>
+              {showSectionPicker ? 'Done' : 'Customize'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {acctTab === 'expenses' && <ExpensesPanel />}
+      {acctTab === 'mileage' && <MileagePanel />}
+      {acctTab === 'quotes' && <QuotesPanel />}
+      {acctTab === 'purchase-orders' && <PurchaseOrdersPanel />}
+      {acctTab === 'unpaid' && <AgingPanel />}
+      {acctTab === 'credits' && <CreditNotesPanel />}
+      {acctTab === 'pnl' && <PnlPanel />}
+      {acctTab === 'tax' && <TaxSettings />}
+
+      {acctTab === 'overview' && (<>
+      {/* Section Visibility Picker */}
+      {showSectionPicker && (
+      <div className="fin-section-toggle-bar">
+        <div className="fin-section-picker">
+          {[
+              { key: 'revenueCards', label: 'Revenue Cards', icon: 'fa-euro-sign' },
+              { key: 'revenueChart', label: 'Revenue Chart', icon: 'fa-chart-line' },
+              { key: 'quickInsights', label: 'Quick Insights', icon: 'fa-lightbulb' },
+              { key: 'serviceBreakdown', label: 'Revenue by Service', icon: 'fa-chart-bar' },
+              { key: 'topCustomers', label: 'Top Customers', icon: 'fa-users' },
+            ].map(s => (
+              <button key={s.key} className={`fin-section-chip ${showSections[s.key] ? 'active' : ''}`}
+                onClick={() => toggleSection(s.key)}>
+                <i className={`fas ${s.icon}`}></i> {s.label}
+                <i className={`fas ${showSections[s.key] ? 'fa-eye' : 'fa-eye-slash'}`}></i>
+              </button>
+            ))}
+          </div>
+      </div>
+      )}
+
       {/* Revenue Cards */}
+      {showSections.revenueCards && (
       <div className="revenue-grid">
         <div className="revenue-card total">
           <div className="revenue-icon" style={{ background: 'rgba(59, 130, 246, 0.1)' }}>
@@ -397,9 +518,31 @@ function FinancesTab({ showInvoiceButtons = true }) {
             </div>
           </div>
         )}
+        {totalExpenses > 0 && (
+          <div className="revenue-card">
+            <div className="revenue-icon" style={{ background: 'rgba(139, 92, 246, 0.1)' }}>
+              <i className="fas fa-receipt" style={{ color: '#8b5cf6' }}></i>
+            </div>
+            <div className="revenue-content">
+              <div className="revenue-value">{formatCurrency(totalExpenses)}</div>
+              <div className="revenue-label">Total Expenses</div>
+            </div>
+          </div>
+        )}
+        <div className="revenue-card">
+          <div className="revenue-icon" style={{ background: netCashFlow >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)' }}>
+            <i className={`fas ${netCashFlow >= 0 ? 'fa-wallet' : 'fa-exclamation-triangle'}`} style={{ color: netCashFlow >= 0 ? '#10b981' : '#ef4444' }}></i>
+          </div>
+          <div className="revenue-content">
+            <div className="revenue-value" style={{ color: netCashFlow >= 0 ? '#10b981' : '#ef4444' }}>{formatCurrency(netCashFlow)}</div>
+            <div className="revenue-label">Net Cash Flow</div>
+          </div>
+        </div>
       </div>
+      )}
 
       {/* Monthly Revenue Chart */}
+      {showSections.revenueChart && (
       <div className="chart-section">
         <div className="chart-header">
           <h3><i className="fas fa-chart-line"></i> Revenue</h3>
@@ -421,8 +564,10 @@ function FinancesTab({ showInvoiceButtons = true }) {
         </div>
         {renderChart()}
       </div>
+      )}
 
       {/* Quick Insights Row */}
+      {showSections.quickInsights && (
       <div className="insights-row">
         <div className="insight-card">
           <div className="insight-icon" style={{ background: 'rgba(99, 102, 241, 0.1)' }}>
@@ -463,12 +608,13 @@ function FinancesTab({ showInvoiceButtons = true }) {
           </div>
         </div>
       </div>
+      )}
 
       {/* Revenue by Service & Top Customers side by side */}
-      {(insights.serviceBreakdown.length > 0 || insights.topCustomers.length > 0) && (
+      {(showSections.serviceBreakdown || showSections.topCustomers) && (insights.serviceBreakdown.length > 0 || insights.topCustomers.length > 0) && (
         <div className="insights-grid">
           {/* Revenue by Service Type */}
-          {insights.serviceBreakdown.length > 0 && (
+          {showSections.serviceBreakdown && insights.serviceBreakdown.length > 0 && (
             <div className="chart-section">
               <div className="chart-header">
                 <h3><i className="fas fa-chart-bar"></i> Revenue by Service</h3>
@@ -495,7 +641,7 @@ function FinancesTab({ showInvoiceButtons = true }) {
           )}
 
           {/* Top Customers */}
-          {insights.topCustomers.length > 0 && (
+          {showSections.topCustomers && insights.topCustomers.length > 0 && (
             <div className="chart-section">
               <div className="chart-header">
                 <h3><i className="fas fa-users"></i> Top Customers</h3>
@@ -517,176 +663,7 @@ function FinancesTab({ showInvoiceButtons = true }) {
         </div>
       )}
 
-      {/* Mark as Paid Actions - between chart and jobs list */}
-      {unpaid_revenue > 0 && (
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
-            onClick={() => setConfirmScope('today')} disabled={markPaidMutation.isPending}>
-            <i className="fas fa-check"></i> Mark Today as Paid
-          </button>
-          <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
-            onClick={() => setConfirmScope('week')} disabled={markPaidMutation.isPending}>
-            <i className="fas fa-check-double"></i> Mark This Week as Paid
-          </button>
-          <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem' }}
-            onClick={() => setConfirmScope('all')} disabled={markPaidMutation.isPending}>
-            <i className="fas fa-check-circle"></i> Mark All Past as Paid
-          </button>
-        </div>
-      )}
-
-      {/* Confirmation Dialog */}
-      {confirmScope && (
-        <div style={{
-          background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '8px',
-          padding: '1rem', display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#92400e' }}>
-            <i className="fas fa-exclamation-triangle"></i>
-            <span style={{ fontSize: '0.85rem' }}>
-              This will mark {scopeLabels[confirmScope]} unpaid bookings as paid. This can't be undone easily.
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
-              onClick={() => setConfirmScope(null)}>
-              Cancel
-            </button>
-            <button className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '0.35rem 0.75rem' }}
-              onClick={() => markPaidMutation.mutate(confirmScope)}
-              disabled={markPaidMutation.isPending}>
-              <i className={`fas ${markPaidMutation.isPending ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
-              {markPaidMutation.isPending ? 'Updating...' : 'Confirm'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Jobs / Transactions List */}
-      <div className="transactions-section">
-        <div className="section-header">
-          <h3>
-            <i className="fas fa-file-invoice-dollar"></i>
-            Jobs
-          </h3>
-          <div className="filter-buttons">
-            <button
-              className={`filter-btn ${filterMode === 'unpaid' ? 'active' : ''}`}
-              onClick={() => setFilterMode('unpaid')}
-            >
-              <i className="fas fa-exclamation-circle"></i>
-              Unpaid ({unpaidTransactions.length})
-            </button>
-            <button
-              className={`filter-btn ${filterMode === 'paid' ? 'active' : ''}`}
-              onClick={() => setFilterMode('paid')}
-            >
-              <i className="fas fa-check-circle"></i>
-              Paid ({paidTransactions.length})
-            </button>
-            <button
-              className={`filter-btn ${filterMode === 'all' ? 'active' : ''}`}
-              onClick={() => setFilterMode('all')}
-            >
-              <i className="fas fa-list"></i>
-              All ({transactions.filter(t => t.status !== 'cancelled').length})
-            </button>
-          </div>
-        </div>
-
-        <div className="transactions-list">
-          {displayedTransactions.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon">
-                {filterMode === 'unpaid' ? '✅' : filterMode === 'paid' ? '📋' : '💰'}
-              </div>
-              <p>
-                {filterMode === 'unpaid' && 'No unpaid jobs!'}
-                {filterMode === 'paid' && 'No paid jobs yet'}
-                {filterMode === 'all' && 'No jobs with charges yet'}
-              </p>
-            </div>
-          ) : (
-            displayedTransactions.map((transaction, index) => {
-              const isUnpaid = transaction.status !== 'completed' &&
-                               transaction.payment_status !== 'paid' &&
-                               transaction.status !== 'cancelled' &&
-                               transaction.status !== 'paid';
-              const bookingId = transaction.booking_id || transaction.id;
-              const isSending = sendingInvoice === bookingId;
-
-              return (
-                <div key={transaction.id || index} className={`transaction-card ${isUnpaid ? 'unpaid' : 'paid-card'}`}>
-                  <div className="transaction-main">
-                    <div className="transaction-customer">
-                      <div className={`customer-avatar ${isUnpaid ? 'avatar-warning' : 'avatar-success'}`}>
-                        {transaction.customer_name?.charAt(0)?.toUpperCase() || '?'}
-                      </div>
-                      <div className="customer-info">
-                        <h4>{transaction.customer_name || 'Unknown Customer'}</h4>
-                        <p>{transaction.description || 'Service'}</p>
-                        {transaction.date && (
-                          <span className="transaction-date">
-                            <i className="fas fa-calendar"></i>
-                            {formatDateTime(transaction.date)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="transaction-status">
-                      <div className={`transaction-amount ${isUnpaid ? 'amount-warning' : 'amount-success'}`}>
-                        {formatCurrency(transaction.amount)}
-                      </div>
-                      {transaction.materials_cost > 0 && (
-                        <div className="transaction-profit-line">
-                          <span className="transaction-materials">-{formatCurrency(transaction.materials_cost)} materials</span>
-                          <span className={`transaction-profit ${transaction.profit >= 0 ? 'profit-positive' : 'profit-negative'}`}>
-                            = {formatCurrency(transaction.profit)} profit
-                          </span>
-                        </div>
-                      )}
-                      <span className={`status-pill ${
-                        transaction.status === 'completed' || transaction.payment_status === 'paid' || transaction.status === 'paid'
-                          ? 'status-paid'
-                          : 'status-unpaid'
-                      }`}>
-                        {transaction.status === 'completed' || transaction.payment_status === 'paid' || transaction.status === 'paid'
-                          ? 'Paid'
-                          : transaction.payment_status || transaction.status || 'Pending'
-                        }
-                      </span>
-                      {isUnpaid && transaction.amount > 0 && (
-                        <button
-                          className="btn-mark-paid-single"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            singleMarkPaidMutation.mutate(bookingId);
-                          }}
-                          disabled={markingPaidId === bookingId}
-                        >
-                          <i className={`fas ${markingPaidId === bookingId ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
-                          Mark Paid
-                        </button>
-                      )}
-                      {isUnpaid && transaction.amount > 0 && showInvoiceButtons && (
-                        <button
-                          className="btn-send-invoice"
-                          onClick={(e) => handleSendInvoice(transaction, e)}
-                          disabled={isSending}
-                        >
-                          <i className={`fas ${isSending ? 'fa-spinner fa-spin' : !isSubscriptionActive ? 'fa-lock' : 'fa-paper-plane'}`}></i>
-                          {isSending ? 'Sending...' : !isSubscriptionActive ? 'Subscribe' : 'Send Invoice'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
+      </>)}
     </div>
   );
 }

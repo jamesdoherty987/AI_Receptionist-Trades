@@ -33,6 +33,7 @@ function Settings() {
   const { checkAuth, logout } = useAuth();
   const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({});
+  const isManagedAccount = formData.easy_setup === false;
   const [saveMessage, setSaveMessage] = useState('');
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [activeTab, setActiveTab] = useState('business');
@@ -1696,9 +1697,9 @@ function Settings() {
                   <h3>Company Details for AI Receptionist</h3>
                 </div>
                 <p className="section-description">
-                  Give your AI receptionist context about your business. This information helps it answer customer questions 
-                  more accurately — things like where to park, your company history, specific policies, 
-                  certifications, or any other details callers might ask about.
+                  {isManagedAccount
+                    ? 'Your AI receptionist details were configured during setup. You can update your coverage area below. To change the AI context, contact us.'
+                    : 'Give your AI receptionist context about your business. This information helps it answer customer questions more accurately — things like where to park, your company history, specific policies, certifications, or any other details callers might ask about.'}
                 </p>
                 <div className="form-grid">
                   <div className="form-group full-width">
@@ -1717,6 +1718,14 @@ function Settings() {
                   </div>
                   <div className="form-group full-width">
                     <label htmlFor="company_context">Additional Company Context &amp; Details <HelpTooltip text="Anything your AI receptionist should know — parking info, warranties, certifications, policies. Write it like you're briefing a new receptionist." /></label>
+                    {isManagedAccount ? (
+                      <div className="managed-field-readonly">
+                        <div className="managed-field-value" style={{ whiteSpace: 'pre-wrap' }}>{formData.company_context || 'Not set'}</div>
+                        <a href="mailto:contact@bookedforyou.ie?subject=Update AI Receptionist Details&body=I'd like to update my AI receptionist details:" className="managed-change-link">
+                          <i className="fas fa-envelope"></i> Request Change
+                        </a>
+                      </div>
+                    ) : (
                     <textarea
                       id="company_context"
                       name="company_context"
@@ -1726,9 +1735,12 @@ function Settings() {
                       placeholder={"Example:\n- Free parking available in the car park behind the building\n- We've been in business since 2005, family-run company\n- All our technicians are fully insured and certified\n- We offer a 12-month warranty on all work\n- Please have the area clear before our team arrives"}
                       style={{ minHeight: '160px', resize: 'vertical', lineHeight: '1.5' }}
                     />
+                    )}
+                    {!isManagedAccount && (
                     <small className="form-help">
                       This information is injected into the AI receptionist's knowledge. Write anything you'd want a real receptionist to know about your business.
                     </small>
+                    )}
                   </div>
                 </div>
               </div>
