@@ -6184,6 +6184,16 @@ def bookings_api():
                     
                     if not assigned_auto:
                         print(f"[WARNING] No available worker found for auto-assignment on booking {booking_id}")
+                        # All workers are busy — delete the booking and return an error
+                        try:
+                            db.delete_booking(booking_id, company_id=company_id)
+                        except Exception:
+                            pass
+                        return jsonify({
+                            "error": "No workers are available at this time. All workers are already booked. Please choose a different time slot.",
+                            "conflict": True,
+                            "no_workers_available": True
+                        }), 409
                 except Exception as e:
                     print(f"[WARNING] Auto-assign worker failed: {e}")
 

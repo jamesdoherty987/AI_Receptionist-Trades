@@ -1868,14 +1868,20 @@ TOOL RULES:
                                             'as soon as', 'quickest', 'next available', 'asap']
                         wants_soonest = any(p in query_text for p in soonest_patterns)
                         
-                        # Detect if the caller is selecting a specific date (has a day number with ordinal suffix
-                        # or a day number adjacent to a month name). Bare numbers like "2 weeks" or "after 4pm" should NOT match.
-                        # e.g., "31st of March", "the 7th", "April 2nd", "Tuesday the 15th", "March 31"
+                        # Detect if the caller is selecting a specific date/time from what was offered.
+                        # This includes ordinal dates ("the 7th"), month+day ("March 31"),
+                        # relative days ("tomorrow", "today"), day-of-week names ("Thursday"),
+                        # or time selections ("at 1pm", "1 o'clock").
+                        # Bare numbers like "2 weeks" or "after 4pm" should NOT match.
                         month_pattern = '(?:january|february|march|april|may|june|july|august|september|october|november|december)'
+                        day_pattern = '(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)'
+                        relative_day_pattern = '(?:tomorrow|today)'
                         has_specific_date = bool(
                             re.search(r'\d{1,2}(?:st|nd|rd|th)\b', query_text) or  # ordinal: "31st", "7th"
                             re.search(month_pattern + r'\s+\d{1,2}\b', query_text) or  # "March 31", "April 7"
-                            re.search(r'\d{1,2}\s+(?:of\s+)?' + month_pattern, query_text)  # "31 of March", "7 march"
+                            re.search(r'\d{1,2}\s+(?:of\s+)?' + month_pattern, query_text) or  # "31 of March", "7 march"
+                            re.search(relative_day_pattern, query_text) or  # "tomorrow", "today"
+                            re.search(day_pattern, query_text)  # "Thursday", "Monday" etc.
                         )
                         
                         if wants_soonest:
