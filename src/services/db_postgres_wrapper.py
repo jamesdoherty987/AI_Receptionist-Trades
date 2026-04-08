@@ -1639,7 +1639,7 @@ class PostgreSQLDatabaseWrapper:
                         b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
                         b.address_audio_url, b.requires_callout, b.requires_quote,
-                        b.updated_at, b.gcal_synced_at,
+                        b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
@@ -1651,7 +1651,7 @@ class PostgreSQLDatabaseWrapper:
                              b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
                              b.address_audio_url, b.requires_callout, b.requires_quote,
-                             b.updated_at, b.gcal_synced_at,
+                             b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """, (company_id,))
@@ -1663,7 +1663,7 @@ class PostgreSQLDatabaseWrapper:
                         b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
                         b.address_audio_url, b.requires_callout, b.requires_quote,
-                        b.updated_at, b.gcal_synced_at,
+                        b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
@@ -1674,7 +1674,7 @@ class PostgreSQLDatabaseWrapper:
                              b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
                              b.address_audio_url, b.requires_callout, b.requires_quote,
-                             b.updated_at, b.gcal_synced_at,
+                             b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """)

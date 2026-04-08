@@ -141,3 +141,7 @@ frontend/.pnpm-debug.log*
 
 # Keep the React build output for Flask to serve
 !src/static/dist/
+
+# Large video output files
+video/out.zip
+video/out/

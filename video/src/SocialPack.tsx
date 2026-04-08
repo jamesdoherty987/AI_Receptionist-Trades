@@ -468,18 +468,18 @@ export const Social4_Listicle: React.FC = () => {
 
 
 // ═══════════════════════════════════════════════════════════
-// VIDEO 5: "Setup speedrun" (Satisfying/Fast) — 10s
-// Shows the 7-step setup flying through
+// VIDEO 5: "Run Your Business" (Satisfying/Fast) — 10s
+// Shows the full business toolkit: accounting, invoicing, etc.
 // ═══════════════════════════════════════════════════════════
 
 const V5_Go: React.FC = () => (
   <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: "0 50px" }}>
     <Orbs colors={[C.cyanGlow, C.purpleGlow]} />
     <div style={{ textAlign: "center" }}>
-      <Boom text="Setup speedrun 🏃" delay={0} size={48} color={C.white} />
-      <Boom text="5 minutes" delay={15} size={64} color={C.cyan} />
-      <Boom text="Ready?" delay={30} size={52} color={C.gray} />
-      <Boom text="GO →" delay={42} size={80} color={C.gold} />
+      <Boom text="Run your business 💼" delay={0} size={48} color={C.white} />
+      <Boom text="from one app" delay={15} size={64} color={C.cyan} />
+      <Boom text="Calls → Invoices → Profit" delay={30} size={36} color={C.gray} />
+      <Boom text="Let's go 🚀" delay={48} size={72} color={C.gold} />
     </div>
   </AbsoluteFill>
 );
@@ -487,14 +487,14 @@ const V5_Go: React.FC = () => (
 const V5_Steps: React.FC = () => {
   const f = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const steps = [
-    { icon: "👑", label: "Subscribe", color: C.gold },
-    { icon: "📍", label: "Service Area", color: C.blue },
-    { icon: "🏢", label: "Company Info", color: C.purple },
-    { icon: "💳", label: "Payment", color: C.cyan },
-    { icon: "🔧", label: "Services", color: C.orange },
-    { icon: "👷", label: "Add Workers", color: C.pink },
-    { icon: "📞", label: "Go Live!", color: C.cyan },
+  const features = [
+    { icon: "📞", label: "AI Receptionist", color: C.cyan },
+    { icon: "📅", label: "Smart Calendar", color: C.blue },
+    { icon: "💰", label: "Invoicing & Quotes", color: C.gold },
+    { icon: "📊", label: "P&L Reports", color: C.purple },
+    { icon: "🧾", label: "Expense Tracking", color: C.orange },
+    { icon: "🚗", label: "Mileage Logger", color: C.pink },
+    { icon: "📈", label: "Revenue Dashboard", color: C.cyan },
   ];
   // Progress bar
   const progress = interpolate(f, [0, 150], [0, 100], { extrapolateRight: "clamp" });
@@ -506,10 +506,10 @@ const V5_Steps: React.FC = () => {
         <div style={{ width: "100%", height: 8, background: "rgba(255,255,255,0.06)", borderRadius: 4, marginBottom: 30, overflow: "hidden" }}>
           <div style={{ width: `${progress}%`, height: "100%", borderRadius: 4, background: `linear-gradient(90deg,${C.purple},${C.cyan})`, boxShadow: `0 0 15px ${C.cyanGlow}` }} />
         </div>
-        {/* Steps */}
+        {/* Features */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {steps.map((s, i) => {
-            const stepProgress = progress / 100 * steps.length;
+          {features.map((s, i) => {
+            const stepProgress = progress / 100 * features.length;
             const isComplete = i < stepProgress;
             const isCurrent = i >= stepProgress - 1 && i < stepProgress;
             const spr = spring({ frame: f - i * 18, fps, config: { damping: 10, mass: 0.4, stiffness: 180 } });
@@ -552,9 +552,9 @@ const V5_Done: React.FC = () => {
       <Orbs colors={[C.cyanGlow, C.purpleGlow]} />
       {particles.map((p, i) => <div key={i} style={{ position: "absolute", left: "50%", top: "45%", transform: `translate(calc(-50% + ${p.x}px),calc(-50% + ${p.y}px))`, width: 6, height: 6, borderRadius: "50%", background: p.c, opacity: p.op, boxShadow: `0 0 8px ${p.c}` }} />)}
       <div style={{ textAlign: "center", transform: `scale(${boomS})` }}>
-        <Boom text="🎉 YOU'RE LIVE!" delay={0} size={56} color={C.cyan} />
-        <Boom text="5 minutes" delay={15} size={44} color={C.gray} />
-        <Boom text="That's it." delay={28} size={48} color={C.white} />
+        <Boom text="🎉 ALL-IN-ONE!" delay={0} size={56} color={C.cyan} />
+        <Boom text="Calls to cash flow" delay={15} size={44} color={C.gray} />
+        <Boom text="€99/mo" delay={28} size={52} color={C.gold} />
         <Pop delay={40} scale><Logo size={40} /></Pop>
         <Pop delay={48} style={{ marginTop: 8 }}><span style={{ fontSize: 16, color: C.gray }}>bookedforyou.ie</span></Pop>
       </div>

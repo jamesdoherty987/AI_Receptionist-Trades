@@ -1,9 +1,7 @@
 import { useState, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '../../context/AuthContext';
-import { formatCurrency, formatDateTime } from '../../utils/helpers';
-import { getFinances, sendInvoice, markBookingsPaid, updateBooking, getExpenses } from '../../services/api';
-import { useToast } from '../Toast';
+import { useQuery } from '@tanstack/react-query';
+import { formatCurrency } from '../../utils/helpers';
+import { getFinances, getExpenses } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
 import ExpensesPanel from '../accounting/ExpensesPanel';
 import QuotesPanel from '../accounting/QuotesPanel';
@@ -28,18 +26,10 @@ const ACCT_TABS = [
   { key: 'tax', label: 'Settings', icon: 'fa-cog' },
 ];
 
-function FinancesTab({ showInvoiceButtons = true }) {
-  const queryClient = useQueryClient();
-  const { hasActiveSubscription } = useAuth();
+function FinancesTab() {
   const [acctTab, setAcctTab] = useState('overview');
 
-  const isSubscriptionActive = hasActiveSubscription();
-  const [filterMode, setFilterMode] = useState('unpaid');
-  const [sendingInvoice, setSendingInvoice] = useState(null);
-  const [confirmScope, setConfirmScope] = useState(null);
   const [chartRange, setChartRange] = useState('year');
-  const [markingPaidId, setMarkingPaidId] = useState(null);
-  const { addToast } = useToast();
 
   // Graph visibility toggles (persisted in localStorage)
   const [showSections, setShowSections] = useState(() => {
@@ -47,9 +37,9 @@ function FinancesTab({ showInvoiceButtons = true }) {
       const saved = localStorage.getItem('finances_visible_sections');
       return saved ? JSON.parse(saved) : {
         revenueCards: true, revenueChart: true, quickInsights: true,
-        serviceBreakdown: true, topCustomers: true, jobsList: true
+        serviceBreakdown: true, topCustomers: true
       };
-    } catch { return { revenueCards: true, revenueChart: true, quickInsights: true, serviceBreakdown: true, topCustomers: true, jobsList: true }; }
+    } catch { return { revenueCards: true, revenueChart: true, quickInsights: true, serviceBreakdown: true, topCustomers: true }; }
   });
   const [showSectionPicker, setShowSectionPicker] = useState(false);
 
@@ -90,35 +80,6 @@ function FinancesTab({ showInvoiceButtons = true }) {
   });
   const totalExpenses = (expensesData || []).reduce((s, e) => s + (e.amount || 0), 0);
   const netCashFlow = paid_revenue - totalExpenses - total_materials_cost;
-
-  // Filter transactions based on selected mode
-  const { unpaidTransactions, paidTransactions, displayedTransactions } = useMemo(() => {
-    if (!transactions || transactions.length === 0) {
-      return { unpaidTransactions: [], paidTransactions: [], displayedTransactions: [] };
-    }
-
-    const unpaid = transactions.filter(t =>
-      t.status !== 'completed' &&
-      t.payment_status !== 'paid' &&
-      t.status !== 'cancelled' &&
-      t.status !== 'paid'
-    );
-
-    const paid = transactions.filter(t =>
-      t.status === 'completed' ||
-      t.payment_status === 'paid' ||
-      t.status === 'paid'
-    );
-
-    let displayed = [];
-    if (filterMode === 'unpaid') displayed = unpaid;
-    else if (filterMode === 'paid') displayed = paid;
-    else displayed = transactions.filter(t => t.status !== 'cancelled');
-
-    displayed.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-
-    return { unpaidTransactions: unpaid, paidTransactions: paid, displayedTransactions: displayed };
-  }, [transactions, filterMode]);
 
   // Calculate max revenue for chart scaling
   const maxRevenue = useMemo(() => {
@@ -178,75 +139,6 @@ function FinancesTab({ showInvoiceButtons = true }) {
     const d = new Date(dayStr + 'T00:00:00');
     return d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short' });
   };
-
-  const invoiceMutation = useMutation({
-    mutationFn: (bookingId) => sendInvoice(bookingId),
-    onMutate: (bookingId) => {
-      setSendingInvoice(bookingId);
-    },
-    onSuccess: (response) => {
-      const data = response.data;
-      addToast(`Invoice sent to ${data.sent_to}!`, 'success');
-      setSendingInvoice(null);
-    },
-    onError: (error) => {
-      const message = error.response?.data?.error || 'Failed to send invoice';
-      addToast(message, 'error');
-      setSendingInvoice(null);
-    }
-  });
-
-  const handleSendInvoice = (transaction, e) => {
-    e.stopPropagation();
-    if (!isSubscriptionActive) {
-      addToast('You need an active subscription to send invoices', 'warning');
-      return;
-    }
-    if (!transaction.booking_id && !transaction.id) {
-      addToast('Cannot send invoice: No booking ID found', 'warning');
-      return;
-    }
-    const bookingId = transaction.booking_id || transaction.id;
-    invoiceMutation.mutate(bookingId);
-  };
-
-  const markPaidMutation = useMutation({
-    mutationFn: (scope) => markBookingsPaid(scope),
-    onSuccess: (response) => {
-      const { updated, message } = response.data;
-      addToast(message || `Marked ${updated} booking(s) as paid`, 'success');
-      setConfirmScope(null);
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    },
-    onError: (error) => {
-      addToast(error.response?.data?.error || 'Failed to mark bookings as paid', 'error');
-      setConfirmScope(null);
-    }
-  });
-
-  const scopeLabels = {
-    today: "today's and earlier",
-    week: "this week's and earlier",
-    all: "all past"
-  };
-
-  const singleMarkPaidMutation = useMutation({
-    mutationFn: (bookingId) => updateBooking(bookingId, { status: 'completed', payment_status: 'paid' }),
-    onMutate: (bookingId) => {
-      setMarkingPaidId(bookingId);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['finances'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      addToast('Job marked as paid', 'success');
-      setMarkingPaidId(null);
-    },
-    onError: () => {
-      addToast('Failed to mark job as paid', 'error');
-      setMarkingPaidId(null);
-    }
-  });
 
   // Build smooth SVG area chart using monotone cubic interpolation
   const renderChart = () => {

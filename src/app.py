@@ -9402,19 +9402,50 @@ def convert_quote_to_job(quote_id):
         if not appointment_time:
             return jsonify({"error": "appointment_time is required"}), 400
         
+        duration_minutes = data.get('duration_minutes', 60)
+        worker_ids = data.get('worker_ids', [])
+        auto_assign_worker = data.get('auto_assign_worker', False)
+        notes = data.get('notes', '')
+
         # Create booking from quote
         cur.execute("""
             INSERT INTO bookings (company_id, client_id, appointment_time, service_type,
-                                  charge, status, payment_status, address, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, 'scheduled', 'unpaid', %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                                  charge, status, payment_status, address, duration_minutes, notes, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, 'scheduled', 'unpaid', %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             RETURNING id
         """, (
             company_id, quote.get('client_id'), appointment_time,
             quote.get('title', 'Service'), float(quote.get('total', 0)),
-            data.get('address', '')
+            data.get('address', ''), duration_minutes, notes
         ))
         booking = cur.fetchone()
         booking_id = booking['id']
+
+        # Assign workers if provided
+        if worker_ids:
+            for wid in worker_ids:
+                cur.execute("""
+                    INSERT INTO worker_assignments (booking_id, worker_id)
+                    VALUES (%s, %s) ON CONFLICT DO NOTHING
+                """, (booking_id, wid))
+        elif auto_assign_worker:
+            # Auto-assign: find first available worker
+            try:
+                all_workers = db.get_all_workers(company_id=company_id)
+                for w in all_workers:
+                    try:
+                        from src.services.calendar_tools import check_worker_availability
+                        avail = check_worker_availability(db, company_id, w['id'], appointment_time, duration_minutes)
+                        if avail.get('available'):
+                            cur.execute("""
+                                INSERT INTO worker_assignments (booking_id, worker_id)
+                                VALUES (%s, %s) ON CONFLICT DO NOTHING
+                            """, (booking_id, w['id']))
+                            break
+                    except Exception:
+                        pass
+            except Exception:
+                pass
         
         # Mark quote as converted
         cur.execute("""
@@ -9426,6 +9457,81 @@ def convert_quote_to_job(quote_id):
         conn.commit()
         cur.close()
         return jsonify({"success": True, "booking_id": booking_id})
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/quotes/<int:quote_id>/send", methods=["POST"])
+@login_required
+@subscription_required
+def send_quote_sms(quote_id):
+    """Send quote to customer via SMS"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT q.*, c.name as client_name, c.phone as client_phone, c.email as client_email FROM quotes q LEFT JOIN clients c ON q.client_id = c.id WHERE q.id = %s AND q.company_id = %s", (quote_id, company_id))
+        quote = cur.fetchone()
+        if not quote:
+            cur.close()
+            return jsonify({"error": "Quote not found"}), 404
+
+        phone = quote.get('client_phone')
+        if not phone:
+            cur.close()
+            return jsonify({"error": "Customer has no phone number on file"}), 400
+
+        company = db.get_company(company_id)
+        company_name = company.get('name', 'Our Company') if company else 'Our Company'
+
+        # Build SMS message
+        items_summary = ""
+        if quote.get('line_items'):
+            items = quote['line_items'] if isinstance(quote['line_items'], list) else []
+            if items:
+                items_summary = "\n".join([f"• {i.get('description', 'Item')}: €{float(i.get('amount', 0)) * int(i.get('quantity', 1)):.2f}" for i in items[:5]])
+                if len(items) > 5:
+                    items_summary += f"\n  ...and {len(items) - 5} more items"
+
+        total = float(quote.get('total', 0))
+        title = quote.get('title', f"Quote #{quote.get('quote_number', '')}")
+        valid_until = ""
+        if quote.get('valid_until'):
+            from datetime import datetime
+            try:
+                vu = datetime.fromisoformat(str(quote['valid_until']).replace('Z', '+00:00'))
+                valid_until = f"\nValid until: {vu.strftime('%d %b %Y')}"
+            except Exception:
+                pass
+
+        msg = f"Hi {quote.get('client_name', 'there')}, here's your quote from {company_name}:\n\n{title}\n{items_summary}\n\nTotal: €{total:.2f}{valid_until}\n\nPlease reply to accept or decline."
+
+        from src.services.sms_reminder import get_sms_service
+        sms_service = get_sms_service()
+        if not sms_service.client:
+            cur.close()
+            return jsonify({"error": "SMS service not configured"}), 503
+
+        twilio_number = company.get('twilio_phone_number') if company else None
+        if not twilio_number:
+            cur.close()
+            return jsonify({"error": "No Twilio phone number configured"}), 503
+
+        sms_service.client.messages.create(body=msg, from_=twilio_number, to=phone)
+
+        # Update status to sent if still draft
+        if quote.get('status') == 'draft':
+            cur.execute("UPDATE quotes SET status = 'sent', updated_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s", (quote_id, company_id))
+            conn.commit()
+
+        cur.close()
+        return jsonify({"success": True, "sent_to": phone})
     except Exception as ex:
         conn.rollback()
         import traceback; traceback.print_exc()
@@ -9594,6 +9700,46 @@ def get_pnl_report():
             for row in cur.fetchall():
                 expenses_by_month[row['month']] = float(row['total'] or 0)
             
+            # Mileage costs
+            cur.execute("""
+                SELECT SUM(cost) as total
+                FROM mileage_logs
+                WHERE company_id = %s AND date >= %s
+            """, (company_id, start_date.date()))
+            mileage_row = cur.fetchone()
+            total_mileage = float(mileage_row['total'] or 0) if mileage_row and mileage_row['total'] else 0
+
+            cur.execute("""
+                SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(cost) as total
+                FROM mileage_logs
+                WHERE company_id = %s AND date >= %s
+                GROUP BY TO_CHAR(date, 'YYYY-MM')
+                ORDER BY month
+            """, (company_id, start_date.date()))
+            mileage_by_month = {}
+            for row in cur.fetchall():
+                mileage_by_month[row['month']] = float(row['total'] or 0)
+
+            # Credit notes / refunds (reduce revenue)
+            cur.execute("""
+                SELECT SUM(amount) as total
+                FROM credit_notes
+                WHERE company_id = %s AND created_at >= %s
+            """, (company_id, start_date))
+            cn_row = cur.fetchone()
+            total_credits = float(cn_row['total'] or 0) if cn_row and cn_row['total'] else 0
+
+            cur.execute("""
+                SELECT TO_CHAR(created_at, 'YYYY-MM') as month, SUM(amount) as total
+                FROM credit_notes
+                WHERE company_id = %s AND created_at >= %s
+                GROUP BY TO_CHAR(created_at, 'YYYY-MM')
+                ORDER BY month
+            """, (company_id, start_date))
+            credits_by_month = {}
+            for row in cur.fetchall():
+                credits_by_month[row['month']] = float(row['total'] or 0)
+            
             # Monthly materials breakdown (from bookings appointment_time)
             materials_by_month = defaultdict(float)
             for b in bookings:
@@ -9619,31 +9765,46 @@ def get_pnl_report():
         finally:
             db.return_connection(conn)
         
-        # Build monthly P&L (expenses + materials combined)
-        all_months = sorted(set(list(revenue_by_month.keys()) + list(expenses_by_month.keys()) + list(materials_by_month.keys())))
+        # Build monthly P&L (expenses + materials + mileage combined, credits reduce revenue)
+        all_months = sorted(set(list(revenue_by_month.keys()) + list(expenses_by_month.keys()) + list(materials_by_month.keys()) + list(mileage_by_month.keys()) + list(credits_by_month.keys())))
         monthly_pnl = []
         for month in all_months:
-            rev = revenue_by_month.get(month, 0)
-            exp = expenses_by_month.get(month, 0) + materials_by_month.get(month, 0)
+            rev = revenue_by_month.get(month, 0) - credits_by_month.get(month, 0)
+            mat = materials_by_month.get(month, 0)
+            exp = expenses_by_month.get(month, 0)
+            mil = mileage_by_month.get(month, 0)
+            total_cost = mat + exp + mil
+            gross = rev - mat
             monthly_pnl.append({
                 'month': month,
                 'revenue': round(rev, 2),
+                'materials': round(mat, 2),
+                'gross_profit': round(gross, 2),
                 'expenses': round(exp, 2),
-                'net_profit': round(rev - exp, 2)
+                'mileage': round(mil, 2),
+                'total_costs': round(total_cost, 2),
+                'net_profit': round(rev - total_cost, 2)
             })
         
-        total_all_costs = total_materials + total_expenses
-        net_profit = total_revenue - total_all_costs
+        total_all_costs = total_materials + total_expenses + total_mileage
+        net_revenue = total_revenue - total_credits
+        gross_profit = net_revenue - total_materials
+        net_profit = net_revenue - total_all_costs
         
         return jsonify({
             "period": period,
             "start_date": start_date.strftime('%Y-%m-%d'),
             "total_revenue": round(total_revenue, 2),
+            "total_credits": round(total_credits, 2),
+            "net_revenue": round(net_revenue, 2),
             "total_materials": round(total_materials, 2),
+            "gross_profit": round(gross_profit, 2),
             "total_expenses": round(total_expenses, 2),
+            "total_mileage": round(total_mileage, 2),
             "total_costs": round(total_all_costs, 2),
             "net_profit": round(net_profit, 2),
-            "profit_margin": round((net_profit / total_revenue * 100) if total_revenue > 0 else 0, 1),
+            "profit_margin": round((net_profit / net_revenue * 100) if net_revenue > 0 else 0, 1),
+            "gross_margin": round((gross_profit / net_revenue * 100) if net_revenue > 0 else 0, 1),
             "expense_categories": expense_categories,
             "monthly_pnl": monthly_pnl,
         })
@@ -10351,6 +10512,88 @@ def create_credit_note():
     except Exception as ex:
         conn.rollback()
         return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/credit-notes/<int:credit_note_id>/refund", methods=["POST"])
+@login_required
+@subscription_required
+def process_credit_note_refund(credit_note_id):
+    """Process a Stripe refund for an existing credit note that hasn't been refunded yet."""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM credit_notes WHERE id = %s AND company_id = %s", (credit_note_id, company_id))
+        note = cur.fetchone()
+        if not note:
+            cur.close()
+            return jsonify({"error": "Credit note not found"}), 404
+
+        if note.get('stripe_refund_id'):
+            cur.close()
+            return jsonify({"error": "This credit note has already been refunded via Stripe", "stripe_refund_id": note['stripe_refund_id']}), 400
+
+        booking_id = note.get('booking_id')
+        if not booking_id:
+            cur.close()
+            return jsonify({"error": "No job linked to this credit note — cannot process Stripe refund"}), 400
+
+        booking = db.get_booking(booking_id, company_id=company_id)
+        if not booking:
+            cur.close()
+            return jsonify({"error": "Linked job not found"}), 404
+
+        company = db.get_company(company_id)
+        connected_account_id = company.get('stripe_connect_account_id') if company else None
+        session_id = booking.get('stripe_checkout_session_id')
+
+        if not connected_account_id or not session_id:
+            cur.close()
+            return jsonify({"error": "No Stripe payment found for this job. The customer may not have paid via Stripe.", "stripe_refund_status": "failed"}), 400
+
+        import stripe
+        from src.utils.config import config
+        stripe.api_key = getattr(config, 'STRIPE_SECRET_KEY', None) or os.getenv('STRIPE_SECRET_KEY')
+
+        if not stripe.api_key:
+            cur.close()
+            return jsonify({"error": "Stripe not configured on server"}), 503
+
+        checkout = stripe.checkout.Session.retrieve(session_id, stripe_account=connected_account_id)
+        payment_intent_id = checkout.get('payment_intent')
+
+        if not payment_intent_id:
+            cur.close()
+            return jsonify({"error": "No payment intent found for this checkout session"}), 400
+
+        amount = float(note.get('amount', 0))
+        amount_cents = int(amount * 100)
+        refund = stripe.Refund.create(
+            payment_intent=payment_intent_id,
+            amount=amount_cents,
+            stripe_account=connected_account_id
+        )
+
+        # Update the credit note with the refund ID
+        cur.execute("UPDATE credit_notes SET stripe_refund_id = %s WHERE id = %s AND company_id = %s",
+                     (refund.id, credit_note_id, company_id))
+        conn.commit()
+        cur.close()
+
+        return jsonify({
+            "success": True,
+            "stripe_refund_id": refund.id,
+            "stripe_refund_status": "success",
+            "amount_refunded": amount
+        })
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex), "stripe_refund_status": "failed"}), 500
     finally:
         db.return_connection(conn)
 

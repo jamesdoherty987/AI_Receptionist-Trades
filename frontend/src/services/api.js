@@ -260,6 +260,7 @@ export const createQuote = (data) => api.post('/api/quotes', data);
 export const updateQuote = (id, data) => api.put(`/api/quotes/${id}`, data);
 export const deleteQuote = (id) => api.delete(`/api/quotes/${id}`);
 export const convertQuoteToJob = (id, data) => api.post(`/api/quotes/${id}/convert`, data);
+export const sendQuote = (id) => api.post(`/api/quotes/${id}/send`);
 
 // Tax Settings
 export const getTaxSettings = () => api.get('/api/settings/tax');
@@ -291,6 +292,7 @@ export const deleteMileageLog = (id) => api.delete(`/api/mileage/${id}`);
 // Credit Notes
 export const getCreditNotes = () => api.get('/api/credit-notes');
 export const createCreditNote = (data) => api.post('/api/credit-notes', data);
+export const processStripeRefund = (creditNoteId) => api.post(`/api/credit-notes/${creditNoteId}/refund`);
 
 // Customer Statements
 export const getCustomerStatement = (clientId) => api.get(`/api/clients/${clientId}/statement`);

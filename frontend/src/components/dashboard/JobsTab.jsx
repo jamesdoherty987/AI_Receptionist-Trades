@@ -79,8 +79,9 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const weekEnd = new Date(todayStart); weekEnd.setDate(weekEnd.getDate() + 7);
 
   const counts = useMemo(() => {
-    const active = bookings.filter(j => !['completed', 'paid', 'cancelled'].includes(j.status));
-    const overdue = active.filter(j => j.status !== 'in-progress' && new Date(j.appointment_time) < now);
+    const activeAll = bookings.filter(j => !['completed', 'paid', 'cancelled'].includes(j.status));
+    const overdue = activeAll.filter(j => j.status !== 'in-progress' && new Date(j.appointment_time) < now);
+    const active = activeAll.filter(j => j.status === 'in-progress' || new Date(j.appointment_time) >= now);
     const inProg = bookings.filter(j => j.status === 'in-progress');
     const needsInv = bookings.filter(j => j.status === 'completed' && j.payment_status !== 'paid');
     const done = bookings.filter(j => j.status === 'completed' || j.status === 'paid');
@@ -110,7 +111,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
     // Status filter
     if (statusFilter === 'active') {
-      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled'].includes(j.status));
+      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled'].includes(j.status) && (j.status === 'in-progress' || new Date(j.appointment_time) >= now));
     } else if (statusFilter === 'overdue') {
       jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'in-progress'].includes(j.status) && new Date(j.appointment_time) < now);
     } else if (statusFilter === 'in-progress') {

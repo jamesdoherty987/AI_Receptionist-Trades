@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getTaxSettings, updateTaxSettings } from '../../services/api';
+import { getTaxSettings, updateTaxSettings, getBusinessSettings } from '../../services/api';
 import { useToast } from '../Toast';
 import LoadingSpinner from '../LoadingSpinner';
 
@@ -17,6 +17,12 @@ function TaxSettings() {
   const { data: settings, isLoading } = useQuery({
     queryKey: ['tax-settings'],
     queryFn: async () => (await getTaxSettings()).data,
+    staleTime: 60000,
+  });
+
+  const { data: bizSettings } = useQuery({
+    queryKey: ['business-settings'],
+    queryFn: async () => (await getBusinessSettings()).data,
     staleTime: 60000,
   });
 
@@ -43,6 +49,26 @@ function TaxSettings() {
   return (
     <div className="acct-panel">
       <form className="tax-settings-form" onSubmit={handleSubmit}>
+        {/* Business Info on Invoices */}
+        {bizSettings && (
+          <div className="acct-section">
+            <div className="acct-section-header">
+              <h3><i className="fas fa-building"></i> Business Info on Invoices</h3>
+              <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Edit in Settings → Business tab</span>
+            </div>
+            <div className="tax-biz-info">
+              {bizSettings.logo_url && <img src={bizSettings.logo_url} alt="Logo" className="tax-biz-logo" />}
+              <div className="tax-biz-details">
+                <div className="tax-biz-name">{bizSettings.company_name || 'Your Business'}</div>
+                {bizSettings.address && <div className="tax-biz-line"><i className="fas fa-map-marker-alt"></i> {bizSettings.address}</div>}
+                {bizSettings.phone && <div className="tax-biz-line"><i className="fas fa-phone"></i> {bizSettings.phone}</div>}
+                {bizSettings.email && <div className="tax-biz-line"><i className="fas fa-envelope"></i> {bizSettings.email}</div>}
+                {formData.tax_id_number && <div className="tax-biz-line"><i className="fas fa-id-card"></i> {formData.tax_id_label}: {formData.tax_id_number}</div>}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tax Configuration */}
         <div className="acct-section">
           <div className="acct-section-header">

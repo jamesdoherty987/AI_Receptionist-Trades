@@ -814,7 +814,7 @@ const StatsScene: React.FC = () => {
     { value: "∞", label: "Concurrent Calls", icon: "📞", color: C.purple },
     { value: "0", label: "Missed Calls", icon: "🎯", color: C.pink },
     { value: "30%", label: "More Bookings", icon: "📈", color: C.blue },
-    { value: "5min", label: "Setup Time", icon: "⚡", color: C.orange },
+    { value: "Full", label: "Accounting Suite", icon: "⚡", color: C.orange },
   ];
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>

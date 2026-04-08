@@ -453,7 +453,7 @@ const L2_S3: React.FC = () => {
   const stats = [
     { icon: "📞", label: "Calls Answered", value: "24/7", color: C.cyan, delay: 5 },
     { icon: "💰", label: "Monthly Cost", value: "€99", color: C.gold, delay: 15 },
-    { icon: "⏱️", label: "Setup Time", value: "5 min", color: C.purple, delay: 25 },
+    { icon: "🧾", label: "Invoicing", value: "Built-in", color: C.purple, delay: 25 },
     { icon: "🎯", label: "Missed Calls", value: "Zero", color: C.cyan, delay: 35 },
   ];
   return (

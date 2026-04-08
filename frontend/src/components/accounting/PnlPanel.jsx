@@ -15,7 +15,7 @@ function PnlPanel() {
 
   const chartData = useMemo(() => {
     if (!pnl?.monthly_pnl || pnl.monthly_pnl.length === 0) return null;
-    const maxVal = Math.max(...pnl.monthly_pnl.map(m => Math.max(m.revenue, m.expenses)), 1);
+    const maxVal = Math.max(...pnl.monthly_pnl.map(m => Math.max(m.revenue, m.total_costs || m.expenses || 0)), 1);
     return { months: pnl.monthly_pnl, maxVal };
   }, [pnl]);
 
@@ -26,9 +26,20 @@ function PnlPanel() {
   };
 
   if (isLoading) return <LoadingSpinner message="Generating P&L report..." />;
-  if (!pnl) return null;
+
+  if (!pnl) return (
+    <div className="acct-panel">
+      <div className="acct-empty">
+        <i className="fas fa-file-invoice-dollar"></i>
+        <p>No financial data yet. Complete some jobs and log expenses to see your P&L.</p>
+      </div>
+    </div>
+  );
 
   const isProfit = pnl.net_profit >= 0;
+  const netRevenue = pnl.net_revenue ?? (pnl.total_revenue - (pnl.total_credits || 0));
+  const grossProfit = pnl.gross_profit ?? (netRevenue - pnl.total_materials);
+  const grossMargin = pnl.gross_margin ?? (netRevenue > 0 ? (grossProfit / netRevenue * 100).toFixed(1) : 0);
 
   return (
     <div className="acct-panel">
@@ -39,7 +50,7 @@ function PnlPanel() {
           <div className="acct-filter-pills">
             {[
               { key: 'month', label: 'This Month' },
-              { key: 'quarter', label: 'This Quarter' },
+              { key: 'quarter', label: 'Quarter' },
               { key: 'year', label: 'This Year' },
               { key: 'all', label: 'All Time' },
             ].map(p => (
@@ -47,73 +58,134 @@ function PnlPanel() {
                 onClick={() => setPeriod(p.key)}>{p.label}</button>
             ))}
           </div>
-          {pnl && (
-            <button className="acct-btn-secondary" title="Export CSV" style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem' }}
-              onClick={() => {
-                const rows = [['Month', 'Revenue', 'Expenses', 'Net Profit']];
-                (pnl.monthly_pnl || []).forEach(m => rows.push([m.month, m.revenue, m.expenses, m.net_profit]));
-                rows.push(['Total', pnl.total_revenue, pnl.total_expenses, pnl.net_profit]);
-                const csv = rows.map(r => r.join(',')).join('\n');
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a'); a.href = url; a.download = `pnl-${period}-${new Date().toISOString().split('T')[0]}.csv`; a.click();
-                URL.revokeObjectURL(url);
-              }}>
-              <i className="fas fa-download"></i> Export
-            </button>
-          )}
+          <button className="acct-btn-secondary" title="Export CSV" style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem' }}
+            onClick={() => {
+              const rows = [['Month', 'Revenue', 'Credits', 'Net Revenue', 'Materials', 'Gross Profit', 'Expenses', 'Mileage', 'Total Costs', 'Net Profit']];
+              (pnl.monthly_pnl || []).forEach(m => rows.push([m.month, m.revenue, 0, m.revenue, m.materials || 0, m.gross_profit || 0, m.expenses, m.mileage || 0, m.total_costs || m.expenses, m.net_profit]));
+              rows.push(['Total', pnl.total_revenue, pnl.total_credits || 0, netRevenue, pnl.total_materials, grossProfit, pnl.total_expenses, pnl.total_mileage || 0, pnl.total_costs, pnl.net_profit]);
+              const csv = rows.map(r => r.join(',')).join('\n');
+              const blob = new Blob([csv], { type: 'text/csv' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a'); a.href = url; a.download = `pnl-${period}-${new Date().toISOString().split('T')[0]}.csv`; a.click();
+              URL.revokeObjectURL(url);
+            }}>
+            <i className="fas fa-download"></i> Export
+          </button>
         </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* P&L Statement — Proper accounting format */}
+      <div className="acct-section">
+        <div className="acct-section-header"><h3><i className="fas fa-file-alt"></i> Income Statement</h3></div>
+        <div className="pnl-statement">
+          {/* Revenue Section */}
+          <div className="pnl-line pnl-line-header">Revenue</div>
+          <div className="pnl-line">
+            <span>Job Revenue</span>
+            <span>{formatCurrency(pnl.total_revenue)}</span>
+          </div>
+          {(pnl.total_credits || 0) > 0 && (
+            <div className="pnl-line pnl-line-deduct">
+              <span>Less: Credit Notes / Refunds</span>
+              <span>({formatCurrency(pnl.total_credits)})</span>
+            </div>
+          )}
+          <div className="pnl-line pnl-line-subtotal">
+            <span>Net Revenue</span>
+            <span>{formatCurrency(netRevenue)}</span>
+          </div>
+
+          {/* Cost of Sales */}
+          <div className="pnl-line pnl-line-header" style={{ marginTop: '0.75rem' }}>Cost of Sales</div>
+          <div className="pnl-line">
+            <span>Materials & Supplies</span>
+            <span>({formatCurrency(pnl.total_materials)})</span>
+          </div>
+          <div className="pnl-line pnl-line-subtotal pnl-line-gross">
+            <span>Gross Profit</span>
+            <span style={{ color: grossProfit >= 0 ? '#10b981' : '#ef4444' }}>
+              {formatCurrency(grossProfit)}
+              <span className="pnl-margin-badge">{grossMargin}%</span>
+            </span>
+          </div>
+
+          {/* Operating Expenses */}
+          <div className="pnl-line pnl-line-header" style={{ marginTop: '0.75rem' }}>Operating Expenses</div>
+          {pnl.expense_categories && pnl.expense_categories.length > 0 ? (
+            pnl.expense_categories.map((cat, i) => (
+              <div key={i} className="pnl-line pnl-line-indent">
+                <span style={{ textTransform: 'capitalize' }}>{cat.category.replace(/_/g, ' ')}</span>
+                <span>({formatCurrency(cat.total)})</span>
+              </div>
+            ))
+          ) : (
+            <div className="pnl-line pnl-line-indent">
+              <span>General Expenses</span>
+              <span>({formatCurrency(pnl.total_expenses)})</span>
+            </div>
+          )}
+          {(pnl.total_mileage || 0) > 0 && (
+            <div className="pnl-line pnl-line-indent">
+              <span>Mileage Deductions</span>
+              <span>({formatCurrency(pnl.total_mileage)})</span>
+            </div>
+          )}
+          <div className="pnl-line pnl-line-subtotal">
+            <span>Total Operating Expenses</span>
+            <span>({formatCurrency(pnl.total_expenses + (pnl.total_mileage || 0))})</span>
+          </div>
+
+          {/* Net Profit */}
+          <div className={`pnl-line pnl-line-total ${isProfit ? 'pnl-line-profit' : 'pnl-line-loss'}`}>
+            <span>Net {isProfit ? 'Profit' : 'Loss'}</span>
+            <span>
+              {formatCurrency(pnl.net_profit)}
+              <span className="pnl-margin-badge">{pnl.profit_margin}%</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Visual Summary Cards */}
       <div className="pnl-summary">
         <div className="pnl-card pnl-revenue">
-          <div className="pnl-card-header">
-            <i className="fas fa-arrow-trend-up"></i>
-            <span>Revenue</span>
-          </div>
-          <div className="pnl-card-value">{formatCurrency(pnl.total_revenue)}</div>
+          <div className="pnl-card-header"><i className="fas fa-arrow-trend-up"></i><span>Revenue</span></div>
+          <div className="pnl-card-value">{formatCurrency(netRevenue)}</div>
+          {(pnl.total_credits || 0) > 0 && <div className="pnl-card-breakdown"><span>Before credits: {formatCurrency(pnl.total_revenue)}</span></div>}
         </div>
         <div className="pnl-operator">−</div>
         <div className="pnl-card pnl-costs">
-          <div className="pnl-card-header">
-            <i className="fas fa-arrow-trend-down"></i>
-            <span>Total Costs</span>
-          </div>
+          <div className="pnl-card-header"><i className="fas fa-arrow-trend-down"></i><span>Total Costs</span></div>
           <div className="pnl-card-value">{formatCurrency(pnl.total_costs)}</div>
           <div className="pnl-card-breakdown">
             <span><i className="fas fa-cubes"></i> Materials: {formatCurrency(pnl.total_materials)}</span>
             <span><i className="fas fa-receipt"></i> Expenses: {formatCurrency(pnl.total_expenses)}</span>
+            {(pnl.total_mileage || 0) > 0 && <span><i className="fas fa-car"></i> Mileage: {formatCurrency(pnl.total_mileage)}</span>}
           </div>
         </div>
         <div className="pnl-operator">=</div>
         <div className={`pnl-card ${isProfit ? 'pnl-profit' : 'pnl-loss'}`}>
-          <div className="pnl-card-header">
-            <i className={`fas ${isProfit ? 'fa-chart-line' : 'fa-chart-line-down'}`}></i>
-            <span>Net {isProfit ? 'Profit' : 'Loss'}</span>
-          </div>
+          <div className="pnl-card-header"><i className={`fas ${isProfit ? 'fa-chart-line' : 'fa-chart-line-down'}`}></i><span>Net {isProfit ? 'Profit' : 'Loss'}</span></div>
           <div className="pnl-card-value">{formatCurrency(pnl.net_profit)}</div>
-          <div className="pnl-card-breakdown">
-            <span>{pnl.profit_margin}% margin</span>
-          </div>
+          <div className="pnl-card-breakdown"><span>{pnl.profit_margin}% margin</span></div>
         </div>
       </div>
 
       {/* Monthly Chart */}
       {chartData && chartData.months.length > 1 && (
         <div className="acct-section">
-          <div className="acct-section-header"><h3><i className="fas fa-chart-bar"></i> Monthly Breakdown</h3></div>
+          <div className="acct-section-header"><h3><i className="fas fa-chart-bar"></i> Monthly Trend</h3></div>
           <div className="pnl-chart">
             {chartData.months.map((m, i) => {
               const revH = (m.revenue / chartData.maxVal) * 100;
-              const expH = (m.expenses / chartData.maxVal) * 100;
+              const costH = ((m.total_costs || m.expenses || 0) / chartData.maxVal) * 100;
               return (
                 <div key={i} className="pnl-chart-col">
                   <div className="pnl-chart-bars">
                     <div className="pnl-chart-bar pnl-bar-revenue" style={{ height: `${Math.max(revH, 2)}%` }}
                       title={`Revenue: ${formatCurrency(m.revenue)}`}></div>
-                    <div className="pnl-chart-bar pnl-bar-expense" style={{ height: `${Math.max(expH, m.expenses > 0 ? 2 : 0)}%` }}
-                      title={`Expenses: ${formatCurrency(m.expenses)}`}></div>
+                    <div className="pnl-chart-bar pnl-bar-expense" style={{ height: `${Math.max(costH, (m.total_costs || m.expenses) > 0 ? 2 : 0)}%` }}
+                      title={`Costs: ${formatCurrency(m.total_costs || m.expenses)}`}></div>
                   </div>
                   <div className="pnl-chart-label">{formatMonth(m.month)}</div>
                 </div>
@@ -122,7 +194,7 @@ function PnlPanel() {
           </div>
           <div className="pnl-chart-legend">
             <span><span className="pnl-legend-dot" style={{ background: '#6366f1' }}></span> Revenue</span>
-            <span><span className="pnl-legend-dot" style={{ background: '#ef4444' }}></span> Expenses</span>
+            <span><span className="pnl-legend-dot" style={{ background: '#ef4444' }}></span> Costs</span>
           </div>
         </div>
       )}
@@ -130,17 +202,18 @@ function PnlPanel() {
       {/* Expense Category Breakdown */}
       {pnl.expense_categories && pnl.expense_categories.length > 0 && (
         <div className="acct-section">
-          <div className="acct-section-header"><h3><i className="fas fa-pie-chart"></i> Expense Breakdown</h3></div>
+          <div className="acct-section-header"><h3><i className="fas fa-chart-pie"></i> Expense Breakdown</h3></div>
           <div className="acct-category-bars">
             {pnl.expense_categories.map((cat, i) => {
-              const pct = pnl.total_expenses > 0 ? (cat.total / pnl.total_expenses) * 100 : 0;
+              const totalExp = pnl.total_expenses + (pnl.total_mileage || 0);
+              const pct = totalExp > 0 ? (cat.total / totalExp) * 100 : 0;
               return (
                 <div key={i} className="acct-bar-row">
-                  <div className="acct-bar-label" style={{ textTransform: 'capitalize' }}>{cat.category}</div>
+                  <div className="acct-bar-label" style={{ textTransform: 'capitalize' }}>{cat.category.replace(/_/g, ' ')}</div>
                   <div className="acct-bar-track">
                     <div className="acct-bar-fill" style={{ width: `${Math.max(pct, 3)}%`, background: '#ef4444' }}></div>
                   </div>
-                  <div className="acct-bar-value">{formatCurrency(cat.total)} <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>({cat.count})</span></div>
+                  <div className="acct-bar-value">{formatCurrency(cat.total)} <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>({pct.toFixed(0)}%)</span></div>
                 </div>
               );
             })}
@@ -158,6 +231,8 @@ function PnlPanel() {
                 <tr>
                   <th>Month</th>
                   <th style={{ textAlign: 'right' }}>Revenue</th>
+                  <th style={{ textAlign: 'right' }}>Materials</th>
+                  <th style={{ textAlign: 'right' }}>Gross Profit</th>
                   <th style={{ textAlign: 'right' }}>Expenses</th>
                   <th style={{ textAlign: 'right' }}>Net Profit</th>
                 </tr>
@@ -167,7 +242,11 @@ function PnlPanel() {
                   <tr key={i}>
                     <td>{formatMonth(m.month)}</td>
                     <td style={{ textAlign: 'right', color: '#10b981' }}>{formatCurrency(m.revenue)}</td>
-                    <td style={{ textAlign: 'right', color: '#ef4444' }}>{formatCurrency(m.expenses)}</td>
+                    <td style={{ textAlign: 'right', color: '#94a3b8' }}>{formatCurrency(m.materials || 0)}</td>
+                    <td style={{ textAlign: 'right', color: (m.gross_profit || 0) >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                      {formatCurrency(m.gross_profit || (m.revenue - (m.materials || 0)))}
+                    </td>
+                    <td style={{ textAlign: 'right', color: '#ef4444' }}>{formatCurrency(m.expenses + (m.mileage || 0))}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: m.net_profit >= 0 ? '#10b981' : '#ef4444' }}>
                       {formatCurrency(m.net_profit)}
                     </td>
@@ -177,8 +256,10 @@ function PnlPanel() {
               <tfoot>
                 <tr>
                   <td style={{ fontWeight: 700 }}>Total</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#10b981' }}>{formatCurrency(pnl.total_revenue)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#ef4444' }}>{formatCurrency(pnl.total_expenses)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#10b981' }}>{formatCurrency(netRevenue)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#94a3b8' }}>{formatCurrency(pnl.total_materials)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: grossProfit >= 0 ? '#10b981' : '#ef4444' }}>{formatCurrency(grossProfit)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#ef4444' }}>{formatCurrency(pnl.total_expenses + (pnl.total_mileage || 0))}</td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: isProfit ? '#10b981' : '#ef4444' }}>{formatCurrency(pnl.net_profit)}</td>
                 </tr>
               </tfoot>
