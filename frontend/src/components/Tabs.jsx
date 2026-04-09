@@ -54,6 +54,9 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
             <span className="current-tab-label">
               {tabs[activeTab]?.icon && <i className={tabs[activeTab].icon}></i>}
               {tabs[activeTab]?.label}
+              {tabs[activeTab]?.badge > 0 && (
+                <span className="tab-badge mobile">{tabs[activeTab].badge > 9 ? '9+' : tabs[activeTab].badge}</span>
+              )}
             </span>
             <button
               className={`hamburger-btn ${menuOpen ? 'open' : ''}`}
@@ -85,6 +88,9 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
                     >
                       {tab.icon && <i className={tab.icon}></i>}
                       <span>{tab.label}</span>
+                      {tab.badge > 0 && (
+                        <span className="tab-badge mobile">{tab.badge > 9 ? '9+' : tab.badge}</span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -120,6 +126,11 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
                     >
                       {tab.icon && <i className={tab.icon}></i>}
                       {!sidebarCollapsed && <span className="sidebar-item-label">{tab.label}</span>}
+                      {tab.badge > 0 && (
+                        <span className={`tab-badge ${sidebarCollapsed ? 'collapsed' : ''}`}>
+                          {tab.badge > 9 ? '9+' : tab.badge}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>

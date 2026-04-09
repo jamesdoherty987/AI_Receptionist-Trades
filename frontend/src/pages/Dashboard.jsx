@@ -17,7 +17,7 @@ import ServicesTab from '../components/dashboard/ServicesTab';
 import MaterialsTab from '../components/dashboard/MaterialsTab';
 import InsightsTab from '../components/dashboard/InsightsTab';
 import CallLogsTab from '../components/dashboard/CallLogsTab';
-import { getDashboardData, getBusinessSettings, updateBusinessSettings } from '../services/api';
+import { getDashboardData, getBusinessSettings, updateBusinessSettings, getUnseenCallCount } from '../services/api';
 import './Dashboard.css';
 
 function Dashboard() {
@@ -80,6 +80,31 @@ function Dashboard() {
   // Controlled tab state for notification navigation
   const [activeTab, setActiveTab] = useState(0);
 
+  // --- Unseen call count badge ---
+  const [callsLastSeen, setCallsLastSeen] = useState(
+    () => localStorage.getItem(`calls_last_seen_${userKey}`) || new Date(0).toISOString()
+  );
+  const [unseenCalls, setUnseenCalls] = useState(0);
+
+  // Re-sync callsLastSeen when userKey changes (e.g. from 'default' to actual email)
+  useEffect(() => {
+    setCallsLastSeen(localStorage.getItem(`calls_last_seen_${userKey}`) || new Date(0).toISOString());
+  }, [userKey]);
+
+  const { data: unseenData } = useQuery({
+    queryKey: ['unseen-calls', callsLastSeen],
+    queryFn: async () => {
+      const res = await getUnseenCallCount(callsLastSeen);
+      return res.data;
+    },
+    refetchInterval: 30000,
+    staleTime: 10000,
+  });
+
+  useEffect(() => {
+    if (unseenData) setUnseenCalls(unseenData.count || 0);
+  }, [unseenData]);
+
   const tabs = useMemo(() => [
     // Day-to-day
     {
@@ -92,6 +117,7 @@ function Dashboard() {
       label: 'Calls',
       icon: 'fas fa-phone-alt',
       group: 'Day-to-Day',
+      badge: unseenCalls,
       content: <CallLogsTab />
     },
     {
@@ -146,7 +172,18 @@ function Dashboard() {
       group: 'Dev Tools',
       content: <ChatTab />
     }] : [])
-  ], [isLoading, bookings, clients, workers, settings]);
+  ], [isLoading, bookings, clients, workers, settings, unseenCalls]);
+
+  // Clear unseen call badge when user views the Calls tab
+  const handleTabChange = useCallback((idx) => {
+    setActiveTab(idx);
+    if (tabs[idx]?.label === 'Calls') {
+      const now = new Date().toISOString();
+      setCallsLastSeen(now);
+      localStorage.setItem(`calls_last_seen_${userKey}`, now);
+      setUnseenCalls(0);
+    }
+  }, [tabs, userKey]);
 
   // Mark onboarding steps as visited when user navigates to the corresponding tab
   useEffect(() => {
@@ -170,9 +207,9 @@ function Dashboard() {
     const targetLabel = typeToLabel[notif.type];
     if (targetLabel) {
       const idx = tabs.findIndex(t => t.label === targetLabel);
-      if (idx !== -1) setActiveTab(idx);
+      if (idx !== -1) handleTabChange(idx);
     }
-  }, [tabs]);
+  }, [tabs, handleTabChange]);
 
   // Handle notification navigation from other pages (e.g. Settings → Dashboard)
   useEffect(() => {
@@ -200,7 +237,7 @@ function Dashboard() {
             <h1>Dashboard</h1>
           </div>
           
-          <Tabs tabs={tabs} defaultTab={0} activeTab={activeTab} onTabChange={setActiveTab} />
+          <Tabs tabs={tabs} defaultTab={0} activeTab={activeTab} onTabChange={handleTabChange} />
         </div>
       </main>
     </div>

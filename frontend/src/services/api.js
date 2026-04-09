@@ -374,5 +374,6 @@ export const workerCreateClient = (data) => api.post('/api/worker/clients/create
 
 // Call Logs
 export const getCallLogs = (params = {}) => api.get('/api/call-logs', { params });
+export const getUnseenCallCount = (since) => api.get('/api/call-logs/unseen-count', { params: { since } });
 
 export default api;

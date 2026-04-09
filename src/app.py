@@ -8130,6 +8130,33 @@ def call_logs_api():
     })
 
 
+@app.route("/api/call-logs/unseen-count", methods=["GET"])
+@login_required
+def call_logs_unseen_count():
+    """Count call logs created after a given timestamp."""
+    db = get_database()
+    company_id = session.get('company_id')
+    since = request.args.get('since')
+    if not since:
+        return jsonify({"count": 0})
+    conn = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM call_logs WHERE company_id = %s AND created_at > %s",
+            (company_id, since),
+        )
+        count = cursor.fetchone()[0]
+        return jsonify({"count": count})
+    except Exception as e:
+        print(f"[ERROR] unseen count: {e}")
+        return jsonify({"count": 0})
+    finally:
+        if conn:
+            db.return_connection(conn)
+
+
 @app.route("/api/notifications", methods=["GET"])
 @login_required
 def notifications_api():

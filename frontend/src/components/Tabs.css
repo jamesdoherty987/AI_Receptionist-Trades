@@ -375,3 +375,54 @@
     padding: 0;
   }
 }
+
+/* ============================================
+   TAB BADGE (unseen call count, etc.)
+   ============================================ */
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ef4444;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-left: auto;
+  flex-shrink: 0;
+  animation: badge-pop 0.3s ease;
+}
+
+.sidebar-item.active .tab-badge {
+  background: rgba(255, 255, 255, 0.3);
+  color: white;
+}
+
+.tab-badge.collapsed {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  font-size: 0.6rem;
+  margin-left: 0;
+}
+
+.sidebar-layout.collapsed .sidebar-item {
+  position: relative;
+}
+
+.tab-badge.mobile {
+  margin-left: 0.5rem;
+}
+
+@keyframes badge-pop {
+  0% { transform: scale(0); }
+  60% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
