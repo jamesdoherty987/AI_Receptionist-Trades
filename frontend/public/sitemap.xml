@@ -4,7 +4,7 @@
         xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>https://bookedforyou.ie/</loc>
-    <lastmod>2025-04-02</lastmod>
+    <lastmod>2025-04-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <image:image>
@@ -15,25 +15,25 @@
   </url>
   <url>
     <loc>https://bookedforyou.ie/signup</loc>
-    <lastmod>2025-04-02</lastmod>
+    <lastmod>2025-04-09</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://bookedforyou.ie/login</loc>
-    <lastmod>2025-04-02</lastmod>
+    <lastmod>2025-04-09</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://bookedforyou.ie/privacy</loc>
-    <lastmod>2025-04-02</lastmod>
+    <lastmod>2025-04-09</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://bookedforyou.ie/terms</loc>
-    <lastmod>2025-04-02</lastmod>
+    <lastmod>2025-04-09</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>

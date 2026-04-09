@@ -101,7 +101,11 @@
         "contactType": "customer service",
         "availableLanguage": "English"
       },
-      "sameAs": []
+      "sameAs": [
+        "https://www.linkedin.com/company/bookedforyou",
+        "https://www.instagram.com/bookedforyou.ie",
+        "https://www.tiktok.com/@bookedforyou_"
+      ]
     }
     </script>
 
@@ -143,7 +147,32 @@
           "@type": "ImageObject",
           "url": "https://bookedforyou.ie/logo.png"
         }
+      },
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://bookedforyou.ie/?q={search_term_string}",
+        "query-input": "required name=search_term_string"
       }
+    }
+    </script>
+
+    <!-- Structured Data — LocalBusiness (helps with local search) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "ProfessionalService",
+      "name": "BookedForYou",
+      "url": "https://bookedforyou.ie",
+      "logo": "https://bookedforyou.ie/logo.png",
+      "image": "https://bookedforyou.ie/og-image.png",
+      "description": "AI-powered receptionist and business management for tradespeople in Ireland. Answers calls 24/7, books appointments automatically.",
+      "email": "contact@bookedforyou.ie",
+      "areaServed": {
+        "@type": "Country",
+        "name": "Ireland"
+      },
+      "serviceType": ["AI Receptionist", "Appointment Scheduling", "Business Management"],
+      "priceRange": "€€"
     }
     </script>
 
@@ -184,6 +213,104 @@
             "@type": "Answer",
             "text": "BookedForYou works for all types of tradespeople including plumbers, electricians, roofers, carpenters, painters, HVAC technicians, and any service-based trade business."
           }
+        }
+      ]
+    }
+    </script>
+
+    <!-- Structured Data — BreadcrumbList (helps search result navigation) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Home",
+          "item": "https://bookedforyou.ie/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Sign Up",
+          "item": "https://bookedforyou.ie/signup"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Log In",
+          "item": "https://bookedforyou.ie/login"
+        },
+        {
+          "@type": "ListItem",
+          "position": 4,
+          "name": "Privacy Policy",
+          "item": "https://bookedforyou.ie/privacy"
+        },
+        {
+          "@type": "ListItem",
+          "position": 5,
+          "name": "Terms of Service",
+          "item": "https://bookedforyou.ie/terms"
+        }
+      ]
+    }
+    </script>
+
+    <!-- Structured Data — VideoObject (for the explainer video) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      "name": "BookedForYou — AI Receptionist Explainer",
+      "description": "See how BookedForYou's AI receptionist answers calls, books appointments, and manages customers for tradespeople in Ireland.",
+      "thumbnailUrl": "https://bookedforyou.ie/og-image.png",
+      "uploadDate": "2025-04-01",
+      "contentUrl": "https://pub-6d2ed0f2cb5645b68bd219a42aed3749.r2.dev/assets/cinematic-explainer.mp4",
+      "embedUrl": "https://bookedforyou.ie/",
+      "isFamilyFriendly": true,
+      "inLanguage": "en",
+      "publisher": {
+        "@type": "Organization",
+        "name": "BookedForYou",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://bookedforyou.ie/logo.png"
+        }
+      }
+    }
+    </script>
+
+    <!-- Structured Data — HowTo (3-step setup flow for rich snippets) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "name": "How to Set Up BookedForYou AI Receptionist",
+      "description": "Get your AI receptionist up and running in 3 simple steps.",
+      "totalTime": "PT10M",
+      "step": [
+        {
+          "@type": "HowToStep",
+          "position": 1,
+          "name": "Get in Touch",
+          "text": "Contact us and we'll set up your account with everything tailored to your business.",
+          "url": "https://bookedforyou.ie/#features"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 2,
+          "name": "Connect Your Phone",
+          "text": "Forward your business calls to your new AI receptionist number.",
+          "url": "https://bookedforyou.ie/#features"
+        },
+        {
+          "@type": "HowToStep",
+          "position": 3,
+          "name": "Start Growing",
+          "text": "Watch your bookings increase as you never miss another call. The AI handles calls, books jobs, and manages your schedule automatically.",
+          "url": "https://bookedforyou.ie/#features"
         }
       ]
     }

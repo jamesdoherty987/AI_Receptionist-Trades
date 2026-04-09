@@ -2,5 +2,6 @@
 # https://securitytxt.org/
 
 Contact: mailto:contact@bookedforyou.ie
+Expires: 2027-04-09T00:00:00.000Z
 Preferred-Languages: en
 Canonical: https://bookedforyou.ie/.well-known/security.txt
