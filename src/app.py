@@ -11463,6 +11463,292 @@ def handle_exception(e):
     return jsonify({"error": "An unexpected error occurred"}), 500
 
 
+# ==================== ADMIN INSIGHTS ENDPOINTS ====================
+
+@app.route("/api/admin/insights/overview", methods=["GET"])
+@admin_required
+def admin_insights_overview():
+    """Platform-wide overview stats for admin dashboard."""
+    db = get_database()
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Total accounts
+        cursor.execute("SELECT COUNT(*) as total FROM companies")
+        total_accounts = cursor.fetchone()['total']
+
+        # Active subscriptions
+        cursor.execute("SELECT subscription_tier, COUNT(*) as cnt FROM companies GROUP BY subscription_tier")
+        tier_counts = {row['subscription_tier'] or 'none': row['cnt'] for row in cursor.fetchall()}
+
+        # Accounts with Stripe Connect
+        cursor.execute("SELECT COUNT(*) as cnt FROM companies WHERE stripe_connect_account_id IS NOT NULL")
+        stripe_connected = cursor.fetchone()['cnt']
+
+        # Accounts with phone numbers
+        cursor.execute("SELECT COUNT(*) as cnt FROM companies WHERE twilio_phone_number IS NOT NULL")
+        with_phone = cursor.fetchone()['cnt']
+
+        # Total bookings platform-wide
+        cursor.execute("SELECT COUNT(*) as total, COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed, COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled FROM bookings")
+        booking_stats = cursor.fetchone()
+
+        # Total call logs
+        cursor.execute("SELECT COUNT(*) as total, COUNT(CASE WHEN call_outcome = 'booking_made' THEN 1 END) as booked, COUNT(CASE WHEN is_lost_job = TRUE THEN 1 END) as lost FROM call_logs")
+        call_stats = cursor.fetchone()
+
+        # Total revenue platform-wide
+        cursor.execute("SELECT COALESCE(SUM(charge), 0) as total FROM bookings WHERE status != 'cancelled'")
+        total_revenue = float(cursor.fetchone()['total'])
+
+        # Accounts created per month (last 6 months)
+        cursor.execute("""
+            SELECT TO_CHAR(created_at, 'YYYY-MM') as month, COUNT(*) as cnt
+            FROM companies
+            WHERE created_at >= NOW() - INTERVAL '6 months'
+            GROUP BY month ORDER BY month
+        """)
+        signups_by_month = [dict(r) for r in cursor.fetchall()]
+
+        # Recent accounts (last 10)
+        cursor.execute("""
+            SELECT id, company_name, owner_name, email, subscription_tier, subscription_status,
+                   twilio_phone_number, created_at, stripe_connect_account_id
+            FROM companies ORDER BY created_at DESC LIMIT 10
+        """)
+        recent = []
+        for row in cursor.fetchall():
+            d = dict(row)
+            for k in list(d.keys()):
+                if d.get(k) and hasattr(d[k], 'isoformat'):
+                    d[k] = d[k].isoformat()
+            recent.append(d)
+
+        cursor.close()
+        return jsonify({
+            "success": True,
+            "overview": {
+                "total_accounts": total_accounts,
+                "tier_counts": tier_counts,
+                "stripe_connected": stripe_connected,
+                "with_phone": with_phone,
+                "booking_stats": dict(booking_stats),
+                "call_stats": dict(call_stats),
+                "total_revenue": total_revenue,
+                "signups_by_month": signups_by_month,
+                "recent_accounts": recent,
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/admin/insights/company/<int:company_id>", methods=["GET"])
+@admin_required
+def admin_company_insights(company_id):
+    """Detailed insights for a specific company."""
+    db = get_database()
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Company info
+        cursor.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
+        company = cursor.fetchone()
+        if not company:
+            cursor.close()
+            return jsonify({"error": "Company not found"}), 404
+        company = dict(company)
+        for k in list(company.keys()):
+            if company.get(k) and hasattr(company[k], 'isoformat'):
+                company[k] = company[k].isoformat()
+        # Remove sensitive fields
+        for f in ['password_hash', 'owner_invite_token', 'verification_token', 'reset_token',
+                   'google_credentials_json', 'openai_api_key', 'deepgram_api_key',
+                   'elevenlabs_api_key']:
+            company.pop(f, None)
+
+        # Booking stats
+        cursor.execute("""
+            SELECT COUNT(*) as total,
+                   COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
+                   COUNT(CASE WHEN status = 'scheduled' THEN 1 END) as scheduled,
+                   COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled,
+                   COUNT(CASE WHEN status = 'in_progress' THEN 1 END) as in_progress,
+                   COALESCE(SUM(CASE WHEN status != 'cancelled' THEN charge ELSE 0 END), 0) as total_revenue,
+                   COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN charge ELSE 0 END), 0) as paid_revenue,
+                   COALESCE(SUM(CASE WHEN payment_status = 'unpaid' AND status != 'cancelled' THEN charge ELSE 0 END), 0) as unpaid_revenue,
+                   COUNT(CASE WHEN payment_method = 'stripe' THEN 1 END) as stripe_payments,
+                   COUNT(CASE WHEN payment_method = 'cash' THEN 1 END) as cash_payments,
+                   COUNT(CASE WHEN payment_method = 'bank_transfer' THEN 1 END) as bank_payments,
+                   COUNT(CASE WHEN payment_status = 'paid' THEN 1 END) as paid_count,
+                   COUNT(CASE WHEN payment_status = 'unpaid' AND status != 'cancelled' THEN 1 END) as unpaid_count
+            FROM bookings WHERE company_id = %s
+        """, (company_id,))
+        booking_stats = dict(cursor.fetchone())
+        for k, v in booking_stats.items():
+            if isinstance(v, (int, float)):
+                booking_stats[k] = float(v) if '.' in str(v) else int(v)
+
+        # Monthly bookings (last 12 months)
+        cursor.execute("""
+            SELECT TO_CHAR(appointment_time, 'YYYY-MM') as month,
+                   COUNT(*) as total,
+                   COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
+                   COUNT(CASE WHEN payment_method = 'stripe' THEN 1 END) as stripe_paid,
+                   COALESCE(SUM(CASE WHEN status != 'cancelled' THEN charge ELSE 0 END), 0) as revenue
+            FROM bookings WHERE company_id = %s
+            GROUP BY month ORDER BY month DESC LIMIT 12
+        """, (company_id,))
+        monthly = []
+        for row in cursor.fetchall():
+            d = dict(row)
+            d['revenue'] = float(d['revenue'])
+            monthly.append(d)
+
+        # Call log stats
+        cursor.execute("""
+            SELECT COUNT(*) as total,
+                   COUNT(CASE WHEN call_outcome = 'booking_made' THEN 1 END) as booked,
+                   COUNT(CASE WHEN call_outcome = 'callback_requested' THEN 1 END) as callbacks,
+                   COUNT(CASE WHEN call_outcome = 'info_provided' THEN 1 END) as info_only,
+                   COUNT(CASE WHEN is_lost_job = TRUE THEN 1 END) as lost_jobs,
+                   COALESCE(AVG(duration_seconds), 0) as avg_duration
+            FROM call_logs WHERE company_id = %s
+        """, (company_id,))
+        call_stats = dict(cursor.fetchone())
+        call_stats['avg_duration'] = round(float(call_stats['avg_duration']), 1)
+
+        # Workers
+        cursor.execute("SELECT COUNT(*) as cnt FROM workers WHERE company_id = %s", (company_id,))
+        worker_count = cursor.fetchone()['cnt']
+
+        # Clients
+        cursor.execute("SELECT COUNT(*) as cnt FROM clients WHERE company_id = %s", (company_id,))
+        client_count = cursor.fetchone()['cnt']
+
+        # Services
+        cursor.execute("SELECT COUNT(*) as cnt FROM services WHERE company_id = %s", (company_id,))
+        service_count = cursor.fetchone()['cnt']
+
+        # Stripe Connect status
+        stripe_info = {
+            'connect_account_id': company.get('stripe_connect_account_id'),
+            'connect_status': company.get('stripe_connect_status', 'not_connected'),
+            'connect_onboarding_complete': bool(company.get('stripe_connect_onboarding_complete')),
+            'customer_id': company.get('stripe_customer_id'),
+            'subscription_id': company.get('stripe_subscription_id'),
+        }
+
+        # Recent call logs (last 5)
+        cursor.execute("""
+            SELECT id, phone_number, caller_name, call_outcome, is_lost_job,
+                   duration_seconds, ai_summary, created_at
+            FROM call_logs WHERE company_id = %s
+            ORDER BY created_at DESC LIMIT 5
+        """, (company_id,))
+        recent_calls = []
+        for row in cursor.fetchall():
+            d = dict(row)
+            for k2 in list(d.keys()):
+                if d.get(k2) and hasattr(d[k2], 'isoformat'):
+                    d[k2] = d[k2].isoformat()
+            recent_calls.append(d)
+
+        cursor.close()
+        return jsonify({
+            "success": True,
+            "company": company,
+            "insights": {
+                "booking_stats": booking_stats,
+                "monthly_bookings": monthly,
+                "call_stats": call_stats,
+                "worker_count": worker_count,
+                "client_count": client_count,
+                "service_count": service_count,
+                "stripe_info": stripe_info,
+                "recent_calls": recent_calls,
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/admin/search", methods=["GET"])
+@admin_required
+def admin_search():
+    """Search across companies, clients, bookings for support."""
+    q = request.args.get('q', '').strip()
+    if not q or len(q) < 2:
+        return jsonify({"error": "Query must be at least 2 characters"}), 400
+
+    db = get_database()
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        term = f"%{q}%"
+
+        # Search companies
+        cursor.execute("""
+            SELECT id, company_name, owner_name, email, phone, twilio_phone_number,
+                   subscription_tier, subscription_status
+            FROM companies
+            WHERE company_name ILIKE %s OR owner_name ILIKE %s OR email ILIKE %s
+                  OR phone ILIKE %s OR twilio_phone_number ILIKE %s
+            LIMIT 10
+        """, (term, term, term, term, term))
+        companies = [dict(r) for r in cursor.fetchall()]
+
+        # Search clients
+        cursor.execute("""
+            SELECT c.id, c.name, c.phone, c.email, c.company_id, co.company_name
+            FROM clients c
+            JOIN companies co ON c.company_id = co.id
+            WHERE c.name ILIKE %s OR c.phone ILIKE %s OR c.email ILIKE %s
+            LIMIT 10
+        """, (term, term, term))
+        clients = [dict(r) for r in cursor.fetchall()]
+
+        # Search call logs by phone or caller name
+        cursor.execute("""
+            SELECT cl.id, cl.phone_number, cl.caller_name, cl.call_outcome,
+                   cl.ai_summary, cl.company_id, co.company_name, cl.created_at
+            FROM call_logs cl
+            JOIN companies co ON cl.company_id = co.id
+            WHERE cl.phone_number ILIKE %s OR cl.caller_name ILIKE %s
+            ORDER BY cl.created_at DESC LIMIT 10
+        """, (term, term))
+        calls = []
+        for r in cursor.fetchall():
+            d = dict(r)
+            for k in list(d.keys()):
+                if d.get(k) and hasattr(d[k], 'isoformat'):
+                    d[k] = d[k].isoformat()
+            calls.append(d)
+
+        cursor.close()
+        return jsonify({
+            "success": True,
+            "results": {
+                "companies": companies,
+                "clients": clients,
+                "calls": calls,
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.return_connection(conn)
+
+
 if __name__ == "__main__":
     try:
         config.validate()
