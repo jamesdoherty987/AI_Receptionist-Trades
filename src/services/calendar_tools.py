@@ -116,7 +116,7 @@ CALENDAR_TOOLS = [
                     },
                     "email": {
                         "type": "string",
-                        "description": "Customer's email address (OPTIONAL) - only include if the customer voluntarily provides it"
+                        "description": "Customer's email address - include if the customer provides it during the call"
                     },
                     "job_address": {
                         "type": "string",
@@ -5797,9 +5797,21 @@ Return ONLY valid JSON, no explanation."""
                             _cs._deferred_sms_original_address = validated_address or extracted_eircode
                             logger.info(f"[BOOK_JOB] 📨 SMS deferred — address audio captured, retranscriber will send after call")
                         else:
+                            # Still stash client_id for email retranscription pipeline
+                            if _cs:
+                                _cs._deferred_sms_client_id = client_id
                             sms_service.send_booking_confirmation(**_sms_kwargs)
                     else:
+                        # SMS disabled — still stash client_id for email retranscription
+                        _cs = services.get('call_state')
+                        if _cs:
+                            _cs._deferred_sms_client_id = client_id
                         logger.info(f"[BOOK_JOB] Confirmation SMS disabled for company {company_id}, skipping")
+                else:
+                    # No SMS client or phone — still stash client_id for email retranscription
+                    _cs = services.get('call_state')
+                    if _cs:
+                        _cs._deferred_sms_client_id = client_id
             except Exception as sms_err:
                 logger.warning(f"[BOOK_JOB] ⚠️ Booking confirmation SMS failed (booking still saved): {sms_err}")
             

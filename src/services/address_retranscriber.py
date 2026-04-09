@@ -1,10 +1,10 @@
 """
-Post-call address re-transcription service.
+Post-call address and email re-transcription service.
 
-After a call ends, if address audio was captured, this service:
-1. Downloads the captured address audio from R2
+After a call ends, if address/email audio was captured, this service:
+1. Downloads the captured audio from R2
 2. Re-transcribes it using OpenAI gpt-4o-transcribe (highest quality STT)
-3. Updates the booking and client address in the database
+3. Updates the booking and client records in the database
 4. Sends the booking confirmation SMS with the corrected address
 
 This runs async after the call — no time pressure.
@@ -354,3 +354,126 @@ async def retranscribe_and_update(
     print(f"{'='*60}\n")
 
     return refined_address
+
+
+def transcribe_email_audio(audio_url: str) -> Optional[str]:
+    """
+    Download email audio and re-transcribe with OpenAI gpt-4o-transcribe.
+    
+    Uses a specialized prompt that understands email address format
+    (@ symbol, common domains like gmail.com, yahoo.com, .ie, .com, etc.)
+    
+    Returns:
+        Extracted email address string or None on failure
+    """
+    import re
+    start = time.time()
+    try:
+        print(f"[EMAIL_RETRANSCRIBE] Downloading audio: {audio_url}")
+        resp = httpx.get(audio_url, timeout=30.0)
+        resp.raise_for_status()
+        audio_bytes = resp.content
+        print(f"[EMAIL_RETRANSCRIBE] Downloaded {len(audio_bytes)} bytes")
+
+        client = _get_client()
+        audio_file = io.BytesIO(audio_bytes)
+        audio_file.name = "email.wav"
+
+        transcript = client.audio.transcriptions.create(
+            model="gpt-4o-transcribe",
+            file=audio_file,
+            prompt=(
+                "Transcribe the email address from this audio. "
+                "The caller is saying an email address which contains an @ symbol and a domain. "
+                "Common domains: gmail.com, yahoo.com, hotmail.com, outlook.com, icloud.com, live.com, .ie, .co.uk. "
+                "The caller may say 'at' for @, 'dot' for '.', 'underscore' for '_', 'dash' for '-'. "
+                "Return ONLY the email address in standard format (e.g., john.smith@gmail.com). "
+                "No filler words, no conversational phrases."
+            ),
+        )
+
+        duration = time.time() - start
+        text = transcript.text.strip() if transcript.text else None
+        print(f"[EMAIL_RETRANSCRIBE] gpt-4o-transcribe result ({duration:.1f}s): '{text}'")
+        
+        if text:
+            # Strip conversational prefixes
+            text = re.sub(
+                r'^(?:yeah|yes|yep|sure|okay|ok|right|so|well|um|uh|eh|ah|it\'?s|that\'?s|my email is|my email address is|the email is|email is)[\s,.:;]*',
+                '', text, count=1, flags=re.IGNORECASE
+            ).strip()
+            
+            # Normalize: convert spoken email to standard format
+            # "john at gmail dot com" -> "john@gmail.com"
+            text = re.sub(r'\s+at\s+', '@', text, flags=re.IGNORECASE)
+            text = re.sub(r'\s+dot\s+', '.', text, flags=re.IGNORECASE)
+            text = re.sub(r'\s+underscore\s+', '_', text, flags=re.IGNORECASE)
+            text = re.sub(r'\s+dash\s+', '-', text, flags=re.IGNORECASE)
+            
+            # Remove any remaining spaces (email addresses don't have spaces)
+            text = text.replace(' ', '')
+            
+            # Lowercase the whole thing
+            text = text.lower()
+            
+            # Basic email validation
+            if '@' in text and '.' in text.split('@')[-1]:
+                print(f"[EMAIL_RETRANSCRIBE] Valid email extracted: '{text}'")
+                return text
+            else:
+                print(f"[EMAIL_RETRANSCRIBE] ⚠️ Result doesn't look like a valid email: '{text}'")
+                return None
+        
+        return None
+
+    except Exception as e:
+        duration = time.time() - start
+        print(f"[EMAIL_RETRANSCRIBE] Transcription failed ({duration:.1f}s): {e}")
+        return None
+
+
+async def retranscribe_email(
+    audio_url: str,
+    client_id: int,
+    company_id: int,
+) -> Optional[str]:
+    """
+    Post-call email refinement pipeline:
+    1. gpt-4o-transcribe re-transcription of the email audio
+    2. DB update (client email)
+
+    Runs after the call ends — no rush.
+
+    Returns:
+        The extracted email string, or None if extraction failed
+    """
+    print(f"\n{'='*60}")
+    print(f"[EMAIL_RETRANSCRIBE] Starting post-call email refinement")
+    print(f"[EMAIL_RETRANSCRIBE] Audio: {audio_url}")
+    print(f"[EMAIL_RETRANSCRIBE] Client: {client_id}")
+    print(f"{'='*60}")
+
+    loop = asyncio.get_running_loop()
+
+    # Re-transcribe with gpt-4o-transcribe
+    email = await loop.run_in_executor(None, transcribe_email_audio, audio_url)
+
+    if not email:
+        print(f"[EMAIL_RETRANSCRIBE] Could not extract email from audio")
+        print(f"{'='*60}\n")
+        return None
+
+    # Update client record with email
+    if client_id:
+        try:
+            from src.services.database import get_database
+            db = get_database()
+            db.update_client(client_id, email=email)
+            print(f"[EMAIL_RETRANSCRIBE] ✅ Updated client {client_id} email: {email}")
+        except Exception as e:
+            print(f"[EMAIL_RETRANSCRIBE] ⚠️ DB update failed: {e}")
+
+    print(f"[EMAIL_RETRANSCRIBE] Pipeline complete. Email: '{email}'")
+    print(f"{'='*60}\n")
+
+    return email

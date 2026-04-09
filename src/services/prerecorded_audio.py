@@ -50,6 +50,10 @@ FILLER_PHRASES = {
     # Number/eircode confirmation fillers  
     "thanks_checking": "Thanks, just checking.",
     "okay_checking": "Okay, checking that now.",
+    # Name spelling correction filler
+    "let_me_look_you_up": "Let me look you up.",
+    # Time selection / booking fillers
+    "grand_let_me_book": "Grand, let me book that.",
     # Short acknowledgment fillers (for quick confirmations and name introductions)
     "grand": "Grand.",
     "perfect": "Perfect.",
@@ -77,13 +81,31 @@ FILLER_PHRASES = {
     "let_me_connect": "Let me get someone for you.",
     # Greeting
     "greeting": "Hi, thank you for calling. How can I help you today?",  # Pre-recorded greeting for instant playback
+    # Static direct responses (bypass ElevenLabs TTS for predictable phrases)
+    "couldnt_find_name": "I couldn't find that name. Could you spell it for me?",
+    "day_fully_booked": "That day is fully booked. Would you like to try a different day?",
+    "not_open_that_day": "We're not open that day. What other day would work for you?",
+    "couldnt_check_day": "I couldn't check that day. What day works for you?",
+    "couldnt_check_availability": "I couldn't check availability. What day would you like to try?",
+    "slot_taken": "That time slot just got taken. Would you like to try a different time?",
+    "missing_details": "I'm missing some details. Could you confirm the time you'd like?",
+    "couldnt_complete_booking": "I couldn't complete that booking. Could you try again?",
+    "all_booked": "You're all booked! Is there anything else I can help with?",
+    "nothing_available": "I don't have anything available then. Would you like to try different dates?",
+    "couldnt_search": "I couldn't search that time period. What dates would you like to check?",
+    "didnt_catch_date": "I didn't quite catch the date. Could you tell me the day and month, like March 27th?",
+    "no_bookings_found": "I don't see any bookings on that day. Could you double-check the date?",
+    "got_that_anything_else": "I've got that. What else can I help with?",
+    "worker_no_availability": "The assigned worker has no availability in that period. Would you like to try different dates?",
+    "couldnt_check_worker": "I couldn't check the worker's availability. What dates would you like to try?",
+    "no_availability_soon": "I don't have any availability soon. Would you like me to check further out?",
 }
 
 # Context-specific filler groups
-BOOKING_FILLERS = ["let_me_book", "let_me_confirm", "booking_that_now"]
+BOOKING_FILLERS = ["let_me_book", "let_me_confirm", "booking_that_now", "grand_let_me_book"]
 GENERIC_FILLERS = ["one_moment", "let_me_check", "bear_with_me", "just_a_moment", "let_me_look", 
                    "sure_one_sec", "okay_let_me_see", "right_one_moment", "give_me_a_sec", "let_me_pull_that_up"]
-NAME_CONFIRMATION_FILLERS = ["got_it_checking", "perfect_one_moment", "grand_let_me_check", "grand_one_moment"]
+NAME_CONFIRMATION_FILLERS = ["got_it_checking", "perfect_one_moment", "grand_let_me_check", "grand_one_moment", "let_me_look_you_up"]
 NUMBER_CONFIRMATION_FILLERS = ["thanks_checking", "okay_checking", "one_moment", "let_me_check"]
 SHORT_ACKNOWLEDGMENT_FILLERS = ["grand", "perfect", "great", "got_it", "okay", "right", "sure", "no_problem", "absolutely", "of_course"]
 # Acknowledgment + one moment fillers (for name introductions and service descriptions)

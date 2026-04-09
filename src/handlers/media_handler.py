@@ -75,7 +75,15 @@ ADDRESS_CONFIRM_PATTERNS = ['confirm', 'correct?', 'right?', 'is it', 'is that',
                             'i have your address', 'i have the address', 'your address is',
                             'your address as', 'the address as', 'address on file',
                             'address we have', 'same address', 'still the same address',
-                            'same address as before', 'address as before', 'address still']
+                            'same address as before', 'address as before', 'address still',
+                            'email address']
+
+# Keywords that indicate the AI is asking for the caller's email address
+EMAIL_ASK_KEYWORDS = ['email', 'e-mail', 'email address', 'e-mail address']
+
+# Phrases that indicate the AI is reading back/confirming an email, NOT asking for one
+EMAIL_CONFIRM_PATTERNS = ['your email is', 'your email as', 'email on file',
+                          'same email', 'still the same email', 'email we have']
 
 
 def ai_asked_for_address(text: str) -> bool:
@@ -90,6 +98,19 @@ def ai_asked_for_address(text: str) -> bool:
         return False
     # If the AI is confirming/repeating back an address, don't trigger capture
     if any(cp in lower for cp in ADDRESS_CONFIRM_PATTERNS):
+        return False
+    return True
+
+
+def ai_asked_for_email(text: str) -> bool:
+    """Check if the AI's response is asking the caller for their email address.
+    
+    Returns False if the AI is merely confirming/repeating an email it already has.
+    """
+    lower = text.lower()
+    if not any(kw in lower for kw in EMAIL_ASK_KEYWORDS):
+        return False
+    if any(cp in lower for cp in EMAIL_CONFIRM_PATTERNS):
         return False
     return True
 
@@ -372,62 +393,98 @@ async def media_handler(ws):
                     print(f"   📢 Direct streaming to TTS")
                     direct_start = time_module.time()
                     
-                    async def direct_stream():
-                        nonlocal transfer_number, full_text
-                        # Yield the first token we already got
-                        if not first_token.startswith("<<<"):
-                            full_text += first_token
-                            yield first_token
-                        
-                        # Continue with rest of stream
-                        async for token in text_stream:
-                            if token.startswith("<<<TRANSFER:"):
-                                transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
-                                continue
-                            if token.startswith("<<<SPLIT_TTS:"):
-                                # SPLIT_TTS appeared mid-stream — a tool call is happening.
-                                # We're already in direct mode so we can't switch to parallel.
-                                # The filler text is lost, but the tool result tokens will
-                                # follow shortly. Log this so we can detect pre-check misses.
-                                filler_text = token.replace("<<<SPLIT_TTS:", "").replace(">>>", "").strip()
-                                print(f"   ⚠️ [DIRECT] SPLIT_TTS mid-stream (pre-check missed): '{filler_text}'")
-                                print(f"   ⚠️ [DIRECT] Tool is executing — tokens will resume after tool completes")
-                                continue
-                            if token.startswith("<<<"):
-                                continue
-                            full_text += token
-                            yield token
+                    # Check if first token is a prerecorded direct response
+                    if first_token.startswith("<<<PRERECORDED:"):
+                        phrase_id = first_token.replace("<<<PRERECORDED:", "").replace(">>>", "").strip()
+                        print(f"   🔊 Playing prerecorded direct response: {phrase_id}")
+                        prerecorded_audio = get_filler_audio(phrase_id)
+                        if prerecorded_audio:
+                            # Drain remaining tokens (transfer markers etc) without TTS
+                            async for token in text_stream:
+                                if token.startswith("<<<TRANSFER:"):
+                                    transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
+                            # Play prerecorded audio directly
+                            speaking = True
+                            tts_started_at = time_module.time()
+                            await send_prerecorded_audio(ws, stream_sid, prerecorded_audio)
+                            last_tts_audio_done = asyncio.get_event_loop().time()
+                            last_tts_success = True
+                            asr.clear()
+                            speaking = False
+                            tts_ended_at = last_tts_audio_done
+                            # Get the text for full_text tracking
+                            from src.services.prerecorded_audio import FILLER_PHRASES
+                            full_text = FILLER_PHRASES.get(phrase_id, phrase_id)
+                            print(f"   🔊 Prerecorded direct response done: '{full_text}'")
+                        else:
+                            # Prerecorded audio not in cache — fall back to TTS
+                            print(f"   ⚠️ Prerecorded {phrase_id} not in cache — falling back to TTS")
+                            from src.services.prerecorded_audio import FILLER_PHRASES
+                            fallback_text = FILLER_PHRASES.get(phrase_id, "")
+                            if fallback_text:
+                                async def fallback_stream():
+                                    yield fallback_text
+                                speaking = True
+                                tts_started_at = time_module.time()
+                                await stream_tts(fallback_stream(), ws, stream_sid, lambda: interrupt)
+                                last_tts_audio_done = asyncio.get_event_loop().time()
+                                asr.clear()
+                                speaking = False
+                                tts_ended_at = last_tts_audio_done
+                                full_text = fallback_text
+                    else:
+                        # Normal direct stream — send through TTS
+                        direct_start = time_module.time()
                     
-                    tts_call_start = time_module.time()
-                    _direct_audio_done_fired = False
-                    def _on_direct_audio_done():
-                        nonlocal last_tts_audio_done, _direct_audio_done_fired, speaking, tts_ended_at, last_tts_success
-                        last_tts_audio_done = asyncio.get_event_loop().time()
-                        _direct_audio_done_fired = True
-                        last_tts_success = True
-                        # Clear stale ASR state NOW — the audio just finished sending.
-                        # Anything Deepgram captured during playback is stale echo.
-                        # Anything the caller says AFTER this point is their real response.
-                        asr.clear()
-                        # CRITICAL: Mark speaking as done NOW, not when run() returns.
-                        # run() takes 4-5s after audio finishes (websocket close, etc).
-                        # If we wait, the caller's response gets stuck in barge-in mode
-                        # and the fallback check never runs — causing a freeze.
-                        speaking = False
-                        tts_ended_at = last_tts_audio_done
-                        print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False at audio finish")
-                    await stream_tts(direct_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_direct_audio_done)
-                    if not _direct_audio_done_fired:
-                        last_tts_audio_done = asyncio.get_event_loop().time()
-                        asr.clear()  # Fallback clear if callback didn't fire
-                        speaking = False
-                        tts_ended_at = last_tts_audio_done
-                        last_tts_success = False  # TTS didn't deliver audio — allow caller to repeat
-                        print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False (fallback — callback didn't fire)")
-                    tts_call_end = time_module.time()
-                    direct_time = tts_call_end - direct_start
-                    tts_only_time = tts_call_end - tts_call_start
-                    print(f"[PIPELINE] ⏱️ Direct TTS flow took {direct_time:.3f}s (TTS call: {tts_only_time:.3f}s)")
+                        async def direct_stream():
+                            nonlocal transfer_number, full_text
+                            # Yield the first token we already got
+                            if not first_token.startswith("<<<"):
+                                full_text += first_token
+                                yield first_token
+                            
+                            # Continue with rest of stream
+                            async for token in text_stream:
+                                if token.startswith("<<<TRANSFER:"):
+                                    transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
+                                    continue
+                                if token.startswith("<<<SPLIT_TTS:"):
+                                    # SPLIT_TTS appeared mid-stream — a tool call is happening.
+                                    # We're already in direct mode so we can't switch to parallel.
+                                    # The filler text is lost, but the tool result tokens will
+                                    # follow shortly. Log this so we can detect pre-check misses.
+                                    filler_text = token.replace("<<<SPLIT_TTS:", "").replace(">>>", "").strip()
+                                    print(f"   ⚠️ [DIRECT] SPLIT_TTS mid-stream (pre-check missed): '{filler_text}'")
+                                    print(f"   ⚠️ [DIRECT] Tool is executing — tokens will resume after tool completes")
+                                    continue
+                                if token.startswith("<<<"):
+                                    continue
+                                full_text += token
+                                yield token
+                        
+                        tts_call_start = time_module.time()
+                        _direct_audio_done_fired = False
+                        def _on_direct_audio_done():
+                            nonlocal last_tts_audio_done, _direct_audio_done_fired, speaking, tts_ended_at, last_tts_success
+                            last_tts_audio_done = asyncio.get_event_loop().time()
+                            _direct_audio_done_fired = True
+                            last_tts_success = True
+                            asr.clear()
+                            speaking = False
+                            tts_ended_at = last_tts_audio_done
+                            print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False at audio finish")
+                        await stream_tts(direct_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_direct_audio_done)
+                        if not _direct_audio_done_fired:
+                            last_tts_audio_done = asyncio.get_event_loop().time()
+                            asr.clear()
+                            speaking = False
+                            tts_ended_at = last_tts_audio_done
+                            last_tts_success = False
+                            print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False (fallback — callback didn't fire)")
+                        tts_call_end = time_module.time()
+                        direct_time = tts_call_end - direct_start
+                        tts_only_time = tts_call_end - tts_call_start
+                        print(f"[PIPELINE] ⏱️ Direct TTS flow took {direct_time:.3f}s (TTS call: {tts_only_time:.3f}s)")
                 
                 # Log response
                 total_time = time_module.time() - run_start
@@ -472,6 +529,18 @@ async def media_handler(ws):
                         full_lower = full_text.lower()
                         if any(kw in full_lower for kw in ADDRESS_ASK_KEYWORDS):
                             print(f"🎙️ [ADDR_AUDIO] Phase 1 SKIPPED: AI mentioned address but is confirming, not asking")
+                    
+                    # Email audio capture: same mechanism as address audio
+                    if ai_asked_for_email(full_text):
+                        call_state.awaiting_email_audio = True
+                        call_state._email_audio_collecting = False
+                        call_state._email_audio_ever_asked = True
+                        call_state._email_audio_phase1_time = time_module.time()
+                        print(f"📧 [EMAIL_AUDIO] Phase 1: AI asked for email — will capture caller's next response")
+                    else:
+                        full_lower = full_text.lower()
+                        if any(kw in full_lower for kw in EMAIL_ASK_KEYWORDS):
+                            print(f"📧 [EMAIL_AUDIO] Phase 1 SKIPPED: AI mentioned email but is confirming, not asking")
                 
                 # Handle transfer if requested
                 if transfer_number:
@@ -813,6 +882,40 @@ async def media_handler(ws):
                             call_state._addr_audio_phase1_time = time_module.time() - 5.0  # Approximate
                             call_state._addr_audio_collecting = True
                     
+                    # Email audio capture — Phase 2: same deferred approach as address
+                    if call_state.awaiting_email_audio:
+                        phase1_time = call_state._email_audio_phase1_time
+                        phase_gap = time_module.time() - phase1_time if phase1_time else -1
+                        print(f"📧 [EMAIL_AUDIO] Phase 2: speech_final received, gap since phase1={phase_gap:.1f}s")
+                        text_lower_check = text.lower().strip().rstrip('.,!?')
+                        skip_phrases = {'no', "no i don't", "no i dont", "i don't have one",
+                                        "i dont have one", "no email", "no thanks",
+                                        "i'm not sure", "not sure", "no idea",
+                                        "okay", "ok", "sure", "yeah", "yes", "yep",
+                                        "grand", "go ahead", "fire away", "i don't have email",
+                                        "i dont have email", "no i don't", "no i dont"}
+                        if text_lower_check in skip_phrases or (len(text.split()) <= 3 and text_lower_check.startswith('no')):
+                            print(f"📧 [EMAIL_AUDIO] Skipping capture — caller declined: '{text}'")
+                            call_state.awaiting_email_audio = False
+                            call_state._email_audio_ever_asked = False
+                        else:
+                            call_state.awaiting_email_audio = False
+                            call_state._email_audio_collecting = True
+                            print(f"📧 [EMAIL_AUDIO] Collecting — will capture full audio before LLM responds")
+                    elif (call_state._email_audio_ever_asked
+                          and not call_state.email_audio_captured
+                          and not call_state._email_audio_collecting):
+                        text_lower_check = text.lower().strip().rstrip('.,!?')
+                        skip_phrases = {'no', "no i don't", "no i dont", "no thanks",
+                                        "i don't have one", "i dont have one", "no email",
+                                        "okay", "ok", "yeah", "yes", "that's it", "thanks"}
+                        is_short_decline = text_lower_check in skip_phrases or len(text.split()) <= 2
+                        # Email responses are typically short (e.g. "john at gmail dot com")
+                        if not is_short_decline and len(text.split()) >= 2:
+                            print(f"📧 [EMAIL_AUDIO] Phase 2 FALLBACK: Caller gave email-like response after earlier ask")
+                            call_state._email_audio_phase1_time = time_module.time() - 5.0
+                            call_state._email_audio_collecting = True
+                    
                     # Trim history - keep more context to prevent AI from forgetting
                     # Keep system message + last 50 messages
                     if len(conversation) > 51:
@@ -930,6 +1033,90 @@ async def media_handler(ws):
                                 traceback.print_exc()
                         asyncio.create_task(_capture_address_audio(captured_audio))
                     
+                    # Phase 3: Deferred email audio capture — same mechanism as address
+                    if call_state._email_audio_collecting:
+                        call_state._email_audio_collecting = False
+                        call_state._email_audio_ever_asked = False
+                        call_state.awaiting_email_audio = False
+                        call_state.email_audio_captured = True
+                        phase1_time = call_state._email_audio_phase1_time
+                        print(f"📧 [EMAIL_AUDIO] Phase 3: Capturing email audio before LLM responds")
+                        
+                        full_buffer = list(audio_buffer)
+                        total_packets = len(full_buffer)
+                        now_mono = asyncio.get_event_loop().time()
+                        
+                        if last_tts_audio_done > 0:
+                            since_audio_end = now_mono - last_tts_audio_done
+                            window_seconds = since_audio_end + 2.0
+                            packets_to_take = int(window_seconds * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
+                            packets_to_take = min(packets_to_take, total_packets)
+                            email_buffer_snapshot = full_buffer[-packets_to_take:] if packets_to_take > 0 else full_buffer
+                        elif phase1_time and phase1_time > 0:
+                            elapsed = time_module.time() - phase1_time
+                            packets_to_take = int((elapsed + 3.0) * MULAW_SAMPLE_RATE / MULAW_BYTES_PER_PACKET)
+                            packets_to_take = min(packets_to_take, total_packets)
+                            email_buffer_snapshot = full_buffer[-packets_to_take:] if packets_to_take > 0 else full_buffer
+                        else:
+                            email_buffer_snapshot = full_buffer
+                        
+                        raw_total = sum(len(p) for p in email_buffer_snapshot)
+                        print(f"📧 [EMAIL_AUDIO] Buffer: {len(email_buffer_snapshot)} packets, "
+                              f"{raw_total} bytes, ~{raw_total / MULAW_SAMPLE_RATE:.1f}s")
+                        
+                        captured_email_audio = trim_silence_mulaw(email_buffer_snapshot, energy_threshold=30.0, pad_packets=10)
+                        cap_bytes = len(captured_email_audio)
+                        cap_duration = cap_bytes / MULAW_SAMPLE_RATE
+                        
+                        if cap_duration < 1.0 and len(email_buffer_snapshot) > 0:
+                            captured_email_audio = b''.join(email_buffer_snapshot)
+                            cap_bytes = len(captured_email_audio)
+                        
+                        print(f"📧 [EMAIL_AUDIO] Final: {cap_bytes} bytes, ~{cap_bytes / MULAW_SAMPLE_RATE:.1f}s")
+                        
+                        import time as _time_mod2
+                        email_capture_ts = int(_time_mod2.time())
+                        async def _capture_email_audio(raw_audio, ts=email_capture_ts):
+                            try:
+                                if not raw_audio:
+                                    print(f"⚠️ [EMAIL_AUDIO] Upload skipped — empty audio")
+                                    return
+                                wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
+                                wav_len = len(wav_data)
+                                wav_duration = (wav_len - 44) / (MULAW_SAMPLE_RATE * 2)
+                                print(f"📧 [EMAIL_AUDIO] WAV: {wav_len} bytes, {wav_duration:.1f}s")
+                                
+                                from src.services.storage_r2 import upload_company_file
+                                import io
+                                company_id_int = int(company_id) if company_id else None
+                                if not company_id_int:
+                                    print(f"⚠️ [EMAIL_AUDIO] No company_id, skipping upload")
+                                    return
+                                
+                                filename = f"{call_sid or 'unknown'}_email_{ts}.wav"
+                                print(f"📧 [EMAIL_AUDIO] Uploading: company_{company_id_int}/email_audio/{filename}")
+                                url = await asyncio.to_thread(
+                                    upload_company_file,
+                                    company_id_int,
+                                    io.BytesIO(wav_data),
+                                    filename,
+                                    'email_audio',
+                                    'audio/wav'
+                                )
+                                if url:
+                                    call_state.email_audio_url = url
+                                    call_state.email_audio_captured = True
+                                    print(f"📧 [EMAIL_AUDIO] ✅ Uploaded: {url} ({wav_duration:.1f}s)")
+                                else:
+                                    print(f"⚠️ [EMAIL_AUDIO] Upload returned None")
+                            except ValueError as ve:
+                                print(f"⚠️ [EMAIL_AUDIO] WAV error: {ve}")
+                            except Exception as audio_err:
+                                print(f"⚠️ [EMAIL_AUDIO] Capture failed: {audio_err}")
+                                import traceback
+                                traceback.print_exc()
+                        asyncio.create_task(_capture_email_audio(captured_email_audio))
+                    
                     print(f"[PIPELINE] 🚀 Starting LLM response...")
                     
                     try:
@@ -965,6 +1152,9 @@ async def media_handler(ws):
         print(f"🎙️ Address audio: captured={call_state.address_audio_captured}, url={'set' if call_state.address_audio_url else 'None'}")
         if call_state.address_audio_url:
             print(f"🎙️ Audio URL: {call_state.address_audio_url}")
+        print(f"📧 Email audio: captured={call_state.email_audio_captured}, url={'set' if call_state.email_audio_url else 'None'}")
+        if call_state.email_audio_url:
+            print(f"📧 Email audio URL: {call_state.email_audio_url}")
         print(f"{'#'*60}\n")
         
         # Post-call address re-transcription pipeline
@@ -1010,6 +1200,24 @@ async def media_handler(ws):
         elif call_state.address_audio_url and not _deferred_sms:
             # Address audio captured but no deferred SMS (no booking made, or SMS already sent)
             print(f"🎙️ Address audio captured but no deferred SMS — skipping retranscription pipeline")
+        
+        # Post-call email re-transcription pipeline
+        # If email audio was captured, transcribe it and save to client record
+        if call_state.email_audio_url:
+            _client_id = getattr(call_state, '_deferred_sms_client_id', None)
+            if _client_id:
+                try:
+                    from src.services.address_retranscriber import retranscribe_email
+                    company_id_int = int(company_id) if company_id else None
+                    await retranscribe_email(
+                        audio_url=call_state.email_audio_url,
+                        client_id=_client_id,
+                        company_id=company_id_int,
+                    )
+                except Exception as e:
+                    print(f"⚠️ Email retranscription error: {e}")
+            else:
+                print(f"📧 Email audio captured but no client_id — skipping email retranscription")
         
         # Combined post-call summarization: single LLM call for both job notes + call log
         call_log_id = None

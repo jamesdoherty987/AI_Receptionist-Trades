@@ -93,6 +93,32 @@ def format_for_tts_spelling(text: str) -> str:
     result = phone_pattern.sub(space_out_digits, result)
     
     return result
+
+def humanize_times_for_tts(text: str) -> str:
+    """
+    Convert clock-format times into TTS-friendly spoken forms.
+    
+    TTS engines read "9:00" as "nine oh oh" instead of "nine".
+    This converts times so they sound natural when spoken aloud.
+    
+    Examples:
+        "9:00 AM"  -> "9 AM"
+        "10:00am"  -> "10 am"
+        "2:30 PM"  -> "2 30 PM"
+        "12:15pm"  -> "12 15 pm"
+    """
+    if not text:
+        return text
+    
+    # Remove :00 from on-the-hour times (e.g., "9:00 AM" -> "9 AM", "9:00am" -> "9 am")
+    result = re.sub(r'(\d{1,2}):00\s*((?:a|p)\.?m\.?)', r'\1 \2', text, flags=re.IGNORECASE)
+    
+    # Replace colon with space for non-zero minutes (e.g., "10:30 AM" -> "10 30 AM")
+    # TTS reads "10 30" as "ten thirty" naturally
+    result = re.sub(r'(\d{1,2}):(\d{2})\s*((?:a|p)\.?m\.?)', r'\1 \2 \3', result, flags=re.IGNORECASE)
+    
+    return result
+
 def sanitize_for_tts(text: str) -> str:
     """
     Remove bullet points, dashes, and newline formatting that causes TTS engines
@@ -121,6 +147,9 @@ def sanitize_for_tts(text: str) -> str:
 
     # Clean up leading/trailing whitespace
     result = result.strip()
+
+    # Convert clock times to TTS-friendly spoken forms (e.g., "9:00 AM" -> "9 AM")
+    result = humanize_times_for_tts(result)
 
     return result
 
@@ -904,6 +933,9 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         if not likely_needs_tool:
             ai_asked_for_address_phrases = ["full address", "your address", "eircode", "eir code", "where is the property", "where's the property", "where is the job", "where's the job"]
             ai_asked_for_addr = any(phrase in prev_assistant_msg for phrase in ai_asked_for_address_phrases)
+            # Don't false-trigger on "email address" — that's the email ask, not address ask
+            if ai_asked_for_addr and "email address" in prev_assistant_msg:
+                ai_asked_for_addr = False
             
             # Fallback: if the AI asked for address earlier but there was back-and-forth
             # in between (e.g. caller said "okay", AI said "I'm ready when you are!"),
@@ -1441,6 +1473,8 @@ TOOL RULES:
                     cleaned_token = delta.content.replace('**', '').replace('__', '').replace('~~', '')
                     # Add pauses for spelled-out content (letters/numbers separated by dashes)
                     cleaned_token = format_for_tts_spelling(cleaned_token)
+                    # Fix time pronunciation (e.g., "9:00 AM" -> "9 AM")
+                    cleaned_token = humanize_times_for_tts(cleaned_token)
                     
                     # Debug: Log token yielding
                     if token_count <= 3:
@@ -2480,8 +2514,17 @@ TOOL RULES:
                 except:
                     pass
             
-            # Yield the response
-            yield direct_response
+            # Check if this exact phrase is prerecorded (saves ElevenLabs TTS cost)
+            try:
+                from src.services.prerecorded_audio import get_filler_id_from_message
+                prerecorded_id = get_filler_id_from_message(direct_response)
+            except Exception:
+                prerecorded_id = None
+            if prerecorded_id:
+                print(f"   🔊 [DIRECT] Using prerecorded audio: {prerecorded_id}")
+                yield f"<<<PRERECORDED:{prerecorded_id}>>>"
+            else:
+                yield direct_response
             return
         
         # This should NEVER happen now - but just in case, use a safe fallback

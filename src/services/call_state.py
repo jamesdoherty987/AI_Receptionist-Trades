@@ -78,6 +78,14 @@ class CallState:
     _addr_audio_collecting: bool = False  # True while caller is speaking their address (deferred capture)
     _addr_audio_ever_asked: bool = False  # Stays True once AI asks for address — survives declines
     
+    # --- Email audio capture (piggybacks on address audio mechanism) ---
+    email_audio_url: Optional[str] = None
+    email_audio_captured: bool = False
+    awaiting_email_audio: bool = False
+    _email_audio_phase1_time: float = 0.0
+    _email_audio_collecting: bool = False
+    _email_audio_ever_asked: bool = False
+    
     # --- Availability suggestion tracking (server-side, not LLM-dependent) ---
     suggested_dates: List[str] = field(default_factory=list)  # ISO dates already shown to caller
     
@@ -132,6 +140,12 @@ class CallState:
         self._addr_audio_phase1_time = 0.0
         self._addr_audio_collecting = False
         self._addr_audio_ever_asked = False
+        self.email_audio_url = None
+        self.email_audio_captured = False
+        self.awaiting_email_audio = False
+        self._email_audio_phase1_time = 0.0
+        self._email_audio_collecting = False
+        self._email_audio_ever_asked = False
     
     def reset_reschedule(self):
         """Reset only reschedule-related state."""

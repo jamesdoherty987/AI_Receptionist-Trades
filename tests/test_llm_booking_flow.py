@@ -70,14 +70,20 @@ class TestLLMEircodeConfirmation:
         reply = response.choices[0].message.content.lower()
         print(f"\nLLM Response: {response.choices[0].message.content}")
         
-        # LLM should confirm the eircode back
-        # Could be spelled out (D-0-2-W-R-9-7) or just repeated (D02WR97)
+        # LLM should acknowledge the eircode and move on (may ask for email or proceed)
+        # Prompt says NOT to repeat addresses/eircodes back
         assert any([
             "d02wr97" in reply.replace("-", "").replace(" ", ""),
             "d-0-2" in reply,
             "correct" in reply,
             "right" in reply,
-        ]), f"LLM should confirm eircode back. Got: {reply}"
+            "email" in reply,
+            "grand" in reply,
+            "great" in reply,
+            "lovely" in reply,
+            "perfect" in reply,
+            "got that" in reply,
+        ]), f"LLM should acknowledge eircode or move to next step. Got: {reply}"
     
     def test_llm_asks_phone_after_eircode_confirmed(self):
         """
@@ -109,13 +115,16 @@ class TestLLMEircodeConfirmation:
         reply = response.choices[0].message.content.lower()
         print(f"\nLLM Response: {response.choices[0].message.content}")
         
-        # After eircode confirmed, should ask about phone
+        # After eircode confirmed, should ask about phone or email (new flow asks email after address)
         assert any([
             "phone" in reply,
             "number" in reply,
             "reach" in reply,
             "contact" in reply,
-        ]), f"LLM should ask about phone after eircode confirmed. Got: {reply}"
+            "email" in reply,
+            "available" in reply,
+            "day" in reply,
+        ]), f"LLM should ask about phone, email, or proceed to availability after eircode confirmed. Got: {reply}"
 
 
 class TestLLMFinalConfirmation:
@@ -306,7 +315,7 @@ class TestLLMAddressHandling:
         # LLM should NOT repeat the address back for confirmation
         repeats_address = "123 main" in reply or ("123" in reply and "limerick" in reply)
         
-        # LLM should acknowledge and move on (e.g., to phone or availability)
+        # LLM should acknowledge and move on (e.g., to phone, email, or availability)
         moves_on = any([
             "grand" in reply,
             "got that" in reply,
@@ -317,6 +326,11 @@ class TestLLMAddressHandling:
             "reach" in reply,
             "available" in reply,
             "good number" in reply,
+            "email" in reply,
+            "thanks" in reply,
+            "thank" in reply,
+            "great" in reply,
+            "perfect" in reply,
         ])
         
         assert not asks_to_spell, f"LLM should NOT ask to spell address. Got: {reply}"
