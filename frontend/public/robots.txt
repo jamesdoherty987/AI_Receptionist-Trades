@@ -6,6 +6,7 @@ Allow: /login
 Allow: /signup
 Allow: /privacy
 Allow: /terms
+Allow: /blog
 Allow: /llms.txt
 Allow: /llms-full.txt
 

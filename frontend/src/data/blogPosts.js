@@ -1,0 +1,58 @@
+const blogPosts = [
+  {
+    slug: 'missed-calls-costing-tradespeople-thousands',
+    title: 'Missed Calls Are Costing Irish Tradespeople Thousands Every Year',
+    description: 'Research shows the average tradesperson misses 40% of incoming calls. Here\'s what that actually costs your business — and how to fix it.',
+    date: '2025-04-07',
+    readTime: '6 min read',
+    category: 'Business Growth',
+    keywords: 'missed calls tradespeople Ireland, plumber missed calls, lost revenue trades',
+  },
+  {
+    slug: 'ai-receptionist-vs-hiring-secretary',
+    title: 'AI Receptionist vs Hiring a Secretary: The Real Cost Comparison',
+    description: 'We break down the true cost of hiring a full-time receptionist versus using an AI-powered alternative for your trade business.',
+    date: '2025-04-04',
+    readTime: '7 min read',
+    category: 'Cost Savings',
+    keywords: 'AI receptionist cost, hiring receptionist Ireland, virtual receptionist trades',
+  },
+  {
+    slug: 'how-plumbers-get-more-bookings',
+    title: '7 Proven Ways Plumbers in Ireland Can Get More Bookings',
+    description: 'Practical tips for plumbers to fill their schedule, from answering every call to automating appointment booking.',
+    date: '2025-03-28',
+    readTime: '8 min read',
+    category: 'Tips & Tricks',
+    keywords: 'plumber bookings Ireland, get more plumbing jobs, plumber marketing Ireland',
+  },
+  {
+    slug: 'scheduling-nightmares-how-to-fix-them',
+    title: 'Scheduling Nightmares: Why Double Bookings Happen and How to Stop Them',
+    description: 'Double bookings, forgotten appointments, and scheduling chaos — here\'s why it happens and the simple systems that prevent it.',
+    date: '2025-03-21',
+    readTime: '5 min read',
+    category: 'Productivity',
+    keywords: 'scheduling tradespeople, double booking prevention, trade business scheduling',
+  },
+  {
+    slug: 'google-calendar-sync-for-tradespeople',
+    title: 'Why Every Tradesperson Needs Google Calendar Sync in 2025',
+    description: 'Your phone calendar isn\'t enough. Here\'s how syncing your bookings with Google Calendar can save hours every week.',
+    date: '2025-03-14',
+    readTime: '5 min read',
+    category: 'Technology',
+    keywords: 'Google Calendar tradespeople, calendar sync booking, trade business calendar',
+  },
+  {
+    slug: 'customer-experience-trade-business',
+    title: 'First Impressions Matter: How Your Phone Answering Affects Customer Trust',
+    description: 'The first 10 seconds of a phone call determine whether a customer books or calls your competitor. Here\'s what the research says.',
+    date: '2025-03-07',
+    readTime: '6 min read',
+    category: 'Customer Experience',
+    keywords: 'customer experience trades, phone answering business, first impression tradesperson',
+  },
+];
+
+export default blogPosts;

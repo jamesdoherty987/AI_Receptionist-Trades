@@ -37,4 +37,46 @@
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
+  <url>
+    <loc>https://bookedforyou.ie/blog</loc>
+    <lastmod>2025-04-09</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookedforyou.ie/blog/missed-calls-costing-tradespeople-thousands</loc>
+    <lastmod>2025-04-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bookedforyou.ie/blog/ai-receptionist-vs-hiring-secretary</loc>
+    <lastmod>2025-04-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bookedforyou.ie/blog/how-plumbers-get-more-bookings</loc>
+    <lastmod>2025-03-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bookedforyou.ie/blog/scheduling-nightmares-how-to-fix-them</loc>
+    <lastmod>2025-03-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bookedforyou.ie/blog/google-calendar-sync-for-tradespeople</loc>
+    <lastmod>2025-03-14</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://bookedforyou.ie/blog/customer-experience-trade-business</loc>
+    <lastmod>2025-03-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
 </urlset>

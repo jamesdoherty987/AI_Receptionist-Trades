@@ -1252,7 +1252,7 @@ function Landing() {
             </div>
             <div className="footer-links">
               <div className="footer-column"><h4>Product</h4><a href="#features">Features</a>{showPricing && <a href="#pricing">Pricing</a>}{showReviews && <a href="#testimonials">Testimonials</a>}</div>
-              <div className="footer-column"><h4>Company</h4><a href="#">About Us</a><a href="#" onClick={(e) => { e.preventDefault(); setShowContactModal(true); }}>Contact</a></div>
+              <div className="footer-column"><h4>Company</h4><a href="#">About Us</a><Link to="/blog" onClick={() => window.scrollTo(0, 0)}>Blog</Link><a href="#" onClick={(e) => { e.preventDefault(); setShowContactModal(true); }}>Contact</a></div>
               <div className="footer-column"><h4>Legal</h4><Link to="/privacy" onClick={() => window.scrollTo(0, 0)}>Privacy Policy</Link><Link to="/terms" onClick={() => window.scrollTo(0, 0)}>Terms of Service</Link><Link to="/privacy" onClick={() => window.scrollTo(0, 0)}>Cookie Policy</Link></div>
             </div>
           </div>

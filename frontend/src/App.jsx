@@ -22,6 +22,8 @@ import AdminPanel from './pages/AdminPanel'
 import WorkerForgotPassword from './pages/WorkerForgotPassword'
 import WorkerResetPassword from './pages/WorkerResetPassword'
 import WorkerDashboard from './pages/WorkerDashboard'
+import Blog from './pages/Blog'
+import BlogPost from './pages/BlogPost'
 
 // Loading component
 import LoadingSpinner from './components/LoadingSpinner'
@@ -183,6 +185,8 @@ function AppRoutes() {
       {/* Public pages */}
       <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/terms" element={<TermsOfService />} />
+      <Route path="/blog" element={<Blog />} />
+      <Route path="/blog/:slug" element={<BlogPost />} />
 
       {/* Worker Portal routes */}
       <Route path="/worker/login" element={<WorkerLogin />} />
