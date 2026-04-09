@@ -627,3 +627,103 @@
   line-height: 1.6;
   font-size: 0.95rem;
 }
+
+/* ===== Activity Timeline ===== */
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.timeline-header h3 { margin: 0; }
+
+.timeline-filters {
+  display: flex;
+  gap: 0.2rem;
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.timeline-filter-btn {
+  width: 30px; height: 30px;
+  border: none; border-radius: 6px;
+  background: transparent; color: #94a3b8;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 0.72rem; transition: all 0.15s;
+}
+
+.timeline-filter-btn:hover { color: #475569; background: #e2e8f0; }
+.timeline-filter-btn.active { background: white; color: #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.1s;
+}
+
+.timeline-item:last-child { border-bottom: none; }
+.timeline-item-job:hover { background: #f8fafc; }
+
+.timeline-dot {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  color: white;
+  font-size: 0.65rem;
+}
+
+.timeline-content { flex: 1; min-width: 0; }
+
+.timeline-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.15rem;
+}
+
+.timeline-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.timeline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.timeline-date { display: flex; align-items: center; gap: 0.25rem; }
+.timeline-amount { font-weight: 600; color: #10b981; }
+.timeline-refund { font-weight: 600; color: #ef4444; }
+
+.timeline-stripe-badge {
+  display: inline-flex; align-items: center; gap: 0.2rem;
+  padding: 0.1rem 0.35rem; background: #ecfdf5; color: #059669;
+  border-radius: 4px; font-size: 0.65rem; font-weight: 600;
+}
+
+.timeline-ai-badge {
+  display: inline-flex; align-items: center; gap: 0.2rem;
+  padding: 0.1rem 0.35rem; background: #eff6ff; color: #3b82f6;
+  border-radius: 4px; font-size: 0.65rem; font-weight: 600;
+}

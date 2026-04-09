@@ -2251,6 +2251,14 @@ def worker_update_job_status(job_id):
     # Build update kwargs
     update_kwargs = {'status': new_status}
 
+    # Custom status label (e.g. "Waiting for Parts", "Customer No-Show")
+    status_label = data.get('status_label', '').strip()
+    if status_label:
+        update_kwargs['status_label'] = status_label
+    elif new_status in ('completed', 'cancelled', 'paid'):
+        # Clear label when job reaches a terminal status
+        update_kwargs['status_label'] = None
+
     # If starting job, record start time
     started_at = data.get('started_at')
     if started_at:
@@ -2269,6 +2277,101 @@ def worker_update_job_status(job_id):
             pass
 
     db.update_booking(job_id, company_id=company_id, **update_kwargs)
+
+    # Auto-create next occurrence for recurring jobs
+    if new_status == 'completed':
+        try:
+            booking = db.get_booking(job_id, company_id=company_id)
+            pattern = booking.get('recurrence_pattern') if booking else None
+            if pattern and pattern in ('weekly', 'biweekly', 'monthly', 'quarterly'):
+                from datetime import datetime, timedelta
+                end_date = booking.get('recurrence_end_date')
+                appt = booking.get('appointment_time')
+                if isinstance(appt, str):
+                    appt = datetime.fromisoformat(appt.replace('Z', '+00:00')).replace(tzinfo=None)
+                elif hasattr(appt, 'replace'):
+                    appt = appt.replace(tzinfo=None)
+
+                # Calculate next date
+                if pattern == 'weekly':
+                    next_date = appt + timedelta(weeks=1)
+                elif pattern == 'biweekly':
+                    next_date = appt + timedelta(weeks=2)
+                elif pattern == 'monthly':
+                    month = appt.month + 1
+                    year = appt.year
+                    if month > 12:
+                        month = 1
+                        year += 1
+                    try:
+                        next_date = appt.replace(year=year, month=month)
+                    except ValueError:
+                        # Handle months with fewer days
+                        import calendar
+                        last_day = calendar.monthrange(year, month)[1]
+                        next_date = appt.replace(year=year, month=month, day=min(appt.day, last_day))
+                elif pattern == 'quarterly':
+                    month = appt.month + 3
+                    year = appt.year
+                    while month > 12:
+                        month -= 12
+                        year += 1
+                    try:
+                        next_date = appt.replace(year=year, month=month)
+                    except ValueError:
+                        import calendar
+                        last_day = calendar.monthrange(year, month)[1]
+                        next_date = appt.replace(year=year, month=month, day=min(appt.day, last_day))
+
+                # Check if within end date
+                skip = False
+                if end_date:
+                    if isinstance(end_date, str):
+                        end_date = datetime.fromisoformat(end_date).replace(tzinfo=None)
+                    if next_date.date() > end_date.date() if hasattr(end_date, 'date') else next_date > end_date:
+                        skip = True
+
+                if not skip:
+                    # Create next booking
+                    conn = db.get_connection()
+                    try:
+                        from psycopg2.extras import RealDictCursor
+                        cur = conn.cursor(cursor_factory=RealDictCursor)
+                        cur.execute("""
+                            INSERT INTO bookings (company_id, client_id, appointment_time, service_type,
+                                charge, charge_max, status, payment_status, address, eircode, property_type,
+                                duration_minutes, requires_callout, requires_quote,
+                                recurrence_pattern, recurrence_end_date, parent_booking_id,
+                                created_at, updated_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, 'scheduled', 'unpaid', %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                            RETURNING id
+                        """, (
+                            company_id, booking.get('client_id'), next_date.isoformat(),
+                            booking.get('service_type'), booking.get('charge'), booking.get('charge_max'),
+                            booking.get('address'), booking.get('eircode'), booking.get('property_type'),
+                            booking.get('duration_minutes'), booking.get('requires_callout'), booking.get('requires_quote'),
+                            pattern, booking.get('recurrence_end_date'), job_id
+                        ))
+                        new_booking = cur.fetchone()
+                        new_id = new_booking['id']
+
+                        # Copy worker assignments
+                        cur.execute("""
+                            INSERT INTO worker_assignments (booking_id, worker_id)
+                            SELECT %s, worker_id FROM worker_assignments WHERE booking_id = %s
+                        """, (new_id, job_id))
+                        conn.commit()
+                        cur.close()
+                        print(f"[RECURRING] Created next occurrence #{new_id} for {next_date.isoformat()} from job #{job_id}")
+                    except Exception as e:
+                        conn.rollback()
+                        print(f"[RECURRING] Failed to create next occurrence: {e}")
+                    finally:
+                        db.return_connection(conn)
+        except Exception as e:
+            print(f"[RECURRING] Error checking recurrence: {e}")
+
     return jsonify({"success": True, "status": new_status})
 
 
@@ -5757,6 +5860,110 @@ def add_note_api(client_id):
     return jsonify({"id": note_id, "message": "Note added"}), 201
 
 
+@app.route("/api/clients/<int:client_id>/timeline", methods=["GET"])
+@login_required
+def get_client_timeline(client_id):
+    """Get a chronological activity timeline for a client — jobs, quotes, invoices, call logs, notes."""
+    db = get_database()
+    company_id = session.get('company_id')
+    client = db.get_client(client_id, company_id=company_id)
+    if not client:
+        return jsonify({"error": "Client not found"}), 404
+
+    timeline = []
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Jobs/bookings
+        cur.execute("""
+            SELECT id, appointment_time as date, service_type, status, charge, payment_status, duration_minutes
+            FROM bookings WHERE client_id = %s AND company_id = %s ORDER BY appointment_time DESC
+        """, (client_id, company_id))
+        for row in cur.fetchall():
+            timeline.append({
+                'type': 'job', 'date': str(row['date']),
+                'title': row['service_type'] or 'Job',
+                'status': row['status'], 'amount': float(row['charge'] or 0),
+                'payment_status': row.get('payment_status'),
+                'id': row['id'],
+                'icon': 'fa-wrench', 'color': '#3b82f6'
+            })
+
+        # Quotes
+        cur.execute("""
+            SELECT id, created_at as date, title, status, total
+            FROM quotes WHERE client_id = %s AND company_id = %s ORDER BY created_at DESC
+        """, (client_id, company_id))
+        for row in cur.fetchall():
+            timeline.append({
+                'type': 'quote', 'date': str(row['date']),
+                'title': row['title'] or 'Quote',
+                'status': row['status'], 'amount': float(row['total'] or 0),
+                'id': row['id'],
+                'icon': 'fa-file-invoice', 'color': '#8b5cf6'
+            })
+
+        # Credit notes
+        cur.execute("""
+            SELECT id, created_at as date, credit_note_number, amount, reason, stripe_refund_id
+            FROM credit_notes WHERE client_id = %s AND company_id = %s ORDER BY created_at DESC
+        """, (client_id, company_id))
+        for row in cur.fetchall():
+            timeline.append({
+                'type': 'credit_note', 'date': str(row['date']),
+                'title': f"{row['credit_note_number']} — {row['reason'] or 'Refund'}",
+                'amount': float(row['amount'] or 0),
+                'stripe_refunded': bool(row.get('stripe_refund_id')),
+                'id': row['id'],
+                'icon': 'fa-undo', 'color': '#ef4444'
+            })
+
+        # Call logs (if table exists)
+        try:
+            cur.execute("""
+                SELECT id, created_at as date, duration_seconds, summary, caller_phone
+                FROM call_logs WHERE company_id = %s AND caller_phone = %s ORDER BY created_at DESC LIMIT 20
+            """, (company_id, client.get('phone') or ''))
+            for row in cur.fetchall():
+                dur = row.get('duration_seconds') or 0
+                timeline.append({
+                    'type': 'call', 'date': str(row['date']),
+                    'title': row.get('summary') or f"Phone call ({dur // 60}m {dur % 60}s)",
+                    'duration_seconds': dur,
+                    'id': row['id'],
+                    'icon': 'fa-phone', 'color': '#10b981'
+                })
+        except Exception:
+            pass  # call_logs table may not exist
+
+        # Client notes
+        try:
+            cur.execute("""
+                SELECT id, created_at as date, note, created_by
+                FROM client_notes WHERE client_id = %s ORDER BY created_at DESC
+            """, (client_id,))
+            for row in cur.fetchall():
+                timeline.append({
+                    'type': 'note', 'date': str(row['date']),
+                    'title': row['note'][:120] + ('...' if len(row['note'] or '') > 120 else ''),
+                    'created_by': row.get('created_by', 'user'),
+                    'id': row['id'],
+                    'icon': 'fa-sticky-note', 'color': '#f59e0b'
+                })
+        except Exception:
+            pass
+
+        cur.close()
+    finally:
+        db.return_connection(conn)
+
+    # Sort by date descending
+    timeline.sort(key=lambda x: x.get('date', ''), reverse=True)
+    return jsonify(timeline)
+
+
 @app.route("/api/bookings/<int:booking_id>/notes", methods=["GET", "POST"])
 @login_required
 @subscription_required
@@ -6138,6 +6345,14 @@ def bookings_api():
                     print(f"[INFO] Address audio URL carried over to booking {booking_id}: {previous_address_audio_url}")
                 except Exception as e:
                     print(f"[WARNING] Could not carry over address audio URL: {e}")
+
+            # Save recurrence pattern if set
+            recurrence_pattern = data.get('recurrence_pattern', '').strip()
+            recurrence_end_date = data.get('recurrence_end_date', '').strip() or None
+            if recurrence_pattern and recurrence_pattern in ('weekly', 'biweekly', 'monthly', 'quarterly'):
+                db.update_booking(booking_id, company_id=company_id,
+                    recurrence_pattern=recurrence_pattern,
+                    recurrence_end_date=recurrence_end_date)
             
             # Assign worker(s) — reuse the worker_ids parsed earlier for conflict checking
             assigned_worker_ids_for_notif = []
@@ -7025,6 +7240,10 @@ def booking_detail_api(booking_id):
             'job_completed_at': booking.get('job_completed_at'),
             'actual_duration_minutes': booking.get('actual_duration_minutes'),
             'duration_minutes': booking.get('duration_minutes'),
+            'recurrence_pattern': booking.get('recurrence_pattern'),
+            'recurrence_end_date': booking.get('recurrence_end_date'),
+            'status_label': booking.get('status_label'),
+            'stripe_checkout_session_id': booking.get('stripe_checkout_session_id'),
         }
         
         return jsonify(response_booking)
@@ -7071,6 +7290,63 @@ def booking_detail_api(booking_id):
         
         success = db.update_booking(booking_id, company_id=company_id, **sanitized_data)
         
+        # Auto-create next occurrence for recurring jobs when completed
+        if success and sanitized_data.get('status') == 'completed':
+            try:
+                updated = db.get_booking(booking_id, company_id=company_id)
+                rec_pattern = updated.get('recurrence_pattern') if updated else None
+                if rec_pattern and rec_pattern in ('weekly', 'biweekly', 'monthly', 'quarterly'):
+                    from datetime import datetime, timedelta
+                    appt = updated.get('appointment_time')
+                    if isinstance(appt, str):
+                        appt = datetime.fromisoformat(appt.replace('Z', '+00:00')).replace(tzinfo=None)
+                    elif hasattr(appt, 'replace'):
+                        appt = appt.replace(tzinfo=None)
+                    if rec_pattern == 'weekly': next_dt = appt + timedelta(weeks=1)
+                    elif rec_pattern == 'biweekly': next_dt = appt + timedelta(weeks=2)
+                    elif rec_pattern == 'monthly':
+                        m, y = appt.month + 1, appt.year
+                        if m > 12: m, y = 1, y + 1
+                        import calendar
+                        next_dt = appt.replace(year=y, month=m, day=min(appt.day, calendar.monthrange(y, m)[1]))
+                    elif rec_pattern == 'quarterly':
+                        m, y = appt.month + 3, appt.year
+                        while m > 12: m, y = m - 12, y + 1
+                        import calendar
+                        next_dt = appt.replace(year=y, month=m, day=min(appt.day, calendar.monthrange(y, m)[1]))
+                    end_d = updated.get('recurrence_end_date')
+                    skip = False
+                    if end_d:
+                        if isinstance(end_d, str): end_d = datetime.fromisoformat(end_d).replace(tzinfo=None)
+                        if next_dt.date() > (end_d.date() if hasattr(end_d, 'date') else end_d): skip = True
+                    if not skip:
+                        conn2 = db.get_connection()
+                        try:
+                            from psycopg2.extras import RealDictCursor
+                            cur2 = conn2.cursor(cursor_factory=RealDictCursor)
+                            cur2.execute("""
+                                INSERT INTO bookings (company_id, client_id, appointment_time, service_type,
+                                    charge, charge_max, status, payment_status, address, eircode, property_type,
+                                    duration_minutes, requires_callout, requires_quote,
+                                    recurrence_pattern, recurrence_end_date, parent_booking_id,
+                                    created_at, updated_at)
+                                VALUES (%s,%s,%s,%s,%s,%s,'scheduled','unpaid',%s,%s,%s,%s,%s,%s,%s,%s,%s,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                                RETURNING id
+                            """, (company_id, updated.get('client_id'), next_dt.isoformat(),
+                                  updated.get('service_type'), updated.get('charge'), updated.get('charge_max'),
+                                  updated.get('address'), updated.get('eircode'), updated.get('property_type'),
+                                  updated.get('duration_minutes'), updated.get('requires_callout'), updated.get('requires_quote'),
+                                  rec_pattern, updated.get('recurrence_end_date'), booking_id))
+                            new_b = cur2.fetchone()
+                            cur2.execute("INSERT INTO worker_assignments (booking_id, worker_id) SELECT %s, worker_id FROM worker_assignments WHERE booking_id = %s", (new_b['id'], booking_id))
+                            conn2.commit(); cur2.close()
+                        except Exception as e:
+                            conn2.rollback(); print(f"[RECURRING] Main update recurring failed: {e}")
+                        finally:
+                            db.return_connection(conn2)
+            except Exception as e:
+                print(f"[RECURRING] Error in main update: {e}")
+
         # Update notes if provided
         if notes is not None:
             # Clear existing notes and add the new note

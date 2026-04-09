@@ -1639,7 +1639,7 @@ class PostgreSQLDatabaseWrapper:
                         b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
                         b.address_audio_url, b.requires_callout, b.requires_quote,
-                        b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id,
+                        b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
@@ -1651,7 +1651,7 @@ class PostgreSQLDatabaseWrapper:
                              b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
                              b.address_audio_url, b.requires_callout, b.requires_quote,
-                             b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id,
+                             b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """, (company_id,))
@@ -1663,7 +1663,7 @@ class PostgreSQLDatabaseWrapper:
                         b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                         b.address, b.eircode, b.property_type, b.duration_minutes,
                         b.address_audio_url, b.requires_callout, b.requires_quote,
-                        b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id,
+                        b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
@@ -1674,7 +1674,7 @@ class PostgreSQLDatabaseWrapper:
                              b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
                              b.address_audio_url, b.requires_callout, b.requires_quote,
-                             b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id,
+                             b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """)
@@ -2352,7 +2352,8 @@ class PostgreSQLDatabaseWrapper:
                           'status', 'phone_number', 'email', 'charge', 'charge_max', 'payment_status', 
                           'payment_method', 'urgency', 'address', 'eircode', 'property_type',
                           'duration_minutes', 'address_audio_url', 'requires_callout', 'requires_quote',
-                          'photo_urls', 'job_started_at', 'job_completed_at', 'actual_duration_minutes']:
+                          'photo_urls', 'job_started_at', 'job_completed_at', 'actual_duration_minutes',
+                          'status_label', 'recurrence_pattern', 'recurrence_end_date', 'parent_booking_id']:
                     fields.append(f"{db_field} = %s")
                     values.append(value)
             
@@ -2915,7 +2916,8 @@ class PostgreSQLDatabaseWrapper:
             query = """
                 SELECT b.id, b.appointment_time, c.name as client_name, b.service_type, 
                        b.status, b.address, b.phone_number, wa.assigned_at,
-                       b.job_started_at, b.job_completed_at, b.actual_duration_minutes
+                       b.job_started_at, b.job_completed_at, b.actual_duration_minutes,
+                       b.status_label, b.recurrence_pattern, b.charge, b.duration_minutes, b.eircode
                 FROM worker_assignments wa
                 JOIN bookings b ON wa.booking_id = b.id
                 LEFT JOIN clients c ON b.client_id = c.id

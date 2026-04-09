@@ -220,8 +220,8 @@ function WorkerDashboard() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ jobId, status, started_at, completed_at, actual_duration_minutes }) => 
-      workerUpdateJobStatus(jobId, { status, started_at, completed_at, actual_duration_minutes }),
+    mutationFn: ({ jobId, status, started_at, completed_at, actual_duration_minutes, status_label }) => 
+      workerUpdateJobStatus(jobId, { status, started_at, completed_at, actual_duration_minutes, status_label }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['worker-job', selectedJobId] });
@@ -539,6 +539,7 @@ function WorkerDashboard() {
                   <div className="wjd-title">
                     <h2>{job.customer_name || job.client_name || 'Job'}</h2>
                     <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                    {job.status_label && <span className="worker-job-label"><i className="fas fa-tag"></i> {job.status_label}</span>}
                   </div>
                   <div className="wjd-actions">
                     {directionsUrl && (
@@ -585,7 +586,9 @@ function WorkerDashboard() {
                     {/* Status dropdown for all statuses */}
                     <div className="wjd-status-dropdown" style={{ position: 'relative' }}>
                       <button className="wjd-btn" onClick={() => setShowStatusDropdown(!showStatusDropdown)}>
-                        <i className="fas fa-exchange-alt"></i> Status <i className="fas fa-chevron-down" style={{ fontSize: '0.7em', marginLeft: 2 }}></i>
+                        <i className="fas fa-exchange-alt"></i> Status
+                        {job.status_label && <span style={{ fontSize: '0.75em', opacity: 0.8, marginLeft: 4 }}>({job.status_label})</span>}
+                        <i className="fas fa-chevron-down" style={{ fontSize: '0.7em', marginLeft: 2 }}></i>
                       </button>
                       {showStatusDropdown && (
                         <>
@@ -613,6 +616,19 @@ function WorkerDashboard() {
                                   setShowStatusDropdown(false);
                                 }}>
                                 <i className={s.icon} style={{ color: s.color }}></i> {s.label}
+                              </button>
+                            ))}
+                            <div className="wjd-dropdown-divider"></div>
+                            <div className="wjd-dropdown-section-label">Custom Labels</div>
+                            {['Waiting for Parts', 'Customer No-Show', 'Needs Follow-Up', 'On Hold', 'Rescheduling'].map(label => (
+                              <button key={label}
+                                className={job.status_label === label ? 'active' : ''}
+                                onClick={() => {
+                                  statusMutation.mutate({ jobId: selectedJobId, status: job.status, status_label: job.status_label === label ? '' : label });
+                                  setShowStatusDropdown(false);
+                                }}>
+                                <i className="fas fa-tag" style={{ color: '#94a3b8' }}></i> {label}
+                                {job.status_label === label && <i className="fas fa-check" style={{ marginLeft: 'auto', color: '#10b981', fontSize: '0.7em' }}></i>}
                               </button>
                             ))}
                           </div>

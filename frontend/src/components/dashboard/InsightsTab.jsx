@@ -24,10 +24,49 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
   });
   const [showSectionPicker, setShowSectionPicker] = useState(false);
 
+  // Widget order (persisted)
+  const [widgetOrder, setWidgetOrder] = useState(() => {
+    try {
+      const saved = localStorage.getItem('insights_widget_order');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+
+  const WIDGET_DEFS = [
+    { key: 'overviewCards', label: 'Overview Cards', icon: 'fa-th-large' },
+    { key: 'statsCards', label: 'Quick Stats', icon: 'fa-chart-pie' },
+    { key: 'bookingActivity', label: 'Booking Activity', icon: 'fa-chart-bar' },
+    { key: 'revenueTrend', label: 'Revenue Trend', icon: 'fa-chart-line' },
+    { key: 'clientGrowth', label: 'Client Growth', icon: 'fa-user-plus' },
+    { key: 'servicePopularity', label: 'Service Popularity', icon: 'fa-star' },
+    { key: 'workerLeaderboard', label: 'Worker Leaderboard', icon: 'fa-trophy' },
+    { key: 'heatmap', label: 'Busiest Hours', icon: 'fa-fire' },
+    { key: 'cancellationTrend', label: 'Cancellation Trend', icon: 'fa-times-circle' },
+    { key: 'durationDistribution', label: 'Job Duration', icon: 'fa-clock' },
+  ];
+
+  const orderedWidgets = widgetOrder
+    ? widgetOrder.map(k => WIDGET_DEFS.find(w => w.key === k)).filter(Boolean)
+    : WIDGET_DEFS;
+  // Add any new widgets not in saved order
+  const orderedKeys = new Set(orderedWidgets.map(w => w.key));
+  WIDGET_DEFS.forEach(w => { if (!orderedKeys.has(w.key)) orderedWidgets.push(w); });
+
   const toggleSection = (key) => {
     const next = { ...showSections, [key]: !showSections[key] };
     setShowSections(next);
     localStorage.setItem('insights_visible_sections', JSON.stringify(next));
+  };
+
+  const moveWidget = (key, direction) => {
+    const keys = orderedWidgets.map(w => w.key);
+    const idx = keys.indexOf(key);
+    if (idx < 0) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= keys.length) return;
+    [keys[idx], keys[newIdx]] = [keys[newIdx], keys[idx]];
+    setWidgetOrder(keys);
+    localStorage.setItem('insights_widget_order', JSON.stringify(keys));
   };
 
   const stats = useMemo(() => {
@@ -266,26 +305,25 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
       {/* Section Visibility Toggle */}
       {showSectionPicker && (
       <div className="fin-section-toggle-bar">
-        <div className="fin-section-picker">
-          {[
-              { key: 'overviewCards', label: 'Overview Cards', icon: 'fa-th-large' },
-              { key: 'statsCards', label: 'Stats Cards', icon: 'fa-chart-pie' },
-              { key: 'bookingActivity', label: 'Booking Activity', icon: 'fa-chart-bar' },
-              { key: 'clientGrowth', label: 'Client Growth', icon: 'fa-user-plus' },
-              { key: 'servicePopularity', label: 'Service Popularity', icon: 'fa-concierge-bell' },
-              { key: 'workerLeaderboard', label: 'Worker Leaderboard', icon: 'fa-trophy' },
-              { key: 'heatmap', label: 'Busiest Hours', icon: 'fa-clock' },
-              { key: 'revenueTrend', label: 'Revenue Trend', icon: 'fa-euro-sign' },
-              { key: 'cancellationTrend', label: 'Cancellation Trend', icon: 'fa-times-circle' },
-              { key: 'durationDistribution', label: 'Job Durations', icon: 'fa-hourglass-half' },
-            ].map(s => (
-              <button key={s.key} className={`fin-section-chip ${showSections[s.key] ? 'active' : ''}`}
-                onClick={() => toggleSection(s.key)}>
-                <i className={`fas ${s.icon}`}></i> {s.label}
-                <i className={`fas ${showSections[s.key] ? 'fa-eye' : 'fa-eye-slash'}`}></i>
+        <div className="insights-widget-picker">
+          {orderedWidgets.map((w, idx) => (
+            <div key={w.key} className={`insights-widget-item ${showSections[w.key] ? 'active' : ''}`}>
+              <div className="insights-widget-reorder">
+                <button className="insights-reorder-btn" onClick={() => moveWidget(w.key, -1)} disabled={idx === 0} title="Move up">
+                  <i className="fas fa-chevron-up"></i>
+                </button>
+                <button className="insights-reorder-btn" onClick={() => moveWidget(w.key, 1)} disabled={idx === orderedWidgets.length - 1} title="Move down">
+                  <i className="fas fa-chevron-down"></i>
+                </button>
+              </div>
+              <button className="insights-widget-toggle" onClick={() => toggleSection(w.key)}>
+                <i className={`fas ${w.icon}`}></i>
+                <span>{w.label}</span>
+                <i className={`fas ${showSections[w.key] ? 'fa-eye' : 'fa-eye-slash'}`} style={{ marginLeft: 'auto', opacity: 0.5 }}></i>
               </button>
-            ))}
-          </div>
+            </div>
+          ))}
+        </div>
       </div>
       )}
 

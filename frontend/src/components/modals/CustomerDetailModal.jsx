@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getClient, updateClient, deleteClient, getBookings, addClientNote } from '../../services/api';
+import { getClient, updateClient, deleteClient, getBookings, addClientNote, getClientTimeline } from '../../services/api';
 import Modal from './Modal';
 import JobDetailModal from './JobDetailModal';
 import { useToast } from '../Toast';
@@ -16,6 +16,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
   const [newNote, setNewNote] = useState('');
   const [isAddingNote, setIsAddingNote] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
+  const [timelineFilter, setTimelineFilter] = useState('all');
 
   // Handle escape key to close delete confirmation
   useEffect(() => {
@@ -39,6 +40,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       setNewNote('');
       setIsAddingNote(false);
       setSelectedJobId(null);
+      setTimelineFilter('all');
     }
   }, [isOpen]);
 
@@ -70,6 +72,17 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
   const clientBookings = allBookings?.filter(
     booking => booking.client_id == clientId
   ) || [];
+
+  const { data: timeline = [] } = useQuery({
+    queryKey: ['client-timeline', clientId],
+    queryFn: async () => (await getClientTimeline(clientId)).data,
+    enabled: isOpen && !!clientId,
+    staleTime: 30000,
+  });
+
+  const filteredTimeline = timelineFilter === 'all'
+    ? timeline
+    : timeline.filter(e => e.type === timelineFilter);
 
   const updateMutation = useMutation({
     mutationFn: (data) => updateClient(clientId, data),
@@ -453,60 +466,64 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
             </div>
           </div>
 
-          {/* Right Column - Booking History */}
+          {/* Right Column - Activity Timeline */}
           <div className="customer-modal-column">
             <div className="info-card bookings-card">
-              <h3><i className="fas fa-history"></i> Jobs History ({totalBookings})</h3>
-              <div className="bookings-list">
-                {clientBookings.length === 0 ? (
+              <div className="timeline-header">
+                <h3><i className="fas fa-stream"></i> Activity Timeline</h3>
+                <div className="timeline-filters">
+                  {[
+                    { key: 'all', label: 'All', icon: 'fa-list' },
+                    { key: 'job', label: 'Jobs', icon: 'fa-wrench' },
+                    { key: 'quote', label: 'Quotes', icon: 'fa-file-invoice' },
+                    { key: 'call', label: 'Calls', icon: 'fa-phone' },
+                    { key: 'note', label: 'Notes', icon: 'fa-sticky-note' },
+                  ].map(f => (
+                    <button key={f.key} className={`timeline-filter-btn ${timelineFilter === f.key ? 'active' : ''}`}
+                      onClick={() => setTimelineFilter(f.key)} title={f.label}>
+                      <i className={`fas ${f.icon}`}></i>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="timeline-list">
+                {filteredTimeline.length === 0 ? (
                   <div className="empty-bookings">
-                    <i className="fas fa-calendar-times"></i>
-                    <p>No jobs yet</p>
+                    <i className="fas fa-stream"></i>
+                    <p>No activity yet</p>
                   </div>
                 ) : (
-                  clientBookings
-                    .sort((a, b) => new Date(b.appointment_time) - new Date(a.appointment_time))
-                    .slice(0, 8)
-                    .map(booking => (
-                      <div 
-                        key={booking.id} 
-                        className="booking-item booking-item-clickable"
-                        onClick={() => setSelectedJobId(booking.id)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedJobId(booking.id); }}
-                      >
-                        <div className="booking-item-main">
-                          <span className="booking-service">{booking.service_type || booking.service || 'Service'}</span>
-                          <span className={`badge badge-sm ${getStatusBadgeClass(booking.status)}`}>
-                            {booking.status}
-                          </span>
+                  filteredTimeline.slice(0, 30).map((event, idx) => (
+                    <div key={`${event.type}-${event.id}-${idx}`}
+                      className={`timeline-item timeline-item-${event.type}`}
+                      onClick={() => event.type === 'job' ? setSelectedJobId(event.id) : null}
+                      role={event.type === 'job' ? 'button' : undefined}
+                      tabIndex={event.type === 'job' ? 0 : undefined}
+                      style={{ cursor: event.type === 'job' ? 'pointer' : 'default' }}>
+                      <div className="timeline-dot" style={{ background: event.color || '#94a3b8' }}>
+                        <i className={`fas ${event.icon || 'fa-circle'}`}></i>
+                      </div>
+                      <div className="timeline-content">
+                        <div className="timeline-top">
+                          <span className="timeline-title">{event.title}</span>
+                          {event.status && (
+                            <span className={`badge badge-sm ${getStatusBadgeClass(event.status)}`}>{event.status}</span>
+                          )}
                         </div>
-                        <div className="booking-item-meta">
-                          <span className="booking-date">
-                            <i className="fas fa-calendar"></i>
-                            {formatDateTime(booking.appointment_time)}
+                        <div className="timeline-meta">
+                          <span className="timeline-date">
+                            {new Date(event.date).toLocaleDateString('en-IE', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {' '}
+                            {new Date(event.date).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}
                           </span>
-                          {booking.address_audio_url && (
-                            <button 
-                              className="btn-audio-inline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const audio = new Audio(getProxiedMediaUrl(booking.address_audio_url));
-                                audio.play();
-                              }}
-                              title="Listen to address"
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#3b82f6', padding: '2px 6px', fontSize: '0.85em' }}
-                            >
-                              <i className="fas fa-volume-up"></i>
-                            </button>
-                          )}
-                          {(booking.estimated_charge || booking.charge) && (
-                            <span className="booking-price">{formatCurrency(booking.estimated_charge || booking.charge)}</span>
-                          )}
+                          {event.amount > 0 && <span className="timeline-amount">{formatCurrency(event.amount)}</span>}
+                          {event.type === 'credit_note' && <span className="timeline-refund">-{formatCurrency(event.amount)}</span>}
+                          {event.stripe_refunded && <span className="timeline-stripe-badge"><i className="fas fa-credit-card"></i> Refunded</span>}
+                          {event.created_by === 'ai' && <span className="timeline-ai-badge"><i className="fas fa-robot"></i> AI</span>}
                         </div>
                       </div>
-                    ))
+                    </div>
+                  ))
                 )}
               </div>
             </div>

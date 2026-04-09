@@ -106,7 +106,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
   
   const [formData, setFormData] = useState({
     client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '',
-    property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false
+    property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false, recurrence_pattern: '', recurrence_end_date: ''
   });
   
   const [selectedDate, setSelectedDate] = useState('');
@@ -262,7 +262,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
   });
 
   const resetForm = () => {
-    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false });
+    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false, recurrence_pattern: '', recurrence_end_date: '' });
     setSelectedDate(''); setSelectedService(null); setAnyWorkerMode(true); setAssignedWorkers([]);
     setCustomerPickerOpen(false); setCustomerSearch(''); setSelectedCustomer(null);
     const n = new Date(); setCalMonth(n.getMonth()); setCalYear(n.getFullYear());
@@ -727,6 +727,36 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
           </div>
           )}
           
+          {/* Recurring Job Toggle */}
+          <div className="form-group">
+            <label className="form-label">Recurring Job? <HelpTooltip text="Set this job to repeat automatically. When completed, the next occurrence will be auto-created at the same time and day of week." /></label>
+            <div className="callout-toggle-wrapper">
+              <button type="button" className={`callout-toggle ${formData.recurrence_pattern ? 'active' : ''}`}
+                onClick={() => setFormData(prev => ({ ...prev, recurrence_pattern: prev.recurrence_pattern ? '' : 'weekly' }))}
+                role="switch" aria-checked={!!formData.recurrence_pattern}>
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">{formData.recurrence_pattern ? 'Yes — this job repeats' : 'No — one-time job'}</span>
+            </div>
+            {formData.recurrence_pattern && (
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                <select name="recurrence_pattern" className="form-input" style={{ flex: '1', minWidth: '140px' }}
+                  value={formData.recurrence_pattern} onChange={handleChange}>
+                  <option value="weekly">Every Week</option>
+                  <option value="biweekly">Every 2 Weeks</option>
+                  <option value="monthly">Every Month</option>
+                  <option value="quarterly">Every 3 Months</option>
+                </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <label className="form-label" style={{ margin: 0, fontSize: '0.82rem' }}>Until</label>
+                  <input type="date" name="recurrence_end_date" className="form-input" style={{ width: 'auto' }}
+                    value={formData.recurrence_end_date || ''} onChange={handleChange}
+                    min={new Date().toISOString().split('T')[0]} placeholder="No end date" />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="form-group">
             <label className="form-label">Notes</label>
             <textarea name="notes" className="form-textarea" value={formData.notes} onChange={handleChange} rows="3" placeholder="Additional details" />
