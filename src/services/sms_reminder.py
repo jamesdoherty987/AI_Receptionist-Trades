@@ -344,6 +344,133 @@ def get_sms_service() -> SMSReminderService:
     return _sms_service
 
 
+def notify_customer(notification_type: str, customer_email: str = None,
+                    customer_phone: str = None, **kwargs) -> bool:
+    """
+    Send a notification to a customer, preferring email over SMS.
+    
+    Tries email first if the customer has an email address and the email
+    service is configured. Falls back to SMS if email fails or isn't available.
+    
+    Args:
+        notification_type: One of 'booking_confirmation', 'cancellation', 
+                          'reschedule', 'day_before_reminder'
+        customer_email: Customer's email address (optional)
+        customer_phone: Customer's phone number (optional)
+        **kwargs: Additional arguments passed to the email/SMS method
+                  (appointment_time, customer_name, service_type, company_name, etc.)
+    
+    Returns:
+        True if notification was sent via either channel, False if both failed
+    """
+    sent = False
+    channel = None
+    
+    # Try email first
+    if customer_email:
+        try:
+            from src.services.email_reminder import get_email_service
+            email_svc = get_email_service()
+            if email_svc.configured:
+                if notification_type == 'booking_confirmation':
+                    sent = email_svc.send_booking_confirmation(
+                        to_email=customer_email,
+                        appointment_time=kwargs.get('appointment_time'),
+                        customer_name=kwargs.get('customer_name', 'Customer'),
+                        service_type=kwargs.get('service_type', 'appointment'),
+                        company_name=kwargs.get('company_name'),
+                        worker_names=kwargs.get('worker_names'),
+                        address=kwargs.get('address'),
+                    )
+                elif notification_type == 'cancellation':
+                    sent = email_svc.send_cancellation_email(
+                        to_email=customer_email,
+                        customer_name=kwargs.get('customer_name', 'Customer'),
+                        appointment_time=kwargs.get('appointment_time'),
+                        service_type=kwargs.get('service_type', 'appointment'),
+                        company_name=kwargs.get('company_name'),
+                        is_full_day=kwargs.get('is_full_day', False),
+                    )
+                elif notification_type == 'reschedule':
+                    sent = email_svc.send_reschedule_email(
+                        to_email=customer_email,
+                        customer_name=kwargs.get('customer_name', 'Customer'),
+                        new_time=kwargs.get('new_time'),
+                        service_type=kwargs.get('service_type', 'appointment'),
+                        company_name=kwargs.get('company_name'),
+                        is_full_day=kwargs.get('is_full_day', False),
+                    )
+                elif notification_type == 'day_before_reminder':
+                    sent = email_svc.send_day_before_reminder(
+                        to_email=customer_email,
+                        appointment_time=kwargs.get('appointment_time'),
+                        customer_name=kwargs.get('customer_name', 'Customer'),
+                        service_type=kwargs.get('service_type', 'appointment'),
+                        company_name=kwargs.get('company_name'),
+                        worker_names=kwargs.get('worker_names'),
+                    )
+                
+                if sent:
+                    channel = 'email'
+                    print(f"[NOTIFY] ✅ {notification_type} sent via EMAIL to {customer_email}")
+        except Exception as e:
+            print(f"[NOTIFY] ⚠️ Email failed for {notification_type}: {e}")
+    
+    # Fall back to SMS if email wasn't sent
+    if not sent and customer_phone:
+        try:
+            sms_svc = get_sms_service()
+            if sms_svc.client:
+                if notification_type == 'booking_confirmation':
+                    sent = sms_svc.send_booking_confirmation(
+                        to_number=customer_phone,
+                        appointment_time=kwargs.get('appointment_time'),
+                        customer_name=kwargs.get('customer_name', 'Customer'),
+                        service_type=kwargs.get('service_type', 'appointment'),
+                        company_name=kwargs.get('company_name'),
+                        worker_names=kwargs.get('worker_names'),
+                        address=kwargs.get('address'),
+                    )
+                elif notification_type == 'cancellation':
+                    sent = sms_svc.send_cancellation_sms(
+                        to_number=customer_phone,
+                        customer_name=kwargs.get('customer_name', 'Customer'),
+                        appointment_time=kwargs.get('appointment_time'),
+                        service_type=kwargs.get('service_type', 'appointment'),
+                        company_name=kwargs.get('company_name'),
+                        is_full_day=kwargs.get('is_full_day', False),
+                    )
+                elif notification_type == 'reschedule':
+                    sent = sms_svc.send_reschedule_sms(
+                        to_number=customer_phone,
+                        customer_name=kwargs.get('customer_name', 'Customer'),
+                        new_time=kwargs.get('new_time'),
+                        service_type=kwargs.get('service_type', 'appointment'),
+                        company_name=kwargs.get('company_name'),
+                        is_full_day=kwargs.get('is_full_day', False),
+                    )
+                elif notification_type == 'day_before_reminder':
+                    sent = sms_svc.send_day_before_reminder(
+                        to_number=customer_phone,
+                        appointment_time=kwargs.get('appointment_time'),
+                        customer_name=kwargs.get('customer_name', 'Customer'),
+                        service_type=kwargs.get('service_type', 'appointment'),
+                        company_name=kwargs.get('company_name'),
+                        worker_names=kwargs.get('worker_names'),
+                    )
+                
+                if sent:
+                    channel = 'sms'
+                    print(f"[NOTIFY] ✅ {notification_type} sent via SMS to {customer_phone}")
+        except Exception as e:
+            print(f"[NOTIFY] ⚠️ SMS failed for {notification_type}: {e}")
+    
+    if not sent:
+        print(f"[NOTIFY] ❌ {notification_type} could not be sent (no email or phone, or both failed)")
+    
+    return sent
+
+
 def send_day_before_reminders() -> int:
     """
     Query all bookings scheduled for tomorrow and send SMS reminders.
@@ -355,11 +482,6 @@ def send_day_before_reminders() -> int:
     from src.services.database import get_database
 
     db = get_database()
-    sms = get_sms_service()
-
-    if not sms.client:
-        print("[SMS-REMINDER] Twilio not configured, skipping day-before reminders")
-        return 0
 
     now = datetime.now()
     tomorrow_start = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -376,7 +498,7 @@ def send_day_before_reminders() -> int:
             SELECT
                 b.id, b.appointment_time, b.service_type,
                 b.phone_number, b.company_id,
-                c.name AS client_name, c.phone AS client_phone,
+                c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
                 comp.company_name,
                 COALESCE(comp.send_reminder_sms, FALSE) AS send_reminder_sms,
                 ARRAY_AGG(w.name) FILTER (WHERE w.name IS NOT NULL) AS worker_names
@@ -391,7 +513,7 @@ def send_day_before_reminders() -> int:
               AND COALESCE(b.reminder_sent, FALSE) = FALSE
             GROUP BY b.id, b.appointment_time, b.service_type,
                      b.phone_number, b.company_id,
-                     c.name, c.phone, comp.company_name, comp.send_reminder_sms
+                     c.name, c.phone, c.email, comp.company_name, comp.send_reminder_sms
             ORDER BY b.appointment_time
         """, (tomorrow_start.strftime("%Y-%m-%d %H:%M:%S"),
               tomorrow_end.strftime("%Y-%m-%d %H:%M:%S")))
@@ -409,13 +531,15 @@ def send_day_before_reminders() -> int:
     sent_count = 0
     for booking in bookings:
         phone = booking.get('phone_number') or booking.get('client_phone')
-        if not phone:
-            print(f"  [SKIP] Booking {booking['id']}: no phone number")
+        customer_email = booking.get('client_email')
+        
+        if not phone and not customer_email:
+            print(f"  [SKIP] Booking {booking['id']}: no phone number or email")
             continue
 
-        # Check if reminder SMS is enabled for this company
+        # Check if reminder is enabled for this company
         if booking.get('send_reminder_sms') is False:
-            print(f"  [SKIP] Booking {booking['id']}: reminder SMS disabled for company {booking.get('company_id')}")
+            print(f"  [SKIP] Booking {booking['id']}: reminders disabled for company {booking.get('company_id')}")
             continue
 
         customer_name = booking.get('client_name') or 'Customer'
@@ -427,8 +551,10 @@ def send_day_before_reminders() -> int:
         if isinstance(appt_time, str):
             appt_time = datetime.strptime(appt_time, "%Y-%m-%d %H:%M:%S")
 
-        success = sms.send_day_before_reminder(
-            to_number=phone,
+        success = notify_customer(
+            'day_before_reminder',
+            customer_email=customer_email,
+            customer_phone=phone,
             appointment_time=appt_time,
             customer_name=customer_name,
             service_type=service_type,

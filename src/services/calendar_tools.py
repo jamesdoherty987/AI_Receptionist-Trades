@@ -4503,36 +4503,44 @@ Return ONLY valid JSON, no explanation."""
             else:
                 logger.warning(f"[BOOK_APPT] No database available - booking not saved to DB")
             
-            # Send booking confirmation SMS (non-blocking)
+            # Send booking confirmation (email-first, SMS fallback)
             try:
-                from src.services.sms_reminder import get_sms_service
-                sms_service = get_sms_service()
-                if sms_service.client and phone:
-                    # Check if confirmation SMS is enabled for this company
-                    _send_confirmation = True
-                    _company_name = None
-                    if db and company_id:
+                _send_confirmation = True
+                _company_name = None
+                if db and company_id:
+                    try:
+                        _company_info = db.get_company(company_id)
+                        _company_name = _company_info.get('company_name') if _company_info else None
+                        if _company_info and _company_info.get('send_confirmation_sms') is False:
+                            _send_confirmation = False
+                    except Exception:
+                        pass
+                if _send_confirmation and phone:
+                    _worker_name_list = [w['name'] for w in assigned_workers] if assigned_workers else None
+                    # Look up customer email
+                    _customer_email = email
+                    if not _customer_email and client_id and db:
                         try:
-                            _company_info = db.get_company(company_id)
-                            _company_name = _company_info.get('company_name') if _company_info else None
-                            if _company_info and _company_info.get('send_confirmation_sms') is False:
-                                _send_confirmation = False
+                            _client_record = db.get_client(client_id)
+                            if _client_record:
+                                _customer_email = _client_record.get('email')
                         except Exception:
                             pass
-                    if _send_confirmation:
-                        _worker_name_list = [w['name'] for w in assigned_workers] if assigned_workers else None
-                        sms_service.send_booking_confirmation(
-                            to_number=phone,
-                            appointment_time=parsed_time,
-                            customer_name=customer_name,
-                            service_type=matched_service_name,
-                            company_name=_company_name,
-                            worker_names=_worker_name_list,
-                        )
-                    else:
-                        logger.info(f"[BOOK_APPT] Confirmation SMS disabled for company {company_id}, skipping")
+                    from src.services.sms_reminder import notify_customer
+                    notify_customer(
+                        'booking_confirmation',
+                        customer_email=_customer_email,
+                        customer_phone=phone,
+                        appointment_time=parsed_time,
+                        customer_name=customer_name,
+                        service_type=matched_service_name,
+                        company_name=_company_name,
+                        worker_names=_worker_name_list,
+                    )
+                else:
+                    logger.info(f"[BOOK_APPT] Confirmation notifications disabled for company {company_id}, skipping")
             except Exception as sms_err:
-                logger.warning(f"[BOOK_APPT] ⚠️ Booking confirmation SMS failed (booking still saved): {sms_err}")
+                logger.warning(f"[BOOK_APPT] ⚠️ Booking notification failed (booking still saved): {sms_err}")
             
             logger.info(f"[BOOK_APPT] ========== BOOKING COMPLETE ==========")
             
@@ -4677,31 +4685,42 @@ Return ONLY valid JSON, no explanation."""
                 except Exception as e:
                     logger.error(f"[CANCEL] Failed to delete booking from database: {e}")
             
-            # Send cancellation SMS
+            # Send cancellation notification (email-first, SMS fallback)
             if _cancel_phone:
                 try:
-                    from src.services.sms_reminder import get_sms_service
-                    sms_service = get_sms_service()
-                    if sms_service.client:
-                        _send_sms = True
-                        if db and company_id:
+                    _send_sms = True
+                    if db and company_id:
+                        try:
+                            _ci = db.get_company(company_id)
+                            if _ci and _ci.get('send_confirmation_sms') is False:
+                                _send_sms = False
+                        except Exception:
+                            pass
+                    if _send_sms:
+                        # Look up customer email
+                        _cancel_email = None
+                        if db and matched_job.get('booking_id'):
                             try:
-                                _ci = db.get_company(company_id)
-                                if _ci and _ci.get('send_confirmation_sms') is False:
-                                    _send_sms = False
+                                _booking_rec = db.get_booking(matched_job['booking_id'])
+                                if _booking_rec and _booking_rec.get('client_id'):
+                                    _client_rec = db.get_client(_booking_rec['client_id'])
+                                    if _client_rec:
+                                        _cancel_email = _client_rec.get('email')
                             except Exception:
                                 pass
-                        if _send_sms:
-                            sms_service.send_cancellation_sms(
-                                to_number=_cancel_phone,
-                                customer_name=matched_name,
-                                appointment_time=parsed_date,
-                                service_type=_cancel_service,
-                                company_name=_cancel_company_name,
-                                is_full_day=matched_job.get('is_full_day', False)
-                            )
+                        from src.services.sms_reminder import notify_customer
+                        notify_customer(
+                            'cancellation',
+                            customer_email=_cancel_email,
+                            customer_phone=_cancel_phone,
+                            customer_name=matched_name,
+                            appointment_time=parsed_date,
+                            service_type=_cancel_service,
+                            company_name=_cancel_company_name,
+                            is_full_day=matched_job.get('is_full_day', False),
+                        )
                 except Exception as e:
-                    logger.warning(f"[CANCEL] SMS send failed (non-blocking): {e}")
+                    logger.warning(f"[CANCEL] Notification send failed (non-blocking): {e}")
             
             time_info = matched_job.get('time', '')
             if matched_job.get('is_full_day'):
@@ -5008,28 +5027,39 @@ Return ONLY valid JSON, no explanation."""
                     pass
             if _resched_phone:
                 try:
-                    from src.services.sms_reminder import get_sms_service
-                    sms_service = get_sms_service()
-                    if sms_service.client:
-                        _send_sms = True
-                        if db and company_id:
+                    _send_sms = True
+                    if db and company_id:
+                        try:
+                            _ci = db.get_company(company_id)
+                            if _ci and _ci.get('send_confirmation_sms') is False:
+                                _send_sms = False
+                        except Exception:
+                            pass
+                    if _send_sms:
+                        # Look up customer email
+                        _resched_email = None
+                        if db and matched_job.get('booking_id'):
                             try:
-                                _ci = db.get_company(company_id)
-                                if _ci and _ci.get('send_confirmation_sms') is False:
-                                    _send_sms = False
+                                _booking_rec = db.get_booking(matched_job['booking_id'])
+                                if _booking_rec and _booking_rec.get('client_id'):
+                                    _client_rec = db.get_client(_booking_rec['client_id'])
+                                    if _client_rec:
+                                        _resched_email = _client_rec.get('email')
                             except Exception:
                                 pass
-                        if _send_sms:
-                            sms_service.send_reschedule_sms(
-                                to_number=_resched_phone,
-                                customer_name=matched_name,
-                                new_time=new_time,
-                                service_type=_resched_service,
-                                company_name=_resched_company_name,
-                                is_full_day=is_full_day
-                            )
+                        from src.services.sms_reminder import notify_customer
+                        notify_customer(
+                            'reschedule',
+                            customer_email=_resched_email,
+                            customer_phone=_resched_phone,
+                            customer_name=matched_name,
+                            new_time=new_time,
+                            service_type=_resched_service,
+                            company_name=_resched_company_name,
+                            is_full_day=is_full_day,
+                        )
                 except Exception as e:
-                    logger.warning(f"[RESCHEDULE] SMS send failed (non-blocking): {e}")
+                    logger.warning(f"[RESCHEDULE] Notification send failed (non-blocking): {e}")
             
             if is_full_day:
                 return {
@@ -5756,64 +5786,68 @@ Return ONLY valid JSON, no explanation."""
             else:
                 worker_msg = ""
             
-            # Send booking confirmation SMS (non-blocking)
-            # If address audio was captured, DEFER the SMS — the post-call
+            # Send booking confirmation (email-first, SMS fallback)
+            # If address audio was captured, DEFER — the post-call
             # retranscriber will send it with the refined address instead.
             try:
-                from src.services.sms_reminder import get_sms_service
-                sms_service = get_sms_service()
-                if sms_service.client and phone:
-                    # Check if confirmation SMS is enabled for this company
-                    _send_confirmation = True
-                    _company_name = None
-                    if db and company_id:
+                _send_confirmation = True
+                _company_name = None
+                if db and company_id:
+                    try:
+                        _company_info = db.get_company(company_id)
+                        _company_name = _company_info.get('company_name') if _company_info else None
+                        if _company_info and _company_info.get('send_confirmation_sms') is False:
+                            _send_confirmation = False
+                    except Exception:
+                        pass
+                
+                # Always stash client_id on call_state for email retranscription pipeline
+                _cs = services.get('call_state')
+                if _cs:
+                    _cs._deferred_sms_client_id = client_id
+                
+                if _send_confirmation:
+                    _worker_name_list = [w['name'] for w in assigned_workers] if assigned_workers else None
+                    # Look up customer email from DB if not provided in arguments
+                    _customer_email = email
+                    if not _customer_email and client_id and db:
                         try:
-                            _company_info = db.get_company(company_id)
-                            _company_name = _company_info.get('company_name') if _company_info else None
-                            if _company_info and _company_info.get('send_confirmation_sms') is False:
-                                _send_confirmation = False
+                            _client_record = db.get_client(client_id)
+                            if _client_record:
+                                _customer_email = _client_record.get('email')
                         except Exception:
                             pass
-                    if _send_confirmation:
-                        _worker_name_list = [w['name'] for w in assigned_workers] if assigned_workers else None
-                        _sms_kwargs = dict(
-                            to_number=phone,
-                            appointment_time=parsed_time,
-                            customer_name=customer_name,
-                            service_type=matched_service_name,
-                            company_name=_company_name,
-                            worker_names=_worker_name_list,
-                            address=validated_address,
-                        )
-                        # Defer SMS if address audio was captured — retranscriber will send it
-                        _cs = services.get('call_state')
-                        _has_addr_audio = _cs and getattr(_cs, 'address_audio_captured', False)
-                        if _has_addr_audio:
-                            # Stash SMS kwargs + booking/client IDs on call_state for post-call pipeline
-                            _cs._deferred_sms_kwargs = _sms_kwargs
-                            _cs._deferred_sms_booking_id = booking_id
-                            _cs._deferred_sms_client_id = client_id
-                            # Use eircode as fallback when validated_address is None (eircode-only booking)
-                            _cs._deferred_sms_original_address = validated_address or extracted_eircode
-                            logger.info(f"[BOOK_JOB] 📨 SMS deferred — address audio captured, retranscriber will send after call")
-                        else:
-                            # Still stash client_id for email retranscription pipeline
-                            if _cs:
-                                _cs._deferred_sms_client_id = client_id
-                            sms_service.send_booking_confirmation(**_sms_kwargs)
+                    
+                    _notify_kwargs = dict(
+                        appointment_time=parsed_time,
+                        customer_name=customer_name,
+                        service_type=matched_service_name,
+                        company_name=_company_name,
+                        worker_names=_worker_name_list,
+                        address=validated_address,
+                    )
+                    
+                    # Defer notification if address audio was captured — retranscriber will send after call
+                    _has_addr_audio = _cs and getattr(_cs, 'address_audio_captured', False)
+                    if _has_addr_audio:
+                        # Stash kwargs for post-call pipeline
+                        _cs._deferred_sms_kwargs = dict(to_number=phone, **_notify_kwargs)
+                        _cs._deferred_sms_booking_id = booking_id
+                        _cs._deferred_sms_original_address = validated_address or extracted_eircode
+                        _cs._deferred_customer_email = _customer_email
+                        logger.info(f"[BOOK_JOB] 📨 Notification deferred — address audio captured, retranscriber will send after call")
                     else:
-                        # SMS disabled — still stash client_id for email retranscription
-                        _cs = services.get('call_state')
-                        if _cs:
-                            _cs._deferred_sms_client_id = client_id
-                        logger.info(f"[BOOK_JOB] Confirmation SMS disabled for company {company_id}, skipping")
+                        from src.services.sms_reminder import notify_customer
+                        notify_customer(
+                            'booking_confirmation',
+                            customer_email=_customer_email,
+                            customer_phone=phone,
+                            **_notify_kwargs,
+                        )
                 else:
-                    # No SMS client or phone — still stash client_id for email retranscription
-                    _cs = services.get('call_state')
-                    if _cs:
-                        _cs._deferred_sms_client_id = client_id
-            except Exception as sms_err:
-                logger.warning(f"[BOOK_JOB] ⚠️ Booking confirmation SMS failed (booking still saved): {sms_err}")
+                    logger.info(f"[BOOK_JOB] Confirmation notifications disabled for company {company_id}, skipping")
+            except Exception as notify_err:
+                logger.warning(f"[BOOK_JOB] ⚠️ Booking notification failed (booking still saved): {notify_err}")
             
             tool_duration = time_module.time() - tool_start_time
             print(f"[TOOL_TIMING] ✅ book_job completed in {tool_duration:.3f}s")

@@ -343,6 +343,240 @@ Best regards,
             print(f"[ERROR] Failed to send password reset email: {e}")
             return False
     
+    def send_booking_confirmation(self, to_email: str, appointment_time: datetime,
+                                    customer_name: str, service_type: str = "appointment",
+                                    company_name: str = None, worker_names: list = None,
+                                    address: str = None) -> bool:
+        """Send a booking confirmation email."""
+        if not self.configured:
+            return False
+        try:
+            business_name = company_name or 'Your Business'
+            if not company_name:
+                try:
+                    from src.services.settings_manager import get_settings_manager
+                    s = get_settings_manager().get_business_settings()
+                    if s and s.get('business_name'):
+                        business_name = s['business_name']
+                except Exception:
+                    pass
+
+            time_str = appointment_time.strftime('%A, %B %d at %I:%M %p')
+            date_only = appointment_time.strftime('%A, %B %d')
+
+            worker_line = ""
+            if worker_names:
+                worker_line = f"<p style='margin:5px 0;'><strong>Assigned:</strong> {', '.join(worker_names)}</p>"
+            address_line = ""
+            if address:
+                address_line = f"<p style='margin:5px 0;'><strong>Location:</strong> {address}</p>"
+
+            subject = f'Booking Confirmed - {service_type} on {date_only}'
+
+            text_body = (
+                f"{business_name}\n\n"
+                f"Hi {customer_name},\n\n"
+                f"Your booking is confirmed:\n"
+                f"Service: {service_type}\n"
+                f"Date & Time: {time_str}\n"
+                f"{'Assigned: ' + ', '.join(worker_names) if worker_names else ''}\n"
+                f"{'Location: ' + address if address else ''}\n\n"
+                f"To cancel or reschedule, please contact us.\n\n"
+                f"Best regards,\n{business_name}"
+            ).strip()
+
+            html_body = f"""
+<html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+<div style="max-width:600px;margin:0 auto;padding:20px;">
+    <div style="background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);padding:25px;text-align:center;border-radius:12px 12px 0 0;">
+        <div style="font-size:24px;font-weight:800;color:white;">{business_name}</div>
+    </div>
+    <div style="background:white;padding:25px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+        <h2 style="color:#059669;margin:0 0 15px;">Booking Confirmed</h2>
+        <p>Hi {customer_name},</p>
+        <p>Your booking has been confirmed:</p>
+        <div style="background:#f0fdf4;border-left:4px solid #10b981;padding:15px;margin:20px 0;border-radius:0 8px 8px 0;">
+            <p style="margin:5px 0;"><strong>Service:</strong> {service_type}</p>
+            <p style="margin:5px 0;"><strong>Date & Time:</strong> {time_str}</p>
+            {worker_line}
+            {address_line}
+        </div>
+        <p>To cancel or reschedule, please contact us.</p>
+        <p style="margin-top:25px;">Best regards,<br><strong>{business_name}</strong></p>
+    </div>
+</div></body></html>""".strip()
+
+            return self._send_email(to_email, subject, html_body, text_body, business_name)
+        except Exception as e:
+            print(f"[ERROR] Failed to send booking confirmation email: {e}")
+            return False
+
+    def send_cancellation_email(self, to_email: str, customer_name: str,
+                                 appointment_time: datetime, service_type: str = "appointment",
+                                 company_name: str = None, is_full_day: bool = False) -> bool:
+        """Send a cancellation confirmation email."""
+        if not self.configured:
+            return False
+        try:
+            business_name = company_name or 'Your Business'
+            if not company_name:
+                try:
+                    from src.services.settings_manager import get_settings_manager
+                    s = get_settings_manager().get_business_settings()
+                    if s and s.get('business_name'):
+                        business_name = s['business_name']
+                except Exception:
+                    pass
+
+            date_str = appointment_time.strftime('%A, %B %d')
+            if is_full_day:
+                when = date_str
+            else:
+                when = appointment_time.strftime('%A, %B %d at %I:%M %p')
+
+            subject = f'Booking Cancelled - {service_type} on {date_str}'
+
+            text_body = (
+                f"{business_name}\n\n"
+                f"Hi {customer_name},\n\n"
+                f"Your {service_type} on {when} has been cancelled.\n\n"
+                f"If you'd like to rebook, please contact us.\n\n"
+                f"Best regards,\n{business_name}"
+            ).strip()
+
+            html_body = f"""
+<html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+<div style="max-width:600px;margin:0 auto;padding:20px;">
+    <div style="background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);padding:25px;text-align:center;border-radius:12px 12px 0 0;">
+        <div style="font-size:24px;font-weight:800;color:white;">{business_name}</div>
+    </div>
+    <div style="background:white;padding:25px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+        <h2 style="color:#dc2626;margin:0 0 15px;">Booking Cancelled</h2>
+        <p>Hi {customer_name},</p>
+        <p>Your booking has been cancelled:</p>
+        <div style="background:#fef2f2;border-left:4px solid #ef4444;padding:15px;margin:20px 0;border-radius:0 8px 8px 0;">
+            <p style="margin:5px 0;"><strong>Service:</strong> {service_type}</p>
+            <p style="margin:5px 0;"><strong>Was scheduled for:</strong> {when}</p>
+        </div>
+        <p>If you'd like to rebook, please contact us.</p>
+        <p style="margin-top:25px;">Best regards,<br><strong>{business_name}</strong></p>
+    </div>
+</div></body></html>""".strip()
+
+            return self._send_email(to_email, subject, html_body, text_body, business_name)
+        except Exception as e:
+            print(f"[ERROR] Failed to send cancellation email: {e}")
+            return False
+
+    def send_reschedule_email(self, to_email: str, customer_name: str,
+                               new_time: datetime, service_type: str = "appointment",
+                               company_name: str = None, is_full_day: bool = False) -> bool:
+        """Send a reschedule confirmation email."""
+        if not self.configured:
+            return False
+        try:
+            business_name = company_name or 'Your Business'
+            if not company_name:
+                try:
+                    from src.services.settings_manager import get_settings_manager
+                    s = get_settings_manager().get_business_settings()
+                    if s and s.get('business_name'):
+                        business_name = s['business_name']
+                except Exception:
+                    pass
+
+            date_str = new_time.strftime('%A, %B %d')
+            if is_full_day:
+                when = date_str
+            else:
+                when = new_time.strftime('%A, %B %d at %I:%M %p')
+
+            subject = f'Booking Rescheduled - {service_type} moved to {date_str}'
+
+            text_body = (
+                f"{business_name}\n\n"
+                f"Hi {customer_name},\n\n"
+                f"Your {service_type} has been rescheduled to {when}.\n\n"
+                f"See you then!\n\n"
+                f"Best regards,\n{business_name}"
+            ).strip()
+
+            html_body = f"""
+<html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+<div style="max-width:600px;margin:0 auto;padding:20px;">
+    <div style="background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);padding:25px;text-align:center;border-radius:12px 12px 0 0;">
+        <div style="font-size:24px;font-weight:800;color:white;">{business_name}</div>
+    </div>
+    <div style="background:white;padding:25px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+        <h2 style="color:#2563eb;margin:0 0 15px;">Booking Rescheduled</h2>
+        <p>Hi {customer_name},</p>
+        <p>Your booking has been moved to a new time:</p>
+        <div style="background:#eff6ff;border-left:4px solid #3b82f6;padding:15px;margin:20px 0;border-radius:0 8px 8px 0;">
+            <p style="margin:5px 0;"><strong>Service:</strong> {service_type}</p>
+            <p style="margin:5px 0;"><strong>New Date & Time:</strong> {when}</p>
+        </div>
+        <p>See you then!</p>
+        <p style="margin-top:25px;">Best regards,<br><strong>{business_name}</strong></p>
+    </div>
+</div></body></html>""".strip()
+
+            return self._send_email(to_email, subject, html_body, text_body, business_name)
+        except Exception as e:
+            print(f"[ERROR] Failed to send reschedule email: {e}")
+            return False
+
+    def send_day_before_reminder(self, to_email: str, appointment_time: datetime,
+                                  customer_name: str, service_type: str = "appointment",
+                                  company_name: str = None, worker_names: list = None) -> bool:
+        """Send a day-before reminder email."""
+        if not self.configured:
+            return False
+        try:
+            business_name = company_name or 'Your Business'
+            time_str = appointment_time.strftime('%A, %B %d at %I:%M %p')
+            date_only = appointment_time.strftime('%A, %B %d')
+
+            worker_line = ""
+            if worker_names:
+                worker_line = f"<p style='margin:5px 0;'><strong>Assigned:</strong> {', '.join(worker_names)}</p>"
+
+            subject = f'Reminder: {service_type} Tomorrow - {date_only}'
+
+            text_body = (
+                f"{business_name}\n\n"
+                f"Hi {customer_name},\n\n"
+                f"Reminder: your {service_type} is tomorrow.\n"
+                f"Date & Time: {time_str}\n"
+                f"{'Assigned: ' + ', '.join(worker_names) if worker_names else ''}\n\n"
+                f"To cancel or reschedule, please contact us.\n\n"
+                f"Best regards,\n{business_name}"
+            ).strip()
+
+            html_body = f"""
+<html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+<div style="max-width:600px;margin:0 auto;padding:20px;">
+    <div style="background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);padding:25px;text-align:center;border-radius:12px 12px 0 0;">
+        <div style="font-size:24px;font-weight:800;color:white;">{business_name}</div>
+    </div>
+    <div style="background:white;padding:25px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+        <h2 style="color:#d97706;margin:0 0 15px;">Appointment Reminder</h2>
+        <p>Hi {customer_name},</p>
+        <p>This is a friendly reminder about your appointment tomorrow:</p>
+        <div style="background:#fffbeb;border-left:4px solid #f59e0b;padding:15px;margin:20px 0;border-radius:0 8px 8px 0;">
+            <p style="margin:5px 0;"><strong>Service:</strong> {service_type}</p>
+            <p style="margin:5px 0;"><strong>Date & Time:</strong> {time_str}</p>
+            {worker_line}
+        </div>
+        <p>To cancel or reschedule, please contact us.</p>
+        <p style="margin-top:25px;">Best regards,<br><strong>{business_name}</strong></p>
+    </div>
+</div></body></html>""".strip()
+
+            return self._send_email(to_email, subject, html_body, text_body, business_name)
+        except Exception as e:
+            print(f"[ERROR] Failed to send day-before reminder email: {e}")
+            return False
+
     def send_invoice(self, to_email: str, customer_name: str, service_type: str, 
                     charge: float, appointment_time: datetime = None,
                     stripe_payment_link: str = None, job_address: str = None,

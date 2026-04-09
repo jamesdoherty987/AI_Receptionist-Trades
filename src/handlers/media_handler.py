@@ -1165,6 +1165,10 @@ async def media_handler(ws):
             try:
                 from src.services.address_retranscriber import retranscribe_and_update
                 company_id_int = int(company_id) if company_id else None
+                # Inject customer email into deferred kwargs for email-first notification
+                _deferred_email = getattr(call_state, '_deferred_customer_email', None)
+                if _deferred_email:
+                    _deferred_sms['_customer_email'] = _deferred_email
                 await retranscribe_and_update(
                     audio_url=call_state.address_audio_url,
                     original_address=getattr(call_state, '_deferred_sms_original_address', None) or call_state.job_address or '',
@@ -1179,24 +1183,46 @@ async def media_handler(ws):
                 print(f"⚠️ Address retranscription error: {e}")
                 # Fallback: send SMS with original address
                 try:
-                    from src.services.sms_reminder import get_sms_service
-                    sms = get_sms_service()
-                    sms.send_booking_confirmation(**_deferred_sms)
-                    print(f"📨 Fallback: sent SMS with original address")
+                    # Fallback: send notification with original address (email-first)
+                    _deferred_email = getattr(call_state, '_deferred_customer_email', None)
+                    _fallback_phone = _deferred_sms.pop('to_number', None)
+                    from src.services.sms_reminder import notify_customer
+                    notify_customer(
+                        'booking_confirmation',
+                        customer_email=_deferred_email,
+                        customer_phone=_fallback_phone or caller_phone,
+                        appointment_time=_deferred_sms.get('appointment_time'),
+                        customer_name=_deferred_sms.get('customer_name', 'Customer'),
+                        service_type=_deferred_sms.get('service_type', 'appointment'),
+                        company_name=_deferred_sms.get('company_name'),
+                        worker_names=_deferred_sms.get('worker_names'),
+                        address=_deferred_sms.get('address'),
+                    )
+                    print(f"📨 Fallback: sent notification with original address")
                 except Exception as sms_err:
-                    print(f"⚠️ Fallback SMS also failed: {sms_err}")
+                    print(f"⚠️ Fallback notification also failed: {sms_err}")
         elif _deferred_sms and not call_state.address_audio_url:
-            # SMS was deferred (address_audio_captured=True synchronously) but the
-            # async R2 upload failed so address_audio_url is None. Send SMS with
-            # the original ASR address — better than no SMS at all.
-            print(f"⚠️ Address audio upload failed but SMS was deferred — sending with original address")
+            # Notification was deferred but the async R2 upload failed.
+            # Send with the original ASR address — better than nothing.
+            print(f"⚠️ Address audio upload failed but notification was deferred — sending with original address")
             try:
-                from src.services.sms_reminder import get_sms_service
-                sms = get_sms_service()
-                sms.send_booking_confirmation(**_deferred_sms)
-                print(f"📨 Sent deferred SMS with original address (upload failed)")
+                _deferred_email = getattr(call_state, '_deferred_customer_email', None)
+                _fallback_phone = _deferred_sms.pop('to_number', None)
+                from src.services.sms_reminder import notify_customer
+                notify_customer(
+                    'booking_confirmation',
+                    customer_email=_deferred_email,
+                    customer_phone=_fallback_phone or caller_phone,
+                    appointment_time=_deferred_sms.get('appointment_time'),
+                    customer_name=_deferred_sms.get('customer_name', 'Customer'),
+                    service_type=_deferred_sms.get('service_type', 'appointment'),
+                    company_name=_deferred_sms.get('company_name'),
+                    worker_names=_deferred_sms.get('worker_names'),
+                    address=_deferred_sms.get('address'),
+                )
+                print(f"📨 Sent deferred notification with original address (upload failed)")
             except Exception as sms_err:
-                print(f"⚠️ Deferred SMS fallback also failed: {sms_err}")
+                print(f"⚠️ Deferred notification fallback also failed: {sms_err}")
         elif call_state.address_audio_url and not _deferred_sms:
             # Address audio captured but no deferred SMS (no booking made, or SMS already sent)
             print(f"🎙️ Address audio captured but no deferred SMS — skipping retranscription pipeline")

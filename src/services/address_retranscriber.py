@@ -339,16 +339,28 @@ async def retranscribe_and_update(
         except Exception as e:
             print(f"[ADDR_RETRANSCRIBE] ⚠️ DB update failed: {e}")
 
-    # Step 3: Send confirmation SMS with refined address
+    # Step 3: Send confirmation notification with refined address (email-first, SMS fallback)
     if send_sms and sms_kwargs:
         try:
-            from src.services.sms_reminder import get_sms_service
-            sms = get_sms_service()
             sms_kwargs["address"] = refined_address
-            sms.send_booking_confirmation(**sms_kwargs)
-            print(f"[ADDR_RETRANSCRIBE] ✅ Confirmation SMS sent with refined address")
+            # Extract customer email if available
+            _customer_email = sms_kwargs.pop('_customer_email', None)
+            _customer_phone = sms_kwargs.pop('to_number', None)
+            from src.services.sms_reminder import notify_customer
+            notify_customer(
+                'booking_confirmation',
+                customer_email=_customer_email,
+                customer_phone=_customer_phone,
+                appointment_time=sms_kwargs.get('appointment_time'),
+                customer_name=sms_kwargs.get('customer_name', 'Customer'),
+                service_type=sms_kwargs.get('service_type', 'appointment'),
+                company_name=sms_kwargs.get('company_name'),
+                worker_names=sms_kwargs.get('worker_names'),
+                address=refined_address,
+            )
+            print(f"[ADDR_RETRANSCRIBE] ✅ Confirmation notification sent with refined address")
         except Exception as e:
-            print(f"[ADDR_RETRANSCRIBE] ⚠️ SMS send failed: {e}")
+            print(f"[ADDR_RETRANSCRIBE] ⚠️ Notification send failed: {e}")
 
     print(f"[ADDR_RETRANSCRIBE] Pipeline complete. Final address: '{refined_address}'")
     print(f"{'='*60}\n")
