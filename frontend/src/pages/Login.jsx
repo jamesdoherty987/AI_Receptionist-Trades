@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { validateEmail, rateLimiter } from '../utils/security';
+import { isStandalone } from '../components/PWAInstallPrompt';
 import './Auth.css';
 
 function Login() {
@@ -97,9 +98,11 @@ function Login() {
 
       <div className="auth-container">
         <div className="auth-top-row">
-          <Link to="/" className="auth-back-btn">
-            <i className="fas fa-arrow-left"></i> Back
-          </Link>
+          {!isStandalone() && (
+            <Link to="/" className="auth-back-btn">
+              <i className="fas fa-arrow-left"></i> Back
+            </Link>
+          )}
           <Link to="/" className="auth-logo">
             <i className="fas fa-bolt"></i>
             <span>BookedForYou</span>
@@ -183,6 +186,13 @@ function Login() {
             Worker Portal Login
             <i className="fas fa-arrow-right"></i>
           </Link>
+
+          {!isStandalone() && (
+            <Link to="/install" className="install-app-link">
+              <i className="fas fa-mobile-screen-button"></i>
+              Install as App
+            </Link>
+          )}
         </div>
 
         <p className="auth-terms">

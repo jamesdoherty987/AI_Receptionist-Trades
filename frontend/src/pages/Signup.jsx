@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { validateEmail, validatePassword, sanitizeString } from '../utils/security';
+import { isStandalone } from '../components/PWAInstallPrompt';
 import './Auth.css';
 
 function Signup() {
@@ -147,9 +148,11 @@ function Signup() {
 
       <div className="auth-container signup-container">
         <div className="auth-top-row">
-          <Link to="/" className="auth-back-btn">
-            <i className="fas fa-arrow-left"></i> Back
-          </Link>
+          {!isStandalone() && (
+            <Link to="/" className="auth-back-btn">
+              <i className="fas fa-arrow-left"></i> Back
+            </Link>
+          )}
           <Link to="/" className="auth-logo">
             <i className="fas fa-bolt"></i>
             <span>BookedForYou</span>

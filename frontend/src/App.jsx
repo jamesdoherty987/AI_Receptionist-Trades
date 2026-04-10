@@ -24,9 +24,14 @@ import WorkerResetPassword from './pages/WorkerResetPassword'
 import WorkerDashboard from './pages/WorkerDashboard'
 import Blog from './pages/Blog'
 import BlogPost from './pages/BlogPost'
+import InstallApp from './pages/InstallApp'
 
 // Loading component
 import LoadingSpinner from './components/LoadingSpinner'
+
+// PWA
+import PWAInstallPrompt from './components/PWAInstallPrompt'
+import { isStandalone } from './components/PWAInstallPrompt'
 
 // Protected Route component - requires authentication
 function ProtectedRoute({ children, requireSubscription = false }) {
@@ -116,8 +121,8 @@ function WorkerRoute({ children }) {
 function AppRoutes() {
   return (
     <Routes>
-      {/* Public routes */}
-      <Route path="/" element={<Landing />} />
+      {/* Public routes — PWA goes straight to login, browser gets landing */}
+      <Route path="/" element={isStandalone() ? <Navigate to="/login" replace /> : <Landing />} />
       <Route 
         path="/login" 
         element={
@@ -187,6 +192,7 @@ function AppRoutes() {
       <Route path="/terms" element={<TermsOfService />} />
       <Route path="/blog" element={<Blog />} />
       <Route path="/blog/:slug" element={<BlogPost />} />
+      <Route path="/install" element={<InstallApp />} />
 
       {/* Worker Portal routes */}
       <Route path="/worker/login" element={<WorkerLogin />} />
@@ -205,8 +211,8 @@ function AppRoutes() {
       {/* Admin Panel — obscure route, self-authenticating */}
       <Route path="/bfy-ops" element={<AdminPanel />} />
 
-      {/* Catch all - redirect to landing */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      {/* Catch all - redirect to login */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }
@@ -218,6 +224,7 @@ function App() {
         <AuthProvider>
           <Router>
             <AppRoutes />
+            <PWAInstallPrompt />
           </Router>
         </AuthProvider>
       </ToastProvider>

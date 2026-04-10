@@ -1251,7 +1251,7 @@ function Landing() {
               <div className="social-links"><a href="https://www.linkedin.com/company/bookedforyou" target="_blank" rel="noopener noreferrer"><i className="fab fa-linkedin"></i></a><a href="https://www.instagram.com/bookedforyou.ie" target="_blank" rel="noopener noreferrer"><i className="fab fa-instagram"></i></a><a href="https://www.tiktok.com/@bookedforyou_" target="_blank" rel="noopener noreferrer"><i className="fab fa-tiktok"></i></a></div>
             </div>
             <div className="footer-links">
-              <div className="footer-column"><h4>Product</h4><a href="#features">Features</a>{showPricing && <a href="#pricing">Pricing</a>}{showReviews && <a href="#testimonials">Testimonials</a>}</div>
+              <div className="footer-column"><h4>Product</h4><a href="#features">Features</a>{showPricing && <a href="#pricing">Pricing</a>}{showReviews && <a href="#testimonials">Testimonials</a>}<Link to="/install" onClick={() => window.scrollTo(0, 0)}>Install App</Link></div>
               <div className="footer-column"><h4>Company</h4><a href="#">About Us</a><Link to="/blog" onClick={() => window.scrollTo(0, 0)}>Blog</Link><a href="#" onClick={(e) => { e.preventDefault(); setShowContactModal(true); }}>Contact</a></div>
               <div className="footer-column"><h4>Legal</h4><Link to="/privacy" onClick={() => window.scrollTo(0, 0)}>Privacy Policy</Link><Link to="/terms" onClick={() => window.scrollTo(0, 0)}>Terms of Service</Link><Link to="/privacy" onClick={() => window.scrollTo(0, 0)}>Cookie Policy</Link></div>
             </div>

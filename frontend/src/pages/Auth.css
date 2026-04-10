@@ -548,6 +548,30 @@
 .worker-portal-btn i:first-child { font-size: 0.9rem; color: #f97316; }
 .worker-portal-btn i:last-child { font-size: 0.7rem; margin-left: auto; opacity: 0.4; }
 
+/* Install App Link */
+.install-app-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  margin-top: 0.5rem;
+  background: none;
+  color: #94a3b8;
+  border: none;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.install-app-link:hover {
+  color: #6366f1;
+}
+.install-app-link i {
+  font-size: 0.85rem;
+}
+
 /* Auth top row with back button */
 .auth-top-row {
   display: flex;

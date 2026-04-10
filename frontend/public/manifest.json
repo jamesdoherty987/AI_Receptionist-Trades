@@ -2,20 +2,51 @@
   "name": "BookedForYou — AI Receptionist for Tradespeople",
   "short_name": "BookedForYou",
   "description": "AI-powered receptionist and business management for tradespeople. Never miss a call again.",
-  "start_url": "/",
+  "start_url": "/login",
   "scope": "/",
+  "id": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#0a0a1a",
+  "background_color": "#ffffff",
   "theme_color": "#6366f1",
   "lang": "en-IE",
   "categories": ["business", "productivity"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/logo.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/og-image.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "BookedForYou Dashboard"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "url": "/dashboard",
+      "icons": [{ "src": "/logo.png", "sizes": "512x512" }]
+    },
+    {
+      "name": "Worker Portal",
+      "short_name": "Worker",
+      "url": "/worker/login",
+      "icons": [{ "src": "/logo.png", "sizes": "512x512" }]
     }
   ]
 }

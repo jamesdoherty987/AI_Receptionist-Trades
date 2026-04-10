@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { validateEmail, rateLimiter } from '../utils/security';
+import { isStandalone } from '../components/PWAInstallPrompt';
 import './Auth.css';
 
 function WorkerLogin() {
@@ -121,6 +122,13 @@ function WorkerLogin() {
               Business owner? <Link to="/login">Owner login</Link>
             </p>
           </div>
+
+          {!isStandalone() && (
+            <Link to="/install" className="install-app-link">
+              <i className="fas fa-mobile-screen-button"></i>
+              Install as App
+            </Link>
+          )}
         </div>
       </div>
     </div>
