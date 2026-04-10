@@ -258,3 +258,80 @@
 .notification-item.clickable:hover .notification-arrow {
   color: #6366f1;
 }
+
+/* ── Emergency Job Styles ────────────────────────────────── */
+
+.notification-bell-btn.has-emergency {
+  color: #dc2626;
+  animation: emergency-pulse 1.5s ease-in-out infinite;
+}
+
+.notification-bell-btn.has-emergency:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+@keyframes emergency-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+.notification-badge.emergency-badge {
+  background: #dc2626;
+  animation: badge-flash 1s ease-in-out infinite;
+}
+
+@keyframes badge-flash {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.notification-item.notif-emergency {
+  background: #fef2f2;
+  border-left: 3px solid #dc2626;
+}
+
+.notification-item.notif-emergency .notification-icon {
+  background: #dc2626;
+  color: white;
+  animation: icon-pulse 2s ease-in-out infinite;
+}
+
+@keyframes icon-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
+.notification-item.notif-emergency .notification-message {
+  color: #991b1b;
+  font-weight: 600;
+}
+
+.emergency-accept-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 16px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  justify-content: center;
+}
+
+.emergency-accept-btn:hover:not(:disabled) {
+  background: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+.emergency-accept-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

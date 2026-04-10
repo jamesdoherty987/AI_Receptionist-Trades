@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getWorkerNotifications } from '../services/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getWorkerNotifications, acceptEmergencyJob } from '../services/api';
 import './NotificationBell.css';
 
 function WorkerNotificationBell({ onNavigate }) {
@@ -22,14 +22,33 @@ function WorkerNotificationBell({ onNavigate }) {
       const response = await getWorkerNotifications();
       return response.data;
     },
-    refetchInterval: 30000,
-    staleTime: 10000,
+    refetchInterval: 10000, // Poll faster for emergency jobs
+    staleTime: 5000,
   });
 
   const notifications = data?.notifications || [];
   const unseenCount = notifications.filter(n => !seenIds.includes(n.id)).length;
+  const hasEmergency = notifications.some(n => n.type === 'emergency_job' && n.metadata?.booking_id);
 
-  // Close dropdown when clicking/tapping outside
+  const [acceptingId, setAcceptingId] = useState(null);
+  const [acceptedIds, setAcceptedIds] = useState(new Set());
+  const [acceptErrors, setAcceptErrors] = useState({});
+
+  const acceptMutation = useMutation({
+    mutationFn: (bookingId) => acceptEmergencyJob(bookingId),
+    onMutate: (bookingId) => setAcceptingId(bookingId),
+    onSuccess: (_, bookingId) => {
+      setAcceptedIds(prev => new Set([...prev, bookingId]));
+      setAcceptingId(null);
+      queryClient.invalidateQueries({ queryKey: ['worker-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
+    },
+    onError: (error, bookingId) => {
+      setAcceptErrors(prev => ({ ...prev, [bookingId]: error?.response?.data?.error || 'Failed' }));
+      setAcceptingId(null);
+    },
+  });
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -48,10 +67,18 @@ function WorkerNotificationBell({ onNavigate }) {
     setIsOpen(!isOpen);
     if (!isOpen && notifications.length > 0) {
       const allIds = notifications.map(n => n.id);
-      const newSeenIds = [...new Set([...seenIds, ...allIds])].slice(-100);
+      // Don't mark emergency notifications as seen until accepted
+      const nonEmergencyIds = notifications.filter(n => n.type !== 'emergency_job').map(n => n.id);
+      const newSeenIds = [...new Set([...seenIds, ...nonEmergencyIds])].slice(-100);
       setSeenIds(newSeenIds);
       localStorage.setItem('workerSeenNotifications', JSON.stringify(newSeenIds));
     }
+  };
+
+  const handleAcceptEmergency = (e, bookingId) => {
+    e.stopPropagation();
+    if (acceptingId || acceptedIds.has(bookingId)) return;
+    acceptMutation.mutate(bookingId);
   };
 
   const formatTime = (isoString) => {
@@ -69,6 +96,8 @@ function WorkerNotificationBell({ onNavigate }) {
 
   const getIcon = (type) => {
     switch (type) {
+      case 'emergency_job': return 'fa-exclamation-triangle';
+      case 'emergency_accepted': return 'fa-check-double';
       case 'job_assigned': return 'fa-briefcase';
       case 'time_off_approved': return 'fa-check-circle';
       case 'time_off_denied': return 'fa-times-circle';
@@ -79,6 +108,8 @@ function WorkerNotificationBell({ onNavigate }) {
 
   const getIconClass = (type) => {
     switch (type) {
+      case 'emergency_job': return 'notif-emergency';
+      case 'emergency_accepted': return 'notif-completed';
       case 'job_assigned': return 'notif-new';
       case 'time_off_approved': return 'notif-completed';
       case 'time_off_denied': return 'notif-cancelled';
@@ -90,13 +121,15 @@ function WorkerNotificationBell({ onNavigate }) {
   return (
     <div className="notification-bell-container" ref={dropdownRef}>
       <button
-        className={`notification-bell-btn ${unseenCount > 0 ? 'has-unseen' : ''}`}
+        className={`notification-bell-btn ${unseenCount > 0 ? 'has-unseen' : ''} ${hasEmergency ? 'has-emergency' : ''}`}
         onClick={handleOpen}
-        aria-label={`Notifications${unseenCount > 0 ? `, ${unseenCount} unread` : ''}`}
+        aria-label={`Notifications${unseenCount > 0 ? `, ${unseenCount} unread` : ''}${hasEmergency ? ', emergency job pending' : ''}`}
       >
-        <i className="fas fa-bell"></i>
+        <i className={`fas ${hasEmergency ? 'fa-exclamation-triangle' : 'fa-bell'}`}></i>
         {unseenCount > 0 && (
-          <span className="notification-badge">{unseenCount > 9 ? '9+' : unseenCount}</span>
+          <span className={`notification-badge ${hasEmergency ? 'emergency-badge' : ''}`}>
+            {unseenCount > 9 ? '9+' : unseenCount}
+          </span>
         )}
       </button>
 
@@ -134,30 +167,39 @@ function WorkerNotificationBell({ onNavigate }) {
               notifications.map(notif => (
                 <div
                   key={notif.id}
-                  className={`notification-item clickable ${getIconClass(notif.type)}`}
+                  className={`notification-item ${notif.type !== 'emergency_job' ? 'clickable' : ''} ${getIconClass(notif.type)}`}
                   onClick={() => {
-                    if (onNavigate) onNavigate(notif);
-                    setIsOpen(false);
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      if (onNavigate) onNavigate(notif);
+                    if (notif.type !== 'emergency_job' && onNavigate) {
+                      onNavigate(notif);
                       setIsOpen(false);
                     }
                   }}
+                  role={notif.type !== 'emergency_job' ? 'button' : undefined}
+                  tabIndex={notif.type !== 'emergency_job' ? 0 : undefined}
                 >
                   <div className="notification-icon">
                     <i className={`fas ${getIcon(notif.type)}`}></i>
                   </div>
                   <div className="notification-content">
                     <p className="notification-message">{notif.message}</p>
+                    {notif.type === 'emergency_job' && notif.metadata?.booking_id && (
+                      <button
+                        className="emergency-accept-btn"
+                        onClick={(e) => handleAcceptEmergency(e, notif.metadata.booking_id)}
+                        disabled={acceptingId === notif.metadata.booking_id || acceptedIds.has(notif.metadata.booking_id)}
+                      >
+                        {acceptingId === notif.metadata.booking_id ? (
+                          <><i className="fas fa-spinner fa-spin"></i> Accepting...</>
+                        ) : acceptedIds.has(notif.metadata.booking_id) ? (
+                          <><i className="fas fa-check"></i> Accepted</>
+                        ) : acceptErrors[notif.metadata.booking_id] ? (
+                          <>{acceptErrors[notif.metadata.booking_id]}</>
+                        ) : (
+                          <><i className="fas fa-check"></i> Accept Job</>
+                        )}
+                      </button>
+                    )}
                     <span className="notification-meta">{formatTime(notif.created_at)}</span>
-                  </div>
-                  <div className="notification-arrow">
-                    <i className="fas fa-chevron-right"></i>
                   </div>
                 </div>
               ))

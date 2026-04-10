@@ -132,8 +132,8 @@ CALENDAR_TOOLS = [
                     },
                     "urgency_level": {
                         "type": "string",
-                        "enum": ["same-day", "scheduled", "quote"],
-                        "description": "Urgency level: 'same-day' for jobs needed today, 'scheduled' for planned work on a future date, 'quote' for estimate visits"
+                        "enum": ["same-day", "scheduled", "quote", "emergency"],
+                        "description": "Urgency level: 'emergency' for urgent jobs needing immediate worker dispatch, 'same-day' for jobs needed today, 'scheduled' for planned work on a future date, 'quote' for estimate visits"
                     },
                     "property_type": {
                         "type": "string",
@@ -2315,8 +2315,23 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             else:
                 instruction = "Low confidence. Ask the caller for more details about their issue."
             
+            # Detect if the issue description sounds like an emergency
+            # Only use intent-based urgency words — NOT trade-specific terms like "burst pipe"
+            # since this system is used across all trades, not just plumbing
+            emergency_keywords = ['emergency', 'urgent', 'urgently', 'asap', 'right now', 
+                                  'immediately', 'right away', 'straight away', 'as soon as possible',
+                                  'can someone come now', 'need someone now', 'need someone today',
+                                  'dangerous', 'come out now', 'come out today', 'quickly',
+                                  'as quick as', 'fast as possible']
+            issue_lower = issue_description.lower()
+            sounds_urgent = any(kw in issue_lower for kw in emergency_keywords)
+            
             tool_duration = time_module.time() - tool_start_time
             print(f"[TOOL_TIMING] ✅ match_issue completed in {tool_duration:.3f}s ({len(matches)} matches)")
+            
+            # Add emergency hint to instruction if it sounds urgent
+            if sounds_urgent:
+                instruction += " NOTE: This issue sounds URGENT. After confirming the service, ask the caller if they'd like to treat this as an emergency callout."
             
             return {
                 "success": True,
@@ -2326,7 +2341,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 "total_matches": len(matches),
                 "has_investigation_option": has_investigation,
                 "top_score": top_score,
-                "needs_clarification": multiple_close or has_investigation or top_score < 70
+                "needs_clarification": multiple_close or has_investigation or top_score < 70,
+                "sounds_urgent": sounds_urgent
             }
 
         if tool_name == "check_availability":
@@ -5163,9 +5179,9 @@ Return ONLY valid JSON, no explanation."""
                     "needs_clarification": "datetime"
                 }
             
-            # Check for vague time requests
+            # Check for vague time requests — but allow for emergency jobs
             vague_time_phrases = ["within", "asap", "as soon as possible", "urgently", "quickly", "soon", "right away", "immediately"]
-            if any(phrase in appointment_datetime.lower() for phrase in vague_time_phrases):
+            if any(phrase in appointment_datetime.lower() for phrase in vague_time_phrases) and urgency_level != 'emergency':
                 logger.warning(f"[BOOK_JOB] Vague time detected: {appointment_datetime}")
                 return {
                     "success": False,
@@ -5749,6 +5765,91 @@ Return ONLY valid JSON, no explanation."""
                     except Exception:
                         pass
                     
+                    # EMERGENCY JOB DISPATCH: If urgency is 'emergency', set emergency_status
+                    # and notify all available workers via dashboard notification + email
+                    if urgency_level == 'emergency' and booking_id:
+                        try:
+                            db.update_booking(booking_id, emergency_status='pending_acceptance')
+                            logger.info(f"[BOOK_JOB] 🚨 Emergency job — set status to pending_acceptance")
+                            
+                            # Get all workers for this company to notify
+                            all_workers_emg = db.get_all_workers(company_id=company_id) or []
+                            notify_workers = all_workers_emg
+                            if worker_restrictions:
+                                rt = worker_restrictions.get('type', 'all')
+                                rids = worker_restrictions.get('worker_ids', [])
+                                if rt == 'only' and rids:
+                                    notify_workers = [w for w in all_workers_emg if w['id'] in rids]
+                                elif rt == 'except' and rids:
+                                    notify_workers = [w for w in all_workers_emg if w['id'] not in rids]
+                            
+                            _company_info_emg = db.get_company(company_id)
+                            _company_name_emg = _company_info_emg.get('company_name', 'Your employer') if _company_info_emg else 'Your employer'
+                            
+                            for _ew in notify_workers:
+                                db.create_notification(
+                                    company_id=company_id,
+                                    recipient_type='worker',
+                                    recipient_id=_ew['id'],
+                                    notif_type='emergency_job',
+                                    message=f"EMERGENCY: {job_description} at {validated_address or extracted_eircode or 'TBD'} for {customer_name}. Accept to dispatch.",
+                                    metadata={
+                                        'booking_id': booking_id,
+                                        'customer_name': customer_name,
+                                        'job_description': job_description,
+                                        'address': validated_address or extracted_eircode or '',
+                                        'phone': phone,
+                                        'appointment_time': parsed_time.isoformat(),
+                                    }
+                                )
+                                _ew_email = _ew.get('email')
+                                if _ew_email:
+                                    try:
+                                        from src.services.email_reminder import get_email_service
+                                        _esvc = get_email_service()
+                                        if _esvc.configured:
+                                            _time_str = parsed_time.strftime('%A, %B %d at %I:%M %p')
+                                            _subj = f"EMERGENCY JOB - {job_description} - Action Required"
+                                            _txt = (
+                                                f"{_company_name_emg}\n\nEMERGENCY JOB ALERT\n\n"
+                                                f"Customer: {customer_name}\nIssue: {job_description}\n"
+                                                f"Location: {validated_address or extracted_eircode or 'TBD'}\n"
+                                                f"When: {_time_str}\nPhone: {phone}\n\n"
+                                                f"Log in to your dashboard to accept this job."
+                                            )
+                                            _html = f'''<html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+<div style="max-width:600px;margin:0 auto;padding:20px;">
+    <div style="background:linear-gradient(135deg,#dc2626 0%,#ef4444 100%);padding:25px;text-align:center;border-radius:12px 12px 0 0;">
+        <div style="font-size:24px;font-weight:800;color:white;">EMERGENCY JOB</div>
+    </div>
+    <div style="background:white;padding:25px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+        <p style="color:#dc2626;font-weight:700;font-size:18px;margin:0 0 15px;">Immediate response needed</p>
+        <div style="background:#fef2f2;border-left:4px solid #ef4444;padding:15px;margin:20px 0;border-radius:0 8px 8px 0;">
+            <p style="margin:5px 0;"><strong>Customer:</strong> {customer_name}</p>
+            <p style="margin:5px 0;"><strong>Issue:</strong> {job_description}</p>
+            <p style="margin:5px 0;"><strong>Location:</strong> {validated_address or extracted_eircode or 'TBD'}</p>
+            <p style="margin:5px 0;"><strong>When:</strong> {_time_str}</p>
+            <p style="margin:5px 0;"><strong>Phone:</strong> {phone}</p>
+        </div>
+        <p>Log in to your worker dashboard to accept this emergency job.</p>
+        <p style="margin-top:25px;">— {_company_name_emg}</p>
+    </div>
+</div></body></html>'''
+                                            _esvc._send_email(_ew_email, _subj, _html, _txt, _company_name_emg)
+                                            logger.info(f"[BOOK_JOB] 🚨 Emergency email sent to {_ew.get('name')} ({_ew_email})")
+                                    except Exception as _ee:
+                                        logger.warning(f"[BOOK_JOB] ⚠️ Could not email worker {_ew.get('name')}: {_ee}")
+                            
+                            db.create_notification(
+                                company_id=company_id, recipient_type='owner', recipient_id=0,
+                                notif_type='emergency_job',
+                                message=f"EMERGENCY JOB booked: {job_description} for {customer_name} — awaiting worker acceptance",
+                                metadata={'booking_id': booking_id}
+                            )
+                            logger.info(f"[BOOK_JOB] 🚨 Emergency notifications sent to {len(notify_workers)} worker(s)")
+                        except Exception as emg_err:
+                            logger.warning(f"[BOOK_JOB] ⚠️ Emergency dispatch failed: {emg_err}")
+                    
                     # Update client's address/eircode to most recent, email only if not set
                     try:
                         existing_client = db.get_client(client_id, company_id=company_id)
@@ -5870,11 +5971,15 @@ Return ONLY valid JSON, no explanation."""
                 except Exception as gcal_err:
                     logger.warning(f"[BOOK_JOB] ⚠️ Google Calendar sync failed (booking still saved): {gcal_err}")
             
+            _is_emergency = urgency_level == 'emergency'
+            _emergency_msg = " Workers have been notified and someone will be in touch shortly." if _is_emergency else ""
+            
             return {
                 "success": True,
-                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({format_duration(service_duration)}). {urgency_level.title()} job at {validated_address}.{worker_msg}",
+                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({format_duration(service_duration)}). {urgency_level.title()} job at {validated_address}.{worker_msg}{_emergency_msg}",
                 "is_callout_booking": is_callout_booking,
                 "is_quote_booking": is_quote_booking,
+                "is_emergency": _is_emergency,
                 "original_service_name": original_service_name if (is_callout_booking or is_quote_booking) else None,
                 "appointment_details": {
                     "customer": customer_name,

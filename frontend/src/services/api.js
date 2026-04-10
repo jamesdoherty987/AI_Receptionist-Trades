@@ -352,6 +352,7 @@ export const reviewTimeOffRequest = (id, status, note = '') =>
 
 // Worker Notifications
 export const getWorkerNotifications = () => api.get('/api/worker/notifications');
+export const acceptEmergencyJob = (bookingId) => api.post(`/api/worker/emergency/${bookingId}/accept`);
 
 // Owner-Worker Messaging
 export const getConversations = () => api.get('/api/messages/conversations');

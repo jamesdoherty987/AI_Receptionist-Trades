@@ -261,3 +261,23 @@
   font-size: 0.65rem; font-weight: 600; white-space: nowrap; text-transform: capitalize;
 }
 .jt-recurring-badge i { font-size: 0.55rem; }
+
+/* ── Emergency Badge ─────────────────────────────────────── */
+
+.jt-emergency-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #dc2626;
+  color: white;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  animation: emergency-badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes emergency-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}

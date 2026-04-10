@@ -6550,6 +6550,74 @@ def bookings_api():
             except Exception as e:
                 safe_print(f"[GCAL] Auto-sync on manual create failed (non-critical): {e}")
             
+            # EMERGENCY JOB: If is_emergency flag is set, update urgency and dispatch to workers
+            if data.get('is_emergency') and booking_id:
+                try:
+                    from datetime import datetime as _edt
+                    db.update_booking(booking_id, urgency='emergency', emergency_status='pending_acceptance')
+                    
+                    # Notify all workers
+                    all_workers = db.get_all_workers(company_id=company_id) or []
+                    _company_info = db.get_company(company_id)
+                    _company_name = _company_info.get('company_name', 'Your employer') if _company_info else 'Your employer'
+                    customer_name = client.get('name', 'Customer') if client else 'Customer'
+                    
+                    for _ew in all_workers:
+                        db.create_notification(
+                            company_id=company_id,
+                            recipient_type='worker',
+                            recipient_id=_ew['id'],
+                            notif_type='emergency_job',
+                            message=f"EMERGENCY: {service_type} at {job_address or job_eircode or 'TBD'} for {customer_name}. Accept to dispatch.",
+                            metadata={
+                                'booking_id': booking_id,
+                                'customer_name': customer_name,
+                                'job_description': service_type,
+                                'address': job_address or job_eircode or '',
+                                'appointment_time': appointment_dt.isoformat(),
+                            }
+                        )
+                        # Email worker
+                        _ew_email = _ew.get('email')
+                        if _ew_email:
+                            try:
+                                from src.services.email_reminder import get_email_service
+                                _esvc = get_email_service()
+                                if _esvc.configured:
+                                    _time_str = appointment_dt.strftime('%A, %B %d at %I:%M %p')
+                                    _subj = f"EMERGENCY JOB - {service_type} - Action Required"
+                                    _txt = (
+                                        f"{_company_name}\n\nEMERGENCY JOB ALERT\n\n"
+                                        f"Customer: {customer_name}\nIssue: {service_type}\n"
+                                        f"Location: {job_address or job_eircode or 'TBD'}\n"
+                                        f"When: {_time_str}\n\n"
+                                        f"Log in to your dashboard to accept this job."
+                                    )
+                                    _html = f'''<html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+<div style="max-width:600px;margin:0 auto;padding:20px;">
+    <div style="background:linear-gradient(135deg,#dc2626 0%,#ef4444 100%);padding:25px;text-align:center;border-radius:12px 12px 0 0;">
+        <div style="font-size:24px;font-weight:800;color:white;">EMERGENCY JOB</div>
+    </div>
+    <div style="background:white;padding:25px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+        <p style="color:#dc2626;font-weight:700;font-size:18px;margin:0 0 15px;">Immediate response needed</p>
+        <div style="background:#fef2f2;border-left:4px solid #ef4444;padding:15px;margin:20px 0;border-radius:0 8px 8px 0;">
+            <p style="margin:5px 0;"><strong>Customer:</strong> {customer_name}</p>
+            <p style="margin:5px 0;"><strong>Issue:</strong> {service_type}</p>
+            <p style="margin:5px 0;"><strong>Location:</strong> {job_address or job_eircode or 'TBD'}</p>
+            <p style="margin:5px 0;"><strong>When:</strong> {_time_str}</p>
+        </div>
+        <p>Log in to your worker dashboard to accept this emergency job.</p>
+        <p style="margin-top:25px;">— {_company_name}</p>
+    </div>
+</div></body></html>'''
+                                    _esvc._send_email(_ew_email, _subj, _html, _txt, _company_name)
+                            except Exception:
+                                pass
+                    
+                    print(f"[INFO] Emergency job {booking_id} — notified {len(all_workers)} workers")
+                except Exception as emg_err:
+                    print(f"[WARNING] Emergency dispatch failed: {emg_err}")
+            
             return jsonify({
                 "success": True,
                 "booking_id": booking_id,
@@ -8290,6 +8358,115 @@ def worker_notifications_api():
         })
 
     return jsonify({'notifications': notifications, 'count': len(notifications)})
+
+
+@app.route("/api/worker/emergency/<int:booking_id>/accept", methods=["POST"])
+@worker_login_required
+def worker_accept_emergency(booking_id):
+    """Worker accepts an emergency job — assigns them and updates status."""
+    worker_id = session.get('worker_id')
+    company_id = session.get('worker_company_id')
+    db = get_database()
+
+    # Direct lookup — don't fetch all bookings just to find one
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT b.id, b.service_type, b.emergency_status, b.phone_number, b.email,
+                   b.address, b.appointment_time, b.urgency,
+                   c.name as customer_name, c.phone as client_phone, c.email as client_email
+            FROM bookings b
+            LEFT JOIN clients c ON b.client_id = c.id
+            WHERE b.id = %s AND b.company_id = %s
+        """, (booking_id, company_id))
+        booking = cursor.fetchone()
+    finally:
+        db.return_connection(conn)
+
+    if not booking:
+        return jsonify({'error': 'Job not found'}), 404
+    booking = dict(booking)
+
+    if booking.get('emergency_status') != 'pending_acceptance':
+        if booking.get('emergency_status') == 'accepted':
+            return jsonify({'error': 'This emergency job has already been accepted by another worker'}), 409
+        return jsonify({'error': 'This job is not awaiting acceptance'}), 400
+
+    from datetime import datetime
+    try:
+        # Atomic update: only succeeds if status is still pending_acceptance
+        # This prevents race conditions where two workers accept simultaneously
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE bookings 
+                SET emergency_status = 'accepted', 
+                    emergency_accepted_by = %s, 
+                    emergency_accepted_at = %s
+                WHERE id = %s AND emergency_status = 'pending_acceptance'
+            """, (worker_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), booking_id))
+            conn.commit()
+            if cursor.rowcount == 0:
+                # Another worker already accepted
+                db.return_connection(conn)
+                return jsonify({'error': 'This emergency job has already been accepted by another worker'}), 409
+        finally:
+            db.return_connection(conn)
+
+        # Assign this worker to the job
+        db.assign_worker_to_job(booking_id, worker_id)
+
+        worker = db.get_worker(worker_id, company_id=company_id)
+        worker_name = worker['name'] if worker else 'A worker'
+
+        # Notify owner that a worker accepted
+        db.create_notification(
+            company_id=company_id,
+            recipient_type='owner',
+            recipient_id=0,
+            notif_type='emergency_accepted',
+            message=f"{worker_name} accepted the emergency job: {booking.get('service_type', 'Emergency')} for {booking.get('customer_name', 'customer')}",
+            metadata={'booking_id': booking_id, 'worker_id': worker_id}
+        )
+
+        # Send confirmation SMS/email to customer
+        try:
+            from src.services.sms_reminder import notify_customer
+            _company = db.get_company(company_id)
+            _company_name = _company.get('company_name') if _company else None
+            appt_time = booking.get('appointment_time')
+            if isinstance(appt_time, str):
+                try:
+                    appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00'))
+                except (ValueError, TypeError):
+                    appt_time = datetime.now()
+            notify_customer(
+                'booking_confirmation',
+                customer_email=booking.get('email') or booking.get('client_email'),
+                customer_phone=booking.get('phone_number') or booking.get('client_phone'),
+                appointment_time=appt_time,
+                customer_name=booking.get('customer_name', 'Customer'),
+                service_type=booking.get('service_type', 'Emergency'),
+                company_name=_company_name,
+                worker_names=[worker_name],
+                address=booking.get('address'),
+            )
+        except Exception as e:
+            print(f"[WARNING] Could not send emergency confirmation to customer: {e}")
+
+        return jsonify({
+            'success': True,
+            'message': f'Emergency job accepted. You are now assigned to this job.',
+            'booking_id': booking_id
+        })
+    except Exception as e:
+        print(f"[ERROR] Failed to accept emergency job: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to accept job. Please try again.'}), 500
 
 
 # ── Owner-Worker Messaging ─────────────────────────────────────────

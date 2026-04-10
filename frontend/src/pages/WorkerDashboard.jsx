@@ -23,7 +23,9 @@ import {
   deleteWorkerJobMaterial,
   getWorkerMessages,
   workerSendMessage,
-  getWorkerUnreadMessageCount
+  getWorkerUnreadMessageCount,
+  getWorkerNotifications,
+  acceptEmergencyJob
 } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
@@ -133,6 +135,29 @@ function WorkerDashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ['worker-dashboard'],
     queryFn: async () => { const r = await getWorkerDashboard(); return r.data; },
+  });
+
+  // Emergency job notifications
+  const { data: notifData } = useQuery({
+    queryKey: ['worker-notifications'],
+    queryFn: async () => { const r = await getWorkerNotifications(); return r.data; },
+    refetchInterval: 10000,
+  });
+  const emergencyNotifs = (notifData?.notifications || []).filter(n => n.type === 'emergency_job' && n.metadata?.booking_id);
+
+  const [emergencyAcceptingId, setEmergencyAcceptingId] = useState(null);
+  const [emergencyAcceptedIds, setEmergencyAcceptedIds] = useState(new Set());
+
+  const emergencyAcceptMutation = useMutation({
+    mutationFn: (bookingId) => acceptEmergencyJob(bookingId),
+    onMutate: (bookingId) => setEmergencyAcceptingId(bookingId),
+    onSuccess: (_, bookingId) => {
+      setEmergencyAcceptedIds(prev => new Set([...prev, bookingId]));
+      setEmergencyAcceptingId(null);
+      queryClient.invalidateQueries({ queryKey: ['worker-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
+    },
+    onError: () => setEmergencyAcceptingId(null),
   });
 
   const { data: hoursSummary } = useQuery({
@@ -1055,6 +1080,40 @@ function WorkerDashboard() {
               </div>
             </div>
           </div>
+
+          {/* Emergency Job Banner */}
+          {emergencyNotifs.length > 0 && (
+            <div className="emergency-banner">
+              <div className="emergency-banner-icon">
+                <i className="fas fa-exclamation-triangle"></i>
+              </div>
+              <div className="emergency-banner-content">
+                <div className="emergency-banner-title">Emergency Job{emergencyNotifs.length > 1 ? 's' : ''} Pending</div>
+                {emergencyNotifs.map(notif => (
+                  <div key={notif.id} className="emergency-banner-job">
+                    <div className="emergency-banner-details">
+                      <span className="emergency-customer">{notif.metadata?.customer_name}</span>
+                      <span className="emergency-desc">{notif.metadata?.job_description}</span>
+                      {notif.metadata?.address && <span className="emergency-addr"><i className="fas fa-map-marker-alt"></i> {notif.metadata.address}</span>}
+                    </div>
+                    <button
+                      className="emergency-banner-accept"
+                      onClick={() => emergencyAcceptMutation.mutate(notif.metadata.booking_id)}
+                      disabled={emergencyAcceptingId === notif.metadata.booking_id || emergencyAcceptedIds.has(notif.metadata.booking_id)}
+                    >
+                      {emergencyAcceptingId === notif.metadata.booking_id ? (
+                        <><i className="fas fa-spinner fa-spin"></i> Accepting...</>
+                      ) : emergencyAcceptedIds.has(notif.metadata.booking_id) ? (
+                        <><i className="fas fa-check"></i> Accepted</>
+                      ) : (
+                        <><i className="fas fa-check"></i> Accept &amp; Dispatch</>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Tabs */}
           <div className="worker-tabs">

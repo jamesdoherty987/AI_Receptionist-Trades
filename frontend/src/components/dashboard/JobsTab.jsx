@@ -261,6 +261,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                             </span>
                           )}
                           <span className={`jt-status-badge jt-status-${job.status}`}>{job.status === 'in-progress' ? 'In Progress' : job.status}</span>
+                          {job.urgency === 'emergency' && <span className="jt-emergency-badge"><i className="fas fa-bolt"></i> Emergency{job.emergency_status === 'pending_acceptance' ? ' — Pending' : job.emergency_status === 'accepted' ? ' — Accepted' : ''}</span>}
                           {job.status_label && <span className="jt-label-badge"><i className="fas fa-tag"></i> {job.status_label}</span>}
                           {job.recurrence_pattern && <span className="jt-recurring-badge"><i className="fas fa-redo"></i> {job.recurrence_pattern}</span>}
                         </div>

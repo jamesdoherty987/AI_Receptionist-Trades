@@ -196,6 +196,9 @@ class PostgreSQLDatabaseWrapper:
                     payment_method TEXT,
                     requires_callout BOOLEAN DEFAULT FALSE,
                     requires_quote BOOLEAN DEFAULT FALSE,
+                    emergency_status TEXT DEFAULT NULL,
+                    emergency_accepted_by INTEGER DEFAULT NULL,
+                    emergency_accepted_at TIMESTAMP DEFAULT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     gcal_synced_at TIMESTAMP,
@@ -806,6 +809,23 @@ class PostgreSQLDatabaseWrapper:
             except Exception as e:
                 print(f"[WARNING] Could not add requires_quote column: {e}")
         
+        # Add emergency job columns to bookings table
+        for col, col_type in [
+            ('emergency_status', "TEXT DEFAULT NULL"),
+            ('emergency_accepted_by', "INTEGER DEFAULT NULL"),
+            ('emergency_accepted_at', "TIMESTAMP DEFAULT NULL"),
+        ]:
+            cursor.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='bookings' AND column_name=%s",
+                (col,)
+            )
+            if not cursor.fetchone():
+                try:
+                    cursor.execute(f"ALTER TABLE bookings ADD COLUMN {col} {col_type}")
+                    print(f"[SUCCESS] Added {col} column to bookings table")
+                except Exception as e:
+                    print(f"[WARNING] Could not add {col} column: {e}")
+
         # Add updated_at and gcal_synced_at columns to bookings table (incremental sync)
         cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='bookings' AND column_name='updated_at'")
         if not cursor.fetchone():
@@ -1640,18 +1660,13 @@ class PostgreSQLDatabaseWrapper:
                         b.address, b.eircode, b.property_type, b.duration_minutes,
                         b.address_audio_url, b.requires_callout, b.requires_quote,
                         b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
+                        b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
-                        ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
-                    FROM bookings b
-                    LEFT JOIN clients c ON b.client_id = c.id
-                    LEFT JOIN worker_assignments wa ON b.id = wa.booking_id
-                    WHERE b.company_id = %s
-                    GROUP BY b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
-                             b.service_type, b.status, b.phone_number, b.email, b.created_at,
                              b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
                              b.address_audio_url, b.requires_callout, b.requires_quote,
                              b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
+                             b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """, (company_id,))
@@ -1664,6 +1679,7 @@ class PostgreSQLDatabaseWrapper:
                         b.address, b.eircode, b.property_type, b.duration_minutes,
                         b.address_audio_url, b.requires_callout, b.requires_quote,
                         b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
+                        b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
                         ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
                     FROM bookings b
@@ -1675,6 +1691,7 @@ class PostgreSQLDatabaseWrapper:
                              b.address, b.eircode, b.property_type, b.duration_minutes,
                              b.address_audio_url, b.requires_callout, b.requires_quote,
                              b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
+                             b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
                              c.name, c.phone, c.email
                     ORDER BY b.appointment_time DESC
                 """)
@@ -1710,6 +1727,9 @@ class PostgreSQLDatabaseWrapper:
                 'address_audio_url': row.get('address_audio_url'),
                 'requires_callout': row.get('requires_callout', False),
                 'requires_quote': row.get('requires_quote', False),
+                'emergency_status': row.get('emergency_status'),
+                'emergency_accepted_by': row.get('emergency_accepted_by'),
+                'emergency_accepted_at': row.get('emergency_accepted_at'),
                 'updated_at': row.get('updated_at'),
                 'gcal_synced_at': row.get('gcal_synced_at'),
             } for row in rows]
@@ -2353,7 +2373,8 @@ class PostgreSQLDatabaseWrapper:
                           'payment_method', 'urgency', 'address', 'eircode', 'property_type',
                           'duration_minutes', 'address_audio_url', 'requires_callout', 'requires_quote',
                           'photo_urls', 'job_started_at', 'job_completed_at', 'actual_duration_minutes',
-                          'status_label', 'recurrence_pattern', 'recurrence_end_date', 'parent_booking_id']:
+                          'status_label', 'recurrence_pattern', 'recurrence_end_date', 'parent_booking_id',
+                          'emergency_status', 'emergency_accepted_by', 'emergency_accepted_at']:
                     fields.append(f"{db_field} = %s")
                     values.append(value)
             
@@ -2917,7 +2938,8 @@ class PostgreSQLDatabaseWrapper:
                 SELECT b.id, b.appointment_time, c.name as client_name, b.service_type, 
                        b.status, b.address, b.phone_number, wa.assigned_at,
                        b.job_started_at, b.job_completed_at, b.actual_duration_minutes,
-                       b.status_label, b.recurrence_pattern, b.charge, b.duration_minutes, b.eircode
+                       b.status_label, b.recurrence_pattern, b.charge, b.duration_minutes, b.eircode,
+                       b.urgency, b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at
                 FROM worker_assignments wa
                 JOIN bookings b ON wa.booking_id = b.id
                 LEFT JOIN clients c ON b.client_id = c.id

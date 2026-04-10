@@ -106,7 +106,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
   
   const [formData, setFormData] = useState({
     client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '',
-    property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false, recurrence_pattern: '', recurrence_end_date: ''
+    property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false, is_emergency: false, recurrence_pattern: '', recurrence_end_date: ''
   });
   
   const [selectedDate, setSelectedDate] = useState('');
@@ -262,7 +262,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
   });
 
   const resetForm = () => {
-    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false, recurrence_pattern: '', recurrence_end_date: '' });
+    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false, is_emergency: false, recurrence_pattern: '', recurrence_end_date: '' });
     setSelectedDate(''); setSelectedService(null); setAnyWorkerMode(true); setAssignedWorkers([]);
     setCustomerPickerOpen(false); setCustomerSearch(''); setSelectedCustomer(null);
     const n = new Date(); setCalMonth(n.getMonth()); setCalYear(n.getFullYear());
@@ -727,6 +727,19 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
           </div>
           )}
           
+          {/* Emergency Job Toggle */}
+          <div className="form-group">
+            <label className="form-label">Emergency Job? <HelpTooltip text="Mark as emergency to immediately notify all available workers via dashboard and email. A worker must accept the job to be dispatched." /></label>
+            <div className="callout-toggle-wrapper">
+              <button type="button" className={`callout-toggle emergency-toggle ${formData.is_emergency ? 'active' : ''}`}
+                onClick={() => setFormData(prev => ({ ...prev, is_emergency: !prev.is_emergency }))}
+                role="switch" aria-checked={formData.is_emergency}>
+                <span className="callout-toggle-slider" />
+              </button>
+              <span className="callout-toggle-label">{formData.is_emergency ? 'Yes — notify workers immediately' : 'No — standard job'}</span>
+            </div>
+          </div>
+
           {/* Recurring Job Toggle */}
           <div className="form-group">
             <label className="form-label">Recurring Job? <HelpTooltip text="Set this job to repeat automatically. When completed, the next occurrence will be auto-created at the same time and day of week." /></label>

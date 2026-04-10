@@ -1229,3 +1229,135 @@
 }
 
 .worker-job-label i { font-size: 0.6rem; }
+
+/* ── Emergency Job Banner ────────────────────────────────── */
+
+.emergency-banner {
+  display: flex;
+  gap: 14px;
+  background: linear-gradient(135deg, #fef2f2 0%, #fff1f2 100%);
+  border: 2px solid #fca5a5;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  animation: emergency-border-pulse 2s ease-in-out infinite;
+}
+
+@keyframes emergency-border-pulse {
+  0%, 100% { border-color: #fca5a5; }
+  50% { border-color: #dc2626; }
+}
+
+.emergency-banner-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #dc2626;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  animation: icon-bounce 2s ease-in-out infinite;
+}
+
+@keyframes icon-bounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+.emergency-banner-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.emergency-banner-title {
+  font-weight: 700;
+  color: #991b1b;
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+}
+
+.emergency-banner-job {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid #fecaca;
+}
+
+.emergency-banner-job:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.emergency-banner-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.emergency-customer {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.9rem;
+}
+
+.emergency-desc {
+  color: #6b7280;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emergency-addr {
+  color: #9ca3af;
+  font-size: 0.75rem;
+}
+
+.emergency-addr i {
+  margin-right: 4px;
+}
+
+.emergency-banner-accept {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.emergency-banner-accept:hover:not(:disabled) {
+  background: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+.emergency-banner-accept:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .emergency-banner-job {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .emergency-banner-accept {
+    justify-content: center;
+    margin-top: 8px;
+  }
+}

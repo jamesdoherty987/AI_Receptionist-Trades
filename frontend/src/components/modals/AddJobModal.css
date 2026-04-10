@@ -343,3 +343,13 @@
   font-size: 1rem;
   color: #8b5cf6;
 }
+
+/* ── Emergency Toggle ────────────────────────────────────── */
+
+.callout-toggle.emergency-toggle.active {
+  background: #dc2626;
+}
+
+.callout-toggle.emergency-toggle.active .callout-toggle-slider {
+  background: white;
+}
