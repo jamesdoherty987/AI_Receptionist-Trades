@@ -11,6 +11,7 @@
   z-index: 999999;
   padding: 4rem 1rem 1rem 1rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .modal-container {
@@ -90,6 +91,8 @@
   padding: 1.25rem 1.5rem;
   overflow-y: auto;
   flex: 1;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 768px) {

@@ -4,22 +4,27 @@ import './Modal.css';
 function Modal({ isOpen, onClose, title, children, size = 'medium' }) {
   useEffect(() => {
     if (isOpen) {
+      // Save scroll position and lock body (works on iOS Safari too)
+      const scrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
       document.body.style.overflow = 'hidden';
       document.body.classList.add('modal-open');
-    } else {
-      // Only restore scroll if no other modals are open
-      const openModals = document.querySelectorAll('.modal-overlay');
-      if (openModals.length === 0) {
-        document.body.style.overflow = 'unset';
-        document.body.classList.remove('modal-open');
-      }
     }
     
     return () => {
       const openModals = document.querySelectorAll('.modal-overlay');
-      if (openModals.length === 0) {
-        document.body.style.overflow = 'unset';
+      if (openModals.length <= 1) {
+        const scrollY = document.body.style.top;
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.left = '';
+        document.body.style.right = '';
+        document.body.style.overflow = '';
         document.body.classList.remove('modal-open');
+        window.scrollTo(0, parseInt(scrollY || '0') * -1);
       }
     };
   }, [isOpen]);

@@ -1244,161 +1244,352 @@
 }
 
 /* How It Works */
-.how-it-works {
+.prism-section {
   background: var(--bg-secondary);
 }
 
 /* ============================================
-   TIMELINE BEAM — Modern animated how-it-works
+   3D ROTATING PRISM
    ============================================ */
 
-.timeline-beam {
-  position: relative;
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 2rem 0;
-}
-
-.timeline-track {
-  position: absolute;
-  left: 28px;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: rgba(99, 102, 241, 0.12);
-  border-radius: 1px;
-}
-
-.timeline-track-fill {
-  width: 100%;
-  height: 0;
-  background: linear-gradient(180deg, #6366f1, #0ea5e9, #10b981);
-  border-radius: 1px;
-  animation: timelineFill 2s ease-out 0.5s forwards;
-}
-
-@keyframes timelineFill {
-  to { height: 100%; }
-}
-
-.timeline-nodes {
-  display: flex;
-  flex-direction: column;
-  gap: 2.5rem;
-  position: relative;
-}
-
-.timeline-node {
-  display: flex;
-  align-items: flex-start;
-  gap: 1.5rem;
-}
-
-.timeline-node-dot {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: white;
-  border: 2px solid #e2e8f0;
+.prism-section-layout {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 4rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* Stage — holds the 3D scene + reflection */
+.prism-stage {
+  position: relative;
+  width: 220px;
+  height: 280px;
   flex-shrink: 0;
-  position: relative;
-  z-index: 2;
-  transition: all 0.4s ease;
-  color: #94a3b8;
-  font-size: 1.1rem;
+  cursor: pointer;
 }
 
-.scroll-reveal.revealed .timeline-node-dot {
-  border-color: #6366f1;
-  color: #6366f1;
-  box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.08);
-}
-
-.timeline-dot-ring {
+/* Ambient glow behind the cube */
+.prism-ambient {
   position: absolute;
-  inset: -6px;
+  top: 50%;
+  left: 50%;
+  width: 300px;
+  height: 300px;
+  transform: translate(-50%, -55%);
   border-radius: 50%;
-  border: 1px solid rgba(99, 102, 241, 0.15);
-  animation: dotRingPulse 3s ease-in-out infinite;
+  background: radial-gradient(circle, var(--ambient-color, #0ea5e9) 0%, transparent 70%);
+  opacity: 0.1;
+  filter: blur(40px);
+  transition: all 0.8s ease;
+  animation: ambientPulse 4s ease-in-out infinite;
 }
 
-@keyframes dotRingPulse {
-  0%, 100% { transform: scale(1); opacity: 0.5; }
-  50% { transform: scale(1.15); opacity: 0; }
+@keyframes ambientPulse {
+  0%, 100% { opacity: 0.1; transform: translate(-50%, -55%) scale(1); }
+  50% { opacity: 0.16; transform: translate(-50%, -55%) scale(1.08); }
 }
 
-.timeline-node-card {
-  flex: 1;
-  background: white;
-  border: 1px solid #e8ecf1;
-  border-radius: 14px;
-  padding: 1.5rem 1.75rem;
-  transition: all 0.3s ease;
+/* 3D scene container */
+.prism-scene {
+  width: 190px;
+  height: 190px;
+  margin: 0 auto;
+  perspective: 800px;
+  perspective-origin: 50% 50%;
+}
+
+/* The cube itself */
+.prism-cube {
+  width: 100%;
+  height: 100%;
   position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.9s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.timeline-node-card:hover {
-  border-color: #c7d2fe;
-  box-shadow: 0 8px 30px rgba(99, 102, 241, 0.08);
-  transform: translateX(4px);
+/* Individual faces */
+.prism-face {
+  position: absolute;
+  width: 190px;
+  height: 190px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  backface-visibility: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
-.timeline-node-num {
-  font-size: 0.7rem;
+.prism-face-0 { transform: rotateY(0deg) translateZ(95px); }
+.prism-face-1 { transform: rotateY(90deg) translateZ(95px); }
+.prism-face-2 { transform: rotateY(180deg) translateZ(95px); }
+.prism-face-3 { transform: rotateY(270deg) translateZ(95px); }
+
+.prism-face-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  z-index: 2;
+}
+
+.prism-face-icon-wrap {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.prism-face-stat {
+  font-size: 2.2rem;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  color: #6366f1;
-  opacity: 0.5;
-  display: block;
-  margin-bottom: 0.35rem;
+  color: #1e293b;
+  letter-spacing: -0.02em;
+  line-height: 1;
 }
 
-.timeline-node-card h3 {
-  font-size: 1.15rem;
+.prism-face-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Shimmer effect on faces */
+.prism-face-shimmer {
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: prismShimmer 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes prismShimmer {
+  0%, 100% { left: -100%; }
+  50% { left: 150%; }
+}
+
+/* Reflection */
+.prism-reflection {
+  width: 190px;
+  height: 190px;
+  margin: 0 auto;
+  perspective: 800px;
+  perspective-origin: 50% 50%;
+  transform: scaleY(-0.3) translateY(-30px);
+  opacity: 0.15;
+  filter: blur(3px);
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,0.4), transparent 80%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,0.4), transparent 80%);
+}
+
+.prism-reflection .prism-face {
+  box-shadow: none;
+  border: none;
+}
+
+/* Info panel */
+.prism-info {
+  flex: 1;
+  max-width: 340px;
+}
+
+.prism-info-card {
+  animation: prismInfoIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes prismInfoIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.prism-info-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.prism-info-title {
+  font-size: 1.5rem;
   font-weight: 700;
   color: #1e293b;
   margin: 0 0 0.5rem;
 }
 
-.timeline-node-card p {
-  font-size: 0.92rem;
+.prism-info-stat {
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+  transition: color 0.4s;
+}
+
+.prism-info-desc {
+  font-size: 1rem;
   color: #64748b;
   line-height: 1.6;
   margin: 0;
 }
 
+/* Selector dots */
+.prism-dots {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.prism-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #d1d5db;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.3s;
+}
+
+.prism-dot.active {
+  border-color: var(--dot-color);
+  background: var(--dot-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dot-color) 20%, transparent);
+}
+
+.prism-dot:hover {
+  border-color: var(--dot-color);
+}
+
+/* Mobile responsive */
 @media (max-width: 768px) {
-  .timeline-beam {
-    padding: 1rem 0;
+  .prism-section-layout {
+    flex-direction: column;
+    gap: 1.5rem;
   }
 
-  .timeline-track {
-    left: 20px;
+  .prism-stage {
+    width: 180px;
+    height: 230px;
   }
 
-  .timeline-node-dot {
+  .prism-scene,
+  .prism-reflection {
+    width: 150px;
+    height: 150px;
+  }
+
+  .prism-face {
+    width: 150px;
+    height: 150px;
+  }
+
+  .prism-face-0 { transform: rotateY(0deg) translateZ(75px); }
+  .prism-face-1 { transform: rotateY(90deg) translateZ(75px); }
+  .prism-face-2 { transform: rotateY(180deg) translateZ(75px); }
+  .prism-face-3 { transform: rotateY(270deg) translateZ(75px); }
+
+  .prism-face-icon-wrap {
+    width: 42px;
+    height: 42px;
+    font-size: 1rem;
+    border-radius: 12px;
+  }
+
+  .prism-face-stat {
+    font-size: 1.5rem;
+  }
+
+  .prism-face-label {
+    font-size: 0.7rem;
+  }
+
+  .prism-info {
+    text-align: center;
+    max-width: 100%;
+    padding: 0 1rem;
+  }
+
+  .prism-info-icon {
+    margin: 0 auto 0.75rem;
     width: 40px;
     height: 40px;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
   }
 
-  .timeline-node {
-    gap: 1rem;
+  .prism-info-title {
+    font-size: 1.15rem;
   }
 
-  .timeline-node-card {
-    padding: 1rem 1.25rem;
+  .prism-info-stat {
+    font-size: 2rem;
   }
 
-  .timeline-node-card h3 {
-    font-size: 1rem;
+  .prism-info-desc {
+    font-size: 0.9rem;
   }
 
-  .timeline-node-card p {
-    font-size: 0.85rem;
+  .prism-dots {
+    justify-content: center;
+    margin-top: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .prism-stage {
+    width: 150px;
+    height: 200px;
+  }
+
+  .prism-scene,
+  .prism-reflection {
+    width: 130px;
+    height: 130px;
+  }
+
+  .prism-face {
+    width: 130px;
+    height: 130px;
+  }
+
+  .prism-face-0 { transform: rotateY(0deg) translateZ(65px); }
+  .prism-face-1 { transform: rotateY(90deg) translateZ(65px); }
+  .prism-face-2 { transform: rotateY(180deg) translateZ(65px); }
+  .prism-face-3 { transform: rotateY(270deg) translateZ(65px); }
+
+  .prism-face-icon-wrap {
+    width: 36px;
+    height: 36px;
+    font-size: 0.9rem;
+  }
+
+  .prism-face-stat {
+    font-size: 1.3rem;
+  }
+
+  .prism-info-stat {
+    font-size: 1.75rem;
   }
 }
 

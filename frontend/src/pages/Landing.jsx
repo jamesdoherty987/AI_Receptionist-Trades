@@ -672,6 +672,130 @@ function MeshGradient() {
   return <canvas ref={canvasRef} className="mesh-gradient-canvas" />;
 }
 
+// ---- 3D Rotating Prism — AI Capabilities Showcase ----
+const PRISM_FACES = [
+  {
+    icon: 'fa-phone-alt',
+    label: 'AI Calls',
+    stat: '24/7',
+    desc: 'Never miss a call again',
+    color: '#0ea5e9',
+    gradient: 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
+  },
+  {
+    icon: 'fa-calendar-check',
+    label: 'Smart Booking',
+    stat: '90%',
+    desc: 'Auto-conversion rate',
+    color: '#10b981',
+    gradient: 'linear-gradient(135deg, #10b981, #34d399)',
+  },
+  {
+    icon: 'fa-users',
+    label: 'Customer CRM',
+    stat: '360°',
+    desc: 'Full customer view',
+    color: '#8b5cf6',
+    gradient: 'linear-gradient(135deg, #8b5cf6, #a78bfa)',
+  },
+  {
+    icon: 'fa-file-invoice-dollar',
+    label: 'Auto Invoicing',
+    stat: '0 min',
+    desc: 'Manual paperwork',
+    color: '#f59e0b',
+    gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
+  },
+];
+
+function RotatingPrism() {
+  const [faceIdx, setFaceIdx] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const [ref, isVisible] = useScrollReveal(0.2);
+
+  useEffect(() => {
+    if (isHovered) return;
+    const interval = setInterval(() => {
+      setFaceIdx(i => (i + 1) % PRISM_FACES.length);
+    }, 1800);
+    return () => clearInterval(interval);
+  }, [isHovered]);
+
+  const face = PRISM_FACES[faceIdx];
+  const rotation = faceIdx * -90;
+
+  return (
+    <div ref={ref} className="prism-section-layout">
+      {/* 3D Prism */}
+      <div
+        className="prism-stage"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onClick={() => setFaceIdx(i => (i + 1) % PRISM_FACES.length)}
+      >
+        <div className="prism-ambient" style={{ '--ambient-color': face.color }} />
+        <div className="prism-scene">
+          <div className="prism-cube" style={{ transform: `rotateY(${rotation}deg)` }}>
+            {PRISM_FACES.map((f, i) => (
+              <div key={i} className={`prism-face prism-face-${i}`} style={{ '--face-gradient': f.gradient }}>
+                <div className="prism-face-content">
+                  <div className="prism-face-icon-wrap" style={{ background: f.gradient }}>
+                    <i className={`fas ${f.icon}`}></i>
+                  </div>
+                  <span className="prism-face-stat">{f.stat}</span>
+                  <span className="prism-face-label">{f.label}</span>
+                </div>
+                {/* Shimmer overlay */}
+                <div className="prism-face-shimmer" />
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Reflection */}
+        <div className="prism-reflection">
+          <div className="prism-cube" style={{ transform: `rotateY(${rotation}deg)` }} aria-hidden="true">
+            {PRISM_FACES.map((f, i) => (
+              <div key={i} className={`prism-face prism-face-${i}`} style={{ '--face-gradient': f.gradient }}>
+                <div className="prism-face-content">
+                  <div className="prism-face-icon-wrap" style={{ background: f.gradient }}>
+                    <i className={`fas ${f.icon}`}></i>
+                  </div>
+                  <span className="prism-face-stat">{f.stat}</span>
+                  <span className="prism-face-label">{f.label}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Info panel */}
+      <div className="prism-info">
+        <div className="prism-info-card" key={faceIdx}>
+          <div className="prism-info-icon" style={{ background: face.gradient }}>
+            <i className={`fas ${face.icon}`}></i>
+          </div>
+          <h3 className="prism-info-title">{face.label}</h3>
+          <div className="prism-info-stat" style={{ color: face.color }}>{face.stat}</div>
+          <p className="prism-info-desc">{face.desc}</p>
+        </div>
+        {/* Face selector dots */}
+        <div className="prism-dots">
+          {PRISM_FACES.map((f, i) => (
+            <button
+              key={i}
+              className={`prism-dot ${i === faceIdx ? 'active' : ''}`}
+              style={{ '--dot-color': f.color }}
+              onClick={() => setFaceIdx(i)}
+              aria-label={`Show ${f.label}`}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // ---- Phone with Reels + Call Demo ----
 const CDN_BASE = 'https://pub-6d2ed0f2cb5645b68bd219a42aed3749.r2.dev/assets';
@@ -1133,55 +1257,13 @@ function Landing() {
         </div>
       </SectionReveal>
 
-      {/* How It Works — Animated Beam Timeline */}
-      <SectionReveal className="how-it-works">
+      {/* 3D Rotating Prism — AI Capabilities */}
+      <SectionReveal className="prism-section">
         <div className="section-container">
           <div className="section-header">
-            <h2 style={{ textAlign: 'center' }}>From setup to growth in <span className="gradient-text">minutes</span></h2>
-            <p style={{ textAlign: 'center' }}>No complicated onboarding. No technical skills needed.</p>
+            <h2 style={{ textAlign: 'center' }}>One AI. <span className="gradient-text">Every angle covered.</span></h2>
           </div>
-          <div className="timeline-beam">
-            <div className="timeline-track">
-              <div className="timeline-track-fill"></div>
-            </div>
-            <div className="timeline-nodes">
-              <div className="timeline-node reveal-child" style={{ transitionDelay: '0.1s' }}>
-                <div className="timeline-node-dot"><span className="timeline-dot-ring"></span><i className="fas fa-envelope"></i></div>
-                <div className="timeline-node-card">
-                  <span className="timeline-node-num">01</span>
-                  <h3>We set you up</h3>
-                  <p>Tell us about your business. We configure your AI receptionist, services, and scheduling — all tailored to you.</p>
-                </div>
-              </div>
-              <div className="timeline-node reveal-child" style={{ transitionDelay: '0.3s' }}>
-                <div className="timeline-node-dot"><span className="timeline-dot-ring"></span><i className="fas fa-phone-alt"></i></div>
-                <div className="timeline-node-card">
-                  <span className="timeline-node-num">02</span>
-                  <h3>Forward your calls</h3>
-                  <p>Point your business number to your new AI receptionist. Takes 30 seconds with any phone provider.</p>
-                </div>
-              </div>
-              <div className="timeline-node reveal-child" style={{ transitionDelay: '0.5s' }}>
-                <div className="timeline-node-dot"><span className="timeline-dot-ring"></span><i className="fas fa-chart-line"></i></div>
-                <div className="timeline-node-card">
-                  <span className="timeline-node-num">03</span>
-                  <h3>Watch it work</h3>
-                  <p>Your AI answers calls, books jobs, sends confirmations, and manages your calendar — while you're on the tools.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </SectionReveal>
-
-      {/* Integration Flow Diagram */}
-      <SectionReveal className="integration-section">
-        <div className="section-container">
-          <div className="section-header">
-            <h2 style={{ textAlign: 'center' }}>See how it all <span className="gradient-text">connects</span></h2>
-            <p style={{ textAlign: 'center' }}>From incoming call to confirmed booking — fully automated.</p>
-          </div>
-          <IntegrationFlow />
+          <RotatingPrism />
         </div>
       </SectionReveal>
 
