@@ -24,7 +24,8 @@ import {
   createJobTask,
   updateJobTask,
   deleteJobTask,
-  generatePOFromJob
+  generatePOFromJob,
+  getBookingReview
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
@@ -144,6 +145,14 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const { data: jobTasks = [] } = useQuery({
     queryKey: ['job-tasks', jobId],
     queryFn: async () => (await getJobTasks(jobId)).data,
+    enabled: isOpen && !!jobId,
+    staleTime: 30 * 1000,
+  });
+
+  // Review
+  const { data: reviewData } = useQuery({
+    queryKey: ['booking-review', jobId],
+    queryFn: async () => (await getBookingReview(jobId)).data,
     enabled: isOpen && !!jobId,
     staleTime: 30 * 1000,
   });
@@ -1170,6 +1179,40 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                 <div className="empty-workers"><i className="fas fa-image"></i><p>No media yet</p></div>
               )}
             </div>
+
+            {/* Customer Review */}
+            {reviewData?.review && (
+              <div className="info-card">
+                <h3><i className="fas fa-star" style={{ color: '#f59e0b' }}></i> Customer Review</h3>
+                {reviewData.review.submitted_at ? (
+                  <div className="review-display">
+                    <div className="review-stars">
+                      {[1,2,3,4,5].map(s => (
+                        <span key={s} style={{ color: s <= reviewData.review.rating ? '#f59e0b' : '#d1d5db', fontSize: '1.3rem' }}>★</span>
+                      ))}
+                      <span style={{ marginLeft: 8, fontSize: '0.85rem', color: '#6b7280', fontWeight: 600 }}>
+                        {reviewData.review.rating}/5
+                      </span>
+                    </div>
+                    {reviewData.review.review_text && (
+                      <p style={{ color: '#374151', fontSize: '0.88rem', lineHeight: 1.6, margin: '10px 0 0', fontStyle: 'italic' }}>
+                        "{reviewData.review.review_text}"
+                      </p>
+                    )}
+                    <p style={{ color: '#9ca3af', fontSize: '0.75rem', margin: '8px 0 0' }}>
+                      Submitted {new Date(reviewData.review.submitted_at).toLocaleDateString('en-IE', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="review-pending">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#6b7280', fontSize: '0.85rem' }}>
+                      <i className="fas fa-clock" style={{ color: '#f59e0b' }}></i>
+                      <span>Survey sent{reviewData.review.email_sent_at ? ` on ${new Date(reviewData.review.email_sent_at).toLocaleDateString('en-IE', { month: 'short', day: 'numeric' })}` : ''} — awaiting response</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

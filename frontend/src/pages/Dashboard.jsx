@@ -16,6 +16,7 @@ import ServicesTab from '../components/dashboard/ServicesTab';
 import MaterialsTab from '../components/dashboard/MaterialsTab';
 import InsightsTab from '../components/dashboard/InsightsTab';
 import CallLogsTab from '../components/dashboard/CallLogsTab';
+import ReviewsTab from '../components/dashboard/ReviewsTab';
 import { isStandalone } from '../components/PWAInstallPrompt';
 import { getDashboardData, getBusinessSettings, updateBusinessSettings, getUnseenCallCount } from '../services/api';
 import './Dashboard.css';
@@ -172,6 +173,12 @@ function Dashboard() {
       icon: 'fas fa-chart-pie',
       group: 'Reports',
       content: isLoading ? <LoadingSpinner /> : <InsightsTab bookings={bookings} clients={clients} workers={workers} />
+    }] : []),
+    ...(settings?.show_reviews_tab !== false ? [{
+      label: 'Reviews',
+      icon: 'fas fa-star',
+      group: 'Reports',
+      content: <ReviewsTab />
     }] : []),
     // Dev tools
     ...(import.meta.env.VITE_ENABLE_TEST_CHAT === 'true' ? [{

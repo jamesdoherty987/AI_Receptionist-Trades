@@ -146,6 +146,8 @@ class PostgreSQLDatabaseWrapper:
                     show_invoice_buttons BOOLEAN DEFAULT true,
                     send_confirmation_sms BOOLEAN DEFAULT true,
                     send_reminder_sms BOOLEAN DEFAULT false,
+                    send_review_emails BOOLEAN DEFAULT true,
+                    show_reviews_tab BOOLEAN DEFAULT true,
                     gcal_invite_workers BOOLEAN DEFAULT false,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -645,6 +647,9 @@ class PostgreSQLDatabaseWrapper:
             # SMS toggles
             'send_confirmation_sms': 'BOOLEAN DEFAULT true',
             'send_reminder_sms': 'BOOLEAN DEFAULT false',
+            # Review toggles
+            'send_review_emails': 'BOOLEAN DEFAULT true',
+            'show_reviews_tab': 'BOOLEAN DEFAULT true',
             # Google Calendar
             'gcal_invite_workers': 'BOOLEAN DEFAULT false',
             # Business settings (may have been missed in original schema)
@@ -1064,6 +1069,30 @@ class PostgreSQLDatabaseWrapper:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_credit_notes_company ON credit_notes(company_id)")
         
         print("[INFO] Mileage and credit notes migrations complete")
+        
+        # ============================================
+        # Job reviews table for customer satisfaction
+        # ============================================
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS job_reviews (
+                id BIGSERIAL PRIMARY KEY,
+                booking_id BIGINT NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+                company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                client_id BIGINT REFERENCES clients(id) ON DELETE SET NULL,
+                review_token VARCHAR(64) UNIQUE NOT NULL,
+                rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+                review_text TEXT,
+                customer_name TEXT,
+                service_type TEXT,
+                email_sent_at TIMESTAMPTZ,
+                submitted_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_reviews_company ON job_reviews(company_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_reviews_booking ON job_reviews(booking_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_reviews_token ON job_reviews(review_token)")
+        print("[INFO] Job reviews migration complete")
     
     def _convert_query(self, query: str) -> str:
         """Convert ? placeholders to %s for parameterized queries"""
@@ -1257,6 +1286,7 @@ class PostgreSQLDatabaseWrapper:
                               'show_finances_tab', 'show_invoice_buttons',
                               'show_insights_tab',
                               'send_confirmation_sms', 'send_reminder_sms',
+                              'send_review_emails', 'show_reviews_tab',
                               'gcal_invite_workers',
                               'bypass_numbers',
                               'setup_wizard_complete',
@@ -4417,5 +4447,125 @@ class PostgreSQLDatabaseWrapper:
         except Exception as e:
             conn.rollback()
             return 0
+        finally:
+            self.return_connection(conn)
+
+    # ============================================
+    # Job Reviews
+    # ============================================
+
+    def create_job_review(self, booking_id: int, company_id: int, client_id: int,
+                          review_token: str, customer_name: str = None,
+                          service_type: str = None) -> Optional[Dict]:
+        """Create a review record when a job is completed (before email is sent)."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                INSERT INTO job_reviews (booking_id, company_id, client_id, review_token,
+                                         customer_name, service_type)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id, review_token
+            """, (booking_id, company_id, client_id, review_token, customer_name, service_type))
+            conn.commit()
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Failed to create job review: {e}")
+            return None
+        finally:
+            self.return_connection(conn)
+
+    def mark_review_email_sent(self, review_id: int) -> bool:
+        """Mark that the satisfaction email was sent."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                UPDATE job_reviews SET email_sent_at = CURRENT_TIMESTAMP WHERE id = %s
+            """, (review_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            return False
+        finally:
+            self.return_connection(conn)
+
+    def get_review_by_token(self, token: str) -> Optional[Dict]:
+        """Get a review by its unique token (for the public submission page)."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT jr.*, c.name as company_name
+                FROM job_reviews jr
+                JOIN companies c ON c.id = jr.company_id
+                WHERE jr.review_token = %s
+            """, (token,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            conn.rollback()
+            return None
+        finally:
+            self.return_connection(conn)
+
+    def submit_review(self, token: str, rating: int, review_text: str = None) -> bool:
+        """Submit a customer review via token."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                UPDATE job_reviews
+                SET rating = %s, review_text = %s, submitted_at = CURRENT_TIMESTAMP
+                WHERE review_token = %s AND submitted_at IS NULL
+            """, (rating, review_text, token))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] Failed to submit review: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
+    def get_company_reviews(self, company_id: int, limit: int = 50) -> List[Dict]:
+        """Get all reviews for a company."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute("""
+                SELECT jr.*, b.appointment_time, b.service_type as booking_service
+                FROM job_reviews jr
+                LEFT JOIN bookings b ON b.id = jr.booking_id
+                WHERE jr.company_id = %s
+                ORDER BY jr.created_at DESC
+                LIMIT %s
+            """, (company_id, limit))
+            return [dict(r) for r in cursor.fetchall()]
+        except Exception as e:
+            conn.rollback()
+            return []
+        finally:
+            self.return_connection(conn)
+
+    def get_booking_review(self, booking_id: int, company_id: int = None) -> Optional[Dict]:
+        """Get the review for a specific booking."""
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            query = "SELECT * FROM job_reviews WHERE booking_id = %s"
+            params = [booking_id]
+            if company_id:
+                query += " AND company_id = %s"
+                params.append(company_id)
+            cursor.execute(query, tuple(params))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            conn.rollback()
+            return None
         finally:
             self.return_connection(conn)

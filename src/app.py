@@ -7679,6 +7679,61 @@ def complete_booking_api(booking_id):
     # Update booking status to completed - pass company_id for security
     db.update_booking(booking_id, company_id=company_id, status='completed')
     
+    # Send customer satisfaction email (non-blocking, best-effort)
+    try:
+        # Check if review emails are enabled for this company
+        company = db.get_company(company_id)
+        send_reviews_enabled = company.get('send_review_emails', True) if company else True
+        
+        if send_reviews_enabled:
+            # Get client info for email
+            client = db.get_client(client_id, company_id=company_id)
+            customer_email = booking.get('email') or (client.get('email') if client else None)
+            customer_name = (client.get('name') if client else None) or booking.get('customer_name') or 'Customer'
+            service = booking.get('service_type') or 'Job'
+            
+            if customer_email:
+                # Check if a review already exists for this booking (prevent duplicates)
+                existing_review = db.get_booking_review(booking_id, company_id=company_id)
+                if existing_review:
+                    safe_print(f"[REVIEW] Review already exists for booking {booking_id}, skipping")
+                else:
+                    import secrets
+                    review_token = secrets.token_urlsafe(32)
+                    review_record = db.create_job_review(
+                        booking_id=booking_id,
+                        company_id=company_id,
+                        client_id=client_id,
+                        review_token=review_token,
+                        customer_name=customer_name,
+                        service_type=service
+                    )
+                    if review_record:
+                        from src.utils.config import config
+                        public_url = getattr(config, 'PUBLIC_URL', 'https://bookedforyou.ie')
+                        review_url = f"{public_url}/review/{review_token}"
+                        
+                        from src.services.email_reminder import get_email_service
+                        email_svc = get_email_service()
+                        sent = email_svc.send_satisfaction_survey(
+                            to_email=customer_email,
+                            customer_name=customer_name,
+                            service_type=service,
+                            review_url=review_url,
+                            appointment_time=booking.get('appointment_time')
+                        )
+                        if sent:
+                            db.mark_review_email_sent(review_record['id'])
+                            safe_print(f"[REVIEW] Satisfaction email sent to {customer_email} for booking {booking_id}")
+                        else:
+                            safe_print(f"[REVIEW] Failed to send satisfaction email to {customer_email}")
+            else:
+                safe_print(f"[REVIEW] No email on file for booking {booking_id}, skipping satisfaction survey")
+        else:
+            safe_print(f"[REVIEW] Review emails disabled for company {company_id}, skipping")
+    except Exception as e:
+        safe_print(f"[REVIEW] Satisfaction email failed (non-critical): {e}")
+    
     # Sync completed status to Google Calendar if connected
     try:
         from src.services.google_calendar_oauth import get_company_google_calendar
@@ -7790,6 +7845,65 @@ def get_invoice_config():
         },
         "warnings": warnings
     })
+
+
+@app.route("/api/reviews", methods=["GET"])
+@login_required
+def get_company_reviews():
+    """Get all reviews for the logged-in company."""
+    db = get_database()
+    company_id = session.get('company_id')
+    reviews = db.get_company_reviews(company_id)
+    return jsonify({"reviews": reviews})
+
+
+@app.route("/api/bookings/<int:booking_id>/review", methods=["GET"])
+@login_required
+def get_booking_review(booking_id):
+    """Get the review for a specific booking."""
+    db = get_database()
+    company_id = session.get('company_id')
+    review = db.get_booking_review(booking_id, company_id=company_id)
+    return jsonify({"review": review})
+
+
+@app.route("/api/review/<token>", methods=["GET"])
+def get_review_by_token(token):
+    """Public endpoint: get review info by token for the submission page."""
+    db = get_database()
+    review = db.get_review_by_token(token)
+    if not review:
+        return jsonify({"error": "Review not found or link expired"}), 404
+    if review.get('submitted_at'):
+        return jsonify({"already_submitted": True, "rating": review.get('rating')})
+    return jsonify({
+        "customer_name": review.get('customer_name'),
+        "service_type": review.get('service_type'),
+        "company_name": review.get('company_name'),
+    })
+
+
+@app.route("/api/review/<token>", methods=["POST"])
+def submit_review(token):
+    """Public endpoint: submit a customer review."""
+    db = get_database()
+    data = request.get_json() or {}
+    rating = data.get('rating')
+    review_text = data.get('review_text', '').strip()
+
+    if not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
+        return jsonify({"error": "Rating must be between 1 and 5"}), 400
+
+    review = db.get_review_by_token(token)
+    if not review:
+        return jsonify({"error": "Review not found"}), 404
+    if review.get('submitted_at'):
+        return jsonify({"error": "Review already submitted"}), 400
+
+    success = db.submit_review(token, rating, review_text or None)
+    if success:
+        return jsonify({"success": True, "message": "Thank you for your review!"})
+    return jsonify({"error": "Failed to submit review"}), 500
 
 
 @app.route("/api/bookings/<int:booking_id>/send-invoice", methods=["POST"])

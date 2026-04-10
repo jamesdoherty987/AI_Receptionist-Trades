@@ -962,6 +962,106 @@ This invoice was generated automatically.'''.strip()
                 pass
             return False
 
+    def send_satisfaction_survey(self, to_email: str, customer_name: str,
+                                 service_type: str, review_url: str,
+                                 company_name: str = None,
+                                 appointment_time=None) -> bool:
+        """Send a customer satisfaction survey email after job completion."""
+        if not self.configured:
+            print("[ERROR] Email service not configured")
+            return False
+
+        try:
+            from src.services.settings_manager import get_settings_manager
+
+            business_name = company_name or 'Your Business'
+            try:
+                settings_mgr = get_settings_manager()
+                settings = settings_mgr.get_business_settings()
+                if settings and not company_name:
+                    business_name = settings.get('business_name') or business_name
+            except Exception:
+                pass
+
+            job_date_str = ''
+            if appointment_time:
+                from datetime import datetime as _dt
+                if isinstance(appointment_time, str):
+                    appointment_time = _dt.fromisoformat(appointment_time.replace('Z', '+00:00'))
+                if hasattr(appointment_time, 'strftime'):
+                    job_date_str = appointment_time.strftime('%B %d, %Y')
+
+            date_line = f'Service Date: {job_date_str}\n' if job_date_str else ''
+            text_body = f"""Hi {customer_name},
+
+Thank you for choosing {business_name}!
+
+We recently completed your {service_type} job and would love to hear how it went.
+{date_line}
+Your feedback helps us improve and means a lot to our team.
+
+Please take a moment to leave a quick review:
+{review_url}
+
+Thank you,
+{business_name}"""
+
+            date_row_html = ''
+            if job_date_str:
+                date_row_html = f'<p style="color:#6b7280;font-size:14px;margin:0 0 20px;">Service date: {job_date_str}</p>'
+
+            html_body = f'''<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f3f4f6;">
+<div style="max-width:600px;margin:0 auto;padding:40px 20px;">
+<div style="background:white;border-radius:16px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);overflow:hidden;">
+  <div style="background:linear-gradient(135deg,#059669 0%,#10b981 100%);padding:35px;text-align:center;">
+    <div style="font-size:48px;margin-bottom:10px;">✅</div>
+    <h1 style="color:white;margin:0;font-size:22px;font-weight:700;">Job Complete!</h1>
+    <p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:14px;">We'd love to hear your feedback</p>
+  </div>
+  <div style="padding:30px;">
+    <p style="font-size:16px;color:#374151;margin:0 0 8px;">Hi <strong>{customer_name}</strong>,</p>
+    <p style="font-size:15px;color:#6b7280;margin:0 0 20px;line-height:1.6;">
+      Thank you for choosing <strong>{business_name}</strong>! We recently completed your
+      <strong>{service_type}</strong> job and would love to hear how it went.
+    </p>
+    {date_row_html}
+    <p style="font-size:15px;color:#6b7280;margin:0 0 25px;line-height:1.6;">
+      Your feedback helps us improve and means a lot to our team.
+    </p>
+    <div style="text-align:center;margin:30px 0;">
+      <a href="{review_url}"
+         style="display:inline-block;background:linear-gradient(135deg,#f59e0b 0%,#d97706 100%);
+                color:white;text-decoration:none;padding:16px 44px;font-size:18px;
+                font-weight:700;border-radius:10px;box-shadow:0 4px 14px rgba(245,158,11,0.4);
+                letter-spacing:0.3px;">
+        ⭐ Leave a Review
+      </a>
+    </div>
+    <p style="text-align:center;font-size:13px;color:#9ca3af;margin:20px 0 0;">
+      It only takes 30 seconds — we really appreciate it!
+    </p>
+  </div>
+  <div style="background:#1e293b;padding:20px;text-align:center;">
+    <div style="color:white;font-weight:700;font-size:15px;">{business_name}</div>
+    <div style="color:#94a3b8;font-size:12px;margin-top:4px;">Thank you for your business!</div>
+  </div>
+</div>
+</div>
+</body>
+</html>'''
+
+            subject = f'How was your {service_type}? — {business_name}'
+            success = self._send_email(to_email, subject, html_body, text_body, business_name)
+            if success:
+                print(f"[SUCCESS] Satisfaction survey sent to {to_email}")
+            return success
+        except Exception as e:
+            print(f"[ERROR] Failed to send satisfaction survey: {e}")
+            return False
+
 
 # Global instance
 _email_service = None

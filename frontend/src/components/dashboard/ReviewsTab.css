@@ -1,0 +1,249 @@
+.reviews-tab {
+  padding: 0;
+}
+
+.reviews-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.reviews-stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  border: 1px solid #f1f5f9;
+}
+
+.stat-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.stat-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.reviews-breakdown {
+  background: white;
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  border: 1px solid #f1f5f9;
+}
+
+.breakdown-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.breakdown-row:last-child {
+  margin-bottom: 0;
+}
+
+.breakdown-label {
+  width: 32px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+  text-align: right;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  justify-content: flex-end;
+}
+
+.breakdown-bar {
+  flex: 1;
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.breakdown-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b, #eab308);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.breakdown-count {
+  width: 24px;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  text-align: left;
+}
+
+.reviews-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #94a3b8;
+}
+
+.reviews-empty i {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+  color: #d1d5db;
+}
+
+.reviews-empty h3 {
+  color: #64748b;
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+
+.reviews-empty p {
+  font-size: 0.88rem;
+  max-width: 400px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.reviews-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.review-item {
+  background: white;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  border: 1px solid #f1f5f9;
+  transition: box-shadow 0.2s;
+}
+
+.review-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.review-item.pending {
+  opacity: 0.7;
+}
+
+.review-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.review-item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.review-customer {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.9rem;
+}
+
+.review-service {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  background: #f8fafc;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.review-item-stars {
+  display: flex;
+  gap: 1px;
+}
+
+.review-pending-badge {
+  font-size: 0.78rem;
+  color: #f59e0b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.review-item-text {
+  color: #475569;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  margin: 8px 0 0;
+  font-style: italic;
+}
+
+.review-item-footer {
+  margin-top: 8px;
+}
+
+.review-date {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.reviews-loading {
+  display: flex;
+  justify-content: center;
+  padding: 60px 0;
+}
+
+.reviews-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #f59e0b;
+  border-radius: 50%;
+  animation: reviewsSpin 0.7s linear infinite;
+}
+
+@keyframes reviewsSpin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  .reviews-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .reviews-stats {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .reviews-stat-card {
+    padding: 12px;
+  }
+  .review-item-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}

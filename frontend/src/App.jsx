@@ -25,6 +25,7 @@ import WorkerDashboard from './pages/WorkerDashboard'
 import Blog from './pages/Blog'
 import BlogPost from './pages/BlogPost'
 import InstallApp from './pages/InstallApp'
+import ReviewPage from './pages/ReviewPage'
 
 // Loading component
 import LoadingSpinner from './components/LoadingSpinner'
@@ -193,6 +194,7 @@ function AppRoutes() {
       <Route path="/blog" element={<Blog />} />
       <Route path="/blog/:slug" element={<BlogPost />} />
       <Route path="/install" element={<InstallApp />} />
+      <Route path="/review/:token" element={<ReviewPage />} />
 
       {/* Worker Portal routes */}
       <Route path="/worker/login" element={<WorkerLogin />} />

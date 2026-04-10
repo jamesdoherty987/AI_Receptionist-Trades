@@ -401,4 +401,10 @@ export const workerCreateClient = (data) => api.post('/api/worker/clients/create
 export const getCallLogs = (params = {}) => api.get('/api/call-logs', { params });
 export const getUnseenCallCount = (since) => api.get('/api/call-logs/unseen-count', { params: { since } });
 
+// Reviews
+export const getCompanyReviews = () => api.get('/api/reviews');
+export const getBookingReview = (bookingId) => api.get(`/api/bookings/${bookingId}/review`);
+export const getReviewByToken = (token) => api.get(`/api/review/${token}`);
+export const submitReview = (token, data) => api.post(`/api/review/${token}`, data);
+
 export default api;
