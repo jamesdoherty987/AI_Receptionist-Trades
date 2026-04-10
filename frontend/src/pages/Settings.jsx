@@ -20,7 +20,13 @@ import {
   getGoogleCalendarStatus,
   connectGoogleCalendar,
   disconnectGoogleCalendar,
-  syncGoogleCalendar
+  syncGoogleCalendar,
+  getAccountingStatus,
+  connectXero,
+  disconnectXero,
+  connectQuickBooks,
+  disconnectQuickBooks,
+  setAccountingProvider
 } from '../services/api';
 import './Settings.css';
 
@@ -44,6 +50,8 @@ function Settings() {
   const [gcalSyncing, setGcalSyncing] = useState(false);
   const [workerWarning, setWorkerWarning] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // Accounting integration state
+  const [acctConnecting, setAcctConnecting] = useState(false);
   // Bypass numbers state
   const [bypassNumbers, setBypassNumbers] = useState([]);
   const [newBypassName, setNewBypassName] = useState('');
@@ -87,6 +95,22 @@ function Settings() {
     } else if (gcalParam === 'error') {
       setActiveTab('business');
       setSaveMessage('Failed to connect Google Calendar. Please try again.');
+      window.history.replaceState({}, '', '/settings');
+      setTimeout(() => setSaveMessage(''), 5000);
+    }
+
+    const acctParam = searchParams.get('accounting');
+    if (acctParam === 'xero_connected' || acctParam === 'quickbooks_connected') {
+      setActiveTab('business');
+      queryClient.invalidateQueries({ queryKey: ['accounting-status'] });
+      queryClient.invalidateQueries({ queryKey: ['business-settings'] });
+      const name = acctParam === 'xero_connected' ? 'Xero' : 'QuickBooks';
+      setSaveMessage(`${name} connected successfully!`);
+      window.history.replaceState({}, '', '/settings');
+      setTimeout(() => setSaveMessage(''), 5000);
+    } else if (acctParam === 'error') {
+      setActiveTab('business');
+      setSaveMessage('Failed to connect accounting app. Please try again.');
       window.history.replaceState({}, '', '/settings');
       setTimeout(() => setSaveMessage(''), 5000);
     }
@@ -329,6 +353,14 @@ function Settings() {
     queryKey: ['gcal-status'],
     queryFn: async () => {
       const response = await getGoogleCalendarStatus();
+      return response.data;
+    },
+  });
+
+  const { data: acctStatus, refetch: refetchAcctStatus } = useQuery({
+    queryKey: ['accounting-status'],
+    queryFn: async () => {
+      const response = await getAccountingStatus();
       return response.data;
     },
   });
@@ -780,6 +812,78 @@ function Settings() {
       setTimeout(() => setSaveMessage(''), 6000);
     } finally {
       setGcalSyncing(false);
+    }
+  };
+
+  // ── Accounting Integration Handlers ──
+  const handleConnectAccounting = async (provider) => {
+    setAcctConnecting(true);
+    try {
+      const connectFn = provider === 'xero' ? connectXero : connectQuickBooks;
+      const response = await connectFn();
+      const { auth_url } = response.data;
+      const popup = window.open(auth_url, 'accounting-auth', 'width=600,height=700,scrollbars=yes');
+
+      const handleMessage = (event) => {
+        if (event.data === 'accounting-connected') {
+          window.removeEventListener('message', handleMessage);
+          if (popup) popup.close();
+          refetchAcctStatus();
+          queryClient.invalidateQueries({ queryKey: ['business-settings'] });
+          const name = provider === 'xero' ? 'Xero' : 'QuickBooks';
+          setSaveMessage(`${name} connected successfully!`);
+          setTimeout(() => setSaveMessage(''), 3000);
+          setAcctConnecting(false);
+        }
+      };
+      window.addEventListener('message', handleMessage);
+
+      const pollInterval = setInterval(() => {
+        if (popup && popup.closed) {
+          clearInterval(pollInterval);
+          window.removeEventListener('message', handleMessage);
+          refetchAcctStatus();
+          queryClient.invalidateQueries({ queryKey: ['business-settings'] });
+          setAcctConnecting(false);
+        }
+      }, 1000);
+    } catch (error) {
+      const errorMsg = error?.response?.data?.error || `Failed to connect ${provider === 'xero' ? 'Xero' : 'QuickBooks'}`;
+      setSaveMessage(errorMsg);
+      setTimeout(() => setSaveMessage(''), 5000);
+      setAcctConnecting(false);
+    }
+  };
+
+  const handleDisconnectAccounting = async () => {
+    const provider = acctStatus?.provider;
+    const name = provider === 'xero' ? 'Xero' : 'QuickBooks';
+    if (!window.confirm(`Are you sure you want to disconnect ${name}? Your built-in accounting will be re-enabled.`)) return;
+    try {
+      const disconnectFn = provider === 'xero' ? disconnectXero : disconnectQuickBooks;
+      await disconnectFn();
+      refetchAcctStatus();
+      queryClient.invalidateQueries({ queryKey: ['business-settings'] });
+      setSaveMessage(`${name} disconnected. Built-in accounting re-enabled.`);
+      setTimeout(() => setSaveMessage(''), 3000);
+    } catch (error) {
+      setSaveMessage(`Failed to disconnect ${name}`);
+      setTimeout(() => setSaveMessage(''), 5000);
+    }
+  };
+
+  const handleDisableBuiltinAccounting = async () => {
+    const newVal = formData.accounting_provider === 'disabled' ? 'builtin' : 'disabled';
+    try {
+      await setAccountingProvider(newVal);
+      setFormData(prev => ({ ...prev, accounting_provider: newVal }));
+      queryClient.invalidateQueries({ queryKey: ['business-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['accounting-status'] });
+      setSaveMessage(newVal === 'disabled' ? 'Built-in accounting disabled' : 'Built-in accounting re-enabled');
+      setTimeout(() => setSaveMessage(''), 3000);
+    } catch (error) {
+      setSaveMessage('Failed to update accounting setting');
+      setTimeout(() => setSaveMessage(''), 5000);
     }
   };
 
@@ -1621,6 +1725,112 @@ function Settings() {
                 )}
               </div>
 
+              {/* Accounting Integration */}
+              <div className="form-section">
+                <div className="form-section-header">
+                  <i className="fas fa-calculator" style={{ color: '#059669' }}></i>
+                  <h3>Accounting</h3>
+                </div>
+                <p className="section-description">
+                  Connect Xero or QuickBooks to sync invoices, expenses, and contacts. Or disable the built-in accounting if you manage finances elsewhere.
+                </p>
+
+                {/* Connected state */}
+                {acctStatus?.connected && (acctStatus.provider === 'xero' || acctStatus.provider === 'quickbooks') && (
+                  <div className="gcal-status-card connected">
+                    <div className="gcal-status-info">
+                      <i className="fas fa-check-circle gcal-status-icon connected"></i>
+                      <div>
+                        <div className="gcal-status-label">
+                          Connected to {acctStatus.provider === 'xero' ? 'Xero' : 'QuickBooks'}
+                        </div>
+                        <div className="gcal-status-email">
+                          {acctStatus.org_name || acctStatus.company_name || ''}
+                          {acctStatus.last_sync && (
+                            <> · Last synced {new Date(acctStatus.last_sync).toLocaleDateString()}</>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="gcal-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={handleDisconnectAccounting}
+                      >
+                        <i className="fas fa-unlink"></i>
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Not connected — show connect options */}
+                {!acctStatus?.connected && formData.accounting_provider !== 'disabled' && (
+                  <div className="acct-connect-options">
+                    <button
+                      type="button"
+                      className="acct-connect-btn xero"
+                      onClick={() => handleConnectAccounting('xero')}
+                      disabled={acctConnecting}
+                    >
+                      <div className="acct-connect-btn-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4.21 11.09l3.54-5.3a.5.5 0 01.83 0l3.54 5.3M4.21 12.91l3.54 5.3a.5.5 0 00.83 0l3.54-5.3M12.88 11.09l3.54-5.3a.5.5 0 01.83 0l3.54 5.3M12.88 12.91l3.54 5.3a.5.5 0 00.83 0l3.54-5.3" stroke="#13b5ea" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      </div>
+                      <div className="acct-connect-btn-text">
+                        <span className="acct-connect-btn-name">Connect Xero</span>
+                        <span className="acct-connect-btn-desc">Cloud accounting for small business</span>
+                      </div>
+                      {acctConnecting && <i className="fas fa-spinner fa-spin"></i>}
+                    </button>
+                    <button
+                      type="button"
+                      className="acct-connect-btn quickbooks"
+                      onClick={() => handleConnectAccounting('quickbooks')}
+                      disabled={acctConnecting}
+                    >
+                      <div className="acct-connect-btn-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#2ca01c" strokeWidth="1.8"/><path d="M8 9.5v5a2.5 2.5 0 005 0M11 14.5v-5a2.5 2.5 0 015 0" stroke="#2ca01c" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                      </div>
+                      <div className="acct-connect-btn-text">
+                        <span className="acct-connect-btn-name">Connect QuickBooks</span>
+                        <span className="acct-connect-btn-desc">Accounting &amp; invoicing by Intuit</span>
+                      </div>
+                      {acctConnecting && <i className="fas fa-spinner fa-spin"></i>}
+                    </button>
+                  </div>
+                )}
+
+                {/* Disable built-in accounting toggle */}
+                {!acctStatus?.connected && (
+                  <div className="toggle-rows" style={{ marginTop: '1rem' }}>
+                    <div className="toggle-row">
+                      <div className="toggle-row-info">
+                        <div className="toggle-row-label">Disable Built-in Accounting</div>
+                        <div className="toggle-row-desc">
+                          Turn off the Finances tab and all built-in accounting features. Use this if you manage finances in a separate app.
+                        </div>
+                      </div>
+                      <label className="toggle-switch">
+                        <input
+                          type="checkbox"
+                          checked={formData.accounting_provider === 'disabled'}
+                          onChange={handleDisableBuiltinAccounting}
+                        />
+                        <span className="toggle-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {formData.accounting_provider === 'disabled' && !acctStatus?.connected && (
+                  <div className="gcal-help-text" style={{ marginTop: '0.5rem' }}>
+                    <i className="fas fa-info-circle"></i>
+                    <span>Built-in accounting is disabled. The Finances tab is hidden from your dashboard. Toggle this off or connect Xero/QuickBooks to re-enable.</span>
+                  </div>
+                )}
+              </div>
+
               {/* Dashboard Feature Toggles */}
               <div className="form-section">
                 <div className="form-section-header">
@@ -1633,14 +1843,15 @@ function Settings() {
                 <div className="toggle-rows">
                   <div className="toggle-row">
                     <div className="toggle-row-info">
-                      <div className="toggle-row-label">Finances Tab</div>
+                      <div className="toggle-row-label">Finances Tab{formData.accounting_provider === 'disabled' ? ' (accounting disabled)' : ''}</div>
                       <div className="toggle-row-desc">Show the Finances tab on the dashboard</div>
                     </div>
                     <label className="toggle-switch">
                       <input
                         type="checkbox"
-                        checked={formData.show_finances_tab !== false}
+                        checked={formData.show_finances_tab !== false && formData.accounting_provider !== 'disabled'}
                         onChange={(e) => { setFormData(prev => ({ ...prev, show_finances_tab: e.target.checked })); setHasUnsavedChanges(true); }}
+                        disabled={formData.accounting_provider === 'disabled'}
                       />
                       <span className="toggle-slider"></span>
                     </label>

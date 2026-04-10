@@ -216,6 +216,14 @@ export const connectGoogleCalendar = () => api.post('/api/google-calendar/connec
 export const disconnectGoogleCalendar = () => api.post('/api/google-calendar/disconnect');
 export const syncGoogleCalendar = () => api.post('/api/google-calendar/sync', {}, { timeout: 120000 });
 
+// Accounting Integration (Xero / QuickBooks)
+export const getAccountingStatus = () => api.get('/api/accounting/status');
+export const setAccountingProvider = (provider) => api.post('/api/accounting/provider', { provider });
+export const connectXero = () => api.post('/api/accounting/xero/connect');
+export const disconnectXero = () => api.post('/api/accounting/xero/disconnect');
+export const connectQuickBooks = () => api.post('/api/accounting/quickbooks/connect');
+export const disconnectQuickBooks = () => api.post('/api/accounting/quickbooks/disconnect');
+
 // AI Chat
 export const sendChatMessage = (message, conversation) => 
   api.post('/api/chat', { message, conversation });

@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './Tabs.css';
 
 function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
   const [internalTab, setInternalTab] = useState(defaultTab);
   const activeTab = controlledTab !== undefined ? controlledTab : internalTab;
+  const navigate = useNavigate();
   const setActiveTab = useCallback((idx) => {
     setInternalTab(idx);
     if (onTabChange) onTabChange(idx);
@@ -95,6 +97,16 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
                   ))}
                 </div>
               ))}
+              <div className="mobile-menu-group">
+                <div className="mobile-group-label">Account</div>
+                <button
+                  className="mobile-menu-item"
+                  onClick={() => { setMenuOpen(false); navigate('/settings'); }}
+                >
+                  <i className="fas fa-cog"></i>
+                  <span>Settings</span>
+                </button>
+              </div>
             </div>
           </div>
           <div className="tabs-content">
@@ -135,6 +147,16 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
                   ))}
                 </div>
               ))}
+            </div>
+            <div className="sidebar-footer">
+              <button
+                className="sidebar-item sidebar-settings-link"
+                onClick={() => navigate('/settings')}
+                title={sidebarCollapsed ? 'Settings' : undefined}
+              >
+                <i className="fas fa-cog"></i>
+                {!sidebarCollapsed && <span className="sidebar-item-label">Settings</span>}
+              </button>
             </div>
           </nav>
           {/* Content */}

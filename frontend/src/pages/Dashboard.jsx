@@ -153,7 +153,7 @@ function Dashboard() {
       content: <MaterialsTab />
     },
     // Reports
-    ...(settings?.show_finances_tab !== false ? [{
+    ...(settings?.show_finances_tab !== false && settings?.accounting_provider !== 'disabled' ? [{
       label: 'Finances',
       icon: 'fas fa-dollar-sign',
       group: 'Reports',

@@ -4681,6 +4681,8 @@ def business_settings_api():
             'setup_wizard_complete': bool(company.get('setup_wizard_complete', False)),
             # Managed setup mode
             'easy_setup': company.get('easy_setup', True),
+            # Accounting integration
+            'accounting_provider': company.get('accounting_provider', 'builtin'),
         }
         return jsonify(settings)
     
@@ -4743,6 +4745,7 @@ def business_settings_api():
             'ai_schedule': 'ai_schedule',
             'setup_wizard_complete': 'setup_wizard_complete',
             'easy_setup': 'easy_setup',
+            'accounting_provider': 'accounting_provider',
         }
         
         for frontend_field, db_field in field_mapping.items():
@@ -11488,6 +11491,183 @@ def handle_exception(e):
     """Handle all uncaught exceptions"""
     safe_print(f"Unhandled exception: {e}")
     return jsonify({"error": "An unexpected error occurred"}), 500
+
+
+# ==================== ACCOUNTING INTEGRATION ENDPOINTS ====================
+
+@app.route("/api/accounting/status", methods=["GET"])
+@login_required
+def accounting_status():
+    """Get the current accounting integration status."""
+    try:
+        from src.services.accounting_oauth import get_accounting_status
+        db = get_database()
+        company_id = session.get('company_id')
+        status = get_accounting_status(company_id, db)
+        return jsonify(status)
+    except Exception as e:
+        safe_print(f"[ACCOUNTING] Status error: {e}")
+        return jsonify({'provider': 'builtin', 'connected': False}), 200
+
+
+@app.route("/api/accounting/provider", methods=["POST"])
+@login_required
+@subscription_required
+def accounting_set_provider():
+    """Switch accounting provider (builtin, xero, quickbooks, disabled)."""
+    try:
+        from src.services.accounting_oauth import set_accounting_provider
+        db = get_database()
+        company_id = session.get('company_id')
+        provider = request.json.get('provider', 'builtin')
+        set_accounting_provider(company_id, provider, db)
+        return jsonify({'success': True, 'provider': provider})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        safe_print(f"[ACCOUNTING] Set provider error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/accounting/xero/connect", methods=["POST"])
+@login_required
+@subscription_required
+def accounting_xero_connect():
+    """Start the Xero OAuth flow."""
+    try:
+        from src.services.accounting_oauth import start_xero_oauth
+        company_id = session.get('company_id')
+        auth_url = start_xero_oauth(company_id)
+        return jsonify({'auth_url': auth_url})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        safe_print(f"[XERO] Connect error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/accounting/xero/callback", methods=["GET"])
+def accounting_xero_callback():
+    """OAuth callback from Xero."""
+    try:
+        from src.services.accounting_oauth import handle_xero_callback
+        code = request.args.get('code')
+        state = request.args.get('state')
+        if not code or not state:
+            raise ValueError("Missing code or state parameter")
+
+        db = get_database()
+        company_id = handle_xero_callback(code, state, db)
+
+        frontend_url = os.getenv('FRONTEND_URL', config.PUBLIC_URL or 'http://localhost:5173')
+        return f"""
+        <html><body>
+        <script>
+            window.opener ? window.opener.postMessage('accounting-connected', '*') : null;
+            window.location.href = '{frontend_url}/settings?tab=business&accounting=xero_connected';
+        </script>
+        <p>Xero connected! Redirecting...</p>
+        </body></html>
+        """
+    except Exception as e:
+        safe_print(f"[XERO] Callback error: {e}")
+        import traceback
+        traceback.print_exc()
+        frontend_url = os.getenv('FRONTEND_URL', config.PUBLIC_URL or 'http://localhost:5173')
+        return f"""
+        <html><body>
+        <script>
+            window.location.href = '{frontend_url}/settings?tab=business&accounting=error';
+        </script>
+        <p>Error connecting Xero: {str(e)}</p>
+        </body></html>
+        """
+
+
+@app.route("/api/accounting/xero/disconnect", methods=["POST"])
+@login_required
+@subscription_required
+def accounting_xero_disconnect():
+    """Disconnect Xero."""
+    try:
+        from src.services.accounting_oauth import disconnect_xero
+        db = get_database()
+        company_id = session.get('company_id')
+        disconnect_xero(company_id, db)
+        return jsonify({'success': True, 'message': 'Xero disconnected'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/accounting/quickbooks/connect", methods=["POST"])
+@login_required
+@subscription_required
+def accounting_quickbooks_connect():
+    """Start the QuickBooks OAuth flow."""
+    try:
+        from src.services.accounting_oauth import start_quickbooks_oauth
+        company_id = session.get('company_id')
+        auth_url = start_quickbooks_oauth(company_id)
+        return jsonify({'auth_url': auth_url})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        safe_print(f"[QB] Connect error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/accounting/quickbooks/callback", methods=["GET"])
+def accounting_quickbooks_callback():
+    """OAuth callback from QuickBooks."""
+    try:
+        from src.services.accounting_oauth import handle_quickbooks_callback
+        code = request.args.get('code')
+        state = request.args.get('state')
+        realm_id = request.args.get('realmId')
+        if not code or not state or not realm_id:
+            raise ValueError("Missing code, state, or realmId parameter")
+
+        db = get_database()
+        company_id = handle_quickbooks_callback(code, state, realm_id, db)
+
+        frontend_url = os.getenv('FRONTEND_URL', config.PUBLIC_URL or 'http://localhost:5173')
+        return f"""
+        <html><body>
+        <script>
+            window.opener ? window.opener.postMessage('accounting-connected', '*') : null;
+            window.location.href = '{frontend_url}/settings?tab=business&accounting=quickbooks_connected';
+        </script>
+        <p>QuickBooks connected! Redirecting...</p>
+        </body></html>
+        """
+    except Exception as e:
+        safe_print(f"[QB] Callback error: {e}")
+        import traceback
+        traceback.print_exc()
+        frontend_url = os.getenv('FRONTEND_URL', config.PUBLIC_URL or 'http://localhost:5173')
+        return f"""
+        <html><body>
+        <script>
+            window.location.href = '{frontend_url}/settings?tab=business&accounting=error';
+        </script>
+        <p>Error connecting QuickBooks: {str(e)}</p>
+        </body></html>
+        """
+
+
+@app.route("/api/accounting/quickbooks/disconnect", methods=["POST"])
+@login_required
+@subscription_required
+def accounting_quickbooks_disconnect():
+    """Disconnect QuickBooks."""
+    try:
+        from src.services.accounting_oauth import disconnect_quickbooks
+        db = get_database()
+        company_id = session.get('company_id')
+        disconnect_quickbooks(company_id, db)
+        return jsonify({'success': True, 'message': 'QuickBooks disconnected'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ==================== ADMIN INSIGHTS ENDPOINTS ====================

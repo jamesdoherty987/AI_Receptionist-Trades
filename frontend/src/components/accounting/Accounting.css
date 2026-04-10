@@ -557,6 +557,8 @@
   .acct-subnav { gap: 0.15rem; padding: 2px; }
   .acct-subnav-btn { padding: 0.4rem 0.6rem; font-size: 0.72rem; }
   .acct-subnav-btn span.acct-subnav-label { display: none; }
+  .acct-subnav-btn { min-width: 36px; justify-content: center; }
+  .acct-subnav-btn i { font-size: 0.85rem; }
 
   .acct-stats-row { grid-template-columns: repeat(2, 1fr); gap: 0.4rem; }
   .acct-stat-card { padding: 0.65rem 0.75rem; }
