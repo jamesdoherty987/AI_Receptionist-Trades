@@ -504,25 +504,23 @@ input:focus, textarea:focus, select:focus {
    Applied when app is installed as PWA
    ======================================== */
 
-/* Safe area insets for notched devices (iPhone X+, etc.) */
-@supports (padding: env(safe-area-inset-top)) {
-  body {
-    padding-top: env(safe-area-inset-top);
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
-  }
-}
-
 /* Standalone mode adjustments */
 @media all and (display-mode: standalone) {
+  /* Safe area insets for notched devices (iPhone X+, etc.) */
+  body {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
   /* Prevent text selection on UI elements (feels more app-like) */
-  button, a, .worker-tab, .worker-stat, .worker-header, nav {
+  button, .worker-tab, .worker-stat, .worker-header, nav {
     -webkit-user-select: none;
     user-select: none;
   }
 
   /* Allow text selection in content areas */
-  input, textarea, p, span, h1, h2, h3, h4, h5, h6, td, th, li, .wjd-value, .wjd-notes {
+  input, textarea, p, span, h1, h2, h3, h4, h5, h6, td, th, li, a, .wjd-value, .wjd-notes {
     -webkit-user-select: text;
     user-select: text;
   }
@@ -551,16 +549,15 @@ input:focus, textarea:focus, select:focus {
   .worker-tabs {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+
+  /* Auth pages — add top padding for status bar */
+  .auth-page {
+    padding-top: calc(2rem + env(safe-area-inset-top, 0px));
+  }
 }
 
-/* Touch-friendly tap targets — ensure minimum 44px for accessibility */
+/* Prevent iOS zoom on input focus (applied everywhere, not just standalone) */
 @media (pointer: coarse) {
-  button, a, .worker-tab, input[type="checkbox"], input[type="radio"] {
-    min-height: 44px;
-    min-width: 44px;
-  }
-
-  /* Slightly larger form inputs on touch */
   input[type="text"],
   input[type="email"],
   input[type="password"],
@@ -569,7 +566,6 @@ input:focus, textarea:focus, select:focus {
   input[type="date"],
   textarea,
   select {
-    font-size: 16px !important; /* Prevents iOS zoom on focus */
-    min-height: 44px;
+    font-size: 16px !important;
   }
 }
