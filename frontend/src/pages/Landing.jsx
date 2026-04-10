@@ -1070,6 +1070,7 @@ function Landing() {
             <a href="#comparison">Compare</a>
             {showReviews && <a href="#testimonials">Testimonials</a>}
             {showPricing && <a href="#pricing">Pricing</a>}
+            <Link to="/install">Get the App</Link>
             <Link to="/login" className="nav-link-btn">Log In</Link>
             <a href="mailto:contact@bookedforyou.ie?subject=Get Started with BookedForYou" className="nav-btn-primary">Get Started</a>
           </div>

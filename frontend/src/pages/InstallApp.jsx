@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { isStandalone } from '../components/PWAInstallPrompt';
+import { isStandalone, getDeferredPrompt, clearDeferredPrompt } from '../components/PWAInstallPrompt';
 import './InstallApp.css';
 
 function isIOSSafari() {
@@ -20,13 +20,14 @@ function isAndroid() {
 }
 
 function InstallApp() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [canInstall, setCanInstall] = useState(!!getDeferredPrompt());
   const [installed, setInstalled] = useState(isStandalone());
 
   useEffect(() => {
+    // Listen in case the event fires after page load
     const handler = (e) => {
       e.preventDefault();
-      setDeferredPrompt(e);
+      setCanInstall(true);
     };
     window.addEventListener('beforeinstallprompt', handler);
 
@@ -40,15 +41,17 @@ function InstallApp() {
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt) return;
+    const prompt = getDeferredPrompt();
+    if (!prompt) return;
     try {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
+      prompt.prompt();
+      const { outcome } = await prompt.userChoice;
       if (outcome === 'accepted') setInstalled(true);
     } catch (err) {
       console.warn('Install error:', err);
     }
-    setDeferredPrompt(null);
+    clearDeferredPrompt();
+    setCanInstall(false);
   };
 
   const platform = isIOS() ? 'ios' : isAndroid() ? 'android' : 'desktop';
@@ -64,9 +67,9 @@ function InstallApp() {
           <div className="install-app-icon">
             <img src="/logo.png" alt="BookedForYou" width="80" height="80" />
           </div>
-          <h1>Install BookedForYou</h1>
+          <h1>Get the App</h1>
           <p className="install-subtitle">
-            Get the app on your phone for quick access to your dashboard, jobs, and notifications.
+            Install BookedForYou on your phone for quick access to your dashboard, jobs, and notifications.
           </p>
         </div>
 
@@ -79,7 +82,7 @@ function InstallApp() {
         ) : (
           <>
             {/* Direct install button for Android/Desktop */}
-            {deferredPrompt && (
+            {canInstall && (
               <div className="install-action-card">
                 <button className="install-now-btn" onClick={handleInstall}>
                   <i className="fas fa-download"></i>
@@ -96,7 +99,7 @@ function InstallApp() {
                 {!isIOSSafari() && (
                   <div className="install-warning">
                     <i className="fas fa-exclamation-triangle"></i>
-                    <span>You need to open this page in <strong>Safari</strong> to install the app. Copy this URL and paste it in Safari.</span>
+                    <span>Open this page in <strong>Safari</strong> to install the app. Copy the URL and paste it in Safari.</span>
                   </div>
                 )}
                 <div className="install-steps">
@@ -112,9 +115,9 @@ function InstallApp() {
                   <div className="install-step">
                     <div className="step-number">2</div>
                     <div className="step-content">
-                      <h3>Scroll down and tap "Add to Home Screen"</h3>
+                      <h3>Tap "Add to Home Screen"</h3>
                       <p>
-                        Look for <i className="fas fa-plus-square" style={{ color: '#64748b' }}></i> Add to Home Screen in the share menu
+                        Scroll down and look for <i className="fas fa-plus-square" style={{ color: '#64748b' }}></i> Add to Home Screen
                       </p>
                     </div>
                   </div>
@@ -122,7 +125,7 @@ function InstallApp() {
                     <div className="step-number">3</div>
                     <div className="step-content">
                       <h3>Tap "Add"</h3>
-                      <p>Confirm the name and tap Add in the top right corner</p>
+                      <p>Confirm the name and tap Add in the top right</p>
                     </div>
                   </div>
                 </div>
@@ -130,7 +133,7 @@ function InstallApp() {
             )}
 
             {/* Android Guide (fallback if beforeinstallprompt didn't fire) */}
-            {platform === 'android' && !deferredPrompt && (
+            {platform === 'android' && !canInstall && (
               <div className="install-guide-card">
                 <h2><i className="fab fa-android"></i> Install on Android</h2>
                 <div className="install-steps">
@@ -145,7 +148,7 @@ function InstallApp() {
                     <div className="step-number">2</div>
                     <div className="step-content">
                       <h3>Tap "Install app" or "Add to Home screen"</h3>
-                      <p>It may say either depending on your browser version</p>
+                      <p>It may say either depending on your browser</p>
                     </div>
                   </div>
                   <div className="install-step">
@@ -160,7 +163,7 @@ function InstallApp() {
             )}
 
             {/* Desktop Guide */}
-            {platform === 'desktop' && !deferredPrompt && (
+            {platform === 'desktop' && !canInstall && (
               <div className="install-guide-card">
                 <h2><i className="fas fa-desktop"></i> Install on Desktop</h2>
                 <div className="install-steps">
@@ -168,14 +171,14 @@ function InstallApp() {
                     <div className="step-number">1</div>
                     <div className="step-content">
                       <h3>Look for the install icon</h3>
-                      <p>In Chrome, click the <i className="fas fa-download"></i> icon in the address bar (right side)</p>
+                      <p>In Chrome, click the <i className="fas fa-download"></i> icon in the address bar</p>
                     </div>
                   </div>
                   <div className="install-step">
                     <div className="step-number">2</div>
                     <div className="step-content">
                       <h3>Click "Install"</h3>
-                      <p>The app will open in its own window and appear in your dock/taskbar</p>
+                      <p>The app opens in its own window and appears in your dock/taskbar</p>
                     </div>
                   </div>
                 </div>
@@ -190,7 +193,7 @@ function InstallApp() {
             <div className="benefit-item">
               <i className="fas fa-bolt"></i>
               <h3>Instant Access</h3>
-              <p>Open straight from your home screen, no browser needed</p>
+              <p>Open from your home screen, no browser needed</p>
             </div>
             <div className="benefit-item">
               <i className="fas fa-expand"></i>
