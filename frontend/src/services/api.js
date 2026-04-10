@@ -37,7 +37,15 @@ api.interceptors.request.use((config) => {
 // Response interceptor: only redirect on 401 for non-auth endpoints
 // and only if we have no local auth state (prevents false logouts).
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Detect if we got HTML back instead of JSON (API URL misconfiguration)
+    const contentType = response.headers?.['content-type'] || '';
+    if (contentType.includes('text/html') && response.config?.url?.includes('/api/')) {
+      console.error('[API] Got HTML response for API call — API URL may be misconfigured. URL:', response.config.url);
+      return Promise.reject(new Error('Server returned an unexpected response. Please try again or clear the app cache.'));
+    }
+    return response;
+  },
   (error) => {
     if (
       error.response?.status === 401 &&

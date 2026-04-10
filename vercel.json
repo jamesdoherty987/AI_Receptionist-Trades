@@ -6,18 +6,6 @@
   "framework": null,
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/twilio/(.*)",
-      "destination": "/twilio/$1"
-    },
-    {
-      "source": "/health",
-      "destination": "/health"
-    },
-    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

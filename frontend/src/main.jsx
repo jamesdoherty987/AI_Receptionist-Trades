@@ -14,8 +14,11 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {
-        // Check for updates periodically
-        setInterval(() => registration.update(), 60 * 60 * 1000); // hourly
+        // Force an immediate update check on every page load
+        registration.update();
+
+        // Also check periodically
+        setInterval(() => registration.update(), 60 * 60 * 1000);
 
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;
@@ -40,4 +43,19 @@ if ('serviceWorker' in navigator) {
       }
     });
   });
+
+  // Emergency: if ?clear-cache is in the URL, unregister SW and clear caches
+  if (window.location.search.includes('clear-cache')) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((r) => r.unregister());
+    });
+    caches.keys().then((names) => {
+      names.forEach((name) => caches.delete(name));
+    });
+    // Remove the query param and reload
+    const url = new URL(window.location.href);
+    url.searchParams.delete('clear-cache');
+    window.history.replaceState({}, '', url.pathname);
+    console.log('[PWA] Cache cleared, service workers unregistered');
+  }
 }
