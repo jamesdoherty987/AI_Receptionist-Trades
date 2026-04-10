@@ -114,7 +114,7 @@ export function AuthProvider({ children }) {
       } else if (error.response?.status === 500) {
         errorMessage = 'Server error. Please try again later.';
       } else if (error.request && !error.response) {
-        errorMessage = 'Cannot connect to server. Please check your connection.';
+        errorMessage = 'Cannot connect to server. Please check your internet connection and try again.';
       }
       return { success: false, error: errorMessage };
     }

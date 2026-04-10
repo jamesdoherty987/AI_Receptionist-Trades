@@ -3,6 +3,14 @@ import axios from 'axios';
 // Use environment variable for API URL, fallback to relative path for local dev
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+// Warn if API URL is empty in production (common misconfiguration)
+if (!API_URL && import.meta.env.PROD) {
+  console.warn(
+    '[API] VITE_API_URL is not set. API calls will use relative paths. ' +
+    'This only works if the backend is on the same domain or a proxy is configured.'
+  );
+}
+
 const api = axios.create({
   baseURL: API_URL,
   headers: {

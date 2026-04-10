@@ -22,7 +22,7 @@ if ('serviceWorker' in navigator) {
           if (newWorker) {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New version available — activate it
+                // New version available — activate it immediately
                 newWorker.postMessage('skipWaiting');
               }
             });
@@ -30,5 +30,14 @@ if ('serviceWorker' in navigator) {
         });
       })
       .catch((err) => console.warn('SW registration failed:', err));
+
+    // When a new SW takes control, reload to get fresh assets
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    });
   });
 }

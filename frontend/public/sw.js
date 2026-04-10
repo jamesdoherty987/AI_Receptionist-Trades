@@ -1,6 +1,6 @@
-// BookedForYou Service Worker v1.0.0
-const CACHE_NAME = 'bfy-cache-v1';
-const RUNTIME_CACHE = 'bfy-runtime-v1';
+// BookedForYou Service Worker v1.1.0
+const CACHE_NAME = 'bfy-cache-v1.1';
+const RUNTIME_CACHE = 'bfy-runtime-v1.1';
 
 // Only pre-cache actual static files (not SPA routes)
 const PRECACHE_URLS = [
@@ -36,14 +36,15 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests
+  // Skip non-GET requests (POST, PUT, DELETE go straight to network)
   if (request.method !== 'GET') return;
 
   // Skip non-http(s) protocols
   if (!url.protocol.startsWith('http')) return;
 
-  // API calls — always network, never cache
+  // API calls — NEVER intercept, always go to network
   if (url.pathname.startsWith('/api/') || 
+      url.pathname.startsWith('/api') ||
       url.pathname.startsWith('/twilio/') || 
       url.pathname.startsWith('/health')) {
     return;
