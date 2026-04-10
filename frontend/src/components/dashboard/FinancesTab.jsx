@@ -327,14 +327,54 @@ function FinancesTab() {
         </div>
       )}
 
-      {acctTab === 'expenses' && <ExpensesPanel />}
-      {acctTab === 'mileage' && <MileagePanel />}
-      {acctTab === 'quotes' && <QuotesPanel />}
-      {acctTab === 'purchase-orders' && <PurchaseOrdersPanel />}
-      {acctTab === 'unpaid' && <AgingPanel />}
-      {acctTab === 'credits' && <CreditNotesPanel />}
-      {acctTab === 'pnl' && <PnlPanel />}
-      {acctTab === 'tax' && <TaxSettings />}
+      {acctTab === 'expenses' && (
+        <>
+          <div className="tab-page-header"><h2 className="tab-page-title">Expenses</h2></div>
+          <ExpensesPanel />
+        </>
+      )}
+      {acctTab === 'mileage' && (
+        <>
+          <div className="tab-page-header"><h2 className="tab-page-title">Mileage Tracker</h2></div>
+          <MileagePanel />
+        </>
+      )}
+      {acctTab === 'quotes' && (
+        <>
+          <div className="tab-page-header"><h2 className="tab-page-title">Quotes</h2></div>
+          <QuotesPanel />
+        </>
+      )}
+      {acctTab === 'purchase-orders' && (
+        <>
+          <div className="tab-page-header"><h2 className="tab-page-title">Purchase Orders</h2></div>
+          <PurchaseOrdersPanel />
+        </>
+      )}
+      {acctTab === 'unpaid' && (
+        <>
+          <div className="tab-page-header"><h2 className="tab-page-title">Unpaid Invoices</h2></div>
+          <AgingPanel />
+        </>
+      )}
+      {acctTab === 'credits' && (
+        <>
+          <div className="tab-page-header"><h2 className="tab-page-title">Credit Notes</h2></div>
+          <CreditNotesPanel />
+        </>
+      )}
+      {acctTab === 'pnl' && (
+        <>
+          <div className="tab-page-header"><h2 className="tab-page-title">Profit & Loss</h2></div>
+          <PnlPanel />
+        </>
+      )}
+      {acctTab === 'tax' && (
+        <>
+          <div className="tab-page-header"><h2 className="tab-page-title">Invoice & Tax Settings</h2></div>
+          <TaxSettings />
+        </>
+      )}
 
       {acctTab === 'overview' && (<>
       {/* Section Visibility Picker */}

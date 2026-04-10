@@ -1,5 +1,6 @@
 .services-tab {
-  padding: 1.25rem 0;
+  padding: 0;
+  width: 100%;
 }
 
 .services-header {
@@ -11,7 +12,7 @@
 }
 
 .services-header h2 {
-  font-size: 1.3rem;
+  font-size: 1.1rem;
   font-weight: 700;
   margin: 0 0 0.2rem 0;
 }
@@ -699,7 +700,7 @@
 /* Mobile */
 @media (max-width: 768px) {
   .services-tab {
-    padding: 1rem 0;
+    padding: 0;
   }
 
   .services-header {
@@ -1071,7 +1072,7 @@
 }
 
 .packages-header h2 {
-  font-size: 1.3rem;
+  font-size: 1.1rem;
   font-weight: 700;
   margin: 0 0 0.2rem 0;
 }

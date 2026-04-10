@@ -597,3 +597,23 @@
 .auth-back-btn:hover { border-color: #94a3b8; color: #1e293b; }
 .auth-back-btn i { font-size: 0.75rem; }
 .auth-top-row .auth-logo { margin-left: auto; }
+
+/* When no back button (PWA), center the logo */
+.auth-top-row:only-child .auth-logo:first-child,
+.auth-top-row .auth-logo:only-child {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (max-width: 768px) {
+  .auth-top-row {
+    justify-content: center;
+  }
+  .auth-top-row .auth-logo {
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .auth-top-row .auth-back-btn + .auth-logo {
+    margin-right: 0;
+  }
+}

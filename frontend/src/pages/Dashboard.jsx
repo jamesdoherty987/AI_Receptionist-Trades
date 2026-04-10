@@ -5,7 +5,6 @@ import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import Tabs from '../components/Tabs';
 import LoadingSpinner from '../components/LoadingSpinner';
-import TrialBanner from '../components/dashboard/TrialBanner';
 import OnboardingWizard from '../components/dashboard/OnboardingWizard';
 import JobsTab from '../components/dashboard/JobsTab';
 import CustomersTab from '../components/dashboard/CustomersTab';
@@ -17,6 +16,7 @@ import ServicesTab from '../components/dashboard/ServicesTab';
 import MaterialsTab from '../components/dashboard/MaterialsTab';
 import InsightsTab from '../components/dashboard/InsightsTab';
 import CallLogsTab from '../components/dashboard/CallLogsTab';
+import { isStandalone } from '../components/PWAInstallPrompt';
 import { getDashboardData, getBusinessSettings, updateBusinessSettings, getUnseenCallCount } from '../services/api';
 import './Dashboard.css';
 
@@ -226,16 +226,10 @@ function Dashboard() {
       <Header onNotificationNavigate={handleNotificationNavigate} />
       <main className="dashboard-main">
         <div className="container">
-          <TrialBanner />
-          
-          {/* Onboarding Wizard — always mounted until dismissed, manages its own step state */}
-          {!onboardingDismissed && (
+          {/* Onboarding Wizard — hidden on PWA/mobile standalone, or when setup_wizard_complete */}
+          {!onboardingDismissed && !isStandalone() && !settings?.setup_wizard_complete && (
             <OnboardingWizard onComplete={handleOnboardingComplete} />
           )}
-          
-          <div className="dashboard-header">
-            <h1>Dashboard</h1>
-          </div>
           
           <Tabs tabs={tabs} defaultTab={0} activeTab={activeTab} onTabChange={handleTabChange} />
         </div>

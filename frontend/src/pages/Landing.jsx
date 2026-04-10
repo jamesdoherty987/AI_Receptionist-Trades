@@ -1133,18 +1133,43 @@ function Landing() {
         </div>
       </SectionReveal>
 
-      {/* How It Works — Animated Connectors */}
+      {/* How It Works — Animated Beam Timeline */}
       <SectionReveal className="how-it-works">
         <div className="section-container">
           <div className="section-header">
-            <h2 style={{ textAlign: 'center' }}>Get started in <span className="gradient-text">3 simple steps</span></h2>
+            <h2 style={{ textAlign: 'center' }}>From setup to growth in <span className="gradient-text">minutes</span></h2>
+            <p style={{ textAlign: 'center' }}>No complicated onboarding. No technical skills needed.</p>
           </div>
-          <div className="steps">
-            <div className="step reveal-child" style={{ transitionDelay: '0.1s' }}><div className="step-number">1</div><h3>Get in Touch</h3><p>Contact us and we'll set up your account with everything tailored to your business.</p></div>
-            <div className="step-connector reveal-child" style={{ transitionDelay: '0.25s' }}><div className="connector-beam"></div></div>
-            <div className="step reveal-child" style={{ transitionDelay: '0.35s' }}><div className="step-number">2</div><h3>Connect Your Phone</h3><p>Forward your business calls to your new AI receptionist number.</p></div>
-            <div className="step-connector reveal-child" style={{ transitionDelay: '0.5s' }}><div className="connector-beam"></div></div>
-            <div className="step reveal-child" style={{ transitionDelay: '0.6s' }}><div className="step-number">3</div><h3>Start Growing</h3><p>Watch your bookings increase as you never miss another call.</p></div>
+          <div className="timeline-beam">
+            <div className="timeline-track">
+              <div className="timeline-track-fill"></div>
+            </div>
+            <div className="timeline-nodes">
+              <div className="timeline-node reveal-child" style={{ transitionDelay: '0.1s' }}>
+                <div className="timeline-node-dot"><span className="timeline-dot-ring"></span><i className="fas fa-envelope"></i></div>
+                <div className="timeline-node-card">
+                  <span className="timeline-node-num">01</span>
+                  <h3>We set you up</h3>
+                  <p>Tell us about your business. We configure your AI receptionist, services, and scheduling — all tailored to you.</p>
+                </div>
+              </div>
+              <div className="timeline-node reveal-child" style={{ transitionDelay: '0.3s' }}>
+                <div className="timeline-node-dot"><span className="timeline-dot-ring"></span><i className="fas fa-phone-alt"></i></div>
+                <div className="timeline-node-card">
+                  <span className="timeline-node-num">02</span>
+                  <h3>Forward your calls</h3>
+                  <p>Point your business number to your new AI receptionist. Takes 30 seconds with any phone provider.</p>
+                </div>
+              </div>
+              <div className="timeline-node reveal-child" style={{ transitionDelay: '0.5s' }}>
+                <div className="timeline-node-dot"><span className="timeline-dot-ring"></span><i className="fas fa-chart-line"></i></div>
+                <div className="timeline-node-card">
+                  <span className="timeline-node-num">03</span>
+                  <h3>Watch it work</h3>
+                  <p>Your AI answers calls, books jobs, sends confirmations, and manages your calendar — while you're on the tools.</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </SectionReveal>

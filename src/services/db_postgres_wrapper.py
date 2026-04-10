@@ -1662,6 +1662,13 @@ class PostgreSQLDatabaseWrapper:
                         b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
                         b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
                         c.name as client_name, c.phone as client_phone, c.email as client_email,
+                        ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
+                    FROM bookings b
+                    LEFT JOIN clients c ON b.client_id = c.id
+                    LEFT JOIN worker_assignments wa ON b.id = wa.booking_id
+                    WHERE b.company_id = %s
+                    GROUP BY b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
+                             b.service_type, b.status, b.phone_number, b.email, b.created_at,
                              b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
                              b.address, b.eircode, b.property_type, b.duration_minutes,
                              b.address_audio_url, b.requires_callout, b.requires_quote,

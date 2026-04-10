@@ -13,6 +13,7 @@
 .worker-logo {
   display: flex; align-items: center; gap: 0.5rem; font-size: 1.25rem;
   font-weight: 700; color: var(--text-primary, #1e293b); text-decoration: none;
+  flex-shrink: 0;
 }
 .worker-header-right { display: flex; align-items: center; gap: 1rem; }
 .worker-greeting { color: var(--text-secondary, #64748b); font-size: 0.9rem; }
@@ -381,7 +382,8 @@
 @media (max-width: 640px) {
   .worker-greeting { display: none; }
   .worker-header { padding: 0 0.75rem; height: 56px; }
-  .worker-logo { font-size: 1.1rem; }
+  .worker-logo { font-size: 1.1rem; overflow: hidden; }
+  .worker-logo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
   .worker-logout-btn { padding: 0.4rem 0.6rem; font-size: 0.8rem; }
   .worker-logout-btn span { display: none; }
   .worker-back-btn { padding: 0.4rem 0.6rem; font-size: 0.85rem; }

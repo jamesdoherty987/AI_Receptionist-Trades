@@ -1,8 +1,9 @@
 .calendar-tab {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
   height: 100%;
+  width: 100%;
 }
 
 /* Calendar Header */
@@ -41,11 +42,11 @@
 }
 
 .current-month {
-  font-size: 1.5rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
-  min-width: 220px;
+  min-width: 200px;
   text-align: center;
 }
 

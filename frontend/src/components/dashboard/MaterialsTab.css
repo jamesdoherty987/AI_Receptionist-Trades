@@ -1,10 +1,10 @@
-.materials-tab { padding: 1.5rem 0; }
+.materials-tab { padding: 0; width: 100%; }
 
 .materials-header {
   display: flex; justify-content: space-between; align-items: flex-start;
   margin-bottom: 1.25rem; gap: 1rem;
 }
-.materials-header h2 { font-size: 1.5rem; font-weight: 700; margin: 0 0 0.25rem 0; }
+.materials-header h2 { font-size: 1.1rem; font-weight: 700; margin: 0 0 0.25rem 0; }
 .materials-subtitle { color: var(--text-secondary); margin: 0; font-size: 0.9rem; }
 .materials-avg { opacity: 0.7; }
 
@@ -357,7 +357,7 @@
 
 /* Mobile */
 @media (max-width: 768px) {
-  .materials-tab { padding: 1rem 0; }
+  .materials-tab { padding: 0; }
   .materials-header { flex-direction: column; gap: 0.75rem; }
   .materials-header h2 { font-size: 1.25rem; }
 

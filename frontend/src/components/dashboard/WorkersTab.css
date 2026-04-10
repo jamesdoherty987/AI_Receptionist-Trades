@@ -2,7 +2,7 @@
 
 /* Header */
 .workers-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
-.workers-header h2 { font-size: 1.3rem; font-weight: 700; color: #1e293b; margin: 0; }
+.workers-header h2 { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin: 0; }
 .workers-header-right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 
 /* Stats bar */

@@ -1,7 +1,7 @@
 .call-logs-tab { display: flex; flex-direction: column; gap: 1.25rem; }
 
 .call-logs-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
-.call-logs-header h2 { font-size: 1.3rem; font-weight: 700; color: #1e293b; margin: 0; }
+.call-logs-header h2 { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin: 0; }
 
 .call-logs-controls { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 
