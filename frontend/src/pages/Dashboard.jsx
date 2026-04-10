@@ -50,14 +50,22 @@ function Dashboard() {
     },
   });
 
-  // Sync backend setup_wizard_complete flag → localStorage so wizard stays dismissed across devices
-  useEffect(() => {
-    if (onboardingDismissed) return;
-    if (settings?.setup_wizard_complete) {
-      localStorage.setItem(`onboarding_complete_${userKey}`, 'true');
-      setOnboardingDismissed(true);
-    }
-  }, [settings, userKey, onboardingDismissed]);
+  // Determine if onboarding wizard should show — computed from settings, never flashes
+  const showOnboarding = useMemo(() => {
+    // Global env kill switch
+    if (import.meta.env.VITE_SHOW_SETUP_WIZARD === 'false') return false;
+    // Don't show until settings have loaded (prevents flash)
+    if (!settings) return false;
+    // Managed accounts (easy_setup=false) never see the wizard
+    if (settings.easy_setup === false) return false;
+    // Already completed on backend
+    if (settings.setup_wizard_complete) return false;
+    // Already dismissed locally
+    if (onboardingDismissed) return false;
+    // PWA standalone mode — skip wizard
+    if (isStandalone()) return false;
+    return true;
+  }, [settings, onboardingDismissed]);
 
   // Scroll to top when dashboard loads
   useEffect(() => {
@@ -226,8 +234,8 @@ function Dashboard() {
       <Header onNotificationNavigate={handleNotificationNavigate} />
       <main className="dashboard-main">
         <div className="container">
-          {/* Onboarding Wizard — hidden on PWA/mobile standalone, or when setup_wizard_complete */}
-          {!onboardingDismissed && !isStandalone() && !settings?.setup_wizard_complete && (
+          {/* Onboarding Wizard — only for self-service accounts that haven't completed setup */}
+          {showOnboarding && (
             <OnboardingWizard onComplete={handleOnboardingComplete} />
           )}
           
