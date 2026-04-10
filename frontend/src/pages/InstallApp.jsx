@@ -88,14 +88,6 @@ function InstallApp() {
           </div>
         )}
 
-        {/* Video placeholder */}
-        <div className="install-video-section">
-          <div className="install-video-placeholder">
-            <i className="fas fa-play-circle"></i>
-            <span>Video walkthrough coming soon</span>
-          </div>
-        </div>
-
         {/* Platform tabs */}
         {!installed && (
           <div className="install-guides">

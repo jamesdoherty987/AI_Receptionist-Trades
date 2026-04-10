@@ -120,34 +120,6 @@
   color: var(--text-tertiary, #94a3b8);
 }
 
-/* Video placeholder */
-.install-video-section {
-  margin-bottom: 1.5rem;
-}
-
-.install-video-placeholder {
-  aspect-ratio: 16 / 9;
-  background: linear-gradient(135deg, #0f172a, #1e293b);
-  border-radius: 16px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  color: #64748b;
-  font-size: 0.85rem;
-}
-
-.install-video-placeholder i {
-  font-size: 2.5rem;
-  color: #475569;
-}
-
-.install-video-section video {
-  width: 100%;
-  border-radius: 16px;
-}
-
 /* Platform tabs */
 .install-guides {
   margin-bottom: 2rem;
