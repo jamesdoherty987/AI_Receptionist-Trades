@@ -9,7 +9,8 @@
 
 /* Hide header when modal is open on mobile to prevent overlap with close button */
 @media (max-width: 768px) {
-  body.modal-open .header {
+  body.modal-open .header,
+  body.mobile-menu-open .header {
     display: none;
   }
 }
