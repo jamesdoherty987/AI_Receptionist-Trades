@@ -7,12 +7,10 @@
   box-shadow: none;
 }
 
-/* Hide header when modal is open on mobile to prevent overlap with close button */
-@media (max-width: 768px) {
-  body.modal-open .header,
-  body.mobile-menu-open .header {
-    display: none;
-  }
+/* Hide header when modal/menu is open to prevent overlap with close button */
+body.modal-open .header,
+body.mobile-menu-open .header {
+  display: none !important;
 }
 
 .header .container {
@@ -48,7 +46,7 @@
 }
 
 .header-logo-img {
-  height: 40px;
+  height: 32px;
   width: auto;
   max-width: 140px;
   object-fit: contain;
