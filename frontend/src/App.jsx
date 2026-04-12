@@ -1,6 +1,7 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from './queryClient'
+import { useEffect } from 'react'
 import { ToastProvider } from './components/Toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 
@@ -120,6 +121,29 @@ function WorkerRoute({ children }) {
   return children;
 }
 
+// Payment redirect — bypasses SPA to hit Flask backend
+function PayRedirect() {
+  const { id } = useParams();
+  useEffect(() => {
+    // Use the API base URL to reach the backend
+    // In production: VITE_API_URL points to the Render backend
+    // In dev: empty string means same origin
+    const apiUrl = import.meta.env.VITE_API_URL || '';
+    const target = `${apiUrl}/api/pay/${id}`;
+    console.log('[PAY] Redirecting to:', target);
+    window.location.replace(target);
+  }, [id]);
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
+      <div style={{ textAlign: 'center', padding: '2rem' }}>
+        <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'linear-gradient(135deg, #6366f1, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', color: 'white', fontSize: '1.2rem' }}>💳</div>
+        <p style={{ color: '#1e293b', fontWeight: 600, fontSize: '1.1rem', margin: '0 0 0.5rem' }}>Redirecting to payment...</p>
+        <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>You'll be taken to our secure payment page.</p>
+      </div>
+    </div>
+  );
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -221,6 +245,9 @@ function AppRoutes() {
 
       {/* Admin Panel — obscure route, self-authenticating */}
       <Route path="/bfy-ops" element={<AdminPanel />} />
+
+      {/* Payment links — force full page reload to hit Flask backend */}
+      <Route path="/pay/:id" element={<PayRedirect />} />
 
       {/* Catch all - redirect to login */}
       <Route path="*" element={<Navigate to="/login" replace />} />

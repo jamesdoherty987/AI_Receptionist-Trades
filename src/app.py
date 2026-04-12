@@ -8082,6 +8082,8 @@ def send_invoice_api(booking_id):
         # Generate Stripe payment link
         from datetime import datetime
         stripe_payment_link = None
+        stripe_payment_link_sms = None
+        stripe_payment_link_email = None
         
         # Get the user's company to check for Stripe Connect account
         company = db.get_company(session['company_id'])
@@ -8152,7 +8154,7 @@ def send_invoice_api(booking_id):
                 stripe_payment_link = checkout_session.url
                 print(f"[SUCCESS] Stripe payment link created: {stripe_payment_link}")
                 
-                # Store the Stripe URL on the booking
+                # Store the full Stripe URL on the booking for the /pay redirect
                 try:
                     db.update_booking(booking_id, company_id=company_id,
                                       stripe_checkout_url=checkout_session.url)
@@ -8168,9 +8170,18 @@ def send_invoice_api(booking_id):
                 except Exception:
                     pass  # Non-critical
                 
-                # Keep the direct Stripe URL — no short URL redirect needed
-                # The Stripe checkout URL works without any login/account
-                print(f"[SUCCESS] Payment URL: {stripe_payment_link}")
+                # For SMS: use short URL via frontend /pay/:id route (clean, no % chars)
+                # The React app redirects /pay/:id to the backend /api/pay/:id
+                # which then redirects to the Stripe checkout URL
+                public_url = os.getenv('PUBLIC_URL', '').rstrip('/')
+                if public_url:
+                    stripe_payment_link_sms = f"{public_url}/pay/{booking_id}"
+                    stripe_payment_link_email = checkout_session.url
+                    print(f"[SUCCESS] SMS payment URL: {stripe_payment_link_sms}")
+                    print(f"[SUCCESS] Email payment URL: {stripe_payment_link_email[:60]}...")
+                else:
+                    stripe_payment_link_sms = checkout_session.url
+                    stripe_payment_link_email = checkout_session.url
             except Exception as stripe_error:
                 print(f"[WARNING] Could not create Stripe payment link: {stripe_error}")
                 import traceback
@@ -8250,7 +8261,7 @@ def send_invoice_api(booking_id):
                         service_type=booking_dict.get('service_type') or 'Service',
                         charge=charge_amount,
                         invoice_number=invoice_number,
-                        stripe_payment_link=stripe_payment_link,
+                        stripe_payment_link=stripe_payment_link_email,
                         job_address=job_address,
                         appointment_time=appointment_time,
                         company_name=company_business_name,
@@ -8273,7 +8284,7 @@ def send_invoice_api(booking_id):
         
         # Fallback to SMS
         if not sent_via and to_phone:
-            safe_print(f"[INVOICE] Attempting SMS fallback to {to_phone}...")
+            safe_print(f"[INVOICE] Attempting SMS fallback to {to_phone}, payment_link_sms={stripe_payment_link_sms}")
             try:
                 success = sms_service.send_invoice(
                     to_number=to_phone,
@@ -8281,7 +8292,7 @@ def send_invoice_api(booking_id):
                     service_type=booking_dict.get('service_type') or 'Service',
                     charge=charge_amount,
                     invoice_number=invoice_number,
-                    stripe_payment_link=stripe_payment_link,
+                    stripe_payment_link=stripe_payment_link_sms,
                     job_address=job_address,
                     appointment_time=appointment_time,
                     company_name=company_business_name,
@@ -8310,7 +8321,7 @@ def send_invoice_api(booking_id):
                 "sent_to": sent_to,
                 "delivery_method": sent_via,
                 "invoice_number": invoice_number,
-                "has_payment_link": stripe_payment_link is not None
+                "has_payment_link": stripe_payment_link_email is not None or stripe_payment_link_sms is not None
             })
         else:
             # Build specific error message
