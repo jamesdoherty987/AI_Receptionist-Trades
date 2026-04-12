@@ -58,6 +58,12 @@ function InvoiceConfirmModal({ isOpen, onClose, onConfirm, job, invoiceConfig, i
       <div className="invoice-confirm-modal">
         {!showPreview ? (
           <>
+            {invoiceConfig && !invoiceConfig.has_stripe_connect && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, fontSize: '0.78rem', color: '#92400e', marginBottom: '0.75rem' }}>
+                <i className="fas fa-exclamation-triangle"></i>
+                <span>No online payment link will be included. Set up Stripe Connect in Settings to enable online payments.</span>
+              </div>
+            )}
             <p className="invoice-confirm-intro">
               Review and edit the invoice details before sending.
             </p>

@@ -78,7 +78,10 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const invoiceMutation = useMutation({
     mutationFn: ({ jobId, invoiceData }) => sendInvoice(jobId, invoiceData),
     onSuccess: (response) => {
-      addToast(`Invoice sent to ${response.data?.sent_to || 'customer'}`, 'success');
+      const data = response.data;
+      let msg = `Invoice sent via ${data?.delivery_method || 'email'} to ${data?.sent_to || 'customer'}`;
+      if (data && !data.has_payment_link) msg += ' (no payment link)';
+      addToast(msg, 'success');
       setInvoiceJob(null);
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },

@@ -455,7 +455,12 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     mutationFn: ({ jobId, invoiceData }) => sendInvoice(jobId, invoiceData),
     onSuccess: (response) => {
       const data = response.data;
-      addToast(`Invoice sent via ${data.delivery_method || 'email'} to ${data.sent_to}!`, 'success');
+      const method = data.delivery_method || 'email';
+      let msg = `Invoice sent via ${method} to ${data.sent_to}`;
+      if (!data.has_payment_link) {
+        msg += ' (no online payment link — set up Stripe Connect in Settings > Payments)';
+      }
+      addToast(msg, 'success');
       setShowInvoiceConfirm(false);
       setInvoiceData(null);
     },

@@ -4499,6 +4499,26 @@ def payment_cancelled_page():
 <body><div class="card"><div class="icon">↩️</div><h1>Payment Cancelled</h1><p>No worries — your payment was not processed. You can use the payment link again whenever you're ready.</p></div></body></html>""", 200
 
 
+def _pay_error_page(title, message):
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title}</title>
+<style>body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;color:#475569}}
+.card{{text-align:center;background:#fff;padding:48px 40px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:440px}}
+.icon{{width:64px;height:64px;border-radius:50%;background:#fef2f2;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px}}
+h1{{margin:0 0 12px;font-size:22px;color:#1e293b}}p{{margin:0;color:#64748b;line-height:1.6;font-size:15px}}</style></head>
+<body><div class="card"><div class="icon">⚠️</div><h1>{title}</h1><p>{message}</p></div></body></html>"""
+
+def _pay_success_page():
+    return """<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Payment Complete</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;color:#475569}
+.card{text-align:center;background:#fff;padding:48px 40px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:440px}
+.icon{width:64px;height:64px;border-radius:50%;background:#ecfdf5;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px}
+h1{margin:0 0 12px;font-size:22px;color:#1e293b}p{margin:0;color:#64748b;line-height:1.6;font-size:15px}</style></head>
+<body><div class="card"><div class="icon">✅</div><h1>Already Paid</h1><p>This invoice has already been paid. Thank you!</p></div></body></html>"""
+
 @app.route("/api/pay/<int:booking_id>")
 @app.route("/pay/<int:booking_id>")
 def short_payment_redirect(booking_id):
@@ -4513,25 +4533,97 @@ def short_payment_redirect(booking_id):
     try:
         from psycopg2.extras import RealDictCursor
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT stripe_checkout_url, company_id FROM bookings WHERE id = %s", (booking_id,))
+        cur.execute("""
+            SELECT b.stripe_checkout_url, b.company_id, b.charge, b.service_type, 
+                   b.status, b.payment_status, c.name as client_name
+            FROM bookings b 
+            LEFT JOIN clients c ON b.client_id = c.id 
+            WHERE b.id = %s
+        """, (booking_id,))
         row = cur.fetchone()
         cur.close()
         
-        if row and row.get('stripe_checkout_url'):
+        if not row:
+            return _pay_error_page("Booking Not Found", "This payment link is not valid."), 404
+        
+        # If already paid, show a success message
+        if row.get('payment_status') in ('paid',):
+            return _pay_success_page(), 200
+        
+        # Try stored URL first
+        if row.get('stripe_checkout_url'):
             from flask import redirect
             return redirect(row['stripe_checkout_url'])
         
-        # No stored URL — show a friendly error page
-        return """<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Payment Link</title>
-<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;color:#475569}
-.card{text-align:center;background:#fff;padding:48px 40px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:440px}
-.icon{font-size:64px;margin-bottom:16px}h1{margin:0 0 12px;font-size:24px}p{margin:0;color:#64748b;line-height:1.6}</style></head>
-<body><div class="card"><div class="icon">🔗</div><h1>Payment Link Expired</h1><p>This payment link is no longer active. Please contact the business for a new invoice.</p></div></body></html>""", 404
+        # No stored URL — try to create a fresh Stripe checkout session
+        company_id = row.get('company_id')
+        charge = float(row.get('charge') or 0)
+        
+        if charge <= 0:
+            return _pay_error_page("No Amount Due", "This invoice has no charge amount. Please contact the business."), 400
+        
+        company = db.get_company(company_id)
+        connected_account_id = company.get('stripe_connect_account_id') if company else None
+        
+        if not connected_account_id:
+            return _pay_error_page("Payment Not Available", "Online payment is not set up for this business. Please contact them directly to arrange payment."), 503
+        
+        try:
+            import stripe
+            stripe_secret_key = os.getenv('STRIPE_SECRET_KEY')
+            if not stripe_secret_key:
+                return _pay_error_page("Payment Not Configured", "Payment system is not configured. Please contact the business."), 503
+            
+            stripe.api_key = stripe_secret_key
+            amount_cents = int(charge * 100)
+            service_type = row.get('service_type') or 'Service'
+            client_name = row.get('client_name') or 'Customer'
+            
+            checkout_params = {
+                'payment_method_types': ['card'],
+                'line_items': [{
+                    'price_data': {
+                        'currency': 'eur',
+                        'product_data': {
+                            'name': f"{service_type} - Invoice #{booking_id}",
+                            'description': f"Service for {client_name}",
+                        },
+                        'unit_amount': amount_cents,
+                    },
+                    'quantity': 1,
+                }],
+                'mode': 'payment',
+                'success_url': f"{os.getenv('PUBLIC_URL', 'http://localhost:5000')}/payment-success?session_id={{CHECKOUT_SESSION_ID}}",
+                'cancel_url': f"{os.getenv('PUBLIC_URL', 'http://localhost:5000')}/payment-cancelled",
+                'metadata': { 'booking_id': str(booking_id), 'customer_name': client_name },
+            }
+            
+            platform_fee_percent = float(os.getenv('STRIPE_PLATFORM_FEE_PERCENT', '0'))
+            if platform_fee_percent > 0:
+                application_fee = int(amount_cents * (platform_fee_percent / 100))
+                checkout_params['payment_intent_data'] = { 'application_fee_amount': application_fee }
+            
+            checkout_session = stripe.checkout.Session.create(**checkout_params, stripe_account=connected_account_id)
+            
+            # Store for future use
+            conn2 = db.get_connection()
+            try:
+                cur2 = conn2.cursor()
+                cur2.execute("UPDATE bookings SET stripe_checkout_url = %s, stripe_checkout_session_id = %s WHERE id = %s",
+                             (checkout_session.url, checkout_session.id, booking_id))
+                conn2.commit()
+                cur2.close()
+            finally:
+                db.return_connection(conn2)
+            
+            from flask import redirect
+            return redirect(checkout_session.url)
+        except Exception as stripe_err:
+            print(f"[PAY] Stripe error: {stripe_err}")
+            return _pay_error_page("Payment Error", "Could not create payment session. Please contact the business."), 500
     except Exception as e:
         print(f"[PAY] Error: {e}")
-        return "Payment link not found", 404
+        return _pay_error_page("Error", "Something went wrong. Please contact the business."), 500
     finally:
         db.return_connection(conn)
 
@@ -7884,6 +7976,8 @@ def get_invoice_config():
     warnings = []
     if not service_configured:
         warnings.append("Neither email nor SMS is configured. Set up email (RESEND_API_KEY) or Twilio for SMS.")
+    if not has_stripe:
+        warnings.append("Stripe Connect not set up. Invoices will be sent without an online payment link. Set up Stripe in Settings > Payments.")
     if not has_any_payment:
         warnings.append("No payment methods configured. Add Stripe, bank details, or Revolut in Settings > Payment Setup.")
     
@@ -7894,6 +7988,7 @@ def get_invoice_config():
         "email_configured": email_configured,
         "sms_configured": sms_configured,
         "can_send_invoice": can_send_invoice,
+        "has_stripe_connect": has_stripe,
         "payment_methods": {
             "stripe": has_stripe,
             "bank_transfer": has_bank,
