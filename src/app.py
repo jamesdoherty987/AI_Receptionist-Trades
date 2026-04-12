@@ -4568,6 +4568,7 @@ def short_payment_redirect(booking_id):
         if not connected_account_id:
             return _pay_error_page("Payment Not Available", "Online payment is not set up for this business. Please contact them directly to arrange payment."), 503
         
+        # Verify the Connect account can accept charges
         try:
             import stripe
             stripe_secret_key = os.getenv('STRIPE_SECRET_KEY')
@@ -4575,6 +4576,9 @@ def short_payment_redirect(booking_id):
                 return _pay_error_page("Payment Not Configured", "Payment system is not configured. Please contact the business."), 503
             
             stripe.api_key = stripe_secret_key
+            connect_acct = stripe.Account.retrieve(connected_account_id)
+            if not connect_acct.get('charges_enabled'):
+                return _pay_error_page("Payment Setup Incomplete", "The business is still setting up their payment account. Please contact them directly to arrange payment."), 503
             amount_cents = int(charge * 100)
             service_type = row.get('service_type') or 'Service'
             client_name = row.get('client_name') or 'Customer'
@@ -7967,16 +7971,30 @@ def get_invoice_config():
     
     # Check payment methods configured
     has_stripe = bool(company.get('stripe_connect_account_id')) if company else False
+    stripe_charges_enabled = False
+    if has_stripe:
+        try:
+            import stripe
+            stripe_key = os.getenv('STRIPE_SECRET_KEY')
+            if stripe_key:
+                stripe.api_key = stripe_key
+                acct = stripe.Account.retrieve(company['stripe_connect_account_id'])
+                stripe_charges_enabled = acct.get('charges_enabled', False)
+        except Exception:
+            pass
+    
     has_bank = bool(company.get('bank_iban')) if company else False
     has_revolut = bool(company.get('revolut_phone')) if company else False
-    has_any_payment = has_stripe or has_bank or has_revolut
+    has_any_payment = (has_stripe and stripe_charges_enabled) or has_bank or has_revolut
     
     can_send_invoice = service_configured
     
     warnings = []
     if not service_configured:
         warnings.append("Neither email nor SMS is configured. Set up email (RESEND_API_KEY) or Twilio for SMS.")
-    if not has_stripe:
+    if has_stripe and not stripe_charges_enabled:
+        warnings.append("Stripe Connect setup is incomplete. Complete your Stripe account to accept online payments. Invoices will be sent without a payment link.")
+    elif not has_stripe:
         warnings.append("Stripe Connect not set up. Invoices will be sent without an online payment link. Set up Stripe in Settings > Payments.")
     if not has_any_payment:
         warnings.append("No payment methods configured. Add Stripe, bank details, or Revolut in Settings > Payment Setup.")
@@ -7988,9 +8006,11 @@ def get_invoice_config():
         "email_configured": email_configured,
         "sms_configured": sms_configured,
         "can_send_invoice": can_send_invoice,
-        "has_stripe_connect": has_stripe,
+        "has_stripe_connect": has_stripe and stripe_charges_enabled,
+        "stripe_setup_incomplete": has_stripe and not stripe_charges_enabled,
         "payment_methods": {
-            "stripe": has_stripe,
+            "stripe": has_stripe and stripe_charges_enabled,
+            "stripe_incomplete": has_stripe and not stripe_charges_enabled,
             "bank_transfer": has_bank,
             "revolut": has_revolut,
             "any_configured": has_any_payment
@@ -8199,7 +8219,24 @@ def send_invoice_api(booking_id):
             else:
                 print("[INFO] STRIPE_SECRET_KEY not found - invoice will be sent without payment link")
         
-        # Only create Stripe payment link if the user has their own Connect account
+        # Only create Stripe payment link if the user has a fully-enabled Connect account
+        if stripe_secret_key and connected_account_id:
+            try:
+                import stripe
+                stripe.api_key = stripe_secret_key
+                
+                # Check if the Connect account can actually accept charges
+                try:
+                    connect_acct = stripe.Account.retrieve(connected_account_id)
+                    if not connect_acct.get('charges_enabled'):
+                        print(f"[STRIPE] Connect account {connected_account_id} has charges_enabled=False — skipping payment link")
+                        connected_account_id = None  # Treat as not configured
+                except Exception as acct_err:
+                    print(f"[STRIPE] Could not verify Connect account: {acct_err}")
+                    connected_account_id = None
+            except Exception:
+                pass
+        
         if stripe_secret_key and connected_account_id:
             try:
                 import stripe
