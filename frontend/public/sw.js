@@ -1,6 +1,6 @@
 // BookedForYou Service Worker v1.1.0
-const CACHE_NAME = 'bfy-cache-v1.1';
-const RUNTIME_CACHE = 'bfy-runtime-v1.1';
+const CACHE_NAME = 'bfy-cache-v1.2';
+const RUNTIME_CACHE = 'bfy-runtime-v1.2';
 
 // Only pre-cache actual static files (not SPA routes)
 const PRECACHE_URLS = [
