@@ -123,6 +123,14 @@
 .jt-mark-paid:hover:not(:disabled) { background: #dcfce7; }
 .jt-mark-paid:disabled { opacity: 0.5; cursor: not-allowed; }
 .jt-mark-paid i { font-size: 0.55rem; }
+.jt-send-invoice {
+  font-size: 0.66rem; font-weight: 600; padding: 0.2rem 0.45rem;
+  background: #eff6ff; color: #2563eb; border: 1px solid #93c5fd;
+  border-radius: 5px; cursor: pointer; font-family: inherit;
+  display: flex; align-items: center; gap: 0.2rem; transition: all 0.15s;
+}
+.jt-send-invoice:hover { background: #dbeafe; }
+.jt-send-invoice i { font-size: 0.55rem; }
 .jt-audio-btn {
   background: none; border: 1px solid #e2e8f0; border-radius: 5px;
   color: #64748b; cursor: pointer; padding: 0.18rem 0.4rem; font-size: 0.68rem;

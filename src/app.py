@@ -4499,6 +4499,7 @@ def payment_cancelled_page():
 <body><div class="card"><div class="icon">↩️</div><h1>Payment Cancelled</h1><p>No worries — your payment was not processed. You can use the payment link again whenever you're ready.</p></div></body></html>""", 200
 
 
+@app.route("/api/pay/<int:booking_id>")
 @app.route("/pay/<int:booking_id>")
 def short_payment_redirect(booking_id):
     """Short URL redirect to Stripe checkout for invoice payments.
@@ -5741,6 +5742,8 @@ def clients_api():
             name=name,
             phone=phone if phone else None,
             email=email if email else None,
+            address=data.get('address', '').strip() or None,
+            eircode=data.get('eircode', '').strip() or None,
             company_id=company_id
         )
         return jsonify({"id": client_id, "message": "Client created"}), 201
@@ -6618,6 +6621,37 @@ def bookings_api():
                 except Exception as emg_err:
                     print(f"[WARNING] Emergency dispatch failed: {emg_err}")
             
+            # Auto-generate a draft quote for the job
+            try:
+                import json as _json
+                conn_q = db.get_connection()
+                cur_q = conn_q.cursor()
+                # Generate quote number
+                _company_q = db.get_company(company_id)
+                _next_num = int(_company_q.get('invoice_next_number', 1) or 1) if _company_q else 1
+                _quote_number = f"QTE-{_next_num:04d}"
+                _charge = job_charge or 0
+                _line_items = _json.dumps([{"description": service_type, "quantity": 1, "amount": _charge}])
+                cur_q.execute("""
+                    INSERT INTO quotes (company_id, client_id, quote_number, title, description,
+                                        line_items, subtotal, tax_rate, tax_amount, total,
+                                        status, notes, source_booking_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 0, %s, 'draft', %s, %s)
+                """, (company_id, client_id, _quote_number, service_type, '',
+                      _line_items, _charge, _charge,
+                      data.get('notes', ''), booking_id))
+                conn_q.commit()
+                cur_q.close()
+                db.return_connection(conn_q)
+                print(f"[INFO] Auto-generated draft quote {_quote_number} for booking {booking_id}")
+            except Exception as q_err:
+                print(f"[WARNING] Auto-quote generation failed (non-critical): {q_err}")
+                try:
+                    conn_q.rollback()
+                    db.return_connection(conn_q)
+                except:
+                    pass
+            
             return jsonify({
                 "success": True,
                 "booking_id": booking_id,
@@ -6975,6 +7009,8 @@ def check_monthly_availability_api():
         import calendar as cal_mod
         from src.services.settings_manager import get_settings_manager
 
+        safe_print(f"[MONTHLY_AVAIL] year={year}, month={month}, service_type={service_type}, worker_id={worker_id}, any_worker={any_worker}, override_duration={override_duration}")
+
         settings_mgr = get_settings_manager()
         default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
 
@@ -7021,6 +7057,8 @@ def check_monthly_availability_api():
             slots_per_day = 1  # full-day: 1 slot
         else:
             slots_per_day = max(1, total_minutes // 30)  # 30-min interval slots
+        
+        safe_print(f"[MONTHLY_AVAIL] slot_duration={slot_duration}, bh_start={bh_start}, bh_end={bh_end}, total_minutes={total_minutes}, slots_per_day={slots_per_day}")
 
         # Gather all bookings for the month window (with buffer for multi-day)
         month_start = datetime(year, month, 1)
@@ -7104,6 +7142,7 @@ def check_monthly_availability_api():
         if any_worker:
             all_workers = db.get_all_workers(company_id=company_id)
             eligible_worker_ids = [w['id'] for w in all_workers]
+            safe_print(f"[MONTHLY_AVAIL] any_worker mode: {len(all_workers)} total workers, {len(eligible_worker_ids)} eligible")
             if service_type:
                 from src.services.settings_manager import get_settings_manager as _gsm2
                 _svc = _gsm2().get_service_by_name(service_type, company_id=company_id)
@@ -7243,6 +7282,10 @@ def check_monthly_availability_api():
                 'free': free
             }
 
+        # Sample first few days for debug
+        sample_days = {k: v for i, (k, v) in enumerate(days.items()) if i < 3}
+        safe_print(f"[MONTHLY_AVAIL] Returning {len(days)} days. Sample: {sample_days}")
+        
         return jsonify({'year': year, 'month': month, 'days': days, 'business_hours': {'start': bh_start, 'end': bh_end}})
 
     except Exception as e:
@@ -7290,7 +7333,7 @@ def booking_detail_api(booking_id):
             'status': booking.get('status'),
             'phone_number': booking.get('phone_number'),
             'phone': booking.get('phone_number') or booking.get('client_phone'),
-            'email': booking.get('email') or booking.get('client_email'),
+            'email': (booking.get('email') or '').strip() or (booking.get('client_email') or '').strip() or None,
             'created_at': booking.get('created_at'),
             'charge': booking.get('charge'),
             'estimated_charge': booking.get('charge'),
@@ -7801,19 +7844,34 @@ def complete_booking_api(booking_id):
 @app.route("/api/invoice-config", methods=["GET"])
 @login_required
 def get_invoice_config():
-    """Get invoice configuration status - invoices are always sent via SMS"""
+    """Get invoice configuration status — email first, SMS fallback"""
     db = get_database()
     company_id = session.get('company_id')
     company = db.get_company(company_id)
     
-    # Invoices are always sent via SMS now
-    invoice_delivery_method = 'sms'
+    # Check email service
+    email_configured = False
+    try:
+        from src.services.email_reminder import get_email_service
+        email_svc = get_email_service()
+        email_configured = email_svc.configured
+    except Exception:
+        pass
     
     # Check if Twilio SMS is configured
     from src.services.sms_reminder import get_sms_service
     sms_service = get_sms_service()
-    service_configured = sms_service.client is not None
-    service_name = "SMS (Twilio)"
+    sms_configured = sms_service.client is not None
+    
+    # Delivery method priority
+    if email_configured:
+        delivery_method = 'email'
+        service_name = 'Email (SMS fallback)'
+    else:
+        delivery_method = 'sms'
+        service_name = 'SMS (Twilio)'
+    
+    service_configured = email_configured or sms_configured
     
     # Check payment methods configured
     has_stripe = bool(company.get('stripe_connect_account_id')) if company else False
@@ -7821,21 +7879,20 @@ def get_invoice_config():
     has_revolut = bool(company.get('revolut_phone')) if company else False
     has_any_payment = has_stripe or has_bank or has_revolut
     
-    # Determine if invoicing is fully ready
     can_send_invoice = service_configured
     
-    # Build warning messages
     warnings = []
     if not service_configured:
-        warnings.append("Twilio SMS is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.")
-    
+        warnings.append("Neither email nor SMS is configured. Set up email (RESEND_API_KEY) or Twilio for SMS.")
     if not has_any_payment:
         warnings.append("No payment methods configured. Add Stripe, bank details, or Revolut in Settings > Payment Setup.")
     
     return jsonify({
-        "delivery_method": invoice_delivery_method,
+        "delivery_method": delivery_method,
         "service_name": service_name,
         "service_configured": service_configured,
+        "email_configured": email_configured,
+        "sms_configured": sms_configured,
         "can_send_invoice": can_send_invoice,
         "payment_methods": {
             "stripe": has_stripe,
@@ -7966,7 +8023,7 @@ def send_invoice_api(booking_id):
             'status': booking.get('status'),
             'phone_number': booking.get('phone_number'),
             'phone': booking.get('phone_number') or booking.get('client_phone'),
-            'email': booking.get('email') or booking.get('client_email'),
+            'email': (booking.get('email') or '').strip() or (booking.get('client_email') or '').strip() or None,
             'created_at': booking.get('created_at'),
             'charge': booking.get('charge'),
             'estimated_charge': booking.get('charge'),
@@ -7999,13 +8056,16 @@ def send_invoice_api(booking_id):
             booking_dict['job_address'] = request_data['job_address']
         if request_data.get('eircode'):
             booking_dict['eircode'] = request_data['eircode']
+        if request_data.get('email'):
+            booking_dict['email'] = request_data['email']
         
         safe_print(f"[INVOICE] Invoice: Using charge amount EUR{booking_dict['charge']} for booking {booking_id}")
         
-        # Validate required fields - phone is required for SMS
+        # Validate required fields - need at least email or phone
         to_phone = booking_dict['phone']
-        if not to_phone:
-            return jsonify({"error": "Customer phone number not found. Please add a phone number to the customer profile."}), 400
+        to_email_check = booking_dict.get('email') or booking_dict.get('client_email')
+        if not to_phone and not to_email_check:
+            return jsonify({"error": "Customer has no email or phone number. Please add contact details to the customer profile."}), 400
         
         if not booking_dict['client_name']:
             return jsonify({"error": "Customer name not found"}), 400
@@ -8092,11 +8152,10 @@ def send_invoice_api(booking_id):
                 stripe_payment_link = checkout_session.url
                 print(f"[SUCCESS] Stripe payment link created: {stripe_payment_link}")
                 
-                # Store the Stripe URL and session ID on the booking so /pay/<id> can redirect
+                # Store the Stripe URL on the booking
                 try:
                     db.update_booking(booking_id, company_id=company_id,
-                                      stripe_checkout_url=stripe_payment_link)
-                    # Store checkout session ID to retrieve payment_intent later
+                                      stripe_checkout_url=checkout_session.url)
                     conn2 = db.get_connection()
                     try:
                         cur2 = conn2.cursor()
@@ -8109,11 +8168,9 @@ def send_invoice_api(booking_id):
                 except Exception:
                     pass  # Non-critical
                 
-                # Use short URL for SMS — much cleaner than the long Stripe URL
-                public_url = os.getenv('PUBLIC_URL', '').rstrip('/')
-                if public_url:
-                    stripe_payment_link = f"{public_url}/pay/{booking_id}"
-                    print(f"[SUCCESS] Short payment URL: {stripe_payment_link}")
+                # Keep the direct Stripe URL — no short URL redirect needed
+                # The Stripe checkout URL works without any login/account
+                print(f"[SUCCESS] Payment URL: {stripe_payment_link}")
             except Exception as stripe_error:
                 print(f"[WARNING] Could not create Stripe payment link: {stripe_error}")
                 import traceback
@@ -8163,40 +8220,109 @@ def send_invoice_api(booking_id):
         # Get business details from the company record
         company_business_name = company.get('company_name') or company.get('business_name') or company.get('name') or None if company else None
         
-        # Send via SMS
-        success = sms_service.send_invoice(
-            to_number=to_phone,
-            customer_name=booking_dict['client_name'],
-            service_type=booking_dict.get('service_type') or 'Service',
-            charge=charge_amount,
-            invoice_number=invoice_number,
-            stripe_payment_link=stripe_payment_link,
-            job_address=job_address,
-            appointment_time=appointment_time,
-            company_name=company_business_name,
-            bank_details=bank_details,
-            revolut_phone=revolut_phone
-        )
+        # Try email first, then SMS fallback
+        sent_via = None
+        # Resolve email: check booking dict, then re-fetch from client directly
+        to_email = booking_dict.get('email')
+        if not to_email and booking.get('client_id'):
+            # Re-fetch client to get email (in case booking record doesn't have it)
+            _client_for_email = db.get_client(booking['client_id'], company_id=company_id)
+            if _client_for_email:
+                to_email = _client_for_email.get('email')
+        # Strip whitespace and treat empty string as None
+        if to_email:
+            to_email = to_email.strip()
+        if not to_email:
+            to_email = None
         
-        if success:
+        safe_print(f"[INVOICE] Email resolution: to_email={to_email}, to_phone={to_phone}")
+        
+        if to_email:
+            try:
+                from src.services.email_reminder import get_email_service
+                email_svc = get_email_service()
+                safe_print(f"[INVOICE] Email service configured: {email_svc.configured}, use_resend: {email_svc.use_resend}, smtp_configured: {email_svc.smtp_configured}")
+                if email_svc.configured:
+                    safe_print(f"[INVOICE] Attempting email send to {to_email}...")
+                    email_sent = email_svc.send_invoice(
+                        to_email=to_email,
+                        customer_name=booking_dict['client_name'],
+                        service_type=booking_dict.get('service_type') or 'Service',
+                        charge=charge_amount,
+                        invoice_number=invoice_number,
+                        stripe_payment_link=stripe_payment_link,
+                        job_address=job_address,
+                        appointment_time=appointment_time,
+                        company_name=company_business_name,
+                        bank_details=bank_details,
+                        revolut_phone=revolut_phone
+                    )
+                    safe_print(f"[INVOICE] Email send result: {email_sent}")
+                    if email_sent:
+                        sent_via = 'email'
+                        safe_print(f"[INVOICE] ✅ Invoice sent via email to {to_email}")
+                    else:
+                        safe_print(f"[INVOICE] ❌ Email send returned False — falling back to SMS")
+                else:
+                    safe_print(f"[INVOICE] Email service not configured — skipping email, will try SMS")
+            except Exception as email_err:
+                safe_print(f"[INVOICE] ❌ Email send exception: {email_err}")
+                import traceback; traceback.print_exc()
+        else:
+            safe_print(f"[INVOICE] No email address found — will try SMS directly")
+        
+        # Fallback to SMS
+        if not sent_via and to_phone:
+            safe_print(f"[INVOICE] Attempting SMS fallback to {to_phone}...")
+            try:
+                success = sms_service.send_invoice(
+                    to_number=to_phone,
+                    customer_name=booking_dict['client_name'],
+                    service_type=booking_dict.get('service_type') or 'Service',
+                    charge=charge_amount,
+                    invoice_number=invoice_number,
+                    stripe_payment_link=stripe_payment_link,
+                    job_address=job_address,
+                    appointment_time=appointment_time,
+                    company_name=company_business_name,
+                    bank_details=bank_details,
+                    revolut_phone=revolut_phone
+                )
+                if success:
+                    sent_via = 'sms'
+                    safe_print(f"[INVOICE] ✅ Invoice sent via SMS to {to_phone}")
+                else:
+                    safe_print(f"[INVOICE] ❌ SMS send returned False")
+            except Exception as sms_err:
+                safe_print(f"[INVOICE] ❌ SMS send exception: {sms_err}")
+        
+        if sent_via:
             # Update payment status to 'invoiced' so we know an invoice was sent
             try:
                 db.update_booking(booking_id, company_id=company_id, payment_status='invoiced')
             except Exception:
                 pass  # Non-critical, don't fail the response
             
+            sent_to = to_email if sent_via == 'email' else to_phone
             return jsonify({
                 "success": True,
-                "message": f"Invoice sent via SMS to {to_phone}",
-                "sent_to": to_phone,
-                "delivery_method": "sms",
+                "message": f"Invoice sent via {sent_via} to {sent_to}",
+                "sent_to": sent_to,
+                "delivery_method": sent_via,
                 "invoice_number": invoice_number,
                 "has_payment_link": stripe_payment_link is not None
             })
         else:
-            return jsonify({
-                "error": "Failed to send invoice SMS. Please check the customer's phone number and try again."
-            }), 500
+            # Build specific error message
+            if to_email and to_phone:
+                err = f"Both email to {to_email} and SMS to {to_phone} failed. Check server logs for details."
+            elif to_email:
+                err = f"Email to {to_email} failed and no phone number for SMS fallback."
+            elif to_phone:
+                err = f"SMS to {to_phone} failed. No email address for email fallback."
+            else:
+                err = "No email or phone number available. Add contact details to the customer profile."
+            return jsonify({"error": err}), 500
             
     except Exception as e:
         safe_print(f"[ERROR] Error sending invoice: {e}")
@@ -9875,14 +10001,15 @@ def create_quote():
         cur.execute("""
             INSERT INTO quotes (company_id, client_id, quote_number, title, description,
                                 line_items, subtotal, tax_rate, tax_amount, total,
-                                status, valid_until, notes)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                status, valid_until, notes, source_booking_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
         """, (
             company_id, data.get('client_id'), quote_number,
             data.get('title', ''), data.get('description', ''),
             json.dumps(line_items), subtotal, tax_rate, tax_amount, total,
-            'draft', data.get('valid_until'), data.get('notes', '')
+            'draft', data.get('valid_until'), data.get('notes', ''),
+            data.get('booking_id') or None
         ))
         quote = cur.fetchone()
         conn.commit()
@@ -10066,7 +10193,7 @@ def convert_quote_to_job(quote_id):
 @login_required
 @subscription_required
 def send_quote_sms(quote_id):
-    """Send quote to customer via SMS"""
+    """Send quote to customer — email first, SMS fallback"""
     db = get_database()
     company_id = session.get('company_id')
     conn = db.get_connection()
@@ -10079,15 +10206,16 @@ def send_quote_sms(quote_id):
             cur.close()
             return jsonify({"error": "Quote not found"}), 404
 
-        phone = quote.get('client_phone')
-        if not phone:
+        email = (quote.get('client_email') or '').strip() or None
+        phone = (quote.get('client_phone') or '').strip() or None
+        if not email and not phone:
             cur.close()
-            return jsonify({"error": "Customer has no phone number on file"}), 400
+            return jsonify({"error": "Customer has no email or phone number on file"}), 400
 
         company = db.get_company(company_id)
-        company_name = company.get('name', 'Our Company') if company else 'Our Company'
+        company_name = company.get('company_name', '') or company.get('business_name', '') or 'Our Company' if company else 'Our Company'
 
-        # Build SMS message
+        # Build quote content
         items_summary = ""
         if quote.get('line_items'):
             items = quote['line_items'] if isinstance(quote['line_items'], list) else []
@@ -10107,28 +10235,82 @@ def send_quote_sms(quote_id):
             except Exception:
                 pass
 
-        msg = f"Hi {quote.get('client_name', 'there')}, here's your quote from {company_name}:\n\n{title}\n{items_summary}\n\nTotal: €{total:.2f}{valid_until}\n\nPlease reply to accept or decline."
+        sent_via = None
 
-        from src.services.sms_reminder import get_sms_service
-        sms_service = get_sms_service()
-        if not sms_service.client:
+        # Try email first
+        if email:
+            try:
+                from src.services.email_reminder import get_email_service
+                email_svc = get_email_service()
+                if email_svc.configured:
+                    items_html = ""
+                    if quote.get('line_items'):
+                        li = quote['line_items'] if isinstance(quote['line_items'], list) else []
+                        if li:
+                            rows = "".join([f"<tr><td style='padding:8px;border-bottom:1px solid #f1f5f9'>{i.get('description','Item')}</td><td style='padding:8px;text-align:center;border-bottom:1px solid #f1f5f9'>{i.get('quantity',1)}</td><td style='padding:8px;text-align:right;border-bottom:1px solid #f1f5f9'>€{float(i.get('amount',0))*int(i.get('quantity',1)):.2f}</td></tr>" for i in li])
+                            items_html = f"<table style='width:100%;border-collapse:collapse;margin:16px 0'><thead><tr><th style='padding:8px;text-align:left;border-bottom:2px solid #e2e8f0;color:#64748b;font-size:12px'>Item</th><th style='padding:8px;text-align:center;border-bottom:2px solid #e2e8f0;color:#64748b;font-size:12px'>Qty</th><th style='padding:8px;text-align:right;border-bottom:2px solid #e2e8f0;color:#64748b;font-size:12px'>Amount</th></tr></thead><tbody>{rows}</tbody></table>"
+
+                    vu_html = f"<p style='color:#94a3b8;font-size:13px'>Valid until: {vu.strftime('%d %b %Y')}</p>" if quote.get('valid_until') else ""
+                    html = f"""<div style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto'>
+<h2 style='color:#1e293b;margin:0 0 4px'>Quote from {company_name}</h2>
+<p style='color:#64748b;margin:0 0 20px'>{title}</p>
+{items_html}
+<div style='text-align:right;padding:12px 0;border-top:2px solid #6366f1'>
+<span style='font-size:14px;color:#64748b'>Total: </span>
+<span style='font-size:22px;font-weight:700;color:#1e293b'>€{total:.2f}</span>
+</div>
+{vu_html}
+{f"<p style='color:#475569;font-size:13px;background:#f8fafc;padding:10px;border-radius:6px'>{quote.get('notes')}</p>" if quote.get('notes') else ""}
+<p style='color:#64748b;font-size:13px;margin-top:20px'>Please reply to this email to accept or decline this quote.</p>
+</div>"""
+                    txt = f"Quote from {company_name}\n\n{title}\n{items_summary}\n\nTotal: €{total:.2f}{valid_until}\n\nPlease reply to accept or decline."
+                    subject = f"Quote from {company_name} — {title} (€{total:.2f})"
+                    email_svc._send_email(email, subject, html, txt, company_name)
+                    sent_via = 'email'
+            except Exception as ex:
+                safe_print(f"[QUOTE] Email send failed, falling back to SMS: {ex}")
+
+        # Fallback to SMS if email didn't work
+        if not sent_via and phone:
+            try:
+                msg = f"Hi {quote.get('client_name', 'there')}, here's your quote from {company_name}:\n\n{title}\n{items_summary}\n\nTotal: €{total:.2f}{valid_until}\n\nPlease reply to accept or decline."
+                from src.services.sms_reminder import get_sms_service
+                sms_service = get_sms_service()
+                if not sms_service.client:
+                    safe_print(f"[QUOTE] SMS fallback failed: Twilio not configured")
+                else:
+                    twilio_number = company.get('twilio_phone_number') if company else None
+                    if not twilio_number:
+                        safe_print(f"[QUOTE] SMS fallback failed: No Twilio phone number for company {company_id}")
+                    else:
+                        safe_print(f"[QUOTE] Sending quote SMS to {phone} from {twilio_number}")
+                        sms_service.client.messages.create(body=msg, from_=twilio_number, to=phone)
+                        sent_via = 'sms'
+                        safe_print(f"[QUOTE] Quote sent via SMS to {phone}")
+            except Exception as sms_ex:
+                safe_print(f"[QUOTE] SMS send failed: {sms_ex}")
+                import traceback; traceback.print_exc()
+
+        if not sent_via:
             cur.close()
-            return jsonify({"error": "SMS service not configured"}), 503
-
-        twilio_number = company.get('twilio_phone_number') if company else None
-        if not twilio_number:
-            cur.close()
-            return jsonify({"error": "No Twilio phone number configured"}), 503
-
-        sms_service.client.messages.create(body=msg, from_=twilio_number, to=phone)
+            # Build specific error message
+            if not email and not phone:
+                err = "Customer has no email or phone number on file"
+            elif email and not phone:
+                err = f"Email send failed to {email} and no phone number for SMS fallback"
+            elif phone and not email:
+                err = f"SMS send failed to {phone}. Check the phone number format (must include country code, e.g. +353...)"
+            else:
+                err = f"Both email ({email}) and SMS ({phone}) failed. Check contact details."
+            return jsonify({"error": err}), 503
 
         # Update status to sent if still draft
         if quote.get('status') == 'draft':
-            cur.execute("UPDATE quotes SET status = 'sent', updated_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s", (quote_id, company_id))
+            cur.execute("UPDATE quotes SET status = 'sent', sent_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s", (quote_id, company_id))
             conn.commit()
 
         cur.close()
-        return jsonify({"success": True, "sent_to": phone})
+        return jsonify({"success": True, "sent_to": email if sent_via == 'email' else phone, "sent_via": sent_via})
     except Exception as ex:
         conn.rollback()
         import traceback; traceback.print_exc()

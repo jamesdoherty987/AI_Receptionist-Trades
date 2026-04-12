@@ -1,11 +1,16 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency } from '../../utils/helpers';
-import { getPnlReport } from '../../services/api';
+import { getPnlReport, createExpense, createCreditNote } from '../../services/api';
+import { useToast } from '../Toast';
 import LoadingSpinner from '../LoadingSpinner';
 
 function PnlPanel() {
+  const queryClient = useQueryClient();
+  const { addToast } = useToast();
   const [period, setPeriod] = useState('year');
+  const [showAdjustment, setShowAdjustment] = useState(false);
+  const [adjustment, setAdjustment] = useState({ type: 'revenue', description: '', amount: '', category: 'other' });
 
   const { data: pnl, isLoading } = useQuery({
     queryKey: ['pnl-report', period],
@@ -44,9 +49,9 @@ function PnlPanel() {
   return (
     <div className="acct-panel">
       {/* Period Selector */}
-      <div className="acct-toolbar" style={{ justifyContent: 'space-between' }}>
+      <div className="acct-toolbar acct-toolbar-spread">
         <h3 className="acct-panel-title"><i className="fas fa-file-invoice-dollar"></i> Profit & Loss Statement</h3>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div className="acct-toolbar-group">
           <div className="acct-filter-pills">
             {[
               { key: 'month', label: 'This Month' },
@@ -58,7 +63,7 @@ function PnlPanel() {
                 onClick={() => setPeriod(p.key)}>{p.label}</button>
             ))}
           </div>
-          <button className="acct-btn-secondary" title="Export CSV" style={{ padding: '0.4rem 0.6rem', fontSize: '0.78rem' }}
+          <button className="acct-btn-secondary" title="Export CSV"
             onClick={() => {
               const rows = [['Month', 'Revenue', 'Credits', 'Net Revenue', 'Materials', 'Gross Profit', 'Expenses', 'Mileage', 'Total Costs', 'Net Profit']];
               (pnl.monthly_pnl || []).forEach(m => rows.push([m.month, m.revenue, 0, m.revenue, m.materials || 0, m.gross_profit || 0, m.expenses, m.mileage || 0, m.total_costs || m.expenses, m.net_profit]));
@@ -72,6 +77,108 @@ function PnlPanel() {
             <i className="fas fa-download"></i> Export
           </button>
         </div>
+      </div>
+
+      {/* Manual Adjustment */}
+      <div className="acct-section">
+        <div className="acct-section-header">
+          <h3><i className="fas fa-pen"></i> Adjustments</h3>
+          <button className="acct-btn-secondary" onClick={() => setShowAdjustment(!showAdjustment)}>
+            <i className={`fas ${showAdjustment ? 'fa-times' : 'fa-plus'}`}></i>
+            {showAdjustment ? 'Cancel' : 'Add'}
+          </button>
+        </div>
+        {showAdjustment && (
+          <div className="acct-form" style={{ borderLeftColor: adjustment.type === 'credit' ? '#ef4444' : adjustment.type === 'expense' ? '#f59e0b' : '#10b981' }}>
+            <div className="acct-form-grid">
+              <div className="acct-field">
+                <label>Adjustment Type</label>
+                <select value={adjustment.type} onChange={e => setAdjustment({ ...adjustment, type: e.target.value })}>
+                  <option value="expense">Add Expense</option>
+                  <option value="credit">Add Credit Note / Refund</option>
+                  <option value="revenue">Additional Revenue</option>
+                </select>
+              </div>
+              {adjustment.type === 'expense' && (
+                <div className="acct-field">
+                  <label>Category</label>
+                  <select value={adjustment.category} onChange={e => setAdjustment({ ...adjustment, category: e.target.value })}>
+                    <option value="other">Other</option>
+                    <option value="tools">Tools & Equipment</option>
+                    <option value="materials">Materials & Supplies</option>
+                    <option value="vehicle">Vehicle Maintenance</option>
+                    <option value="fuel">Fuel & Mileage</option>
+                    <option value="insurance">Insurance</option>
+                    <option value="software">Software & Subscriptions</option>
+                    <option value="office">Office & Admin</option>
+                    <option value="marketing">Marketing</option>
+                    <option value="training">Training</option>
+                    <option value="utilities">Utilities & Rent</option>
+                    <option value="subcontractor">Subcontractors</option>
+                  </select>
+                </div>
+              )}
+              <div className="acct-field">
+                <label>Description</label>
+                <input type="text" value={adjustment.description} onChange={e => setAdjustment({ ...adjustment, description: e.target.value })}
+                  placeholder={adjustment.type === 'credit' ? 'e.g. Refund for cancelled job, Discount given...' : adjustment.type === 'revenue' ? 'e.g. Cash payment, Side job income...' : 'e.g. New drill, Office supplies...'} />
+              </div>
+              <div className="acct-field">
+                <label>Amount (€)</label>
+                <input type="number" min="0" step="0.01" value={adjustment.amount} onChange={e => setAdjustment({ ...adjustment, amount: e.target.value })} placeholder="0.00" />
+              </div>
+              <div className="acct-field">
+                <label>Date</label>
+                <input type="date" value={adjustment.date || new Date().toISOString().split('T')[0]} onChange={e => setAdjustment({ ...adjustment, date: e.target.value })} />
+              </div>
+            </div>
+            <div className="acct-form-actions">
+              <button className="acct-btn-secondary" onClick={() => setShowAdjustment(false)}>Cancel</button>
+              <button className="acct-btn-primary" disabled={!adjustment.description.trim() || !adjustment.amount}
+                onClick={() => {
+                  const amt = parseFloat(adjustment.amount);
+                  const date = adjustment.date || new Date().toISOString().split('T')[0];
+                  const done = () => {
+                    queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+                    queryClient.invalidateQueries({ queryKey: ['expenses'] });
+                    queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
+                    setShowAdjustment(false);
+                    setAdjustment({ type: 'revenue', description: '', amount: '', category: 'other', date: '' });
+                  };
+
+                  if (adjustment.type === 'credit') {
+                    createCreditNote({
+                      reason: adjustment.description,
+                      amount: amt,
+                      date,
+                    }).then(() => { addToast('Credit note added', 'success'); done(); })
+                      .catch(() => addToast('Failed to add credit note', 'error'));
+                  } else if (adjustment.type === 'expense') {
+                    createExpense({
+                      amount: amt, category: adjustment.category,
+                      description: adjustment.description, vendor: '',
+                      date, tax_deductible: true,
+                    }).then(() => { addToast('Expense added', 'success'); done(); })
+                      .catch(() => addToast('Failed to add expense', 'error'));
+                  } else {
+                    createExpense({
+                      amount: -Math.abs(amt), category: 'other',
+                      description: `[Additional Revenue] ${adjustment.description}`, vendor: '',
+                      date, tax_deductible: false,
+                    }).then(() => { addToast('Revenue adjustment added', 'success'); done(); })
+                      .catch(() => addToast('Failed to add adjustment', 'error'));
+                  }
+                }}>
+                <i className="fas fa-check"></i> Add
+              </button>
+            </div>
+          </div>
+        )}
+        {!showAdjustment && (
+          <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>
+            Add expenses, credit notes/refunds, or additional revenue not captured by jobs.
+          </p>
+        )}
       </div>
 
       {/* P&L Statement — Proper accounting format */}
@@ -96,7 +203,7 @@ function PnlPanel() {
           </div>
 
           {/* Cost of Sales */}
-          <div className="pnl-line pnl-line-header" style={{ marginTop: '0.75rem' }}>Cost of Sales</div>
+          <div className="pnl-line pnl-line-header acct-mt-sm">Cost of Sales</div>
           <div className="pnl-line">
             <span>Materials & Supplies</span>
             <span>({formatCurrency(pnl.total_materials)})</span>
@@ -110,7 +217,7 @@ function PnlPanel() {
           </div>
 
           {/* Operating Expenses */}
-          <div className="pnl-line pnl-line-header" style={{ marginTop: '0.75rem' }}>Operating Expenses</div>
+          <div className="pnl-line pnl-line-header acct-mt-sm">Operating Expenses</div>
           {pnl.expense_categories && pnl.expense_categories.length > 0 ? (
             pnl.expense_categories.map((cat, i) => (
               <div key={i} className="pnl-line pnl-line-indent">

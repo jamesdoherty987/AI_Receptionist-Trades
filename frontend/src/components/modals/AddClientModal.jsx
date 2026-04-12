@@ -12,6 +12,9 @@ function AddClientModal({ isOpen, onClose, workerMode = false }) {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
+    email: '',
+    address: '',
+    eircode: '',
     notes: ''
   });
 
@@ -20,7 +23,7 @@ function AddClientModal({ isOpen, onClose, workerMode = false }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       onClose();
-      setFormData({ name: '', phone: '', notes: '' });
+      setFormData({ name: '', phone: '', email: '', address: '', eircode: '', notes: '' });
       addToast('Customer added successfully!', 'success');
     },
     onError: (error) => {
@@ -68,6 +71,45 @@ function AddClientModal({ isOpen, onClose, workerMode = false }) {
             value={formData.phone}
             onChange={handleChange}
             placeholder="+353..."
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Email</label>
+          <input
+            type="email"
+            name="email"
+            className="form-input"
+            value={formData.email}
+            onChange={handleChange}
+            placeholder="customer@example.com"
+          />
+          <small style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.2rem', display: 'block' }}>
+            Quotes and invoices will be sent via email when available, SMS as fallback.
+          </small>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Address</label>
+          <input
+            type="text"
+            name="address"
+            className="form-input"
+            value={formData.address}
+            onChange={handleChange}
+            placeholder="Full address"
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Eircode</label>
+          <input
+            type="text"
+            name="eircode"
+            className="form-input"
+            value={formData.eircode}
+            onChange={handleChange}
+            placeholder="e.g. V94 X2Y3"
           />
         </div>
 

@@ -10,6 +10,7 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
 import Settings from './pages/Settings'
+import Account from './pages/Account'
 import SettingsMenu from './pages/SettingsMenu'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
@@ -184,6 +185,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute requireSubscription={false}>
             <SettingsMenu />
+          </ProtectedRoute>
+        } 
+      />
+      <Route 
+        path="/account" 
+        element={
+          <ProtectedRoute requireSubscription={false}>
+            <Account />
           </ProtectedRoute>
         } 
       />

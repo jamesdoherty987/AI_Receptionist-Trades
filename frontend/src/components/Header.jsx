@@ -126,12 +126,20 @@ function Header({ onNotificationNavigate }) {
                   </div>
                   <div className="user-dropdown-divider"></div>
                   <Link 
+                    to="/account" 
+                    className="user-dropdown-item"
+                    onClick={(e) => { guardNav(e, '/account'); setShowUserMenu(false); }}
+                  >
+                    <i className="fas fa-user"></i>
+                    My Account
+                  </Link>
+                  <Link 
                     to="/settings" 
                     className="user-dropdown-item"
                     onClick={(e) => { guardNav(e, '/settings'); setShowUserMenu(false); }}
                   >
-                    <i className="fas fa-user-cog"></i>
-                    Account Settings
+                    <i className="fas fa-cog"></i>
+                    Business Settings
                   </Link>
                   <div className="user-dropdown-divider"></div>
                   <button className="user-dropdown-item logout" onClick={handleLogout}>

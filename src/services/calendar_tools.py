@@ -5870,6 +5870,37 @@ Return ONLY valid JSON, no explanation."""
                         logger.warning(f"[BOOK_JOB] Could not update client info: {addr_err}")
                     
                     logger.info(f"[BOOK_JOB] ✅ Job booking saved to database (ID: {booking_id}, company_id: {company_id})")
+                    
+                    # Auto-generate a draft quote for the job
+                    try:
+                        import json as _qjson
+                        _conn_q = db.get_connection()
+                        _cur_q = _conn_q.cursor()
+                        _company_q = db.get_company(company_id)
+                        _next_num = int(_company_q.get('invoice_next_number', 1) or 1) if _company_q else 1
+                        _quote_number = f"QTE-{_next_num:04d}"
+                        _q_charge = job_charge or 0
+                        _q_items = _qjson.dumps([{"description": matched_service_name, "quantity": 1, "amount": _q_charge}])
+                        _cur_q.execute("""
+                            INSERT INTO quotes (company_id, client_id, quote_number, title, description,
+                                                line_items, subtotal, tax_rate, tax_amount, total,
+                                                status, notes, source_booking_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 0, %s, 'draft', %s, %s)
+                        """, (company_id, client_id, _quote_number, matched_service_name, '',
+                              _q_items, _q_charge, _q_charge,
+                              f"Booked via AI receptionist\nAddress: {validated_address or extracted_eircode or 'N/A'}",
+                              booking_id))
+                        _conn_q.commit()
+                        _cur_q.close()
+                        db.return_connection(_conn_q)
+                        logger.info(f"[BOOK_JOB] ✅ Auto-generated draft quote {_quote_number} for booking {booking_id}")
+                    except Exception as _q_err:
+                        logger.warning(f"[BOOK_JOB] ⚠️ Auto-quote generation failed (non-critical): {_q_err}")
+                        try:
+                            _conn_q.rollback()
+                            db.return_connection(_conn_q)
+                        except:
+                            pass
                 except Exception as e:
                     logger.error(f"[BOOK_JOB] ❌ Database save failed: {e}")
                     import traceback

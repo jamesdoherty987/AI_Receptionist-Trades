@@ -16,7 +16,6 @@ import {
   toggleAIReceptionist,
   updateAISchedule,
   syncSubscription,
-  deleteAccount,
   getGoogleCalendarStatus,
   connectGoogleCalendar,
   disconnectGoogleCalendar,
@@ -36,16 +35,13 @@ const REMOVE_STRIPE_CONNECT = false;
 function Settings() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { checkAuth, logout } = useAuth();
+  const { checkAuth } = useAuth();
   const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({});
   const isManagedAccount = formData.easy_setup === false;
   const [saveMessage, setSaveMessage] = useState('');
   const [showPhoneModal, setShowPhoneModal] = useState(false);
   const [activeTab, setActiveTab] = useState('business');
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState('');
-  const [deleteError, setDeleteError] = useState('');
   const [gcalConnecting, setGcalConnecting] = useState(false);
   const [gcalSyncing, setGcalSyncing] = useState(false);
   const [workerWarning, setWorkerWarning] = useState('');
@@ -395,28 +391,6 @@ function Settings() {
       setTimeout(() => setSaveMessage(''), 5000);
     },
   });
-
-  const deleteMutation = useMutation({
-    mutationFn: (confirmation) => deleteAccount(confirmation),
-    onSuccess: () => {
-      // Clear all auth state and redirect to home
-      logout();
-      navigate('/');
-    },
-    onError: (error) => {
-      const errorMsg = error?.response?.data?.error || 'Failed to delete account';
-      setDeleteError(errorMsg);
-    },
-  });
-
-  const handleDeleteAccount = () => {
-    setDeleteError('');
-    if (deleteConfirmation.toLowerCase() !== 'delete account') {
-      setDeleteError("Please type 'delete account' to confirm");
-      return;
-    }
-    deleteMutation.mutate(deleteConfirmation);
-  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -2005,27 +1979,6 @@ function Settings() {
             </form>
           </div>
 
-          {/* Danger Zone - Delete Account */}
-          <div className="settings-card danger-zone">
-            <div className="form-section">
-              <div className="form-section-header">
-                <i className="fas fa-exclamation-triangle" style={{ color: '#dc2626' }}></i>
-                <h3>Danger Zone</h3>
-              </div>
-              <p className="section-description">
-                Permanently delete your account and all associated data. This action cannot be undone.
-              </p>
-              <button 
-                type="button"
-                className="btn btn-danger"
-                onClick={() => setShowDeleteModal(true)}
-              >
-                <i className="fas fa-trash-alt"></i>
-                Delete Account
-              </button>
-            </div>
-          </div>
-          
           {/* Floating Save Button */}
           <div className="floating-save-container">
             {hasUnsavedChanges && (
@@ -2057,89 +2010,6 @@ function Settings() {
         allowSkip={false}
       />
 
-      {/* Delete Account Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="modal-overlay" onClick={() => {
-          setShowDeleteModal(false);
-          setDeleteConfirmation('');
-          setDeleteError('');
-        }}>
-          <div className="modal-content delete-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>
-                <i className="fas fa-exclamation-triangle" style={{ color: '#dc2626', marginRight: '10px' }}></i>
-                Delete Account
-              </h2>
-              <button className="modal-close" onClick={() => {
-                setShowDeleteModal(false);
-                setDeleteConfirmation('');
-                setDeleteError('');
-              }}>
-                <i className="fas fa-times"></i>
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="delete-warning">
-                <p><strong>This action is permanent and cannot be undone.</strong></p>
-                <p>Deleting your account will remove:</p>
-                <ul>
-                  <li>All your business information</li>
-                  <li>All customers and their data</li>
-                  <li>All jobs and bookings</li>
-                  <li>All workers</li>
-                  <li>All services</li>
-                  <li>Your subscription (if active)</li>
-                </ul>
-              </div>
-              <div className="delete-confirm-input">
-                <label>Type <strong>delete account</strong> to confirm:</label>
-                <input
-                  type="text"
-                  value={deleteConfirmation}
-                  onChange={(e) => setDeleteConfirmation(e.target.value)}
-                  placeholder="delete account"
-                  autoComplete="off"
-                />
-              </div>
-              {deleteError && (
-                <div className="delete-error">
-                  <i className="fas fa-exclamation-circle"></i>
-                  {deleteError}
-                </div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button 
-                className="btn btn-secondary" 
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setDeleteConfirmation('');
-                  setDeleteError('');
-                }}
-              >
-                Cancel
-              </button>
-              <button 
-                className="btn btn-danger"
-                onClick={handleDeleteAccount}
-                disabled={deleteMutation.isPending || deleteConfirmation.toLowerCase() !== 'delete account'}
-              >
-                {deleteMutation.isPending ? (
-                  <>
-                    <i className="fas fa-spinner fa-spin"></i>
-                    Deleting...
-                  </>
-                ) : (
-                  <>
-                    <i className="fas fa-trash-alt"></i>
-                    Delete My Account
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

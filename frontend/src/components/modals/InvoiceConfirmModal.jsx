@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Modal from './Modal';
 import { formatCurrency } from '../../utils/helpers';
-import { getTaxSettings, getBusinessSettings } from '../../services/api';
+import { getTaxSettings } from '../../services/api';
+import DocumentPreview from '../accounting/DocumentPreview';
 import './InvoiceConfirmModal.css';
 
 function InvoiceConfirmModal({ isOpen, onClose, onConfirm, job, invoiceConfig, isPending }) {
   const [editableData, setEditableData] = useState({
-    customer_name: '', phone: '', service_type: '',
+    customer_name: '', phone: '', email: '', service_type: '',
     charge: '', job_address: '', eircode: ''
   });
   const [showPreview, setShowPreview] = useState(false);
@@ -19,18 +20,12 @@ function InvoiceConfirmModal({ isOpen, onClose, onConfirm, job, invoiceConfig, i
     staleTime: 60000,
   });
 
-  const { data: bizSettings } = useQuery({
-    queryKey: ['business-settings'],
-    queryFn: async () => (await getBusinessSettings()).data,
-    enabled: isOpen,
-    staleTime: 60000,
-  });
-
   useEffect(() => {
     if (job) {
       setEditableData({
         customer_name: job.customer_name || job.client_name || '',
         phone: job.phone || job.phone_number || '',
+        email: job.email || '',
         service_type: job.service_type || job.service || '',
         charge: (job.estimated_charge || job.charge) ? Math.round(parseFloat(job.estimated_charge || job.charge) * 100) / 100 : '',
         job_address: job.job_address || job.address || '',
@@ -50,21 +45,13 @@ function InvoiceConfirmModal({ isOpen, onClose, onConfirm, job, invoiceConfig, i
   const subtotal = parseFloat(editableData.charge) || 0;
   const taxAmount = Math.round(subtotal * taxRate) / 100;
   const total = subtotal + taxAmount;
-  const companyName = bizSettings?.business_name || '';
-  const companyPhone = bizSettings?.phone || '';
-  const companyAddress = bizSettings?.address || '';
-  const taxIdLabel = taxSettings?.tax_id_label || 'VAT';
-  const taxIdNumber = taxSettings?.tax_id_number || '';
   const invoicePrefix = taxSettings?.invoice_prefix || 'INV';
   const nextNum = taxSettings?.invoice_next_number || 1;
   const invoiceNumber = `${invoicePrefix}-${String(nextNum).padStart(4, '0')}`;
   const paymentTerms = parseInt(taxSettings?.invoice_payment_terms_days || 14);
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + paymentTerms);
-  const footerNote = taxSettings?.invoice_footer_note || '';
-
-  const deliveryMethod = invoiceConfig?.delivery_method || 'sms';
-  const serviceName = invoiceConfig?.service_name || 'SMS';
+  const taxIdLabel = taxSettings?.tax_id_label || 'VAT';
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={showPreview ? 'Invoice Preview' : 'Confirm Invoice Details'} size="medium">
@@ -85,7 +72,14 @@ function InvoiceConfirmModal({ isOpen, onClose, onConfirm, job, invoiceConfig, i
                 <label>Phone Number</label>
                 <input type="tel" name="phone" value={editableData.phone}
                   onChange={handleChange} placeholder="Phone number" />
-                <span className="field-hint">Invoice will be sent to this number via {serviceName}</span>
+              </div>
+              <div className="invoice-field">
+                <label>Email</label>
+                <input type="email" name="email" value={editableData.email}
+                  onChange={handleChange} placeholder="customer@example.com" />
+                <span className="field-hint">
+                  {editableData.email ? 'Invoice will be sent via email' : editableData.phone ? 'Invoice will be sent via SMS (add email for email delivery)' : 'Add email or phone to send invoice'}
+                </span>
               </div>
               <div className="invoice-field">
                 <label>Service</label>
@@ -127,8 +121,8 @@ function InvoiceConfirmModal({ isOpen, onClose, onConfirm, job, invoiceConfig, i
               <div className="summary-row">
                 <span className="summary-label">Delivery</span>
                 <span className="summary-value">
-                  <i className={`fas ${deliveryMethod === 'sms' ? 'fa-sms' : 'fa-envelope'}`}></i>
-                  {serviceName}
+                  <i className={`fas ${editableData.email ? 'fa-envelope' : 'fa-sms'}`}></i>
+                  {editableData.email ? `Email (${editableData.email})` : editableData.phone ? `SMS (${editableData.phone})` : 'No contact'}
                 </span>
               </div>
             </div>
@@ -147,70 +141,33 @@ function InvoiceConfirmModal({ isOpen, onClose, onConfirm, job, invoiceConfig, i
           </>
         ) : (
           <>
-            {/* PDF-style Invoice Preview */}
-            <div className="inv-preview-doc">
-              <div className="inv-preview-header">
-                <div>
-                  <div className="inv-preview-company">{companyName || 'Your Company'}</div>
-                  {companyAddress && <div className="inv-preview-addr">{companyAddress}</div>}
-                  {companyPhone && <div className="inv-preview-addr">{companyPhone}</div>}
-                  {taxIdNumber && <div className="inv-preview-addr">{taxIdLabel}: {taxIdNumber}</div>}
-                </div>
-                <div className="inv-preview-right">
-                  <div className="inv-preview-title">INVOICE</div>
-                  <div className="inv-preview-num">{invoiceNumber}</div>
-                  <div className="inv-preview-date">Date: {new Date().toLocaleDateString('en-IE')}</div>
-                  <div className="inv-preview-date">Due: {dueDate.toLocaleDateString('en-IE')}</div>
-                </div>
-              </div>
+            {/* A4 Document Preview using shared component */}
+            <DocumentPreview
+              type="invoice"
+              docNumber={invoiceNumber}
+              date={new Date().toISOString()}
+              dueDate={dueDate.toISOString()}
+              customer={{
+                name: editableData.customer_name,
+                address: [editableData.job_address, editableData.eircode].filter(Boolean).join(', '),
+                phone: editableData.phone,
+              }}
+              lineItems={[{
+                description: editableData.service_type || 'Service',
+                quantity: 1,
+                amount: subtotal,
+              }]}
+              subtotal={subtotal}
+              taxRate={taxRate}
+              taxAmount={taxAmount}
+              total={total}
+              notes={null}
+              status={null}
+              onClose={() => setShowPreview(false)}
+              inline={true}
+            />
 
-              <div className="inv-preview-billto">
-                <div className="inv-preview-billto-label">Bill To</div>
-                <div className="inv-preview-billto-name">{editableData.customer_name}</div>
-                {editableData.job_address && <div className="inv-preview-billto-addr">{editableData.job_address}</div>}
-                {editableData.eircode && <div className="inv-preview-billto-addr">{editableData.eircode}</div>}
-                <div className="inv-preview-billto-addr">{editableData.phone}</div>
-              </div>
-
-              <table className="inv-preview-table">
-                <thead>
-                  <tr>
-                    <th>Description</th>
-                    <th style={{ textAlign: 'right' }}>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>{editableData.service_type || 'Service'}</td>
-                    <td style={{ textAlign: 'right' }}>{formatCurrency(subtotal)}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div className="inv-preview-totals">
-                <div className="inv-preview-total-row">
-                  <span>Subtotal</span><span>{formatCurrency(subtotal)}</span>
-                </div>
-                {taxRate > 0 && (
-                  <div className="inv-preview-total-row">
-                    <span>{taxIdLabel} ({taxRate}%)</span><span>{formatCurrency(taxAmount)}</span>
-                  </div>
-                )}
-                <div className="inv-preview-total-row inv-preview-grand-total">
-                  <span>Total Due</span><span>{formatCurrency(total)}</span>
-                </div>
-              </div>
-
-              <div className="inv-preview-terms">
-                Payment Terms: {paymentTerms === 0 ? 'Due on Receipt' : `Net ${paymentTerms} days`}
-              </div>
-
-              {footerNote && (
-                <div className="inv-preview-footer">{footerNote}</div>
-              )}
-            </div>
-
-            <div className="invoice-confirm-actions">
+            <div className="invoice-confirm-actions" style={{ marginTop: '0.75rem' }}>
               <button className="btn btn-secondary" onClick={() => setShowPreview(false)}>
                 <i className="fas fa-arrow-left"></i> Back to Edit
               </button>

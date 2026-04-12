@@ -666,8 +666,8 @@
 }
 
 .doc-preview-modal {
-  background: #64748b; border-radius: 12px; padding: 1rem;
-  max-width: 680px; width: 100%; max-height: 92vh; overflow-y: auto;
+  background: #4a5568; border-radius: 12px; padding: 1rem;
+  max-width: 720px; width: 100%; max-height: 92vh; overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 }
 
@@ -696,11 +696,17 @@
 
 /* A4 paper simulation */
 .doc-preview-paper {
-  background: white; border-radius: 4px; padding: 2.5rem 2rem;
+  background: white; border-radius: 2px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  font-family: 'Georgia', 'Times New Roman', 'Garamond', serif;
   font-size: 0.85rem;
-  /* A4 aspect ratio: 210mm x 297mm = 1:1.414 */
-  min-height: 500px;
+  /* True A4: 210mm x 297mm. Use width-based scaling with padding to simulate */
+  width: 100%;
+  max-width: 595px; /* A4 at 72dpi */
+  min-height: 842px; /* 595 * 1.414 */
+  padding: 48px 40px;
+  margin: 0 auto;
+  position: relative;
 }
 
 /* Header */
@@ -717,12 +723,12 @@
   border: 1px solid #e8ecf1;
 }
 
-.doc-preview-company-name { font-size: 1.15rem; font-weight: 700; color: #1e293b; }
-.doc-preview-company-detail { font-size: 0.72rem; color: #64748b; margin-top: 0.1rem; }
+.doc-preview-company-name { font-size: 1.15rem; font-weight: 700; color: #1e293b; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+.doc-preview-company-detail { font-size: 0.72rem; color: #64748b; margin-top: 0.1rem; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
 
 .doc-preview-title-block { text-align: right; }
-.doc-preview-type { font-size: 1.5rem; font-weight: 800; letter-spacing: 0.08em; }
-.doc-preview-number { font-size: 0.88rem; font-weight: 600; color: #475569; margin-top: 0.15rem; }
+.doc-preview-type { font-size: 1.5rem; font-weight: 800; letter-spacing: 0.12em; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+.doc-preview-number { font-size: 0.88rem; font-weight: 600; color: #475569; margin-top: 0.15rem; font-family: 'Georgia', serif; }
 .doc-preview-date { font-size: 0.75rem; color: #94a3b8; margin-top: 0.1rem; }
 
 .doc-preview-status {
@@ -789,7 +795,7 @@
 
 @media (max-width: 768px) {
   .doc-preview-modal { padding: 0.5rem; }
-  .doc-preview-paper { padding: 1.25rem 1rem; }
+  .doc-preview-paper { padding: 1.25rem 1rem; min-height: auto; max-width: none; }
   .doc-preview-header { flex-direction: column; gap: 0.75rem; }
   .doc-preview-title-block { text-align: left; }
   .doc-preview-parties { flex-direction: column; gap: 0.75rem; }
@@ -1230,3 +1236,65 @@
   width: 14px;
   text-align: center;
 }
+
+/* ============================================
+   P&L STATEMENT LINES
+   ============================================ */
+
+.pnl-statement { display: flex; flex-direction: column; }
+
+.pnl-line {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 0.35rem 0.5rem; font-size: 0.85rem; color: #374151;
+}
+
+.pnl-line-header {
+  font-weight: 700; font-size: 0.82rem; color: #1e293b;
+  text-transform: uppercase; letter-spacing: 0.03em;
+  padding-top: 0.5rem; border-bottom: 1px solid #e8ecf1;
+  margin-bottom: 0.15rem;
+}
+
+.pnl-line-header + .pnl-line-header { margin-top: 0.75rem; }
+
+.pnl-line-indent { padding-left: 1.25rem; color: #64748b; font-size: 0.82rem; }
+.pnl-line-indent span:first-child { text-transform: capitalize; }
+
+.pnl-line-deduct { color: #ef4444; font-size: 0.82rem; }
+
+.pnl-line-subtotal {
+  font-weight: 600; border-top: 1px solid #e8ecf1;
+  padding-top: 0.4rem; margin-top: 0.15rem;
+}
+
+.pnl-line-gross { font-size: 0.92rem; }
+
+.pnl-line-total {
+  font-weight: 700; font-size: 1rem;
+  border-top: 2px solid #1e293b; padding-top: 0.6rem; margin-top: 0.5rem;
+}
+
+.pnl-line-profit span:last-child { color: #10b981; }
+.pnl-line-loss span:last-child { color: #ef4444; }
+
+.pnl-margin-badge {
+  display: inline-block; font-size: 0.68rem; font-weight: 500;
+  color: #94a3b8; margin-left: 0.4rem;
+}
+
+/* P&L Table utility classes */
+.pnl-table .txt-r { text-align: right; }
+.pnl-table .clr-green { color: #10b981; }
+.pnl-table .clr-red { color: #ef4444; }
+.pnl-table .clr-muted { color: #94a3b8; }
+.pnl-table .fw-bold { font-weight: 700; }
+.pnl-table .fw-semi { font-weight: 600; }
+
+/* ============================================
+   INLINE STYLE CLEANUP UTILITIES
+   ============================================ */
+
+.acct-toolbar-spread { justify-content: space-between; }
+.acct-toolbar-group { display: flex; gap: 0.5rem; align-items: center; }
+.acct-mt-sm { margin-top: 0.75rem; }
+.acct-text-capitalize { text-transform: capitalize; }

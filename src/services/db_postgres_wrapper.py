@@ -1800,16 +1800,17 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
     
     def add_client(self, name: str, phone: str = None, email: str = None, 
-                   date_of_birth: str = None, description: str = None, company_id: int = None) -> Optional[int]:
+                   date_of_birth: str = None, description: str = None, company_id: int = None,
+                   address: str = None, eircode: str = None) -> Optional[int]:
         """Add a new client"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                INSERT INTO clients (name, phone, email, date_of_birth, description, first_visit, company_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO clients (name, phone, email, date_of_birth, description, first_visit, company_id, address, eircode)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, (name, phone, email, date_of_birth, description, datetime.now(), company_id))
+            """, (name, phone, email, date_of_birth, description, datetime.now(), company_id, address, eircode))
             
             result = cursor.fetchone()
             client_id = result['id'] if result else None

@@ -257,60 +257,49 @@ function PurchaseOrdersPanel() {
                     </div>
                   </div>
                   <div className="acct-list-amount" style={{ color: '#1e293b' }}>{formatCurrency(po.total)}</div>
-                  <i className={`fas fa-chevron-${isExpanded ? 'up' : 'down'}`} style={{ color: '#94a3b8', fontSize: '0.75rem' }}></i>
+                  <div className="acct-list-actions quote-actions-enhanced" onClick={e => e.stopPropagation()}>
+                    <button className="quote-action-btn quote-action-preview" onClick={() => setPreviewPO(po)} title="Preview PO">
+                      <i className="fas fa-eye"></i><span>Preview</span>
+                    </button>
+                    {(po.status === 'draft' || po.status === 'sent') && (
+                      <button className="quote-action-btn quote-action-edit" onClick={() => startEdit(po)} title="Edit PO">
+                        <i className="fas fa-pen"></i><span>Edit</span>
+                      </button>
+                    )}
+                    {po.status === 'draft' && (
+                      <button className="quote-action-btn quote-action-send" title="Mark as sent to supplier"
+                        onClick={() => updateMut.mutate({ id: po.id, data: { status: 'sent' } })}>
+                        <i className="fas fa-paper-plane"></i><span>Mark Sent</span>
+                      </button>
+                    )}
+                    {po.status === 'sent' && (
+                      <button className="quote-action-btn quote-action-accept" title="Mark as received"
+                        onClick={() => updateMut.mutate({ id: po.id, data: { status: 'received' } })}>
+                        <i className="fas fa-check"></i><span>Received</span>
+                      </button>
+                    )}
+                    {deleteConfirm === po.id ? (
+                      <div className="acct-confirm-inline">
+                        <button className="acct-btn-danger-sm" onClick={() => deleteMut.mutate(po.id)}>Delete</button>
+                        <button className="acct-btn-secondary-sm" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                      </div>
+                    ) : (
+                      <button className="quote-action-btn quote-action-delete" onClick={() => setDeleteConfirm(po.id)} title="Delete PO">
+                        <i className="fas fa-trash"></i>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                {/* Expanded detail */}
-                {isExpanded && (
+                {/* Expanded detail — line items */}
+                {isExpanded && items.length > 0 && (
                   <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
-                    {items.length > 0 && (
-                      <div style={{ marginBottom: '0.75rem' }}>
-                        {items.map((item, idx) => (
-                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', fontSize: '0.82rem', color: '#475569', borderBottom: '1px solid #f8fafc' }}>
-                            <span>{item.name}</span>
-                            <span>{item.quantity} × {formatCurrency(item.unit_price)} = {formatCurrency((parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 1))}</span>
-                          </div>
-                        ))}
+                    {items.map((item, idx) => (
+                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', fontSize: '0.82rem', color: '#475569', borderBottom: '1px solid #f8fafc' }}>
+                        <span>{item.name}</span>
+                        <span>{item.quantity} × {formatCurrency(item.unit_price)} = {formatCurrency((parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 1))}</span>
                       </div>
-                    )}
-                    <div className="acct-list-actions" style={{ justifyContent: 'flex-start', gap: '0.4rem' }}>
-                      <button className="acct-btn-icon" onClick={(e) => { e.stopPropagation(); setPreviewPO(po); }} title="Preview">
-                        <i className="fas fa-eye"></i>
-                      </button>
-                      {(po.status === 'draft' || po.status === 'sent') && (
-                        <button className="acct-btn-icon" onClick={(e) => { e.stopPropagation(); startEdit(po); }} title="Edit">
-                          <i className="fas fa-pen"></i>
-                        </button>
-                      )}
-                      {po.status === 'draft' && (
-                        <button className="acct-btn-icon" title="Mark Sent"
-                          onClick={(e) => { e.stopPropagation(); updateMut.mutate({ id: po.id, data: { status: 'sent' } }); }}>
-                          <i className="fas fa-paper-plane"></i>
-                        </button>
-                      )}
-                      {po.status === 'sent' && (
-                        <button className="acct-btn-icon acct-btn-icon-success" title="Mark Received"
-                          onClick={(e) => { e.stopPropagation(); updateMut.mutate({ id: po.id, data: { status: 'received' } }); }}>
-                          <i className="fas fa-check"></i>
-                        </button>
-                      )}
-                      {po.status !== 'cancelled' && po.status !== 'received' && (
-                        <button className="acct-btn-icon" title="Cancel PO"
-                          onClick={(e) => { e.stopPropagation(); updateMut.mutate({ id: po.id, data: { status: 'cancelled' } }); }}>
-                          <i className="fas fa-ban" style={{ color: '#f59e0b' }}></i>
-                        </button>
-                      )}
-                      {deleteConfirm === po.id ? (
-                        <div className="acct-confirm-inline">
-                          <button className="acct-btn-danger-sm" onClick={(e) => { e.stopPropagation(); deleteMut.mutate(po.id); }}>Delete</button>
-                          <button className="acct-btn-secondary-sm" onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }}>Cancel</button>
-                        </div>
-                      ) : (
-                        <button className="acct-btn-icon acct-btn-icon-danger" onClick={(e) => { e.stopPropagation(); setDeleteConfirm(po.id); }} title="Delete">
-                          <i className="fas fa-trash"></i>
-                        </button>
-                      )}
-                    </div>
+                    ))}
                   </div>
                 )}
               </div>

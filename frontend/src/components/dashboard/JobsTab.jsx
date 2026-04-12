@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
 import { formatDuration } from '../../utils/durationOptions';
-import { updateBooking, getServicesMenu, getPackages } from '../../services/api';
+import { updateBooking, getServicesMenu, getPackages, sendInvoice, getInvoiceConfig } from '../../services/api';
 import { useToast } from '../Toast';
 import AddJobModal from '../modals/AddJobModal';
 import JobDetailModal from '../modals/JobDetailModal';
+import InvoiceConfirmModal from '../modals/InvoiceConfirmModal';
 import './JobsTab.css';
 
 const STATUS_FILTERS = [
@@ -29,6 +30,13 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [markingPaidJobId, setMarkingPaidJobId] = useState(null);
   const [servicePopup, setServicePopup] = useState(null);
+  const [invoiceJob, setInvoiceJob] = useState(null);
+
+  const { data: invoiceConfig } = useQuery({
+    queryKey: ['invoice-config'],
+    queryFn: async () => (await getInvoiceConfig()).data,
+    staleTime: 60000,
+  });
 
   const { data: servicesMenu } = useQuery({
     queryKey: ['services-menu'],
@@ -65,6 +73,16 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       setMarkingPaidJobId(null);
     },
     onError: () => { addToast('Failed to mark job as paid', 'error'); setMarkingPaidJobId(null); }
+  });
+
+  const invoiceMutation = useMutation({
+    mutationFn: ({ jobId, invoiceData }) => sendInvoice(jobId, invoiceData),
+    onSuccess: (response) => {
+      addToast(`Invoice sent to ${response.data?.sent_to || 'customer'}`, 'success');
+      setInvoiceJob(null);
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (error) => addToast(error.response?.data?.error || 'Failed to send invoice', 'error'),
   });
 
   const handleAddClick = () => {
@@ -314,6 +332,18 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                               <i className={`fas ${markingPaidJobId === job.id ? 'fa-spinner fa-spin' : 'fa-check'}`}></i> Mark Paid
                             </button>
                           )}
+                          {job.status === 'completed' && job.payment_status !== 'paid' && (job.charge || job.estimated_charge) && showInvoiceButtons && invoiceConfig?.can_send_invoice && (
+                            <button className="jt-send-invoice" onClick={e => { e.stopPropagation(); setInvoiceJob(job); }}
+                              title={`Send invoice via ${invoiceConfig?.service_name || 'SMS'}`}>
+                              <i className="fas fa-file-invoice-dollar"></i> Invoice
+                            </button>
+                          )}
+                          {job.status === 'completed' && job.payment_status !== 'paid' && (job.charge || job.estimated_charge) && (
+                            <button className="jt-mark-paid" onClick={e => { e.stopPropagation(); markPaidMutation.mutate(job.id); }}
+                              disabled={markingPaidJobId === job.id}>
+                              <i className={`fas ${markingPaidJobId === job.id ? 'fa-spinner fa-spin' : 'fa-check'}`}></i> Paid
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -427,6 +457,14 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
       <AddJobModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
       <JobDetailModal isOpen={!!selectedJobId} onClose={() => setSelectedJobId(null)} jobId={selectedJobId} showInvoiceButtons={showInvoiceButtons} />
+      <InvoiceConfirmModal
+        isOpen={!!invoiceJob}
+        onClose={() => setInvoiceJob(null)}
+        onConfirm={(editedData) => invoiceMutation.mutate({ jobId: invoiceJob?.id, invoiceData: editedData })}
+        job={invoiceJob}
+        invoiceConfig={invoiceConfig}
+        isPending={invoiceMutation.isPending}
+      />
     </div>
   );
 }

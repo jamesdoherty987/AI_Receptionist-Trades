@@ -25,7 +25,10 @@ import {
   updateJobTask,
   deleteJobTask,
   generatePOFromJob,
-  getBookingReview
+  getBookingReview,
+  getQuotes,
+  updateQuote,
+  sendQuote
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
@@ -34,6 +37,8 @@ import { useToast } from '../Toast';
 import { formatDateTime, getStatusBadgeClass, formatCurrency, formatPhone, getProxiedMediaUrl } from '../../utils/helpers';
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
 import HelpTooltip from '../HelpTooltip';
+import CreateQuoteFromJobModal from './CreateQuoteFromJobModal';
+import DocumentPreview from '../accounting/DocumentPreview';
 import './JobDetailModal.css';
 
 function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
@@ -61,6 +66,10 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   // Sub-tasks state
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', description: '', estimated_cost: '' });
+  const [showCreateQuote, setShowCreateQuote] = useState(false);
+  const [previewQuote, setPreviewQuote] = useState(null);
+  const [editingQuoteId, setEditingQuoteId] = useState(null);
+  const [editQuoteData, setEditQuoteData] = useState({ lineItems: [], notes: '' });
 
   const { data: job, isLoading } = useQuery({
     queryKey: ['booking', jobId],
@@ -157,6 +166,19 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     staleTime: 30 * 1000,
   });
 
+  // Linked quotes
+  const { data: allQuotes } = useQuery({
+    queryKey: ['quotes'],
+    queryFn: async () => (await getQuotes()).data,
+    enabled: isOpen && !!jobId,
+    staleTime: 30 * 1000,
+  });
+
+  const linkedQuotes = useMemo(() => {
+    if (!allQuotes || !jobId) return [];
+    return allQuotes.filter(q => q.source_booking_id === jobId || q.converted_booking_id === jobId);
+  }, [allQuotes, jobId]);
+
   const createTaskMut = useMutation({
     mutationFn: (data) => createJobTask(jobId, data),
     onSuccess: () => {
@@ -190,6 +212,39 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       addToast('Purchase order created from job materials', 'success');
     },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to generate PO', 'error'),
+  });
+
+  const updateQuoteMut = useMutation({
+    mutationFn: async ({ id, data }) => {
+      const res = await updateQuote(id, data);
+      // Sync quote total back to job charge if line_items changed
+      if (data.line_items && jobId) {
+        const items = data.line_items;
+        const newTotal = items.reduce((s, i) => s + (parseFloat(i.amount) || 0) * (parseFloat(i.quantity) || 1), 0);
+        const currentCharge = parseFloat(job?.estimated_charge || job?.charge || 0);
+        if (Math.abs(newTotal - currentCharge) > 0.01 && newTotal > 0) {
+          await updateBooking(jobId, { estimated_charge: newTotal });
+        }
+      }
+      return res;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      setEditingQuoteId(null);
+      addToast('Quote updated', 'success');
+    },
+    onError: (e) => addToast(e.response?.data?.error || 'Failed to update quote', 'error'),
+  });
+
+  const sendQuoteMut = useMutation({
+    mutationFn: (quoteId) => sendQuote(quoteId),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      addToast(`Quote sent via ${res.data?.sent_via || 'email'} to ${res.data?.sent_to || 'customer'}`, 'success');
+    },
+    onError: (e) => addToast(e.response?.data?.error || 'Failed to send quote', 'error'),
   });
 
   const { data: servicesMenu } = useQuery({
@@ -276,11 +331,30 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   }, [isOpen]);
 
   const editMutation = useMutation({
-    mutationFn: (data) => updateBooking(jobId, data),
+    mutationFn: async (data) => {
+      const res = await updateBooking(jobId, data);
+      // Sync charge to linked quotes if price changed
+      const newCharge = parseFloat(data.estimated_charge || 0);
+      const oldCharge = parseFloat(job?.estimated_charge || job?.charge || 0);
+      if (newCharge > 0 && Math.abs(newCharge - oldCharge) > 0.01 && linkedQuotes.length > 0) {
+        for (const q of linkedQuotes) {
+          if (q.status !== 'converted' && q.status !== 'declined') {
+            const items = typeof q.line_items === 'string' ? JSON.parse(q.line_items) : (q.line_items || []);
+            // Update the first line item amount to match new charge
+            if (items.length > 0) {
+              items[0] = { ...items[0], amount: newCharge };
+              await updateQuote(q.id, { line_items: items });
+            }
+          }
+        }
+      }
+      return res;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
       setIsEditing(false);
       addToast('Job updated successfully!', 'success');
     },
@@ -381,7 +455,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     mutationFn: ({ jobId, invoiceData }) => sendInvoice(jobId, invoiceData),
     onSuccess: (response) => {
       const data = response.data;
-      addToast(`Invoice sent to ${data.sent_to}!`, 'success');
+      addToast(`Invoice sent via ${data.delivery_method || 'email'} to ${data.sent_to}!`, 'success');
       setShowInvoiceConfirm(false);
       setInvoiceData(null);
     },
@@ -492,7 +566,27 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
 
   const handleEditChange = (e) => {
     const { name, value } = e.target;
-    setEditFormData(prev => ({ ...prev, [name]: value }));
+    const updates = { [name]: value };
+
+    // When service changes, auto-fill price and duration from the service catalog
+    if (name === 'service_type' && value) {
+      const allServices = servicesMenu?.services || [];
+      const allPackages = packagesRaw?.packages || packagesRaw || [];
+      const svc = allServices.find(s => s.name === value);
+      const pkg = allPackages.find(p => p.name === value);
+      if (svc) {
+        if (svc.price > 0) updates.estimated_charge = Math.round(parseFloat(svc.price) * 100) / 100;
+        if (svc.price_max > 0) updates.estimated_charge_max = Math.round(parseFloat(svc.price_max) * 100) / 100;
+        if (svc.duration_minutes) updates.duration_minutes = svc.duration_minutes;
+      } else if (pkg) {
+        const pkgPrice = pkg.price_override || pkg.total_price;
+        if (pkgPrice > 0) updates.estimated_charge = Math.round(parseFloat(pkgPrice) * 100) / 100;
+        const pkgDur = pkg.duration_override || pkg.total_duration_minutes;
+        if (pkgDur) updates.duration_minutes = pkgDur;
+      }
+    }
+
+    setEditFormData(prev => ({ ...prev, ...updates }));
   };
 
   const handleSaveEdit = () => {
@@ -578,6 +672,14 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     {invoiceMutation.isPending ? 'Sending...' : 'Invoice'}
                   </button>
                 )}
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowCreateQuote(true)}
+                  title="Create a quote from this job's details"
+                >
+                  <i className="fas fa-file-invoice"></i>
+                  Quote
+                </button>
                 {getDirectionsUrl() && (
                   <a href={getDirectionsUrl()} target="_blank" rel="noopener noreferrer" className="btn btn-success">
                     <i className="fas fa-directions"></i> Directions
@@ -643,7 +745,19 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     </div>
                     <div className="edit-field">
                       <label className="edit-label">Service *</label>
-                      <input type="text" name="service_type" className="edit-input" value={editFormData.service_type} onChange={handleEditChange} placeholder="e.g., Plumbing repair" required />
+                      <select name="service_type" className="edit-input" value={editFormData.service_type} onChange={handleEditChange} required>
+                        <option value="">Select a service...</option>
+                        {(servicesMenu?.services || []).map(s => (
+                          <option key={s.id} value={s.name}>{s.name}{s.price > 0 ? ` — €${parseFloat(s.price).toFixed(0)}` : ''}</option>
+                        ))}
+                        {(packagesRaw?.packages || packagesRaw || []).map(p => (
+                          <option key={`pkg-${p.id}`} value={p.name}>📦 {p.name}{(p.price_override || p.total_price) > 0 ? ` — €${parseFloat(p.price_override || p.total_price).toFixed(0)}` : ''}</option>
+                        ))}
+                        {/* Keep current value if not in list */}
+                        {editFormData.service_type && !(servicesMenu?.services || []).some(s => s.name === editFormData.service_type) && !(packagesRaw?.packages || packagesRaw || []).some(p => p.name === editFormData.service_type) && (
+                          <option value={editFormData.service_type}>{editFormData.service_type} (custom)</option>
+                        )}
+                      </select>
                     </div>
                   </div>
                   <div className="edit-row">
@@ -957,6 +1071,107 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                 <p className="notes-text">{job.notes || 'No notes'}</p>
               )}
             </div>
+
+            {/* Linked Quotes */}
+            {linkedQuotes.length > 0 && (
+              <div className="info-card">
+                <h3><i className="fas fa-file-invoice"></i> Quotes</h3>
+                <div className="jdm-linked-quotes">
+                  {linkedQuotes.map(q => {
+                    const statusColors = { draft: '#94a3b8', sent: '#3b82f6', accepted: '#10b981', declined: '#ef4444', expired: '#f59e0b', converted: '#8b5cf6' };
+                    const sc = statusColors[q.status] || '#94a3b8';
+                    const isEditingThis = editingQuoteId === q.id;
+                    const lineItems = typeof q.line_items === 'string' ? JSON.parse(q.line_items) : (q.line_items || []);
+
+                    if (isEditingThis) {
+                      return (
+                        <div key={q.id} className="jdm-lq-edit-form">
+                          <div className="jdm-lq-edit-header">
+                            <span className="jdm-lq-number">{q.quote_number}</span>
+                            <span className="jdm-lq-badge" style={{ background: `${sc}18`, color: sc }}>{q.status}</span>
+                          </div>
+                          {editQuoteData.lineItems.map((item, idx) => (
+                            <div key={idx} className="jdm-lq-edit-row">
+                              <input type="text" value={item.description} placeholder="Description"
+                                onChange={e => {
+                                  const items = [...editQuoteData.lineItems];
+                                  items[idx] = { ...items[idx], description: e.target.value };
+                                  setEditQuoteData({ ...editQuoteData, lineItems: items });
+                                }} style={{ flex: 2 }} />
+                              <input type="number" value={item.quantity} min="1" step="1" style={{ width: 50 }}
+                                onChange={e => {
+                                  const items = [...editQuoteData.lineItems];
+                                  items[idx] = { ...items[idx], quantity: e.target.value };
+                                  setEditQuoteData({ ...editQuoteData, lineItems: items });
+                                }} />
+                              <input type="number" value={item.amount} min="0" step="0.01" style={{ width: 80 }}
+                                onChange={e => {
+                                  const items = [...editQuoteData.lineItems];
+                                  items[idx] = { ...items[idx], amount: e.target.value };
+                                  setEditQuoteData({ ...editQuoteData, lineItems: items });
+                                }} />
+                              <span className="jdm-lq-edit-total">{formatCurrency((parseFloat(item.amount) || 0) * (parseFloat(item.quantity) || 1))}</span>
+                              {editQuoteData.lineItems.length > 1 && (
+                                <button className="cqj-remove" onClick={() => setEditQuoteData({ ...editQuoteData, lineItems: editQuoteData.lineItems.filter((_, i) => i !== idx) })}>
+                                  <i className="fas fa-trash-alt"></i>
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          <button className="cqj-add-row" onClick={() => setEditQuoteData({ ...editQuoteData, lineItems: [...editQuoteData.lineItems, { description: '', quantity: 1, amount: 0 }] })}>
+                            <i className="fas fa-plus-circle"></i> Add Line
+                          </button>
+                          <textarea rows={2} value={editQuoteData.notes} placeholder="Notes..."
+                            onChange={e => setEditQuoteData({ ...editQuoteData, notes: e.target.value })}
+                            style={{ width: '100%', padding: '0.4rem', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: '0.8rem', marginTop: '0.4rem', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+                          <div className="jdm-lq-edit-actions">
+                            <button className="btn btn-sm btn-secondary" onClick={() => setEditingQuoteId(null)}>Cancel</button>
+                            <button className="btn btn-sm btn-primary" disabled={updateQuoteMut.isPending}
+                              onClick={() => updateQuoteMut.mutate({ id: q.id, data: { line_items: editQuoteData.lineItems, notes: editQuoteData.notes } })}>
+                              {updateQuoteMut.isPending ? 'Saving...' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={q.id} className="jdm-linked-quote-item">
+                        <div className="jdm-lq-info">
+                          <span className="jdm-lq-number">{q.quote_number}</span>
+                          <span className="jdm-lq-title">{q.title}</span>
+                          <span className="jdm-lq-badge" style={{ background: `${sc}18`, color: sc }}>{q.status}</span>
+                        </div>
+                        <span className="jdm-lq-total">{formatCurrency(q.total)}</span>
+                        <div className="jdm-lq-actions">
+                          <button className="quote-action-btn quote-action-preview" onClick={() => setPreviewQuote(q)} title="Preview">
+                            <i className="fas fa-eye"></i>
+                          </button>
+                          {q.status !== 'converted' && (
+                            <button className="quote-action-btn quote-action-edit" title="Edit quote"
+                              onClick={() => { setEditingQuoteId(q.id); setEditQuoteData({ lineItems: lineItems.length > 0 ? lineItems : [{ description: q.title, quantity: 1, amount: q.total }], notes: q.notes || '' }); }}>
+                              <i className="fas fa-pen"></i>
+                            </button>
+                          )}
+                          {(q.status === 'draft' || q.status === 'sent') && (
+                            <button className="quote-action-btn quote-action-send" title="Send to customer"
+                              onClick={() => sendQuoteMut.mutate(q.id)} disabled={sendQuoteMut.isPending}>
+                              <i className={`fas ${sendQuoteMut.isPending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`}></i>
+                            </button>
+                          )}
+                          {q.status === 'sent' && (
+                            <button className="quote-action-btn quote-action-accept" title="Mark accepted"
+                              onClick={() => updateQuoteMut.mutate({ id: q.id, data: { status: 'accepted' } })}>
+                              <i className="fas fa-check"></i>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Column */}
@@ -1237,6 +1452,27 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
         invoiceConfig={invoiceConfig}
         isPending={invoiceMutation.isPending}
       />
+      <CreateQuoteFromJobModal
+        isOpen={showCreateQuote}
+        onClose={() => setShowCreateQuote(false)}
+        job={job}
+      />
+      {previewQuote && (
+        <DocumentPreview
+          type="quote"
+          docNumber={previewQuote.quote_number}
+          date={previewQuote.created_at}
+          customer={{ name: previewQuote.client_name, phone: previewQuote.client_phone, email: previewQuote.client_email }}
+          lineItems={(typeof previewQuote.line_items === 'string' ? JSON.parse(previewQuote.line_items) : previewQuote.line_items) || []}
+          subtotal={previewQuote.subtotal}
+          taxRate={previewQuote.tax_rate}
+          taxAmount={previewQuote.tax_amount}
+          total={previewQuote.total}
+          notes={previewQuote.notes}
+          status={previewQuote.status}
+          onClose={() => setPreviewQuote(null)}
+        />
+      )}
     </Modal>
   );
 }

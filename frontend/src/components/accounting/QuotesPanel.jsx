@@ -488,7 +488,7 @@ function QuotesPanel() {
     mutationFn: (id) => sendQuote(id),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
-      addToast(`Quote sent to ${res.data?.sent_to || 'customer'}`, 'success');
+      addToast(`Quote sent via ${res.data?.sent_via || 'email'} to ${res.data?.sent_to || 'customer'}`, 'success');
     },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to send quote', 'error'),
   });
@@ -835,9 +835,9 @@ function QuotesPanel() {
 
                   {/* Send via SMS */}
                   {(q.status === 'draft' || q.status === 'sent') && (
-                    <button className="quote-action-btn quote-action-send" title="Send quote to customer via SMS"
+                    <button className="quote-action-btn quote-action-send" title="Send quote to customer (email first, SMS fallback)"
                       onClick={() => sendMut.mutate(q.id)} disabled={sendMut.isPending}>
-                      <i className={`fas ${sendMut.isPending ? 'fa-spinner fa-spin' : 'fa-sms'}`}></i><span>Send SMS</span>
+                      <i className={`fas ${sendMut.isPending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`}></i><span>Send</span>
                     </button>
                   )}
 

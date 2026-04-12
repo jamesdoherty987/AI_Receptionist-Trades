@@ -148,6 +148,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
   const { data: monthlyData, isLoading: isLoadingMonthly } = useQuery({
     queryKey: ['monthly-availability', calYear, calMonth + 1, formData.service_type, formData.worker_id, anyWorkerMode, durationMins, workerMode, assignedWorkerIds, currentWorkerId],
     queryFn: async () => {
+      console.log('[MONTHLY_AVAIL] Fetching:', { calYear, calMonth: calMonth + 1, service: formData.service_type, duration: durationMins, anyWorker: anyWorkerMode, workers: assignedWorkerIds });
       // When workers are assigned, fetch each worker's availability and intersect
       if (effectiveWorkerList.length > 0) {
         const results = await Promise.all(
@@ -176,7 +177,9 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
       // In worker mode with no extra workers, show the creating worker's own availability
       const effectiveWorkerId = workerMode && currentWorkerId ? currentWorkerId : (anyWorkerMode ? null : (formData.worker_id || null));
       const effectiveAnyWorker = workerMode && currentWorkerId ? false : anyWorkerMode;
-      return (await apiFns.checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, effectiveWorkerId, effectiveAnyWorker, durationMins)).data;
+      const result = (await apiFns.checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, effectiveWorkerId, effectiveAnyWorker, durationMins)).data;
+      console.log('[MONTHLY_AVAIL] Result:', { hasDays: !!result?.days, dayCount: result?.days ? Object.keys(result.days).length : 0, sampleDay: result?.days ? Object.values(result.days)[0] : null });
+      return result;
     },
     enabled: !!formData.service_type && isOpen
   });
