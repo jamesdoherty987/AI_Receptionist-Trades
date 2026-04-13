@@ -3,6 +3,48 @@
    Matches existing FinancesTab design language
    ============================================ */
 
+/* Panel Header — title + action button */
+.acct-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.acct-panel-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.acct-panel-title i {
+  color: #6366f1;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 768px) {
+  .acct-panel-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+  }
+  .acct-panel-title {
+    font-size: 1rem;
+  }
+  .acct-panel-header .acct-btn-primary {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
 /* Sub-navigation */
 .acct-subnav {
   display: flex;
@@ -58,7 +100,7 @@
 
 .acct-stat-card {
   background: white;
-  padding: 0.85rem 1rem;
+  padding: 0.7rem 0.85rem;
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -76,8 +118,8 @@
 }
 
 .acct-stat-content { flex: 1; min-width: 0; }
-.acct-stat-value { font-size: 1.25rem; font-weight: 700; color: #1e293b; line-height: 1.2; }
-.acct-stat-label { font-size: 0.75rem; color: #94a3b8; margin-top: 0.1rem; }
+.acct-stat-value { font-size: 1.1rem; font-weight: 700; color: #1e293b; line-height: 1.2; }
+.acct-stat-label { font-size: 0.72rem; color: #94a3b8; margin-top: 0.1rem; }
 
 /* Section */
 .acct-section {
@@ -286,6 +328,43 @@
 
 .acct-list-amount { font-size: 1.05rem; font-weight: 700; flex-shrink: 0; }
 .acct-list-actions { display: flex; gap: 0.3rem; flex-shrink: 0; }
+
+/* Expandable list items (POs, Quotes) */
+.acct-list-item-expandable {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.acct-list-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.acct-list-item-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #f8fafc;
+}
+
+.acct-list-item-detail {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.acct-list-item-detail-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.3rem 0;
+  font-size: 0.82rem;
+  color: #475569;
+  border-bottom: 1px solid #f8fafc;
+}
 
 /* Badges */
 .acct-badge {
@@ -560,10 +639,11 @@
   .acct-subnav-btn { min-width: 36px; justify-content: center; }
   .acct-subnav-btn i { font-size: 0.85rem; }
 
-  .acct-stats-row { grid-template-columns: repeat(2, 1fr); gap: 0.4rem; }
-  .acct-stat-card { padding: 0.65rem 0.75rem; }
-  .acct-stat-icon { width: 32px; height: 32px; font-size: 0.85rem; }
-  .acct-stat-value { font-size: 1rem; }
+  .acct-stats-row { grid-template-columns: repeat(2, 1fr); gap: 0.35rem; }
+  .acct-stat-card { padding: 0.5rem 0.65rem; gap: 0.5rem; }
+  .acct-stat-icon { width: 28px; height: 28px; font-size: 0.75rem; }
+  .acct-stat-value { font-size: 0.9rem; }
+  .acct-stat-label { font-size: 0.68rem; }
 
   .acct-toolbar { flex-direction: column; align-items: stretch; }
   .acct-toolbar-right { justify-content: stretch; }
@@ -572,7 +652,41 @@
   .acct-form-grid { grid-template-columns: 1fr; }
 
   .acct-list-item { flex-wrap: wrap; gap: 0.5rem; }
+  .acct-list-item-expandable { flex-wrap: nowrap; }
   .acct-list-actions { width: 100%; justify-content: flex-end; }
+
+  /* PO/Quote card mobile layout */
+  .acct-list-item-row {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .acct-list-item-row .acct-list-icon { width: 34px; height: 34px; font-size: 0.85rem; }
+  .acct-list-item-row .acct-list-amount {
+    margin-left: auto;
+    font-size: 0.95rem;
+  }
+  .acct-list-item-actions {
+    margin-top: 0.35rem;
+    padding-top: 0.35rem;
+  }
+
+  /* Action buttons on mobile — compact */
+  .quote-actions-enhanced {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+  .quote-action-btn {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.68rem;
+  }
+  .quote-action-btn span { display: none; }
+  .quote-action-btn i { font-size: 0.72rem; }
+
+  .acct-list-item-detail-row {
+    font-size: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
 
   .acct-line-header, .acct-line-row {
     grid-template-columns: 1fr 50px 80px 70px 28px;

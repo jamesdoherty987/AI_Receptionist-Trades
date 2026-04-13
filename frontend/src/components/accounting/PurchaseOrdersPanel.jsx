@@ -110,6 +110,15 @@ function PurchaseOrdersPanel() {
 
   return (
     <div className="acct-panel">
+      {/* Panel Header */}
+      <div className="acct-panel-header">
+        <h2 className="acct-panel-title"><i className="fas fa-file-export"></i> Purchase Orders</h2>
+        <button className="acct-btn-primary" onClick={() => { resetForm(); setShowForm(!showForm); }}>
+          <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'}`}></i>
+          {showForm ? 'Cancel' : 'New Purchase Order'}
+        </button>
+      </div>
+
       <div className="acct-stats-row">
         <div className="acct-stat-card">
           <div className="acct-stat-icon" style={{ background: 'rgba(99, 102, 241, 0.1)' }}>
@@ -150,10 +159,6 @@ function PurchaseOrdersPanel() {
       </div>
 
       <div className="acct-toolbar">
-        <button className="acct-btn-primary" onClick={() => { resetForm(); setShowForm(!showForm); }}>
-          <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'}`}></i>
-          {showForm ? 'Cancel' : 'New Purchase Order'}
-        </button>
         <div className="acct-toolbar-right">
           <div className="acct-filter-pills">
             {['all', 'draft', 'sent', 'received', 'cancelled'].map(s => (
@@ -241,8 +246,8 @@ function PurchaseOrdersPanel() {
             const items = po.items || [];
             const isExpanded = expandedId === po.id;
             return (
-              <div key={po.id} className="acct-list-item" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}
+              <div key={po.id} className="acct-list-item acct-list-item-expandable">
+                <div className="acct-list-item-row"
                   onClick={() => setExpandedId(isExpanded ? null : po.id)}>
                   <div className="acct-list-icon" style={{ background: sc.bg, color: sc.color }}>
                     <i className={`fas ${sc.icon}`}></i>
@@ -257,7 +262,9 @@ function PurchaseOrdersPanel() {
                     </div>
                   </div>
                   <div className="acct-list-amount" style={{ color: '#1e293b' }}>{formatCurrency(po.total)}</div>
-                  <div className="acct-list-actions quote-actions-enhanced" onClick={e => e.stopPropagation()}>
+                </div>
+                <div className="acct-list-item-actions" onClick={e => e.stopPropagation()}>
+                  <div className="quote-actions-enhanced">
                     <button className="quote-action-btn quote-action-preview" onClick={() => setPreviewPO(po)} title="Preview PO">
                       <i className="fas fa-eye"></i><span>Preview</span>
                     </button>
@@ -293,9 +300,9 @@ function PurchaseOrdersPanel() {
 
                 {/* Expanded detail — line items */}
                 {isExpanded && items.length > 0 && (
-                  <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
+                  <div className="acct-list-item-detail">
                     {items.map((item, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.3rem 0', fontSize: '0.82rem', color: '#475569', borderBottom: '1px solid #f8fafc' }}>
+                      <div key={idx} className="acct-list-item-detail-row">
                         <span>{item.name}</span>
                         <span>{item.quantity} × {formatCurrency(item.unit_price)} = {formatCurrency((parseFloat(item.unit_price) || 0) * (parseFloat(item.quantity) || 1))}</span>
                       </div>

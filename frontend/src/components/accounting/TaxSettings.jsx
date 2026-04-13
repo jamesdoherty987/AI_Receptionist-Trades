@@ -48,6 +48,11 @@ function TaxSettings() {
 
   return (
     <div className="acct-panel">
+      {/* Panel Header */}
+      <div className="acct-panel-header">
+        <h2 className="acct-panel-title"><i className="fas fa-cog"></i> Invoice & Tax Settings</h2>
+      </div>
+
       <form className="tax-settings-form" onSubmit={handleSubmit}>
         {/* Business Info on Invoices */}
         {bizSettings && (

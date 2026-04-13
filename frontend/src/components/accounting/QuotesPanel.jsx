@@ -581,6 +581,15 @@ function QuotesPanel() {
 
   return (
     <div className="acct-panel">
+      {/* Panel Header */}
+      <div className="acct-panel-header">
+        <h2 className="acct-panel-title"><i className="fas fa-file-invoice"></i> Quotes</h2>
+        <button className="acct-btn-primary" onClick={() => { resetForm(); setShowForm(!showForm); }}>
+          <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'}`}></i>
+          {showForm ? 'Cancel' : 'New Quote'}
+        </button>
+      </div>
+
       <div className="acct-stats-row">
         <div className="acct-stat-card">
           <div className="acct-stat-icon" style={{ background: 'rgba(99, 102, 241, 0.1)' }}>
@@ -621,10 +630,6 @@ function QuotesPanel() {
       </div>
 
       <div className="acct-toolbar">
-        <button className="acct-btn-primary" onClick={() => { resetForm(); setShowForm(!showForm); }}>
-          <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'}`}></i>
-          {showForm ? 'Cancel' : 'New Quote'}
-        </button>
         <div className="acct-search" style={{ flex: 1 }}>
           <i className="fas fa-search"></i>
           <input type="text" placeholder="Search quotes..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />

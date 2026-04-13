@@ -48,9 +48,13 @@ function PnlPanel() {
 
   return (
     <div className="acct-panel">
+      {/* Panel Header */}
+      <div className="acct-panel-header">
+        <h2 className="acct-panel-title"><i className="fas fa-file-invoice-dollar"></i> Profit & Loss</h2>
+      </div>
+
       {/* Period Selector */}
       <div className="acct-toolbar acct-toolbar-spread">
-        <h3 className="acct-panel-title"><i className="fas fa-file-invoice-dollar"></i> Profit & Loss Statement</h3>
         <div className="acct-toolbar-group">
           <div className="acct-filter-pills">
             {[

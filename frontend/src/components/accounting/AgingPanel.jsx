@@ -46,6 +46,11 @@ function AgingPanel() {
 
   return (
     <div className="acct-panel">
+      {/* Panel Header */}
+      <div className="acct-panel-header">
+        <h2 className="acct-panel-title"><i className="fas fa-hourglass-half"></i> Unpaid Invoices</h2>
+      </div>
+
       {/* Summary */}
       <div className="acct-stats-row">
         <div className="acct-stat-card" style={{ flex: '1 1 200px' }}>

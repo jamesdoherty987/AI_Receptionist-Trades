@@ -443,7 +443,11 @@ function CalendarTab() {
             </select>
           </div>
           <button className="today-btn" onClick={goToToday}>
-            <i className="fas fa-calendar-day"></i> Today
+            <i className="fas fa-calendar-day"></i>
+            {selectedDate && !isToday(selectedDate)
+              ? selectedDate.toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' })
+              : 'Today'
+            }
           </button>
         </div>
       </div>

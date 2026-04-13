@@ -328,52 +328,28 @@ function FinancesTab() {
       )}
 
       {acctTab === 'expenses' && (
-        <>
-          <div className="tab-page-header"><h2 className="tab-page-title">Expenses</h2></div>
-          <ExpensesPanel />
-        </>
+        <ExpensesPanel />
       )}
       {acctTab === 'mileage' && (
-        <>
-          <div className="tab-page-header"><h2 className="tab-page-title">Mileage Tracker</h2></div>
-          <MileagePanel />
-        </>
+        <MileagePanel />
       )}
       {acctTab === 'quotes' && (
-        <>
-          <div className="tab-page-header"><h2 className="tab-page-title">Quotes</h2></div>
-          <QuotesPanel />
-        </>
+        <QuotesPanel />
       )}
       {acctTab === 'purchase-orders' && (
-        <>
-          <div className="tab-page-header"><h2 className="tab-page-title">Purchase Orders</h2></div>
-          <PurchaseOrdersPanel />
-        </>
+        <PurchaseOrdersPanel />
       )}
       {acctTab === 'unpaid' && (
-        <>
-          <div className="tab-page-header"><h2 className="tab-page-title">Unpaid Invoices</h2></div>
-          <AgingPanel />
-        </>
+        <AgingPanel />
       )}
       {acctTab === 'credits' && (
-        <>
-          <div className="tab-page-header"><h2 className="tab-page-title">Credit Notes</h2></div>
-          <CreditNotesPanel />
-        </>
+        <CreditNotesPanel />
       )}
       {acctTab === 'pnl' && (
-        <>
-          <div className="tab-page-header"><h2 className="tab-page-title">Profit & Loss</h2></div>
-          <PnlPanel />
-        </>
+        <PnlPanel />
       )}
       {acctTab === 'tax' && (
-        <>
-          <div className="tab-page-header"><h2 className="tab-page-title">Invoice & Tax Settings</h2></div>
-          <TaxSettings />
-        </>
+        <TaxSettings />
       )}
 
       {acctTab === 'overview' && (<>

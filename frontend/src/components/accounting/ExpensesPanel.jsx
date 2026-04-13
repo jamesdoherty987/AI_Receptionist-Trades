@@ -155,6 +155,15 @@ function ExpensesPanel() {
 
   return (
     <div className="acct-panel">
+      {/* Panel Header */}
+      <div className="acct-panel-header">
+        <h2 className="acct-panel-title"><i className="fas fa-receipt"></i> Expenses</h2>
+        <button className="acct-btn-primary" onClick={() => { resetForm(); setShowForm(!showForm); }}>
+          <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'}`}></i>
+          {showForm ? 'Cancel' : 'Add Expense'}
+        </button>
+      </div>
+
       {/* Stats Row */}
       <div className="acct-stats-row">
         <div className="acct-stat-card">
@@ -222,12 +231,8 @@ function ExpensesPanel() {
         </div>
       )}
 
-      {/* Add / Filter Toolbar */}
+      {/* Filter Toolbar */}
       <div className="acct-toolbar">
-        <button className="acct-btn-primary" onClick={() => { resetForm(); setShowForm(!showForm); }}>
-          <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'}`}></i>
-          {showForm ? 'Cancel' : 'Add Expense'}
-        </button>
         <select className="acct-select" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
           <option value="all">All Categories</option>
           {EXPENSE_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}

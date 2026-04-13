@@ -97,6 +97,15 @@ function CreditNotesPanel() {
 
   return (
     <div className="acct-panel">
+      {/* Panel Header */}
+      <div className="acct-panel-header">
+        <h2 className="acct-panel-title"><i className="fas fa-undo"></i> Credit Notes</h2>
+        <button className="acct-btn-primary" onClick={() => setShowForm(!showForm)}>
+          <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'}`}></i>
+          {showForm ? 'Cancel' : 'New Credit Note'}
+        </button>
+      </div>
+
       <div className="acct-stats-row">
         <div className="acct-stat-card">
           <div className="acct-stat-icon" style={{ background: 'rgba(239, 68, 68, 0.1)' }}>
@@ -127,13 +136,6 @@ function CreditNotesPanel() {
             <div className="acct-stat-label">Credit Notes</div>
           </div>
         </div>
-      </div>
-
-      <div className="acct-toolbar">
-        <button className="acct-btn-primary" onClick={() => setShowForm(!showForm)}>
-          <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'}`}></i>
-          {showForm ? 'Cancel' : 'New Credit Note'}
-        </button>
       </div>
 
       {showForm && (

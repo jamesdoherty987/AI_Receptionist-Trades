@@ -100,6 +100,15 @@ function MileagePanel() {
 
   return (
     <div className="acct-panel">
+      {/* Panel Header */}
+      <div className="acct-panel-header">
+        <h2 className="acct-panel-title"><i className="fas fa-car"></i> Mileage Tracker</h2>
+        <button className="acct-btn-primary" onClick={() => { if (showForm) cancelForm(); else setShowForm(true); }}>
+          <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'}`}></i>
+          {showForm ? 'Cancel' : 'Log Trip'}
+        </button>
+      </div>
+
       <div className="acct-stats-row">
         <div className="acct-stat-card">
           <div className="acct-stat-icon" style={{ background: 'rgba(59, 130, 246, 0.1)' }}>
@@ -140,10 +149,6 @@ function MileagePanel() {
       </div>
 
       <div className="acct-toolbar">
-        <button className="acct-btn-primary" onClick={() => { if (showForm) cancelForm(); else setShowForm(true); }}>
-          <i className={`fas ${showForm ? 'fa-times' : 'fa-plus'}`}></i>
-          {showForm ? 'Cancel' : 'Log Trip'}
-        </button>
         {logs.length > 0 && (
           <button className="acct-btn-secondary" style={{ marginLeft: 'auto', fontSize: '0.78rem' }}
             onClick={() => {
