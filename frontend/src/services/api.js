@@ -246,8 +246,8 @@ export const sendChatMessage = (message, conversation) =>
 
 // Subscription & Billing
 export const getSubscriptionStatus = () => api.get('/api/subscription/status');
-export const createCheckoutSession = (baseUrl) => 
-  api.post('/api/subscription/create-checkout', { base_url: baseUrl });
+export const createCheckoutSession = (baseUrl, plan = 'pro') => 
+  api.post('/api/subscription/create-checkout', { base_url: baseUrl, plan });
 export const getBillingPortalUrl = (baseUrl) => 
   api.post('/api/subscription/billing-portal', { base_url: baseUrl });
 export const cancelSubscription = () => api.post('/api/subscription/cancel');

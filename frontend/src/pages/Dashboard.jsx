@@ -22,10 +22,15 @@ import { getDashboardData, getBusinessSettings, updateBusinessSettings, getUnsee
 import './Dashboard.css';
 
 function Dashboard() {
-  const { user } = useAuth();
+  const { user, subscription } = useAuth();
   const location = useLocation();
   const nav = useNavigate();
   const userKey = user?.email || 'default';
+  
+  // Determine if user has AI features (pro plan or trial gets full access)
+  const currentPlan = subscription?.plan || 'pro';
+  const currentTier = subscription?.tier || 'none';
+  const hasAIFeatures = currentPlan === 'pro' || currentTier === 'trial';
 
   // Onboarding dismissed state — initialized from localStorage, then synced with backend
   const [onboardingDismissed, setOnboardingDismissed] = useState(
@@ -122,13 +127,13 @@ function Dashboard() {
       group: 'Day-to-Day',
       content: isLoading ? <LoadingSpinner /> : <JobsTab bookings={bookings} showInvoiceButtons={settings?.show_invoice_buttons !== false} />
     },
-    {
+    ...(hasAIFeatures ? [{
       label: 'Calls',
       icon: 'fas fa-phone-alt',
       group: 'Day-to-Day',
       badge: unseenCalls,
       content: <CallLogsTab />
-    },
+    }] : []),
     {
       label: 'Calendar',
       icon: 'fas fa-calendar',
@@ -187,7 +192,7 @@ function Dashboard() {
       group: 'Dev Tools',
       content: <ChatTab />
     }] : [])
-  ], [isLoading, bookings, clients, workers, settings, unseenCalls]);
+  ], [isLoading, bookings, clients, workers, settings, unseenCalls, hasAIFeatures]);
 
   // Clear unseen call badge when user views the Calls tab
   const handleTabChange = useCallback((idx) => {

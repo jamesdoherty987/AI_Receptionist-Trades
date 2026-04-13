@@ -150,7 +150,7 @@
 
 /* Mobile */
 @media (max-width: 768px) {
-  .jt-header { flex-direction: column; }
+  .jt-header { flex-direction: column; gap: 0.5rem; }
   .jt-header .btn { width: 100%; justify-content: center; }
   .jt-filters { gap: 0.25rem; }
   .jt-filter { padding: 0.35rem 0.55rem; font-size: 0.7rem; }
@@ -164,6 +164,7 @@
   .jt-section-title h3 { font-size: 0.76rem; }
   .jt-info-item { font-size: 0.72rem; }
   .jt-cards { gap: 0.4rem; }
+  .jt-sections { gap: 1rem; }
 }
 
 /* Service/Package chip on job card */

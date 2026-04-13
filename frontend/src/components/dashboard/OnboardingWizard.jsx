@@ -6,7 +6,7 @@ import { getBusinessSettings, updateBusinessSettings, startFreeTrial, createChec
 import { useAuth } from '../../context/AuthContext';
 import './OnboardingWizard.css';
 
-const STEPS = [
+const ALL_STEPS = [
   {
     id: 'subscription',
     title: 'Subscription',
@@ -61,13 +61,20 @@ const STEPS = [
     title: 'AI Phone Number',
     icon: 'fa-phone',
     iconClass: 'phone-icon',
-    description: 'Your AI receptionist number'
+    description: 'Your AI receptionist number',
+    proOnly: true
   }
 ];
 
 function OnboardingWizard({ onComplete }) {
   const queryClient = useQueryClient();
   const { user, subscription, hasActiveSubscription, getSubscriptionTier, checkAuth } = useAuth();
+  
+  // Filter steps based on plan — phone step only for pro/trial users
+  const currentPlan = subscription?.plan || 'pro';
+  const currentTier = subscription?.tier || 'none';
+  const hasAIFeatures = currentPlan === 'pro' || currentTier === 'trial';
+  const STEPS = hasAIFeatures ? ALL_STEPS : ALL_STEPS.filter(s => !s.proOnly);
   const userKey = user?.email || 'default';
   const [currentStepIndex, setCurrentStepIndex] = useState(null);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
@@ -157,9 +164,9 @@ function OnboardingWizard({ onComplete }) {
   });
 
   const checkoutMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (plan) => {
       const baseUrl = window.location.origin;
-      const response = await createCheckoutSession(baseUrl);
+      const response = await createCheckoutSession(baseUrl, plan || 'pro');
       return response.data;
     },
     onSuccess: (data) => {
@@ -479,7 +486,7 @@ function OnboardingWizard({ onComplete }) {
                   <>
                     <div className="subscription-active-display">
                       <i className="fas fa-check-circle"></i>
-                      <span>{getSubscriptionTier() === 'pro' ? 'Pro Plan Active' : 'Free Trial Active'}</span>
+                      <span>{getSubscriptionTier() === 'pro' ? 'Pro Plan Active' : getSubscriptionTier() === 'trial' ? 'Free Trial Active' : 'Plan Active'}</span>
                     </div>
                     <div className="step-actions">
                       <button className="btn btn-primary" onClick={() => setCurrentStepIndex(null)}>
@@ -491,8 +498,8 @@ function OnboardingWizard({ onComplete }) {
                   <>
                     <p className="subscription-cta-text">
                       {subscriptionData?.has_used_trial !== false
-                        ? 'Subscribe to unlock all features.'
-                        : 'Start with a free 14-day trial or subscribe to unlock all features.'}
+                        ? 'Choose a plan to unlock all features.'
+                        : 'Start with a free 14-day trial or choose a plan.'}
                     </p>
                     <div className="step-actions subscription-actions-col">
                       {subscriptionData?.has_used_trial === false && (
@@ -502,17 +509,30 @@ function OnboardingWizard({ onComplete }) {
                           disabled={trialMutation.isPending}
                         >
                           <i className="fas fa-gift"></i>
-                          {trialMutation.isPending ? 'Starting...' : 'Start 14-Day Free Trial'}
+                          {trialMutation.isPending ? 'Starting...' : 'Start 14-Day Free Trial — All Features'}
                         </button>
                       )}
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => checkoutMutation.mutate()}
-                        disabled={checkoutMutation.isPending}
-                      >
-                        <i className="fas fa-credit-card"></i>
-                        {checkoutMutation.isPending ? 'Loading...' : 'Subscribe — €99/month'}
-                      </button>
+                      <div className="onboarding-plan-cards">
+                        <button
+                          className="onboarding-plan-card"
+                          onClick={() => checkoutMutation.mutate('dashboard')}
+                          disabled={checkoutMutation.isPending}
+                        >
+                          <span className="onboarding-plan-name">Dashboard</span>
+                          <span className="onboarding-plan-price">€99/month</span>
+                          <span className="onboarding-plan-desc">Jobs, scheduling, invoicing & more</span>
+                        </button>
+                        <button
+                          className="onboarding-plan-card highlighted"
+                          onClick={() => checkoutMutation.mutate('pro')}
+                          disabled={checkoutMutation.isPending}
+                        >
+                          <span className="onboarding-plan-badge">Recommended</span>
+                          <span className="onboarding-plan-name">Pro</span>
+                          <span className="onboarding-plan-price">€249/month</span>
+                          <span className="onboarding-plan-desc">Everything + AI receptionist</span>
+                        </button>
+                      </div>
                       <button className="btn btn-secondary" onClick={handleSkipStep}>
                         Skip for now
                       </button>

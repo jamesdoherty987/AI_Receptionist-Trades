@@ -11,14 +11,26 @@ from typing import Optional, Dict, Any
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 
 # Subscription configuration
-SUBSCRIPTION_PRICE_ID = os.getenv('STRIPE_PRICE_ID')  # Monthly €99 subscription
 TRIAL_DAYS = 14
-MONTHLY_PRICE_EUR = 99.00
 
-# Product/Price IDs (set these after creating in Stripe Dashboard)
-# For production, these should be environment variables
-STRIPE_PRODUCT_NAME = "BookedForYou Pro"
-STRIPE_PRODUCT_DESCRIPTION = "AI Receptionist & Business Management - All Features"
+# Plan definitions — two tiers
+PLANS = {
+    'dashboard': {
+        'price_id': os.getenv('STRIPE_PRICE_ID_DASHBOARD'),
+        'monthly_price_eur': float(os.getenv('DASHBOARD_MONTHLY_PRICE', '99')),
+        'name': 'BookedForYou Dashboard',
+        'description': 'Business Management Dashboard — Jobs, Scheduling, Invoicing & More',
+    },
+    'pro': {
+        'price_id': os.getenv('STRIPE_PRICE_ID_PRO') or os.getenv('STRIPE_PRICE_ID'),
+        'monthly_price_eur': float(os.getenv('PRO_MONTHLY_PRICE', '249')),
+        'name': 'BookedForYou Pro',
+        'description': 'AI Receptionist & Business Management — All Features',
+    },
+}
+
+# Legacy fallback
+SUBSCRIPTION_PRICE_ID = os.getenv('STRIPE_PRICE_ID')
 
 
 def is_stripe_configured() -> bool:
@@ -75,10 +87,11 @@ def create_checkout_session(
     company_name: str,
     success_url: str,
     cancel_url: str,
-    with_trial: bool = True
+    with_trial: bool = True,
+    plan: str = 'pro'
 ) -> Optional[Dict[str, str]]:
     """
-    Create a Stripe Checkout Session for subscription
+    Create a Stripe Checkout Session for subscription.
     
     Args:
         company_id: The company's database ID
@@ -87,12 +100,19 @@ def create_checkout_session(
         success_url: URL to redirect on successful payment
         cancel_url: URL to redirect on cancelled payment
         with_trial: Whether to include 14-day trial
+        plan: 'dashboard' or 'pro'
     
     Returns:
-        Dict with 'session_id' and 'url' or None on error
+        Dict with 'session_id', 'url', 'customer_id', 'plan' or None on error
     """
     if not is_stripe_configured():
         return None
+    
+    if plan not in PLANS:
+        print(f"[ERROR] Invalid plan: {plan}")
+        return None
+    
+    plan_config = PLANS[plan]
     
     try:
         # Get or create customer
@@ -109,7 +129,8 @@ def create_checkout_session(
             'success_url': success_url + '?session_id={CHECKOUT_SESSION_ID}',
             'cancel_url': cancel_url,
             'metadata': {
-                'company_id': str(company_id)
+                'company_id': str(company_id),
+                'plan': plan
             },
             'allow_promotion_codes': True,
             'billing_address_collection': 'required',
@@ -120,23 +141,23 @@ def create_checkout_session(
         }
         
         # Use existing price ID or create inline price
-        if SUBSCRIPTION_PRICE_ID:
+        if plan_config['price_id']:
             session_params['line_items'] = [{
-                'price': SUBSCRIPTION_PRICE_ID,
+                'price': plan_config['price_id'],
                 'quantity': 1
             }]
         else:
-            # Create inline price (useful for testing)
+            # Create inline price (useful for testing / before Stripe products are created)
             session_params['line_items'] = [{
                 'price_data': {
                     'currency': 'eur',
-                    'unit_amount': int(MONTHLY_PRICE_EUR * 100),  # Amount in cents
+                    'unit_amount': int(plan_config['monthly_price_eur'] * 100),
                     'recurring': {
                         'interval': 'month'
                     },
                     'product_data': {
-                        'name': STRIPE_PRODUCT_NAME,
-                        'description': STRIPE_PRODUCT_DESCRIPTION
+                        'name': plan_config['name'],
+                        'description': plan_config['description']
                     }
                 },
                 'quantity': 1
@@ -145,7 +166,8 @@ def create_checkout_session(
         # Always include subscription_data with metadata for webhook handling
         subscription_data = {
             'metadata': {
-                'company_id': str(company_id)
+                'company_id': str(company_id),
+                'plan': plan
             }
         }
         
@@ -157,16 +179,30 @@ def create_checkout_session(
         
         session = stripe.checkout.Session.create(**session_params)
         
-        print(f"[SUCCESS] Created checkout session: {session.id} for customer: {customer_id}")
+        print(f"[SUCCESS] Created checkout session: {session.id} for customer: {customer_id} (plan: {plan})")
         return {
             'session_id': session.id,
             'url': session.url,
-            'customer_id': customer_id
+            'customer_id': customer_id,
+            'plan': plan
         }
         
     except stripe.error.StripeError as e:
         print(f"[ERROR] Stripe error creating checkout session: {e}")
         return None
+
+
+def get_plan_from_price_id(price_id: str) -> str:
+    """Map a Stripe price ID back to a plan name. Falls back to 'pro'."""
+    if not price_id:
+        return 'pro'
+    for plan_name, config in PLANS.items():
+        if config['price_id'] and config['price_id'] == price_id:
+            return plan_name
+    # Legacy: if the price_id matches the old STRIPE_PRICE_ID env var, it's pro
+    if SUBSCRIPTION_PRICE_ID and price_id == SUBSCRIPTION_PRICE_ID:
+        return 'pro'
+    return 'pro'
 
 
 def create_billing_portal_session(customer_id: str, return_url: str) -> Optional[str]:

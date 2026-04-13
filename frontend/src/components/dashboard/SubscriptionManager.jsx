@@ -13,11 +13,49 @@ import {
 } from '../../services/api';
 import './SubscriptionManager.css';
 
+const PLAN_FEATURES = {
+  dashboard: {
+    name: 'Dashboard',
+    price: 99,
+    tagline: 'Business management tools',
+    features: [
+      { text: 'Job management & scheduling', included: true },
+      { text: 'Customer management', included: true },
+      { text: 'Worker management', included: true },
+      { text: 'Calendar & availability', included: true },
+      { text: 'Financial tracking & invoicing', included: true },
+      { text: 'Materials tracking', included: true },
+      { text: 'Insights & reports', included: true },
+      { text: 'AI receptionist & phone calls', included: false },
+      { text: 'Smart AI scheduling', included: false },
+      { text: 'Dedicated AI phone number', included: false },
+    ],
+  },
+  pro: {
+    name: 'Pro',
+    price: 249,
+    tagline: 'Everything + AI receptionist',
+    features: [
+      { text: 'Job management & scheduling', included: true },
+      { text: 'Customer management', included: true },
+      { text: 'Worker management', included: true },
+      { text: 'Calendar & availability', included: true },
+      { text: 'Financial tracking & invoicing', included: true },
+      { text: 'Materials tracking', included: true },
+      { text: 'Insights & reports', included: true },
+      { text: 'AI receptionist & phone calls', included: true },
+      { text: 'Smart AI scheduling', included: true },
+      { text: 'Dedicated AI phone number', included: true },
+    ],
+  },
+};
+
 function SubscriptionManager() {
   const { checkAuth } = useAuth();
   const queryClient = useQueryClient();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [syncAttempted, setSyncAttempted] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState('pro');
 
   const { data: subscriptionData, isLoading, refetch } = useQuery({
     queryKey: ['subscription-status'],
@@ -32,23 +70,15 @@ function SubscriptionManager() {
   });
 
   // Auto-sync on mount if user has a stripe_customer_id but tier is not pro
-  // This catches cases where webhook failed or was delayed
   useEffect(() => {
     const autoSync = async () => {
       if (syncAttempted) return;
       if (!subscriptionData) return;
-      
-      // If user has a Stripe customer but isn't pro, try to sync
       if (subscriptionData.stripe_customer_id && subscriptionData.tier !== 'pro') {
-        console.log('[SUBSCRIPTION_MANAGER] Auto-syncing: has customer_id but tier is', subscriptionData.tier);
         setSyncAttempted(true);
-        
         try {
           const syncResponse = await syncSubscription();
-          console.log('[SUBSCRIPTION_MANAGER] Auto-sync response:', syncResponse.data);
-          
           if (syncResponse.data.subscription?.tier === 'pro') {
-            console.log('[SUBSCRIPTION_MANAGER] Auto-sync SUCCESS - now pro!');
             await checkAuth();
             refetch();
           }
@@ -57,7 +87,6 @@ function SubscriptionManager() {
         }
       }
     };
-    
     autoSync();
   }, [subscriptionData, syncAttempted, checkAuth, refetch]);
 
@@ -71,9 +100,9 @@ function SubscriptionManager() {
   });
 
   const checkoutMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (plan) => {
       const baseUrl = window.location.origin;
-      const response = await createCheckoutSession(baseUrl);
+      const response = await createCheckoutSession(baseUrl, plan);
       return response.data;
     },
     onSuccess: (data) => {
@@ -150,25 +179,16 @@ function SubscriptionManager() {
   }
 
   const handleRefresh = async () => {
-    console.log('[SUBSCRIPTION_MANAGER] Manual refresh clicked');
     try {
-      // First try to sync from Stripe (in case webhook was delayed)
-      console.log('[SUBSCRIPTION_MANAGER] Calling syncSubscription...');
       const syncResponse = await syncSubscription();
-      console.log('[SUBSCRIPTION_MANAGER] Sync response:', syncResponse.data);
-      
       if (syncResponse.data.subscription?.tier === 'pro') {
-        console.log('[SUBSCRIPTION_MANAGER] Sync successful - tier is now pro!');
+        // synced
       }
     } catch (error) {
-      console.log('[SUBSCRIPTION_MANAGER] Sync error:', error.response?.data || error.message);
-      // Sync may fail if no Stripe customer yet - that's okay
+      // Sync may fail if no Stripe customer yet
     }
-    // Then refresh auth and query
-    console.log('[SUBSCRIPTION_MANAGER] Refreshing auth and query...');
     await checkAuth();
     refetch();
-    // Reset sync attempted so auto-sync can try again if needed
     setSyncAttempted(false);
   };
 
@@ -176,218 +196,293 @@ function SubscriptionManager() {
   const isActive = subscription.is_active;
   const isTrial = subscription.tier === 'trial';
   const isPro = subscription.tier === 'pro';
+  const currentPlan = subscription.plan || 'pro';
   const isNone = subscription.tier === 'none' || (!subscription.tier && !isActive);
-  // Expired: trial that ran out, or explicitly expired tier (but NOT pro users)
-  const isExpired = !isActive && !isPro && (isTrial || subscription.tier === 'expired' || isNone);
   const cancelAtPeriodEnd = subscription.cancel_at_period_end;
   const hasUsedTrial = subscription.has_used_trial;
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('en-IE', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+      year: 'numeric', month: 'long', day: 'numeric'
     });
   };
 
-  return (
-    <div className="subscription-manager">
-      {/* Current Plan Card */}
-      <div className={`subscription-card ${isActive ? 'active' : 'inactive'}`}>
-        <div className="subscription-header">
-          <div className="plan-info">
-            <div className="plan-title-row">
-              <span className={`plan-badge ${isPro ? 'pro' : isTrial && isActive ? 'trial' : isNone ? 'none' : 'expired'}`}>
-                {isPro && 'Pro Plan'}
-                {isTrial && isActive && !isPro && 'Free Trial'}
-                {isTrial && !isActive && !isPro && 'Trial Expired'}
-                {isNone && !isPro && 'No Plan'}
-                {!isPro && !isTrial && !isNone && 'Expired'}
-              </span>
-              <button 
-                className="btn-refresh" 
-                onClick={handleRefresh}
-                title="Refresh subscription status"
+  // Active subscriber view — show current plan status
+  if (isPro && isActive) {
+    const planInfo = PLAN_FEATURES[currentPlan] || PLAN_FEATURES.pro;
+    return (
+      <div className="subscription-manager">
+        <div className="subscription-card active">
+          <div className="subscription-header">
+            <div className="plan-info">
+              <div className="plan-title-row">
+                <span className="plan-badge pro">{planInfo.name} Plan</span>
+                <button className="btn-refresh" onClick={handleRefresh} title="Refresh subscription status">
+                  <i className="fas fa-sync-alt"></i>
+                </button>
+              </div>
+              <h3>BookedForYou {planInfo.name}</h3>
+            </div>
+            <div className="plan-price">
+              <span className="price">&euro;{planInfo.price}</span>
+              <span className="period">/month</span>
+            </div>
+          </div>
+
+          <div className="subscription-status">
+            {!cancelAtPeriodEnd ? (
+              <div className="active-info">
+                <i className="fas fa-check-circle"></i>
+                <div>
+                  <strong>Active Subscription</strong>
+                  <p>Next billing date: {formatDate(subscription.current_period_end)}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="cancelling-info">
+                <i className="fas fa-exclamation-circle"></i>
+                <div>
+                  <strong>Cancelling at Period End</strong>
+                  <p>Your subscription will end on {formatDate(subscription.current_period_end)}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="subscription-features">
+            <h4>Your plan includes:</h4>
+            <ul>
+              {planInfo.features.filter(f => f.included).map((f, i) => (
+                <li key={i}><i className="fas fa-check"></i> {f.text}</li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Upgrade prompt for dashboard users */}
+          {currentPlan === 'dashboard' && (
+            <div className="upgrade-banner">
+              <div className="upgrade-banner-content">
+                <i className="fas fa-rocket"></i>
+                <div>
+                  <strong>Upgrade to Pro</strong>
+                  <p>Add AI receptionist, smart scheduling, and a dedicated phone number for just €150/month more.</p>
+                </div>
+              </div>
+              <button
+                className="btn btn-primary"
+                onClick={() => checkoutMutation.mutate('pro')}
+                disabled={checkoutMutation.isPending}
               >
-                <i className="fas fa-sync-alt"></i>
+                {checkoutMutation.isPending ? 'Loading...' : 'Upgrade to Pro'}
               </button>
             </div>
-            <h3>
-              {isPro && 'BookedForYou Pro'}
-              {isTrial && isActive && !isPro && 'Free Trial'}
-              {isTrial && !isActive && !isPro && 'Trial Expired'}
-              {isNone && !isPro && 'Get Started with BookedForYou'}
-              {!isPro && !isTrial && !isNone && 'Subscription Expired'}
-            </h3>
-          </div>
-          <div className="plan-price">
-            {isPro && (
-              <>
-                <span className="price">&euro;99</span>
-                <span className="period">/month</span>
-              </>
-            )}
-            {isTrial && isActive && !isPro && (
-              <span className="price free">Free</span>
-            )}
-            {!isPro && isNone && (
-              <span className="price inactive-price">&euro;0</span>
+          )}
+
+          <div className="subscription-actions">
+            {!cancelAtPeriodEnd ? (
+              <div className="pro-actions">
+                <button className="btn btn-secondary" onClick={() => portalMutation.mutate()} disabled={portalMutation.isPending}>
+                  <i className="fas fa-file-invoice-dollar"></i>
+                  {portalMutation.isPending ? 'Loading...' : 'Manage Billing'}
+                </button>
+                <button className="btn-cancel-link" onClick={() => setShowCancelConfirm(true)}>
+                  Cancel subscription
+                </button>
+              </div>
+            ) : (
+              <div className="pro-actions">
+                <button className="btn btn-primary" onClick={() => reactivateMutation.mutate()} disabled={reactivateMutation.isPending}>
+                  <i className="fas fa-redo"></i>
+                  {reactivateMutation.isPending ? 'Loading...' : 'Reactivate Subscription'}
+                </button>
+                <button className="btn btn-secondary" onClick={() => portalMutation.mutate()} disabled={portalMutation.isPending}>
+                  <i className="fas fa-file-invoice-dollar"></i>
+                  {portalMutation.isPending ? 'Loading...' : 'Manage Billing'}
+                </button>
+              </div>
             )}
           </div>
         </div>
 
+        {/* Invoices */}
+        {invoicesData && invoicesData.length > 0 && (
+          <div className="invoices-section">
+            <h3><i className="fas fa-file-invoice"></i> Billing History</h3>
+            <div className="invoices-list">
+              {invoicesData.map((invoice) => (
+                <div key={invoice.id} className="invoice-item">
+                  <div className="invoice-info">
+                    <span className="invoice-number">{invoice.number || 'Invoice'}</span>
+                    <span className="invoice-date">{new Date(invoice.created).toLocaleDateString()}</span>
+                  </div>
+                  <div className="invoice-amount">€{invoice.amount_paid?.toFixed(2) || '0.00'}</div>
+                  <span className={`invoice-status ${invoice.status}`}>{invoice.status}</span>
+                  {invoice.invoice_pdf && (
+                    <a href={invoice.invoice_pdf} target="_blank" rel="noopener noreferrer" className="btn btn-small">
+                      <i className="fas fa-download"></i> PDF
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Cancel Modal */}
+        {showCancelConfirm && (
+          <div className="sub-modal-overlay" onClick={() => setShowCancelConfirm(false)}>
+            <div className="sub-modal-box" onClick={(e) => e.stopPropagation()}>
+              <h3><i className="fas fa-exclamation-triangle"></i> Cancel Subscription?</h3>
+              <p>Your subscription will remain active until the end of your current billing period. After that, you will lose access to all features.</p>
+              <div className="sub-modal-actions">
+                <button className="btn btn-secondary" onClick={() => setShowCancelConfirm(false)}>Keep Subscription</button>
+                <button className="btn btn-danger" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>
+                  {cancelMutation.isPending ? 'Cancelling...' : 'Yes, Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Non-subscriber view — show plan selection cards
+  return (
+    <div className="subscription-manager">
+      {/* Status banner */}
+      <div className={`subscription-card ${isActive ? 'active' : 'inactive'}`}>
+        <div className="subscription-header">
+          <div className="plan-info">
+            <div className="plan-title-row">
+              <span className={`plan-badge ${isTrial && isActive ? 'trial' : isNone ? 'none' : 'expired'}`}>
+                {isTrial && isActive && 'Free Trial'}
+                {isTrial && !isActive && 'Trial Expired'}
+                {isNone && 'No Plan'}
+                {!isTrial && !isNone && !isActive && 'Expired'}
+              </span>
+              <button className="btn-refresh" onClick={handleRefresh} title="Refresh subscription status">
+                <i className="fas fa-sync-alt"></i>
+              </button>
+            </div>
+            <h3>
+              {isTrial && isActive && 'Free Trial'}
+              {isTrial && !isActive && 'Trial Expired'}
+              {isNone && 'Get Started with BookedForYou'}
+              {!isTrial && !isNone && !isActive && 'Subscription Expired'}
+            </h3>
+          </div>
+        </div>
+
         <div className="subscription-status">
-          {/* Only show trial info for actual trial users, never for pro */}
-          {isTrial && isActive && !isPro && (
+          {isTrial && isActive && (
             <div className="trial-info">
               <i className="fas fa-clock"></i>
               <div>
                 <strong>{subscription.trial_days_remaining} days left</strong>
-                <p>Your trial ends on {formatDate(subscription.trial_end)}</p>
+                <p>Your trial ends on {formatDate(subscription.trial_end)}. All features are unlocked during the trial.</p>
               </div>
             </div>
           )}
-          
-          {isPro && isActive && !cancelAtPeriodEnd && (
-            <div className="active-info">
-              <i className="fas fa-check-circle"></i>
-              <div>
-                <strong>Active Subscription</strong>
-                <p>Next billing date: {formatDate(subscription.current_period_end)}</p>
-              </div>
-            </div>
-          )}
-          
-          {isPro && cancelAtPeriodEnd && (
-            <div className="cancelling-info">
-              <i className="fas fa-exclamation-circle"></i>
-              <div>
-                <strong>Cancelling at Period End</strong>
-                <p>Your subscription will end on {formatDate(subscription.current_period_end)}</p>
-              </div>
-            </div>
-          )}
-          
-          {/* Only show trial expired for non-pro users */}
-          {isTrial && !isActive && !isPro && (
+          {isTrial && !isActive && (
             <div className="expired-info">
               <i className="fas fa-times-circle"></i>
               <div>
                 <strong>Trial Expired</strong>
-                <p>Your free trial has ended. Subscribe to continue using BookedForYou.</p>
+                <p>Choose a plan below to continue using BookedForYou.</p>
               </div>
             </div>
           )}
-          
-          {/* Generic expired for non-pro, non-trial users */}
-          {!isPro && !isTrial && !isNone && !isActive && (
-            <div className="expired-info">
-              <i className="fas fa-times-circle"></i>
-              <div>
-                <strong>Subscription Expired</strong>
-                <p>Your subscription has ended. Resubscribe to continue.</p>
-              </div>
-            </div>
-          )}
-          
           {isNone && (
             <div className="none-info">
               <i className="fas fa-info-circle"></i>
               <div>
                 <strong>No Active Subscription</strong>
                 <p>{hasUsedTrial
-                  ? 'Subscribe to get started with BookedForYou Pro.'
-                  : 'Start a free 14-day trial to explore all features, or subscribe to get started right away.'
+                  ? 'Choose a plan below to get started.'
+                  : 'Start a free 14-day trial to explore all features, or choose a plan below.'
                 }</p>
+              </div>
+            </div>
+          )}
+          {!isTrial && !isNone && !isActive && (
+            <div className="expired-info">
+              <i className="fas fa-times-circle"></i>
+              <div>
+                <strong>Subscription Expired</strong>
+                <p>Choose a plan below to resubscribe.</p>
               </div>
             </div>
           )}
         </div>
 
-        <div className="subscription-features">
-          <h4>All Features Included:</h4>
-          <ul>
-            <li><i className="fas fa-check"></i> Unlimited AI phone calls</li>
-            <li><i className="fas fa-check"></i> Smart appointment scheduling</li>
-            <li><i className="fas fa-check"></i> Customer management</li>
-            <li><i className="fas fa-check"></i> Worker management</li>
-            <li><i className="fas fa-check"></i> Financial tracking & invoicing</li>
-            <li><i className="fas fa-check"></i> AI chat support</li>
-            <li><i className="fas fa-check"></i> Priority support</li>
-          </ul>
-        </div>
-
-        <div className="subscription-actions">
-          {/* Show Start Trial for users with no plan OR expired trial - never for pro users or users who already used trial */}
-          {(isNone || (isTrial && !isActive)) && !isPro && !hasUsedTrial && (
+        {/* Trial button */}
+        {!hasUsedTrial && !isActive && (
+          <div className="subscription-actions">
             <button
               className="btn btn-success btn-subscribe"
               onClick={() => trialMutation.mutate()}
               disabled={trialMutation.isPending}
             >
               <i className="fas fa-gift"></i>
-              {trialMutation.isPending ? 'Starting...' : 'Start 14-Day Free Trial'}
+              {trialMutation.isPending ? 'Starting...' : 'Start 14-Day Free Trial — All Features'}
             </button>
-          )}
+          </div>
+        )}
+      </div>
 
-          {/* Show Subscribe button for trial (active or expired) or no-plan users - but not for active pro users */}
-          {!isPro && (
-            <button
-              className="btn btn-primary btn-subscribe"
-              onClick={() => checkoutMutation.mutate()}
-              disabled={checkoutMutation.isPending}
-            >
-              <i className="fas fa-credit-card"></i>
-              {checkoutMutation.isPending ? 'Loading...' : 'Subscribe Now - €99/month'}
-            </button>
-          )}
-
-          {/* Show billing portal for pro users */}
-          {isPro && !cancelAtPeriodEnd && (
-            <div className="pro-actions">
-              <button
-                className="btn btn-secondary"
-                onClick={() => portalMutation.mutate()}
-                disabled={portalMutation.isPending}
+      {/* Plan comparison cards */}
+      <div className="plan-comparison">
+        <h3 className="plan-comparison-title">Choose Your Plan</h3>
+        <div className="plan-cards">
+          {['dashboard', 'pro'].map((planKey) => {
+            const plan = PLAN_FEATURES[planKey];
+            const isSelected = selectedPlan === planKey;
+            const isHighlighted = planKey === 'pro';
+            return (
+              <div
+                key={planKey}
+                className={`plan-card ${isSelected ? 'selected' : ''} ${isHighlighted ? 'highlighted' : ''}`}
+                onClick={() => setSelectedPlan(planKey)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedPlan(planKey); }}
               >
-                <i className="fas fa-file-invoice-dollar"></i>
-                {portalMutation.isPending ? 'Loading...' : 'Manage Billing'}
-              </button>
-              <button
-                className="btn-cancel-link"
-                onClick={() => setShowCancelConfirm(true)}
-              >
-                Cancel subscription
-              </button>
-            </div>
-          )}
-
-          {/* Show reactivate button if cancelling */}
-          {isPro && cancelAtPeriodEnd && (
-            <div className="pro-actions">
-              <button
-                className="btn btn-primary"
-                onClick={() => reactivateMutation.mutate()}
-                disabled={reactivateMutation.isPending}
-              >
-                <i className="fas fa-redo"></i>
-                {reactivateMutation.isPending ? 'Loading...' : 'Reactivate Subscription'}
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={() => portalMutation.mutate()}
-                disabled={portalMutation.isPending}
-              >
-                <i className="fas fa-file-invoice-dollar"></i>
-                {portalMutation.isPending ? 'Loading...' : 'Manage Billing'}
-              </button>
-            </div>
-          )}
+                {isHighlighted && <div className="popular-badge">Most Popular</div>}
+                <div className="plan-card-header">
+                  <h4>{plan.name}</h4>
+                  <p className="plan-card-tagline">{plan.tagline}</p>
+                  <div className="plan-card-price">
+                    <span className="plan-card-amount">&euro;{plan.price}</span>
+                    <span className="plan-card-period">/month</span>
+                  </div>
+                </div>
+                <ul className="plan-card-features">
+                  {plan.features.map((f, i) => (
+                    <li key={i} className={f.included ? 'included' : 'excluded'}>
+                      <i className={`fas ${f.included ? 'fa-check' : 'fa-times'}`}></i>
+                      {f.text}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  className={`btn ${isHighlighted ? 'btn-primary' : 'btn-secondary'} btn-subscribe plan-card-cta`}
+                  onClick={(e) => { e.stopPropagation(); checkoutMutation.mutate(planKey); }}
+                  disabled={checkoutMutation.isPending}
+                >
+                  <i className="fas fa-credit-card"></i>
+                  {checkoutMutation.isPending && selectedPlan === planKey
+                    ? 'Loading...'
+                    : `Subscribe — €${plan.price}/month`}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Invoices Section */}
+      {/* Invoices for returning users */}
       {invoicesData && invoicesData.length > 0 && (
         <div className="invoices-section">
           <h3><i className="fas fa-file-invoice"></i> Billing History</h3>
@@ -396,57 +491,17 @@ function SubscriptionManager() {
               <div key={invoice.id} className="invoice-item">
                 <div className="invoice-info">
                   <span className="invoice-number">{invoice.number || 'Invoice'}</span>
-                  <span className="invoice-date">
-                    {new Date(invoice.created).toLocaleDateString()}
-                  </span>
+                  <span className="invoice-date">{new Date(invoice.created).toLocaleDateString()}</span>
                 </div>
-                <div className="invoice-amount">
-                  €{invoice.amount_paid?.toFixed(2) || '0.00'}
-                </div>
-                <span className={`invoice-status ${invoice.status}`}>
-                  {invoice.status}
-                </span>
+                <div className="invoice-amount">€{invoice.amount_paid?.toFixed(2) || '0.00'}</div>
+                <span className={`invoice-status ${invoice.status}`}>{invoice.status}</span>
                 {invoice.invoice_pdf && (
-                  <a 
-                    href={invoice.invoice_pdf} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="btn btn-small"
-                  >
-                    <i className="fas fa-download"></i>
-                    PDF
+                  <a href={invoice.invoice_pdf} target="_blank" rel="noopener noreferrer" className="btn btn-small">
+                    <i className="fas fa-download"></i> PDF
                   </a>
                 )}
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* Cancel Confirmation Modal */}
-      {showCancelConfirm && (
-        <div className="sub-modal-overlay" onClick={() => setShowCancelConfirm(false)}>
-          <div className="sub-modal-box" onClick={(e) => e.stopPropagation()}>
-            <h3><i className="fas fa-exclamation-triangle"></i> Cancel Subscription?</h3>
-            <p>
-              Your subscription will remain active until the end of your current billing period.
-              After that, you will lose access to all features.
-            </p>
-            <div className="sub-modal-actions">
-              <button
-                className="btn btn-secondary"
-                onClick={() => setShowCancelConfirm(false)}
-              >
-                Keep Subscription
-              </button>
-              <button
-                className="btn btn-danger"
-                onClick={() => cancelMutation.mutate()}
-                disabled={cancelMutation.isPending}
-              >
-                {cancelMutation.isPending ? 'Cancelling...' : 'Yes, Cancel'}
-              </button>
-            </div>
           </div>
         </div>
       )}

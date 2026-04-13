@@ -18,7 +18,7 @@ if ('serviceWorker' in navigator) {
         registration.update();
 
         // Also check periodically
-        setInterval(() => registration.update(), 60 * 60 * 1000);
+        setInterval(() => registration.update(), 5 * 60 * 1000);
 
         registration.addEventListener('updatefound', () => {
           const newWorker = registration.installing;

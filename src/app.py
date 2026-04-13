@@ -444,6 +444,7 @@ def get_subscription_info(company: dict) -> dict:
         'tier': subscription_tier,
         'status': subscription_status,
         'is_active': is_active,
+        'plan': company.get('subscription_plan', 'pro'),
         'trial_end': trial_end.isoformat() if trial_end else None,
         'trial_days_remaining': trial_days_remaining,
         'current_period_end': current_period_end.isoformat() if current_period_end else None,
@@ -3240,6 +3241,7 @@ def admin_update_account(company_id):
         'company_name', 'owner_name', 'phone', 'email', 'trade_type',
         'address', 'business_hours', 'company_context', 'coverage_area',
         'subscription_tier', 'subscription_status', 'ai_enabled',
+        'subscription_plan',
         'easy_setup', 'setup_wizard_complete',
         'send_confirmation_sms', 'send_reminder_sms',
         'show_finances_tab', 'show_insights_tab', 'show_invoice_buttons',
@@ -3444,7 +3446,9 @@ from src.services.stripe_service import (
     get_customer_invoices,
     get_or_create_customer,
     is_stripe_configured,
-    TRIAL_DAYS
+    get_plan_from_price_id,
+    TRIAL_DAYS,
+    PLANS
 )
 
 # Webhook secret for Stripe events
@@ -3519,7 +3523,14 @@ def create_checkout():
     
     # Get base URL for redirects
     base_url = data.get('base_url', os.getenv('FRONTEND_URL', 'http://localhost:3000'))
+    plan = data.get('plan', 'pro')
+    
+    # Validate plan
+    if plan not in ('dashboard', 'pro'):
+        return jsonify({"error": "Invalid plan. Choose 'dashboard' or 'pro'."}), 400
+    
     print(f"[CHECKOUT] Base URL: {base_url}")
+    print(f"[CHECKOUT] Plan: {plan}")
     
     result = create_checkout_session(
         company_id=company['id'],
@@ -3527,7 +3538,8 @@ def create_checkout():
         company_name=company['company_name'],
         success_url=f"{base_url}/settings?subscription=success",
         cancel_url=f"{base_url}/settings?subscription=cancelled",
-        with_trial=False  # Trial is handled separately via start-trial endpoint
+        with_trial=False,  # Trial is handled separately via start-trial endpoint
+        plan=plan
     )
     
     if result:
@@ -3829,7 +3841,11 @@ def sync_subscription():
             update_data['subscription_tier'] = 'pro'
             update_data['trial_start'] = None
             update_data['trial_end'] = None
-            print(f"[SYNC] SETTING TIER TO 'pro' for company {company['id']}")
+            # Detect plan from subscription metadata
+            plan = sub.metadata.get('plan')
+            if plan in ('dashboard', 'pro'):
+                update_data['subscription_plan'] = plan
+            print(f"[SYNC] SETTING TIER TO 'pro' (plan={plan}) for company {company['id']}")
         elif status in ('canceled', 'unpaid', 'incomplete_expired'):
             update_data['subscription_tier'] = 'expired'
             print(f"[SYNC] SETTING TIER TO 'expired' for company {company['id']}")
@@ -3943,16 +3959,23 @@ def stripe_webhook():
                 import stripe
                 sub = stripe.Subscription.retrieve(subscription_id)
                 
+                # Determine which plan from metadata
+                plan = data.get('metadata', {}).get('plan') or sub.metadata.get('plan', 'pro')
+                if plan not in ('dashboard', 'pro'):
+                    plan = 'pro'
+                
                 print(f"[WEBHOOK] Stripe subscription retrieved:")
                 print(f"[WEBHOOK]   - status: {sub.status}")
                 print(f"[WEBHOOK]   - current_period_end: {sub.current_period_end}")
+                print(f"[WEBHOOK]   - plan: {plan}")
                 
                 # Clear trial fields when upgrading to pro to ensure clean state
-                print(f"[WEBHOOK] Updating company {company_id} to pro...")
+                print(f"[WEBHOOK] Updating company {company_id} to pro (plan={plan})...")
                 db.update_company(
                     company_id,
                     subscription_tier='pro',
                     subscription_status='active',
+                    subscription_plan=plan,
                     stripe_customer_id=customer_id,
                     stripe_subscription_id=subscription_id,
                     subscription_current_period_end=datetime.fromtimestamp(sub.current_period_end),
@@ -3997,6 +4020,10 @@ def stripe_webhook():
                 # 'trialing' here means a paid Stripe subscription with trial period, not our free trial
                 if status in ('active', 'trialing', 'past_due'):
                     update_data['subscription_tier'] = 'pro'
+                    # Detect plan from subscription metadata
+                    plan = data.get('metadata', {}).get('plan')
+                    if plan in ('dashboard', 'pro'):
+                        update_data['subscription_plan'] = plan
                 
                 db.update_company(company_id, **update_data)
                 print(f"[SUCCESS] Subscription updated for company {company_id}: {status}")

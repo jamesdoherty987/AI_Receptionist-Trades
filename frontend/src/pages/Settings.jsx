@@ -35,7 +35,12 @@ const REMOVE_STRIPE_CONNECT = false;
 function Settings() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { checkAuth } = useAuth();
+  const { checkAuth, subscription: authSubscription } = useAuth();
+  
+  // Determine if user has AI features based on plan
+  const currentPlan = authSubscription?.plan || 'pro';
+  const currentTier = authSubscription?.tier || 'none';
+  const hasAIFeatures = currentPlan === 'pro' || currentTier === 'trial';
   const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({});
   const isManagedAccount = formData.easy_setup === false;
@@ -916,8 +921,8 @@ function Settings() {
             </div>
           )}
 
-          {/* Setup Progress Card - show only when AI phone number is not configured */}
-          {settings && !settings.twilio_phone_number && (
+          {/* Setup Progress Card - show only when AI phone number is not configured and user has pro plan */}
+          {hasAIFeatures && settings && !settings.twilio_phone_number && (
             <div className="setup-progress-card">
               <div className="setup-progress-header">
                 <div className="setup-progress-title">
@@ -993,6 +998,8 @@ function Settings() {
           {activeTab === 'business' && (
             <>
               {/* AI Receptionist Toggle */}
+              {hasAIFeatures ? (
+              <>
               <div className="ai-toggle-card">
                 <div className="toggle-content">
                   <div className="toggle-info">
@@ -1415,6 +1422,20 @@ function Settings() {
                   <p className="bypass-empty">No bypass numbers configured. All calls go through the AI receptionist.</p>
                 )}
               </div>
+              </>
+              ) : (
+              <div className="ai-toggle-card" style={{ textAlign: 'center' }}>
+                <div className="toggle-content" style={{ flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                  <div className="toggle-info" style={{ textAlign: 'center' }}>
+                    <h3><i className="fas fa-robot"></i> AI Receptionist</h3>
+                    <p>Upgrade to the Pro plan to unlock the AI receptionist, smart scheduling, and a dedicated phone number.</p>
+                  </div>
+                  <button className="btn btn-primary" onClick={() => setActiveTab('subscription')}>
+                    <i className="fas fa-rocket"></i> Upgrade to Pro
+                  </button>
+                </div>
+              </div>
+              )}
 
               {/* Settings Form */}
               <div className="settings-card">

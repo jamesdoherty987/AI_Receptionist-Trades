@@ -141,6 +141,7 @@ export function AuthProvider({ children }) {
             tier: newUser.subscription_tier,
             status: newUser.subscription_tier === 'none' ? 'inactive' : 'active',
             is_active: newUser.subscription_tier !== 'none',
+            plan: newUser.subscription_plan || 'pro',
             trial_end: newUser.trial_end || null,
             trial_days_remaining: newUser.subscription_tier === 'trial' ? 14 : 0,
           };
@@ -152,6 +153,7 @@ export function AuthProvider({ children }) {
             tier: 'none',
             status: 'inactive',
             is_active: false,
+            plan: 'pro',
             trial_end: null,
             trial_days_remaining: 0,
           };
@@ -227,6 +229,10 @@ export function AuthProvider({ children }) {
     return subscription?.tier || 'none';
   };
 
+  const getSubscriptionPlan = () => {
+    return subscription?.plan || 'pro';
+  };
+
   const getTrialDaysRemaining = () => {
     if (!subscription) return 0;
     if (subscription.trial_days_remaining !== undefined && subscription.trial_days_remaining !== null) {
@@ -277,6 +283,7 @@ export function AuthProvider({ children }) {
     isWorker,
     hasActiveSubscription,
     getSubscriptionTier,
+    getSubscriptionPlan,
     getTrialDaysRemaining,
     login,
     signup,

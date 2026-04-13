@@ -1154,8 +1154,8 @@ function Landing() {
   ];
 
   const pricingPlans = [
-    { name: "Starter", price: "Free", period: "for 14 days", description: "Try everything risk-free", features: ["All features included", "Unlimited AI calls", "Smart scheduling", "Customer management", "Worker management", "Financial tracking", "Personalised setup"], cta: "Get in Touch", highlighted: false, link: "mailto:contact@bookedforyou.ie?subject=BookedForYou Starter Plan" },
-    { name: "Pro", price: "Custom", period: "pricing", description: "Tailored to your business size", features: ["All features included", "Unlimited AI calls", "Smart scheduling", "Customer management", "Worker management", "Financial tracking & invoicing", "Priority support"], cta: "Contact Us for Pricing", highlighted: true, link: "mailto:contact@bookedforyou.ie?subject=Pro Plan Pricing Enquiry" },
+    { name: "Dashboard", price: "€99", period: "/month", description: "Business management tools for your trade", features: ["Job management & scheduling", "Customer management", "Worker management", "Calendar & availability", "Financial tracking & invoicing", "Materials tracking", "Insights & reports"], cta: "Get Started", highlighted: false, link: "mailto:contact@bookedforyou.ie?subject=BookedForYou Dashboard Plan" },
+    { name: "Pro", price: "Custom", period: "pricing", description: "Everything + AI receptionist", features: ["Everything in Dashboard, plus:", "AI receptionist & phone calls", "Smart AI scheduling", "Dedicated AI phone number", "24/7 call handling", "Automatic booking from calls", "Priority support"], cta: "Contact Us", highlighted: true, link: "mailto:contact@bookedforyou.ie?subject=BookedForYou Pro Plan Enquiry" },
   ];
 
   const BENTO_TINTS = [

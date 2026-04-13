@@ -436,7 +436,7 @@ function AdminPanel() {
                         </div>
                         <div className="ap-mini-row-meta">
                           <Badge type={acc.subscription_tier === 'pro' ? 'green' : acc.subscription_tier === 'trial' ? 'yellow' : 'gray'}>
-                            {acc.subscription_tier || 'none'}
+                            {acc.subscription_tier || 'none'}{acc.subscription_plan && acc.subscription_tier === 'pro' ? ` (${acc.subscription_plan})` : ''}
                           </Badge>
                           {acc.stripe_connect_account_id && <Badge type="blue">Stripe</Badge>}
                           {acc.twilio_phone_number && <Badge type="blue"><i className="fas fa-phone"></i></Badge>}

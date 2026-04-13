@@ -675,3 +675,81 @@
     min-width: 50px;
   }
 }
+
+/* ===== Onboarding Plan Selection Cards ===== */
+.onboarding-plan-cards {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+  margin: 0.5rem 0;
+}
+
+.onboarding-plan-card {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 1.25rem 1rem;
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.onboarding-plan-card:hover {
+  border-color: #94a3b8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.onboarding-plan-card.highlighted {
+  border-color: #3b82f6;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+}
+
+.onboarding-plan-card.highlighted:hover {
+  border-color: #2563eb;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
+}
+
+.onboarding-plan-badge {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 0.2rem 0.625rem;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.onboarding-plan-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.onboarding-plan-price {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.onboarding-plan-desc {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+@media (max-width: 480px) {
+  .onboarding-plan-cards {
+    flex-direction: column;
+  }
+}

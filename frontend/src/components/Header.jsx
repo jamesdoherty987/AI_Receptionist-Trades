@@ -125,22 +125,20 @@ function Header({ onNotificationNavigate }) {
                     </div>
                   </div>
                   <div className="user-dropdown-divider"></div>
-                  <Link 
-                    to="/account" 
+                  <button 
                     className="user-dropdown-item"
-                    onClick={(e) => { guardNav(e, '/account'); setShowUserMenu(false); }}
+                    onClick={() => { setShowUserMenu(false); if (window.__settingsUnsavedChanges) { if (!window.confirm('You have unsaved changes. Are you sure you want to leave?')) return; window.__settingsUnsavedChanges = false; } navigate('/account'); }}
                   >
                     <i className="fas fa-user"></i>
                     My Account
-                  </Link>
-                  <Link 
-                    to="/settings" 
+                  </button>
+                  <button 
                     className="user-dropdown-item"
-                    onClick={(e) => { guardNav(e, '/settings'); setShowUserMenu(false); }}
+                    onClick={() => { setShowUserMenu(false); if (window.__settingsUnsavedChanges) { if (!window.confirm('You have unsaved changes. Are you sure you want to leave?')) return; window.__settingsUnsavedChanges = false; } navigate('/settings'); }}
                   >
                     <i className="fas fa-cog"></i>
                     Business Settings
-                  </Link>
+                  </button>
                   <div className="user-dropdown-divider"></div>
                   <button className="user-dropdown-item logout" onClick={handleLogout}>
                     <i className="fas fa-sign-out-alt"></i>

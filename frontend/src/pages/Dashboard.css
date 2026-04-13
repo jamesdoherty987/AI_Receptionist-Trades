@@ -245,11 +245,11 @@
   }
 
   .dashboard-main {
-    padding: 0.25rem 0;
+    padding: 0;
   }
 
   .dashboard-main .container {
-    padding: 0 8px;
+    padding: 0 6px;
   }
 
   .stats-grid {
