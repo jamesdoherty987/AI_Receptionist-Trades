@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Tabs.css';
 
-function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
+function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange, menuOpen: controlledMenuOpen, onMenuToggle }) {
   const [internalTab, setInternalTab] = useState(defaultTab);
   const activeTab = controlledTab !== undefined ? controlledTab : internalTab;
   const navigate = useNavigate();
@@ -10,7 +10,9 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
     setInternalTab(idx);
     if (onTabChange) onTabChange(idx);
   }, [onTabChange]);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [internalMenuOpen, setInternalMenuOpen] = useState(false);
+  const menuOpen = controlledMenuOpen !== undefined ? controlledMenuOpen : internalMenuOpen;
+  const setMenuOpen = onMenuToggle || setInternalMenuOpen;
   const [isMobile, setIsMobile] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar_collapsed') === 'true'; } catch { return false; }
@@ -61,24 +63,6 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange }) {
     <div className="tabs-container">
       {isMobile ? (
         <>
-          <div className="mobile-tabs-header">
-            <span className="current-tab-label">
-              {tabs[activeTab]?.icon && <i className={tabs[activeTab].icon}></i>}
-              {tabs[activeTab]?.label}
-              {tabs[activeTab]?.badge > 0 && (
-                <span className="tab-badge mobile">{tabs[activeTab].badge > 9 ? '9+' : tabs[activeTab].badge}</span>
-              )}
-            </span>
-            <button
-              className={`hamburger-btn ${menuOpen ? 'open' : ''}`}
-              onClick={() => setMenuOpen(!menuOpen)}
-              aria-label="Toggle menu"
-            >
-              <span className="hamburger-line"></span>
-              <span className="hamburger-line"></span>
-              <span className="hamburger-line"></span>
-            </button>
-          </div>
           <div className={`mobile-menu-overlay ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(false)}></div>
           <div className={`mobile-side-menu ${menuOpen ? 'open' : ''}`}>
             <div className="mobile-menu-header">

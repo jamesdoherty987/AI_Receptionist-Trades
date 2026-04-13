@@ -93,6 +93,12 @@ function Dashboard() {
 
   // Controlled tab state for notification navigation
   const [activeTab, setActiveTab] = useState(0);
+  
+  // Mobile nav menu state — shared between Header (hamburger) and Tabs (slide-out)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const handleMenuToggle = useCallback((val) => {
+    setMobileMenuOpen(typeof val === 'function' ? val : val);
+  }, []);
 
   // --- Unseen call count badge ---
   const [callsLastSeen, setCallsLastSeen] = useState(
@@ -243,7 +249,7 @@ function Dashboard() {
 
   return (
     <div className="dashboard">
-      <Header onNotificationNavigate={handleNotificationNavigate} />
+      <Header onNotificationNavigate={handleNotificationNavigate} mobileMenuOpen={mobileMenuOpen} onMenuToggle={handleMenuToggle} />
       <main className="dashboard-main">
         <div className="container">
           {/* Onboarding Wizard — only for self-service accounts that haven't completed setup */}
@@ -251,7 +257,7 @@ function Dashboard() {
             <OnboardingWizard onComplete={handleOnboardingComplete} />
           )}
           
-          <Tabs tabs={tabs} defaultTab={0} activeTab={activeTab} onTabChange={handleTabChange} />
+          <Tabs tabs={tabs} defaultTab={0} activeTab={activeTab} onTabChange={handleTabChange} menuOpen={mobileMenuOpen} onMenuToggle={handleMenuToggle} />
         </div>
       </main>
     </div>

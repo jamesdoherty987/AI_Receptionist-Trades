@@ -1154,7 +1154,7 @@ function Landing() {
   ];
 
   const pricingPlans = [
-    { name: "Dashboard", price: "€99", period: "/month", description: "Business management tools for your trade", features: ["Job management & scheduling", "Customer management", "Worker management", "Calendar & availability", "Financial tracking & invoicing", "Materials tracking", "Insights & reports"], cta: "Get Started", highlighted: false, link: "mailto:contact@bookedforyou.ie?subject=BookedForYou Dashboard Plan" },
+    { name: "Dashboard", price: "€99", period: "/month", description: "Business management tools for your trade", features: ["Job management & scheduling", "Customer management", "Worker management", "Calendar & availability", "Financial tracking & invoicing", "Materials tracking", "Insights & reports"], cta: "Get Started", highlighted: false, link: "/signup" },
     { name: "Pro", price: "Custom", period: "pricing", description: "Everything + AI receptionist", features: ["Everything in Dashboard, plus:", "AI receptionist & phone calls", "Smart AI scheduling", "Dedicated AI phone number", "24/7 call handling", "Automatic booking from calls", "Priority support"], cta: "Contact Us", highlighted: true, link: "mailto:contact@bookedforyou.ie?subject=BookedForYou Pro Plan Enquiry" },
   ];
 

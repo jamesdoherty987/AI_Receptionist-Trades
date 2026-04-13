@@ -6,7 +6,7 @@ import { getBusinessSettings } from '../services/api';
 import NotificationBell from './NotificationBell';
 import './Header.css';
 
-function Header({ onNotificationNavigate }) {
+function Header({ onNotificationNavigate, mobileMenuOpen, onMenuToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -103,11 +103,22 @@ function Header({ onNotificationNavigate }) {
             {/* Notification Bell */}
             <NotificationBell onNavigate={onNotificationNavigate} />
             
+            {/* Hamburger for mobile nav — only visible on mobile */}
+            {onMenuToggle && (
+              <button
+                className="header-hamburger"
+                onClick={() => { setShowUserMenu(false); onMenuToggle(!mobileMenuOpen); }}
+                aria-label="Toggle navigation"
+              >
+                <i className={`fas ${mobileMenuOpen ? 'fa-times' : 'fa-bars'}`}></i>
+              </button>
+            )}
+            
             {/* User Menu */}
             <div className="user-menu-container" ref={menuRef}>
               <button 
                 className="user-menu-trigger"
-                onClick={() => setShowUserMenu(!showUserMenu)}
+                onClick={() => { if (onMenuToggle) onMenuToggle(false); setShowUserMenu(!showUserMenu); }}
               >
                 <div className="user-avatar">
                   {user?.owner_name?.charAt(0).toUpperCase() || 'U'}

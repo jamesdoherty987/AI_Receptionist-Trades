@@ -335,6 +335,11 @@ body.modal-open .header {
   display: none;
 }
 
+/* Header hamburger — hidden on desktop */
+.header-hamburger {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .user-dropdown-backdrop {
     display: block;
@@ -343,5 +348,27 @@ body.modal-open .header {
     background: rgba(0, 0, 0, 0.3);
     z-index: 999998;
     animation: fadeIn 0.15s ease-out;
+  }
+
+  .header-hamburger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: all 0.15s;
+  }
+
+  .header-hamburger:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
   }
 }
