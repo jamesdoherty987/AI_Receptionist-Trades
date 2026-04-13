@@ -359,7 +359,7 @@
 @media (max-width: 768px) {
   .materials-tab { padding: 0; }
   .materials-header { flex-direction: column; gap: 0.75rem; }
-  .materials-header h2 { font-size: 1.25rem; }
+  .materials-header h2 { font-size: 1.05rem; }
 
   .mat-stats-bar { gap: 0.5rem; }
   .mat-stat { padding: 0.5rem 0.6rem; }

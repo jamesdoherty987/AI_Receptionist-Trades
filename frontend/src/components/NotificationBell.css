@@ -209,15 +209,16 @@
   .notification-dropdown {
     position: fixed;
     top: 48px;
-    right: 0;
-    left: 0;
+    right: 8px;
+    left: 8px;
     width: auto;
     max-height: 70vh;
     z-index: 999999;
-    border-radius: 0 0 12px 12px;
+    border-radius: 12px;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+    border: 1px solid #e5e7eb;
   }
 
   .notification-list {
@@ -228,10 +229,10 @@
   }
 
   .notification-bell-btn {
-    padding: 8px 10px;
-    font-size: 1.1rem;
-    min-width: 40px;
-    min-height: 40px;
+    padding: 6px 8px;
+    font-size: 1.05rem;
+    min-width: 36px;
+    min-height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;

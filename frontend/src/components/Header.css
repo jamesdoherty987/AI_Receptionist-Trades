@@ -7,8 +7,8 @@
   box-shadow: none;
 }
 
-/* Hide header when modal is open to prevent overlap with close button */
-body.modal-open .header {
+/* Hide header when mobile slide-out menu is open */
+body.mobile-menu-open .header {
   display: none !important;
 }
 
@@ -139,7 +139,7 @@ body.modal-open .header {
   transition: transform var(--transition-base);
 }
 
-/* User Dropdown */
+/* User Dropdown — Desktop */
 .user-dropdown {
   position: absolute;
   top: calc(100% + 0.5rem);
@@ -150,18 +150,17 @@ body.modal-open .header {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
-  animation: fadeIn 0.15s ease-out;
+  animation: dropdownFadeIn 0.15s ease-out;
+  z-index: 999999;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.user-dropdown-backdrop {
+  display: none;
 }
 
 .user-dropdown-header {
@@ -181,9 +180,12 @@ body.modal-open .header {
 }
 
 .user-email {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--text-secondary);
-  margin-top: 0.25rem;
+  margin-top: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-dropdown-divider {
@@ -196,15 +198,17 @@ body.modal-open .header {
   align-items: center;
   gap: 0.75rem;
   width: 100%;
-  padding: 0.875rem 1rem;
+  padding: 0.75rem 1rem;
   background: none;
   border: none;
   color: var(--text-secondary);
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all var(--transition-base);
+  transition: all 0.15s;
   text-decoration: none;
+  font-family: inherit;
+  text-align: left;
 }
 
 .user-dropdown-item:hover {
@@ -217,16 +221,23 @@ body.modal-open .header {
 }
 
 .user-dropdown-item.logout:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(239, 68, 68, 0.08);
 }
 
 .user-dropdown-item i {
-  font-size: 1rem;
+  font-size: 0.95rem;
   width: 20px;
   text-align: center;
 }
 
-/* Responsive */
+/* Header hamburger — hidden on desktop */
+.header-hamburger {
+  display: none;
+}
+
+/* ============================================
+   MOBILE — Clean, professional header
+   ============================================ */
 @media (max-width: 768px) {
   .header .container {
     padding: 0 12px;
@@ -238,6 +249,8 @@ body.modal-open .header {
 
   .logo {
     font-size: 1rem;
+    flex-shrink: 1;
+    min-width: 0;
   }
 
   .logo-text {
@@ -250,125 +263,112 @@ body.modal-open .header {
   }
 
   .header-nav {
-    gap: 0.25rem;
+    gap: 0.15rem;
   }
 
-  /* Hide text nav links on mobile — keep icons only */
+  /* Hide text nav links on mobile — hamburger menu handles navigation */
   .nav-link {
-    padding: 0.4rem 0.5rem;
-    font-size: 0;
-    gap: 0;
-  }
-
-  .nav-link i {
-    font-size: 1.1rem;
-  }
-
-  /* User menu mobile styles */
-  .user-menu-container {
-    margin-left: 0.25rem;
-  }
-
-  .user-menu-trigger {
-    padding: 0.3rem;
-    gap: 0;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-    background: transparent;
-    border: none;
-  }
-
-  .user-menu-trigger .user-name {
     display: none;
   }
 
+  /* Hamburger button */
+  .header-hamburger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text-primary);
+    font-size: 1.05rem;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: background 0.15s;
+  }
+
+  .header-hamburger:active {
+    background: var(--bg-secondary);
+  }
+
+  /* User menu — compact avatar only */
+  .user-menu-container {
+    margin-left: 0;
+  }
+
+  .user-menu-trigger {
+    padding: 0.25rem;
+    gap: 0;
+    background: transparent;
+    border: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .user-menu-trigger .user-name,
   .user-menu-trigger i {
     display: none;
   }
 
   .user-avatar {
-    width: 32px;
-    height: 32px;
-    font-size: 0.9rem;
+    width: 30px;
+    height: 30px;
+    font-size: 0.85rem;
   }
 
-  /* Mobile dropdown — full-width overlay style */
+  /* Backdrop */
+  .user-dropdown-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.25);
+    z-index: 999998;
+    animation: dropdownFadeIn 0.12s ease-out;
+  }
+
+  /* Mobile dropdown — slides down from header */
   .user-dropdown {
     position: fixed;
     top: 48px;
-    right: 0;
-    left: 0;
+    right: 8px;
+    left: 8px;
     min-width: auto;
     max-width: none;
-    z-index: 999999;
-    border-radius: 0 0 var(--radius-md) var(--radius-md);
-    border-top: none;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+    animation: mobileDropdownSlide 0.2s ease-out;
+  }
+
+  @keyframes mobileDropdownSlide {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   .user-dropdown-header {
     padding: 0.875rem 1rem;
+    border-radius: 12px 12px 0 0;
   }
 
   .user-full-name {
-    font-size: 1rem;
-  }
-
-  .user-email {
-    font-size: 0.85rem;
+    font-size: 0.95rem;
   }
 
   .user-dropdown-item {
     padding: 0.875rem 1rem;
     font-size: 0.95rem;
+    min-height: 44px;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+  }
+
+  .user-dropdown-item:last-child {
+    border-radius: 0 0 12px 12px;
   }
 
   .user-dropdown-item i {
     font-size: 1rem;
-  }
-}
-
-/* Backdrop for mobile user dropdown */
-.user-dropdown-backdrop {
-  display: none;
-}
-
-/* Header hamburger — hidden on desktop */
-.header-hamburger {
-  display: none;
-}
-
-@media (max-width: 768px) {
-  .user-dropdown-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: 999998;
-    animation: fadeIn 0.15s ease-out;
-  }
-
-  .header-hamburger {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 34px;
-    height: 34px;
-    background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    cursor: pointer;
-    color: var(--text-secondary);
-    font-size: 1rem;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
-    transition: all 0.15s;
-  }
-
-  .header-hamburger:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
   }
 }

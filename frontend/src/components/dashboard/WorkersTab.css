@@ -189,7 +189,7 @@
 
 @media (max-width: 768px) {
   .workers-list { grid-template-columns: 1fr; gap: 0.4rem; }
-  .workers-header h2 { font-size: 1.15rem; }
+  .workers-header h2 { font-size: 1.05rem; }
   .workers-stats-bar { display: none; }
   .workers-toolbar { flex-direction: column; gap: 0.5rem; }
   .workers-search { min-width: unset; }

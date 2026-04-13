@@ -155,14 +155,19 @@ body {
 }
 
 @media (max-width: 768px) {
-  .tab-page-header {
+  /* Hide redundant page titles on mobile — tab header shows current tab */
+  .tab-page-header:first-child {
     display: none;
+  }
+  .tab-page-header {
+    margin-bottom: 0.5rem;
+    padding-top: 0;
   }
   .tab-page-title {
     font-size: 1.05rem;
   }
 
-  /* Tighten all tab container gaps on mobile */
+  /* ── Consistent tab container gaps ── */
   .jobs-tab,
   .customers-tab,
   .call-logs-tab,
@@ -174,6 +179,139 @@ body {
   .reviews-tab,
   .workers-tab {
     gap: 0.65rem;
+  }
+
+  /* ── Consistent search bars ── */
+  .jt-search,
+  .workers-search,
+  .mat-search,
+  .svc-search,
+  .acct-search,
+  .search-box {
+    padding: 0.4rem 0.65rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+  }
+
+  .jt-search input,
+  .workers-search input,
+  .mat-search input,
+  .svc-search input,
+  .acct-search input,
+  .search-box input {
+    font-size: 0.85rem;
+  }
+
+  /* ── Consistent filter pills ── */
+  .jt-filter,
+  .filter-pill,
+  .filter-btn,
+  .mat-sort-chip,
+  .svc-sort-chip,
+  .acct-pill {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.72rem;
+    border-radius: 6px;
+  }
+
+  /* ── Consistent card titles ── */
+  .jt-card-top h4,
+  .worker-info h3,
+  .customer-info h3,
+  .call-log-info h3,
+  .mat-card-name,
+  .service-title,
+  .review-customer {
+    font-size: 0.86rem;
+  }
+
+  /* ── Consistent card padding ── */
+  .customer-card,
+  .call-log-card,
+  .worker-card,
+  .service-card,
+  .review-item {
+    padding: 0.75rem;
+  }
+
+  /* ── Consistent header h2 sizes ── */
+  .workers-header h2,
+  .customers-header h2,
+  .call-logs-header h2,
+  .services-header h2,
+  .materials-header h2 {
+    font-size: 1.05rem;
+  }
+
+  /* ── Full-width buttons on mobile ── */
+  .jt-header .btn,
+  .customers-controls .btn,
+  .services-controls .btn,
+  .workers-header-right .btn,
+  .materials-header .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* ── Consistent meta/detail text ── */
+  .customer-detail,
+  .call-log-meta-item,
+  .jt-info-item,
+  .meta-item,
+  .mat-supplier {
+    font-size: 0.72rem;
+  }
+
+  /* ── Consistent icon sizes in cards ── */
+  .customer-avatar,
+  .call-log-icon,
+  .worker-avatar,
+  .mat-card-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 0.9rem;
+  }
+}
+
+/* ── Landscape mobile — use horizontal space better ── */
+@media (max-width: 768px) and (orientation: landscape) {
+  .jobs-tab,
+  .customers-tab,
+  .call-logs-tab,
+  .calendar-tab,
+  .insights-tab,
+  .finances-tab,
+  .materials-tab,
+  .services-tab,
+  .reviews-tab,
+  .workers-tab {
+    gap: 0.5rem;
+  }
+
+  /* Two-column card layouts in landscape */
+  .workers-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .jt-cards,
+  .customers-list,
+  .call-logs-list,
+  .reviews-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.4rem;
+  }
+
+  /* Stats grids can show more columns */
+  .insights-overview,
+  .revenue-grid,
+  .reviews-stats {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  /* Calendar uses more horizontal space */
+  .calendar-main {
+    grid-template-columns: 1fr 280px;
   }
 }
 
@@ -518,11 +656,25 @@ input:focus, textarea:focus, select:focus {
 
 /* Standalone mode adjustments */
 @media all and (display-mode: standalone) {
-  /* Safe area insets for notched devices (iPhone X+, etc.) */
+  /* Let the header handle safe area instead of body padding */
   body {
-    padding-top: env(safe-area-inset-top, 0px);
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  /* Header absorbs the safe area */
+  .header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Worker portal header also absorbs safe area */
+  .worker-header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Mobile tabs header also needs safe area when header is hidden */
+  .mobile-tabs-header {
+    top: calc(48px + env(safe-area-inset-top, 0px));
   }
 
   /* Prevent text selection on UI elements (feels more app-like) */

@@ -139,19 +139,14 @@
   }
 }
 
-/* PWA standalone mode — extra safe area padding */
+/* PWA standalone mode — ensure modal clears the safe area */
 @media (max-width: 768px) and (display-mode: standalone) {
   .modal-overlay {
-    padding-top: calc(env(safe-area-inset-top, 20px) + 1.5rem);
+    padding-top: calc(env(safe-area-inset-top, 0px) + 1.5rem);
   }
 
   .modal-container {
-    max-height: calc(100vh - env(safe-area-inset-top, 20px) - 2rem);
-  }
-
-  .modal-header {
-    padding-top: 0.875rem;
-    padding-bottom: 0.875rem;
+    max-height: calc(100vh - env(safe-area-inset-top, 0px) - 2rem);
   }
 
   .modal-close {
@@ -196,11 +191,11 @@
 
 @media (max-width: 480px) and (display-mode: standalone) {
   .modal-overlay {
-    padding-top: calc(env(safe-area-inset-top, 20px) + 1rem);
+    padding-top: calc(env(safe-area-inset-top, 0px) + 1rem);
   }
 
   .modal-container {
-    max-height: calc(100vh - env(safe-area-inset-top, 20px) - 1.5rem);
+    max-height: calc(100vh - env(safe-area-inset-top, 0px) - 1.5rem);
   }
 
   .modal-close {
