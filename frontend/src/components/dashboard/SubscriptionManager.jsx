@@ -55,7 +55,7 @@ function SubscriptionManager() {
   const queryClient = useQueryClient();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [syncAttempted, setSyncAttempted] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState('pro');
+  const [selectedPlan, setSelectedPlan] = useState('dashboard');
 
   const { data: subscriptionData, isLoading, refetch } = useQuery({
     queryKey: ['subscription-status'],
@@ -69,11 +69,12 @@ function SubscriptionManager() {
     gcTime: 10 * 60 * 1000
   });
 
-  // Auto-sync on mount if user has a stripe_customer_id but tier is not pro
+  // Auto-sync on mount if user has a stripe_customer_id but tier is not active paid
   useEffect(() => {
     const autoSync = async () => {
       if (syncAttempted) return;
       if (!subscriptionData) return;
+      // Sync if user has a Stripe customer but isn't on an active paid tier
       if (subscriptionData.stripe_customer_id && subscriptionData.tier !== 'pro') {
         setSyncAttempted(true);
         try {
@@ -271,10 +272,10 @@ function SubscriptionManager() {
               </div>
               <button
                 className="btn btn-primary"
-                onClick={() => checkoutMutation.mutate('pro')}
-                disabled={checkoutMutation.isPending}
+                onClick={() => portalMutation.mutate()}
+                disabled={portalMutation.isPending}
               >
-                {checkoutMutation.isPending ? 'Loading...' : 'Upgrade to Pro'}
+                {portalMutation.isPending ? 'Loading...' : 'Upgrade to Pro'}
               </button>
             </div>
           )}
@@ -435,6 +436,9 @@ function SubscriptionManager() {
       {/* Plan comparison cards */}
       <div className="plan-comparison">
         <h3 className="plan-comparison-title">Choose Your Plan</h3>
+        <p style={{ margin: '-0.5rem 0 1rem', color: '#6b7280', fontSize: '0.875rem' }}>
+          Subscribe instantly — no setup calls needed. Pick a plan and start using BookedForYou right away.
+        </p>
         <div className="plan-cards">
           {['dashboard', 'pro'].map((planKey) => {
             const plan = PLAN_FEATURES[planKey];
@@ -472,7 +476,7 @@ function SubscriptionManager() {
                   disabled={checkoutMutation.isPending}
                 >
                   <i className="fas fa-credit-card"></i>
-                  {checkoutMutation.isPending && selectedPlan === planKey
+                  {checkoutMutation.isPending
                     ? 'Loading...'
                     : `Subscribe — €${plan.price}/month`}
                 </button>

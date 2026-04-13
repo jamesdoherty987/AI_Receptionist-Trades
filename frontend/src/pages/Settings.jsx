@@ -118,7 +118,7 @@ function Settings() {
     
     if (subscriptionStatus === 'success') {
       console.log('[SUBSCRIPTION] ========== CHECKOUT SUCCESS ==========');
-      setSaveMessage('Subscription activated successfully! Welcome to BookedForYou Pro.');
+      setSaveMessage('Subscription activated successfully! Welcome to BookedForYou.');
       setActiveTab('subscription');
       // Clear the URL parameter
       window.history.replaceState({}, '', '/settings');
@@ -210,6 +210,22 @@ function Settings() {
       }
     };
   }, [searchParams, checkAuth, queryClient]);
+
+  // Auto-open subscription tab for users with no active subscription
+  useEffect(() => {
+    if (!authSubscription) return;
+    const tier = authSubscription.tier;
+    const isActive = authSubscription.is_active;
+    // If user has no plan or expired, default to subscription tab so they can subscribe
+    if ((tier === 'none' || (tier === 'expired') || (!isActive && tier !== 'trial')) && activeTab === 'business') {
+      const tabParam = searchParams.get('tab');
+      const subscriptionParam = searchParams.get('subscription');
+      // Only auto-switch if no explicit tab/subscription param was set
+      if (!tabParam && !subscriptionParam) {
+        setActiveTab('subscription');
+      }
+    }
+  }, [authSubscription, searchParams]);
   
   // Business hours breakdown state
   const [hoursConfig, setHoursConfig] = useState({

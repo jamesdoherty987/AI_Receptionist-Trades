@@ -117,34 +117,37 @@ function Header({ onNotificationNavigate }) {
               </button>
               
               {showUserMenu && (
-                <div className="user-dropdown">
-                  <div className="user-dropdown-header">
-                    <div className="user-info">
-                      <span className="user-full-name">{user?.owner_name}</span>
-                      <span className="user-email">{user?.email}</span>
+                <>
+                  <div className="user-dropdown-backdrop" onClick={() => setShowUserMenu(false)}></div>
+                  <div className="user-dropdown">
+                    <div className="user-dropdown-header">
+                      <div className="user-info">
+                        <span className="user-full-name">{user?.owner_name}</span>
+                        <span className="user-email">{user?.email}</span>
+                      </div>
                     </div>
+                    <div className="user-dropdown-divider"></div>
+                    <button 
+                      className="user-dropdown-item"
+                      onClick={() => { setShowUserMenu(false); if (window.__settingsUnsavedChanges) { if (!window.confirm('You have unsaved changes. Are you sure you want to leave?')) return; window.__settingsUnsavedChanges = false; } navigate('/account'); }}
+                    >
+                      <i className="fas fa-user"></i>
+                      My Account
+                    </button>
+                    <button 
+                      className="user-dropdown-item"
+                      onClick={() => { setShowUserMenu(false); if (window.__settingsUnsavedChanges) { if (!window.confirm('You have unsaved changes. Are you sure you want to leave?')) return; window.__settingsUnsavedChanges = false; } navigate('/settings'); }}
+                    >
+                      <i className="fas fa-cog"></i>
+                      Business Settings
+                    </button>
+                    <div className="user-dropdown-divider"></div>
+                    <button className="user-dropdown-item logout" onClick={handleLogout}>
+                      <i className="fas fa-sign-out-alt"></i>
+                      Sign Out
+                    </button>
                   </div>
-                  <div className="user-dropdown-divider"></div>
-                  <button 
-                    className="user-dropdown-item"
-                    onClick={() => { setShowUserMenu(false); if (window.__settingsUnsavedChanges) { if (!window.confirm('You have unsaved changes. Are you sure you want to leave?')) return; window.__settingsUnsavedChanges = false; } navigate('/account'); }}
-                  >
-                    <i className="fas fa-user"></i>
-                    My Account
-                  </button>
-                  <button 
-                    className="user-dropdown-item"
-                    onClick={() => { setShowUserMenu(false); if (window.__settingsUnsavedChanges) { if (!window.confirm('You have unsaved changes. Are you sure you want to leave?')) return; window.__settingsUnsavedChanges = false; } navigate('/settings'); }}
-                  >
-                    <i className="fas fa-cog"></i>
-                    Business Settings
-                  </button>
-                  <div className="user-dropdown-divider"></div>
-                  <button className="user-dropdown-item logout" onClick={handleLogout}>
-                    <i className="fas fa-sign-out-alt"></i>
-                    Sign Out
-                  </button>
-                </div>
+                </>
               )}
             </div>
           </nav>

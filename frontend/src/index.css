@@ -155,12 +155,8 @@ body {
 }
 
 @media (max-width: 768px) {
-  .tab-page-header:first-child {
-    display: none;
-  }
   .tab-page-header {
-    margin-bottom: 0.5rem;
-    padding-top: 0;
+    display: none;
   }
   .tab-page-title {
     font-size: 1.05rem;
