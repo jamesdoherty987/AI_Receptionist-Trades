@@ -953,10 +953,21 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
             caller_gave_address = len(user_message.split()) >= 3 and not caller_declined
             
             if ai_asked_for_addr and caller_gave_address:
-                likely_needs_tool = True
-                detected_intent = "ADDRESS_PROVIDED"
-                checking_msg = random.choice(generic_fillers)
-                print(f"   ✅ [PRE-CHECK] Detected: ADDRESS PROVIDED (will check availability)")
+                # Don't trigger availability filler if email hasn't been asked yet.
+                # The prompt requires email (step 8) BEFORE checking availability (step 9).
+                # If we trigger a filler here, the LLM skips email and jumps to get_next_available.
+                _email_already_asked = any(
+                    "email" in (msg.get("content") or "").lower()
+                    for msg in messages
+                    if msg.get("role") == "assistant"
+                )
+                if _email_already_asked:
+                    likely_needs_tool = True
+                    detected_intent = "ADDRESS_PROVIDED"
+                    checking_msg = random.choice(generic_fillers)
+                    print(f"   ✅ [PRE-CHECK] Detected: ADDRESS PROVIDED (email already asked, will check availability)")
+                else:
+                    print(f"   ❌ [PRE-CHECK] ADDRESS PROVIDED but email not yet asked — skipping filler (LLM will ask for email first)")
         
         # 5. BOOKING CONFIRMATION - user confirms booking after AI asked "ready to book?" or confirmed details
         if not likely_needs_tool:
