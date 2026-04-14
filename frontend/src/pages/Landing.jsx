@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import Tilt from 'react-parallax-tilt';
 import DarkVeil from '../components/DarkVeil';
 import './Landing.css';
+
+const FloatingCube = lazy(() => import('../components/FloatingCube'));
 
 // ---- Scroll Reveal Hook ----
 function useScrollReveal(threshold = 0.1) {
@@ -710,63 +712,17 @@ const PRISM_FACES = [
 
 function RotatingPrism() {
   const [faceIdx, setFaceIdx] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
   const [ref, isVisible] = useScrollReveal(0.2);
 
-  useEffect(() => {
-    if (isHovered) return;
-    const interval = setInterval(() => {
-      setFaceIdx(i => (i + 1) % PRISM_FACES.length);
-    }, 1800);
-    return () => clearInterval(interval);
-  }, [isHovered]);
-
   const face = PRISM_FACES[faceIdx];
-  const rotation = faceIdx * -90;
 
   return (
     <div ref={ref} className="prism-section-layout">
-      {/* 3D Prism */}
-      <div
-        className="prism-stage"
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        onClick={() => setFaceIdx(i => (i + 1) % PRISM_FACES.length)}
-      >
-        <div className="prism-ambient" style={{ '--ambient-color': face.color }} />
-        <div className="prism-scene">
-          <div className="prism-cube" style={{ transform: `rotateY(${rotation}deg)` }}>
-            {PRISM_FACES.map((f, i) => (
-              <div key={i} className={`prism-face prism-face-${i}`} style={{ '--face-gradient': f.gradient }}>
-                <div className="prism-face-content">
-                  <div className="prism-face-icon-wrap" style={{ background: f.gradient }}>
-                    <i className={`fas ${f.icon}`}></i>
-                  </div>
-                  <span className="prism-face-stat">{f.stat}</span>
-                  <span className="prism-face-label">{f.label}</span>
-                </div>
-                {/* Shimmer overlay */}
-                <div className="prism-face-shimmer" />
-              </div>
-            ))}
-          </div>
-        </div>
-        {/* Reflection */}
-        <div className="prism-reflection">
-          <div className="prism-cube" style={{ transform: `rotateY(${rotation}deg)` }} aria-hidden="true">
-            {PRISM_FACES.map((f, i) => (
-              <div key={i} className={`prism-face prism-face-${i}`} style={{ '--face-gradient': f.gradient }}>
-                <div className="prism-face-content">
-                  <div className="prism-face-icon-wrap" style={{ background: f.gradient }}>
-                    <i className={`fas ${f.icon}`}></i>
-                  </div>
-                  <span className="prism-face-stat">{f.stat}</span>
-                  <span className="prism-face-label">{f.label}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* 3D WebGL Cube */}
+      <div className="prism-stage" style={{ width: 320, height: 320 }}>
+        <Suspense fallback={<div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>Loading 3D...</div>}>
+          {isVisible && <FloatingCube onFaceChange={setFaceIdx} />}
+        </Suspense>
       </div>
 
       {/* Info panel */}
