@@ -242,6 +242,22 @@ def _is_plausible_address(refined: str, original: str) -> bool:
             print(f"[ADDR_RETRANSCRIBE] Validation: zero word overlap even with fuzzy matching (refined={refined_words}, original={original_words})")
             return False
     
+    # Reject partial captures: if the refined address is significantly shorter
+    # than the original and is a subset of it, the audio only captured part of
+    # the address (e.g., caller gave address in two parts, audio only got the second).
+    # The original ASR (assembled by the LLM from the full conversation) is more complete.
+    refined_word_list = refined_lower.split()
+    original_word_list = original_lower.split()
+    if (len(original_word_list) >= 4
+            and len(refined_word_list) < len(original_word_list) * 0.6):
+        # Check if most refined words appear in the original (it's a subset)
+        refined_set = set(refined_word_list)
+        original_set = set(original_word_list)
+        subset_ratio = len(refined_set & original_set) / max(len(refined_set), 1)
+        if subset_ratio >= 0.7:
+            print(f"[ADDR_RETRANSCRIBE] Validation: refined is a partial subset of original ({len(refined_word_list)} vs {len(original_word_list)} words, {subset_ratio:.0%} overlap) — rejecting")
+            return False
+    
     return True
 
 
