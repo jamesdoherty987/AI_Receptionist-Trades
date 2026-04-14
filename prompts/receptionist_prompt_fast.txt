@@ -56,8 +56,7 @@ BOOKING FLOW
     • If no email on file → ask "And can I get an email address for the account?" Accept whatever they say — do NOT repeat it back. If they decline, just move on.
     • NEVER ask for name/phone again if already known
 
-7b. • Phone: Confirm caller ID number by spelling it out: "Is [caller ID number] a good number?"
-    • If NO → ask for their preferred number
+7b. • If NO → ask for their preferred number
     • Location: Ask for eircode first → if they don't know, IMMEDIATELY ask for full address (Don't need both, just Eircode preferred). If they respond to your question about eircode by saying something like 'yes my eircode is [eircode]' then don't ask for eircode again, use the one they gave.
     • For BOTH eircode and address: accept what you hear and move on. Do NOT repeat it back, do NOT spell it out, do NOT ask them to confirm it. The system verifies it after the call.
     • Email: After address/eircode, ask "And can I get an email address for the account?" Accept whatever they say — do NOT repeat the email back or ask them to spell it. The system verifies it after the call. If they don't have one or decline, just move on.

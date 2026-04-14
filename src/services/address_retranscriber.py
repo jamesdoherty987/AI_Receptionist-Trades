@@ -370,10 +370,9 @@ async def retranscribe_and_update(
 
 def transcribe_email_audio(audio_url: str) -> Optional[str]:
     """
-    Download email audio and re-transcribe with OpenAI gpt-4o-transcribe.
-    
-    Uses a specialized prompt that understands email address format
-    (@ symbol, common domains like gmail.com, yahoo.com, .ie, .com, etc.)
+    Download email audio and re-transcribe with OpenAI gpt-4o-transcribe,
+    then use an LLM pass to extract just the email address from the raw
+    transcription (handles filler words like "yeah it's" that get merged in).
     
     Returns:
         Extracted email address string or None on failure
@@ -404,38 +403,63 @@ def transcribe_email_audio(audio_url: str) -> Optional[str]:
             ),
         )
 
-        duration = time.time() - start
-        text = transcript.text.strip() if transcript.text else None
-        print(f"[EMAIL_RETRANSCRIBE] gpt-4o-transcribe result ({duration:.1f}s): '{text}'")
+        raw_text = transcript.text.strip() if transcript.text else None
+        transcribe_duration = time.time() - start
+        print(f"[EMAIL_RETRANSCRIBE] gpt-4o-transcribe result ({transcribe_duration:.1f}s): '{raw_text}'")
         
-        if text:
-            # Strip conversational prefixes
-            text = re.sub(
-                r'^(?:yeah|yes|yep|sure|okay|ok|right|so|well|um|uh|eh|ah|it\'?s|that\'?s|my email is|my email address is|the email is|email is)[\s,.:;]*',
-                '', text, count=1, flags=re.IGNORECASE
-            ).strip()
+        if not raw_text:
+            return None
+
+        # Use LLM to extract just the email from the raw transcription.
+        # gpt-4o-transcribe often merges filler words into the email
+        # (e.g., "yeahitsjkdoherty123@gmail.com" from "yeah it's jkdoherty123@gmail.com")
+        # An LLM understands context and can separate filler from the actual email.
+        try:
+            from src.utils.config import config
+            llm_start = time.time()
+            extraction = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": (
+                        "Extract ONLY the email address from the text below. "
+                        "The text is a speech transcription where filler words like 'yeah', 'it's', 'sure', 'my email is' "
+                        "may have been merged into the email address without spaces. "
+                        "Remove any filler/conversational words that got stuck to the beginning of the email. "
+                        "Return ONLY the clean email address in lowercase, nothing else. "
+                        "If you cannot find a valid email, return exactly: NONE"
+                    )},
+                    {"role": "user", "content": raw_text},
+                ],
+                temperature=0,
+                max_tokens=100,
+            )
+            llm_duration = time.time() - llm_start
+            extracted = extraction.choices[0].message.content.strip().lower()
+            print(f"[EMAIL_RETRANSCRIBE] LLM extraction ({llm_duration:.1f}s): '{extracted}'")
             
-            # Normalize: convert spoken email to standard format
-            # "john at gmail dot com" -> "john@gmail.com"
-            text = re.sub(r'\s+at\s+', '@', text, flags=re.IGNORECASE)
-            text = re.sub(r'\s+dot\s+', '.', text, flags=re.IGNORECASE)
-            text = re.sub(r'\s+underscore\s+', '_', text, flags=re.IGNORECASE)
-            text = re.sub(r'\s+dash\s+', '-', text, flags=re.IGNORECASE)
-            
-            # Remove any remaining spaces (email addresses don't have spaces)
-            text = text.replace(' ', '')
-            
-            # Lowercase the whole thing
-            text = text.lower()
-            
-            # Basic email validation
-            if '@' in text and '.' in text.split('@')[-1]:
-                print(f"[EMAIL_RETRANSCRIBE] Valid email extracted: '{text}'")
-                return text
-            else:
-                print(f"[EMAIL_RETRANSCRIBE] ⚠️ Result doesn't look like a valid email: '{text}'")
-                return None
+            if extracted and extracted != "none":
+                # Strip trailing punctuation
+                extracted = extracted.rstrip('.,;:!?')
+                # Validate with regex
+                _email_match = re.search(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', extracted)
+                if _email_match:
+                    result = _email_match.group(0)
+                    print(f"[EMAIL_RETRANSCRIBE] ✅ Valid email extracted: '{result}'")
+                    return result
+                else:
+                    print(f"[EMAIL_RETRANSCRIBE] ⚠️ LLM result doesn't look like a valid email: '{extracted}'")
+        except Exception as llm_err:
+            print(f"[EMAIL_RETRANSCRIBE] ⚠️ LLM extraction failed: {llm_err}")
+
+        # Fallback: basic regex extraction from raw transcription
+        raw_lower = raw_text.lower().rstrip('.,;:!?')
+        _email_match = re.search(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', raw_lower)
+        if _email_match:
+            result = _email_match.group(0)
+            print(f"[EMAIL_RETRANSCRIBE] Fallback regex extracted: '{result}'")
+            return result
         
+        print(f"[EMAIL_RETRANSCRIBE] ⚠️ Could not extract valid email from: '{raw_text}'")
         return None
 
     except Exception as e:
@@ -452,12 +476,13 @@ async def retranscribe_email(
     """
     Post-call email refinement pipeline:
     1. gpt-4o-transcribe re-transcription of the email audio
-    2. DB update (client email)
+    2. Compare against existing email on client record (from real-time ASR)
+    3. DB update (client email) — only if retranscribed version is better
 
     Runs after the call ends — no rush.
 
     Returns:
-        The extracted email string, or None if extraction failed
+        The best email string (retranscribed or existing), or None if extraction failed
     """
     print(f"\n{'='*60}")
     print(f"[EMAIL_RETRANSCRIBE] Starting post-call email refinement")
@@ -467,16 +492,63 @@ async def retranscribe_email(
 
     loop = asyncio.get_running_loop()
 
+    # Get existing email from client record (set by book_job from real-time ASR)
+    existing_email = None
+    if client_id:
+        try:
+            from src.services.database import get_database
+            db = get_database()
+            _client_record = db.get_client(client_id)
+            if _client_record:
+                existing_email = _client_record.get('email')
+                if existing_email:
+                    print(f"[EMAIL_RETRANSCRIBE] Existing email on file: '{existing_email}'")
+        except Exception:
+            pass
+
     # Re-transcribe with gpt-4o-transcribe
     email = await loop.run_in_executor(None, transcribe_email_audio, audio_url)
 
     if not email:
         print(f"[EMAIL_RETRANSCRIBE] Could not extract email from audio")
+        if existing_email:
+            print(f"[EMAIL_RETRANSCRIBE] Keeping existing email: '{existing_email}'")
+            print(f"{'='*60}\n")
+            return existing_email
         print(f"{'='*60}\n")
         return None
 
-    # Update client record with email
-    if client_id:
+    # Compare retranscribed email against existing one
+    # If existing email is valid and retranscribed looks like a corruption
+    # (longer due to prefix junk, different domain, etc.), keep the existing one
+    if existing_email and email != existing_email:
+        import re
+        _existing_local = existing_email.split('@')[0] if '@' in existing_email else ''
+        _new_local = email.split('@')[0] if '@' in email else ''
+        _existing_domain = existing_email.split('@')[1] if '@' in existing_email else ''
+        _new_domain = email.split('@')[1] if '@' in email else ''
+        
+        # If the retranscribed version has a longer local part that contains the
+        # existing one (e.g., "itsjkdoherty123" vs "jkdoherty123"), it's likely
+        # corrupted with prefix junk — keep the existing shorter version
+        if _existing_local and _new_local and _existing_domain == _new_domain:
+            if _existing_local in _new_local and len(_new_local) > len(_existing_local):
+                print(f"[EMAIL_RETRANSCRIBE] ⚠️ Retranscribed email looks corrupted (prefix junk)")
+                print(f"[EMAIL_RETRANSCRIBE]   Retranscribed: '{email}'")
+                print(f"[EMAIL_RETRANSCRIBE]   Existing:      '{existing_email}'")
+                print(f"[EMAIL_RETRANSCRIBE]   Keeping existing email")
+                email = existing_email
+            elif _new_local in _existing_local and len(_existing_local) > len(_new_local):
+                # Retranscribed is shorter/cleaner — use it
+                print(f"[EMAIL_RETRANSCRIBE] Retranscribed email is cleaner, using it")
+        elif _existing_domain != _new_domain:
+            # Different domains — suspicious, keep existing
+            print(f"[EMAIL_RETRANSCRIBE] ⚠️ Domain mismatch — keeping existing email")
+            print(f"[EMAIL_RETRANSCRIBE]   Retranscribed: '{email}' vs Existing: '{existing_email}'")
+            email = existing_email
+
+    # Update client record with the best email
+    if client_id and email:
         try:
             from src.services.database import get_database
             db = get_database()
