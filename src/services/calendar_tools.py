@@ -120,7 +120,7 @@ CALENDAR_TOOLS = [
                     },
                     "job_address": {
                         "type": "string",
-                        "description": "Job location - can be eircode (preferred, e.g., 'V94 ABC1') or full address (e.g., '32 Silvergrove, Ballybeg, Ennis, Clare'). Always confirm by reading back."
+                        "description": "Job location - can be eircode (preferred, e.g., 'V94 ABC1') or full address (e.g., '32 Silvergrove, Ballybeg, Ennis, Clare'). Do NOT read back or confirm — the system verifies after the call."
                     },
                     "job_description": {
                         "type": "string",

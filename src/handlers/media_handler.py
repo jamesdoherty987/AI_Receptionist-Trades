@@ -1157,6 +1157,25 @@ async def media_handler(ws):
             print(f"📧 Email audio URL: {call_state.email_audio_url}")
         print(f"{'#'*60}\n")
         
+        # Post-call email re-transcription pipeline (runs FIRST so the refined
+        # email is available for the booking confirmation sent by the address pipeline)
+        _retranscribed_email = None
+        if call_state.email_audio_url:
+            _client_id = getattr(call_state, '_deferred_sms_client_id', None)
+            if _client_id:
+                try:
+                    from src.services.address_retranscriber import retranscribe_email
+                    company_id_int = int(company_id) if company_id else None
+                    _retranscribed_email = await retranscribe_email(
+                        audio_url=call_state.email_audio_url,
+                        client_id=_client_id,
+                        company_id=company_id_int,
+                    )
+                except Exception as e:
+                    print(f"⚠️ Email retranscription error: {e}")
+            else:
+                print(f"📧 Email audio captured but no client_id — skipping email retranscription")
+        
         # Post-call address re-transcription pipeline
         # If address audio was captured and SMS was deferred, run the
         # gpt-4o-transcribe re-transcription → DB update → SMS pipeline.
@@ -1165,8 +1184,8 @@ async def media_handler(ws):
             try:
                 from src.services.address_retranscriber import retranscribe_and_update
                 company_id_int = int(company_id) if company_id else None
-                # Inject customer email into deferred kwargs for email-first notification
-                _deferred_email = getattr(call_state, '_deferred_customer_email', None)
+                # Use retranscribed email if available, otherwise fall back to deferred email
+                _deferred_email = _retranscribed_email or getattr(call_state, '_deferred_customer_email', None)
                 if _deferred_email:
                     _deferred_sms['_customer_email'] = _deferred_email
                 await retranscribe_and_update(
@@ -1184,7 +1203,7 @@ async def media_handler(ws):
                 # Fallback: send SMS with original address
                 try:
                     # Fallback: send notification with original address (email-first)
-                    _deferred_email = getattr(call_state, '_deferred_customer_email', None)
+                    _deferred_email = _retranscribed_email or getattr(call_state, '_deferred_customer_email', None)
                     _fallback_phone = _deferred_sms.pop('to_number', None)
                     from src.services.sms_reminder import notify_customer
                     notify_customer(
@@ -1206,7 +1225,7 @@ async def media_handler(ws):
             # Send with the original ASR address — better than nothing.
             print(f"⚠️ Address audio upload failed but notification was deferred — sending with original address")
             try:
-                _deferred_email = getattr(call_state, '_deferred_customer_email', None)
+                _deferred_email = _retranscribed_email or getattr(call_state, '_deferred_customer_email', None)
                 _fallback_phone = _deferred_sms.pop('to_number', None)
                 from src.services.sms_reminder import notify_customer
                 notify_customer(
@@ -1226,24 +1245,6 @@ async def media_handler(ws):
         elif call_state.address_audio_url and not _deferred_sms:
             # Address audio captured but no deferred SMS (no booking made, or SMS already sent)
             print(f"🎙️ Address audio captured but no deferred SMS — skipping retranscription pipeline")
-        
-        # Post-call email re-transcription pipeline
-        # If email audio was captured, transcribe it and save to client record
-        if call_state.email_audio_url:
-            _client_id = getattr(call_state, '_deferred_sms_client_id', None)
-            if _client_id:
-                try:
-                    from src.services.address_retranscriber import retranscribe_email
-                    company_id_int = int(company_id) if company_id else None
-                    await retranscribe_email(
-                        audio_url=call_state.email_audio_url,
-                        client_id=_client_id,
-                        company_id=company_id_int,
-                    )
-                except Exception as e:
-                    print(f"⚠️ Email retranscription error: {e}")
-            else:
-                print(f"📧 Email audio captured but no client_id — skipping email retranscription")
         
         # Combined post-call summarization: single LLM call for both job notes + call log
         call_log_id = None

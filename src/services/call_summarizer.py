@@ -92,6 +92,10 @@ COMBINED_SUMMARY_FUNCTION = {
                 "type": "string",
                 "description": "The caller's eircode/postcode if mentioned. Leave empty string if not provided."
             },
+            "email": {
+                "type": "string",
+                "description": "The caller's email address if mentioned. Leave empty string if not provided."
+            },
             "call_outcome": {
                 "type": "string",
                 "enum": ["booked", "cancelled", "rescheduled", "lost_job", "enquiry", "wrong_number", "hung_up", "no_action"],
@@ -126,7 +130,7 @@ CALL LOG RULES:
 - Classify call_outcome accurately. When in doubt between 'enquiry' and 'lost_job', ALWAYS choose 'lost_job'
 - A caller who discusses ANY specific service need is a lost job, not an enquiry
 - ai_summary should be 1-3 factual sentences covering what happened start to finish
-- Extract caller_name, address, eircode if mentioned; leave as empty string if not"""
+- Extract caller_name, address, eircode, email if mentioned; leave as empty string if not"""
 
 
 def _build_transcript(conversation_log: List[Dict[str, Any]]) -> Optional[str]:
@@ -148,6 +152,7 @@ def _empty_call_log(outcome: str = "hung_up", summary: str = "Call ended before 
         "caller_name": "",
         "address": "",
         "eircode": "",
+        "email": "",
         "is_lost_job": False,
         "lost_job_reason": "",
     }
@@ -259,6 +264,7 @@ def generate_call_log_summary(conversation_log: List[Dict[str, Any]]) -> Optiona
         "caller_name": combined.get("caller_name", ""),
         "address": combined.get("address", ""),
         "eircode": combined.get("eircode", ""),
+        "email": combined.get("email", ""),
         "call_outcome": combined.get("call_outcome", "no_action"),
         "ai_summary": combined.get("ai_summary", ""),
         "is_lost_job": combined.get("is_lost_job", False),
@@ -485,6 +491,7 @@ async def summarize_and_log_call(
             "caller_name": combined.get("caller_name", ""),
             "address": combined.get("address", ""),
             "eircode": combined.get("eircode", ""),
+            "email": combined.get("email", ""),
             "call_outcome": combined.get("call_outcome", "no_action"),
             "ai_summary": combined.get("ai_summary", ""),
             "is_lost_job": combined.get("is_lost_job", False),
