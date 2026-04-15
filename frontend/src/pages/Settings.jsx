@@ -1911,20 +1911,6 @@ function Settings() {
                   </div>
                   <div className="toggle-row">
                     <div className="toggle-row-info">
-                      <div className="toggle-row-label">Reviews Tab</div>
-                      <div className="toggle-row-desc">Show the Reviews tab on the dashboard</div>
-                    </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={formData.show_reviews_tab !== false}
-                        onChange={(e) => { setFormData(prev => ({ ...prev, show_reviews_tab: e.target.checked })); setHasUnsavedChanges(true); }}
-                      />
-                      <span className="toggle-slider"></span>
-                    </label>
-                  </div>
-                  <div className="toggle-row">
-                    <div className="toggle-row-info">
                       <div className="toggle-row-label">Booking Confirmation SMS</div>
                       <div className="toggle-row-desc">Send an SMS to the customer when a booking is confirmed</div>
                     </div>

@@ -7,7 +7,7 @@ import Tabs from '../components/Tabs';
 import LoadingSpinner from '../components/LoadingSpinner';
 import OnboardingWizard from '../components/dashboard/OnboardingWizard';
 import JobsTab from '../components/dashboard/JobsTab';
-import CustomersTab from '../components/dashboard/CustomersTab';
+import CrmTab from '../components/dashboard/CrmTab';
 import WorkersTab from '../components/dashboard/WorkersTab';
 import FinancesTab from '../components/dashboard/FinancesTab';
 import CalendarTab from '../components/dashboard/CalendarTab';
@@ -16,9 +16,8 @@ import ServicesTab from '../components/dashboard/ServicesTab';
 import MaterialsTab from '../components/dashboard/MaterialsTab';
 import InsightsTab from '../components/dashboard/InsightsTab';
 import CallLogsTab from '../components/dashboard/CallLogsTab';
-import ReviewsTab from '../components/dashboard/ReviewsTab';
 import { isStandalone } from '../components/PWAInstallPrompt';
-import { getDashboardData, getBusinessSettings, updateBusinessSettings, getUnseenCallCount } from '../services/api';
+import { getDashboardData, getBusinessSettings, getUnseenCallCount, getCompanyReviews, getLeads } from '../services/api';
 import './Dashboard.css';
 
 function Dashboard() {
@@ -125,6 +124,26 @@ function Dashboard() {
     if (unseenData) setUnseenCalls(unseenData.count || 0);
   }, [unseenData]);
 
+  // Fetch reviews for InsightsTab widget
+  const { data: reviewsData } = useQuery({
+    queryKey: ['reviews'],
+    queryFn: async () => (await getCompanyReviews()).data,
+    staleTime: 60000,
+  });
+
+  // Fetch leads for CRM badge (overdue follow-ups)
+  const { data: leadsData } = useQuery({
+    queryKey: ['leads'],
+    queryFn: async () => (await getLeads()).data,
+    staleTime: 60000,
+  });
+  const overdueLeads = useMemo(() => {
+    const now = new Date();
+    return (leadsData?.leads || []).filter(l =>
+      l.follow_up_date && new Date(l.follow_up_date) < now && l.stage !== 'won' && l.stage !== 'lost'
+    ).length;
+  }, [leadsData]);
+
   const tabs = useMemo(() => [
     // Day-to-day
     {
@@ -154,10 +173,11 @@ function Dashboard() {
       content: isLoading ? <LoadingSpinner /> : <WorkersTab workers={workers} bookings={bookings} />
     },
     {
-      label: 'Customers',
-      icon: 'fas fa-users',
+      label: 'CRM',
+      icon: 'fas fa-address-book',
       group: 'Team & Clients',
-      content: isLoading ? <LoadingSpinner /> : <CustomersTab clients={clients} bookings={bookings} />
+      badge: overdueLeads,
+      content: isLoading ? <LoadingSpinner /> : <CrmTab clients={clients} bookings={bookings} />
     },
     // Setup
     {
@@ -183,13 +203,7 @@ function Dashboard() {
       label: 'Insights',
       icon: 'fas fa-chart-pie',
       group: 'Reports',
-      content: isLoading ? <LoadingSpinner /> : <InsightsTab bookings={bookings} clients={clients} workers={workers} />
-    }] : []),
-    ...(settings?.show_reviews_tab !== false ? [{
-      label: 'Reviews',
-      icon: 'fas fa-star',
-      group: 'Reports',
-      content: <ReviewsTab />
+      content: isLoading ? <LoadingSpinner /> : <InsightsTab bookings={bookings} clients={clients} workers={workers} reviews={reviewsData} />
     }] : []),
     // Dev tools
     ...(import.meta.env.VITE_ENABLE_TEST_CHAT === 'true' ? [{
@@ -198,7 +212,7 @@ function Dashboard() {
       group: 'Dev Tools',
       content: <ChatTab />
     }] : [])
-  ], [isLoading, bookings, clients, workers, settings, unseenCalls, hasAIFeatures]);
+  ], [isLoading, bookings, clients, workers, settings, unseenCalls, hasAIFeatures, reviewsData, overdueLeads]);
 
   // Clear unseen call badge when user views the Calls tab
   const handleTabChange = useCallback((idx) => {

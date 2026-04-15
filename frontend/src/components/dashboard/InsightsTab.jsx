@@ -10,7 +10,7 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => {
   return `${i - 12}p`;
 });
 
-function InsightsTab({ bookings = [], clients = [], workers = [] }) {
+function InsightsTab({ bookings = [], clients = [], workers = [], reviews: reviewsData }) {
   // Graph visibility toggles (persisted in localStorage)
   const [showSections, setShowSections] = useState(() => {
     try {
@@ -18,9 +18,9 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
       return saved ? JSON.parse(saved) : {
         overviewCards: true, statsCards: true, bookingActivity: true,
         clientGrowth: true, servicePopularity: true, workerLeaderboard: true, heatmap: true,
-        revenueTrend: true, cancellationTrend: false, durationDistribution: false
+        revenueTrend: true, cancellationTrend: false, durationDistribution: false, reviewsSummary: true
       };
-    } catch { return { overviewCards: true, statsCards: true, bookingActivity: true, clientGrowth: true, servicePopularity: true, workerLeaderboard: true, heatmap: true, revenueTrend: true, cancellationTrend: false, durationDistribution: false }; }
+    } catch { return { overviewCards: true, statsCards: true, bookingActivity: true, clientGrowth: true, servicePopularity: true, workerLeaderboard: true, heatmap: true, revenueTrend: true, cancellationTrend: false, durationDistribution: false, reviewsSummary: true }; }
   });
   const [showSectionPicker, setShowSectionPicker] = useState(false);
 
@@ -43,6 +43,7 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
     { key: 'heatmap', label: 'Busiest Hours', icon: 'fa-fire' },
     { key: 'cancellationTrend', label: 'Cancellation Trend', icon: 'fa-times-circle' },
     { key: 'durationDistribution', label: 'Job Duration', icon: 'fa-clock' },
+    { key: 'reviewsSummary', label: 'Customer Reviews', icon: 'fa-star' },
   ];
 
   const orderedWidgets = widgetOrder
@@ -634,6 +635,53 @@ function InsightsTab({ bookings = [], clients = [], workers = [] }) {
         )}
       </div>
       )}
+
+      {/* Customer Reviews Summary Widget */}
+      {showSections.reviewsSummary && (() => {
+        const reviews = reviewsData?.reviews || [];
+        const submitted = reviews.filter(r => r.submitted_at);
+        const avgRating = submitted.length > 0
+          ? (submitted.reduce((s, r) => s + r.rating, 0) / submitted.length).toFixed(1)
+          : null;
+        return (
+          <div className="insights-card">
+            <h3><i className="fas fa-star" style={{ color: '#f59e0b' }}></i> Customer Reviews</h3>
+            {submitted.length === 0 ? (
+              <div className="insights-empty">
+                <i className="fas fa-star"></i>
+                <p>No reviews submitted yet</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div style={{ textAlign: 'center', minWidth: '80px' }}>
+                  <div style={{ fontSize: '2.2rem', fontWeight: 700, color: '#1e293b', lineHeight: 1 }}>{avgRating}</div>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '2px', margin: '6px 0' }}>
+                    {[1,2,3,4,5].map(s => (
+                      <span key={s} style={{ color: s <= Math.round(parseFloat(avgRating)) ? '#f59e0b' : '#e5e7eb', fontSize: '1rem' }}>★</span>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{submitted.length} review{submitted.length !== 1 ? 's' : ''}</div>
+                </div>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  {[5,4,3,2,1].map(star => {
+                    const count = submitted.filter(r => r.rating === star).length;
+                    const pct = (count / submitted.length * 100);
+                    return (
+                      <div key={star} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span style={{ width: '16px', fontSize: '0.78rem', fontWeight: 600, color: '#475569', textAlign: 'right' }}>{star}</span>
+                        <div style={{ flex: 1, height: '6px', background: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: '#f59e0b', borderRadius: '3px', transition: 'width 0.4s' }} />
+                        </div>
+                        <span style={{ width: '20px', fontSize: '0.72rem', color: '#94a3b8' }}>{count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

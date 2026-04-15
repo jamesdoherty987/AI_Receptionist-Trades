@@ -8138,6 +8138,304 @@ def submit_review(token):
     return jsonify({"error": "Failed to submit review"}), 500
 
 
+# ============================================
+# LEADS / CRM API
+# ============================================
+
+@app.route("/api/leads", methods=["GET"])
+@login_required
+def get_leads():
+    """Get all leads for the company."""
+    from psycopg2.extras import RealDictCursor
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT * FROM leads
+            WHERE company_id = %s
+            ORDER BY
+                CASE stage
+                    WHEN 'new' THEN 1
+                    WHEN 'contacted' THEN 2
+                    WHEN 'quoted' THEN 3
+                    WHEN 'won' THEN 4
+                    WHEN 'lost' THEN 5
+                END,
+                created_at DESC
+        """, (company_id,))
+        leads = cursor.fetchall()
+        for lead in leads:
+            for key in ('created_at', 'updated_at', 'converted_at', 'follow_up_date'):
+                if lead.get(key) and hasattr(lead[key], 'isoformat'):
+                    lead[key] = lead[key].isoformat()
+        return jsonify({"leads": leads})
+    except Exception as e:
+        # Table may not exist yet
+        if 'relation "leads" does not exist' in str(e):
+            conn.rollback()
+            return jsonify({"leads": []})
+        raise
+    finally:
+        db.release_connection(conn)
+
+
+@app.route("/api/leads", methods=["POST"])
+@login_required
+@subscription_required
+def create_lead():
+    """Create a new lead."""
+    from psycopg2.extras import RealDictCursor
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({"error": "Lead name is required"}), 400
+
+    conn = db.get_connection()
+    try:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            INSERT INTO leads (company_id, name, phone, email, address, source, stage,
+                               notes, service_interest, estimated_value, follow_up_date)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (
+            company_id, name,
+            (data.get('phone') or '').strip() or None,
+            (data.get('email') or '').strip() or None,
+            (data.get('address') or '').strip() or None,
+            data.get('source', 'manual'),
+            data.get('stage', 'new'),
+            (data.get('notes') or '').strip() or None,
+            (data.get('service_interest') or '').strip() or None,
+            data.get('estimated_value'),
+            data.get('follow_up_date') or None,
+        ))
+        lead_id = cursor.fetchone()['id']
+        conn.commit()
+        return jsonify({"id": lead_id, "message": "Lead created"}), 201
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.release_connection(conn)
+
+
+@app.route("/api/leads/<int:lead_id>", methods=["PUT"])
+@login_required
+@subscription_required
+def update_lead(lead_id):
+    """Update a lead (stage, notes, etc.)."""
+    from psycopg2.extras import RealDictCursor
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+
+    conn = db.get_connection()
+    try:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        # Verify ownership
+        cursor.execute("SELECT id FROM leads WHERE id = %s AND company_id = %s", (lead_id, company_id))
+        if not cursor.fetchone():
+            return jsonify({"error": "Lead not found"}), 404
+
+        fields = []
+        values = []
+        for col in ('name', 'phone', 'email', 'address', 'stage', 'notes',
+                     'service_interest', 'estimated_value', 'lost_reason', 'follow_up_date', 'source'):
+            if col in data:
+                fields.append(f"{col} = %s")
+                val = data[col]
+                if isinstance(val, str):
+                    val = val.strip() or None
+                values.append(val)
+
+        # If stage changed to 'won', set converted_at
+        if data.get('stage') == 'won':
+            fields.append("converted_at = CURRENT_TIMESTAMP")
+
+        if not fields:
+            return jsonify({"error": "No fields to update"}), 400
+
+        fields.append("updated_at = CURRENT_TIMESTAMP")
+        values.extend([lead_id, company_id])
+
+        cursor.execute(
+            f"UPDATE leads SET {', '.join(fields)} WHERE id = %s AND company_id = %s",
+            values
+        )
+        conn.commit()
+        return jsonify({"message": "Lead updated"})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.release_connection(conn)
+
+
+@app.route("/api/leads/<int:lead_id>", methods=["DELETE"])
+@login_required
+@subscription_required
+def delete_lead(lead_id):
+    """Delete a lead."""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM leads WHERE id = %s AND company_id = %s", (lead_id, company_id))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return jsonify({"error": "Lead not found"}), 404
+        return jsonify({"message": "Lead deleted"})
+    except Exception as e:
+        conn.rollback()
+        if 'relation "leads" does not exist' in str(e):
+            return jsonify({"error": "Lead not found"}), 404
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.release_connection(conn)
+
+
+@app.route("/api/leads/<int:lead_id>/convert", methods=["POST"])
+@login_required
+@subscription_required
+def convert_lead_to_client(lead_id):
+    """Convert a lead into a client and mark it as won."""
+    from psycopg2.extras import RealDictCursor
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT * FROM leads WHERE id = %s AND company_id = %s", (lead_id, company_id))
+        lead = cursor.fetchone()
+        if not lead:
+            return jsonify({"error": "Lead not found"}), 404
+
+        # Create client from lead data
+        client_id = db.add_client(
+            name=lead['name'],
+            phone=lead.get('phone'),
+            email=lead.get('email'),
+            address=lead.get('address'),
+            company_id=company_id,
+        )
+
+        # Update lead as won with client reference
+        cursor.execute("""
+            UPDATE leads SET stage = 'won', client_id = %s, converted_at = CURRENT_TIMESTAMP,
+                             updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND company_id = %s
+        """, (client_id, lead_id, company_id))
+        conn.commit()
+        return jsonify({"client_id": client_id, "message": "Lead converted to customer"})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.release_connection(conn)
+
+
+@app.route("/api/clients/<int:client_id>/tags", methods=["PUT"])
+@login_required
+@subscription_required
+def update_client_tags(client_id):
+    """Update tags on a client for CRM segmentation."""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    tags = data.get('tags', [])
+
+    client = db.get_client(client_id, company_id=company_id)
+    if not client:
+        return jsonify({"error": "Client not found"}), 404
+
+    conn = db.get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE clients SET tags = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s",
+            (tags, client_id, company_id)
+        )
+        conn.commit()
+        return jsonify({"message": "Tags updated"})
+    except Exception as e:
+        conn.rollback()
+        # tags column may not exist
+        if 'column "tags"' in str(e):
+            return jsonify({"message": "Tags feature not yet migrated"}), 200
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.release_connection(conn)
+
+
+@app.route("/api/crm/stats", methods=["GET"])
+@login_required
+def get_crm_stats():
+    """Get CRM overview stats: customer health, lead pipeline counts, etc."""
+    from psycopg2.extras import RealDictCursor
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Client stats
+        cursor.execute("""
+            SELECT COUNT(*) as total_clients,
+                   COUNT(CASE WHEN created_at > CURRENT_TIMESTAMP - INTERVAL '30 days' THEN 1 END) as new_this_month
+            FROM clients WHERE company_id = %s
+        """, (company_id,))
+        client_stats = cursor.fetchone()
+
+        # Booking-based customer health
+        cursor.execute("""
+            SELECT c.id, c.name, c.phone, c.email, c.created_at,
+                   COUNT(b.id) as total_jobs,
+                   COUNT(CASE WHEN b.status = 'completed' THEN 1 END) as completed_jobs,
+                   COALESCE(SUM(CASE WHEN b.status = 'completed' THEN COALESCE(b.charge, b.estimated_charge, 0) END), 0) as total_revenue,
+                   MAX(b.appointment_time) as last_job_date
+            FROM clients c
+            LEFT JOIN bookings b ON b.client_id = c.id AND b.company_id = c.company_id
+            WHERE c.company_id = %s
+            GROUP BY c.id, c.name, c.phone, c.email, c.created_at
+        """, (company_id,))
+        customer_health = cursor.fetchall()
+
+        for ch in customer_health:
+            for key in ('created_at', 'last_job_date'):
+                if ch.get(key) and hasattr(ch[key], 'isoformat'):
+                    ch[key] = ch[key].isoformat()
+
+        # Lead pipeline counts
+        lead_counts = {'new': 0, 'contacted': 0, 'quoted': 0, 'won': 0, 'lost': 0}
+        try:
+            cursor.execute("""
+                SELECT stage, COUNT(*) as count FROM leads
+                WHERE company_id = %s GROUP BY stage
+            """, (company_id,))
+            for row in cursor.fetchall():
+                lead_counts[row['stage']] = row['count']
+        except Exception as lead_err:
+            if 'relation "leads" does not exist' in str(lead_err):
+                conn.rollback()
+            else:
+                conn.rollback()
+
+        return jsonify({
+            "client_stats": client_stats,
+            "customer_health": customer_health,
+            "lead_counts": lead_counts,
+        })
+    finally:
+        db.release_connection(conn)
+
+
 @app.route("/api/bookings/<int:booking_id>/send-invoice", methods=["POST"])
 @login_required
 @subscription_required

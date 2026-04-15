@@ -407,4 +407,13 @@ export const getBookingReview = (bookingId) => api.get(`/api/bookings/${bookingI
 export const getReviewByToken = (token) => api.get(`/api/review/${token}`);
 export const submitReview = (token, data) => api.post(`/api/review/${token}`, data);
 
+// Leads / CRM
+export const getLeads = () => api.get('/api/leads');
+export const createLead = (data) => api.post('/api/leads', data);
+export const updateLead = (id, data) => api.put(`/api/leads/${id}`, data);
+export const deleteLead = (id) => api.delete(`/api/leads/${id}`);
+export const convertLead = (id) => api.post(`/api/leads/${id}/convert`);
+export const getCrmStats = () => api.get('/api/crm/stats');
+export const updateClientTags = (id, tags) => api.put(`/api/clients/${id}/tags`, { tags });
+
 export default api;
