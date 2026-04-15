@@ -210,7 +210,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(
-        description='Add Twilio phone numbers to production database',
+        description='Add Telnyx phone numbers to production database',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -320,8 +320,8 @@ Examples:
     if success:
         print("✅ Done! Phone numbers added to pool.")
         print("\nNext steps:")
-        print("  1. Configure webhook URLs in Twilio Console")
-        print("  2. Set webhook to: https://your-backend.onrender.com/twilio/voice")
+        print("  1. Configure webhook URLs in Telnyx Mission Control Portal")
+        print("  2. Set voice webhook to: https://your-backend.onrender.com/telnyx/voice")
         print("  3. New signups will automatically get assigned a number")
     else:
         print("⚠️  No numbers were added.")

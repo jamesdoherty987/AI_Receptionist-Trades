@@ -710,7 +710,7 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
     
     Args:
         messages: Conversation history
-        caller_phone: Caller's phone number from Twilio
+        caller_phone: Caller's phone number from Telnyx
         company_id: Company ID for multi-tenant business context
         call_state: Per-call state for concurrent call handling. If None, creates
                    a new instance (not recommended for production - pass explicitly).
@@ -774,7 +774,7 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
     # Store phone number if provided and not already stored
     if caller_phone and not call_state.get("phone_number"):
         call_state["phone_number"] = caller_phone
-        # Automatically confirm phone if it came from Twilio (caller_phone)
+        # Automatically confirm phone if it came from caller ID
         call_state["phone_confirmed"] = True
         print(f"[PHONE] Caller phone automatically captured: {caller_phone}")
     

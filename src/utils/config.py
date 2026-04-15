@@ -101,11 +101,17 @@ class Config:
     GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
     CALENDAR_TIMEZONE = os.getenv("CALENDAR_TIMEZONE", "Europe/Dublin")
     
-    # Twilio (for SMS reminders - check regional availability)
+    # Telnyx (for voice calls and SMS)
+    TELNYX_API_KEY = os.getenv("TELNYX_API_KEY")
+    TELNYX_PUBLIC_KEY = os.getenv("TELNYX_PUBLIC_KEY")
+    TELNYX_PHONE_NUMBER = os.getenv("TELNYX_PHONE_NUMBER")  # For voice calls
+    TELNYX_SMS_NUMBER = os.getenv("TELNYX_SMS_NUMBER")  # For SMS (can be different from voice number)
+    
+    # Legacy Twilio config (kept for backwards compatibility during migration)
     TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
     TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-    TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")  # For voice calls
-    TWILIO_SMS_NUMBER = os.getenv("TWILIO_SMS_NUMBER")  # For SMS (can be different from voice number)
+    TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+    TWILIO_SMS_NUMBER = os.getenv("TWILIO_SMS_NUMBER")
     
     # Email (for appointment reminders - works globally)
     # Resend API (recommended - works on all hosts including Render)
@@ -256,9 +262,10 @@ class Config:
     # Financial settings
     DEFAULT_APPOINTMENT_CHARGE = float(os.getenv("DEFAULT_APPOINTMENT_CHARGE", 50.0))
     
-    # Audio settings (Twilio-specific requirements)
-    AUDIO_SAMPLE_RATE = 8000  # Twilio requires 8kHz for mulaw
-    AUDIO_ENCODING = "mulaw"  # Twilio voice encoding
+    # Audio settings (telephony requirements)
+    AUDIO_SAMPLE_RATE = 8000  # 8kHz for mulaw (PCMU)
+    AUDIO_ENCODING = "mulaw"  # Standard telephony encoding
+    AUDIO_CHANNELS = 1  # Mono audio
     AUDIO_CHANNELS = 1  # Mono audio
     
     # Polling and refresh intervals (milliseconds)

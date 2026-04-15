@@ -1,13 +1,12 @@
 """
-SMS Reminder Service using Twilio
+SMS Reminder Service using Telnyx
 Sends appointment reminders 24 hours before scheduled time
 """
 import os
 import re
 from datetime import datetime, timedelta
 from typing import Optional
-from twilio.rest import Client
-from twilio.base.exceptions import TwilioRestException
+import httpx
 
 
 def normalize_phone_number(phone: str, default_country_code: str = "+353") -> str:
@@ -50,30 +49,56 @@ def normalize_phone_number(phone: str, default_country_code: str = "+353") -> st
 
 
 class SMSReminderService:
-    """Send SMS reminders for appointments using Twilio"""
+    """Send SMS reminders for appointments using Telnyx"""
     
     def __init__(self, account_sid: str = None, auth_token: str = None, from_number: str = None):
         """
-        Initialize Twilio SMS service
+        Initialize Telnyx SMS service
         
         Args:
-            account_sid: Twilio Account SID
-            auth_token: Twilio Auth Token
-            from_number: Twilio phone number to send SMS from
+            account_sid: Unused (kept for backwards compatibility)
+            auth_token: Unused (kept for backwards compatibility)
+            from_number: Telnyx phone number to send SMS from
         """
         from src.utils.config import config
         
+        self.telnyx_api_key = config.TELNYX_API_KEY
+        # Use dedicated SMS number if available, otherwise fall back to voice number
+        self.from_number = from_number or getattr(config, 'TELNYX_SMS_NUMBER', None) or getattr(config, 'TELNYX_PHONE_NUMBER', None) or config.TWILIO_SMS_NUMBER or config.TWILIO_PHONE_NUMBER
+        
+        # Legacy Twilio fields (kept for backwards compat)
         self.account_sid = account_sid or config.TWILIO_ACCOUNT_SID
         self.auth_token = auth_token or config.TWILIO_AUTH_TOKEN
-        # Use dedicated SMS number if available, otherwise fall back to voice number
-        self.from_number = from_number or config.TWILIO_SMS_NUMBER or config.TWILIO_PHONE_NUMBER
         
-        if not all([self.account_sid, self.auth_token, self.from_number]):
-            print("⚠️ Twilio credentials not configured. SMS reminders will not be sent.")
+        if not self.telnyx_api_key or not self.from_number:
+            print("⚠️ Telnyx credentials not configured. SMS reminders will not be sent.")
             self.client = None
         else:
-            self.client = Client(self.account_sid, self.auth_token)
-            print("✅ Twilio SMS service initialized")
+            self.client = True  # Flag that we're ready (Telnyx uses REST API directly)
+            print("✅ Telnyx SMS service initialized")
+    
+    def _send_sms(self, to_number: str, body: str):
+        """Send an SMS via Telnyx REST API. Returns an object with .sid for compatibility."""
+        resp = httpx.post(
+            "https://api.telnyx.com/v2/messages",
+            headers={
+                "Authorization": f"Bearer {self.telnyx_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": self.from_number,
+                "to": to_number,
+                "text": body,
+            },
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", {})
+        # Return a simple object with .sid for backwards-compatible logging
+        class _Msg:
+            def __init__(self, sid):
+                self.sid = sid
+        return _Msg(data.get("id", "unknown"))
     
     def send_reminder(self, to_number: str, appointment_time: datetime, 
                      customer_name: str, service_type: str = "appointment") -> bool:
@@ -91,9 +116,7 @@ class SMSReminderService:
                 f"Reply YES to confirm or CANCEL."
             )
             
-            message = self.client.messages.create(
-                body=message_body, from_=self.from_number, to=to_number
-            )
+            message = self._send_sms(to_number, message_body)
             print(f"[SMS] Reminder sent to {to_number} (SID: {message.sid})")
             return True
         except Exception as e:
@@ -127,9 +150,7 @@ class SMSReminderService:
             lines.append("To cancel/reschedule, contact us.")
             message_body = "\n".join(lines)
 
-            message = self.client.messages.create(
-                body=message_body, from_=self.from_number, to=to_number
-            )
+            message = self._send_sms(to_number, message_body)
             print(f"[SMS] Day-before reminder sent to {to_number} (SID: {message.sid})")
             return True
         except Exception as e:
@@ -144,9 +165,7 @@ class SMSReminderService:
         to_number = normalize_phone_number(to_number)
         
         try:
-            msg = self.client.messages.create(
-                body=message, from_=self.from_number, to=to_number
-            )
+            msg = self._send_sms(to_number, message)
             print(f"[SMS] Reply sent to {to_number}")
             return True
         except Exception as e:
@@ -184,9 +203,7 @@ class SMSReminderService:
                     lines.append(addr_line)
             message_body = "\n".join(lines)
 
-            message = self.client.messages.create(
-                body=message_body, from_=self.from_number, to=to_number
-            )
+            message = self._send_sms(to_number, message_body)
             print(f"[SMS] Booking confirmation sent to {to_number} (SID: {message.sid})")
             return True
         except Exception as e:
@@ -217,7 +234,7 @@ class SMSReminderService:
                 f"Contact us to rebook."
             )
 
-            message = self.client.messages.create(body=body, from_=self.from_number, to=to_number)
+            message = self._send_sms(to_number, body)
             print(f"[SMS] Cancellation sent to {to_number} (SID: {message.sid})")
             return True
         except Exception as e:
@@ -248,7 +265,7 @@ class SMSReminderService:
                 f"See you then!"
             )
 
-            message = self.client.messages.create(body=body, from_=self.from_number, to=to_number)
+            message = self._send_sms(to_number, body)
             print(f"[SMS] Reschedule sent to {to_number} (SID: {message.sid})")
             return True
         except Exception as e:
@@ -320,9 +337,7 @@ class SMSReminderService:
                     lines.append("Pay by cash or card on completion.")
                 message_body = "\n".join(lines)
             
-            message = self.client.messages.create(
-                body=message_body, from_=self.from_number, to=to_number
-            )
+            message = self._send_sms(to_number, message_body)
             print(f"[SMS] Invoice sent to {to_number} (SID: {message.sid}, Inv: {invoice_number})")
             return True
         except Exception as e:

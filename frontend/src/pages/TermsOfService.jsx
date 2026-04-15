@@ -119,7 +119,7 @@ function TermsOfService() {
         <section className="privacy-section">
           <h2>8. Third-Party Integrations</h2>
           <p>
-            The Service integrates with third-party services including Google Calendar, Twilio,
+            The Service integrates with third-party services including Google Calendar, Telnyx,
             Stripe, and Deepgram. Your use of these integrations is subject to the respective
             third-party terms of service. We are not responsible for the availability or
             performance of third-party services.

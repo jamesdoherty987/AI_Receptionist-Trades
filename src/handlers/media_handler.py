@@ -1,5 +1,5 @@
 """
-Twilio Media Stream WebSocket Handler
+Telnyx TeXML Media Stream WebSocket Handler
 Manages real-time voice conversations with ASR, LLM, and TTS
 
 SIMPLIFIED ARCHITECTURE:
@@ -116,7 +116,7 @@ def ai_asked_for_email(text: str) -> bool:
 
 
 async def media_handler(ws):
-    """Handle Twilio media stream WebSocket connection"""
+    """Handle Telnyx TeXML media stream WebSocket connection"""
     call_start_time = time_module.time()
     print(f"\n{'='*70}")
     print(f"📞 [CALL_START] New call at {call_start_time:.3f}")
@@ -179,7 +179,7 @@ async def media_handler(ws):
     bargein_since = 0.0
 
     async def clear_twilio_audio():
-        """Clear Twilio audio buffer"""
+        """Clear Telnyx audio buffer"""
         if stream_sid:
             try:
                 await ws.send(json.dumps({"event": "clear", "streamSid": stream_sid}))
@@ -546,16 +546,28 @@ async def media_handler(ws):
                 if transfer_number:
                     print(f"📞 TRANSFER TO: {transfer_number}")
                     try:
-                        from twilio.rest import Client
                         import os
-                        account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-                        auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-                        if account_sid and auth_token and call_sid:
-                            client = Client(account_sid, auth_token)
+                        import httpx
+                        telnyx_api_key = os.getenv('TELNYX_API_KEY')
+                        if telnyx_api_key and call_sid:
+                            # Telnyx Call Control: transfer via updating the call
                             from urllib.parse import quote
-                            transfer_url = f"{config.PUBLIC_URL}/twilio/transfer?number={quote(transfer_number)}"
-                            client.calls(call_sid).update(url=transfer_url, method='POST')
-                            print(f"✅ Transfer initiated")
+                            transfer_url = f"{config.PUBLIC_URL}/telnyx/transfer?number={quote(transfer_number)}"
+                            resp = httpx.post(
+                                f"https://api.telnyx.com/v2/texml/calls/{call_sid}/update",
+                                headers={
+                                    "Authorization": f"Bearer {telnyx_api_key}",
+                                    "Content-Type": "application/json",
+                                },
+                                json={"texml": f'<Response><Say>Transferring you now.</Say><Dial timeout="60" action="{config.PUBLIC_URL}/telnyx/dial-status" method="POST"><Number>{transfer_number}</Number></Dial></Response>'},
+                                timeout=10.0,
+                            )
+                            if resp.status_code < 300:
+                                print(f"✅ Transfer initiated via Telnyx")
+                            else:
+                                print(f"⚠️ Telnyx transfer response: {resp.status_code} {resp.text[:200]}")
+                        else:
+                            print(f"⚠️ Transfer skipped — missing TELNYX_API_KEY or call_sid")
                     except Exception as e:
                         print(f"❌ Transfer error: {e}")
                 
@@ -616,8 +628,9 @@ async def media_handler(ws):
                 continue
 
             if event == "start":
-                stream_sid = data["start"]["streamSid"]
-                call_sid = data["start"].get("callSid", "")
+                # Telnyx TeXML uses stream_id; Twilio uses streamSid
+                stream_sid = data.get("stream_id") or data.get("start", {}).get("streamSid", "")
+                call_sid = data["start"].get("call_control_id", "") or data["start"].get("callSid", "")
                 custom_params = data["start"].get("customParameters", {})
                 caller_phone = custom_params.get("From", "") or data["start"].get("from", "")
                 company_id = custom_params.get("CompanyId", "") or None

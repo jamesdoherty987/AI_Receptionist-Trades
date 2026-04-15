@@ -77,7 +77,7 @@ class WebSocketAdapter:
             raise websockets.ConnectionClosed(None, None)
 
     async def __aiter__(self):
-        """Async iterate over incoming WebSocket messages from Twilio"""
+        """Async iterate over incoming WebSocket messages from Telnyx TeXML"""
         try:
             while True:
                 message = await self._ws.receive()

@@ -1,5 +1,5 @@
 """
-Release Twilio Phone Numbers from Companies
+Release Phone Numbers from Companies
 Interactive script to detach phone numbers from accounts
 """
 import sys

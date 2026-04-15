@@ -57,7 +57,7 @@ function PrivacyPolicy() {
           <ul>
             <li>Google Calendar: calendar event data including event titles, times, descriptions, and attendees, used to sync your bookings and prevent scheduling conflicts</li>
             <li>Stripe: subscription status and payment confirmation (we do not receive or store full card numbers)</li>
-            <li>Twilio: call metadata and SMS delivery status for AI receptionist functionality</li>
+            <li>Telnyx: call metadata and SMS delivery status for AI receptionist functionality</li>
           </ul>
         </section>
 

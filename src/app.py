@@ -1,5 +1,5 @@
 """
-Flask application for Twilio voice webhook
+Flask application for Telnyx TeXML voice webhook
 Secured against OWASP Top 10 vulnerabilities
 """
 # Set process timezone to business timezone so datetime.now() returns local time.
@@ -43,6 +43,8 @@ def safe_print(*args, **kwargs):
 
 from flask import Flask, Response, request, jsonify, session, g
 from flask_cors import CORS
+# VoiceResponse/MessagingResponse generate XML that is compatible with both
+# Twilio TwiML and Telnyx TeXML — we keep using the twilio package as an XML builder.
 from twilio.twiml.voice_response import VoiceResponse
 from twilio.twiml.messaging_response import MessagingResponse
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -516,11 +518,13 @@ def init_scheduler():
         start_scheduler_once()
 
 
-@app.route("/twilio/voice", methods=["POST"])
+@app.route("/telnyx/voice", methods=["POST"])
+@app.route("/twilio/voice", methods=["POST"])  # backwards compatibility
 def twilio_voice():
     """
-    Twilio voice webhook endpoint - identifies company by incoming phone number
-    Returns TwiML to connect call to media stream OR forward to business phone
+    Telnyx TeXML voice webhook endpoint - identifies company by incoming phone number.
+    Returns TeXML (TwiML-compatible XML) to connect call to media stream OR forward to business phone.
+    Also accessible at /twilio/voice for backwards compatibility.
     """
     db = get_database()
     
@@ -545,7 +549,7 @@ def twilio_voice():
         # No company found for this number - return error
         twiml = VoiceResponse()
         twiml.say("This phone number is not configured. Please contact support.")
-        print(f"[ERROR] No company found for Twilio number: {to_number}")
+        print(f"[ERROR] No company found for Telnyx number: {to_number}")
         return Response(str(twiml), mimetype="text/xml")
     
     # Check if caller is in the bypass list (always forward to fallback)
@@ -630,7 +634,7 @@ def twilio_voice():
         business_phone = company.get('phone') if company else None
         
         print("=" * 60)
-        print(f"📞 Incoming Twilio Call - {'BYPASS NUMBER' if bypass_forward else 'SCHEDULED OFF' if ai_schedule_off else 'AI DISABLED'}")
+        print(f"📞 Incoming Call - {'BYPASS NUMBER' if bypass_forward else 'SCHEDULED OFF' if ai_schedule_off else 'AI DISABLED'}")
         print(f"[PHONE] Caller: {caller_phone}")
         print(f"[PHONE] Forwarding to business phone: {business_phone or 'No phone number set!'}")
         print("=" * 60)
@@ -638,7 +642,7 @@ def twilio_voice():
         if business_phone:
             twiml.say("Please hold while we connect you.")
             # Create Dial verb with proper nested Number noun
-            dial = twiml.dial(timeout=60, action='/twilio/dial-status', method='POST')
+            dial = twiml.dial(timeout=60, action='/telnyx/dial-status', method='POST')
             dial.number(business_phone)
             print(f"[INFO] Generated TwiML for forwarding:")
             print(str(twiml))
@@ -657,7 +661,7 @@ def twilio_voice():
             stream.parameter(name="CompanyId", value=str(company.get('id', '')))
 
         print("=" * 60)
-        print("📞 Incoming Twilio Call - AI ENABLED")
+        print("📞 Incoming Call - AI ENABLED")
         print(f"[PHONE] Caller: {caller_phone}")
         print(f"[COMPANY] ID: {company.get('id')}, Name: {company.get('company_name')}")
         print(f"[AI] Connecting to AI at: {ws_url}")
@@ -666,7 +670,8 @@ def twilio_voice():
     return Response(str(twiml), mimetype="text/xml")
 
 
-@app.route("/twilio/dial-status", methods=["POST"])
+@app.route("/telnyx/dial-status", methods=["POST"])
+@app.route("/twilio/dial-status", methods=["POST"])  # backwards compatibility
 def dial_status():
     """Callback for dial status - helps debug forwarding issues"""
     dial_status = request.form.get("DialCallStatus", "unknown")
@@ -695,7 +700,8 @@ def dial_status():
     return Response(str(response), mimetype="text/xml")
 
 
-@app.route("/twilio/transfer", methods=["POST"])
+@app.route("/telnyx/transfer", methods=["POST"])
+@app.route("/twilio/transfer", methods=["POST"])  # backwards compatibility
 def transfer_call():
     """Transfer an active call to a human (fallback number)"""
     transfer_number = request.args.get('number')
@@ -711,13 +717,13 @@ def transfer_call():
     print(f"[PHONE] Transferring to: {transfer_number}")
     print("=" * 60)
     
-    # Create TwiML to transfer the call
+    # Create TeXML to transfer the call
     response = VoiceResponse()
     response.say("Transferring you now. Please hold.")
-    dial = response.dial(timeout=60, action='/twilio/dial-status', method='POST')
+    dial = response.dial(timeout=60, action='/telnyx/dial-status', method='POST')
     dial.number(transfer_number)
     
-    print(f"[INFO] Generated transfer TwiML:\n{str(response)}")
+    print(f"[INFO] Generated transfer TeXML:\n{str(response)}")
     
     return Response(str(response), mimetype="text/xml")
 
@@ -4692,10 +4698,12 @@ def short_payment_redirect(booking_id):
         db.return_connection(conn)
 
 
-@app.route("/twilio/sms", methods=["POST"])
+@app.route("/telnyx/sms", methods=["POST"])
+@app.route("/twilio/sms", methods=["POST"])  # backwards compatibility
 def twilio_sms():
     """
     Handle incoming SMS messages (for appointment confirmations/cancellations)
+    Supports both Telnyx and legacy Twilio webhook formats.
     Only active if REMINDER_METHOD=sms in .env
     """
     try:
@@ -4706,9 +4714,18 @@ def twilio_sms():
             resp.message("Please contact us by phone for appointment inquiries.")
             return Response(str(resp), mimetype="text/xml")
         
-        # Get message details
-        from_number = request.form.get('From', '')
-        message_body = request.form.get('Body', '').strip().upper()
+        # Get message details - support both Telnyx and Twilio formats
+        # Telnyx sends JSON, Twilio sends form data
+        if request.is_json:
+            # Telnyx webhook format
+            telnyx_data = request.json or {}
+            payload = telnyx_data.get('data', {}).get('payload', {})
+            from_number = payload.get('from', {}).get('phone_number', '')
+            message_body = payload.get('text', '').strip().upper()
+        else:
+            # Twilio/TeXML form format
+            from_number = request.form.get('From', '')
+            message_body = request.form.get('Body', '').strip().upper()
         
         print(f"\n[SMS] SMS received from {from_number}: {message_body}")
         
