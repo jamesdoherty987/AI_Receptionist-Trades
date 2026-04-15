@@ -416,4 +416,33 @@ export const convertLead = (id) => api.post(`/api/leads/${id}/convert`);
 export const getCrmStats = () => api.get('/api/crm/stats');
 export const updateClientTags = (id, tags) => api.put(`/api/clients/${id}/tags`, { tags });
 
+// Quote Pipeline
+export const getQuotePipeline = () => api.get('/api/quotes/pipeline');
+export const updateQuotePipelineStage = (id, stage, lostReason) => api.put(`/api/quotes/${id}/pipeline-stage`, { stage, lost_reason: lostReason });
+export const generateQuoteAcceptLink = (id) => api.post(`/api/quotes/${id}/accept-link`);
+export const sendQuoteFollowUp = (id, message) => api.post(`/api/quotes/${id}/follow-up`, { message });
+export const getQuoteByAcceptToken = (token) => api.get(`/api/quote/accept/${token}`);
+export const acceptQuoteByToken = (token) => api.post(`/api/quote/accept/${token}`);
+
+// Follow-up Sequences
+export const getSequences = () => api.get('/api/sequences');
+export const createSequence = (data) => api.post('/api/sequences', data);
+export const updateSequence = (id, data) => api.put(`/api/sequences/${id}`, data);
+export const deleteSequence = (id) => api.delete(`/api/sequences/${id}`);
+
+// Workflow Automations
+export const getAutomations = () => api.get('/api/automations');
+export const createAutomation = (data) => api.post('/api/automations', data);
+export const updateAutomation = (id, data) => api.put(`/api/automations/${id}`, data);
+export const deleteAutomation = (id) => api.delete(`/api/automations/${id}`);
+
+// Customer Portal
+export const generatePortalLink = (clientId) => api.post(`/api/clients/${clientId}/portal-link`);
+export const getPortalData = (token) => api.get(`/api/portal/${token}`);
+export const portalRequestJob = (token, data) => api.post(`/api/portal/${token}/request-job`, data);
+
+// Review Automation
+export const getReviewAutomationSettings = () => api.get('/api/settings/review-automation');
+export const updateReviewAutomationSettings = (data) => api.post('/api/settings/review-automation', data);
+
 export default api;

@@ -16,8 +16,9 @@ import ServicesTab from '../components/dashboard/ServicesTab';
 import MaterialsTab from '../components/dashboard/MaterialsTab';
 import InsightsTab from '../components/dashboard/InsightsTab';
 import CallLogsTab from '../components/dashboard/CallLogsTab';
+import PipelineTab from '../components/dashboard/PipelineTab';
 import { isStandalone } from '../components/PWAInstallPrompt';
-import { getDashboardData, getBusinessSettings, getUnseenCallCount, getCompanyReviews, getLeads } from '../services/api';
+import { getDashboardData, getBusinessSettings, getUnseenCallCount, getCompanyReviews, getLeads, getUnreadMessageCounts } from '../services/api';
 import './Dashboard.css';
 
 function Dashboard() {
@@ -144,12 +145,44 @@ function Dashboard() {
     ).length;
   }, [leadsData]);
 
+  // Badge counts for tabs
+  const jobBadges = useMemo(() => {
+    const now = new Date();
+    // Overdue = scheduled jobs with appointment_time in the past
+    const overdue = bookings.filter(b => {
+      if (b.status === 'completed' || b.status === 'cancelled') return false;
+      const appt = new Date(b.appointment_time);
+      return appt < now && b.status !== 'in-progress';
+    }).length;
+    return overdue;
+  }, [bookings]);
+
+  const unpaidCount = useMemo(() => {
+    return bookings.filter(b =>
+      b.status === 'completed' && b.payment_status !== 'paid'
+    ).length;
+  }, [bookings]);
+
+  // Unread worker messages for Workers tab badge
+  const { data: unreadMsgData } = useQuery({
+    queryKey: ['unread-message-counts'],
+    queryFn: async () => (await getUnreadMessageCounts()).data,
+    staleTime: 30000,
+    refetchInterval: 30000,
+  });
+  const totalUnreadMessages = useMemo(() => {
+    const counts = unreadMsgData?.counts;
+    if (!counts || typeof counts !== 'object') return 0;
+    return Object.values(counts).reduce((sum, c) => sum + (c || 0), 0);
+  }, [unreadMsgData]);
+
   const tabs = useMemo(() => [
     // Day-to-day
     {
       label: 'Jobs',
       icon: 'fas fa-briefcase',
       group: 'Day-to-Day',
+      badge: jobBadges,
       content: isLoading ? <LoadingSpinner /> : <JobsTab bookings={bookings} showInvoiceButtons={settings?.show_invoice_buttons !== false} />
     },
     ...(hasAIFeatures ? [{
@@ -170,6 +203,7 @@ function Dashboard() {
       label: 'Workers',
       icon: 'fas fa-hard-hat',
       group: 'Team & Clients',
+      badge: totalUnreadMessages,
       content: isLoading ? <LoadingSpinner /> : <WorkersTab workers={workers} bookings={bookings} />
     },
     {
@@ -178,6 +212,12 @@ function Dashboard() {
       group: 'Team & Clients',
       badge: overdueLeads,
       content: isLoading ? <LoadingSpinner /> : <CrmTab clients={clients} bookings={bookings} />
+    },
+    {
+      label: 'Pipeline',
+      icon: 'fas fa-stream',
+      group: 'Team & Clients',
+      content: <PipelineTab />
     },
     // Setup
     {
@@ -197,6 +237,7 @@ function Dashboard() {
       label: 'Finances',
       icon: 'fas fa-dollar-sign',
       group: 'Reports',
+      badge: unpaidCount,
       content: <FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} />
     }] : []),
     ...(settings?.show_insights_tab !== false ? [{
@@ -212,7 +253,7 @@ function Dashboard() {
       group: 'Dev Tools',
       content: <ChatTab />
     }] : [])
-  ], [isLoading, bookings, clients, workers, settings, unseenCalls, hasAIFeatures, reviewsData, overdueLeads]);
+  ], [isLoading, bookings, clients, workers, settings, unseenCalls, hasAIFeatures, reviewsData, overdueLeads, jobBadges, totalUnreadMessages, unpaidCount]);
 
   // Clear unseen call badge when user views the Calls tab
   const handleTabChange = useCallback((idx) => {

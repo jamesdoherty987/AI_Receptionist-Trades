@@ -149,8 +149,8 @@
 
 /* Mobile */
 @media (max-width: 768px) {
-  .jt-header { flex-direction: column; gap: 0.5rem; }
-  .jt-header .btn { width: 100%; justify-content: center; }
+  .jt-header { flex-direction: row; gap: 0.5rem; }
+  .jt-header .btn { flex-shrink: 0; white-space: nowrap; }
   .jt-filters { gap: 0.25rem; flex-wrap: wrap; }
   .jt-filter { padding: 0.4rem 0.65rem; font-size: 0.75rem; }
   .jt-filter-label { display: inline; }

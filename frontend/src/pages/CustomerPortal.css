@@ -1,0 +1,97 @@
+.portal-page { min-height: 100vh; background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%); padding: 20px; padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
+.portal-container { max-width: 680px; margin: 0 auto; }
+.portal-spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #6366f1; border-radius: 50%; animation: pspin 0.6s linear infinite; margin: 0 auto 12px; }
+@keyframes pspin { to { transform: rotate(360deg); } }
+.portal-card { background: white; border-radius: 16px; padding: 40px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+.portal-icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+/* Header */
+.portal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 20px 24px; background: white; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.portal-header h1 { font-size: 1.3rem; font-weight: 700; color: #1e293b; margin: 0; }
+.portal-header p { font-size: 0.85rem; color: #64748b; margin: 2px 0 0; }
+.portal-call-btn { display: flex; align-items: center; gap: 6px; padding: 8px 16px; background: #6366f1; color: white; border-radius: 10px; text-decoration: none; font-size: 0.85rem; font-weight: 600; transition: background 0.15s; }
+.portal-call-btn:hover { background: #4f46e5; }
+
+/* Tabs */
+.portal-tabs { display: flex; gap: 4px; background: white; border-radius: 12px; padding: 4px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.portal-tabs button { flex: 1; padding: 12px; border: none; background: transparent; border-radius: 8px; font-size: 0.85rem; font-weight: 500; color: #64748b; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s; min-height: 44px; }
+.portal-tabs button.active { background: #6366f1; color: white; }
+.portal-tabs button i { font-size: 0.8rem; }
+
+/* Success */
+.portal-success { background: #ecfdf5; color: #059669; padding: 12px 16px; border-radius: 10px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+
+/* Section */
+.portal-section h2 { font-size: 1rem; font-weight: 700; color: #1e293b; margin: 0 0 12px; }
+.portal-section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.portal-section-head h2 { margin: 0; }
+.portal-req-btn { display: flex; align-items: center; gap: 5px; padding: 10px 14px; background: #6366f1; color: white; border: none; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; min-height: 44px; }
+.portal-req-btn:hover { background: #4f46e5; }
+.portal-past-title { font-size: 0.92rem; font-weight: 600; color: #64748b; margin: 20px 0 10px; }
+
+/* Empty */
+.portal-empty { text-align: center; padding: 40px 20px; background: white; border-radius: 12px; color: #94a3b8; }
+.portal-empty i { font-size: 1.8rem; display: block; margin-bottom: 8px; color: #d1d5db; }
+.portal-empty p { margin: 0; font-size: 0.85rem; }
+
+/* Job cards */
+.portal-jobs { display: flex; flex-direction: column; gap: 8px; }
+.portal-job-card { background: white; border-radius: 12px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); border: 1px solid #f1f5f9; }
+.portal-job-card.past { opacity: 0.7; }
+.portal-job-left { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.portal-job-service { font-weight: 600; font-size: 0.9rem; color: #1e293b; }
+.portal-job-date { font-size: 0.78rem; color: #64748b; display: flex; align-items: center; gap: 4px; }
+.portal-job-date i { font-size: 0.65rem; color: #94a3b8; }
+.portal-job-addr { font-size: 0.75rem; color: #94a3b8; display: flex; align-items: center; gap: 4px; }
+.portal-job-addr i { font-size: 0.6rem; }
+.portal-job-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.portal-status { font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 6px; text-transform: capitalize; }
+.portal-job-price { font-size: 0.88rem; font-weight: 700; color: #1e293b; }
+.portal-accept-btn { padding: 6px 12px; background: #10b981; color: white; border-radius: 6px; font-size: 0.78rem; font-weight: 600; text-decoration: none; }
+.portal-accept-btn:hover { background: #059669; }
+
+/* Modal */
+.portal-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.portal-modal { background: white; border-radius: 16px; padding: 24px; width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.15); -webkit-overflow-scrolling: touch; }
+.portal-modal h3 { margin: 0 0 4px; font-size: 1.05rem; font-weight: 700; color: #1e293b; }
+.portal-modal-desc { font-size: 0.82rem; color: #64748b; margin: 0 0 16px; }
+.portal-form-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.portal-form-group label { font-size: 0.78rem; font-weight: 600; color: #475569; }
+.portal-form-group input, .portal-form-group textarea { padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 16px; font-family: inherit; box-sizing: border-box; }
+.portal-form-group input:focus, .portal-form-group textarea:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+.portal-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.portal-btn-primary { background: #6366f1; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; min-height: 44px; }
+.portal-btn-primary:hover { background: #4f46e5; }
+.portal-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.portal-btn-secondary { background: white; color: #475569; border: 1px solid #e2e8f0; padding: 10px 18px; border-radius: 8px; font-size: 0.85rem; cursor: pointer; min-height: 44px; }
+
+/* Footer */
+.portal-footer { text-align: center; padding: 24px; color: #94a3b8; font-size: 0.75rem; }
+.portal-footer strong { color: #6366f1; }
+
+@media (max-width: 640px) {
+  .portal-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .portal-job-card { flex-direction: column; align-items: flex-start; }
+  .portal-job-right { align-self: flex-end; }
+}
+
+/* Quote Accept Page */
+.quote-accept-card { background: white; border-radius: 16px; padding: 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+.qa-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #f1f5f9; }
+.qa-header h1 { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin: 0; }
+.qa-number { font-size: 0.82rem; color: #94a3b8; margin: 0; }
+.qa-title { font-size: 1.15rem; font-weight: 700; color: #1e293b; margin: 0 0 4px; }
+.qa-client { font-size: 0.85rem; color: #64748b; margin: 0 0 16px; }
+.qa-items { margin: 16px 0; border: 1px solid #f1f5f9; border-radius: 10px; overflow: hidden; }
+.qa-items-head { display: grid; grid-template-columns: 1fr 60px 80px; padding: 8px 14px; background: #f8fafc; font-size: 0.72rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+.qa-item-row { display: grid; grid-template-columns: 1fr 60px 80px; padding: 10px 14px; border-top: 1px solid #f1f5f9; font-size: 0.85rem; color: #1e293b; }
+.qa-item-row span:last-child { font-weight: 600; }
+.qa-total { display: flex; justify-content: space-between; padding: 14px 0; border-top: 2px solid #6366f1; margin-top: 12px; }
+.qa-total span:first-child { font-size: 0.92rem; color: #64748b; }
+.qa-total span:last-child { font-size: 1.3rem; font-weight: 700; color: #1e293b; }
+.qa-valid { font-size: 0.78rem; color: #94a3b8; margin: 8px 0; }
+.qa-notes { font-size: 0.85rem; color: #475569; background: #f8fafc; padding: 10px 14px; border-radius: 8px; margin: 12px 0; line-height: 1.5; }
+.qa-accept-btn { width: 100%; padding: 16px; background: #10b981; color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 16px; transition: background 0.15s; min-height: 52px; -webkit-appearance: none; appearance: none; }
+.qa-accept-btn:hover { background: #059669; }
+.qa-accept-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.qa-disclaimer { font-size: 0.72rem; color: #94a3b8; text-align: center; margin: 10px 0 0; }

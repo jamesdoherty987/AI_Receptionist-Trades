@@ -14,6 +14,7 @@ function ReviewPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [alreadyDone, setAlreadyDone] = useState(false);
+  const [googleUrl, setGoogleUrl] = useState(null);
 
   useEffect(() => {
     const fetchReview = async () => {
@@ -37,8 +38,11 @@ function ReviewPage() {
     if (!rating) return;
     setSubmitting(true);
     try {
-      await submitReview(token, { rating, review_text: reviewText });
+      const res = await submitReview(token, { rating, review_text: reviewText });
       setSubmitted(true);
+      if (res.data?.google_review_url) {
+        setGoogleUrl(res.data.google_review_url);
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to submit review. Please try again.');
     } finally {
@@ -94,6 +98,14 @@ function ReviewPage() {
               <span key={s} className={`star ${s <= rating ? 'filled' : ''}`}>★</span>
             ))}
           </div>
+          {googleUrl && (
+            <div className="review-google-prompt">
+              <p>Glad you had a great experience! Would you mind sharing it on Google too?</p>
+              <a href={googleUrl} target="_blank" rel="noopener noreferrer" className="review-google-btn">
+                <i className="fab fa-google"></i> Leave a Google Review
+              </a>
+            </div>
+          )}
         </div>
       </div>
     );

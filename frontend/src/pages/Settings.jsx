@@ -9,7 +9,7 @@ import HelpTooltip from '../components/HelpTooltip';
 import PhoneConfigModal from '../components/modals/PhoneConfigModal';
 import SubscriptionManager from '../components/dashboard/SubscriptionManager';
 import PaymentSetup from '../components/dashboard/PaymentSetup';
-import { 
+import {
   getBusinessSettings, 
   updateBusinessSettings,
   getAIReceptionistStatus,
@@ -25,7 +25,9 @@ import {
   disconnectXero,
   connectQuickBooks,
   disconnectQuickBooks,
-  setAccountingProvider
+  setAccountingProvider,
+  getReviewAutomationSettings,
+  updateReviewAutomationSettings
 } from '../services/api';
 import './Settings.css';
 
@@ -993,6 +995,13 @@ function Settings() {
             >
               <i className="fas fa-building"></i>
               <span className="settings-tab-text">Business</span>
+            </button>
+            <button 
+              className={`settings-tab ${activeTab === 'reviews' ? 'active' : ''}`}
+              onClick={() => setActiveTab('reviews')}
+            >
+              <i className="fas fa-star"></i>
+              <span className="settings-tab-text">Reviews</span>
             </button>
           </div>
 
@@ -2022,6 +2031,11 @@ function Settings() {
           </div>
             </>
           )}
+
+          {/* Review Automation Tab */}
+          {activeTab === 'reviews' && (
+            <ReviewAutomationSettings />
+          )}
         </div>
       </main>
 
@@ -2033,6 +2047,129 @@ function Settings() {
         allowSkip={false}
       />
 
+    </div>
+  );
+}
+
+function ReviewAutomationSettings() {
+  const queryClient = useQueryClient();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [form, setForm] = useState({
+    review_auto_send: true,
+    review_delay_hours: 24,
+    review_google_url: '',
+    google_review_threshold: 4,
+  });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['review-automation'],
+    queryFn: async () => (await getReviewAutomationSettings()).data,
+  });
+
+  useEffect(() => {
+    if (data) setForm({
+      review_auto_send: data.review_auto_send ?? true,
+      review_delay_hours: data.review_delay_hours ?? 24,
+      review_google_url: data.review_google_url || '',
+      google_review_threshold: data.google_review_threshold ?? 4,
+    });
+  }, [data]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateReviewAutomationSettings(form);
+      queryClient.invalidateQueries({ queryKey: ['review-automation'] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch { /* ignore */ }
+    finally { setSaving(false); }
+  };
+
+  if (isLoading) return <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>Loading...</div>;
+
+  return (
+    <div className="settings-tab-content">
+      <div className="settings-section">
+        <h3 className="settings-section-title"><i className="fas fa-star" style={{ color: '#f59e0b' }}></i> Post-Job Review Automation</h3>
+        <p className="settings-section-desc">Automatically request reviews after jobs are completed. Happy customers get directed to leave a Google review.</p>
+
+        <div className="settings-field">
+          <label className="settings-label">Auto-send review requests</label>
+          <div className="settings-toggle-row">
+            <button type="button" className={`settings-toggle ${form.review_auto_send ? 'on' : ''}`}
+              onClick={() => setForm({ ...form, review_auto_send: !form.review_auto_send })}>
+              <div className="settings-toggle-thumb"></div>
+            </button>
+            <span className="settings-toggle-label">{form.review_auto_send ? 'Enabled — reviews sent automatically' : 'Disabled'}</span>
+          </div>
+        </div>
+
+        {form.review_auto_send && (
+          <>
+            <div className="settings-field">
+              <label className="settings-label">Send review request after</label>
+              <select className="settings-input" value={form.review_delay_hours}
+                onChange={e => setForm({ ...form, review_delay_hours: parseInt(e.target.value) })}>
+                <option value="1">1 hour</option>
+                <option value="4">4 hours</option>
+                <option value="24">1 day</option>
+                <option value="48">2 days</option>
+                <option value="72">3 days</option>
+                <option value="168">1 week</option>
+              </select>
+            </div>
+
+            <div className="settings-field">
+              <label className="settings-label">Google Reviews URL</label>
+              <input type="url" className="settings-input" placeholder="https://g.page/r/your-business/review"
+                value={form.review_google_url} onChange={e => setForm({ ...form, review_google_url: e.target.value })} />
+              <span className="settings-hint">Customers who rate {form.google_review_threshold}+ stars will be prompted to leave a Google review</span>
+            </div>
+
+            <div className="settings-field">
+              <label className="settings-label">Google review redirect threshold</label>
+              <select className="settings-input" value={form.google_review_threshold}
+                onChange={e => setForm({ ...form, google_review_threshold: parseInt(e.target.value) })}>
+                <option value="3">3+ stars</option>
+                <option value="4">4+ stars (recommended)</option>
+                <option value="5">5 stars only</option>
+              </select>
+              <span className="settings-hint">Only happy customers get directed to Google — lower ratings stay internal</span>
+            </div>
+          </>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '16px' }}>
+          <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
+            <i className="fas fa-save"></i> {saving ? 'Saving...' : 'Save Review Settings'}
+          </button>
+          {saved && <span style={{ color: '#10b981', fontSize: '0.82rem', fontWeight: 600 }}><i className="fas fa-check"></i> Saved</span>}
+        </div>
+      </div>
+
+      <div className="settings-section" style={{ marginTop: '20px' }}>
+        <h3 className="settings-section-title"><i className="fas fa-info-circle" style={{ color: '#3b82f6' }}></i> How it works</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.85rem', color: '#475569', lineHeight: 1.6 }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+            <span style={{ background: '#6366f1', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700, flexShrink: 0 }}>1</span>
+            <span>Job is marked as completed</span>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+            <span style={{ background: '#6366f1', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700, flexShrink: 0 }}>2</span>
+            <span>After the delay, customer receives a review request via email</span>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+            <span style={{ background: '#6366f1', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700, flexShrink: 0 }}>3</span>
+            <span>Customer rates their experience (1-5 stars)</span>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+            <span style={{ background: '#10b981', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700, flexShrink: 0 }}>4</span>
+            <span>Happy customers ({form.google_review_threshold}+ stars) are redirected to your Google Reviews page</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { formatPhone, formatCurrency } from '../../utils/helpers';
 import { useToast } from '../Toast';
-import { getLeads, createLead, updateLead, deleteLead, convertLead, getCrmStats, getCompanyReviews } from '../../services/api';
+import { getLeads, createLead, updateLead, deleteLead, convertLead, getCrmStats, getCompanyReviews, generatePortalLink } from '../../services/api';
 import AddClientModal from '../modals/AddClientModal';
 import CustomerDetailModal from '../modals/CustomerDetailModal';
 import './CrmTab.css';
@@ -303,6 +303,12 @@ function CrmTab({ clients, bookings = [] }) {
           setCustomerSort={setCustomerSort}
           onSelectClient={setSelectedClientId}
           crmStats={crmStats}
+          onPortalLink={(clientId) => {
+            generatePortalLink(clientId).then(res => {
+              navigator.clipboard?.writeText(res.data.link);
+              addToast('Portal link copied to clipboard', 'success');
+            }).catch(() => addToast('Failed to generate portal link', 'error'));
+          }}
         />
       )}
 
@@ -513,7 +519,7 @@ function LeadCard({ lead, stage, onDragStart, onEdit, onDelete, onConvert }) {
 /* ============================================
    CUSTOMERS VIEW
    ============================================ */
-function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFilter, customerSort, setCustomerSort, onSelectClient, crmStats }) {
+function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFilter, customerSort, setCustomerSort, onSelectClient, crmStats, onPortalLink }) {
   const SEGMENTS = [
     { key: 'all', label: 'All', icon: 'fa-users', color: '#64748b' },
     { key: 'vip', label: 'VIP', icon: 'fa-crown', color: '#f59e0b' },
@@ -599,6 +605,9 @@ function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFi
                     <i className="fas fa-envelope"></i>
                   </a>
                 )}
+                <button className="crm-quick-btn" onClick={e => { e.stopPropagation(); onPortalLink(c.id); }} title="Copy portal link">
+                  <i className="fas fa-external-link-alt"></i>
+                </button>
               </div>
               <div className="crm-customer-metrics">
                 <div className="crm-metric">

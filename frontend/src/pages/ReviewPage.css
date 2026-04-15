@@ -176,3 +176,39 @@
     font-size: 1.35rem;
   }
 }
+
+/* Google Review Prompt */
+.review-google-prompt {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e2e8f0;
+  text-align: center;
+}
+.review-google-prompt p {
+  font-size: 0.9rem;
+  color: #475569;
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.review-google-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 24px;
+  background: #4285f4;
+  color: white;
+  border-radius: 10px;
+  text-decoration: none;
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition: background 0.15s;
+  min-height: 48px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.review-google-btn:hover {
+  background: #3367d6;
+}
+.review-google-btn i {
+  font-size: 1rem;
+}

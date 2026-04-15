@@ -18,6 +18,8 @@ function MessageWorkerModal({ isOpen, onClose, workerId, workerName }) {
     queryKey: ['messages', workerId],
     queryFn: async () => {
       const r = await getMessages(workerId);
+      // Messages are marked as read server-side on fetch — invalidate unread counts
+      queryClient.invalidateQueries({ queryKey: ['unread-message-counts'] });
       return r.data;
     },
     enabled: isOpen && !!workerId,

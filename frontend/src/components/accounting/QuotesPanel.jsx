@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { formatDuration } from '../../utils/durationOptions';
-import { getQuotes, createQuote, updateQuote, deleteQuote, convertQuoteToJob, getClients, getTaxSettings, getServicesMenu, getWorkers, checkAvailability, checkMonthlyAvailability, checkWorkerAvailability, sendQuote } from '../../services/api';
+import { getQuotes, createQuote, updateQuote, deleteQuote, convertQuoteToJob, getClients, getTaxSettings, getServicesMenu, getWorkers, checkAvailability, checkMonthlyAvailability, checkWorkerAvailability, sendQuote, generateQuoteAcceptLink, sendQuoteFollowUp } from '../../services/api';
 import { useToast } from '../Toast';
 import DocumentPreview from './DocumentPreview';
 import LoadingSpinner from '../LoadingSpinner';
@@ -843,6 +843,22 @@ function QuotesPanel() {
                     <button className="quote-action-btn quote-action-send" title="Send quote to customer (email first, SMS fallback)"
                       onClick={() => sendMut.mutate(q.id)} disabled={sendMut.isPending}>
                       <i className={`fas ${sendMut.isPending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`}></i><span>Send</span>
+                    </button>
+                  )}
+
+                  {/* Copy Accept Link */}
+                  {q.status !== 'converted' && q.status !== 'declined' && (
+                    <button className="quote-action-btn quote-action-edit" title="Copy customer accept link"
+                      onClick={() => generateQuoteAcceptLink(q.id).then(res => { navigator.clipboard?.writeText(res.data.link); addToast('Accept link copied!', 'success'); }).catch(() => addToast('Failed to generate link', 'error'))}>
+                      <i className="fas fa-link"></i>
+                    </button>
+                  )}
+
+                  {/* Follow Up */}
+                  {(q.status === 'sent' || q.pipeline_stage === 'follow_up') && (
+                    <button className="quote-action-btn quote-action-send" title="Send follow-up to customer"
+                      onClick={() => sendQuoteFollowUp(q.id, '').then(res => { addToast(`Follow-up sent via ${res.data?.sent_via}`, 'success'); queryClient.invalidateQueries({ queryKey: ['quotes'] }); }).catch(e => addToast(e.response?.data?.error || 'Failed', 'error'))}>
+                      <i className="fas fa-redo"></i><span>Follow Up</span>
                     </button>
                   )}
 

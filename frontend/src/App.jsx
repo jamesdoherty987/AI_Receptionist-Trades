@@ -28,6 +28,8 @@ import Blog from './pages/Blog'
 import BlogPost from './pages/BlogPost'
 import InstallApp from './pages/InstallApp'
 import ReviewPage from './pages/ReviewPage'
+import CustomerPortal from './pages/CustomerPortal'
+import QuoteAccept from './pages/QuoteAccept'
 
 // Loading component
 import LoadingSpinner from './components/LoadingSpinner'
@@ -228,6 +230,8 @@ function AppRoutes() {
       <Route path="/blog/:slug" element={<BlogPost />} />
       <Route path="/install" element={<InstallApp />} />
       <Route path="/review/:token" element={<ReviewPage />} />
+      <Route path="/portal/:token" element={<CustomerPortal />} />
+      <Route path="/quote/accept/:token" element={<QuoteAccept />} />
 
       {/* Worker Portal routes */}
       <Route path="/worker/login" element={<WorkerLogin />} />

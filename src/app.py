@@ -8134,7 +8134,20 @@ def submit_review(token):
 
     success = db.submit_review(token, rating, review_text or None)
     if success:
-        return jsonify({"success": True, "message": "Thank you for your review!"})
+        # Check if we should redirect to Google Reviews
+        google_url = None
+        try:
+            company_id = review.get('company_id')
+            if company_id:
+                company = db.get_company(company_id)
+                if company:
+                    threshold = company.get('google_review_threshold', 4) or 4
+                    g_url = (company.get('review_google_url') or '').strip()
+                    if g_url and rating >= threshold:
+                        google_url = g_url
+        except Exception:
+            pass
+        return jsonify({"success": True, "message": "Thank you for your review!", "google_review_url": google_url})
     return jsonify({"error": "Failed to submit review"}), 500
 
 
@@ -12930,6 +12943,698 @@ def admin_search():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
+        db.return_connection(conn)
+
+
+# ============================================
+# QUOTE PIPELINE API
+# ============================================
+
+PIPELINE_STAGES = ['draft', 'sent', 'viewed', 'follow_up', 'accepted', 'won', 'lost']
+
+@app.route("/api/quotes/pipeline", methods=["GET"])
+@login_required
+def get_quote_pipeline():
+    """Get all quotes organized for pipeline view."""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT q.*, c.name as client_name, c.phone as client_phone, c.email as client_email
+            FROM quotes q LEFT JOIN clients c ON q.client_id = c.id
+            WHERE q.company_id = %s ORDER BY q.created_at DESC
+        """, (company_id,))
+        quotes = cur.fetchall()
+        for q in quotes:
+            for k in list(q.keys()):
+                if q.get(k) and hasattr(q[k], 'isoformat'):
+                    q[k] = q[k].isoformat()
+            if q.get('line_items') and isinstance(q['line_items'], str):
+                import json
+                try: q['line_items'] = json.loads(q['line_items'])
+                except: pass
+            # Ensure pipeline_stage has a value (fallback from status)
+            if not q.get('pipeline_stage'):
+                status = q.get('status', 'draft')
+                q['pipeline_stage'] = {'converted': 'won', 'declined': 'lost', 'accepted': 'accepted', 'sent': 'sent', 'expired': 'lost'}.get(status, 'draft')
+        # Stats
+        active = [q for q in quotes if q.get('pipeline_stage') not in ('won', 'lost')]
+        won = [q for q in quotes if q.get('pipeline_stage') == 'won' or q.get('status') == 'converted']
+        total_pipeline = sum(float(q.get('total') or 0) for q in active)
+        total_won = sum(float(q.get('total') or 0) for q in won)
+        total = len(quotes)
+        conversion = round(len(won) / total * 100) if total > 0 else 0
+        return jsonify({
+            "quotes": quotes,
+            "stats": {
+                "active": len(active), "won": len(won), "lost": len([q for q in quotes if q.get('pipeline_stage') == 'lost']),
+                "pipeline_value": total_pipeline, "won_value": total_won, "conversion_rate": conversion, "total": total
+            }
+        })
+    except Exception as e:
+        if 'column "pipeline_stage" does not exist' in str(e) or 'column "accept_token" does not exist' in str(e):
+            conn.rollback()
+            # Fallback: query without new columns
+            cur2 = conn.cursor(cursor_factory=RealDictCursor)
+            cur2.execute("""
+                SELECT q.*, c.name as client_name, c.phone as client_phone, c.email as client_email
+                FROM quotes q LEFT JOIN clients c ON q.client_id = c.id
+                WHERE q.company_id = %s ORDER BY q.created_at DESC
+            """, (company_id,))
+            quotes = cur2.fetchall()
+            for q in quotes:
+                for k in list(q.keys()):
+                    if q.get(k) and hasattr(q[k], 'isoformat'):
+                        q[k] = q[k].isoformat()
+                status = q.get('status', 'draft')
+                q['pipeline_stage'] = {'converted': 'won', 'declined': 'lost', 'accepted': 'accepted', 'sent': 'sent', 'expired': 'lost'}.get(status, 'draft')
+            cur2.close()
+            active = [q for q in quotes if q.get('pipeline_stage') not in ('won', 'lost')]
+            won = [q for q in quotes if q.get('pipeline_stage') == 'won']
+            total = len(quotes)
+            return jsonify({
+                "quotes": quotes,
+                "stats": {
+                    "active": len(active), "won": len(won), "lost": len([q for q in quotes if q.get('pipeline_stage') == 'lost']),
+                    "pipeline_value": sum(float(q.get('total') or 0) for q in active),
+                    "won_value": sum(float(q.get('total') or 0) for q in won),
+                    "conversion_rate": round(len(won) / total * 100) if total > 0 else 0, "total": total
+                }
+            })
+        raise
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/quotes/<int:quote_id>/pipeline-stage", methods=["PUT"])
+@login_required
+@subscription_required
+def update_quote_pipeline_stage(quote_id):
+    """Move a quote to a different pipeline stage."""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    stage = data.get('stage', '').strip()
+    if stage not in PIPELINE_STAGES:
+        return jsonify({"error": f"Invalid stage: {stage}"}), 400
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        extra_sql = ""
+        params = [stage]
+        if stage == 'won':
+            extra_sql = ", won_at = CURRENT_TIMESTAMP, status = 'accepted'"
+        elif stage == 'lost':
+            reason = data.get('lost_reason', '')
+            extra_sql = ", lost_at = CURRENT_TIMESTAMP, lost_reason = %s, status = 'declined'"
+            params.append(reason)
+        params.extend([quote_id, company_id])
+        cur.execute(f"UPDATE quotes SET pipeline_stage = %s, updated_at = CURRENT_TIMESTAMP{extra_sql} WHERE id = %s AND company_id = %s", params)
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/quotes/<int:quote_id>/accept-link", methods=["POST"])
+@login_required
+@subscription_required
+def generate_quote_accept_link(quote_id):
+    """Generate a public accept link for a quote."""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Reuse existing token if present
+        cur.execute("SELECT accept_token FROM quotes WHERE id = %s AND company_id = %s", (quote_id, company_id))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"error": "Quote not found"}), 404
+        token = row.get('accept_token')
+        if not token:
+            token = secrets.token_urlsafe(32)
+            cur.execute("UPDATE quotes SET accept_token = %s WHERE id = %s AND company_id = %s", (token, quote_id, company_id))
+            conn.commit()
+        public_url = os.getenv('PUBLIC_URL', request.host_url.rstrip('/'))
+        link = f"{public_url}/quote/accept/{token}"
+        return jsonify({"link": link, "token": token})
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/quote/accept/<token>", methods=["GET"])
+def get_quote_by_accept_token(token):
+    """Public: get quote details for acceptance page."""
+    db = get_database()
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT q.*, c.name as client_name, co.company_name, co.business_phone
+            FROM quotes q
+            LEFT JOIN clients c ON q.client_id = c.id
+            LEFT JOIN companies co ON q.company_id = co.id
+            WHERE q.accept_token = %s
+        """, (token,))
+        quote = cur.fetchone()
+        if not quote:
+            return jsonify({"error": "Quote not found"}), 404
+        for k in list(quote.keys()):
+            if quote.get(k) and hasattr(quote[k], 'isoformat'):
+                quote[k] = quote[k].isoformat()
+        if quote.get('line_items') and isinstance(quote['line_items'], str):
+            import json
+            try: quote['line_items'] = json.loads(quote['line_items'])
+            except: pass
+        return jsonify({"quote": quote})
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/quote/accept/<token>", methods=["POST"])
+def accept_quote_by_token(token):
+    """Public: customer accepts a quote."""
+    db = get_database()
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, company_id, status, pipeline_stage FROM quotes WHERE accept_token = %s", (token,))
+        quote = cur.fetchone()
+        if not quote:
+            return jsonify({"error": "Quote not found"}), 404
+        if quote.get('status') in ('accepted', 'converted'):
+            return jsonify({"already_accepted": True})
+        cur.execute("""
+            UPDATE quotes SET status = 'accepted', pipeline_stage = 'accepted',
+            updated_at = CURRENT_TIMESTAMP WHERE id = %s
+        """, (quote['id'],))
+        conn.commit()
+        return jsonify({"success": True, "message": "Quote accepted! We'll be in touch to schedule your job."})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+# ============================================
+# FOLLOW-UP SEQUENCES API
+# ============================================
+
+@app.route("/api/sequences", methods=["GET"])
+@login_required
+def get_sequences():
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM follow_up_sequences WHERE company_id = %s ORDER BY created_at DESC", (company_id,))
+        seqs = cur.fetchall()
+        for s in seqs:
+            for k in list(s.keys()):
+                if s.get(k) and hasattr(s[k], 'isoformat'):
+                    s[k] = s[k].isoformat()
+        return jsonify({"sequences": seqs})
+    except Exception as e:
+        if 'relation "follow_up_sequences" does not exist' in str(e):
+            conn.rollback()
+            return jsonify({"sequences": []})
+        raise
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/sequences", methods=["POST"])
+@login_required
+@subscription_required
+def create_sequence():
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    name = sanitize_string(data.get('name', 'Untitled Sequence'))
+    trigger_type = data.get('trigger_type', 'quote_sent')
+    steps = data.get('steps', [])
+    conn = db.get_connection()
+    try:
+        import json
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO follow_up_sequences (company_id, name, trigger_type, steps)
+            VALUES (%s, %s, %s, %s) RETURNING id
+        """, (company_id, name, trigger_type, json.dumps(steps)))
+        seq_id = cur.fetchone()[0]
+        conn.commit()
+        return jsonify({"id": seq_id, "success": True}), 201
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/sequences/<int:seq_id>", methods=["PUT"])
+@login_required
+@subscription_required
+def update_sequence(seq_id):
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    conn = db.get_connection()
+    try:
+        import json
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE follow_up_sequences SET name = %s, trigger_type = %s, steps = %s,
+            enabled = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND company_id = %s
+        """, (
+            sanitize_string(data.get('name', '')), data.get('trigger_type', 'quote_sent'),
+            json.dumps(data.get('steps', [])), data.get('enabled', True), seq_id, company_id
+        ))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/sequences/<int:seq_id>", methods=["DELETE"])
+@login_required
+@subscription_required
+def delete_sequence(seq_id):
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM follow_up_sequences WHERE id = %s AND company_id = %s", (seq_id, company_id))
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/quotes/<int:quote_id>/follow-up", methods=["POST"])
+@login_required
+@subscription_required
+def send_quote_follow_up(quote_id):
+    """Manually send a follow-up for a quote."""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT q.*, c.name as client_name, c.email as client_email, c.phone as client_phone
+            FROM quotes q LEFT JOIN clients c ON q.client_id = c.id
+            WHERE q.id = %s AND q.company_id = %s
+        """, (quote_id, company_id))
+        quote = cur.fetchone()
+        if not quote:
+            return jsonify({"error": "Quote not found"}), 404
+        email = (quote.get('client_email') or '').strip()
+        phone = (quote.get('client_phone') or '').strip()
+        if not email and not phone:
+            return jsonify({"error": "Customer has no contact info"}), 400
+        company = db.get_company(company_id)
+        company_name = (company.get('company_name', '') or company.get('business_name', '') or 'Our Company') if company else 'Our Company'
+        total = float(quote.get('total', 0))
+        title = quote.get('title', f"Quote #{quote.get('quote_number', '')}")
+        sent_via = None
+        req_data = request.get_json() or {}
+        custom_msg = sanitize_string(req_data.get('message', ''))
+        body = custom_msg or f"Hi {quote.get('client_name', 'there')}, just following up on your quote for {title} (€{total:.2f}). Are you still interested? We'd love to get this scheduled for you."
+        if email:
+            try:
+                from src.services.email_reminder import get_email_service
+                email_svc = get_email_service()
+                if email_svc.configured:
+                    html = f"""<div style='font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto'>
+<h2 style='color:#1e293b'>Following up on your quote</h2>
+<p style='color:#475569'>{body}</p>
+<div style='background:#f8fafc;padding:14px;border-radius:8px;margin:16px 0'>
+<strong>{title}</strong><br><span style='font-size:1.2em;color:#1e293b'>€{total:.2f}</span>
+</div>
+<p style='color:#64748b;font-size:13px'>Reply to this email or call us to proceed.</p>
+</div>"""
+                    email_svc._send_email(email, f"Following up — {title}", html, body, company_name)
+                    sent_via = 'email'
+            except Exception:
+                pass
+        if not sent_via and phone:
+            try:
+                from src.services.sms_reminder import get_sms_service
+                sms_service = get_sms_service()
+                twilio_number = company.get('twilio_phone_number') if company else None
+                if sms_service.client and twilio_number:
+                    sms_service.client.messages.create(body=body, from_=twilio_number, to=phone)
+                    sent_via = 'sms'
+            except Exception:
+                pass
+        if not sent_via:
+            return jsonify({"error": "Could not send follow-up"}), 500
+        # Update follow-up count
+        cur2 = conn.cursor()
+        cur2.execute("UPDATE quotes SET follow_up_count = COALESCE(follow_up_count, 0) + 1, last_follow_up_at = CURRENT_TIMESTAMP, pipeline_stage = CASE WHEN pipeline_stage = 'sent' THEN 'follow_up' ELSE pipeline_stage END WHERE id = %s", (quote_id,))
+        conn.commit()
+        cur2.close()
+        return jsonify({"success": True, "sent_via": sent_via})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+# ============================================
+# WORKFLOW AUTOMATIONS API
+# ============================================
+
+@app.route("/api/automations", methods=["GET"])
+@login_required
+def get_automations():
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM workflow_automations WHERE company_id = %s ORDER BY created_at DESC", (company_id,))
+        rows = cur.fetchall()
+        for r in rows:
+            for k in list(r.keys()):
+                if r.get(k) and hasattr(r[k], 'isoformat'):
+                    r[k] = r[k].isoformat()
+        return jsonify({"automations": rows})
+    except Exception as e:
+        if 'relation "workflow_automations" does not exist' in str(e):
+            conn.rollback()
+            return jsonify({"automations": []})
+        raise
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/automations", methods=["POST"])
+@login_required
+@subscription_required
+def create_automation():
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    conn = db.get_connection()
+    try:
+        import json
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO workflow_automations (company_id, name, trigger_type, trigger_config, actions)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+        """, (company_id, sanitize_string(data.get('name', '')), data.get('trigger_type', ''),
+              json.dumps(data.get('trigger_config', {})), json.dumps(data.get('actions', []))))
+        aid = cur.fetchone()[0]
+        conn.commit()
+        return jsonify({"id": aid, "success": True}), 201
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/automations/<int:auto_id>", methods=["PUT"])
+@login_required
+@subscription_required
+def update_automation(auto_id):
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    conn = db.get_connection()
+    try:
+        import json
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE workflow_automations SET name = %s, trigger_type = %s, trigger_config = %s,
+            actions = %s, enabled = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND company_id = %s
+        """, (sanitize_string(data.get('name', '')), data.get('trigger_type', ''),
+              json.dumps(data.get('trigger_config', {})), json.dumps(data.get('actions', [])),
+              data.get('enabled', True), auto_id, company_id))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/automations/<int:auto_id>", methods=["DELETE"])
+@login_required
+@subscription_required
+def delete_automation(auto_id):
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM workflow_automations WHERE id = %s AND company_id = %s", (auto_id, company_id))
+        conn.commit()
+        return jsonify({"success": True})
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+# ============================================
+# CUSTOMER PORTAL API
+# ============================================
+
+@app.route("/api/clients/<int:client_id>/portal-link", methods=["POST"])
+@login_required
+@subscription_required
+def generate_portal_link(client_id):
+    """Generate a portal access link for a customer."""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Check client belongs to company
+        cur.execute("SELECT id FROM clients WHERE id = %s AND company_id = %s", (client_id, company_id))
+        if not cur.fetchone():
+            return jsonify({"error": "Client not found"}), 404
+        # Reuse existing token or create new
+        cur.execute("SELECT token FROM customer_portal_tokens WHERE client_id = %s AND company_id = %s", (client_id, company_id))
+        existing = cur.fetchone()
+        if existing:
+            token = existing['token']
+        else:
+            token = secrets.token_urlsafe(32)
+            cur.execute("""
+                INSERT INTO customer_portal_tokens (company_id, client_id, token)
+                VALUES (%s, %s, %s)
+            """, (company_id, client_id, token))
+            conn.commit()
+        public_url = os.getenv('PUBLIC_URL', request.host_url.rstrip('/'))
+        link = f"{public_url}/portal/{token}"
+        return jsonify({"link": link, "token": token})
+    except Exception as e:
+        conn.rollback()
+        if 'relation "customer_portal_tokens" does not exist' in str(e):
+            return jsonify({"error": "Portal not set up yet. Run the migration first."}), 500
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/portal/<token>", methods=["GET"])
+def get_portal_data(token):
+    """Public: customer portal — get jobs, invoices, quotes for a customer."""
+    db = get_database()
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT pt.client_id, pt.company_id, c.name as client_name, c.email, c.phone,
+                   co.company_name, co.business_phone
+            FROM customer_portal_tokens pt
+            JOIN clients c ON pt.client_id = c.id
+            JOIN companies co ON pt.company_id = co.id
+            WHERE pt.token = %s
+        """, (token,))
+        portal = cur.fetchone()
+        if not portal:
+            return jsonify({"error": "Invalid portal link"}), 404
+        client_id = portal['client_id']
+        company_id = portal['company_id']
+        # Update last accessed
+        cur.execute("UPDATE customer_portal_tokens SET last_accessed_at = CURRENT_TIMESTAMP WHERE token = %s", (token,))
+        conn.commit()
+        # Get upcoming jobs
+        cur.execute("""
+            SELECT id, service_type, appointment_time, status, address, duration_minutes, price
+            FROM bookings WHERE company_id = %s AND client_id = %s AND status NOT IN ('cancelled')
+            ORDER BY appointment_time DESC LIMIT 20
+        """, (company_id, client_id))
+        jobs = cur.fetchall()
+        for j in jobs:
+            for k in list(j.keys()):
+                if j.get(k) and hasattr(j[k], 'isoformat'):
+                    j[k] = j[k].isoformat()
+        # Get quotes
+        cur.execute("""
+            SELECT id, quote_number, title, total, status, pipeline_stage, created_at, valid_until, accept_token
+            FROM quotes WHERE company_id = %s AND client_id = %s
+            ORDER BY created_at DESC LIMIT 10
+        """, (company_id, client_id))
+        quotes = cur.fetchall()
+        for q in quotes:
+            for k in list(q.keys()):
+                if q.get(k) and hasattr(q[k], 'isoformat'):
+                    q[k] = q[k].isoformat()
+        return jsonify({
+            "client_name": portal['client_name'],
+            "company_name": portal['company_name'],
+            "company_phone": portal['business_phone'],
+            "email": portal['email'],
+            "jobs": jobs,
+            "quotes": quotes,
+        })
+    except Exception as e:
+        if 'relation "customer_portal_tokens" does not exist' in str(e):
+            conn.rollback()
+            return jsonify({"error": "Portal not available"}), 404
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/portal/<token>/request-job", methods=["POST"])
+def portal_request_job(token):
+    """Public: customer requests a new job through the portal."""
+    db = get_database()
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT pt.client_id, pt.company_id, c.name, c.phone, c.email
+            FROM customer_portal_tokens pt JOIN clients c ON pt.client_id = c.id
+            WHERE pt.token = %s
+        """, (token,))
+        portal = cur.fetchone()
+        if not portal:
+            return jsonify({"error": "Invalid link"}), 404
+        data = request.get_json() or {}
+        service = sanitize_string(data.get('service_type', 'General'))
+        description = sanitize_string(data.get('description', ''))
+        address = sanitize_string(data.get('address', ''))
+        # Create as a lead
+        cur.execute("""
+            INSERT INTO leads (company_id, client_id, name, phone, email, source, stage, service_interest, notes, address)
+            VALUES (%s, %s, %s, %s, %s, 'portal', 'new', %s, %s, %s) RETURNING id
+        """, (portal['company_id'], portal['client_id'], portal['name'],
+              portal['phone'], portal['email'], service, description, address))
+        lead_id = cur.fetchone()['id']
+        conn.commit()
+        return jsonify({"success": True, "lead_id": lead_id, "message": "Request submitted! We'll be in touch soon."})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+# ============================================
+# REVIEW AUTOMATION SETTINGS API
+# ============================================
+
+@app.route("/api/settings/review-automation", methods=["GET"])
+@login_required
+def get_review_automation_settings():
+    db = get_database()
+    company_id = session.get('company_id')
+    try:
+        company = db.get_company(company_id)
+        return jsonify({
+            "review_auto_send": company.get('review_auto_send', True) if company else True,
+            "review_delay_hours": company.get('review_delay_hours', 24) if company else 24,
+            "review_google_url": company.get('review_google_url', '') if company else '',
+            "google_review_threshold": company.get('google_review_threshold', 4) if company else 4,
+        })
+    except Exception:
+        # Columns may not exist yet
+        return jsonify({
+            "review_auto_send": True,
+            "review_delay_hours": 24,
+            "review_google_url": '',
+            "google_review_threshold": 4,
+        })
+
+
+@app.route("/api/settings/review-automation", methods=["POST"])
+@login_required
+@subscription_required
+def update_review_automation_settings():
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    conn = db.get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE companies SET
+                review_auto_send = %s, review_delay_hours = %s,
+                review_google_url = %s, google_review_threshold = %s
+            WHERE id = %s
+        """, (
+            data.get('review_auto_send', True),
+            int(data.get('review_delay_hours', 24)),
+            sanitize_string(data.get('review_google_url', '')),
+            int(data.get('google_review_threshold', 4)),
+            company_id
+        ))
+        conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
         db.return_connection(conn)
 
 
