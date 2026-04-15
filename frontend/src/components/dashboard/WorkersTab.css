@@ -193,7 +193,7 @@
   .workers-stats-bar { display: none; }
   .workers-toolbar { flex-direction: column; gap: 0.5rem; }
   .workers-search { min-width: unset; }
-  .workers-filter-pills { width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+  .workers-filter-pills { width: 100%; overflow-x: auto; flex-wrap: wrap; }
   .worker-card { padding: 0.7rem 0.85rem; gap: 0.6rem; }
   .worker-avatar { width: 38px; height: 38px; font-size: 0.9rem; }
   .worker-info h3 { font-size: 0.85rem; }

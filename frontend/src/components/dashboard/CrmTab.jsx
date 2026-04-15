@@ -150,7 +150,14 @@ function CrmTab({ clients, bookings = [] }) {
   const customerHealth = useMemo(() => {
     const healthData = crmStats?.customer_health || [];
     const now = new Date();
-    return healthData.map(c => {
+
+    // If CRM stats haven't loaded yet, fall back to the clients prop
+    const sourceData = healthData.length > 0 ? healthData : clients.map(c => ({
+      id: c.id, name: c.name, phone: c.phone, email: c.email, created_at: c.created_at,
+      total_jobs: c.total_bookings || 0, completed_jobs: 0, total_revenue: 0, last_job_date: null,
+    }));
+
+    return sourceData.map(c => {
       const daysSinceLastJob = c.last_job_date
         ? Math.floor((now - new Date(c.last_job_date)) / (1000 * 60 * 60 * 24))
         : 999;
@@ -180,7 +187,7 @@ function CrmTab({ clients, bookings = [] }) {
 
       return { ...c, score, status, segment, daysSinceLastJob, revenue };
     });
-  }, [crmStats]);
+  }, [crmStats, clients]);
 
   // Filtered & sorted customers
   const filteredCustomers = useMemo(() => {
@@ -253,7 +260,7 @@ function CrmTab({ clients, bookings = [] }) {
         <div className="crm-header-right">
           <div className="search-box">
             <i className="fas fa-search"></i>
-            <input type="text" placeholder={activeView === 'pipeline' ? 'Search leads...' : 'Search customers...'}
+            <input type="text" placeholder={activeView === 'pipeline' ? 'Search leads...' : activeView === 'customers' ? 'Search customers...' : 'Search reviews...'}
               value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           </div>
           {activeView === 'pipeline' && (
@@ -388,44 +395,12 @@ function PipelineView({ leads, searchTerm, pipelineStats, onStageDrop, onEdit, o
 
   return (
     <>
-      {/* Pipeline Stats */}
-      <div className="crm-stats-row">
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(59,130,246,0.1)' }}>
-            <i className="fas fa-stream" style={{ color: '#3b82f6' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{pipelineStats.active}</span>
-            <span className="crm-stat-label">Active Leads</span>
-          </div>
-        </div>
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(16,185,129,0.1)' }}>
-            <i className="fas fa-trophy" style={{ color: '#10b981' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{pipelineStats.won}</span>
-            <span className="crm-stat-label">Won</span>
-          </div>
-        </div>
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(245,158,11,0.1)' }}>
-            <i className="fas fa-coins" style={{ color: '#f59e0b' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{pipelineStats.pipelineValue > 0 ? formatCurrency(pipelineStats.pipelineValue) : '—'}</span>
-            <span className="crm-stat-label">Pipeline Value</span>
-          </div>
-        </div>
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(139,92,246,0.1)' }}>
-            <i className="fas fa-percentage" style={{ color: '#8b5cf6' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{pipelineStats.conversionRate}%</span>
-            <span className="crm-stat-label">Conversion</span>
-          </div>
-        </div>
+      {/* Pipeline Stats - compact strip */}
+      <div className="crm-mini-stats">
+        <span className="crm-mini-stat"><i className="fas fa-stream" style={{ color: '#3b82f6' }}></i> {pipelineStats.active} active</span>
+        <span className="crm-mini-stat"><i className="fas fa-trophy" style={{ color: '#10b981' }}></i> {pipelineStats.won} won</span>
+        <span className="crm-mini-stat"><i className="fas fa-coins" style={{ color: '#f59e0b' }}></i> {pipelineStats.pipelineValue > 0 ? formatCurrency(pipelineStats.pipelineValue) : '—'} pipeline</span>
+        <span className="crm-mini-stat"><i className="fas fa-percentage" style={{ color: '#8b5cf6' }}></i> {pipelineStats.conversionRate}% conversion</span>
       </div>
 
       {/* Kanban Board */}
@@ -548,48 +523,16 @@ function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFi
     { key: 'dormant', label: 'Dormant', icon: 'fa-moon', color: '#94a3b8' },
   ];
 
-  const clientStats = crmStats?.client_stats || {};
+  const clientStats = crmStats?.client_stats || { total_clients: customers.length, new_this_month: 0 };
 
   return (
     <>
-      {/* Customer Stats */}
-      <div className="crm-stats-row">
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(59,130,246,0.1)' }}>
-            <i className="fas fa-users" style={{ color: '#3b82f6' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{clientStats.total_clients || 0}</span>
-            <span className="crm-stat-label">Total Customers</span>
-          </div>
-        </div>
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(16,185,129,0.1)' }}>
-            <i className="fas fa-user-plus" style={{ color: '#10b981' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{clientStats.new_this_month || 0}</span>
-            <span className="crm-stat-label">New This Month</span>
-          </div>
-        </div>
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(245,158,11,0.1)' }}>
-            <i className="fas fa-crown" style={{ color: '#f59e0b' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{segmentCounts.vip}</span>
-            <span className="crm-stat-label">VIP Customers</span>
-          </div>
-        </div>
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(148,163,184,0.1)' }}>
-            <i className="fas fa-moon" style={{ color: '#94a3b8' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{segmentCounts.dormant}</span>
-            <span className="crm-stat-label">Dormant</span>
-          </div>
-        </div>
+      {/* Customer Stats - compact strip */}
+      <div className="crm-mini-stats">
+        <span className="crm-mini-stat"><i className="fas fa-users" style={{ color: '#3b82f6' }}></i> {clientStats.total_clients || 0} customers</span>
+        <span className="crm-mini-stat"><i className="fas fa-user-plus" style={{ color: '#10b981' }}></i> {clientStats.new_this_month || 0} new this month</span>
+        <span className="crm-mini-stat"><i className="fas fa-crown" style={{ color: '#f59e0b' }}></i> {segmentCounts.vip} VIP</span>
+        <span className="crm-mini-stat"><i className="fas fa-moon" style={{ color: '#94a3b8' }}></i> {segmentCounts.dormant} dormant</span>
       </div>
 
       {/* Segment Filter + Sort */}
@@ -728,44 +671,12 @@ function SegmentBadge({ segment }) {
 function ReviewsView({ reviews, reviewStats }) {
   return (
     <>
-      {/* Review Stats */}
-      <div className="crm-stats-row">
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(245,158,11,0.1)' }}>
-            <i className="fas fa-star" style={{ color: '#f59e0b' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{reviewStats.avgRating || '—'}</span>
-            <span className="crm-stat-label">Avg Rating</span>
-          </div>
-        </div>
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(16,185,129,0.1)' }}>
-            <i className="fas fa-check-circle" style={{ color: '#10b981' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{reviewStats.submitted.length}</span>
-            <span className="crm-stat-label">Reviews</span>
-          </div>
-        </div>
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(245,158,11,0.1)' }}>
-            <i className="fas fa-clock" style={{ color: '#f59e0b' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{reviewStats.pending.length}</span>
-            <span className="crm-stat-label">Pending</span>
-          </div>
-        </div>
-        <div className="crm-stat-card">
-          <div className="crm-stat-icon" style={{ background: 'rgba(59,130,246,0.1)' }}>
-            <i className="fas fa-envelope" style={{ color: '#3b82f6' }}></i>
-          </div>
-          <div className="crm-stat-info">
-            <span className="crm-stat-value">{reviewStats.total}</span>
-            <span className="crm-stat-label">Sent</span>
-          </div>
-        </div>
+      {/* Review Stats - compact strip */}
+      <div className="crm-mini-stats">
+        <span className="crm-mini-stat"><i className="fas fa-star" style={{ color: '#f59e0b' }}></i> {reviewStats.avgRating || '—'} avg rating</span>
+        <span className="crm-mini-stat"><i className="fas fa-check-circle" style={{ color: '#10b981' }}></i> {reviewStats.submitted.length} reviews</span>
+        <span className="crm-mini-stat"><i className="fas fa-clock" style={{ color: '#f59e0b' }}></i> {reviewStats.pending.length} pending</span>
+        <span className="crm-mini-stat"><i className="fas fa-envelope" style={{ color: '#3b82f6' }}></i> {reviewStats.total} sent</span>
       </div>
 
       {/* Rating Breakdown */}

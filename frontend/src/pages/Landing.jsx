@@ -143,7 +143,7 @@ function WordRotator() {
     const interval = setInterval(() => {
       setIsAnimating(true);
       setTimeout(() => { setIndex(i => (i + 1) % HERO_WORDS.length); setIsAnimating(false); }, 250);
-    }, 1800);
+    }, 1600);
     return () => clearInterval(interval);
   }, []);
   return <span className={`word-rotator ${isAnimating ? 'exit' : 'enter'}`}>{HERO_WORDS[index]}</span>;
@@ -675,78 +675,15 @@ function MeshGradient() {
 }
 
 // ---- 3D Rotating Prism — AI Capabilities Showcase ----
-const PRISM_FACES = [
-  {
-    icon: 'fa-phone-alt',
-    label: 'AI Calls',
-    stat: '24/7',
-    desc: 'Never miss a call again',
-    color: '#0ea5e9',
-    gradient: 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
-  },
-  {
-    icon: 'fa-calendar-check',
-    label: 'Smart Booking',
-    stat: '90%',
-    desc: 'Auto-conversion rate',
-    color: '#10b981',
-    gradient: 'linear-gradient(135deg, #10b981, #34d399)',
-  },
-  {
-    icon: 'fa-users',
-    label: 'Customer CRM',
-    stat: '360°',
-    desc: 'Full customer view',
-    color: '#8b5cf6',
-    gradient: 'linear-gradient(135deg, #8b5cf6, #a78bfa)',
-  },
-  {
-    icon: 'fa-file-invoice-dollar',
-    label: 'Auto Invoicing',
-    stat: '0 min',
-    desc: 'Manual paperwork',
-    color: '#f59e0b',
-    gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
-  },
-];
-
 function RotatingPrism() {
-  const [faceIdx, setFaceIdx] = useState(0);
   const [ref, isVisible] = useScrollReveal(0.2);
-
-  const face = PRISM_FACES[faceIdx];
 
   return (
     <div ref={ref} className="prism-section-layout">
-      {/* 3D WebGL Cube */}
       <div className="prism-stage" style={{ width: 320, height: 320 }}>
         <Suspense fallback={<div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>Loading 3D...</div>}>
-          {isVisible && <FloatingCube onFaceChange={setFaceIdx} />}
+          {isVisible && <FloatingCube />}
         </Suspense>
-      </div>
-
-      {/* Info panel */}
-      <div className="prism-info">
-        <div className="prism-info-card" key={faceIdx}>
-          <div className="prism-info-icon" style={{ background: face.gradient }}>
-            <i className={`fas ${face.icon}`}></i>
-          </div>
-          <h3 className="prism-info-title">{face.label}</h3>
-          <div className="prism-info-stat" style={{ color: face.color }}>{face.stat}</div>
-          <p className="prism-info-desc">{face.desc}</p>
-        </div>
-        {/* Face selector dots */}
-        <div className="prism-dots">
-          {PRISM_FACES.map((f, i) => (
-            <button
-              key={i}
-              className={`prism-dot ${i === faceIdx ? 'active' : ''}`}
-              style={{ '--dot-color': f.color }}
-              onClick={() => setFaceIdx(i)}
-              aria-label={`Show ${f.label}`}
-            />
-          ))}
-        </div>
       </div>
     </div>
   );

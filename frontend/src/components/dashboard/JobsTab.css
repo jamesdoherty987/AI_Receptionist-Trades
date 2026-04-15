@@ -37,7 +37,6 @@
 
 /* Sections — subtle headers */
 .jt-sections { display: flex; flex-direction: column; gap: 1.5rem; }
-.jt-section { }
 .jt-section-header {
   display: flex; justify-content: space-between; align-items: center;
   padding: 0 0.25rem 0.5rem 0.25rem;
@@ -152,10 +151,10 @@
 @media (max-width: 768px) {
   .jt-header { flex-direction: column; gap: 0.5rem; }
   .jt-header .btn { width: 100%; justify-content: center; }
-  .jt-filters { gap: 0.25rem; }
-  .jt-filter { padding: 0.35rem 0.55rem; font-size: 0.7rem; }
-  .jt-filter-label { display: none; }
-  .jt-filter i { font-size: 0.78rem; }
+  .jt-filters { gap: 0.25rem; flex-wrap: wrap; }
+  .jt-filter { padding: 0.4rem 0.65rem; font-size: 0.75rem; }
+  .jt-filter-label { display: inline; }
+  .jt-filter i { font-size: 0.68rem; }
   .jt-card-left { min-width: 58px; padding-left: 0.75rem; }
   .jt-time { font-size: 0.8rem; }
   .jt-card-body { padding: 0.7rem 0.75rem 0.7rem 0.6rem; }

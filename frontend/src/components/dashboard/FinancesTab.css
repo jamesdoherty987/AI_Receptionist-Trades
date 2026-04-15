@@ -23,57 +23,65 @@
 
 /* Revenue Cards */
 .revenue-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 
 .revenue-card {
-  background: white;
-  padding: 1rem 1.15rem;
-  border-radius: 10px;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  border: 1px solid #e8ecf1;
-  transition: all 0.15s;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
 }
 
 .revenue-card:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .revenue-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.15rem;
+  font-size: 0.8rem;
   flex-shrink: 0;
 }
 
 .revenue-content {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
 }
 
 .revenue-value {
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   font-weight: 700;
   color: #1e293b;
-  line-height: 1.2;
+  line-height: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .revenue-label {
-  font-size: 0.875rem;
-  color: #6b7280;
-  margin-top: 0.25rem;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  margin-top: 0;
+  white-space: nowrap;
 }
 
 /* Chart Section */
@@ -490,48 +498,56 @@
 
 /* Quick Insights Row */
 .insights-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
-  gap: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 
 .insight-card {
-  background: white;
-  padding: 0.75rem 1rem;
-  border-radius: 10px;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  border: 1px solid #e8ecf1;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
 }
 
 .insight-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   flex-shrink: 0;
 }
 
 .insight-content {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
 }
 
 .insight-value {
-  font-size: 1.1rem;
+  font-size: 0.88rem;
   font-weight: 700;
   color: #1f2937;
-  line-height: 1.2;
+  line-height: 1;
 }
 
 .insight-label {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: #94a3b8;
-  margin-top: 0.1rem;
+  margin-top: 0;
 }
 
 /* Insights Grid (service bars + top customers) */
@@ -663,26 +679,26 @@
   }
 
   .revenue-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.4rem;
+    gap: 10px;
+    padding: 6px 10px;
   }
 
   .revenue-card {
-    padding: 0.7rem 0.85rem;
+    gap: 4px;
   }
 
   .revenue-icon {
-    width: 34px;
-    height: 34px;
-    font-size: 0.95rem;
+    width: 24px;
+    height: 24px;
+    font-size: 0.7rem;
   }
 
   .revenue-value {
-    font-size: 1.1rem;
+    font-size: 0.8rem;
   }
 
   .revenue-label {
-    font-size: 0.72rem;
+    font-size: 0.65rem;
   }
 
   .chart-section {
@@ -721,20 +737,20 @@
   }
 
   .insights-row {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 0.4rem;
+    gap: 10px;
+    padding: 6px 10px;
   }
 
   .insight-card {
-    padding: 0.6rem 0.75rem;
+    gap: 4px;
   }
 
   .insight-icon {
-    width: 30px; height: 30px; font-size: 0.8rem;
+    width: 24px; height: 24px; font-size: 0.7rem;
   }
 
   .insight-value {
-    font-size: 1rem;
+    font-size: 0.8rem;
   }
 
   .insight-label {

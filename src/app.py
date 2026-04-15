@@ -8381,6 +8381,8 @@ def get_crm_stats():
     from psycopg2.extras import RealDictCursor
     db = get_database()
     company_id = session.get('company_id')
+
+    # Fetch client stats and customer health first
     conn = db.get_connection()
     try:
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -8411,29 +8413,30 @@ def get_crm_stats():
             for key in ('created_at', 'last_job_date'):
                 if ch.get(key) and hasattr(ch[key], 'isoformat'):
                     ch[key] = ch[key].isoformat()
-
-        # Lead pipeline counts
-        lead_counts = {'new': 0, 'contacted': 0, 'quoted': 0, 'won': 0, 'lost': 0}
-        try:
-            cursor.execute("""
-                SELECT stage, COUNT(*) as count FROM leads
-                WHERE company_id = %s GROUP BY stage
-            """, (company_id,))
-            for row in cursor.fetchall():
-                lead_counts[row['stage']] = row['count']
-        except Exception as lead_err:
-            if 'relation "leads" does not exist' in str(lead_err):
-                conn.rollback()
-            else:
-                conn.rollback()
-
-        return jsonify({
-            "client_stats": client_stats,
-            "customer_health": customer_health,
-            "lead_counts": lead_counts,
-        })
     finally:
         db.release_connection(conn)
+
+    # Fetch lead counts separately so a missing leads table doesn't break everything
+    lead_counts = {'new': 0, 'contacted': 0, 'quoted': 0, 'won': 0, 'lost': 0}
+    conn2 = db.get_connection()
+    try:
+        cursor2 = conn2.cursor(cursor_factory=RealDictCursor)
+        cursor2.execute("""
+            SELECT stage, COUNT(*) as count FROM leads
+            WHERE company_id = %s GROUP BY stage
+        """, (company_id,))
+        for row in cursor2.fetchall():
+            lead_counts[row['stage']] = row['count']
+    except Exception:
+        pass  # leads table may not exist yet — that's fine
+    finally:
+        db.release_connection(conn2)
+
+    return jsonify({
+        "client_stats": client_stats,
+        "customer_health": customer_health,
+        "lead_counts": lead_counts,
+    })
 
 
 @app.route("/api/bookings/<int:booking_id>/send-invoice", methods=["POST"])
