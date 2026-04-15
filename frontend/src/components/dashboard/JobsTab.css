@@ -149,21 +149,29 @@
 
 /* Mobile */
 @media (max-width: 768px) {
-  .jt-header { flex-direction: row; gap: 0.5rem; }
-  .jt-header .btn { flex-shrink: 0; white-space: nowrap; }
+  .jt-header { flex-direction: column; gap: 0.5rem; }
+  .jt-header .jt-search { width: 100%; }
+  .jt-header .btn { width: 100%; justify-content: center; padding: 0.5rem 0.75rem; font-size: 0.82rem; }
   .jt-filters { gap: 0.25rem; flex-wrap: wrap; }
   .jt-filter { padding: 0.4rem 0.65rem; font-size: 0.75rem; }
   .jt-filter-label { display: inline; }
   .jt-filter i { font-size: 0.68rem; }
-  .jt-card-left { min-width: 58px; padding-left: 0.75rem; }
-  .jt-time { font-size: 0.8rem; }
-  .jt-card-body { padding: 0.7rem 0.75rem 0.7rem 0.6rem; }
-  .jt-card-top h4 { font-size: 0.86rem; }
+  .jt-card-left { min-width: 52px; padding-left: 0.6rem; }
+  .jt-time { font-size: 0.78rem; }
+  .jt-date { font-size: 0.6rem; }
+  .jt-card-body { padding: 0.55rem 0.65rem 0.55rem 0.5rem; }
+  .jt-card-top h4 { font-size: 0.82rem; }
   .jt-section-header { padding: 0 0.15rem 0.4rem; }
   .jt-section-title h3 { font-size: 0.76rem; }
-  .jt-info-item { font-size: 0.72rem; }
-  .jt-cards { gap: 0.4rem; }
-  .jt-sections { gap: 1rem; }
+  .jt-info-item { font-size: 0.7rem; }
+  .jt-card-bottom { gap: 0.35rem; }
+  .jt-charge { font-size: 0.75rem; }
+  .jt-phone { font-size: 0.7rem; }
+  .jt-duration { font-size: 0.68rem; }
+  .jt-cards { gap: 0.35rem; }
+  .jt-sections { gap: 0.85rem; }
+  .jt-card { border-radius: 8px; }
+  .jt-status-badge { font-size: 0.58rem; padding: 0.1rem 0.35rem; }
 }
 
 /* Service/Package chip on job card */

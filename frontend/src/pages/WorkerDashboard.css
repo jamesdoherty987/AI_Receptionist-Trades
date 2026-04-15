@@ -404,33 +404,44 @@
   .worker-tab i { font-size: 0.85rem; }
 
   /* Stats bar compact */
-  .worker-stats-bar { flex-direction: row; gap: 0.5rem; margin-bottom: 1rem; }
-  .worker-stat { padding: 0.6rem 0.75rem; gap: 0.5rem; }
-  .worker-stat > i { font-size: 1.1rem; }
-  .stat-number { font-size: 1.15rem; }
-  .stat-label { font-size: 0.7rem; }
+  .worker-stats-bar { flex-direction: row; gap: 0.4rem; margin-bottom: 0.75rem; }
+  .worker-stat { padding: 0.5rem 0.6rem; gap: 0.4rem; border-radius: 10px; }
+  .worker-stat > i { font-size: 1rem; }
+  .stat-number { font-size: 1.05rem; }
+  .stat-label { font-size: 0.65rem; }
 
   /* Job cards touch-friendly */
-  .worker-job-card { padding: 0.85rem 1rem; }
-  .worker-job-footer { flex-wrap: wrap; }
-  .worker-job-footer .wjd-btn { min-height: 40px; }
+  .worker-job-card { padding: 0.65rem 0.85rem; border-radius: 10px; }
+  .worker-job-header { margin-bottom: 0.35rem; }
+  .worker-job-body h3 { font-size: 0.9rem; margin-bottom: 0.25rem; }
+  .worker-job-body p { font-size: 0.78rem; margin: 0.15rem 0; }
+  .worker-job-footer { flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; padding-top: 0.5rem; }
+  .worker-job-footer .wjd-btn { min-height: 38px; font-size: 0.78rem; padding: 0.4rem 0.7rem; }
 
   /* Profile */
-  .worker-profile-card { flex-direction: column; align-items: center; text-align: center; padding: 1.25rem; }
+  .worker-profile-card { flex-direction: column; align-items: center; text-align: center; padding: 1rem; }
   .worker-profile-row { flex-direction: column; gap: 0.25rem; }
 
   /* Schedule items */
-  .worker-schedule-item { flex-wrap: wrap; padding: 0.85rem 1rem; }
+  .worker-schedule-item { flex-wrap: wrap; padding: 0.65rem 0.85rem; gap: 0.6rem; }
+  .worker-schedule-date { padding: 0.35rem; }
+  .schedule-date-num { font-size: 1.1rem; }
+  .worker-schedule-details h3 { font-size: 0.88rem; }
+  .worker-schedule-details p { font-size: 0.75rem; }
 
   /* HR section */
-  .whr-section { padding: 1rem; }
+  .whr-section { padding: 0.85rem; }
 
   /* Job detail */
-  .wjd-title h2 { font-size: 1.2rem; }
-  .wjd-btn { min-height: 44px; padding: 0.5rem 0.85rem; }
-  .wjd-btn-sm { min-height: 40px; }
-  .wjd-card { padding: 1rem; }
-  .wjd-timer { font-size: 0.95rem; padding: 0.4rem 0.75rem; }
+  .wjd-title h2 { font-size: 1.1rem; }
+  .wjd-btn { min-height: 40px; padding: 0.45rem 0.75rem; font-size: 0.8rem; }
+  .wjd-btn-sm { min-height: 36px; }
+  .wjd-card { padding: 0.85rem; border-radius: 10px; }
+  .wjd-card h3 { font-size: 0.88rem; margin-bottom: 0.75rem; padding-bottom: 0.5rem; }
+  .wjd-info-row { gap: 1rem; margin-bottom: 0.5rem; }
+  .wjd-label { font-size: 0.7rem; }
+  .wjd-value { font-size: 0.85rem; }
+  .wjd-timer { font-size: 0.9rem; padding: 0.35rem 0.65rem; }
   .wjd-edit-row { flex-direction: column; }
   .wjd-edit-actions { justify-content: flex-end; width: 100%; }
   .wjd-dropdown-menu { min-width: 160px; }

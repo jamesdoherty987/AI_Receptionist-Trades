@@ -289,14 +289,14 @@
   .crm-header-left { flex-direction: column; align-items: stretch; gap: 0.5rem; }
   .crm-header-right { flex-direction: row; gap: 0.5rem; }
   .crm-header-right .search-box { flex: 1; min-width: 0; }
-  .crm-mini-stats { gap: 10px; padding: 6px 10px; }
-  .crm-mini-stat { font-size: 0.72rem; }
-  .crm-stats-row { grid-template-columns: repeat(2, 1fr); }
+  .crm-mini-stats { gap: 8px; padding: 5px 8px; }
+  .crm-mini-stat { font-size: 0.68rem; }
+  .crm-stats-row { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
   .crm-pipeline { grid-template-columns: 1fr; }
   .pipeline-column { min-height: auto; }
-  .crm-customer-card { flex-direction: column; align-items: stretch; gap: 10px; }
+  .crm-customer-card { flex-direction: column; align-items: stretch; gap: 8px; padding: 0.7rem 0.85rem; }
   .crm-customer-avatar { display: none; }
-  .crm-customer-quick-actions { position: absolute; top: 12px; right: 12px; }
+  .crm-customer-quick-actions { position: absolute; top: 10px; right: 10px; }
   .crm-customer-card { position: relative; }
   .crm-customer-metrics { justify-content: space-around; }
   .crm-segment-filters { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; }
@@ -305,7 +305,7 @@
   .crm-view-btn { flex: 1; justify-content: center; }
 }
 @media (max-width: 480px) {
-  .crm-stats-row { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .crm-stat-card { padding: 10px 12px; }
+  .crm-stats-row { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .crm-stat-card { padding: 8px 10px; }
   .crm-review-left { flex-direction: column; align-items: flex-start; gap: 4px; }
 }
