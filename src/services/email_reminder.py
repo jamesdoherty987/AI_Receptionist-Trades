@@ -76,7 +76,7 @@ class EmailReminderService:
     
     def _send_via_resend(self, to_email: str, subject: str, html_body: str, 
                          text_body: str, from_name: str = None) -> bool:
-        """Send email using Resend API"""
+        """Send email using Resend API. Also stores the email ID for bounce tracking."""
         try:
             from_addr = self.resend_from_email or "onboarding@resend.dev"
             from_address = f"{from_name} <{from_addr}>" if from_name else from_addr
@@ -90,11 +90,15 @@ class EmailReminderService:
             }
             
             response = resend.Emails.send(params)
-            print(f"[SUCCESS] Email sent via Resend to {to_email} (ID: {response.get('id', 'unknown')})")
+            email_id = response.get('id', 'unknown')
+            print(f"[SUCCESS] Email sent via Resend to {to_email} (ID: {email_id})")
+            # Store the email ID so the bounce webhook can look it up
+            self._last_resend_email_id = email_id
             return True
             
         except Exception as e:
             print(f"[ERROR] Resend failed: {e}")
+            self._last_resend_email_id = None
             return False
     
     def _send_via_smtp(self, to_email: str, subject: str, html_body: str, 

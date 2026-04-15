@@ -335,6 +335,130 @@ class SMSReminderService:
 # Global instance
 _sms_service = None
 
+# ---------------------------------------------------------------------------
+# Pending email store — tracks emails sent via Resend so the bounce webhook
+# can fall back to SMS if the email bounces or is complained about.
+# Entries auto-expire after 24 hours.
+# ---------------------------------------------------------------------------
+import threading
+import time as _time_module
+
+_pending_emails = {}  # {resend_email_id: {notification_type, phone, kwargs, created_at}}
+_pending_lock = threading.Lock()
+_PENDING_TTL = 86400  # 24 hours
+
+
+def store_pending_email(resend_email_id: str, notification_type: str,
+                        customer_phone: str, **kwargs):
+    """Store SMS fallback data for a sent email, keyed by Resend email ID."""
+    # Serialize datetime objects for storage
+    import copy
+    stored_kwargs = copy.deepcopy(kwargs)
+    for key in ('appointment_time', 'new_time'):
+        val = stored_kwargs.get(key)
+        if val and hasattr(val, 'isoformat'):
+            stored_kwargs[key] = val.isoformat()
+
+    with _pending_lock:
+        # Prune expired entries while we're here
+        now = _time_module.time()
+        expired = [k for k, v in _pending_emails.items()
+                   if now - v.get('created_at', 0) > _PENDING_TTL]
+        for k in expired:
+            del _pending_emails[k]
+
+        _pending_emails[resend_email_id] = {
+            'notification_type': notification_type,
+            'phone': customer_phone,
+            'kwargs': stored_kwargs,
+            'created_at': now,
+        }
+    print(f"[NOTIFY] 📧 Stored SMS fallback for Resend email {resend_email_id} → {customer_phone}")
+
+
+def handle_email_bounce(resend_email_id: str, bounce_type: str = 'bounce') -> bool:
+    """
+    Called by the Resend webhook when an email bounces or gets a complaint.
+    Looks up the pending email data and sends the notification via SMS instead.
+
+    Returns True if SMS fallback was sent.
+    """
+    with _pending_lock:
+        entry = _pending_emails.pop(resend_email_id, None)
+
+    if not entry:
+        print(f"[BOUNCE] No pending fallback found for Resend email {resend_email_id}")
+        return False
+
+    notification_type = entry['notification_type']
+    phone = entry['phone']
+    kwargs = entry['kwargs']
+
+    # Deserialize datetime strings back to datetime objects
+    for key in ('appointment_time', 'new_time'):
+        val = kwargs.get(key)
+        if val and isinstance(val, str):
+            try:
+                kwargs[key] = datetime.fromisoformat(val)
+            except (ValueError, TypeError):
+                pass
+
+    print(f"[BOUNCE] ⚠️ Email {resend_email_id} {bounce_type} — falling back to SMS for {phone}")
+
+    try:
+        sms_svc = get_sms_service()
+        if not sms_svc.client:
+            print(f"[BOUNCE] ❌ SMS service not configured — cannot send fallback")
+            return False
+
+        sent = False
+        if notification_type == 'booking_confirmation':
+            sent = sms_svc.send_booking_confirmation(
+                to_number=phone,
+                appointment_time=kwargs.get('appointment_time'),
+                customer_name=kwargs.get('customer_name', 'Customer'),
+                service_type=kwargs.get('service_type', 'appointment'),
+                company_name=kwargs.get('company_name'),
+                worker_names=kwargs.get('worker_names'),
+                address=kwargs.get('address'),
+            )
+        elif notification_type == 'cancellation':
+            sent = sms_svc.send_cancellation_sms(
+                to_number=phone,
+                customer_name=kwargs.get('customer_name', 'Customer'),
+                appointment_time=kwargs.get('appointment_time'),
+                service_type=kwargs.get('service_type', 'appointment'),
+                company_name=kwargs.get('company_name'),
+                is_full_day=kwargs.get('is_full_day', False),
+            )
+        elif notification_type == 'reschedule':
+            sent = sms_svc.send_reschedule_sms(
+                to_number=phone,
+                customer_name=kwargs.get('customer_name', 'Customer'),
+                new_time=kwargs.get('new_time'),
+                service_type=kwargs.get('service_type', 'appointment'),
+                company_name=kwargs.get('company_name'),
+                is_full_day=kwargs.get('is_full_day', False),
+            )
+        elif notification_type == 'day_before_reminder':
+            sent = sms_svc.send_day_before_reminder(
+                to_number=phone,
+                appointment_time=kwargs.get('appointment_time'),
+                customer_name=kwargs.get('customer_name', 'Customer'),
+                service_type=kwargs.get('service_type', 'appointment'),
+                company_name=kwargs.get('company_name'),
+                worker_names=kwargs.get('worker_names'),
+            )
+
+        if sent:
+            print(f"[BOUNCE] ✅ SMS fallback sent to {phone} for {notification_type}")
+        else:
+            print(f"[BOUNCE] ❌ SMS fallback failed for {phone}")
+        return sent
+    except Exception as e:
+        print(f"[BOUNCE] ❌ SMS fallback error: {e}")
+        return False
+
 
 def get_sms_service() -> SMSReminderService:
     """Get or create global SMS service instance"""
@@ -351,6 +475,8 @@ def notify_customer(notification_type: str, customer_email: str = None,
     
     Tries email first if the customer has an email address and the email
     service is configured. Falls back to SMS if email fails or isn't available.
+    If email succeeds, stores the SMS fallback data so the Resend bounce
+    webhook can trigger SMS delivery if the email bounces.
     
     Args:
         notification_type: One of 'booking_confirmation', 'cancellation', 
@@ -413,6 +539,11 @@ def notify_customer(notification_type: str, customer_email: str = None,
                 if sent:
                     channel = 'email'
                     print(f"[NOTIFY] ✅ {notification_type} sent via EMAIL to {customer_email}")
+                    # Store SMS fallback data so the Resend bounce webhook can
+                    # trigger SMS if this email bounces
+                    resend_id = getattr(email_svc, '_last_resend_email_id', None)
+                    if resend_id and customer_phone:
+                        store_pending_email(resend_id, notification_type, customer_phone, **kwargs)
         except Exception as e:
             print(f"[NOTIFY] ⚠️ Email failed for {notification_type}: {e}")
     

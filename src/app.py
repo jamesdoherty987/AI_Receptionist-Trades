@@ -4115,6 +4115,39 @@ from src.services.stripe_connect_service import (
 )
 
 
+# ---------------------------------------------------------------------------
+# Resend webhook — handles email bounce/complaint events.
+# When an email bounces, falls back to SMS so the customer still gets notified.
+# Configure in Resend dashboard: POST https://yourdomain.com/resend/webhook
+# Events to subscribe: email.bounced, email.complained
+# ---------------------------------------------------------------------------
+@app.route("/resend/webhook", methods=["POST"])
+def resend_webhook():
+    """Handle Resend webhook events (bounces, complaints)."""
+    try:
+        payload = request.get_json(silent=True)
+        if not payload:
+            return jsonify({"error": "Invalid payload"}), 400
+
+        event_type = payload.get('type', '')
+        data = payload.get('data', {})
+        email_id = data.get('email_id') or data.get('id', '')
+
+        print(f"[RESEND_WEBHOOK] Event: {event_type}, Email ID: {email_id}")
+
+        if event_type in ('email.bounced', 'email.complained'):
+            from src.services.sms_reminder import handle_email_bounce
+            bounce_type = 'bounce' if event_type == 'email.bounced' else 'complaint'
+            handle_email_bounce(email_id, bounce_type=bounce_type)
+        else:
+            print(f"[RESEND_WEBHOOK] Ignoring event type: {event_type}")
+
+        return jsonify({"received": True}), 200
+    except Exception as e:
+        print(f"[RESEND_WEBHOOK] Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/connect/status", methods=["GET"])
 @login_required
 def get_connect_status():
