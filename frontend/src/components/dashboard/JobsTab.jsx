@@ -35,19 +35,16 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const { data: invoiceConfig } = useQuery({
     queryKey: ['invoice-config'],
     queryFn: async () => (await getInvoiceConfig()).data,
-    staleTime: 60000,
   });
 
   const { data: servicesMenu } = useQuery({
     queryKey: ['services-menu'],
     queryFn: async () => { const r = await getServicesMenu(); return r.data; },
-    staleTime: 60 * 1000,
   });
 
   const { data: packagesData } = useQuery({
     queryKey: ['packages'],
     queryFn: async () => { const r = await getPackages(); return r.data; },
-    staleTime: 60 * 1000,
   });
 
   const services = servicesMenu?.services || [];
@@ -89,7 +86,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   });
 
   const handleAddClick = () => {
-    if (!isSubscriptionActive) { addToast('Active subscription required', 'warning'); return; }
+    if (!isSubscriptionActive) { addToast('Please upgrade your plan to add jobs', 'warning'); return; }
     setShowAddModal(true);
   };
 

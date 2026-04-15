@@ -25,7 +25,7 @@ export default function FloatingCube({ onFaceChange }) {
         onFaceChange?.(next);
         return next;
       });
-    }, 1600);
+    }, 1300);
     return () => clearInterval(intervalRef.current);
   }, [onFaceChange]);
 

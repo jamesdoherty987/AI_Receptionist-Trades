@@ -22,8 +22,7 @@ function WorkerNotificationBell({ onNavigate }) {
       const response = await getWorkerNotifications();
       return response.data;
     },
-    refetchInterval: 10000, // Poll faster for emergency jobs
-    staleTime: 5000,
+    refetchInterval: 30000,
   });
 
   const notifications = data?.notifications || [];

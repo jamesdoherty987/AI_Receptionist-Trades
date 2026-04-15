@@ -46,7 +46,6 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
       return response.data;
     },
     enabled: isOpen && !!workerId,
-    staleTime: 30 * 1000, // 30 seconds
     gcTime: 5 * 60 * 1000 // 5 minutes
   });
 
@@ -64,7 +63,6 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
       return response.data;
     },
     enabled: isOpen && !!workerId,
-    staleTime: 30 * 1000, // 30 seconds
     gcTime: 5 * 60 * 1000 // 5 minutes
   });
 
@@ -75,7 +73,6 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
       return response.data;
     },
     enabled: isOpen && !!workerId,
-    staleTime: 60 * 1000, // 1 minute
     gcTime: 10 * 60 * 1000 // 10 minutes
   });
 

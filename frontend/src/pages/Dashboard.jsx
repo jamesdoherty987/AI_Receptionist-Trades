@@ -16,7 +16,6 @@ import ServicesTab from '../components/dashboard/ServicesTab';
 import MaterialsTab from '../components/dashboard/MaterialsTab';
 import InsightsTab from '../components/dashboard/InsightsTab';
 import CallLogsTab from '../components/dashboard/CallLogsTab';
-import PipelineTab from '../components/dashboard/PipelineTab';
 import { isStandalone } from '../components/PWAInstallPrompt';
 import { getDashboardData, getBusinessSettings, getUnseenCallCount, getCompanyReviews, getLeads, getUnreadMessageCounts } from '../services/api';
 import './Dashboard.css';
@@ -85,6 +84,8 @@ function Dashboard() {
       const response = await getDashboardData();
       return response.data.data;
     },
+    staleTime: 60000,
+    gcTime: 10 * 60 * 1000,
   });
 
   const bookings = dashboardData?.bookings || [];
@@ -117,8 +118,7 @@ function Dashboard() {
       const res = await getUnseenCallCount(callsLastSeen);
       return res.data;
     },
-    refetchInterval: 30000,
-    staleTime: 10000,
+    refetchInterval: 60000,
   });
 
   useEffect(() => {
@@ -129,14 +129,12 @@ function Dashboard() {
   const { data: reviewsData } = useQuery({
     queryKey: ['reviews'],
     queryFn: async () => (await getCompanyReviews()).data,
-    staleTime: 60000,
   });
 
   // Fetch leads for CRM badge (overdue follow-ups)
   const { data: leadsData } = useQuery({
     queryKey: ['leads'],
     queryFn: async () => (await getLeads()).data,
-    staleTime: 60000,
   });
   const overdueLeads = useMemo(() => {
     const now = new Date();
@@ -167,8 +165,7 @@ function Dashboard() {
   const { data: unreadMsgData } = useQuery({
     queryKey: ['unread-message-counts'],
     queryFn: async () => (await getUnreadMessageCounts()).data,
-    staleTime: 30000,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
   const totalUnreadMessages = useMemo(() => {
     const counts = unreadMsgData?.counts;
@@ -212,12 +209,6 @@ function Dashboard() {
       group: 'Team & Clients',
       badge: overdueLeads,
       content: isLoading ? <LoadingSpinner /> : <CrmTab clients={clients} bookings={bookings} />
-    },
-    {
-      label: 'Pipeline',
-      icon: 'fas fa-stream',
-      group: 'Team & Clients',
-      content: <PipelineTab />
     },
     // Setup
     {

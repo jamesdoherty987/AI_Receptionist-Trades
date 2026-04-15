@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { formatCurrency } from '../../utils/helpers';
 import './InsightsTab.css';
 
@@ -600,8 +600,8 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
               ))}
               {/* Day rows: label + cells — all flat in the grid */}
               {[1, 2, 3, 4, 5, 6, 0].map(dayIdx => (
-                <>
-                  <div key={`label-${dayIdx}`} className="heatmap-day-label">{DAY_NAMES[dayIdx]}</div>
+                <React.Fragment key={`day-${dayIdx}`}>
+                  <div className="heatmap-day-label">{DAY_NAMES[dayIdx]}</div>
                   {Array.from({ length: 12 }, (_, hi) => {
                     const hour = hi * 2;
                     const val = stats.heatmap[dayIdx][hour] + stats.heatmap[dayIdx][hour + 1];
@@ -619,7 +619,7 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
                       />
                     );
                   })}
-                </>
+                </React.Fragment>
               ))}
             </div>
             <div className="heatmap-legend">

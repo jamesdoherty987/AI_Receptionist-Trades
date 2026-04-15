@@ -39,7 +39,6 @@ function ExpensesPanel() {
   const { data: expenses = [], isLoading } = useQuery({
     queryKey: ['expenses'],
     queryFn: async () => (await getExpenses()).data,
-    staleTime: 30000,
   });
 
   const createMut = useMutation({

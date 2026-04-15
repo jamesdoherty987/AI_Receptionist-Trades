@@ -82,7 +82,7 @@ function ServicesTab() {
 
   const handleAddClick = () => {
     if (!isSubscriptionActive) {
-      addToast('You need an active subscription to add services', 'warning');
+      addToast('Please upgrade your plan to add services', 'warning');
       return;
     }
     setShowAddForm(!showAddForm);
@@ -1327,7 +1327,7 @@ function PackagesSection({ services, isSubscriptionActive, materialsCatalog }) {
 
   const handleAddClick = () => {
     if (!isSubscriptionActive) {
-      addToast('You need an active subscription to add packages', 'warning');
+      addToast('Please upgrade your plan to add packages', 'warning');
       return;
     }
     setShowAddForm(!showAddForm);

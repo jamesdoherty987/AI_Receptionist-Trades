@@ -277,6 +277,9 @@
 .crm-form-group textarea { resize: vertical; font-family: inherit; }
 .crm-form-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 8px; border-top: 1px solid #f1f5f9; }
 
+/* Quotes Embed */
+.crm-quotes-embed { margin: 0 -0.25rem; }
+
 /* Responsive */
 @media (max-width: 1024px) {
   .crm-pipeline { grid-template-columns: repeat(3, 1fr); }

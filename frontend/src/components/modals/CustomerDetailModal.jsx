@@ -51,9 +51,9 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       return response.data;
     },
     enabled: isOpen && !!clientId,
-    staleTime: 30 * 1000, // 30 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes (renamed from cacheTime in v5)
-    placeholderData: (previousData) => previousData, // Keep previous data while refetching
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    placeholderData: (previousData) => previousData,
   });
 
   const { data: allBookings } = useQuery({
@@ -63,8 +63,8 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       return response.data;
     },
     enabled: isOpen && !!clientId,
-    staleTime: 60 * 1000, // 1 minute
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
     placeholderData: (previousData) => previousData,
   });
 
@@ -77,7 +77,7 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
     queryKey: ['client-timeline', clientId],
     queryFn: async () => (await getClientTimeline(clientId)).data,
     enabled: isOpen && !!clientId,
-    staleTime: 30000,
+    staleTime: 5 * 60 * 1000,
   });
 
   const filteredTimeline = timelineFilter === 'all'

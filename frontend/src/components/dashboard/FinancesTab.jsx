@@ -4,7 +4,6 @@ import { formatCurrency } from '../../utils/helpers';
 import { getFinances, getExpenses } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
 import ExpensesPanel from '../accounting/ExpensesPanel';
-import QuotesPanel from '../accounting/QuotesPanel';
 import AgingPanel from '../accounting/AgingPanel';
 import PnlPanel from '../accounting/PnlPanel';
 import TaxSettings from '../accounting/TaxSettings';
@@ -15,15 +14,10 @@ import '../accounting/Accounting.css';
 import './FinancesTab.css';
 
 const ACCT_TABS = [
-  { key: 'overview', label: 'Overview', icon: 'fa-chart-line' },
+  { key: 'overview', label: 'Dashboard', icon: 'fa-chart-line' },
+  { key: 'invoicing', label: 'Invoicing', icon: 'fa-file-invoice' },
   { key: 'expenses', label: 'Expenses', icon: 'fa-receipt' },
-  { key: 'mileage', label: 'Mileage', icon: 'fa-car' },
-  { key: 'quotes', label: 'Quotes', icon: 'fa-file-invoice' },
-  { key: 'purchase-orders', label: 'POs', icon: 'fa-file-export' },
-  { key: 'unpaid', label: 'Unpaid', icon: 'fa-hourglass-half' },
-  { key: 'credits', label: 'Credits', icon: 'fa-undo' },
-  { key: 'pnl', label: 'P&L', icon: 'fa-file-invoice-dollar' },
-  { key: 'tax', label: 'Settings', icon: 'fa-cog' },
+  { key: 'reports', label: 'Reports', icon: 'fa-file-invoice-dollar' },
 ];
 
 function FinancesTab() {
@@ -56,7 +50,6 @@ function FinancesTab() {
       const response = await getFinances(chartRange);
       return response.data;
     },
-    staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
   });
 
@@ -75,7 +68,6 @@ function FinancesTab() {
   const { data: expensesData } = useQuery({
     queryKey: ['expenses'],
     queryFn: async () => (await getExpenses()).data,
-    staleTime: 30000,
     enabled: acctTab === 'overview',
   });
   const totalExpenses = (expensesData || []).reduce((s, e) => s + (e.amount || 0), 0);
@@ -312,12 +304,6 @@ function FinancesTab() {
           <button className="fin-quick-btn" onClick={() => setAcctTab('expenses')}>
             <i className="fas fa-plus"></i> New Expense
           </button>
-          <button className="fin-quick-btn" onClick={() => setAcctTab('quotes')}>
-            <i className="fas fa-plus"></i> New Quote
-          </button>
-          <button className="fin-quick-btn" onClick={() => setAcctTab('purchase-orders')}>
-            <i className="fas fa-plus"></i> New PO
-          </button>
           <div style={{ marginLeft: 'auto' }}>
             <button className="fin-section-toggle-btn" onClick={() => setShowSectionPicker(!showSectionPicker)}>
               <i className={`fas ${showSectionPicker ? 'fa-times' : 'fa-sliders-h'}`}></i>
@@ -327,29 +313,19 @@ function FinancesTab() {
         </div>
       )}
 
+      {/* Invoicing — Unpaid invoices + Credit notes */}
+      {acctTab === 'invoicing' && (
+        <InvoicingView />
+      )}
+
+      {/* Expenses — Expenses + Mileage + Purchase Orders */}
       {acctTab === 'expenses' && (
-        <ExpensesPanel />
+        <ExpensesView />
       )}
-      {acctTab === 'mileage' && (
-        <MileagePanel />
-      )}
-      {acctTab === 'quotes' && (
-        <QuotesPanel />
-      )}
-      {acctTab === 'purchase-orders' && (
-        <PurchaseOrdersPanel />
-      )}
-      {acctTab === 'unpaid' && (
-        <AgingPanel />
-      )}
-      {acctTab === 'credits' && (
-        <CreditNotesPanel />
-      )}
-      {acctTab === 'pnl' && (
-        <PnlPanel />
-      )}
-      {acctTab === 'tax' && (
-        <TaxSettings />
+
+      {/* Reports — P&L + Tax Settings */}
+      {acctTab === 'reports' && (
+        <ReportsView />
       )}
 
       {acctTab === 'overview' && (<>
@@ -572,6 +548,73 @@ function FinancesTab() {
       )}
 
       </>)}
+    </div>
+  );
+}
+
+/* ============================================
+   INVOICING VIEW — Unpaid + Credits
+   ============================================ */
+function InvoicingView() {
+  const [subView, setSubView] = useState('unpaid');
+  return (
+    <div className="fin-grouped-view">
+      <div className="fin-sub-toggle">
+        <button className={subView === 'unpaid' ? 'active' : ''} onClick={() => setSubView('unpaid')}>
+          <i className="fas fa-hourglass-half"></i> Outstanding
+        </button>
+        <button className={subView === 'credits' ? 'active' : ''} onClick={() => setSubView('credits')}>
+          <i className="fas fa-undo"></i> Credit Notes
+        </button>
+      </div>
+      {subView === 'unpaid' && <AgingPanel />}
+      {subView === 'credits' && <CreditNotesPanel />}
+    </div>
+  );
+}
+
+/* ============================================
+   EXPENSES VIEW — Expenses + Mileage + POs
+   ============================================ */
+function ExpensesView() {
+  const [subView, setSubView] = useState('expenses');
+  return (
+    <div className="fin-grouped-view">
+      <div className="fin-sub-toggle">
+        <button className={subView === 'expenses' ? 'active' : ''} onClick={() => setSubView('expenses')}>
+          <i className="fas fa-receipt"></i> Expenses
+        </button>
+        <button className={subView === 'mileage' ? 'active' : ''} onClick={() => setSubView('mileage')}>
+          <i className="fas fa-car"></i> Mileage
+        </button>
+        <button className={subView === 'purchase-orders' ? 'active' : ''} onClick={() => setSubView('purchase-orders')}>
+          <i className="fas fa-file-export"></i> Purchase Orders
+        </button>
+      </div>
+      {subView === 'expenses' && <ExpensesPanel />}
+      {subView === 'mileage' && <MileagePanel />}
+      {subView === 'purchase-orders' && <PurchaseOrdersPanel />}
+    </div>
+  );
+}
+
+/* ============================================
+   REPORTS VIEW — P&L + Tax Settings
+   ============================================ */
+function ReportsView() {
+  const [subView, setSubView] = useState('pnl');
+  return (
+    <div className="fin-grouped-view">
+      <div className="fin-sub-toggle">
+        <button className={subView === 'pnl' ? 'active' : ''} onClick={() => setSubView('pnl')}>
+          <i className="fas fa-file-invoice-dollar"></i> Profit & Loss
+        </button>
+        <button className={subView === 'tax' ? 'active' : ''} onClick={() => setSubView('tax')}>
+          <i className="fas fa-cog"></i> Tax Settings
+        </button>
+      </div>
+      {subView === 'pnl' && <PnlPanel />}
+      {subView === 'tax' && <TaxSettings />}
     </div>
   );
 }

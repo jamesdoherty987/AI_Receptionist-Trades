@@ -25,8 +25,7 @@ function NotificationBell({ onNavigate }) {
       const response = await getNotifications();
       return response.data;
     },
-    refetchInterval: 30000, // Poll every 30 seconds
-    staleTime: 10000,
+    refetchInterval: 60000,
   });
 
   const notifications = data?.notifications || [];

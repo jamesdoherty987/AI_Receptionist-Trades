@@ -42,7 +42,6 @@ function PipelineTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['quote-pipeline'],
     queryFn: async () => (await getQuotePipeline()).data,
-    staleTime: 30000,
   });
 
   const quotes = data?.quotes || [];
@@ -50,8 +49,22 @@ function PipelineTab() {
 
   const stageMut = useMutation({
     mutationFn: ({ id, stage, lostReason: lr }) => updateQuotePipelineStage(id, stage, lr),
+    onMutate: async ({ id, stage }) => {
+      await queryClient.cancelQueries({ queryKey: ['quote-pipeline'] });
+      const previous = queryClient.getQueryData(['quote-pipeline']);
+      if (previous?.quotes) {
+        queryClient.setQueryData(['quote-pipeline'], {
+          ...previous,
+          quotes: previous.quotes.map(q => q.id === id ? { ...q, pipeline_stage: stage } : q),
+        });
+      }
+      return { previous };
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] }); queryClient.invalidateQueries({ queryKey: ['quotes'] }); },
-    onError: (e) => addToast(e.response?.data?.error || 'Failed to update stage', 'error'),
+    onError: (e, vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['quote-pipeline'], context.previous);
+      addToast(e.response?.data?.error || 'Failed to update stage', 'error');
+    },
   });
 
   const followUpMut = useMutation({
@@ -306,7 +319,7 @@ function SequencesView() {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ name: '', trigger_type: 'quote_sent', steps: [{ delay_days: 3, channel: 'email', message: '' }] });
 
-  const { data } = useQuery({ queryKey: ['sequences'], queryFn: async () => (await getSequences()).data, staleTime: 30000 });
+  const { data } = useQuery({ queryKey: ['sequences'], queryFn: async () => (await getSequences()).data });
   const seqs = data?.sequences || [];
 
   const saveMut = useMutation({
@@ -442,7 +455,7 @@ function AutomationsView() {
   const [editId, setEditId] = useState(null);
   const [form, setForm] = useState({ name: '', trigger_type: 'job_completed', trigger_config: {}, actions: [{ type: 'send_review_request', config: {} }] });
 
-  const { data } = useQuery({ queryKey: ['automations'], queryFn: async () => (await getAutomations()).data, staleTime: 30000 });
+  const { data } = useQuery({ queryKey: ['automations'], queryFn: async () => (await getAutomations()).data });
   const autos = data?.automations || [];
 
   const saveMut = useMutation({

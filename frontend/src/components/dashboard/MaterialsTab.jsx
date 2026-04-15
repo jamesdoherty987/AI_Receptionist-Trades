@@ -118,7 +118,7 @@ function MaterialsTab() {
           </p>
         </div>
         <button className="btn btn-primary" onClick={() => {
-          if (!isSubscriptionActive) { addToast('Active subscription required', 'warning'); return; }
+          if (!isSubscriptionActive) { addToast('Please upgrade your plan to add materials', 'warning'); return; }
           setShowAddForm(!showAddForm);
         }}>
           <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Material

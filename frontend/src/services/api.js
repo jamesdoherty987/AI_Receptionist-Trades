@@ -78,8 +78,7 @@ api.interceptors.response.use(
       }
     }
 
-    // Handle 403 subscription required — update cached subscription state
-    // so the UI can show the expired/inactive banner immediately
+    // Handle 403 subscription required — show friendly message
     if (
       error.response?.status === 403 &&
       error.response?.data?.subscription_status === 'inactive'
@@ -88,10 +87,24 @@ api.interceptors.response.use(
       if (subData) {
         localStorage.setItem('authSubscription', JSON.stringify(subData));
       }
-      // Redirect to settings subscription tab if not already there
-      if (!window.location.pathname.startsWith('/settings')) {
+      // Replace the raw error with a user-friendly message
+      error.response.data.error = 'Please upgrade your plan to use this feature.';
+      error.response.data.friendly = true;
+      // Only redirect for write operations (POST/PUT/DELETE), not reads
+      const method = (error.config?.method || '').toUpperCase();
+      if (method !== 'GET' && !window.location.pathname.startsWith('/settings')) {
         window.location.href = '/settings?tab=subscription';
       }
+    }
+
+    // Handle 500 errors — replace raw server errors with friendly messages
+    if (error.response?.status === 500) {
+      const rawError = error.response?.data?.error || '';
+      // Don't expose internal server errors to users
+      if (!error.response.data) error.response.data = {};
+      error.response.data.error = 'Something went wrong. Please try again.';
+      error.response.data.friendly = true;
+      console.error('[API] Server error:', rawError);
     }
 
     return Promise.reject(error);

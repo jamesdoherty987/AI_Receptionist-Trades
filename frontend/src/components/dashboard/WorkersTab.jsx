@@ -45,7 +45,7 @@ function WorkersTab({ workers, bookings }) {
       const response = await getUnreadMessageCounts();
       return response.data;
     },
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 
   const reviewMutation = useMutation({
@@ -77,7 +77,7 @@ function WorkersTab({ workers, bookings }) {
 
   const handleAddClick = () => {
     if (!isSubscriptionActive) {
-      addToast('You need an active subscription to add workers', 'warning');
+      addToast('Please upgrade your plan to add workers', 'warning');
       return;
     }
     setShowAddModal(true);

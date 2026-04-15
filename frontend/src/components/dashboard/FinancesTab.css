@@ -924,6 +924,25 @@
   }
 }
 
+/* Grouped View Sub-Toggles */
+.fin-grouped-view { display: flex; flex-direction: column; gap: 1rem; }
+.fin-sub-toggle {
+  display: flex; gap: 2px; background: #f1f5f9; border-radius: 8px; padding: 2px;
+}
+.fin-sub-toggle button {
+  padding: 6px 14px; border: none; background: transparent; border-radius: 6px;
+  font-size: 0.82rem; font-weight: 500; color: #64748b; cursor: pointer;
+  display: flex; align-items: center; gap: 6px; transition: all 0.15s; font-family: inherit;
+}
+.fin-sub-toggle button:hover { color: #1e293b; }
+.fin-sub-toggle button.active { background: white; color: #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.08); font-weight: 600; }
+.fin-sub-toggle button i { font-size: 0.72rem; }
+
+@media (max-width: 768px) {
+  .fin-sub-toggle { flex-wrap: wrap; }
+  .fin-sub-toggle button { flex: 1; justify-content: center; font-size: 0.75rem; padding: 6px 10px; }
+}
+
 /* Quick Action Buttons */
 .fin-quick-actions {
   display: flex;

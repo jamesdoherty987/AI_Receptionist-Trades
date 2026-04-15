@@ -255,6 +255,8 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['availability'] });
       queryClient.invalidateQueries({ queryKey: ['monthly-availability'] });
+      queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
       if (workerMode) {
         queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
       }

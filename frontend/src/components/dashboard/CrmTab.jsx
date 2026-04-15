@@ -6,6 +6,7 @@ import { useToast } from '../Toast';
 import { getLeads, createLead, updateLead, deleteLead, convertLead, getCrmStats, getCompanyReviews, generatePortalLink } from '../../services/api';
 import AddClientModal from '../modals/AddClientModal';
 import CustomerDetailModal from '../modals/CustomerDetailModal';
+import PipelineTab from './PipelineTab';
 import './CrmTab.css';
 
 function formatRelativeTime(dateStr) {
@@ -40,8 +41,9 @@ const LEAD_SOURCES = [
 ];
 
 const CRM_VIEWS = [
-  { key: 'pipeline', label: 'Pipeline', icon: 'fa-stream' },
   { key: 'customers', label: 'Customers', icon: 'fa-users' },
+  { key: 'leads', label: 'Leads', icon: 'fa-stream' },
+  { key: 'quotes', label: 'Quotes', icon: 'fa-file-invoice' },
   { key: 'reviews', label: 'Reviews', icon: 'fa-star' },
 ];
 
@@ -50,7 +52,7 @@ function CrmTab({ clients, bookings = [] }) {
   const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
   const queryClient = useQueryClient();
-  const [activeView, setActiveView] = useState('pipeline');
+  const [activeView, setActiveView] = useState('customers');
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddLead, setShowAddLead] = useState(false);
   const [showAddClient, setShowAddClient] = useState(false);
@@ -64,7 +66,6 @@ function CrmTab({ clients, bookings = [] }) {
   const { data: leadsData } = useQuery({
     queryKey: ['leads'],
     queryFn: async () => (await getLeads()).data,
-    staleTime: 30000,
   });
   const leads = leadsData?.leads || [];
 
@@ -72,14 +73,12 @@ function CrmTab({ clients, bookings = [] }) {
   const { data: crmStats } = useQuery({
     queryKey: ['crm-stats'],
     queryFn: async () => (await getCrmStats()).data,
-    staleTime: 60000,
   });
 
   // Fetch reviews
   const { data: reviewsData } = useQuery({
     queryKey: ['reviews'],
     queryFn: async () => (await getCompanyReviews()).data,
-    staleTime: 30000,
   });
   const reviews = reviewsData?.reviews || [];
 
@@ -97,12 +96,28 @@ function CrmTab({ clients, bookings = [] }) {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, ...data }) => updateLead(id, data),
+    onMutate: async ({ id, ...data }) => {
+      // Optimistic update: immediately move the lead in the UI
+      await queryClient.cancelQueries({ queryKey: ['leads'] });
+      const previous = queryClient.getQueryData(['leads']);
+      if (data.stage && previous?.leads) {
+        queryClient.setQueryData(['leads'], {
+          ...previous,
+          leads: previous.leads.map(l => l.id === id ? { ...l, ...data } : l),
+        });
+      }
+      return { previous };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
       setEditingLead(null);
     },
-    onError: (e) => addToast(e.response?.data?.error || 'Failed to update lead', 'error'),
+    onError: (e, variables, context) => {
+      // Roll back on error
+      if (context?.previous) queryClient.setQueryData(['leads'], context.previous);
+      addToast(e.response?.data?.error || 'Failed to update lead', 'error');
+    },
   });
 
   const deleteMutation = useMutation({
@@ -260,17 +275,17 @@ function CrmTab({ clients, bookings = [] }) {
         <div className="crm-header-right">
           <div className="search-box">
             <i className="fas fa-search"></i>
-            <input type="text" placeholder={activeView === 'pipeline' ? 'Search leads...' : activeView === 'customers' ? 'Search customers...' : 'Search reviews...'}
+            <input type="text" placeholder={activeView === 'leads' ? 'Search leads...' : activeView === 'customers' ? 'Search customers...' : activeView === 'quotes' ? 'Search quotes...' : 'Search reviews...'}
               value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           </div>
-          {activeView === 'pipeline' && (
+          {activeView === 'leads' && (
             <button className="btn btn-primary btn-sm" onClick={() => setShowAddLead(true)}>
               <i className="fas fa-plus"></i> Add Lead
             </button>
           )}
           {activeView === 'customers' && (
             <button className="btn btn-primary btn-sm" onClick={() => {
-              if (!isSubscriptionActive) { addToast('Active subscription required', 'warning'); return; }
+              if (!isSubscriptionActive) { addToast('Please upgrade your plan to add customers', 'warning'); return; }
               setShowAddClient(true);
             }}>
               <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Customer
@@ -279,8 +294,8 @@ function CrmTab({ clients, bookings = [] }) {
         </div>
       </div>
 
-      {/* Pipeline View */}
-      {activeView === 'pipeline' && (
+      {/* Leads View */}
+      {activeView === 'leads' && (
         <PipelineView
           leads={leads}
           searchTerm={searchTerm}
@@ -290,6 +305,11 @@ function CrmTab({ clients, bookings = [] }) {
           onDelete={handleDeleteLead}
           onConvert={id => convertMutation.mutate(id)}
         />
+      )}
+
+      {/* Quotes View — renders the PipelineTab component */}
+      {activeView === 'quotes' && (
+        <QuotePipelineEmbed />
       )}
 
       {/* Customers View */}
@@ -409,7 +429,7 @@ function PipelineView({ leads, searchTerm, pipelineStats, onStageDrop, onEdit, o
         <span className="crm-mini-stat"><i className="fas fa-percentage" style={{ color: '#8b5cf6' }}></i> {pipelineStats.conversionRate}% conversion</span>
       </div>
 
-      {/* Kanban Board */}
+      {/* Kanban Board — always visible */}
       <div className="crm-pipeline">
         {PIPELINE_STAGES.map(stage => (
           <div key={stage.key}
@@ -433,7 +453,7 @@ function PipelineView({ leads, searchTerm, pipelineStats, onStageDrop, onEdit, o
               {(leadsByStage[stage.key] || []).length === 0 && (
                 <div className="pipeline-empty">
                   <i className={`fas ${stage.icon}`}></i>
-                  <span>{stage.key === 'new' ? 'Add your first lead' : 'Drag leads here'}</span>
+                  <span>{stage.key === 'new' ? 'Add your first lead' : 'No leads'}</span>
                 </div>
               )}
             </div>
@@ -605,9 +625,6 @@ function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFi
                     <i className="fas fa-envelope"></i>
                   </a>
                 )}
-                <button className="crm-quick-btn" onClick={e => { e.stopPropagation(); onPortalLink(c.id); }} title="Copy portal link">
-                  <i className="fas fa-external-link-alt"></i>
-                </button>
               </div>
               <div className="crm-customer-metrics">
                 <div className="crm-metric">
@@ -856,6 +873,18 @@ function LeadFormModal({ lead, onClose, onSubmit, isPending }) {
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+/* ============================================
+   QUOTE PIPELINE EMBED
+   Renders the existing PipelineTab inside CRM
+   ============================================ */
+function QuotePipelineEmbed() {
+  return (
+    <div className="crm-quotes-embed">
+      <PipelineTab />
     </div>
   );
 }

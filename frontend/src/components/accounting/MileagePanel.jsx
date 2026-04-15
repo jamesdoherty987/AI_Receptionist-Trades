@@ -19,7 +19,6 @@ function MileagePanel() {
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ['mileage'],
     queryFn: async () => (await getMileageLogs()).data,
-    staleTime: 30000,
   });
 
   const createMut = useMutation({

@@ -78,8 +78,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: isOpen && !!jobId,
-    staleTime: 30 * 1000,
-    gcTime: 5 * 60 * 1000
   });
 
   const { data: invoiceConfig } = useQuery({
@@ -89,8 +87,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: isOpen,
-    staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000
   });
 
   const { data: businessSettings } = useQuery({
@@ -100,7 +96,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: isOpen,
-    staleTime: 60 * 1000,
   });
 
   const { data: assignedWorkers } = useQuery({
@@ -110,8 +105,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: isOpen && !!jobId,
-    staleTime: 30 * 1000,
-    gcTime: 5 * 60 * 1000
   });
 
   const { data: workersAvailability } = useQuery({
@@ -121,8 +114,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: showAssignWorker && !!jobId,
-    staleTime: 30 * 1000,
-    gcTime: 5 * 60 * 1000
   });
 
   const { data: allWorkers } = useQuery({
@@ -132,22 +123,18 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: showAssignWorker && !workersAvailability,
-    staleTime: 60 * 1000,
-    gcTime: 10 * 60 * 1000
   });
 
   const { data: jobMaterialsData } = useQuery({
     queryKey: ['job-materials', jobId],
     queryFn: async () => { const r = await getJobMaterials(jobId); return r.data; },
     enabled: isOpen && !!jobId,
-    staleTime: 30 * 1000,
   });
 
   const { data: materialsCatalog } = useQuery({
     queryKey: ['materials'],
     queryFn: async () => { const r = await getMaterials(); return r.data; },
     enabled: isOpen && showAddMaterial,
-    staleTime: 60 * 1000,
   });
 
   // Sub-tasks
@@ -155,7 +142,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     queryKey: ['job-tasks', jobId],
     queryFn: async () => (await getJobTasks(jobId)).data,
     enabled: isOpen && !!jobId,
-    staleTime: 30 * 1000,
   });
 
   // Review
@@ -163,7 +149,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     queryKey: ['booking-review', jobId],
     queryFn: async () => (await getBookingReview(jobId)).data,
     enabled: isOpen && !!jobId,
-    staleTime: 30 * 1000,
   });
 
   // Linked quotes
@@ -171,7 +156,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     queryKey: ['quotes'],
     queryFn: async () => (await getQuotes()).data,
     enabled: isOpen && !!jobId,
-    staleTime: 30 * 1000,
   });
 
   const linkedQuotes = useMemo(() => {
@@ -230,6 +214,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setEditingQuoteId(null);
@@ -242,6 +227,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     mutationFn: (quoteId) => sendQuote(quoteId),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
       addToast(`Quote sent via ${res.data?.sent_via || 'email'} to ${res.data?.sent_to || 'customer'}`, 'success');
     },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to send quote', 'error'),
@@ -251,14 +237,12 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     queryKey: ['services-menu'],
     queryFn: async () => { const r = await getServicesMenu(); return r.data; },
     enabled: isOpen && !!job,
-    staleTime: 60 * 1000,
   });
 
   const { data: packagesRaw } = useQuery({
     queryKey: ['packages'],
     queryFn: async () => { const r = await getPackages(); return r.data; },
     enabled: isOpen && !!job,
-    staleTime: 60 * 1000,
   });
 
   const matchedServiceOrPackage = useMemo(() => {
@@ -355,6 +339,8 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
       setIsEditing(false);
       addToast('Job updated successfully!', 'success');
     },
@@ -375,6 +361,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['reviews'] });
       addToast('Status updated successfully!', 'success');
     },
     onError: (error, variables, context) => {
@@ -496,7 +485,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
 
   const handleSendInvoice = () => {
     if (!isSubscriptionActive) {
-      addToast('You need an active subscription to send invoices', 'warning');
+      addToast('Please upgrade your plan to send invoices', 'warning');
       return;
     }
     if (!job.estimated_charge && !job.charge) {

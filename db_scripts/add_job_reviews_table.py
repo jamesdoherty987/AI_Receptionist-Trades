@@ -7,10 +7,16 @@ import sys
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 def run_migration():
-    database_url = os.environ.get('DATABASE_URL')
+    database_url = os.getenv('DATABASE_URL')
     if not database_url:
-        print("[ERROR] DATABASE_URL not set")
+        from dotenv import load_dotenv
+        load_dotenv()
+        database_url = os.getenv('DATABASE_URL')
+    if not database_url:
+        print("[ERROR] DATABASE_URL not set. Set it in your environment or .env file.")
         sys.exit(1)
 
     conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)

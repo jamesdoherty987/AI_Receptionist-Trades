@@ -143,7 +143,7 @@ function WordRotator() {
     const interval = setInterval(() => {
       setIsAnimating(true);
       setTimeout(() => { setIndex(i => (i + 1) % HERO_WORDS.length); setIsAnimating(false); }, 250);
-    }, 1600);
+    }, 1300);
     return () => clearInterval(interval);
   }, []);
   return <span className={`word-rotator ${isAnimating ? 'exit' : 'enter'}`}>{HERO_WORDS[index]}</span>;

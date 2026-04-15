@@ -21,7 +21,6 @@ function CreditNotesPanel() {
   const { data: notes = [], isLoading } = useQuery({
     queryKey: ['credit-notes'],
     queryFn: async () => (await getCreditNotes()).data,
-    staleTime: 30000,
   });
 
   const { data: clients = [] } = useQuery({
@@ -34,7 +33,6 @@ function CreditNotesPanel() {
   const { data: bookings = [] } = useQuery({
     queryKey: ['bookings'],
     queryFn: async () => (await getBookings()).data,
-    staleTime: 30000,
     enabled: showForm,
   });
 

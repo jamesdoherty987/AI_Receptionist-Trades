@@ -16,7 +16,7 @@ function CustomersTab({ clients, bookings = [] }) {
 
   const handleAddClick = () => {
     if (!isSubscriptionActive) {
-      addToast('You need an active subscription to add customers', 'warning');
+      addToast('Please upgrade your plan to add customers', 'warning');
       return;
     }
     setShowAddModal(true);

@@ -15,7 +15,6 @@ function PnlPanel() {
   const { data: pnl, isLoading } = useQuery({
     queryKey: ['pnl-report', period],
     queryFn: async () => (await getPnlReport(period)).data,
-    staleTime: 30000,
   });
 
   const chartData = useMemo(() => {

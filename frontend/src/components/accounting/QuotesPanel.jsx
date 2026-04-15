@@ -232,6 +232,7 @@ function ConvertToJobModal({ isOpen, onClose, quote, onConverted }) {
     mutationFn: ({ id, data }) => convertQuoteToJob(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['availability'] });
       queryClient.invalidateQueries({ queryKey: ['monthly-availability'] });
@@ -430,7 +431,6 @@ function QuotesPanel() {
   const { data: quotes = [], isLoading } = useQuery({
     queryKey: ['quotes'],
     queryFn: async () => (await getQuotes()).data,
-    staleTime: 30000,
   });
 
   const { data: clients = [] } = useQuery({
@@ -469,25 +469,26 @@ function QuotesPanel() {
 
   const createMut = useMutation({
     mutationFn: (data) => createQuote({ ...data, tax_rate: taxRate }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['quotes'] }); addToast('Quote created', 'success'); resetForm(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['quotes'] }); queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] }); addToast('Quote created', 'success'); resetForm(); },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to create quote', 'error'),
   });
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }) => updateQuote(id, { ...data, tax_rate: taxRate }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['quotes'] }); addToast('Quote updated', 'success'); resetForm(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['quotes'] }); queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] }); addToast('Quote updated', 'success'); resetForm(); },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to update', 'error'),
   });
 
   const deleteMut = useMutation({
     mutationFn: deleteQuote,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['quotes'] }); addToast('Quote deleted', 'success'); setDeleteConfirm(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['quotes'] }); queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] }); addToast('Quote deleted', 'success'); setDeleteConfirm(null); },
   });
 
   const sendMut = useMutation({
     mutationFn: (id) => sendQuote(id),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
       addToast(`Quote sent via ${res.data?.sent_via || 'email'} to ${res.data?.sent_to || 'customer'}`, 'success');
     },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to send quote', 'error'),
@@ -857,7 +858,7 @@ function QuotesPanel() {
                   {/* Follow Up */}
                   {(q.status === 'sent' || q.pipeline_stage === 'follow_up') && (
                     <button className="quote-action-btn quote-action-send" title="Send follow-up to customer"
-                      onClick={() => sendQuoteFollowUp(q.id, '').then(res => { addToast(`Follow-up sent via ${res.data?.sent_via}`, 'success'); queryClient.invalidateQueries({ queryKey: ['quotes'] }); }).catch(e => addToast(e.response?.data?.error || 'Failed', 'error'))}>
+                      onClick={() => sendQuoteFollowUp(q.id, '').then(res => { addToast(`Follow-up sent via ${res.data?.sent_via}`, 'success'); queryClient.invalidateQueries({ queryKey: ['quotes'] }); queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] }); }).catch(e => addToast(e.response?.data?.error || 'Failed', 'error'))}>
                       <i className="fas fa-redo"></i><span>Follow Up</span>
                     </button>
                   )}

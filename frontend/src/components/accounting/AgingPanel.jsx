@@ -19,7 +19,6 @@ function AgingPanel() {
   const { data: aging, isLoading } = useQuery({
     queryKey: ['invoice-aging'],
     queryFn: async () => (await getInvoiceAging()).data,
-    staleTime: 30000,
   });
 
   const bucketEntries = useMemo(() => {

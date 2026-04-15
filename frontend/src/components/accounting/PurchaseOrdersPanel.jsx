@@ -30,7 +30,6 @@ function PurchaseOrdersPanel() {
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['purchase-orders'],
     queryFn: async () => (await getPurchaseOrders()).data,
-    staleTime: 30000,
   });
 
   const createMut = useMutation({

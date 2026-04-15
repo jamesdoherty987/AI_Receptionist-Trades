@@ -6,7 +6,6 @@ function ReviewsTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['reviews'],
     queryFn: async () => (await getCompanyReviews()).data,
-    staleTime: 30 * 1000,
   });
 
   const reviews = data?.reviews || [];

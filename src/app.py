@@ -8085,7 +8085,13 @@ def get_company_reviews():
     """Get all reviews for the logged-in company."""
     db = get_database()
     company_id = session.get('company_id')
-    reviews = db.get_company_reviews(company_id)
+    try:
+        reviews = db.get_company_reviews(company_id)
+    except Exception as e:
+        # job_reviews table may not exist yet
+        if 'relation' in str(e) and 'does not exist' in str(e):
+            return jsonify({"reviews": []})
+        raise
     return jsonify({"reviews": reviews})
 
 
@@ -8186,10 +8192,12 @@ def get_leads():
         return jsonify({"leads": leads})
     except Exception as e:
         # Table may not exist yet
-        if 'relation "leads" does not exist' in str(e):
+        err_str = str(e).lower()
+        if 'does not exist' in err_str or 'relation' in err_str:
             conn.rollback()
             return jsonify({"leads": []})
-        raise
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
     finally:
         db.release_connection(conn)
 
