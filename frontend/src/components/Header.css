@@ -12,6 +12,13 @@ body.mobile-menu-open .header {
   display: none !important;
 }
 
+/* Hide header when a modal is open on mobile — prevents close button being covered */
+@media (max-width: 768px) {
+  body.modal-open .header {
+    display: none !important;
+  }
+}
+
 .header .container {
   max-width: 1600px;
   margin: 0 auto;
