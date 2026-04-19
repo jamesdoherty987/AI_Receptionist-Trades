@@ -1731,11 +1731,11 @@ function ReviewAutomationSettings() {
                 <label>Google review redirect threshold</label>
                 <select value={form.google_review_threshold}
                   onChange={e => setForm({ ...form, google_review_threshold: parseInt(e.target.value) })}>
-                  <option value="3">3+ stars</option>
-                  <option value="4">4+ stars (recommended)</option>
-                  <option value="5">5 stars only</option>
+                  <option value="3">3+ stars — more reviews, some mixed</option>
+                  <option value="4">4+ stars — balanced (recommended)</option>
+                  <option value="5">5 stars only — fewer but perfect</option>
                 </select>
-                <small className="form-help">Only happy customers get directed to Google — lower ratings stay internal</small>
+                <small className="form-help">Only customers who rate at or above this threshold will be redirected to leave a Google review. Everyone else stays internal so you can follow up privately.</small>
               </div>
 
               <div className="form-group full-width">
