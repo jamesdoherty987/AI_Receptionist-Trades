@@ -1689,108 +1689,105 @@ function ReviewAutomationSettings() {
   if (isLoading) return <div className="review-loading">Loading...</div>;
 
   return (
-    <div className="settings-tab-content">
-      <div className="review-card">
-        <div className="review-card-header">
-          <div className="review-card-icon"><i className="fas fa-star"></i></div>
-          <div>
-            <h3 className="review-card-title">Post-Job Review Automation</h3>
-            <p className="review-card-desc">Automatically request reviews after jobs are completed. Happy customers get directed to leave a Google review.</p>
+    <>
+      <div className="settings-card">
+        <div className="form-section">
+          <div className="form-section-header">
+            <i className="fas fa-star" style={{ color: '#f59e0b' }}></i>
+            <h3>Post-Job Review Automation</h3>
+          </div>
+          <p className="section-description">Automatically request reviews after jobs are completed. Happy customers get directed to leave a Google review.</p>
+
+          <div className="toggle-rows">
+            <div className="toggle-row">
+              <div className="toggle-row-info">
+                <div className="toggle-row-label">Auto-send review requests</div>
+                <div className="toggle-row-desc">{form.review_auto_send ? 'Enabled — reviews sent automatically' : 'Disabled — reviews are not sent'}</div>
+              </div>
+              <label className="toggle-switch">
+                <input type="checkbox" checked={form.review_auto_send}
+                  onChange={() => setForm({ ...form, review_auto_send: !form.review_auto_send })} />
+                <span className="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          {form.review_auto_send && (
+            <div className="form-grid" style={{ marginTop: '1.25rem' }}>
+              <div className="form-group">
+                <label>Send review request after</label>
+                <select value={form.review_delay_hours}
+                  onChange={e => setForm({ ...form, review_delay_hours: parseInt(e.target.value) })}>
+                  <option value="1">1 hour</option>
+                  <option value="4">4 hours</option>
+                  <option value="24">1 day</option>
+                  <option value="48">2 days</option>
+                  <option value="72">3 days</option>
+                  <option value="168">1 week</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Google review redirect threshold</label>
+                <select value={form.google_review_threshold}
+                  onChange={e => setForm({ ...form, google_review_threshold: parseInt(e.target.value) })}>
+                  <option value="3">3+ stars</option>
+                  <option value="4">4+ stars (recommended)</option>
+                  <option value="5">5 stars only</option>
+                </select>
+                <small className="form-help">Only happy customers get directed to Google — lower ratings stay internal</small>
+              </div>
+
+              <div className="form-group full-width">
+                <label>Google Reviews URL</label>
+                <input type="url" className={urlError ? 'review-input-error' : ''}
+                  placeholder="https://g.page/r/your-business/review"
+                  value={form.review_google_url}
+                  onChange={handleGoogleUrlChange}
+                  onBlur={() => validateGoogleUrl(form.review_google_url)} />
+                {urlError && <small className="form-help" style={{ color: '#ef4444' }}><i className="fas fa-exclamation-circle"></i> {urlError}</small>}
+                <small className="form-help">Customers who rate {form.google_review_threshold}+ stars will be prompted to leave a Google review</small>
+              </div>
+            </div>
+          )}
+
+          <div className="review-save-row">
+            <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
+              <i className={`fas ${saving ? 'fa-spinner fa-spin' : 'fa-save'}`}></i> {saving ? 'Saving...' : 'Save Review Settings'}
+            </button>
+            {saved && <span className="review-saved-badge"><i className="fas fa-check-circle"></i> Saved</span>}
           </div>
         </div>
 
-        <div className="review-field">
-          <label className="review-field-label">Auto-send review requests</label>
-          <div className="review-toggle-row">
-            <label className="toggle-switch">
-              <input type="checkbox" checked={form.review_auto_send}
-                onChange={() => setForm({ ...form, review_auto_send: !form.review_auto_send })} />
-              <span className="toggle-slider"></span>
-            </label>
-            <span className={`review-toggle-status ${form.review_auto_send ? 'on' : ''}`}>
-              {form.review_auto_send ? 'Enabled — reviews sent automatically' : 'Disabled'}
-            </span>
+        <div className="form-section">
+          <div className="form-section-header">
+            <i className="fas fa-info-circle" style={{ color: 'var(--accent-blue)' }}></i>
+            <h3>How it works</h3>
           </div>
-        </div>
-
-        {form.review_auto_send && (
-          <>
-            <div className="review-field">
-              <label className="review-field-label">Send review request after</label>
-              <select className="review-select" value={form.review_delay_hours}
-                onChange={e => setForm({ ...form, review_delay_hours: parseInt(e.target.value) })}>
-                <option value="1">1 hour</option>
-                <option value="4">4 hours</option>
-                <option value="24">1 day</option>
-                <option value="48">2 days</option>
-                <option value="72">3 days</option>
-                <option value="168">1 week</option>
-              </select>
+          <div className="review-steps">
+            <div className="review-step">
+              <span className="review-step-num">1</span>
+              <span className="review-step-text">Job is marked as completed</span>
             </div>
-
-            <div className="review-field">
-              <label className="review-field-label">Google Reviews URL</label>
-              <input type="url" className={`review-input ${urlError ? 'error' : ''}`}
-                placeholder="https://g.page/r/your-business/review"
-                value={form.review_google_url}
-                onChange={handleGoogleUrlChange}
-                onBlur={() => validateGoogleUrl(form.review_google_url)} />
-              {urlError && <span className="review-field-error"><i className="fas fa-exclamation-circle"></i> {urlError}</span>}
-              <span className="review-field-hint">
-                <i className="fas fa-external-link-alt"></i>
-                Customers who rate {form.google_review_threshold}+ stars will be prompted to leave a Google review
-              </span>
+            <div className="review-step-connector"></div>
+            <div className="review-step">
+              <span className="review-step-num">2</span>
+              <span className="review-step-text">After the delay, customer receives a review request via email</span>
             </div>
-
-            <div className="review-field">
-              <label className="review-field-label">Google review redirect threshold</label>
-              <select className="review-select" value={form.google_review_threshold}
-                onChange={e => setForm({ ...form, google_review_threshold: parseInt(e.target.value) })}>
-                <option value="3">3+ stars</option>
-                <option value="4">4+ stars (recommended)</option>
-                <option value="5">5 stars only</option>
-              </select>
-              <span className="review-field-hint">
-                <i className="fas fa-shield-alt"></i>
-                Only happy customers get directed to Google — lower ratings stay internal
-              </span>
+            <div className="review-step-connector"></div>
+            <div className="review-step">
+              <span className="review-step-num">3</span>
+              <span className="review-step-text">Customer rates their experience (1-5 stars)</span>
             </div>
-          </>
-        )}
-
-        <div className="review-save-row">
-          <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
-            <i className={`fas ${saving ? 'fa-spinner fa-spin' : 'fa-save'}`}></i> {saving ? 'Saving...' : 'Save Review Settings'}
-          </button>
-          {saved && <span className="review-saved-badge"><i className="fas fa-check-circle"></i> Saved</span>}
-        </div>
-      </div>
-
-      <div className="review-card review-how-it-works">
-        <h3 className="review-card-title"><i className="fas fa-info-circle" style={{ color: 'var(--accent-blue)' }}></i> How it works</h3>
-        <div className="review-steps">
-          <div className="review-step">
-            <span className="review-step-num">1</span>
-            <span className="review-step-text">Job is marked as completed</span>
-          </div>
-          <div className="review-step-connector"></div>
-          <div className="review-step">
-            <span className="review-step-num">2</span>
-            <span className="review-step-text">After the delay, customer receives a review request via email</span>
-          </div>
-          <div className="review-step-connector"></div>
-          <div className="review-step">
-            <span className="review-step-num">3</span>
-            <span className="review-step-text">Customer rates their experience (1-5 stars)</span>
-          </div>
-          <div className="review-step-connector"></div>
-          <div className="review-step happy">
-            <span className="review-step-num happy">4</span>
-            <span className="review-step-text">Happy customers ({form.google_review_threshold}+ stars) are redirected to your Google Reviews page</span>
+            <div className="review-step-connector"></div>
+            <div className="review-step happy">
+              <span className="review-step-num happy">4</span>
+              <span className="review-step-text">Happy customers ({form.google_review_threshold}+ stars) are redirected to your Google Reviews page</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
