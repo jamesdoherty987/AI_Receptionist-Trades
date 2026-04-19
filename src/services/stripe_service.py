@@ -88,7 +88,8 @@ def create_checkout_session(
     success_url: str,
     cancel_url: str,
     with_trial: bool = True,
-    plan: str = 'pro'
+    plan: str = 'pro',
+    custom_price_id: str = None
 ) -> Optional[Dict[str, str]]:
     """
     Create a Stripe Checkout Session for subscription.
@@ -101,6 +102,7 @@ def create_checkout_session(
         cancel_url: URL to redirect on cancelled payment
         with_trial: Whether to include 14-day trial
         plan: 'dashboard' or 'pro'
+        custom_price_id: Optional per-account Stripe price ID override
     
     Returns:
         Dict with 'session_id', 'url', 'customer_id', 'plan' or None on error
@@ -140,10 +142,11 @@ def create_checkout_session(
             }
         }
         
-        # Use existing price ID or create inline price
-        if plan_config['price_id']:
+        # Use custom price, existing price ID, or create inline price
+        effective_price_id = custom_price_id or plan_config['price_id']
+        if effective_price_id:
             session_params['line_items'] = [{
-                'price': plan_config['price_id'],
+                'price': effective_price_id,
                 'quantity': 1
             }]
         else:

@@ -667,6 +667,9 @@ class PostgreSQLDatabaseWrapper:
             # Owner invite token for managed setup password flow
             'owner_invite_token': 'TEXT',
             'owner_invite_expires': 'TIMESTAMP',
+            # Per-account custom pricing
+            'custom_stripe_price_id': 'TEXT',
+            'custom_monthly_price': 'NUMERIC(10,2)',
         }
         
         # Also migrate business_settings table for bank details
@@ -1295,7 +1298,9 @@ class PostgreSQLDatabaseWrapper:
                               'ai_schedule_override',
                               'easy_setup',
                               'owner_invite_token',
-                              'owner_invite_expires']
+                              'owner_invite_expires',
+                              'custom_stripe_price_id',
+                              'custom_monthly_price']
             
             # Get actual columns that exist in the database
             cursor.execute("""

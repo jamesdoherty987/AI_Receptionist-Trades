@@ -453,7 +453,8 @@ def get_subscription_info(company: dict) -> dict:
         'cancel_at_period_end': cancel_at_period_end,
         'has_used_trial': bool(company.get('has_used_trial', 0)) or bool(company.get('trial_start')),
         'stripe_customer_id': company.get('stripe_customer_id'),
-        'stripe_subscription_id': company.get('stripe_subscription_id')
+        'stripe_subscription_id': company.get('stripe_subscription_id'),
+        'custom_monthly_price': float(company['custom_monthly_price']) if company.get('custom_monthly_price') else None,
     }
     
     print(f"[GET_SUB_INFO] Returning: tier={result['tier']}, is_active={result['is_active']}")
@@ -3068,6 +3069,18 @@ def admin_create_account():
     if data.get('address'):
         update_fields['address'] = sanitize_string(data['address'], max_length=500)
 
+    # Custom per-account pricing
+    custom_price_id = data.get('custom_stripe_price_id', '').strip() if data.get('custom_stripe_price_id') else None
+    if custom_price_id:
+        update_fields['custom_stripe_price_id'] = custom_price_id
+
+    custom_price = data.get('custom_monthly_price')
+    if custom_price is not None and custom_price != '':
+        try:
+            update_fields['custom_monthly_price'] = float(custom_price)
+        except (ValueError, TypeError):
+            pass
+
     # Generate owner invite token (7-day expiry)
     invite_token = secrets.token_urlsafe(32)
     invite_expires = datetime.now() + timedelta(days=7)
@@ -3253,10 +3266,25 @@ def admin_update_account(company_id):
         'show_finances_tab', 'show_insights_tab', 'show_invoice_buttons',
         'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
         'revolut_phone', 'bypass_numbers', 'ai_schedule',
+        'custom_stripe_price_id', 'custom_monthly_price',
     ]
     for field in admin_updatable:
         if field in data:
             update_fields[field] = data[field]
+
+    # Handle custom pricing fields — allow clearing by sending empty/null
+    if 'custom_stripe_price_id' in data:
+        val = data['custom_stripe_price_id']
+        update_fields['custom_stripe_price_id'] = val.strip() if val else None
+    if 'custom_monthly_price' in data:
+        val = data['custom_monthly_price']
+        if val is not None and val != '':
+            try:
+                update_fields['custom_monthly_price'] = float(val)
+            except (ValueError, TypeError):
+                update_fields['custom_monthly_price'] = None
+        else:
+            update_fields['custom_monthly_price'] = None
 
     if update_fields:
         db.update_company(company_id, **update_fields)
@@ -3538,6 +3566,10 @@ def create_checkout():
     print(f"[CHECKOUT] Base URL: {base_url}")
     print(f"[CHECKOUT] Plan: {plan}")
     
+    # Use custom price only if it matches the selected plan (or account has no specific plan set)
+    account_plan = company.get('subscription_plan', 'pro')
+    custom_price_id = company.get('custom_stripe_price_id') if plan == account_plan else None
+    
     result = create_checkout_session(
         company_id=company['id'],
         email=company['email'],
@@ -3545,7 +3577,8 @@ def create_checkout():
         success_url=f"{base_url}/settings?subscription=success",
         cancel_url=f"{base_url}/settings?subscription=cancelled",
         with_trial=False,  # Trial is handled separately via start-trial endpoint
-        plan=plan
+        plan=plan,
+        custom_price_id=custom_price_id
     )
     
     if result:
@@ -4857,6 +4890,9 @@ def business_settings_api():
             'easy_setup': company.get('easy_setup', True),
             # Accounting integration
             'accounting_provider': company.get('accounting_provider', 'builtin'),
+            # Custom per-account pricing
+            'custom_stripe_price_id': company.get('custom_stripe_price_id', ''),
+            'custom_monthly_price': float(company['custom_monthly_price']) if company.get('custom_monthly_price') else None,
         }
         return jsonify(settings)
     
@@ -4920,6 +4956,8 @@ def business_settings_api():
             'setup_wizard_complete': 'setup_wizard_complete',
             'easy_setup': 'easy_setup',
             'accounting_provider': 'accounting_provider',
+            'custom_stripe_price_id': 'custom_stripe_price_id',
+            'custom_monthly_price': 'custom_monthly_price',
         }
         
         for frontend_field, db_field in field_mapping.items():
