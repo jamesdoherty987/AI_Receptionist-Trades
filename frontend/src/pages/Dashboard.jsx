@@ -31,7 +31,7 @@ function Dashboard() {
   // Determine if user has AI features (pro plan or trial gets full access)
   const currentPlan = subscription?.plan || 'pro';
   const currentTier = subscription?.tier || 'none';
-  const hasAIFeatures = currentPlan === 'pro' || currentTier === 'trial';
+  const hasAIFeatures = currentPlan === 'pro';
 
   // Onboarding dismissed state — initialized from localStorage, then synced with backend
   const [onboardingDismissed, setOnboardingDismissed] = useState(

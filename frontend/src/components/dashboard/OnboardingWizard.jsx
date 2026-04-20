@@ -73,7 +73,7 @@ function OnboardingWizard({ onComplete }) {
   // Filter steps based on plan — phone step only for pro/trial users
   const currentPlan = subscription?.plan || 'pro';
   const currentTier = subscription?.tier || 'none';
-  const hasAIFeatures = currentPlan === 'pro' || currentTier === 'trial';
+  const hasAIFeatures = currentPlan === 'pro';
   const STEPS = hasAIFeatures ? ALL_STEPS : ALL_STEPS.filter(s => !s.proOnly);
   const userKey = user?.email || 'default';
   const [currentStepIndex, setCurrentStepIndex] = useState(null);

@@ -43,7 +43,7 @@ function Settings() {
   // Determine if user has AI features based on plan
   const currentPlan = authSubscription?.plan || 'pro';
   const currentTier = authSubscription?.tier || 'none';
-  const hasAIFeatures = currentPlan === 'pro' || currentTier === 'trial';
+  const hasAIFeatures = currentPlan === 'pro';
   const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({});
   const isManagedAccount = formData.easy_setup === false;
