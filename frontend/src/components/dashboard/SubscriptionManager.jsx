@@ -202,7 +202,8 @@ function SubscriptionManager() {
   const cancelAtPeriodEnd = subscription.cancel_at_period_end;
   const hasUsedTrial = subscription.has_used_trial;
   const customPrice = subscription.custom_monthly_price;
-  const customPricePlan = subscription.plan || 'pro'; // which plan the custom price applies to
+  const customDashboardPrice = subscription.custom_dashboard_price;
+  const customProPrice = subscription.custom_pro_price;
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -460,7 +461,7 @@ function SubscriptionManager() {
                   <h4>{plan.name}</h4>
                   <p className="plan-card-tagline">{plan.tagline}</p>
                   <div className="plan-card-price">
-                    <span className="plan-card-amount">&euro;{customPrice && planKey === customPricePlan ? customPrice : plan.price}</span>
+                    <span className="plan-card-amount">&euro;{(planKey === 'dashboard' ? customDashboardPrice : customProPrice) || plan.price}</span>
                     <span className="plan-card-period">/month</span>
                   </div>
                 </div>
@@ -480,7 +481,7 @@ function SubscriptionManager() {
                   <i className="fas fa-credit-card"></i>
                   {checkoutMutation.isPending
                     ? 'Loading...'
-                    : `Subscribe — €${customPrice && planKey === customPricePlan ? customPrice : plan.price}/month`}
+                    : `Subscribe — €${(planKey === 'dashboard' ? customDashboardPrice : customProPrice) || plan.price}/month`}
                 </button>
               </div>
             );

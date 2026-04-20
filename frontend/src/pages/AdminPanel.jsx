@@ -62,7 +62,8 @@ function AdminPanel() {
     business_hours: '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
     auto_assign_phone: false, phone_number: '', subscription_tier: 'none', subscription_status: 'inactive',
     subscription_plan: 'pro',
-    custom_stripe_price_id: '', custom_monthly_price: '',
+    custom_dashboard_price: '', custom_dashboard_stripe_price_id: '',
+    custom_pro_price: '', custom_pro_stripe_price_id: '',
   });
   const [newWorkers, setNewWorkers] = useState([]);
   const [newServices, setNewServices] = useState([]);
@@ -257,7 +258,8 @@ function AdminPanel() {
           business_hours: formatHours(),
           auto_assign_phone: false, phone_number: '', subscription_tier: 'none', subscription_status: 'inactive',
           subscription_plan: 'pro',
-          custom_stripe_price_id: '', custom_monthly_price: '',
+          custom_dashboard_price: '', custom_dashboard_stripe_price_id: '',
+          custom_pro_price: '', custom_pro_stripe_price_id: '',
         });
         setNewWorkers([]); setNewServices([]);
         loadAccounts(); loadPhones(); loadOverview();
@@ -987,12 +989,20 @@ function AdminPanel() {
                     </div>
                   )}
                   <div className="ap-field">
-                    <label>Custom Price (€/month)</label>
-                    <input type="number" step="0.01" min="0" value={createForm.custom_monthly_price} onChange={e => setCreateForm(p => ({...p, custom_monthly_price: e.target.value}))} placeholder="Leave blank for default" />
+                    <label>Dashboard Custom Price (€/month)</label>
+                    <input type="number" step="0.01" min="0" value={createForm.custom_dashboard_price} onChange={e => setCreateForm(p => ({...p, custom_dashboard_price: e.target.value}))} placeholder="Leave blank for default (€99)" />
                   </div>
                   <div className="ap-field">
-                    <label>Custom Stripe Price ID</label>
-                    <input value={createForm.custom_stripe_price_id} onChange={e => setCreateForm(p => ({...p, custom_stripe_price_id: e.target.value}))} placeholder="price_xxx (from Stripe)" />
+                    <label>Dashboard Stripe Price ID</label>
+                    <input value={createForm.custom_dashboard_stripe_price_id} onChange={e => setCreateForm(p => ({...p, custom_dashboard_stripe_price_id: e.target.value}))} placeholder="price_xxx (optional)" />
+                  </div>
+                  <div className="ap-field">
+                    <label>Pro Custom Price (€/month)</label>
+                    <input type="number" step="0.01" min="0" value={createForm.custom_pro_price} onChange={e => setCreateForm(p => ({...p, custom_pro_price: e.target.value}))} placeholder="Leave blank for default (€199)" />
+                  </div>
+                  <div className="ap-field">
+                    <label>Pro Stripe Price ID</label>
+                    <input value={createForm.custom_pro_stripe_price_id} onChange={e => setCreateForm(p => ({...p, custom_pro_stripe_price_id: e.target.value}))} placeholder="price_xxx (optional)" />
                   </div>
                 </div>
               </div>

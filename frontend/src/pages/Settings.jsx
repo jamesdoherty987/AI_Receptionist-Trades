@@ -1011,10 +1011,13 @@ function Settings() {
                         <label htmlFor="twilio_phone_number">Assigned Phone Number</label>
                         <div className="phone-number-display">
                           <input type="tel" id="twilio_phone_number" name="twilio_phone_number" value={formData.twilio_phone_number || 'Not assigned'} readOnly disabled style={{ backgroundColor: 'var(--bg-tertiary)', cursor: 'not-allowed' }} />
-                          {!formData.twilio_phone_number && (
+                          {!formData.twilio_phone_number && hasAIFeatures && (
                             <button type="button" className="btn btn-primary" onClick={() => setShowPhoneModal(true)} style={{ marginLeft: '1rem' }}>
                               <i className="fas fa-phone"></i> Configure Phone
                             </button>
+                          )}
+                          {!formData.twilio_phone_number && !hasAIFeatures && (
+                            <small style={{ marginLeft: '1rem', color: '#9ca3af' }}>Available on Pro plan only</small>
                           )}
                         </div>
                         <small className="form-help">

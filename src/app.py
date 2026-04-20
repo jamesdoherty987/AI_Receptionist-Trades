@@ -455,6 +455,8 @@ def get_subscription_info(company: dict) -> dict:
         'stripe_customer_id': company.get('stripe_customer_id'),
         'stripe_subscription_id': company.get('stripe_subscription_id'),
         'custom_monthly_price': float(company['custom_monthly_price']) if company.get('custom_monthly_price') else None,
+        'custom_dashboard_price': float(company['custom_dashboard_price']) if company.get('custom_dashboard_price') else None,
+        'custom_pro_price': float(company['custom_pro_price']) if company.get('custom_pro_price') else None,
     }
     
     print(f"[GET_SUB_INFO] Returning: tier={result['tier']}, is_active={result['is_active']}")
@@ -553,6 +555,17 @@ def twilio_voice():
         print(f"[ERROR] No company found for Telnyx number: {to_number}")
         return Response(str(twiml), mimetype="text/xml")
     
+    # Check if subscription is active — expired accounts should not use AI
+    subscription_info = get_subscription_info(company)
+    subscription_expired = not subscription_info['is_active']
+    if subscription_expired:
+        print(f"[SUBSCRIPTION] Company {company.get('id')} subscription expired — forwarding to business phone")
+    
+    # Check if account is dashboard-only (no AI features)
+    is_dashboard_only = company.get('subscription_plan', 'pro') == 'dashboard'
+    if is_dashboard_only:
+        print(f"[PLAN] Company {company.get('id')} is dashboard-only — forwarding to business phone")
+    
     # Check if caller is in the bypass list (always forward to fallback)
     bypass_numbers_raw = company.get('bypass_numbers', '[]')
     bypass_forward = False
@@ -630,12 +643,12 @@ def twilio_voice():
     
     twiml = VoiceResponse()
     
-    if not ai_enabled or bypass_forward or ai_schedule_off:
+    if not ai_enabled or bypass_forward or ai_schedule_off or subscription_expired or is_dashboard_only:
         # AI is disabled - forward to business phone number
         business_phone = company.get('phone') if company else None
         
         print("=" * 60)
-        print(f"📞 Incoming Call - {'BYPASS NUMBER' if bypass_forward else 'SCHEDULED OFF' if ai_schedule_off else 'AI DISABLED'}")
+        print(f"📞 Incoming Call - {'BYPASS NUMBER' if bypass_forward else 'SUBSCRIPTION EXPIRED' if subscription_expired else 'DASHBOARD ONLY' if is_dashboard_only else 'SCHEDULED OFF' if ai_schedule_off else 'AI DISABLED'}")
         print(f"[PHONE] Caller: {caller_phone}")
         print(f"[PHONE] Forwarding to business phone: {business_phone or 'No phone number set!'}")
         print("=" * 60)
@@ -3103,17 +3116,34 @@ def admin_create_account():
     if data.get('address'):
         update_fields['address'] = sanitize_string(data['address'], max_length=500)
 
-    # Custom per-account pricing
-    custom_price_id = data.get('custom_stripe_price_id', '').strip() if data.get('custom_stripe_price_id') else None
-    if custom_price_id:
-        update_fields['custom_stripe_price_id'] = custom_price_id
+    # Custom per-account pricing (per-plan)
+    for plan_key in ('dashboard', 'pro'):
+        price_field = f'custom_{plan_key}_price'
+        stripe_field = f'custom_{plan_key}_stripe_price_id'
+        
+        price_val = data.get(price_field)
+        if price_val is not None and price_val != '':
+            try:
+                update_fields[price_field] = float(price_val)
+            except (ValueError, TypeError):
+                pass
+        
+        stripe_val = data.get(stripe_field, '').strip() if data.get(stripe_field) else None
+        if stripe_val:
+            update_fields[stripe_field] = stripe_val
 
-    custom_price = data.get('custom_monthly_price')
-    if custom_price is not None and custom_price != '':
+    # Set the active custom price based on the selected plan
+    active_plan = sub_plan
+    plan_price = data.get(f'custom_{active_plan}_price')
+    plan_stripe_id = data.get(f'custom_{active_plan}_stripe_price_id', '').strip() if data.get(f'custom_{active_plan}_stripe_price_id') else None
+    
+    if plan_price is not None and plan_price != '':
         try:
-            update_fields['custom_monthly_price'] = float(custom_price)
+            update_fields['custom_monthly_price'] = float(plan_price)
         except (ValueError, TypeError):
             pass
+    if plan_stripe_id:
+        update_fields['custom_stripe_price_id'] = plan_stripe_id
 
     # Generate owner invite token (7-day expiry)
     invite_token = secrets.token_urlsafe(32)
@@ -3302,24 +3332,45 @@ def admin_update_account(company_id):
         'bank_iban', 'bank_bic', 'bank_name', 'bank_account_holder',
         'revolut_phone', 'bypass_numbers', 'ai_schedule',
         'custom_stripe_price_id', 'custom_monthly_price',
+        'custom_dashboard_price', 'custom_dashboard_stripe_price_id',
+        'custom_pro_price', 'custom_pro_stripe_price_id',
     ]
     for field in admin_updatable:
         if field in data:
             update_fields[field] = data[field]
 
-    # Handle custom pricing fields — allow clearing by sending empty/null
-    if 'custom_stripe_price_id' in data:
-        val = data['custom_stripe_price_id']
-        update_fields['custom_stripe_price_id'] = val.strip() if val else None
-    if 'custom_monthly_price' in data:
-        val = data['custom_monthly_price']
-        if val is not None and val != '':
-            try:
-                update_fields['custom_monthly_price'] = float(val)
-            except (ValueError, TypeError):
-                update_fields['custom_monthly_price'] = None
-        else:
+    # Handle per-plan custom pricing fields — allow clearing by sending empty/null
+    for plan_key in ('dashboard', 'pro'):
+        price_field = f'custom_{plan_key}_price'
+        stripe_field = f'custom_{plan_key}_stripe_price_id'
+        
+        if price_field in data:
+            val = data[price_field]
+            if val is not None and val != '':
+                try:
+                    update_fields[price_field] = float(val)
+                except (ValueError, TypeError):
+                    update_fields[price_field] = None
+            else:
+                update_fields[price_field] = None
+        
+        if stripe_field in data:
+            val = data[stripe_field]
+            update_fields[stripe_field] = val.strip() if val else None
+
+    # Sync the active custom price fields based on the account's current plan
+    current_plan = data.get('subscription_plan') or company.get('subscription_plan', 'pro')
+    active_price = update_fields.get(f'custom_{current_plan}_price', company.get(f'custom_{current_plan}_price'))
+    active_stripe_id = update_fields.get(f'custom_{current_plan}_stripe_price_id', company.get(f'custom_{current_plan}_stripe_price_id'))
+    
+    if active_price is not None:
+        try:
+            update_fields['custom_monthly_price'] = float(active_price)
+        except (ValueError, TypeError):
             update_fields['custom_monthly_price'] = None
+    else:
+        update_fields['custom_monthly_price'] = None
+    update_fields['custom_stripe_price_id'] = active_stripe_id.strip() if active_stripe_id else None
 
     if update_fields:
         db.update_company(company_id, **update_fields)
@@ -3604,9 +3655,8 @@ def create_checkout():
     print(f"[CHECKOUT] Base URL: {base_url}")
     print(f"[CHECKOUT] Plan: {plan}")
     
-    # Use custom price only if it matches the selected plan (or account has no specific plan set)
-    account_plan = company.get('subscription_plan', 'pro')
-    custom_price_id = company.get('custom_stripe_price_id') if plan == account_plan else None
+    # Use per-plan custom price if set for the selected plan
+    custom_price_id = company.get(f'custom_{plan}_stripe_price_id') or None
     
     result = create_checkout_session(
         company_id=company['id'],
@@ -4931,6 +4981,10 @@ def business_settings_api():
             # Custom per-account pricing
             'custom_stripe_price_id': company.get('custom_stripe_price_id', ''),
             'custom_monthly_price': float(company['custom_monthly_price']) if company.get('custom_monthly_price') else None,
+            'custom_dashboard_price': float(company['custom_dashboard_price']) if company.get('custom_dashboard_price') else None,
+            'custom_dashboard_stripe_price_id': company.get('custom_dashboard_stripe_price_id', ''),
+            'custom_pro_price': float(company['custom_pro_price']) if company.get('custom_pro_price') else None,
+            'custom_pro_stripe_price_id': company.get('custom_pro_stripe_price_id', ''),
         }
         return jsonify(settings)
     
