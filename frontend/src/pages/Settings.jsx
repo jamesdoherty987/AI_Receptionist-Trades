@@ -998,6 +998,7 @@ function Settings() {
                     </div>
                   </div>
 
+                  {hasAIFeatures ? (
                   <div className="form-section">
                     <div className="form-section-header">
                       <i className="fas fa-phone-alt" style={{ color: '#10b981' }}></i>
@@ -1026,6 +1027,17 @@ function Settings() {
                       </div>
                     </div>
                   </div>
+                  ) : (
+                  <div className="form-section">
+                    <div className="form-section-header">
+                      <i className="fas fa-phone-alt" style={{ color: '#9ca3af' }}></i>
+                      <h3>Phone Configuration</h3>
+                    </div>
+                    <p className="section-description">
+                      AI phone numbers are available on the Pro plan. Upgrade to get a dedicated AI receptionist number.
+                    </p>
+                  </div>
+                  )}
 
                   <div className="form-section">
                     <div className="form-section-header">
