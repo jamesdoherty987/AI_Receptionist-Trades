@@ -205,6 +205,8 @@ export const deleteWorker = (id) => api.delete(`/api/workers/${id}`);
 export const getWorkerJobs = (id) => api.get(`/api/workers/${id}/jobs`);
 export const getWorkerSchedule = (id) => api.get(`/api/workers/${id}/schedule`);
 export const getWorkerHoursThisWeek = (id) => api.get(`/api/workers/${id}/hours-this-week`);
+// Batch: fetches hours-this-week for all workers in the company in one request
+export const getWorkersHoursThisWeek = () => api.get('/api/workers/hours-this-week');
 export const checkWorkerAvailability = (id, appointmentTime, durationMinutes) => 
   api.get(`/api/workers/${id}/availability`, { params: { appointment_time: appointmentTime, duration_minutes: durationMinutes } });
 
@@ -235,6 +237,8 @@ export const markBookingsPaid = (scope) => api.post('/api/finances/mark-paid', {
 export const sendInvoice = (bookingId, invoiceData = null) => 
   api.post(`/api/bookings/${bookingId}/send-invoice`, invoiceData || {});
 export const getInvoiceConfig = () => api.get('/api/invoice-config');
+// Batch: invoice-config + services menu + packages in a single round-trip
+export const getJobSetupData = () => api.get('/api/job-setup-data');
 
 // Calendar
 export const getCalendarEvents = (params) => api.get('/api/calendar/events', { params });

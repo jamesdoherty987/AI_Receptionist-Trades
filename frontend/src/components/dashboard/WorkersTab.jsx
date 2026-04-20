@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../Toast';
-import { getWorkerHoursThisWeek, getCompanyTimeOffRequests, reviewTimeOffRequest, getUnreadMessageCounts } from '../../services/api';
+import { getWorkerHoursThisWeek, getWorkersHoursThisWeek, getCompanyTimeOffRequests, reviewTimeOffRequest, getUnreadMessageCounts } from '../../services/api';
 import MessageWorkerModal from '../modals/MessageWorkerModal';
 import AddWorkerModal from '../modals/AddWorkerModal';
 import WorkerDetailModal from '../modals/WorkerDetailModal';
@@ -83,25 +83,39 @@ function WorkersTab({ workers, bookings }) {
     setShowAddModal(true);
   };
 
-  // Fetch hours for all workers
+  // Fetch hours for all workers (batch endpoint when available, falls back to parallel requests)
   useEffect(() => {
+    let cancelled = false;
     const fetchHours = async () => {
-      const hoursMap = {};
-      for (const worker of workers) {
-        try {
-          const response = await getWorkerHoursThisWeek(worker.id);
-          hoursMap[worker.id] = response.data.hours_worked;
-        } catch (error) {
-          console.error(`Error fetching hours for worker ${worker.id}:`, error);
-          hoursMap[worker.id] = 0;
+      try {
+        // Try the batch endpoint first — returns { hours: { [worker_id]: hours } }
+        const batch = await getWorkersHoursThisWeek().catch(() => null);
+        if (!cancelled && batch?.data?.hours) {
+          // Normalize string keys (JSON) back to numeric worker ids
+          const normalized = {};
+          for (const [k, v] of Object.entries(batch.data.hours)) {
+            const n = Number(k);
+            normalized[Number.isNaN(n) ? k : n] = v;
+          }
+          setWorkersHours(normalized);
+          return;
         }
+        // Fallback: parallel fetches (still much faster than sequential)
+        const results = await Promise.all(
+          workers.map(w =>
+            getWorkerHoursThisWeek(w.id)
+              .then(r => [w.id, r.data.hours_worked])
+              .catch(() => [w.id, 0])
+          )
+        );
+        if (!cancelled) setWorkersHours(Object.fromEntries(results));
+      } catch (error) {
+        console.error('Error fetching worker hours:', error);
       }
-      setWorkersHours(hoursMap);
     };
-    
-    if (workers.length > 0) {
-      fetchHours();
-    }
+
+    if (workers.length > 0) fetchHours();
+    return () => { cancelled = true; };
   }, [workers]);
 
   // Calculate worker status based on their jobs today

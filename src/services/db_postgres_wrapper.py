@@ -453,7 +453,19 @@ class PostgreSQLDatabaseWrapper:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_appointment_time ON bookings(appointment_time)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_calendar_event_id ON bookings(calendar_event_id)")
-            
+
+            # Performance indexes for hot paths (N+1 fixes, dashboard loads, availability checks)
+            # worker_assignments: every availability / worker-jobs query filters on these
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_worker_assignments_worker_id ON worker_assignments(worker_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_worker_assignments_booking_id ON worker_assignments(booking_id)")
+            # Composite index: get_all_bookings + filters typically use (company_id, status, appointment_time)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_company_status ON bookings(company_id, status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_company_appt_time ON bookings(company_id, appointment_time DESC)")
+            # services filtered by (company_id, active) on almost every load
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_services_company_active ON services(company_id, active)")
+            # call_logs list is ordered by created_at for a company
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_call_logs_company_created ON call_logs(company_id, created_at DESC)")
+
             # Run migrations for new columns
             self._run_migrations(cursor)
             
@@ -1681,62 +1693,67 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_all_bookings(self, company_id: int = None) -> List[Dict]:
-        """Get all bookings for a specific company, including assigned worker IDs"""
+    def get_all_bookings(self, company_id: int = None, limit: int = None,
+                          offset: int = 0, since_days: int = None) -> List[Dict]:
+        """Get bookings for a company, including assigned worker IDs.
+
+        Args:
+            company_id: Filter by company (recommended — avoids full-table scan).
+            limit: Max rows to return. None = unlimited (back-compat).
+            offset: Pagination offset (used with limit).
+            since_days: Only return bookings with appointment_time >= NOW() - N days.
+                None = no date filter (back-compat). Pass e.g. 90 for dashboard loads.
+
+        Query optimized: replaces ARRAY_AGG + 25-col GROUP BY with a correlated
+        subquery. Lets PostgreSQL pick the best plan and avoids the join explosion
+        when a booking has multiple workers.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
+            where_clauses = []
+            params: List[Any] = []
+
             if company_id:
-                cursor.execute("""
-                    SELECT 
-                        b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
-                        b.service_type, b.status, b.phone_number, b.email, b.created_at,
-                        b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
-                        b.address, b.eircode, b.property_type, b.duration_minutes,
-                        b.address_audio_url, b.requires_callout, b.requires_quote,
-                        b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
-                        b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
-                        c.name as client_name, c.phone as client_phone, c.email as client_email,
-                        ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
-                    FROM bookings b
-                    LEFT JOIN clients c ON b.client_id = c.id
-                    LEFT JOIN worker_assignments wa ON b.id = wa.booking_id
-                    WHERE b.company_id = %s
-                    GROUP BY b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
-                             b.service_type, b.status, b.phone_number, b.email, b.created_at,
-                             b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
-                             b.address, b.eircode, b.property_type, b.duration_minutes,
-                             b.address_audio_url, b.requires_callout, b.requires_quote,
-                             b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
-                             b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
-                             c.name, c.phone, c.email
-                    ORDER BY b.appointment_time DESC
-                """, (company_id,))
-            else:
-                cursor.execute("""
-                    SELECT 
-                        b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
-                        b.service_type, b.status, b.phone_number, b.email, b.created_at,
-                        b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
-                        b.address, b.eircode, b.property_type, b.duration_minutes,
-                        b.address_audio_url, b.requires_callout, b.requires_quote,
-                        b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
-                        b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
-                        c.name as client_name, c.phone as client_phone, c.email as client_email,
-                        ARRAY_AGG(wa.worker_id) FILTER (WHERE wa.worker_id IS NOT NULL) as assigned_worker_ids
-                    FROM bookings b
-                    LEFT JOIN clients c ON b.client_id = c.id
-                    LEFT JOIN worker_assignments wa ON b.id = wa.booking_id
-                    GROUP BY b.id, b.client_id, b.calendar_event_id, b.appointment_time, 
-                             b.service_type, b.status, b.phone_number, b.email, b.created_at,
-                             b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency, 
-                             b.address, b.eircode, b.property_type, b.duration_minutes,
-                             b.address_audio_url, b.requires_callout, b.requires_quote,
-                             b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id, b.status_label, b.recurrence_pattern,
-                             b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
-                             c.name, c.phone, c.email
-                    ORDER BY b.appointment_time DESC
-                """)
+                where_clauses.append("b.company_id = %s")
+                params.append(company_id)
+            if since_days is not None:
+                where_clauses.append(
+                    "b.appointment_time >= (CURRENT_TIMESTAMP - (%s || ' days')::interval)"
+                )
+                params.append(str(int(since_days)))
+
+            where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+            limit_sql = ""
+            if limit is not None:
+                limit_sql = " LIMIT %s OFFSET %s"
+                params.extend([int(limit), int(offset)])
+
+            query = f"""
+                SELECT
+                    b.id, b.client_id, b.calendar_event_id, b.appointment_time,
+                    b.service_type, b.status, b.phone_number, b.email, b.created_at,
+                    b.charge, b.charge_max, b.payment_status, b.payment_method, b.urgency,
+                    b.address, b.eircode, b.property_type, b.duration_minutes,
+                    b.address_audio_url, b.requires_callout, b.requires_quote,
+                    b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id,
+                    b.status_label, b.recurrence_pattern,
+                    b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
+                    c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
+                    COALESCE(
+                        (SELECT ARRAY_AGG(wa.worker_id)
+                         FROM worker_assignments wa
+                         WHERE wa.booking_id = b.id),
+                        ARRAY[]::BIGINT[]
+                    ) AS assigned_worker_ids
+                FROM bookings b
+                LEFT JOIN clients c ON b.client_id = c.id
+                {where_sql}
+                ORDER BY b.appointment_time DESC
+                {limit_sql}
+            """
+            cursor.execute(query, params)
             rows = cursor.fetchall()
             
             return [{
@@ -3070,7 +3087,50 @@ class PostgreSQLDatabaseWrapper:
             return hours_worked
         finally:
             self.return_connection(conn)
-    
+
+    def get_workers_hours_this_week(self, company_id: int) -> Dict[int, float]:
+        """Batch: calculate hours worked this week for all workers in a company.
+
+        Returns {worker_id: hours_worked}. Single round-trip instead of N queries.
+        """
+        from datetime import timedelta
+
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            today = datetime.now()
+            start_of_week = today - timedelta(days=today.weekday())
+            start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_week = start_of_week + timedelta(days=7)
+
+            # Seed zero hours for every worker so frontend always gets an entry
+            cursor.execute(
+                "SELECT id FROM workers WHERE company_id = %s",
+                (company_id,)
+            )
+            hours_map: Dict[int, float] = {row['id']: 0.0 for row in cursor.fetchall()}
+
+            cursor.execute(
+                """
+                SELECT wa.worker_id, COUNT(*) AS job_count
+                FROM worker_assignments wa
+                JOIN bookings b ON wa.booking_id = b.id
+                JOIN workers w ON wa.worker_id = w.id
+                WHERE w.company_id = %s
+                  AND b.appointment_time >= %s
+                  AND b.appointment_time < %s
+                  AND b.status = 'completed'
+                GROUP BY wa.worker_id
+                """,
+                (company_id, start_of_week.isoformat(), end_of_week.isoformat())
+            )
+            for row in cursor.fetchall():
+                hours_map[row['worker_id']] = float(row['job_count']) * 2.0
+
+            return hours_map
+        finally:
+            self.return_connection(conn)
+
     def _calculate_job_end_time(self, start_time, duration_minutes: int, 
                                  biz_start_hour: int = 9, biz_end_hour: int = 17,
                                  buffer_minutes: int = 0, company_id: int = None):

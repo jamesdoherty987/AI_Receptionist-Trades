@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
 import { formatDuration } from '../../utils/durationOptions';
-import { updateBooking, getServicesMenu, getPackages, sendInvoice, getInvoiceConfig } from '../../services/api';
+import { updateBooking, getJobSetupData, sendInvoice } from '../../services/api';
 import { useToast } from '../Toast';
 import AddJobModal from '../modals/AddJobModal';
 import JobDetailModal from '../modals/JobDetailModal';
@@ -32,20 +32,16 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const [servicePopup, setServicePopup] = useState(null);
   const [invoiceJob, setInvoiceJob] = useState(null);
 
-  const { data: invoiceConfig } = useQuery({
-    queryKey: ['invoice-config'],
-    queryFn: async () => (await getInvoiceConfig()).data,
+  // Single batch request replaces 3 separate fetches (invoice-config, services-menu, packages)
+  const { data: jobSetupData } = useQuery({
+    queryKey: ['job-setup-data'],
+    queryFn: async () => (await getJobSetupData()).data,
+    staleTime: 5 * 60 * 1000, // 5 min — this data changes rarely
   });
 
-  const { data: servicesMenu } = useQuery({
-    queryKey: ['services-menu'],
-    queryFn: async () => { const r = await getServicesMenu(); return r.data; },
-  });
-
-  const { data: packagesData } = useQuery({
-    queryKey: ['packages'],
-    queryFn: async () => { const r = await getPackages(); return r.data; },
-  });
+  const invoiceConfig = jobSetupData?.invoice_config;
+  const servicesMenu = jobSetupData?.services_menu;
+  const packagesData = jobSetupData?.packages;
 
   const services = servicesMenu?.services || [];
   const packages = packagesData?.packages || packagesData || [];

@@ -1284,37 +1284,59 @@ def get_dashboard_data():
     """
     Batch endpoint to get all dashboard data in one request.
     Reduces 4 separate API calls to 1, improving page load performance.
+
+    Query params:
+        since_days (int, default 180): only return bookings from the last N days.
+            Pass since_days=0 or a large number to disable the window.
+        limit (int, optional): cap booking count for very large tenants.
     """
     try:
         db = get_database()
         company_id = session.get('company_id')
-        
+
+        # Time-window bookings by default so the payload stays small on big tenants.
+        try:
+            since_days = int(request.args.get('since_days', 180))
+        except (TypeError, ValueError):
+            since_days = 180
+        since_days = None if since_days <= 0 else since_days
+
+        limit_arg = request.args.get('limit')
+        try:
+            limit = int(limit_arg) if limit_arg else None
+        except ValueError:
+            limit = None
+
         # Get all data filtered by company_id
-        bookings = db.get_all_bookings(company_id=company_id)
+        bookings = db.get_all_bookings(
+            company_id=company_id, since_days=since_days, limit=limit
+        )
         clients = db.get_all_clients(company_id=company_id)
         workers = db.get_all_workers(company_id=company_id)
-        
-        # Calculate finances
+
+        # Finances use the already-loaded bookings (window-limited). If you need
+        # lifetime revenue, use /api/finances instead.
         total_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings if b.get('status') == 'completed')
         pending_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings if b.get('status') in ['pending', 'scheduled'])
-        
+
         finances = {
             'total_revenue': total_revenue,
             'pending_revenue': pending_revenue,
             'completed_jobs': len([b for b in bookings if b.get('status') == 'completed']),
             'pending_jobs': len([b for b in bookings if b.get('status') in ['pending', 'scheduled']])
         }
-        
+
         return jsonify({
             'success': True,
             'data': {
                 'bookings': bookings,
                 'clients': clients,
                 'workers': workers,
-                'finances': finances
+                'finances': finances,
+                'window_days': since_days,
             }
         })
-        
+
     except Exception as e:
         print(f"[ERROR] Dashboard data error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -8058,8 +8080,13 @@ def get_invoice_config():
     """Get invoice configuration status — email first, SMS fallback"""
     db = get_database()
     company_id = session.get('company_id')
+    return jsonify(_build_invoice_config(db, company_id))
+
+
+def _build_invoice_config(db, company_id):
+    """Compute invoice-config payload (reusable for batch endpoints)."""
     company = db.get_company(company_id)
-    
+
     # Check email service
     email_configured = False
     try:
@@ -8068,12 +8095,12 @@ def get_invoice_config():
         email_configured = email_svc.configured
     except Exception:
         pass
-    
+
     # Check if Twilio SMS is configured
     from src.services.sms_reminder import get_sms_service
     sms_service = get_sms_service()
     sms_configured = sms_service.client is not None
-    
+
     # Delivery method priority
     if email_configured:
         delivery_method = 'email'
@@ -8081,9 +8108,9 @@ def get_invoice_config():
     else:
         delivery_method = 'sms'
         service_name = 'SMS (Twilio)'
-    
+
     service_configured = email_configured or sms_configured
-    
+
     # Check payment methods configured
     has_stripe = bool(company.get('stripe_connect_account_id')) if company else False
     stripe_charges_enabled = False
@@ -8097,13 +8124,13 @@ def get_invoice_config():
                 stripe_charges_enabled = acct.get('charges_enabled', False)
         except Exception:
             pass
-    
+
     has_bank = bool(company.get('bank_iban')) if company else False
     has_revolut = bool(company.get('revolut_phone')) if company else False
     has_any_payment = (has_stripe and stripe_charges_enabled) or has_bank or has_revolut
-    
+
     can_send_invoice = service_configured
-    
+
     warnings = []
     if not service_configured:
         warnings.append("Neither email nor SMS is configured. Set up email (RESEND_API_KEY) or Twilio for SMS.")
@@ -8113,8 +8140,8 @@ def get_invoice_config():
         warnings.append("Stripe Connect not set up. Invoices will be sent without an online payment link. Set up Stripe in Settings > Payments.")
     if not has_any_payment:
         warnings.append("No payment methods configured. Add Stripe, bank details, or Revolut in Settings > Payment Setup.")
-    
-    return jsonify({
+
+    return {
         "delivery_method": delivery_method,
         "service_name": service_name,
         "service_configured": service_configured,
@@ -8131,6 +8158,43 @@ def get_invoice_config():
             "any_configured": has_any_payment
         },
         "warnings": warnings
+    }
+
+
+@app.route("/api/job-setup-data", methods=["GET"])
+@login_required
+def get_job_setup_data():
+    """Batch endpoint: invoice-config + services menu + packages in a single request.
+
+    Replaces 3 sequential fetches from the Jobs tab with one round-trip.
+    """
+    from src.services.settings_manager import get_settings_manager
+    db = get_database()
+    company_id = session.get('company_id')
+    settings_mgr = get_settings_manager()
+
+    try:
+        services_menu = settings_mgr.get_services_menu(company_id=company_id)
+    except Exception as e:
+        print(f"[WARN] get_job_setup_data services_menu failed: {e}")
+        services_menu = {"services": []}
+
+    try:
+        packages = settings_mgr.get_packages(company_id=company_id)
+    except Exception as e:
+        print(f"[WARN] get_job_setup_data packages failed: {e}")
+        packages = {"packages": []}
+
+    try:
+        invoice_config = _build_invoice_config(db, company_id)
+    except Exception as e:
+        print(f"[WARN] get_job_setup_data invoice_config failed: {e}")
+        invoice_config = {}
+
+    return jsonify({
+        "invoice_config": invoice_config,
+        "services_menu": services_menu,
+        "packages": packages,
     })
 
 
@@ -9835,6 +9899,30 @@ def get_worker_schedule_api(worker_id):
     end_date = request.args.get('end_date')
     schedule = db.get_worker_schedule(worker_id, start_date, end_date)
     return jsonify(schedule)
+
+
+@app.route("/api/workers/hours-this-week", methods=["GET"])
+@login_required
+def get_workers_hours_this_week_api():
+    """Batch: hours worked this week for every worker in the company.
+
+    Returns {"hours": {worker_id: hours_worked}}. Replaces N per-worker requests.
+    """
+    db = get_database()
+    company_id = session.get('company_id')
+    try:
+        hours_map = db.get_workers_hours_this_week(company_id)
+    except AttributeError:
+        # Older DB wrapper without batch method — fall back gracefully
+        workers = db.get_all_workers(company_id=company_id) or []
+        hours_map = {}
+        for w in workers:
+            try:
+                hours_map[w['id']] = db.get_worker_hours_this_week(w['id'])
+            except Exception:
+                hours_map[w['id']] = 0
+    # Keys must be strings for JSON
+    return jsonify({"hours": {str(k): v for k, v in hours_map.items()}})
 
 
 @app.route("/api/workers/<int:worker_id>/hours-this-week", methods=["GET"])

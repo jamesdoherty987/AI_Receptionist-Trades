@@ -28,6 +28,12 @@ class SettingsManager:
     
     def get_business_settings(self, company_id: int = None) -> Dict[str, Any]:
         """Get current business settings for a specific company"""
+        from src.utils.ttl_cache import settings_cache
+        cache_key = ("business_settings", company_id)
+        cached = settings_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         from src.services.database import get_database
         db = get_database()
         
@@ -79,6 +85,7 @@ class SettingsManager:
                 except:
                     settings['payment_methods'] = ["cash", "card", "Apple Pay"]
             
+            settings_cache.set(cache_key, settings)
             return settings
             
         except Exception as e:
@@ -179,6 +186,11 @@ class SettingsManager:
                 db.return_connection(conn)
                 return False
             db.return_connection(conn)
+            # Invalidate cached settings (and services_menu, which pulls business_hours)
+            try:
+                self._invalidate_company_cache(company_id)
+            except Exception:
+                pass
             return True
         except Exception as e:
             sys.stdout.write(f"[SETTINGS_MANAGER] Exception: {e}\n")
@@ -302,6 +314,12 @@ class SettingsManager:
     
     def get_services_menu(self, company_id: int = None) -> Dict[str, Any]:
         """Get services menu from database for a specific company"""
+        from src.utils.ttl_cache import settings_cache
+        cache_key = ("services_menu", company_id)
+        cached = settings_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         from src.services.database import get_database
         db = get_database()
         
@@ -310,7 +328,7 @@ class SettingsManager:
             business_settings = self.get_business_settings(company_id=company_id)
             
             # Return format compatible with old JSON structure
-            return {
+            menu = {
                 "business_name": business_settings.get('business_name', 'Your Business'),
                 "business_hours": {
                     "start_hour": business_settings.get('opening_hours_start', 9),
@@ -320,6 +338,8 @@ class SettingsManager:
                 "services": services,
                 "pricing_notes": {}
             }
+            settings_cache.set(cache_key, menu)
+            return menu
         except Exception as e:
             print(f"Error getting services from database: {e}")
             # Return default structure
@@ -339,13 +359,21 @@ class SettingsManager:
         print("[WARNING] update_services_menu is deprecated - use database.add_service() or database.update_service()")
         return False
     
+    def _invalidate_company_cache(self, company_id: int = None) -> None:
+        """Drop cached settings/services/packages for a company on any write."""
+        from src.utils.ttl_cache import settings_cache
+        settings_cache.invalidate(("business_settings", company_id))
+        settings_cache.invalidate(("services_menu", company_id))
+        settings_cache.invalidate(("packages", company_id, True))
+        settings_cache.invalidate(("packages", company_id, False))
+
     def add_service(self, service: Dict[str, Any], company_id: int = None) -> bool:
         """Add a new service to the database for a specific company"""
         from src.services.database import get_database
         db = get_database()
         
         try:
-            return db.add_service(
+            result = db.add_service(
                 service_id=service.get('id', f"service_{datetime.now().timestamp()}"),
                 category=service.get('category', 'General'),
                 name=service['name'],
@@ -366,6 +394,9 @@ class SettingsManager:
                 company_id=company_id,
                 default_materials=service.get('default_materials', [])
             )
+            if result:
+                self._invalidate_company_cache(company_id)
+            return result
         except Exception as e:
             print(f"Error adding service: {e}")
             return False
@@ -378,7 +409,10 @@ class SettingsManager:
         try:
             # Remove company_id from service_data if present to avoid duplicate keyword argument
             clean_data = {k: v for k, v in service_data.items() if k != 'company_id'}
-            return db.update_service(service_id, company_id=company_id, **clean_data)
+            result = db.update_service(service_id, company_id=company_id, **clean_data)
+            if result:
+                self._invalidate_company_cache(company_id)
+            return result
         except Exception as e:
             print(f"Error updating service: {e}")
             return False
@@ -389,7 +423,11 @@ class SettingsManager:
         db = get_database()
         
         try:
-            return db.delete_service(service_id, company_id=company_id)
+            result = db.delete_service(service_id, company_id=company_id)
+            # Invalidate regardless of jobs_affected since the row was removed
+            if isinstance(result, dict) and result.get("success"):
+                self._invalidate_company_cache(company_id)
+            return result
         except Exception as e:
             print(f"Error deleting service: {e}")
             return {"success": False, "error": str(e), "jobs_affected": 0}
@@ -562,6 +600,12 @@ class SettingsManager:
     
     def get_packages(self, company_id: int = None, active_only: bool = True) -> List[Dict[str, Any]]:
         """Get all packages for a company with resolved service details, duration, and price."""
+        from src.utils.ttl_cache import settings_cache
+        cache_key = ("packages", company_id, active_only)
+        cached = settings_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         from src.services.database import get_database
         db = get_database()
         try:
@@ -577,6 +621,7 @@ class SettingsManager:
                 pkg['total_price'] = price_info['price']
                 pkg['total_price_max'] = price_info['price_max']
                 result.append(pkg)
+            settings_cache.set(cache_key, result)
             return result
         except Exception as e:
             print(f"Error getting packages: {e}")
@@ -819,6 +864,7 @@ class SettingsManager:
                 default_materials=package_data.get('default_materials', []),
             )
             if success:
+                self._invalidate_company_cache(company_id)
                 return {"success": True, "package_id": package_id}
             return {"success": False, "error": "Failed to insert package"}
         except Exception as e:
@@ -862,6 +908,7 @@ class SettingsManager:
         try:
             success = db.update_package(package_id, company_id=company_id, **update_kwargs)
             if success:
+                self._invalidate_company_cache(company_id)
                 return {"success": True}
             return {"success": False, "error": "No rows updated"}
         except Exception as e:
@@ -874,7 +921,10 @@ class SettingsManager:
         db = get_database()
         
         try:
-            return db.delete_package(package_id, company_id=company_id)
+            result = db.delete_package(package_id, company_id=company_id)
+            if isinstance(result, dict) and result.get("success"):
+                self._invalidate_company_cache(company_id)
+            return result
         except Exception as e:
             print(f"Error deleting package: {e}")
             return {"success": False, "error": str(e), "jobs_affected": 0}
