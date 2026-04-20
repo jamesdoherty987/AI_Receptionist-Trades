@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -6,19 +6,21 @@ import Header from '../components/Header';
 import Tabs from '../components/Tabs';
 import LoadingSpinner from '../components/LoadingSpinner';
 import OnboardingWizard from '../components/dashboard/OnboardingWizard';
-import JobsTab from '../components/dashboard/JobsTab';
-import CrmTab from '../components/dashboard/CrmTab';
-import WorkersTab from '../components/dashboard/WorkersTab';
-import FinancesTab from '../components/dashboard/FinancesTab';
-import CalendarTab from '../components/dashboard/CalendarTab';
-import ChatTab from '../components/dashboard/ChatTab';
-import ServicesTab from '../components/dashboard/ServicesTab';
-import MaterialsTab from '../components/dashboard/MaterialsTab';
-import InsightsTab from '../components/dashboard/InsightsTab';
-import CallLogsTab from '../components/dashboard/CallLogsTab';
 import { isStandalone } from '../components/PWAInstallPrompt';
 import { getDashboardData, getBusinessSettings, getUnseenCallCount, getCompanyReviews, getLeads, getUnreadMessageCounts } from '../services/api';
 import './Dashboard.css';
+
+// Lazy-load tab components — only loaded when the tab is actually rendered
+const JobsTab = lazy(() => import('../components/dashboard/JobsTab'));
+const CrmTab = lazy(() => import('../components/dashboard/CrmTab'));
+const WorkersTab = lazy(() => import('../components/dashboard/WorkersTab'));
+const FinancesTab = lazy(() => import('../components/dashboard/FinancesTab'));
+const CalendarTab = lazy(() => import('../components/dashboard/CalendarTab'));
+const ChatTab = lazy(() => import('../components/dashboard/ChatTab'));
+const ServicesTab = lazy(() => import('../components/dashboard/ServicesTab'));
+const MaterialsTab = lazy(() => import('../components/dashboard/MaterialsTab'));
+const InsightsTab = lazy(() => import('../components/dashboard/InsightsTab'));
+const CallLogsTab = lazy(() => import('../components/dashboard/CallLogsTab'));
 
 function Dashboard() {
   const { user, subscription } = useAuth();
@@ -173,6 +175,8 @@ function Dashboard() {
     return Object.values(counts).reduce((sum, c) => sum + (c || 0), 0);
   }, [unreadMsgData]);
 
+  const tabFallback = <LoadingSpinner />;
+
   const tabs = useMemo(() => [
     // Day-to-day
     {
@@ -180,20 +184,20 @@ function Dashboard() {
       icon: 'fas fa-briefcase',
       group: 'Day-to-Day',
       badge: jobBadges,
-      content: isLoading ? <LoadingSpinner /> : <JobsTab bookings={bookings} showInvoiceButtons={settings?.show_invoice_buttons !== false} />
+      content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><JobsTab bookings={bookings} showInvoiceButtons={settings?.show_invoice_buttons !== false} /></Suspense>
     },
     ...(hasAIFeatures ? [{
       label: 'Calls',
       icon: 'fas fa-phone-alt',
       group: 'Day-to-Day',
       badge: unseenCalls,
-      content: <CallLogsTab />
+      content: <Suspense fallback={tabFallback}><CallLogsTab /></Suspense>
     }] : []),
     {
       label: 'Calendar',
       icon: 'fas fa-calendar',
       group: 'Day-to-Day',
-      content: <CalendarTab />
+      content: <Suspense fallback={tabFallback}><CalendarTab /></Suspense>
     },
     // Team & Clients
     {
@@ -201,27 +205,27 @@ function Dashboard() {
       icon: 'fas fa-hard-hat',
       group: 'Team & Clients',
       badge: totalUnreadMessages,
-      content: isLoading ? <LoadingSpinner /> : <WorkersTab workers={workers} bookings={bookings} />
+      content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><WorkersTab workers={workers} bookings={bookings} /></Suspense>
     },
     {
       label: 'CRM',
       icon: 'fas fa-address-book',
       group: 'Team & Clients',
       badge: overdueLeads,
-      content: isLoading ? <LoadingSpinner /> : <CrmTab clients={clients} bookings={bookings} />
+      content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><CrmTab clients={clients} bookings={bookings} /></Suspense>
     },
     // Setup
     {
       label: 'Services',
       icon: 'fas fa-concierge-bell',
       group: 'Setup',
-      content: <ServicesTab />
+      content: <Suspense fallback={tabFallback}><ServicesTab /></Suspense>
     },
     {
       label: 'Materials',
       icon: 'fas fa-cubes',
       group: 'Setup',
-      content: <MaterialsTab />
+      content: <Suspense fallback={tabFallback}><MaterialsTab /></Suspense>
     },
     // Reports
     ...(settings?.show_finances_tab !== false && settings?.accounting_provider !== 'disabled' ? [{
@@ -229,20 +233,20 @@ function Dashboard() {
       icon: 'fas fa-dollar-sign',
       group: 'Reports',
       badge: unpaidCount,
-      content: <FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} />
+      content: <Suspense fallback={tabFallback}><FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} /></Suspense>
     }] : []),
     ...(settings?.show_insights_tab !== false ? [{
       label: 'Insights',
       icon: 'fas fa-chart-pie',
       group: 'Reports',
-      content: isLoading ? <LoadingSpinner /> : <InsightsTab bookings={bookings} clients={clients} workers={workers} reviews={reviewsData} />
+      content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><InsightsTab bookings={bookings} clients={clients} workers={workers} reviews={reviewsData} /></Suspense>
     }] : []),
     // Dev tools
     ...(import.meta.env.VITE_ENABLE_TEST_CHAT === 'true' ? [{
       label: 'AI Chat',
       icon: 'fas fa-comments',
       group: 'Dev Tools',
-      content: <ChatTab />
+      content: <Suspense fallback={tabFallback}><ChatTab /></Suspense>
     }] : [])
   ], [isLoading, bookings, clients, workers, settings, unseenCalls, hasAIFeatures, reviewsData, overdueLeads, jobBadges, totalUnreadMessages, unpaidCount]);
 

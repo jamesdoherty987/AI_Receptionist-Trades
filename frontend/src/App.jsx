@@ -1,38 +1,40 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from './queryClient'
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import { ToastProvider } from './components/Toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 
-// Pages
-import Landing from './pages/Landing'
+// Loading component (keep eager — used as fallback)
+import LoadingSpinner from './components/LoadingSpinner'
+
+// Critical-path pages (eager — needed immediately)
 import Login from './pages/Login'
 import Signup from './pages/Signup'
-import Dashboard from './pages/Dashboard'
-import Settings from './pages/Settings'
-import Account from './pages/Account'
-import SettingsMenu from './pages/SettingsMenu'
-import ForgotPassword from './pages/ForgotPassword'
-import ResetPassword from './pages/ResetPassword'
-import PrivacyPolicy from './pages/PrivacyPolicy'
-import TermsOfService from './pages/TermsOfService'
-import WorkerLogin from './pages/WorkerLogin'
-import WorkerSetPassword from './pages/WorkerSetPassword'
-import SetPassword from './pages/SetPassword'
-import AdminPanel from './pages/AdminPanel'
-import WorkerForgotPassword from './pages/WorkerForgotPassword'
-import WorkerResetPassword from './pages/WorkerResetPassword'
-import WorkerDashboard from './pages/WorkerDashboard'
-import Blog from './pages/Blog'
-import BlogPost from './pages/BlogPost'
-import InstallApp from './pages/InstallApp'
-import ReviewPage from './pages/ReviewPage'
-import CustomerPortal from './pages/CustomerPortal'
-import QuoteAccept from './pages/QuoteAccept'
 
-// Loading component
-import LoadingSpinner from './components/LoadingSpinner'
+// Lazy-loaded pages (code-split into separate chunks)
+const Landing = lazy(() => import('./pages/Landing'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Account = lazy(() => import('./pages/Account'))
+const SettingsMenu = lazy(() => import('./pages/SettingsMenu'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
+const TermsOfService = lazy(() => import('./pages/TermsOfService'))
+const WorkerLogin = lazy(() => import('./pages/WorkerLogin'))
+const WorkerSetPassword = lazy(() => import('./pages/WorkerSetPassword'))
+const SetPassword = lazy(() => import('./pages/SetPassword'))
+const AdminPanel = lazy(() => import('./pages/AdminPanel'))
+const WorkerForgotPassword = lazy(() => import('./pages/WorkerForgotPassword'))
+const WorkerResetPassword = lazy(() => import('./pages/WorkerResetPassword'))
+const WorkerDashboard = lazy(() => import('./pages/WorkerDashboard'))
+const Blog = lazy(() => import('./pages/Blog'))
+const BlogPost = lazy(() => import('./pages/BlogPost'))
+const InstallApp = lazy(() => import('./pages/InstallApp'))
+const ReviewPage = lazy(() => import('./pages/ReviewPage'))
+const CustomerPortal = lazy(() => import('./pages/CustomerPortal'))
+const QuoteAccept = lazy(() => import('./pages/QuoteAccept'))
 
 // PWA
 import PWAInstallPrompt from './components/PWAInstallPrompt'
@@ -147,7 +149,14 @@ function PayRedirect() {
 }
 
 function AppRoutes() {
+  const suspenseFallback = (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
+      <LoadingSpinner />
+    </div>
+  );
+
   return (
+    <Suspense fallback={suspenseFallback}>
     <Routes>
       {/* Public routes — PWA goes straight to login, browser gets landing */}
       <Route path="/" element={isStandalone() ? <Navigate to="/login" replace /> : <Landing />} />
@@ -256,6 +265,7 @@ function AppRoutes() {
       {/* Catch all - redirect to login */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
+    </Suspense>
   );
 }
 

@@ -4346,30 +4346,42 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
 
     def get_owner_conversations_summary(self, company_id: int) -> List[Dict]:
-        """Get a summary of all conversations for the owner with last message and unread count."""
+        """Get a summary of all conversations for the owner with last message and unread count.
+        
+        Uses a single query with DISTINCT ON + a pre-aggregated unread CTE to avoid
+        correlated subqueries (N+1). Much faster for companies with many workers.
+        """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                SELECT DISTINCT ON (m.worker_id)
-                    m.worker_id,
+                WITH unread AS (
+                    SELECT worker_id, COUNT(*) as unread_count
+                    FROM messages
+                    WHERE company_id = %s AND sender_type = 'worker' AND read = FALSE
+                    GROUP BY worker_id
+                ),
+                last_msg AS (
+                    SELECT DISTINCT ON (worker_id)
+                        worker_id, content, sender_type, created_at
+                    FROM messages
+                    WHERE company_id = %s
+                    ORDER BY worker_id, created_at DESC
+                )
+                SELECT
+                    lm.worker_id,
                     w.name as worker_name,
                     w.image_url as worker_image,
-                    m.content as last_message,
-                    m.sender_type as last_sender,
-                    m.created_at as last_message_at,
-                    (SELECT COUNT(*) FROM messages m2 
-                     WHERE m2.company_id = m.company_id AND m2.worker_id = m.worker_id 
-                     AND m2.sender_type = 'worker' AND m2.read = FALSE) as unread_count
-                FROM messages m
-                JOIN workers w ON w.id = m.worker_id
-                WHERE m.company_id = %s
-                ORDER BY m.worker_id, m.created_at DESC
-            """, (company_id,))
-            rows = [dict(r) for r in cursor.fetchall()]
-            # Sort by last message time descending
-            rows.sort(key=lambda x: x.get('last_message_at') or datetime.min, reverse=True)
-            return rows
+                    lm.content as last_message,
+                    lm.sender_type as last_sender,
+                    lm.created_at as last_message_at,
+                    COALESCE(u.unread_count, 0) as unread_count
+                FROM last_msg lm
+                JOIN workers w ON w.id = lm.worker_id
+                LEFT JOIN unread u ON u.worker_id = lm.worker_id
+                ORDER BY lm.created_at DESC
+            """, (company_id, company_id))
+            return [dict(r) for r in cursor.fetchall()]
         except Exception as e:
             conn.rollback()
             print(f"Error getting conversations summary: {e}")

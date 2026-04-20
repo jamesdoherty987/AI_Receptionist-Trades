@@ -61,6 +61,7 @@ function AdminPanel() {
     company_context: '', coverage_area: '', address: '',
     business_hours: '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
     auto_assign_phone: false, phone_number: '', subscription_tier: 'none', subscription_status: 'inactive',
+    subscription_plan: 'pro',
     custom_stripe_price_id: '', custom_monthly_price: '',
   });
   const [newWorkers, setNewWorkers] = useState([]);
@@ -255,6 +256,7 @@ function AdminPanel() {
           company_context: '', coverage_area: '', address: '',
           business_hours: formatHours(),
           auto_assign_phone: false, phone_number: '', subscription_tier: 'none', subscription_status: 'inactive',
+          subscription_plan: 'pro',
           custom_stripe_price_id: '', custom_monthly_price: '',
         });
         setNewWorkers([]); setNewServices([]);
@@ -938,26 +940,52 @@ function AdminPanel() {
                 <h3><i className="fas fa-cog"></i> Phone & Subscription</h3>
                 <div className="ap-form-grid">
                   <div className="ap-field">
-                    <label>AI Phone Number</label>
-                    <select value={createForm.phone_number} onChange={e => setCreateForm(p => ({...p, phone_number: e.target.value}))}>
-                      <option value="">Don't assign yet</option>
-                      {phonesLoading && <option disabled>Loading...</option>}
-                      {availablePhones.map(p => (
-                        <option key={p.phone_number} value={p.phone_number}>{p.phone_number}</option>
-                      ))}
+                    <label>Account Type *</label>
+                    <select value={createForm.subscription_plan} onChange={e => {
+                      const plan = e.target.value;
+                      setCreateForm(p => ({
+                        ...p,
+                        subscription_plan: plan,
+                        // Clear phone if switching to dashboard
+                        phone_number: plan === 'dashboard' ? '' : p.phone_number,
+                      }));
+                    }}>
+                      <option value="dashboard">Dashboard Only (no AI phone)</option>
+                      <option value="pro">Pro (AI phone + dashboard)</option>
                     </select>
-                    {!phonesLoading && availablePhones.length === 0 && (
-                      <small style={{color: '#f87171', marginTop: '0.25rem', display: 'block'}}>No phone numbers available in pool</small>
-                    )}
                   </div>
                   <div className="ap-field">
-                    <label>Subscription</label>
+                    <label>Subscription Status</label>
                     <select value={createForm.subscription_tier} onChange={e => setCreateForm(p => ({...p, subscription_tier: e.target.value, subscription_status: e.target.value === 'none' ? 'inactive' : 'active'}))}>
                       <option value="none">None</option>
                       <option value="trial">Trial</option>
-                      <option value="pro">Pro (Active)</option>
+                      <option value="pro">Active</option>
                     </select>
                   </div>
+                  {createForm.subscription_plan === 'pro' && (
+                    <div className="ap-field">
+                      <label>AI Phone Number</label>
+                      <select value={createForm.phone_number} onChange={e => setCreateForm(p => ({...p, phone_number: e.target.value}))}>
+                        <option value="">Don't assign yet</option>
+                        {phonesLoading && <option disabled>Loading...</option>}
+                        {availablePhones.map(p => (
+                          <option key={p.phone_number} value={p.phone_number}>{p.phone_number}</option>
+                        ))}
+                      </select>
+                      {!phonesLoading && availablePhones.length === 0 && (
+                        <small style={{color: '#f87171', marginTop: '0.25rem', display: 'block'}}>No phone numbers available in pool</small>
+                      )}
+                    </div>
+                  )}
+                  {createForm.subscription_plan === 'dashboard' && (
+                    <div className="ap-field">
+                      <label>AI Phone Number</label>
+                      <div style={{padding: '0.5rem 0', color: '#9ca3af', fontSize: '0.85rem'}}>
+                        <i className="fas fa-info-circle" style={{marginRight: '0.35rem'}}></i>
+                        Phone numbers are only available on the Pro plan
+                      </div>
+                    </div>
+                  )}
                   <div className="ap-field">
                     <label>Custom Price (€/month)</label>
                     <input type="number" step="0.01" min="0" value={createForm.custom_monthly_price} onChange={e => setCreateForm(p => ({...p, custom_monthly_price: e.target.value}))} placeholder="Leave blank for default" />

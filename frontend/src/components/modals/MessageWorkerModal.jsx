@@ -28,14 +28,36 @@ function MessageWorkerModal({ isOpen, onClose, workerId, workerName }) {
 
   const sendMutation = useMutation({
     mutationFn: (content) => sendMessageToWorker(workerId, content),
-    onSuccess: () => {
+    // Optimistic update — message appears instantly before server confirms
+    onMutate: async (content) => {
+      await queryClient.cancelQueries({ queryKey: ['messages', workerId] });
+      const previous = queryClient.getQueryData(['messages', workerId]);
+      const optimisticMsg = {
+        id: `temp-${Date.now()}`,
+        sender_type: 'owner',
+        content,
+        created_at: new Date().toISOString(),
+        read: false,
+        _optimistic: true,
+      };
+      queryClient.setQueryData(['messages', workerId], (old) => ({
+        ...old,
+        messages: [...(old?.messages || []), optimisticMsg],
+      }));
+      setInput('');
+      return { previous };
+    },
+    onError: (error, _content, context) => {
+      // Roll back on failure
+      if (context?.previous) {
+        queryClient.setQueryData(['messages', workerId], context.previous);
+      }
+      console.error('Failed to send message:', error);
+    },
+    onSettled: () => {
+      // Refetch to get the real server data
       queryClient.invalidateQueries({ queryKey: ['messages', workerId] });
       queryClient.invalidateQueries({ queryKey: ['unread-message-counts'] });
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      setInput('');
-    },
-    onError: (error) => {
-      console.error('Failed to send message:', error);
     },
   });
 

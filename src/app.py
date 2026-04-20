@@ -2967,8 +2967,15 @@ def assign_phone_number():
     db = get_database()
     company_id = session['company_id']
     
-    # Check if company already has a phone number
+    # Only pro plan accounts can have a phone number
     company = db.get_company(company_id)
+    if company.get('subscription_plan', 'pro') == 'dashboard':
+        return jsonify({
+            "success": False,
+            "error": "Phone numbers are only available on the Pro plan. Please upgrade to assign a number."
+        }), 403
+    
+    # Check if company already has a phone number
     if company.get('twilio_phone_number'):
         return jsonify({
             "success": False,
@@ -3081,6 +3088,11 @@ def admin_create_account():
     update_fields['subscription_tier'] = sub_tier
     update_fields['subscription_status'] = sub_status
 
+    # Set subscription plan (dashboard or pro)
+    sub_plan = data.get('subscription_plan', 'pro')
+    if sub_plan in ('dashboard', 'pro'):
+        update_fields['subscription_plan'] = sub_plan
+
     # Optional fields the admin can set
     if data.get('company_context'):
         update_fields['company_context'] = sanitize_string(data['company_context'], max_length=5000)
@@ -3111,18 +3123,19 @@ def admin_create_account():
 
     db.update_company(company_id, **update_fields)
 
-    # Assign phone number if requested
+    # Assign phone number if requested (pro plan only)
     assigned_phone = None
-    if data.get('phone_number'):
-        try:
-            assigned_phone = db.assign_phone_number(company_id, data['phone_number'])
-        except Exception as e:
-            print(f"[ADMIN] Phone assignment failed: {e}")
-    elif data.get('auto_assign_phone'):
-        try:
-            assigned_phone = db.assign_phone_number(company_id)
-        except Exception as e:
-            print(f"[ADMIN] Auto phone assignment failed: {e}")
+    if sub_plan == 'pro':
+        if data.get('phone_number'):
+            try:
+                assigned_phone = db.assign_phone_number(company_id, data['phone_number'])
+            except Exception as e:
+                print(f"[ADMIN] Phone assignment failed: {e}")
+        elif data.get('auto_assign_phone'):
+            try:
+                assigned_phone = db.assign_phone_number(company_id)
+            except Exception as e:
+                print(f"[ADMIN] Auto phone assignment failed: {e}")
 
     # Add workers if provided
     workers_created = []
@@ -3367,6 +3380,9 @@ def admin_assign_phone(company_id):
     company = db.get_company(company_id)
     if not company:
         return jsonify({"error": "Account not found"}), 404
+
+    if company.get('subscription_plan', 'pro') == 'dashboard':
+        return jsonify({"error": "Phone numbers are only available on the Pro plan"}), 400
 
     if company.get('twilio_phone_number'):
         return jsonify({"error": "Company already has a phone number assigned"}), 400
@@ -9359,12 +9375,20 @@ def worker_accept_emergency(booking_id):
 @login_required
 def get_conversations():
     """Get all conversation summaries for the owner."""
-    db = get_database()
+    from src.utils.ttl_cache import settings_cache
     company_id = session.get('company_id')
+    cache_key = ("conversations_summary", company_id)
+    cached = settings_cache.get(cache_key)
+    if cached is not None:
+        return jsonify({'conversations': cached})
+
+    db = get_database()
     summaries = db.get_owner_conversations_summary(company_id)
     for s in summaries:
         if s.get('last_message_at'):
             s['last_message_at'] = s['last_message_at'].isoformat()
+    # Cache for 15 seconds — short enough to feel real-time, long enough to absorb rapid polls
+    settings_cache.set(cache_key, summaries, ttl_seconds=15)
     return jsonify({'conversations': summaries})
 
 
@@ -9388,7 +9412,11 @@ def get_messages(worker_id):
 
     messages = db.get_conversation(company_id, worker_id, limit=limit, before_id=before_id)
     # Mark worker messages as read
-    db.mark_messages_read(company_id, worker_id, 'owner')
+    read_count = db.mark_messages_read(company_id, worker_id, 'owner')
+    # Invalidate unread cache if any messages were marked read
+    if read_count > 0:
+        from src.utils.ttl_cache import settings_cache
+        settings_cache.invalidate(("unread_msg_counts", company_id))
     for m in messages:
         if m.get('created_at'):
             m['created_at'] = m['created_at'].isoformat()
@@ -9420,6 +9448,10 @@ def send_message_to_worker(worker_id):
     if not msg:
         return jsonify({'error': 'Failed to send message'}), 500
 
+    # Invalidate conversations cache so next poll picks up the new message
+    from src.utils.ttl_cache import settings_cache
+    settings_cache.invalidate(("conversations_summary", company_id))
+
     # Create notification for the worker
     worker_name = worker.get('name', 'Worker')
     company = db.get_company(company_id)
@@ -9440,11 +9472,20 @@ def send_message_to_worker(worker_id):
 @login_required
 def get_unread_message_counts():
     """Get unread message counts per worker for the owner."""
-    db = get_database()
+    from src.utils.ttl_cache import settings_cache
     company_id = session.get('company_id')
+    cache_key = ("unread_msg_counts", company_id)
+    cached = settings_cache.get(cache_key)
+    if cached is not None:
+        return jsonify(cached)
+
+    db = get_database()
     counts = db.get_unread_message_counts(company_id)
     total = sum(counts.values())
-    return jsonify({'counts': counts, 'total': total})
+    result = {'counts': counts, 'total': total}
+    # Cache for 10 seconds — absorbs rapid polls without feeling stale
+    settings_cache.set(cache_key, result, ttl_seconds=10)
+    return jsonify(result)
 
 
 @app.route("/api/worker/messages", methods=["GET"])
@@ -9487,6 +9528,10 @@ def worker_send_message():
     msg = db.send_message(company_id, worker_id, 'worker', content)
     if not msg:
         return jsonify({'error': 'Failed to send message'}), 500
+
+    # Invalidate conversations cache so owner's next poll picks up the new message
+    from src.utils.ttl_cache import settings_cache
+    settings_cache.invalidate(("conversations_summary", company_id))
 
     # Create notification for the owner
     worker = db.get_worker(worker_id)

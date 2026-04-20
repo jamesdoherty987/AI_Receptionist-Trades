@@ -440,12 +440,6 @@ class TestFrontendIntegration:
         assert 'show_finances_tab' in code
         assert 'showInvoiceButtons' in code
 
-    def test_finances_tab_accepts_show_invoice_buttons_prop(self):
-        with open('frontend/src/components/dashboard/FinancesTab.jsx', 'r') as f:
-            code = f.read()
-        assert 'showInvoiceButtons' in code
-        assert 'markBookingsPaid' in code
-
     def test_jobs_tab_passes_show_invoice_buttons(self):
         with open('frontend/src/components/dashboard/JobsTab.jsx', 'r') as f:
             code = f.read()

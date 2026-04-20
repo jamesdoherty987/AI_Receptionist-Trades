@@ -225,15 +225,36 @@ function WorkerDashboard() {
 
   const sendMsgMutation = useMutation({
     mutationFn: (content) => workerSendMessage(content),
-    onSuccess: () => {
+    // Optimistic update — message appears instantly
+    onMutate: async (content) => {
+      await queryClient.cancelQueries({ queryKey: ['worker-messages'] });
+      const previous = queryClient.getQueryData(['worker-messages']);
+      const optimisticMsg = {
+        id: `temp-${Date.now()}`,
+        sender_type: 'worker',
+        content,
+        created_at: new Date().toISOString(),
+        read: false,
+        _optimistic: true,
+      };
+      queryClient.setQueryData(['worker-messages'], (old) => ({
+        ...old,
+        messages: [...(old?.messages || []), optimisticMsg],
+      }));
+      setMsgInput('');
+      return { previous };
+    },
+    onError: (error, _content, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['worker-messages'], context.previous);
+      }
+      console.error('Failed to send message:', error);
+      alert(error.response?.data?.error || 'Failed to send message. Please try again.');
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['worker-messages'] });
       queryClient.invalidateQueries({ queryKey: ['worker-unread-messages'] });
       queryClient.invalidateQueries({ queryKey: ['worker-notifications'] });
-      setMsgInput('');
-    },
-    onError: (error) => {
-      console.error('Failed to send message:', error);
-      alert(error.response?.data?.error || 'Failed to send message. Please try again.');
     },
   });
 
