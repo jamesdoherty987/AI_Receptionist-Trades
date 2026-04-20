@@ -1312,7 +1312,12 @@ class PostgreSQLDatabaseWrapper:
                               'owner_invite_token',
                               'owner_invite_expires',
                               'custom_stripe_price_id',
-                              'custom_monthly_price']
+                              'custom_monthly_price',
+                              'subscription_plan',
+                              'custom_dashboard_price',
+                              'custom_dashboard_stripe_price_id',
+                              'custom_pro_price',
+                              'custom_pro_stripe_price_id']
             
             # Get actual columns that exist in the database
             cursor.execute("""
