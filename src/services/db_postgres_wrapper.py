@@ -115,6 +115,7 @@ class PostgreSQLDatabaseWrapper:
                     business_hours TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
                     subscription_tier TEXT DEFAULT 'none',
                     subscription_status TEXT DEFAULT 'inactive',
+                    subscription_plan VARCHAR(20) DEFAULT 'pro',
                     stripe_customer_id TEXT,
                     stripe_subscription_id TEXT,
                     stripe_connect_account_id TEXT,
@@ -682,6 +683,13 @@ class PostgreSQLDatabaseWrapper:
             # Per-account custom pricing
             'custom_stripe_price_id': 'TEXT',
             'custom_monthly_price': 'NUMERIC(10,2)',
+            # Subscription plan (dashboard or pro)
+            'subscription_plan': "VARCHAR(20) DEFAULT 'pro'",
+            # Per-plan custom pricing
+            'custom_dashboard_price': 'NUMERIC(10,2)',
+            'custom_dashboard_stripe_price_id': 'TEXT',
+            'custom_pro_price': 'NUMERIC(10,2)',
+            'custom_pro_stripe_price_id': 'TEXT',
         }
         
         # Also migrate business_settings table for bank details

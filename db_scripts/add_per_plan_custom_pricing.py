@@ -24,6 +24,7 @@ def migrate():
     cursor = conn.cursor()
 
     columns = [
+        ("subscription_plan", "VARCHAR(20) DEFAULT 'pro'"),
         ("custom_dashboard_price", "NUMERIC(10,2)"),
         ("custom_dashboard_stripe_price_id", "TEXT"),
         ("custom_pro_price", "NUMERIC(10,2)"),
