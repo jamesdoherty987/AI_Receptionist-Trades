@@ -1034,7 +1034,7 @@ function AdminPanel() {
                   </div>
                   <div className="ap-field">
                     <label>Pro Custom Price (€/month)</label>
-                    <input type="number" step="0.01" min="0" value={createForm.custom_pro_price} onChange={e => setCreateForm(p => ({...p, custom_pro_price: e.target.value}))} placeholder="Leave blank for default (€199)" />
+                    <input type="number" step="0.01" min="0" value={createForm.custom_pro_price} onChange={e => setCreateForm(p => ({...p, custom_pro_price: e.target.value}))} placeholder="Leave blank for default (€249)" />
                   </div>
                   <div className="ap-field">
                     <label>Pro Stripe Price ID</label>
