@@ -350,7 +350,15 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }) => updateBooking(id, { status }),
+    mutationFn: ({ id, status }) => {
+      const data = { status };
+      // When manually marking as paid, also set payment fields
+      if (status === 'paid') {
+        data.payment_status = 'paid';
+        data.payment_method = 'manual';
+      }
+      return updateBooking(id, data);
+    },
     onMutate: async ({ status }) => {
       await queryClient.cancelQueries({ queryKey: ['booking', jobId] });
       const previousJob = queryClient.getQueryData(['booking', jobId]);

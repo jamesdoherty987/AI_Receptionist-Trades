@@ -57,7 +57,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   };
 
   const markPaidMutation = useMutation({
-    mutationFn: (jobId) => updateBooking(jobId, { status: 'completed', payment_status: 'paid' }),
+    mutationFn: (jobId) => updateBooking(jobId, { status: 'completed', payment_status: 'paid', payment_method: 'manual' }),
     onMutate: (jobId) => setMarkingPaidJobId(jobId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });

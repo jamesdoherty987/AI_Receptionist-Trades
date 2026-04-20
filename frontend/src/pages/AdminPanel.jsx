@@ -399,6 +399,42 @@ function AdminPanel() {
                   <StatCard icon="chart-bar" label="Cancelled" value={overview.booking_stats?.cancelled || 0} color="#f87171" />
                 </div>
 
+                {/* Stripe Payment Analytics */}
+                <div className="ap-card">
+                  <h3><i className="fas fa-credit-card"></i> Stripe Payment Analytics</h3>
+                  <div className="ap-payment-grid">
+                    <div className="ap-payment-item">
+                      <span className="ap-payment-count">{overview.booking_stats?.paid_jobs || 0}</span>
+                      <span className="ap-payment-label">Total Paid Jobs</span>
+                      <MiniBar value={overview.booking_stats?.paid_jobs || 0} max={overview.booking_stats?.total || 1} color="#34d399" />
+                    </div>
+                    <div className="ap-payment-item">
+                      <span className="ap-payment-count">{overview.booking_stats?.stripe_paid_jobs || 0}</span>
+                      <span className="ap-payment-label">Paid via Stripe</span>
+                      <MiniBar value={overview.booking_stats?.stripe_paid_jobs || 0} max={overview.booking_stats?.paid_jobs || 1} color="#818cf8" />
+                    </div>
+                    <div className="ap-payment-item">
+                      <span className="ap-payment-count">{overview.booking_stats?.non_stripe_paid_jobs || 0}</span>
+                      <span className="ap-payment-label">Paid Other (cash/bank)</span>
+                      <MiniBar value={overview.booking_stats?.non_stripe_paid_jobs || 0} max={overview.booking_stats?.paid_jobs || 1} color="#fbbf24" />
+                    </div>
+                    <div className="ap-payment-item">
+                      <span className="ap-payment-count">€{(overview.platform_fee_revenue || 0).toLocaleString('en', { minimumFractionDigits: 2 })}</span>
+                      <span className="ap-payment-label">Platform Fee Revenue (€2/txn)</span>
+                      <MiniBar value={overview.booking_stats?.stripe_paid_jobs || 0} max={overview.booking_stats?.paid_jobs || 1} color="#f472b6" />
+                    </div>
+                  </div>
+                  <div className="ap-payment-summary">
+                    <span>Stripe adoption: <strong>
+                      {(overview.booking_stats?.paid_jobs || 0) > 0
+                        ? Math.round(((overview.booking_stats?.stripe_paid_jobs || 0) / overview.booking_stats.paid_jobs) * 100)
+                        : 0}%
+                    </strong></span>
+                    <span>Stripe revenue: <strong>€{(overview.booking_stats?.stripe_revenue || 0).toLocaleString('en', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</strong></span>
+                    <span>Paid revenue: <strong>€{(overview.booking_stats?.paid_revenue || 0).toLocaleString('en', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</strong></span>
+                  </div>
+                </div>
+
                 {/* Subscription breakdown */}
                 <div className="ap-card">
                   <h3><i className="fas fa-layer-group"></i> Subscription Tiers</h3>

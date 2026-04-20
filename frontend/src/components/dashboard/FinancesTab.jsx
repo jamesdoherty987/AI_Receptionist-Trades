@@ -123,7 +123,13 @@ function FinancesTab() {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
 
-    return { totalJobs, avgJobValue, collectionRate, serviceBreakdown, topCustomers, avgProfit, topCostJobs };
+    // Payment method breakdown
+    const paidJobs = nonCancelled.filter(t => t.payment_status === 'paid');
+    const stripePaid = paidJobs.filter(t => t.payment_method === 'stripe').length;
+    const otherPaid = paidJobs.length - stripePaid;
+    const stripeRate = paidJobs.length > 0 ? (stripePaid / paidJobs.length) * 100 : 0;
+
+    return { totalJobs, avgJobValue, collectionRate, serviceBreakdown, topCustomers, avgProfit, topCostJobs, stripePaid, otherPaid, stripeRate, paidJobsCount: paidJobs.length };
   }, [transactions, total_revenue, paid_revenue]);
 
   // Format a YYYY-MM-DD string to a short label
@@ -491,6 +497,17 @@ function FinancesTab() {
             <div className="insight-label">Collection Rate</div>
           </div>
         </div>
+        {insights.paidJobsCount > 0 && (
+          <div className="insight-card">
+            <div className="insight-icon" style={{ background: 'rgba(99, 102, 241, 0.1)' }}>
+              <i className="fas fa-credit-card" style={{ color: '#6366f1' }}></i>
+            </div>
+            <div className="insight-content">
+              <div className="insight-value">{insights.stripePaid}/{insights.paidJobsCount}</div>
+              <div className="insight-label">Stripe Payments ({insights.stripeRate.toFixed(0)}%)</div>
+            </div>
+          </div>
+        )}
       </div>
       )}
 

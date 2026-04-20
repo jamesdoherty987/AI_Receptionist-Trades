@@ -2294,6 +2294,11 @@ def worker_update_job_status(job_id):
     # Build update kwargs
     update_kwargs = {'status': new_status}
 
+    # When worker marks as paid, also set payment fields
+    if new_status == 'paid':
+        update_kwargs['payment_status'] = 'paid'
+        update_kwargs['payment_method'] = 'manual'
+
     # Custom status label (e.g. "Waiting for Parts", "Customer No-Show")
     status_label = data.get('status_label', '').strip()
     if status_label:
@@ -4632,7 +4637,19 @@ def stripe_connect_webhook():
                     # The booking_id comes from trusted Stripe metadata set during payment link creation
                     booking = db.get_booking(booking_id)  # company_id extracted from booking itself
                     if booking:
-                        db.update_booking(booking_id, company_id=booking.get('company_id'), payment_status='paid', status='completed')
+                        db.update_booking(booking_id, company_id=booking.get('company_id'),
+                                          payment_status='paid', status='completed',
+                                          payment_method='stripe')
+                        # Clear the checkout URL so /pay/:id shows "Already Paid"
+                        try:
+                            conn_upd = db.get_connection()
+                            cur_upd = conn_upd.cursor()
+                            cur_upd.execute("UPDATE bookings SET stripe_checkout_url = NULL WHERE id = %s", (booking_id,))
+                            conn_upd.commit()
+                            cur_upd.close()
+                            db.return_connection(conn_upd)
+                        except Exception:
+                            pass
                         print(f"[SUCCESS] Booking {booking_id} marked as paid via Stripe Connect checkout")
                     else:
                         print(f"[WARNING] Booking {booking_id} not found for checkout session")
@@ -4645,11 +4662,11 @@ def stripe_connect_webhook():
             if booking_id:
                 try:
                     booking_id = int(booking_id)
-                    # SECURITY NOTE: This is a webhook from Stripe - we get booking first to extract company_id
-                    # The booking_id comes from trusted Stripe metadata set during payment link creation
-                    booking = db.get_booking(booking_id)  # company_id extracted from booking itself
+                    booking = db.get_booking(booking_id)
                     if booking:
-                        db.update_booking(booking_id, company_id=booking.get('company_id'), payment_status='paid', status='completed')
+                        db.update_booking(booking_id, company_id=booking.get('company_id'),
+                                          payment_status='paid', status='completed',
+                                          payment_method='stripe')
                         print(f"[SUCCESS] Booking {booking_id} marked as paid via payment intent")
                     else:
                         print(f"[WARNING] Booking {booking_id} not found for payment intent")
@@ -4789,10 +4806,9 @@ def short_payment_redirect(booking_id):
                 'metadata': { 'booking_id': str(booking_id), 'customer_name': client_name },
             }
             
-            platform_fee_percent = float(os.getenv('STRIPE_PLATFORM_FEE_PERCENT', '0'))
-            if platform_fee_percent > 0:
-                application_fee = int(amount_cents * (platform_fee_percent / 100))
-                checkout_params['payment_intent_data'] = { 'application_fee_amount': application_fee }
+            platform_fee_cents = int(os.getenv('STRIPE_PLATFORM_FEE_CENTS', '200'))
+            if platform_fee_cents > 0:
+                checkout_params['payment_intent_data'] = { 'application_fee_amount': platform_fee_cents }
             
             checkout_session = stripe.checkout.Session.create(**checkout_params, stripe_account=connected_account_id)
             
@@ -8841,12 +8857,11 @@ def send_invoice_api(booking_id):
                     }
                 }
                 
-                # Calculate platform fee if configured
-                platform_fee_percent = float(os.getenv('STRIPE_PLATFORM_FEE_PERCENT', '0'))
-                if platform_fee_percent > 0:
-                    application_fee = int(amount_cents * (platform_fee_percent / 100))
+                # Fixed €2 platform fee per transaction
+                platform_fee_cents = int(os.getenv('STRIPE_PLATFORM_FEE_CENTS', '200'))
+                if platform_fee_cents > 0:
                     checkout_params['payment_intent_data'] = {
-                        'application_fee_amount': application_fee,
+                        'application_fee_amount': platform_fee_cents,
                     }
                 
                 checkout_session = stripe.checkout.Session.create(
@@ -10378,11 +10393,11 @@ def get_finances():
         bookings = db.get_all_bookings(company_id=company_id)
         
         # Calculate revenue metrics
-        # A job is considered paid if: status is 'completed' or 'paid', OR payment_status is 'paid'
+        # A job is considered paid only if payment_status is 'paid'
         paid_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings 
-                          if b.get('status') in ['completed', 'paid'] or b.get('payment_status') == 'paid')
+                          if b.get('payment_status') == 'paid')
         unpaid_revenue = sum(float(b.get('charge', 0) or 0) for b in bookings 
-                            if b.get('status') not in ['completed', 'paid', 'cancelled'] 
+                            if b.get('status') != 'cancelled'
                             and b.get('payment_status') != 'paid')
         total_revenue = paid_revenue + unpaid_revenue
         
@@ -10405,8 +10420,8 @@ def get_finances():
                     'amount': float(booking.get('charge', 0)),
                     'status': booking.get('status'),
                     'payment_status': booking.get('payment_status'),
+                    'payment_method': booking.get('payment_method'),
                     'date': booking.get('appointment_time'),
-                    'payment_method': booking.get('payment_method')
                 })
         
         # Group by day for chart (include all charged bookings, not just paid)
@@ -10553,7 +10568,8 @@ def mark_bookings_paid():
             if appt_time <= cutoff:
                 try:
                     db.update_booking(booking['id'], company_id=company_id,
-                                      status='completed', payment_status='paid')
+                                      status='completed', payment_status='paid',
+                                      payment_method='manual')
                     updated += 1
                 except Exception as e:
                     print(f"[MARK_PAID] Failed to update booking {booking['id']}: {e}")
@@ -12939,7 +12955,17 @@ def admin_insights_overview():
         with_phone = cursor.fetchone()['cnt']
 
         # Total bookings platform-wide
-        cursor.execute("SELECT COUNT(*) as total, COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed, COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled FROM bookings")
+        cursor.execute("""
+            SELECT COUNT(*) as total,
+                   COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
+                   COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled,
+                   COUNT(CASE WHEN payment_status = 'paid' THEN 1 END) as paid_jobs,
+                   COUNT(CASE WHEN payment_status = 'paid' AND payment_method = 'stripe' THEN 1 END) as stripe_paid_jobs,
+                   COUNT(CASE WHEN payment_status = 'paid' AND (payment_method IS NULL OR payment_method != 'stripe') THEN 1 END) as non_stripe_paid_jobs,
+                   COALESCE(SUM(CASE WHEN payment_status = 'paid' AND payment_method = 'stripe' THEN charge ELSE 0 END), 0) as stripe_revenue,
+                   COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN charge ELSE 0 END), 0) as paid_revenue
+            FROM bookings
+        """)
         booking_stats = cursor.fetchone()
 
         # Total call logs
@@ -12949,6 +12975,11 @@ def admin_insights_overview():
         # Total revenue platform-wide
         cursor.execute("SELECT COALESCE(SUM(charge), 0) as total FROM bookings WHERE status != 'cancelled'")
         total_revenue = float(cursor.fetchone()['total'])
+
+        # Platform fee revenue (€2 per Stripe payment)
+        platform_fee_cents = int(os.getenv('STRIPE_PLATFORM_FEE_CENTS', '200'))
+        stripe_paid_count = int(booking_stats.get('stripe_paid_jobs', 0))
+        platform_fee_revenue = round(stripe_paid_count * platform_fee_cents / 100, 2)
 
         # Accounts created per month (last 6 months)
         cursor.execute("""
@@ -12984,6 +13015,7 @@ def admin_insights_overview():
                 "booking_stats": dict(booking_stats),
                 "call_stats": dict(call_stats),
                 "total_revenue": total_revenue,
+                "platform_fee_revenue": platform_fee_revenue,
                 "signups_by_month": signups_by_month,
                 "recent_accounts": recent,
             }

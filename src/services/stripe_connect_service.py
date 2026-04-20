@@ -11,8 +11,8 @@ from typing import Optional, Dict, Any
 # Initialize Stripe with API key
 stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 
-# Platform fee percentage (optional - set to 0 for no platform fee)
-PLATFORM_FEE_PERCENT = float(os.getenv('STRIPE_PLATFORM_FEE_PERCENT', '0'))
+# Fixed platform fee in cents (€2.00 per transaction)
+PLATFORM_FEE_CENTS = int(os.getenv('STRIPE_PLATFORM_FEE_CENTS', '200'))
 
 # Get the client ID for Connect OAuth (set in Stripe Dashboard)
 STRIPE_CLIENT_ID = os.getenv('STRIPE_CLIENT_ID', '')
@@ -233,11 +233,8 @@ def create_payment_intent_for_invoice(
         return None
     
     try:
-        # Calculate application fee if specified
-        application_fee_amount = None
-        fee_percent = application_fee_percent if application_fee_percent is not None else PLATFORM_FEE_PERCENT
-        if fee_percent > 0:
-            application_fee_amount = int(amount_cents * (fee_percent / 100))
+        # Calculate application fee — fixed €2 per transaction
+        application_fee_amount = PLATFORM_FEE_CENTS if PLATFORM_FEE_CENTS > 0 else None
         
         # Create payment intent params
         intent_params = {
