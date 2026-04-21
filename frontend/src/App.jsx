@@ -11,9 +11,9 @@ import LoadingSpinner from './components/LoadingSpinner'
 // Critical-path pages (eager — needed immediately)
 import Login from './pages/Login'
 import Signup from './pages/Signup'
+import Landing from './pages/Landing'
 
 // Lazy-loaded pages (code-split into separate chunks)
-const Landing = lazy(() => import('./pages/Landing'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Account = lazy(() => import('./pages/Account'))

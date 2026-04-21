@@ -120,6 +120,10 @@ _audio_cache: dict[str, bytes] = {}
 _cache_loaded = False
 _loading_in_progress = False
 
+# Typing audio cache (loaded from R2 at startup alongside fillers)
+_typing_audio: Optional[bytes] = None
+TYPING_AUDIO_ID = "typing_loop"  # R2 key: audio/fillers/typing_loop.raw
+
 
 def _get_r2_key(phrase_id: str) -> str:
     """Get R2 key for a filler phrase"""
@@ -203,6 +207,10 @@ async def preload_fillers_async():
         else:
             print(f"[AUDIO] ⚠️ No filler phrases loaded - will use TTS fallback")
             print(f"[AUDIO] To generate fillers, run: python scripts/generate_filler_audio.py")
+        
+        # Load typing audio from R2 (separate from filler phrases)
+        global _typing_audio
+        _typing_audio = await _load_typing_audio_async()
     
     except Exception as e:
         print(f"[AUDIO] Error in preload_fillers_async: {type(e).__name__}: {e}")
@@ -508,3 +516,113 @@ async def upload_filler_to_r2(phrase_id: str, audio_data: bytes) -> str:
     )
     
     return url
+
+
+# === Background typing audio ===
+# Played after filler phrase finishes, loops until TTS response is ready.
+# Real typing sound effect stored in R2 alongside other filler audio.
+# The ~7.7s clip loops seamlessly for longer waits.
+
+
+async def _load_typing_audio_async() -> Optional[bytes]:
+    """Download typing audio from R2 (called during filler preload)."""
+    audio = await _download_from_r2(TYPING_AUDIO_ID)
+    if audio and len(audio) > 0:
+        duration_ms = len(audio) / 8  # 8 bytes per ms at 8kHz mulaw
+        print(f"[TYPING] ✅ Loaded typing audio from R2: {len(audio)} bytes ({duration_ms:.0f}ms)")
+        return audio
+    print(f"[TYPING] ⚠️ Typing audio not found in R2 — background typing disabled")
+    return None
+
+
+def get_typing_audio() -> Optional[bytes]:
+    """Get the typing loop audio (mulaw 8kHz). Returns None if not loaded."""
+    return _typing_audio
+
+
+async def send_typing_audio_loop(websocket, stream_sid: str, stop_event: asyncio.Event,
+                                  max_duration_s: float = 30.0):
+    """
+    Send typing audio to the call in a loop until stop_event is set.
+    
+    This runs as an async task. When the TTS response is ready, the caller
+    sets stop_event which causes this to stop sending new chunks. The caller
+    then sends a 'clear' event to flush any buffered typing audio from Telnyx
+    before starting TTS.
+    
+    Args:
+        websocket: Telnyx websocket connection
+        stream_sid: Telnyx stream ID
+        stop_event: asyncio.Event — set this to stop the typing
+        max_duration_s: Safety timeout to prevent infinite typing
+    """
+    import time
+    start = time.time()
+    typing_audio = get_typing_audio()
+    if not typing_audio:
+        print("[TYPING] ⚠️ No typing audio available — skipping")
+        return
+    
+    chunk_size = 160  # 20ms at 8kHz mulaw
+    total_chunks = len(typing_audio) // chunk_size
+    chunk_idx = 0
+    chunks_sent = 0
+    
+    # Pace the sending: Telnyx buffers everything we send, so if we blast
+    # 15s of audio instantly, the clear event has to flush a huge buffer.
+    # Instead, send in real-time-ish pace (batches of ~100ms every 100ms)
+    # so the buffer stays small and clear is near-instant.
+    BATCH_CHUNKS = 5  # 5 chunks = 100ms of audio
+    BATCH_INTERVAL = 0.1  # Send every 100ms
+    
+    print(f"[TYPING] ⌨️ Starting typing audio loop (max {max_duration_s}s)")
+    
+    try:
+        while not stop_event.is_set():
+            # Safety timeout
+            elapsed = time.time() - start
+            if elapsed > max_duration_s:
+                print(f"[TYPING] ⚠️ Max duration reached ({max_duration_s}s) — stopping")
+                break
+            
+            # Send a batch of chunks
+            for _ in range(BATCH_CHUNKS):
+                if stop_event.is_set():
+                    break
+                
+                offset = (chunk_idx % total_chunks) * chunk_size
+                chunk = typing_audio[offset:offset + chunk_size]
+                if len(chunk) < chunk_size:
+                    # Wrap around to start of typing audio
+                    chunk_idx = 0
+                    offset = 0
+                    chunk = typing_audio[0:chunk_size]
+                
+                payload = base64.b64encode(chunk).decode('utf-8')
+                await websocket.send(json.dumps({
+                    "event": "media",
+                    "streamSid": stream_sid,
+                    "media": {"payload": payload},
+                }))
+                chunk_idx += 1
+                chunks_sent += 1
+            
+            # Wait before sending next batch — yields control to event loop
+            # so stop_event can be checked promptly
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=BATCH_INTERVAL)
+                # stop_event was set during our wait — exit
+                break
+            except asyncio.TimeoutError:
+                # Normal — keep sending
+                pass
+    
+    except Exception as e:
+        if "ConnectionClosed" in type(e).__name__:
+            print(f"[TYPING] ⚠️ WebSocket closed during typing audio")
+        else:
+            print(f"[TYPING] ❌ Error in typing loop: {type(e).__name__}: {e}")
+    
+    duration = time.time() - start
+    audio_sent_ms = chunks_sent * 20  # Each chunk is 20ms
+    print(f"[TYPING] ⌨️ Typing stopped after {duration:.2f}s ({chunks_sent} chunks, ~{audio_sent_ms}ms audio sent)")
