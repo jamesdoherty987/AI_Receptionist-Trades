@@ -20,6 +20,7 @@ import { formatPriceRange } from '../../utils/helpers';
 import HelpTooltip from '../HelpTooltip';
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
 import './ServicesTab.css';
+import './SharedDashboard.css';
 
 function ServicesTab() {
   const { hasActiveSubscription } = useAuth();
@@ -287,7 +288,7 @@ function ServicesTab() {
         </div>
         <div className="services-controls">
           <button 
-            className="btn btn-primary"
+            className="btn-add"
             onClick={handleAddClick}
           >
             <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Service

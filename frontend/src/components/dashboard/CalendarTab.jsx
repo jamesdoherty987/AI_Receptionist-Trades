@@ -5,6 +5,7 @@ import { getStatusBadgeClass, parseServerDate } from '../../utils/helpers';
 import LoadingSpinner from '../LoadingSpinner';
 import JobDetailModal from '../modals/JobDetailModal';
 import './CalendarTab.css';
+import './SharedDashboard.css';
 
 // Color palette for workers
 const WORKER_COLORS = [

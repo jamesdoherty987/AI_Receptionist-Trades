@@ -7,6 +7,7 @@ import MessageWorkerModal from '../modals/MessageWorkerModal';
 import AddWorkerModal from '../modals/AddWorkerModal';
 import WorkerDetailModal from '../modals/WorkerDetailModal';
 import './WorkersTab.css';
+import './SharedDashboard.css';
 
 // Same color palette as CalendarTab for consistency
 const WORKER_COLORS = [
@@ -221,24 +222,24 @@ function WorkersTab({ workers, bookings }) {
 
   return (
     <div className="workers-tab">
-      <div className="workers-header">
-        <h2>Workers</h2>
-        <div className="workers-header-right">
+      <div className="tab-page-header">
+        <div>
+          <h2>Workers</h2>
           {workers.length > 0 && (
-            <div className="workers-stats-bar">
+            <div className="workers-stats-bar" style={{ marginTop: '0.35rem' }}>
               <span className="ws-stat">{stats.total} total</span>
               <span className="ws-stat available">{stats.available} available</span>
               {stats.busy > 0 && <span className="ws-stat busy">{stats.busy} on job</span>}
               {stats.onLeave > 0 && <span className="ws-stat leave">{stats.onLeave} on leave</span>}
             </div>
           )}
-          <button 
-            className="btn btn-primary btn-sm" 
-            onClick={handleAddClick}
-          >
-            <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Worker
-          </button>
         </div>
+        <button 
+          className="btn-add" 
+          onClick={handleAddClick}
+        >
+          <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Worker
+        </button>
       </div>
 
       {/* Search & Filter Bar */}

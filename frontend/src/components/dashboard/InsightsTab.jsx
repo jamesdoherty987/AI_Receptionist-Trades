@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { formatCurrency } from '../../utils/helpers';
 import { getCallLogs, getLeads } from '../../services/api';
 import './InsightsTab.css';
+import './SharedDashboard.css';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => {
@@ -436,6 +437,11 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
           ))}
         </div>
       </div>
+      )}
+
+      {/* AI Smart Summary */}
+      {bookings.length > 0 && (
+        <AiSmartSummary stats={stats} clients={clients} bookings={bookings} workers={workers} leads={leads} callLogs={callLogs} />
       )}
 
       {/* Overview Cards */}
@@ -942,6 +948,124 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
           </div>
         );
       })()}
+    </div>
+  );
+}
+
+/* AI Smart Summary — generates actionable insights from dashboard data */
+function AiSmartSummary({ stats, clients, bookings, workers, leads, callLogs }) {
+  const insights = useMemo(() => {
+    const items = [];
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+
+    // Revenue trend
+    const thisMonthJobs = bookings.filter(b => {
+      const d = new Date(b.appointment_time);
+      return d.getMonth() === thisMonth && d.getFullYear() === thisYear && b.status !== 'cancelled';
+    });
+    const lastMonthJobs = bookings.filter(b => {
+      const d = new Date(b.appointment_time);
+      const lm = thisMonth === 0 ? 11 : thisMonth - 1;
+      const ly = thisMonth === 0 ? thisYear - 1 : thisYear;
+      return d.getMonth() === lm && d.getFullYear() === ly && b.status !== 'cancelled';
+    });
+
+    if (thisMonthJobs.length > 0 && lastMonthJobs.length > 0) {
+      const change = ((thisMonthJobs.length - lastMonthJobs.length) / lastMonthJobs.length * 100);
+      if (change > 10) {
+        items.push({ icon: 'fa-arrow-trend-up', text: `Job volume is up ${change.toFixed(0)}% this month — great momentum.`, type: 'positive' });
+      } else if (change < -10) {
+        items.push({ icon: 'fa-arrow-trend-down', text: `Job volume is down ${Math.abs(change).toFixed(0)}% this month. Consider running a promotion or following up with past clients.`, type: 'warning' });
+      }
+    }
+
+    // Unpaid jobs
+    const unpaid = bookings.filter(b => b.status === 'completed' && b.payment_status !== 'paid');
+    if (unpaid.length > 0) {
+      const totalUnpaid = unpaid.reduce((s, b) => s + parseFloat(b.charge || b.estimated_charge || 0), 0);
+      items.push({ icon: 'fa-file-invoice-dollar', text: `${unpaid.length} completed job${unpaid.length > 1 ? 's' : ''} unpaid (${new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' }).format(totalUnpaid)}). Send invoices to improve cash flow.`, type: 'action' });
+    }
+
+    // Cancellation rate
+    if (stats.cancellationRate > 15) {
+      items.push({ icon: 'fa-exclamation-triangle', text: `Cancellation rate is ${stats.cancellationRate.toFixed(1)}% — above the 15% threshold. Review recent cancellations for patterns.`, type: 'warning' });
+    }
+
+    // Lost calls
+    const lostCalls = callLogs.filter(c => c.call_outcome === 'lost_job' || c.call_outcome === 'no_action');
+    if (lostCalls.length > 3) {
+      items.push({ icon: 'fa-phone-slash', text: `${lostCalls.length} calls resulted in lost jobs or no action. Review call summaries to identify common objections.`, type: 'action' });
+    }
+
+    // Dormant clients
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    // Pre-build a map of latest booking per client to avoid O(n*m)
+    const latestBookingByClient = {};
+    bookings.forEach(b => {
+      const cid = b.client_id;
+      if (!cid) return;
+      const t = new Date(b.appointment_time).getTime();
+      if (!latestBookingByClient[cid] || t > latestBookingByClient[cid]) {
+        latestBookingByClient[cid] = t;
+      }
+    });
+    const dormant = clients.filter(c => {
+      const lastTime = latestBookingByClient[c.id];
+      return lastTime && lastTime < thirtyDaysAgo.getTime();
+    });
+    if (dormant.length > 2) {
+      items.push({ icon: 'fa-user-clock', text: `${dormant.length} clients haven't booked in 30+ days. A quick follow-up message could win them back.`, type: 'action' });
+    }
+
+    // Lead conversion
+    if (leads.length > 0) {
+      const converted = leads.filter(l => l.stage === 'won').length;
+      const convRate = (converted / leads.length * 100);
+      if (convRate < 20 && leads.length > 5) {
+        items.push({ icon: 'fa-filter-circle-dollar', text: `Lead conversion is at ${convRate.toFixed(0)}%. Focus on following up with leads in the "Contacted" stage.`, type: 'action' });
+      } else if (convRate > 40) {
+        items.push({ icon: 'fa-trophy', text: `Strong ${convRate.toFixed(0)}% lead conversion rate — your follow-up game is solid.`, type: 'positive' });
+      }
+    }
+
+    // Worker utilization
+    if (workers.length > 1) {
+      const workerJobCounts = workers.map(w => ({
+        name: w.name,
+        jobs: bookings.filter(b => (b.assigned_worker_ids || []).includes(w.id) && b.status !== 'cancelled').length
+      }));
+      const maxJobs = Math.max(...workerJobCounts.map(w => w.jobs));
+      const minJobs = Math.min(...workerJobCounts.map(w => w.jobs));
+      if (maxJobs > 0 && minJobs < maxJobs * 0.3) {
+        const underused = workerJobCounts.filter(w => w.jobs < maxJobs * 0.3);
+        items.push({ icon: 'fa-balance-scale', text: `Workload imbalance detected — ${underused.map(w => w.name).join(', ')} ha${underused.length > 1 ? 've' : 's'} significantly fewer jobs. Consider redistributing.`, type: 'action' });
+      }
+    }
+
+    // Positive fallback
+    if (items.length === 0) {
+      items.push({ icon: 'fa-check-circle', text: 'Everything looks healthy. Keep up the great work!', type: 'positive' });
+    }
+
+    return items.slice(0, 4);
+  }, [stats, clients, bookings, workers, leads, callLogs]);
+
+  return (
+    <div className="ai-insight-card">
+      <div className="ai-insight-header">
+        <span className="ai-insight-badge"><i className="fas fa-sparkles"></i> AI</span>
+        <span className="ai-insight-title">Smart Summary</span>
+      </div>
+      <div className="ai-insight-body">
+        {insights.map((item, i) => (
+          <div key={i} className="ai-insight-item">
+            <i className={`fas ${item.icon}`} style={{ color: item.type === 'positive' ? '#10b981' : item.type === 'warning' ? '#f59e0b' : '#6366f1' }}></i>
+            <span>{item.text}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

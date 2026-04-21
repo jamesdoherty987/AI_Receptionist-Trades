@@ -5,6 +5,7 @@ import { useToast } from '../Toast';
 import AddClientModal from '../modals/AddClientModal';
 import CustomerDetailModal from '../modals/CustomerDetailModal';
 import './CustomersTab.css';
+import './SharedDashboard.css';
 
 function CustomersTab({ clients, bookings = [] }) {
   const { hasActiveSubscription } = useAuth();
@@ -47,10 +48,13 @@ function CustomersTab({ clients, bookings = [] }) {
 
   return (
     <div className="customers-tab">
-      <div className="customers-header">
-        <h2>Customer Directory</h2>
-        <div className="customers-controls">
-          <div className="search-box">
+      <div className="tab-page-header">
+        <div>
+          <h2>Customer Directory</h2>
+          <p className="tab-page-subtitle">{clients.length} customer{clients.length !== 1 ? 's' : ''}</p>
+        </div>
+        <div className="tab-page-controls">
+          <div className="dash-search">
             <i className="fas fa-search"></i>
             <input
               type="text"
@@ -58,9 +62,10 @@ function CustomersTab({ clients, bookings = [] }) {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+            {searchTerm && <button className="dash-search-clear" onClick={() => setSearchTerm('')}><i className="fas fa-times"></i></button>}
           </div>
           <button 
-            className="btn btn-primary btn-sm" 
+            className="btn-add" 
             onClick={handleAddClick}
           >
             <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Customer
@@ -70,9 +75,10 @@ function CustomersTab({ clients, bookings = [] }) {
 
       <div className="customers-list">
         {filteredClients.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-icon">👥</div>
-            <p>No customers found</p>
+          <div className="dash-empty">
+            <span className="dash-empty-icon">👥</span>
+            <h3>{searchTerm ? 'No matches' : 'No customers yet'}</h3>
+            <p>{searchTerm ? 'Try a different search term' : 'Customers will appear here as they book jobs'}</p>
           </div>
         ) : (
           filteredClients.map((client) => (

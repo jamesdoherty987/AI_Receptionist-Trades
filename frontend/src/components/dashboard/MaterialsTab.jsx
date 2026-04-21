@@ -6,6 +6,7 @@ import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
 import { formatCurrency } from '../../utils/helpers';
 import './MaterialsTab.css';
+import './SharedDashboard.css';
 
 const COMMON_CATEGORIES = [
   'Pipe & Fittings', 'Valves', 'Sealants & Adhesives', 'Fixtures',
@@ -117,7 +118,7 @@ function MaterialsTab() {
             Your price list for parts and materials used on jobs
           </p>
         </div>
-        <button className="btn btn-primary" onClick={() => {
+        <button className="btn-add" onClick={() => {
           if (!isSubscriptionActive) { addToast('Please upgrade your plan to add materials', 'warning'); return; }
           setShowAddForm(!showAddForm);
         }}>

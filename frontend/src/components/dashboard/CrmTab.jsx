@@ -8,6 +8,7 @@ import AddClientModal from '../modals/AddClientModal';
 import CustomerDetailModal from '../modals/CustomerDetailModal';
 import PipelineTab from './PipelineTab';
 import './CrmTab.css';
+import './SharedDashboard.css';
 
 function formatRelativeTime(dateStr) {
   if (!dateStr) return '';
@@ -273,18 +274,19 @@ function CrmTab({ clients, bookings = [] }) {
           </div>
         </div>
         <div className="crm-header-right">
-          <div className="search-box">
+          <div className="dash-search">
             <i className="fas fa-search"></i>
             <input type="text" placeholder={activeView === 'leads' ? 'Search leads...' : activeView === 'customers' ? 'Search customers...' : activeView === 'quotes' ? 'Search quotes...' : 'Search reviews...'}
               value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+            {searchTerm && <button className="dash-search-clear" onClick={() => setSearchTerm('')}><i className="fas fa-times"></i></button>}
           </div>
           {activeView === 'leads' && (
-            <button className="btn btn-primary btn-sm" onClick={() => setShowAddLead(true)}>
+            <button className="btn-add" onClick={() => setShowAddLead(true)}>
               <i className="fas fa-plus"></i> Add Lead
             </button>
           )}
           {activeView === 'customers' && (
-            <button className="btn btn-primary btn-sm" onClick={() => {
+            <button className="btn-add" onClick={() => {
               if (!isSubscriptionActive) { addToast('Please upgrade your plan to add customers', 'warning'); return; }
               setShowAddClient(true);
             }}>
@@ -293,6 +295,11 @@ function CrmTab({ clients, bookings = [] }) {
           )}
         </div>
       </div>
+
+      {/* AI CRM Insights */}
+      {(leads.length > 0 || customerHealth.length > 0) && !searchTerm && (
+        <CrmAiInsights leads={leads} customerHealth={customerHealth} reviews={reviews} pipelineStats={pipelineStats} />
+      )}
 
       {/* Leads View */}
       {activeView === 'leads' && (
@@ -885,6 +892,79 @@ function QuotePipelineEmbed() {
   return (
     <div className="crm-quotes-embed">
       <PipelineTab />
+    </div>
+  );
+}
+
+/* AI CRM Insights */
+function CrmAiInsights({ leads, customerHealth, reviews, pipelineStats }) {
+  const insights = useMemo(() => {
+    const items = [];
+
+    // Stale leads
+    const now = new Date();
+    const staleDays = 7;
+    const staleLeads = leads.filter(l => {
+      if (l.stage === 'won' || l.stage === 'lost') return false;
+      const updated = new Date(l.updated_at || l.created_at);
+      return (now - updated) / (1000 * 60 * 60 * 24) > staleDays;
+    });
+    if (staleLeads.length > 0) {
+      items.push({ icon: 'fa-hourglass-half', text: `${staleLeads.length} lead${staleLeads.length > 1 ? 's' : ''} haven't been updated in ${staleDays}+ days. Follow up to keep them warm.`, type: 'action' });
+    }
+
+    // Dormant customers
+    const dormant = customerHealth.filter(c => c.segment === 'dormant');
+    if (dormant.length > 2) {
+      items.push({ icon: 'fa-user-clock', text: `${dormant.length} dormant customers. Send a re-engagement message or special offer to win them back.`, type: 'action' });
+    }
+
+    // VIP customers
+    const vips = customerHealth.filter(c => c.segment === 'vip');
+    if (vips.length > 0) {
+      items.push({ icon: 'fa-crown', text: `${vips.length} VIP customer${vips.length > 1 ? 's' : ''} — your top spenders. Consider loyalty perks or priority scheduling.`, type: 'positive' });
+    }
+
+    // Review score
+    if (reviews.length > 0) {
+      const avgRating = reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length;
+      if (avgRating >= 4.5) {
+        items.push({ icon: 'fa-star', text: `Excellent ${avgRating.toFixed(1)}★ average rating across ${reviews.length} reviews. Share these on your website!`, type: 'positive' });
+      } else if (avgRating < 3.5 && reviews.length > 3) {
+        items.push({ icon: 'fa-star-half-alt', text: `Average rating is ${avgRating.toFixed(1)}★. Review recent feedback for improvement areas.`, type: 'warning' });
+      }
+    }
+
+    // Pipeline conversion
+    if (pipelineStats) {
+      const total = leads.length;
+      const won = leads.filter(l => l.stage === 'won').length;
+      if (total > 5 && won / total < 0.2) {
+        items.push({ icon: 'fa-filter-circle-dollar', text: `Lead conversion is below 20%. Focus on moving "Contacted" leads to "Quoted" stage.`, type: 'action' });
+      }
+    }
+
+    if (items.length === 0) {
+      items.push({ icon: 'fa-check-circle', text: 'CRM is in good shape. Keep nurturing your customer relationships!', type: 'positive' });
+    }
+
+    return items.slice(0, 3);
+  }, [leads, customerHealth, reviews, pipelineStats]);
+
+  return (
+    <div className="ai-insight-card">
+      <div className="ai-insight-header">
+        <span className="ai-insight-badge"><i className="fas fa-sparkles"></i> AI</span>
+        <span className="ai-insight-title">Relationship Insights</span>
+      </div>
+      <div className="ai-insight-body">
+        {insights.map((item, i) => (
+          <div key={i} className="ai-insight-item">
+            <i className={`fas ${item.icon}`} style={{ color: item.type === 'positive' ? '#10b981' : item.type === 'warning' ? '#f59e0b' : '#6366f1' }}></i>
+            <span>{item.text}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

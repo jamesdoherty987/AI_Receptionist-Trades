@@ -9,6 +9,7 @@ import AddJobModal from '../modals/AddJobModal';
 import JobDetailModal from '../modals/JobDetailModal';
 import InvoiceConfirmModal from '../modals/InvoiceConfirmModal';
 import './JobsTab.css';
+import './SharedDashboard.css';
 
 const STATUS_FILTERS = [
   { key: 'active', label: 'Upcoming', icon: 'fa-calendar-check' },
@@ -219,7 +220,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
           <input type="text" placeholder="Search by name, service, address, phone..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           {searchTerm && <button className="jt-search-clear" onClick={() => setSearchTerm('')}><i className="fas fa-times"></i></button>}
         </div>
-        <button className="btn btn-primary" onClick={handleAddClick}>
+        <button className="btn-add" onClick={handleAddClick}>
           <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Job
         </button>
       </div>
@@ -236,12 +237,18 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
         ))}
       </div>
 
+      {/* AI Job Insights */}
+      {bookings.length > 3 && statusFilter === 'active' && !searchTerm && (
+        <JobAiInsights bookings={bookings} counts={counts} />
+      )}
+
       {/* Job sections */}
       <div className="jt-sections">
         {groups.length === 0 ? (
-          <div className="jt-empty">
-            <div className="jt-empty-icon">{statusFilter === 'overdue' ? '✅' : statusFilter === 'needs-invoice' ? '💰' : '📋'}</div>
-            <p>{statusFilter === 'overdue' ? 'No overdue jobs' : statusFilter === 'needs-invoice' ? 'All jobs invoiced' : searchTerm ? 'No jobs match your search' : 'No jobs found'}</p>
+          <div className="dash-empty">
+            <span className="dash-empty-icon">{statusFilter === 'overdue' ? '✅' : statusFilter === 'needs-invoice' ? '💰' : '📋'}</span>
+            <h3>{statusFilter === 'overdue' ? 'All caught up' : statusFilter === 'needs-invoice' ? 'All invoiced' : searchTerm ? 'No matches' : 'No jobs yet'}</h3>
+            <p>{statusFilter === 'overdue' ? 'No overdue jobs — nice work!' : statusFilter === 'needs-invoice' ? 'All completed jobs have been invoiced' : searchTerm ? 'Try a different search term' : 'Jobs will appear here as they are booked'}</p>
           </div>
         ) : (
           groups.map(section => (
@@ -461,6 +468,64 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
         invoiceConfig={invoiceConfig}
         isPending={invoiceMutation.isPending}
       />
+    </div>
+  );
+}
+
+/* AI Job Insights — scheduling and workload tips */
+function JobAiInsights({ bookings, counts }) {
+  const insights = useMemo(() => {
+    const items = [];
+    const now = new Date();
+    const todayStr = now.toDateString();
+
+    // Overdue alert
+    if (counts.overdue > 0) {
+      items.push({ icon: 'fa-clock', text: `${counts.overdue} overdue job${counts.overdue > 1 ? 's' : ''} past their scheduled time. Update their status or reschedule.`, type: 'warning' });
+    }
+
+    // Unpaid jobs
+    if (counts['needs-invoice'] > 2) {
+      items.push({ icon: 'fa-file-invoice-dollar', text: `${counts['needs-invoice']} completed jobs need invoicing. Batch-send invoices to speed up payment.`, type: 'action' });
+    }
+
+    // Today's workload
+    const todayJobs = bookings.filter(b => {
+      const d = new Date(b.appointment_time);
+      return d.toDateString() === todayStr && !['completed', 'paid', 'cancelled'].includes(b.status);
+    });
+    if (todayJobs.length > 5) {
+      items.push({ icon: 'fa-calendar-day', text: `Busy day ahead — ${todayJobs.length} jobs scheduled for today. Make sure all workers are briefed.`, type: 'action' });
+    } else if (todayJobs.length === 0) {
+      items.push({ icon: 'fa-sun', text: 'No jobs scheduled for today. A good time to follow up with leads or send quotes.', type: 'positive' });
+    }
+
+    // In-progress jobs
+    if (counts['in-progress'] > 0) {
+      items.push({ icon: 'fa-wrench', text: `${counts['in-progress']} job${counts['in-progress'] > 1 ? 's' : ''} currently in progress.`, type: 'positive' });
+    }
+
+    if (items.length === 0) {
+      items.push({ icon: 'fa-check-circle', text: 'Schedule looks good. All jobs are on track.', type: 'positive' });
+    }
+
+    return items.slice(0, 3);
+  }, [bookings, counts]);
+
+  return (
+    <div className="ai-insight-card">
+      <div className="ai-insight-header">
+        <span className="ai-insight-badge"><i className="fas fa-sparkles"></i> AI</span>
+        <span className="ai-insight-title">Schedule Assistant</span>
+      </div>
+      <div className="ai-insight-body">
+        {insights.map((item, i) => (
+          <div key={i} className="ai-insight-item">
+            <i className={`fas ${item.icon}`} style={{ color: item.type === 'positive' ? '#10b981' : item.type === 'warning' ? '#f59e0b' : '#6366f1' }}></i>
+            <span>{item.text}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

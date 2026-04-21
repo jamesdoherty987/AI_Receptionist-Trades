@@ -1,9 +1,6 @@
 .customers-tab { display: flex; flex-direction: column; gap: 1.25rem; }
 
-.customers-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
-.customers-header h2 { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin: 0; }
-
-.customers-controls { display: flex; align-items: center; gap: 0.75rem; }
+/* Header uses shared .tab-page-header and .tab-page-controls from SharedDashboard.css */
 
 .customers-list { display: flex; flex-direction: column; gap: 0.5rem; }
 
