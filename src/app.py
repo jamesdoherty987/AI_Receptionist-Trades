@@ -3571,6 +3571,7 @@ from src.services.stripe_service import (
     get_subscription_status,
     cancel_subscription,
     reactivate_subscription,
+    upgrade_subscription,
     handle_webhook_event,
     get_customer_invoices,
     get_or_create_customer,
@@ -3700,6 +3701,42 @@ def create_checkout():
     else:
         print(f"[CHECKOUT] ERROR: create_checkout_session returned None!")
         return jsonify({"error": "Failed to create checkout session"}), 500
+
+
+@app.route("/api/subscription/upgrade", methods=["POST"])
+@login_required
+@rate_limit(max_requests=10, window_seconds=60)
+def upgrade_plan():
+    """Upgrade an existing subscription to a higher plan (e.g. dashboard -> pro)"""
+    db = get_database()
+    company = db.get_company(session['company_id'])
+
+    if not company:
+        return jsonify({"error": "Company not found"}), 404
+
+    subscription_id = company.get('stripe_subscription_id')
+    if not subscription_id:
+        return jsonify({"error": "No active subscription to upgrade. Please subscribe first."}), 400
+
+    data = request.json or {}
+    new_plan = data.get('plan', 'pro')
+
+    if new_plan not in ('dashboard', 'pro'):
+        return jsonify({"error": "Invalid plan"}), 400
+
+    current_plan = company.get('subscription_plan', 'pro')
+    if current_plan == new_plan:
+        return jsonify({"error": f"You are already on the {new_plan} plan"}), 400
+
+    custom_price_id = company.get(f'custom_{new_plan}_stripe_price_id') or None
+
+    result = upgrade_subscription(subscription_id, new_plan=new_plan, custom_price_id=custom_price_id)
+
+    if result:
+        db.update_company(company['id'], subscription_plan=new_plan)
+        return jsonify({"success": True, "plan": new_plan})
+    else:
+        return jsonify({"error": "Failed to upgrade subscription. Please try again or contact support."}), 500
 
 
 @app.route("/api/subscription/start-trial", methods=["POST"])

@@ -283,6 +283,53 @@ def get_subscription_status(customer_id: str) -> Dict[str, Any]:
         return default_response
 
 
+def upgrade_subscription(subscription_id: str, new_plan: str = 'pro', custom_price_id: str = None) -> Optional[Dict[str, Any]]:
+    """
+    Upgrade an existing subscription to a new plan by swapping the price.
+    Prorates the charge immediately.
+    """
+    if not is_stripe_configured() or not subscription_id:
+        return None
+
+    if new_plan not in PLANS:
+        print(f"[ERROR] Invalid plan for upgrade: {new_plan}")
+        return None
+
+    try:
+        sub = stripe.Subscription.retrieve(subscription_id)
+        if not sub or sub.status not in ('active', 'trialing'):
+            print(f"[ERROR] Subscription {subscription_id} is not active (status={sub.status})")
+            return None
+
+        # Determine the new price ID
+        new_price_id = custom_price_id or PLANS[new_plan]['price_id']
+        if not new_price_id:
+            print(f"[ERROR] No price ID configured for plan: {new_plan}")
+            return None
+
+        # Swap the first subscription item to the new price
+        updated_sub = stripe.Subscription.modify(
+            subscription_id,
+            items=[{
+                'id': sub['items']['data'][0].id,
+                'price': new_price_id,
+            }],
+            proration_behavior='create_prorations',
+            metadata={**dict(sub.metadata), 'plan': new_plan},
+        )
+
+        print(f"[SUCCESS] Upgraded subscription {subscription_id} to {new_plan}")
+        return {
+            'subscription_id': updated_sub.id,
+            'plan': new_plan,
+            'status': updated_sub.status,
+        }
+
+    except stripe.error.StripeError as e:
+        print(f"[ERROR] Stripe error upgrading subscription: {e}")
+        return None
+
+
 def cancel_subscription(subscription_id: str, at_period_end: bool = True) -> bool:
     """
     Cancel a subscription

@@ -7,6 +7,7 @@ import {
   getBillingPortalUrl,
   cancelSubscription,
   reactivateSubscription,
+  upgradeSubscription,
   startFreeTrial,
   getInvoices,
   syncSubscription
@@ -146,6 +147,20 @@ function SubscriptionManager() {
     }
   });
 
+  const upgradeMutation = useMutation({
+    mutationFn: async (plan) => {
+      const response = await upgradeSubscription(plan);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subscription-status'] });
+      checkAuth();
+    },
+    onError: (error) => {
+      alert(error.response?.data?.error || 'Failed to upgrade plan. Please try again.');
+    }
+  });
+
   const cancelMutation = useMutation({
     mutationFn: cancelSubscription,
     onSuccess: () => {
@@ -275,10 +290,10 @@ function SubscriptionManager() {
               </div>
               <button
                 className="btn btn-primary"
-                onClick={() => portalMutation.mutate()}
-                disabled={portalMutation.isPending}
+                onClick={() => upgradeMutation.mutate('pro')}
+                disabled={upgradeMutation.isPending}
               >
-                {portalMutation.isPending ? 'Loading...' : 'Upgrade to Pro'}
+                {upgradeMutation.isPending ? 'Upgrading...' : 'Upgrade to Pro'}
               </button>
             </div>
           )}

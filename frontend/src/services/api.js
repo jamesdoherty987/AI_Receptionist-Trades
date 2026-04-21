@@ -270,6 +270,7 @@ export const getBillingPortalUrl = (baseUrl) =>
   api.post('/api/subscription/billing-portal', { base_url: baseUrl });
 export const cancelSubscription = () => api.post('/api/subscription/cancel');
 export const reactivateSubscription = () => api.post('/api/subscription/reactivate');
+export const upgradeSubscription = (plan) => api.post('/api/subscription/upgrade', { plan });
 export const startFreeTrial = () => api.post('/api/subscription/start-trial');
 export const getInvoices = () => api.get('/api/subscription/invoices');
 export const syncSubscription = () => api.post('/api/subscription/sync');
