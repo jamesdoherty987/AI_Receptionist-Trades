@@ -1397,6 +1397,30 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
               )}
             </div>
 
+            {/* Customer Uploaded Media */}
+            {job.customer_photo_urls && job.customer_photo_urls.length > 0 && (
+              <div className="info-card">
+                <div className="card-header-row">
+                  <h3><i className="fas fa-user-circle"></i> Customer Media</h3>
+                  <span style={{ fontSize: '0.72rem', color: '#6366f1', fontWeight: 600 }}>{job.customer_photo_urls.length} file{job.customer_photo_urls.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="job-photos-grid">
+                  {job.customer_photo_urls.map((url, idx) => (
+                    <div key={`cust-${idx}`} className="job-photo-item">
+                      {isVideoUrl(url) ? (
+                        <>
+                          <video src={getProxiedMediaUrl(url)} muted preload="metadata" onClick={() => setLightboxPhoto(url)} />
+                          <div className="video-play-badge" onClick={() => setLightboxPhoto(url)}><i className="fas fa-play"></i></div>
+                        </>
+                      ) : (
+                        <img src={getProxiedMediaUrl(url)} alt={`Customer photo ${idx + 1}`} onClick={() => setLightboxPhoto(url)} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Customer Review */}
             {reviewData?.review && (
               <div className="info-card">

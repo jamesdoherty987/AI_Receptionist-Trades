@@ -1280,6 +1280,16 @@ async def media_handler(ws):
                     # Fallback: send notification with original address (email-first)
                     _deferred_email = _retranscribed_email or getattr(call_state, '_deferred_customer_email', None)
                     _fallback_phone = _deferred_sms.pop('to_number', None)
+                    # Generate portal link for fallback notification
+                    _fallback_portal_link = _deferred_sms.pop('portal_link', '')
+                    if not _fallback_portal_link and _deferred_email and company_id_int:
+                        try:
+                            _fb_client_id = getattr(call_state, '_deferred_sms_client_id', None)
+                            if _fb_client_id:
+                                from src.services.sms_reminder import get_or_create_portal_link
+                                _fallback_portal_link = get_or_create_portal_link(company_id_int, _fb_client_id)
+                        except Exception:
+                            pass
                     from src.services.sms_reminder import notify_customer
                     notify_customer(
                         'booking_confirmation',
@@ -1291,6 +1301,7 @@ async def media_handler(ws):
                         company_name=_deferred_sms.get('company_name'),
                         worker_names=_deferred_sms.get('worker_names'),
                         address=_deferred_sms.get('address'),
+                        portal_link=_fallback_portal_link,
                     )
                     print(f"📨 Fallback: sent notification with original address")
                 except Exception as sms_err:
@@ -1302,6 +1313,15 @@ async def media_handler(ws):
             try:
                 _deferred_email = _retranscribed_email or getattr(call_state, '_deferred_customer_email', None)
                 _fallback_phone = _deferred_sms.pop('to_number', None)
+                _fallback_portal_link2 = _deferred_sms.pop('portal_link', '')
+                if not _fallback_portal_link2 and _deferred_email and company_id_int:
+                    try:
+                        _fb_client_id2 = getattr(call_state, '_deferred_sms_client_id', None)
+                        if _fb_client_id2:
+                            from src.services.sms_reminder import get_or_create_portal_link
+                            _fallback_portal_link2 = get_or_create_portal_link(company_id_int, _fb_client_id2)
+                    except Exception:
+                        pass
                 from src.services.sms_reminder import notify_customer
                 notify_customer(
                     'booking_confirmation',
@@ -1313,6 +1333,7 @@ async def media_handler(ws):
                     company_name=_deferred_sms.get('company_name'),
                     worker_names=_deferred_sms.get('worker_names'),
                     address=_deferred_sms.get('address'),
+                    portal_link=_fallback_portal_link2,
                 )
                 print(f"📨 Sent deferred notification with original address (upload failed)")
             except Exception as sms_err:

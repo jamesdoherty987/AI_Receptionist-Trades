@@ -350,7 +350,7 @@ Best regards,
     def send_booking_confirmation(self, to_email: str, appointment_time: datetime,
                                     customer_name: str, service_type: str = "appointment",
                                     company_name: str = None, worker_names: list = None,
-                                    address: str = None) -> bool:
+                                    address: str = None, portal_link: str = None) -> bool:
         """Send a booking confirmation email."""
         if not self.configured:
             return False
@@ -375,6 +375,20 @@ Best regards,
             if address:
                 address_line = f"<p style='margin:5px 0;'><strong>Location:</strong> {address}</p>"
 
+            portal_section_html = ""
+            portal_section_text = ""
+            if portal_link:
+                portal_section_html = f"""
+        <div style="background:#eef2ff;border:1px solid #c7d2fe;padding:15px;margin:20px 0;border-radius:8px;text-align:center;">
+            <p style="margin:0 0 8px;font-size:14px;color:#4338ca;font-weight:600;">Your Customer Portal</p>
+            <p style="margin:0 0 12px;font-size:13px;color:#64748b;">View your jobs, upload photos of the issue, and manage your bookings.</p>
+            <a href="{portal_link}" style="display:inline-block;padding:10px 24px;background:#6366f1;color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:14px;">Open My Portal</a>
+        </div>"""
+                portal_section_text = (
+                    f"\nYour Customer Portal: {portal_link}\n"
+                    f"View your jobs, upload photos of the issue, and manage your bookings.\n"
+                )
+
             subject = f'Booking Confirmed - {service_type} on {date_only}'
 
             text_body = (
@@ -384,7 +398,8 @@ Best regards,
                 f"Service: {service_type}\n"
                 f"Date & Time: {time_str}\n"
                 f"{'Assigned: ' + ', '.join(worker_names) if worker_names else ''}\n"
-                f"{'Location: ' + address if address else ''}\n\n"
+                f"{'Location: ' + address if address else ''}\n"
+                f"{portal_section_text}\n"
                 f"To cancel or reschedule, please contact us.\n\n"
                 f"Best regards,\n{business_name}"
             ).strip()
@@ -405,6 +420,7 @@ Best regards,
             {worker_line}
             {address_line}
         </div>
+        {portal_section_html}
         <p>To cancel or reschedule, please contact us.</p>
         <p style="margin-top:25px;">Best regards,<br><strong>{business_name}</strong></p>
     </div>

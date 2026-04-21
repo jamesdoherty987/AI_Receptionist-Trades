@@ -907,6 +907,30 @@ function WorkerDashboard() {
                       )}
                     </div>
 
+                    {/* Customer Uploaded Media */}
+                    {job.customer_photo_urls && job.customer_photo_urls.length > 0 && (
+                      <div className="wjd-card">
+                        <div className="wjd-card-header">
+                          <h3><i className="fas fa-user-circle"></i> Customer Media</h3>
+                          <span style={{ fontSize: '0.72rem', color: '#6366f1', fontWeight: 600 }}>{job.customer_photo_urls.length} file{job.customer_photo_urls.length !== 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="wjd-photos-grid">
+                          {job.customer_photo_urls.map((url, idx) => (
+                            <div key={`cust-${idx}`} className="wjd-photo-item" onClick={() => setLightboxPhoto(url)}>
+                              {isVideoUrl(url) ? (
+                                <>
+                                  <video src={getProxiedMediaUrl(url)} muted preload="metadata" />
+                                  <div className="wjd-video-badge"><i className="fas fa-play"></i></div>
+                                </>
+                              ) : (
+                                <img src={getProxiedMediaUrl(url)} alt={`Customer photo ${idx + 1}`} />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Materials Used */}
                     <div className="wjd-card">
                       <div className="wjd-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>

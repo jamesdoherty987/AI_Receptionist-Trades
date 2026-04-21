@@ -7669,6 +7669,7 @@ def booking_detail_api(booking_id):
             'notes': notes_text,
             'address_audio_url': booking.get('address_audio_url'),
             'photo_urls': booking.get('photo_urls') or [],
+            'customer_photo_urls': booking.get('customer_photo_urls') or [],
             'job_started_at': booking.get('job_started_at'),
             'job_completed_at': booking.get('job_completed_at'),
             'actual_duration_minutes': booking.get('actual_duration_minutes'),
@@ -9403,7 +9404,7 @@ def worker_accept_emergency(booking_id):
 
         # Send confirmation SMS/email to customer
         try:
-            from src.services.sms_reminder import notify_customer
+            from src.services.sms_reminder import notify_customer, get_or_create_portal_link
             _company = db.get_company(company_id)
             _company_name = _company.get('company_name') if _company else None
             appt_time = booking.get('appointment_time')
@@ -9412,9 +9413,16 @@ def worker_accept_emergency(booking_id):
                     appt_time = datetime.fromisoformat(appt_time.replace('Z', '+00:00'))
                 except (ValueError, TypeError):
                     appt_time = datetime.now()
+            _emerg_email = booking.get('email') or booking.get('client_email')
+            _emerg_portal_link = ''
+            if _emerg_email and booking.get('client_id') and company_id:
+                try:
+                    _emerg_portal_link = get_or_create_portal_link(company_id, booking['client_id'])
+                except Exception:
+                    pass
             notify_customer(
                 'booking_confirmation',
-                customer_email=booking.get('email') or booking.get('client_email'),
+                customer_email=_emerg_email,
                 customer_phone=booking.get('phone_number') or booking.get('client_phone'),
                 appointment_time=appt_time,
                 customer_name=booking.get('customer_name', 'Customer'),
@@ -9422,6 +9430,7 @@ def worker_accept_emergency(booking_id):
                 company_name=_company_name,
                 worker_names=[worker_name],
                 address=booking.get('address'),
+                portal_link=_emerg_portal_link,
             )
         except Exception as e:
             print(f"[WARNING] Could not send emergency confirmation to customer: {e}")
@@ -13770,7 +13779,7 @@ def get_portal_data(token):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT pt.client_id, pt.company_id, c.name as client_name, c.email, c.phone,
-                   co.company_name, co.business_phone
+                   co.company_name, co.business_phone, co.logo_url as company_logo
             FROM customer_portal_tokens pt
             JOIN clients c ON pt.client_id = c.id
             JOIN companies co ON pt.company_id = co.id
@@ -13785,16 +13794,38 @@ def get_portal_data(token):
         cur.execute("UPDATE customer_portal_tokens SET last_accessed_at = CURRENT_TIMESTAMP WHERE token = %s", (token,))
         conn.commit()
         # Get upcoming jobs
-        cur.execute("""
-            SELECT id, service_type, appointment_time, status, address, duration_minutes, price
-            FROM bookings WHERE company_id = %s AND client_id = %s AND status NOT IN ('cancelled')
-            ORDER BY appointment_time DESC LIMIT 20
-        """, (company_id, client_id))
+        try:
+            cur.execute("""
+                SELECT id, service_type, appointment_time, status, address, duration_minutes, price,
+                       photo_urls, customer_photo_urls
+                FROM bookings WHERE company_id = %s AND client_id = %s AND status NOT IN ('cancelled')
+                ORDER BY appointment_time DESC LIMIT 20
+            """, (company_id, client_id))
+        except Exception:
+            conn.rollback()
+            # Fallback if customer_photo_urls column doesn't exist yet
+            cur.execute("""
+                SELECT id, service_type, appointment_time, status, address, duration_minutes, price,
+                       photo_urls
+                FROM bookings WHERE company_id = %s AND client_id = %s AND status NOT IN ('cancelled')
+                ORDER BY appointment_time DESC LIMIT 20
+            """, (company_id, client_id))
         jobs = cur.fetchall()
+        import json as _json_portal
         for j in jobs:
             for k in list(j.keys()):
                 if j.get(k) and hasattr(j[k], 'isoformat'):
                     j[k] = j[k].isoformat()
+            # Parse JSON photo arrays
+            for photo_field in ('photo_urls', 'customer_photo_urls'):
+                val = j.get(photo_field)
+                if val and isinstance(val, str):
+                    try:
+                        j[photo_field] = _json_portal.loads(val)
+                    except Exception:
+                        j[photo_field] = []
+                elif not val:
+                    j[photo_field] = []
         # Get quotes
         cur.execute("""
             SELECT id, quote_number, title, total, status, pipeline_stage, created_at, valid_until, accept_token
@@ -13810,6 +13841,7 @@ def get_portal_data(token):
             "client_name": portal['client_name'],
             "company_name": portal['company_name'],
             "company_phone": portal['business_phone'],
+            "company_logo": portal.get('company_logo') or '',
             "email": portal['email'],
             "jobs": jobs,
             "quotes": quotes,
@@ -13855,6 +13887,119 @@ def portal_request_job(token):
         return jsonify({"success": True, "lead_id": lead_id, "message": "Request submitted! We'll be in touch soon."})
     except Exception as e:
         conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/portal/<token>/jobs/<int:job_id>/photos", methods=["POST"])
+@rate_limit(max_requests=20, window_seconds=60)
+def portal_upload_job_photo(token, job_id):
+    """Public: customer uploads a photo/video to their job via the portal."""
+    db = get_database()
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Validate token and get client/company
+        cur.execute("""
+            SELECT pt.client_id, pt.company_id
+            FROM customer_portal_tokens pt
+            WHERE pt.token = %s
+        """, (token,))
+        portal = cur.fetchone()
+        if not portal:
+            return jsonify({"error": "Invalid portal link"}), 404
+        client_id = portal['client_id']
+        company_id = portal['company_id']
+        # Verify job belongs to this customer
+        try:
+            cur.execute("""
+                SELECT id, customer_photo_urls FROM bookings
+                WHERE id = %s AND company_id = %s AND client_id = %s AND status NOT IN ('cancelled')
+            """, (job_id, company_id, client_id))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                SELECT id FROM bookings
+                WHERE id = %s AND company_id = %s AND client_id = %s AND status NOT IN ('cancelled')
+            """, (job_id, company_id, client_id))
+        booking = cur.fetchone()
+        if not booking:
+            return jsonify({"error": "Job not found"}), 404
+
+        import json as _json_pu
+        import io
+        from datetime import datetime as _dt_pu
+
+        ALLOWED_MEDIA_TYPES = {
+            'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+            'video/mp4', 'video/quicktime', 'video/webm', 'video/x-msvideo',
+        }
+        MAX_VIDEO_SIZE = 50 * 1024 * 1024  # 50MB
+
+        media_url = None
+
+        # Multipart file upload
+        if request.files and 'file' in request.files:
+            file = request.files['file']
+            if not file or not file.filename:
+                return jsonify({"error": "No file provided"}), 400
+            content_type = file.content_type or ''
+            if content_type not in ALLOWED_MEDIA_TYPES:
+                return jsonify({"error": f"Unsupported file type: {content_type}"}), 400
+            file_data = file.read()
+            is_video = content_type.startswith('video/')
+            max_size = MAX_VIDEO_SIZE if is_video else MAX_IMAGE_SIZE_BYTES
+            if len(file_data) > max_size:
+                limit_mb = max_size // (1024 * 1024)
+                return jsonify({"error": f"File too large. Max {limit_mb}MB"}), 400
+            try:
+                from src.services.storage_r2 import upload_company_file, is_r2_enabled
+                if not is_r2_enabled():
+                    return jsonify({"error": "Storage not configured"}), 500
+                ext = content_type.split('/')[-1]
+                if ext == 'quicktime': ext = 'mov'
+                elif ext == 'x-msvideo': ext = 'avi'
+                timestamp = _dt_pu.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"customer_media_{timestamp}_{secrets.token_hex(4)}.{ext}"
+                media_url = upload_company_file(
+                    company_id=company_id, file_data=io.BytesIO(file_data),
+                    filename=filename, file_type='customer_photos', content_type=content_type
+                )
+            except Exception as e:
+                print(f"[ERROR] Portal media upload failed: {e}")
+                return jsonify({"error": "Failed to upload file"}), 500
+        else:
+            # Base64 image upload
+            data = request.json or {}
+            image_data = data.get('image')
+            if not image_data or not image_data.startswith('data:image/'):
+                return jsonify({"error": "Invalid image data"}), 400
+            media_url = upload_base64_image_to_r2(image_data, company_id, file_type='customer_photos')
+
+        if not media_url or media_url.startswith('data:'):
+            return jsonify({"error": "Failed to upload media"}), 500
+
+        # Append to customer_photo_urls
+        existing = booking.get('customer_photo_urls') or []
+        if isinstance(existing, str):
+            try:
+                existing = _json_pu.loads(existing)
+            except Exception:
+                existing = []
+        existing.append(media_url)
+
+        cur.execute(
+            "UPDATE bookings SET customer_photo_urls = %s WHERE id = %s AND company_id = %s",
+            (_json_pu.dumps(existing), job_id, company_id)
+        )
+        conn.commit()
+        return jsonify({"success": True, "photo_url": media_url, "customer_photo_urls": existing})
+    except Exception as e:
+        conn.rollback()
+        print(f"[ERROR] Portal photo upload failed: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()

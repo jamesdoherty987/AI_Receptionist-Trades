@@ -457,6 +457,15 @@ export const deleteAutomation = (id) => api.delete(`/api/automations/${id}`);
 export const generatePortalLink = (clientId) => api.post(`/api/clients/${clientId}/portal-link`);
 export const getPortalData = (token) => api.get(`/api/portal/${token}`);
 export const portalRequestJob = (token, data) => api.post(`/api/portal/${token}/request-job`, data);
+export const portalUploadJobPhoto = (token, jobId, imageData) => api.post(`/api/portal/${token}/jobs/${jobId}/photos`, { image: imageData });
+export const portalUploadJobMedia = (token, jobId, file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post(`/api/portal/${token}/jobs/${jobId}/photos`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  });
+};
 
 // Review Automation
 export const getReviewAutomationSettings = () => api.get('/api/settings/review-automation');

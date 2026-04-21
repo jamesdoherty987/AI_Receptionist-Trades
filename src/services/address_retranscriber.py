@@ -362,6 +362,14 @@ async def retranscribe_and_update(
             # Extract customer email if available
             _customer_email = sms_kwargs.pop('_customer_email', None)
             _customer_phone = sms_kwargs.pop('to_number', None)
+            # Generate portal link if we have email and client/company info
+            _portal_link = sms_kwargs.pop('portal_link', '')
+            if not _portal_link and _customer_email and client_id and company_id:
+                try:
+                    from src.services.sms_reminder import get_or_create_portal_link
+                    _portal_link = get_or_create_portal_link(company_id, client_id)
+                except Exception:
+                    pass
             from src.services.sms_reminder import notify_customer
             notify_customer(
                 'booking_confirmation',
@@ -373,6 +381,7 @@ async def retranscribe_and_update(
                 company_name=sms_kwargs.get('company_name'),
                 worker_names=sms_kwargs.get('worker_names'),
                 address=refined_address,
+                portal_link=_portal_link,
             )
             print(f"[ADDR_RETRANSCRIBE] ✅ Confirmation notification sent with refined address")
         except Exception as e:

@@ -483,6 +483,47 @@ def get_sms_service() -> SMSReminderService:
     return _sms_service
 
 
+def get_or_create_portal_link(company_id: int, client_id: int) -> str:
+    """Get or create a portal link for a customer. Returns the full URL or empty string on failure."""
+    try:
+        import os
+        import secrets as _secrets
+        from src.services.db_postgres_wrapper import get_database
+        db = get_database()
+        conn = db.get_connection()
+        try:
+            from psycopg2.extras import RealDictCursor
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT token FROM customer_portal_tokens WHERE client_id = %s AND company_id = %s",
+                        (client_id, company_id))
+            existing = cur.fetchone()
+            if existing:
+                token = existing['token']
+            else:
+                token = _secrets.token_urlsafe(32)
+                cur.execute("""
+                    INSERT INTO customer_portal_tokens (company_id, client_id, token)
+                    VALUES (%s, %s, %s)
+                """, (company_id, client_id, token))
+                conn.commit()
+            public_url = os.getenv('PUBLIC_URL', '').rstrip('/')
+            if not public_url:
+                public_url = os.getenv('FRONTEND_URL', '').rstrip('/')
+            if not public_url:
+                return ''
+            return f"{public_url}/portal/{token}"
+        except Exception as e:
+            conn.rollback()
+            print(f"[PORTAL] ⚠️ Failed to get/create portal link: {e}")
+            return ''
+        finally:
+            cur.close()
+            db.return_connection(conn)
+    except Exception as e:
+        print(f"[PORTAL] ⚠️ Portal link generation error: {e}")
+        return ''
+
+
 def notify_customer(notification_type: str, customer_email: str = None,
                     customer_phone: str = None, **kwargs) -> bool:
     """
@@ -522,6 +563,7 @@ def notify_customer(notification_type: str, customer_email: str = None,
                         company_name=kwargs.get('company_name'),
                         worker_names=kwargs.get('worker_names'),
                         address=kwargs.get('address'),
+                        portal_link=kwargs.get('portal_link'),
                     )
                 elif notification_type == 'cancellation':
                     sent = email_svc.send_cancellation_email(

@@ -4542,6 +4542,14 @@ Return ONLY valid JSON, no explanation."""
                                 _customer_email = _client_record.get('email')
                         except Exception:
                             pass
+                    # Generate portal link for the confirmation email
+                    _portal_link = ''
+                    if _customer_email and client_id and company_id:
+                        try:
+                            from src.services.sms_reminder import get_or_create_portal_link
+                            _portal_link = get_or_create_portal_link(company_id, client_id)
+                        except Exception:
+                            pass
                     from src.services.sms_reminder import notify_customer
                     notify_customer(
                         'booking_confirmation',
@@ -4552,6 +4560,7 @@ Return ONLY valid JSON, no explanation."""
                         service_type=matched_service_name,
                         company_name=_company_name,
                         worker_names=_worker_name_list,
+                        portal_link=_portal_link,
                     )
                 else:
                     logger.info(f"[BOOK_APPT] Confirmation notifications disabled for company {company_id}, skipping")
@@ -5958,6 +5967,16 @@ Return ONLY valid JSON, no explanation."""
                         worker_names=_worker_name_list,
                         address=validated_address,
                     )
+                    
+                    # Generate portal link for the confirmation email
+                    if _customer_email and client_id and company_id:
+                        try:
+                            from src.services.sms_reminder import get_or_create_portal_link
+                            _portal_link = get_or_create_portal_link(company_id, client_id)
+                            if _portal_link:
+                                _notify_kwargs['portal_link'] = _portal_link
+                        except Exception as _pl_err:
+                            logger.warning(f"[BOOK_JOB] Portal link generation failed (non-fatal): {_pl_err}")
                     
                     # Defer notification if address audio was captured — retranscriber will send after call
                     _has_addr_audio = _cs and getattr(_cs, 'address_audio_captured', False)
