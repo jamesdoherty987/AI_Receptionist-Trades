@@ -72,6 +72,35 @@ function AdminPanel() {
   const [lastInviteLink, setLastInviteLink] = useState('');
   const [lastEmailSent, setLastEmailSent] = useState(false);
 
+  // Admin toggle update helper
+  const handleAdminToggle = async (companyId, field, value) => {
+    try {
+      await adminFetch(`/api/admin/accounts/${companyId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ [field]: value }),
+      });
+      // Update local state
+      setCompanyInsights(prev => prev ? {
+        ...prev,
+        company: { ...prev.company, [field]: value }
+      } : prev);
+    } catch { showToast(`Failed to update ${field}`); }
+  };
+
+  const handleTabVisibilityToggle = async (companyId, tabKey, currentVisibility) => {
+    const updated = { ...currentVisibility, [tabKey]: !currentVisibility[tabKey] };
+    try {
+      await adminFetch(`/api/admin/accounts/${companyId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ admin_tab_visibility: updated }),
+      });
+      setCompanyInsights(prev => prev ? {
+        ...prev,
+        company: { ...prev.company, admin_tab_visibility: updated }
+      } : prev);
+    } catch { showToast('Failed to update tab visibility'); }
+  };
+
   // Business hours picker
   const [hoursConfig, setHoursConfig] = useState({
     startHour: '8', startPeriod: 'AM', endHour: '6', endPeriod: 'PM',
@@ -764,6 +793,39 @@ function AdminPanel() {
                   </div>
                 </div>
 
+                {/* Admin Tab Visibility */}
+                <div className="ap-card">
+                  <h3><i className="fas fa-columns"></i> Dashboard Tab Visibility</h3>
+                  <p style={{ color: '#9ca3af', fontSize: '0.85rem', margin: '0 0 1rem' }}>
+                    Control which tabs this company can see. Disabled tabs are hidden from their dashboard and settings.
+                  </p>
+                  <div className="ap-toggles-grid">
+                    {(() => {
+                      const defaultVis = { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: true, finances: true, insights: true, reviews: true };
+                      const vis = { ...defaultVis, ...(companyInsights.company.admin_tab_visibility || {}) };
+                      const tabDefs = [
+                        ['jobs', 'Jobs', 'fas fa-briefcase'],
+                        ['calls', 'Calls', 'fas fa-phone-alt'],
+                        ['calendar', 'Calendar', 'fas fa-calendar'],
+                        ['workers', 'Workers', 'fas fa-hard-hat'],
+                        ['crm', 'CRM', 'fas fa-address-book'],
+                        ['services', 'Services', 'fas fa-concierge-bell'],
+                        ['materials', 'Materials', 'fas fa-cubes'],
+                        ['finances', 'Finances', 'fas fa-dollar-sign'],
+                        ['insights', 'Insights', 'fas fa-chart-pie'],
+                        ['reviews', 'Reviews', 'fas fa-star'],
+                      ];
+                      return tabDefs.map(([key, label, icon]) => (
+                        <div key={key} className="ap-toggle-item clickable" onClick={() => handleTabVisibilityToggle(selectedCompanyId, key, vis)} style={{ cursor: 'pointer' }}>
+                          <span className={`ap-toggle-dot ${vis[key] !== false ? 'on' : 'off'}`}></span>
+                          <i className={icon} style={{ fontSize: '0.8rem', opacity: 0.6, marginRight: '0.25rem' }}></i>
+                          <span>{label}</span>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+
                 {/* Feature toggles */}
                 <div className="ap-card">
                   <h3><i className="fas fa-sliders-h"></i> Feature Toggles</h3>
@@ -777,7 +839,7 @@ function AdminPanel() {
                       ['send_reminder_sms', 'Reminder SMS', companyInsights.company.send_reminder_sms],
                       ['gcal_invite_workers', 'GCal Worker Invites', companyInsights.company.gcal_invite_workers],
                     ].map(([key, label, val]) => (
-                      <div key={key} className="ap-toggle-item">
+                      <div key={key} className="ap-toggle-item clickable" onClick={() => handleAdminToggle(selectedCompanyId, key, val === false)} style={{ cursor: 'pointer' }}>
                         <span className={`ap-toggle-dot ${val !== false ? 'on' : 'off'}`}></span>
                         <span>{label}</span>
                       </div>

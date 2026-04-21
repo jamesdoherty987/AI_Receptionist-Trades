@@ -4,7 +4,7 @@ Primary database layer for the application using PostgreSQL
 """
 import os
 import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, Json
 from psycopg2 import pool as psycopg2_pool
 from datetime import datetime
 from typing import List, Dict, Optional, Any
@@ -150,6 +150,7 @@ class PostgreSQLDatabaseWrapper:
                     send_review_emails BOOLEAN DEFAULT true,
                     show_reviews_tab BOOLEAN DEFAULT true,
                     gcal_invite_workers BOOLEAN DEFAULT false,
+                    admin_tab_visibility JSONB DEFAULT '{}'::jsonb,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -665,6 +666,8 @@ class PostgreSQLDatabaseWrapper:
             'show_reviews_tab': 'BOOLEAN DEFAULT true',
             # Google Calendar
             'gcal_invite_workers': 'BOOLEAN DEFAULT false',
+            # Admin tab visibility
+            'admin_tab_visibility': "JSONB DEFAULT '{}'::jsonb",
             # Business settings (may have been missed in original schema)
             'business_hours': "TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)'",
             'trade_type': 'TEXT',
@@ -1311,6 +1314,7 @@ class PostgreSQLDatabaseWrapper:
                               'send_confirmation_sms', 'send_reminder_sms',
                               'send_review_emails', 'show_reviews_tab',
                               'gcal_invite_workers',
+                              'admin_tab_visibility',
                               'bypass_numbers',
                               'setup_wizard_complete',
                               'has_used_trial',
@@ -1341,7 +1345,11 @@ class PostgreSQLDatabaseWrapper:
                 if key in allowed_fields:
                     if key in existing_columns:
                         fields.append(f"{key} = %s")
-                        values.append(value)
+                        # Wrap dicts/lists in Json() for JSONB columns
+                        if isinstance(value, (dict, list)):
+                            values.append(Json(value))
+                        else:
+                            values.append(value)
                     else:
                         skipped_fields.append(key)
                 else:

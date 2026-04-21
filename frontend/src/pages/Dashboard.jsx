@@ -178,65 +178,71 @@ function Dashboard() {
 
   const tabFallback = <LoadingSpinner />;
 
+  // Admin tab visibility — defaults to all on
+  const adminVis = useMemo(() => {
+    const defaults = { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: true, finances: true, insights: true, reviews: true };
+    return { ...defaults, ...(settings?.admin_tab_visibility || {}) };
+  }, [settings]);
+
   const tabs = useMemo(() => [
     // Day-to-day
-    {
+    ...(adminVis.jobs !== false ? [{
       label: 'Jobs',
       icon: 'fas fa-briefcase',
       group: 'Day-to-Day',
       badge: jobBadges,
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><JobsTab bookings={bookings} showInvoiceButtons={settings?.show_invoice_buttons !== false} /></Suspense>
-    },
-    ...(hasAIFeatures ? [{
+    }] : []),
+    ...(hasAIFeatures && adminVis.calls !== false ? [{
       label: 'Calls',
       icon: 'fas fa-phone-alt',
       group: 'Day-to-Day',
       badge: unseenCalls,
       content: <Suspense fallback={tabFallback}><CallLogsTab /></Suspense>
     }] : []),
-    {
+    ...(adminVis.calendar !== false ? [{
       label: 'Calendar',
       icon: 'fas fa-calendar',
       group: 'Day-to-Day',
       content: <Suspense fallback={tabFallback}><CalendarTab /></Suspense>
-    },
+    }] : []),
     // Team & Clients
-    {
+    ...(adminVis.workers !== false ? [{
       label: 'Workers',
       icon: 'fas fa-hard-hat',
       group: 'Team & Clients',
       badge: totalUnreadMessages,
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><WorkersTab workers={workers} bookings={bookings} /></Suspense>
-    },
-    {
+    }] : []),
+    ...(adminVis.crm !== false ? [{
       label: 'CRM',
       icon: 'fas fa-address-book',
       group: 'Team & Clients',
       badge: overdueLeads,
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><CrmTab clients={clients} bookings={bookings} /></Suspense>
-    },
+    }] : []),
     // Setup
-    {
+    ...(adminVis.services !== false ? [{
       label: 'Services',
       icon: 'fas fa-concierge-bell',
       group: 'Setup',
       content: <Suspense fallback={tabFallback}><ServicesTab /></Suspense>
-    },
-    {
+    }] : []),
+    ...(adminVis.materials !== false ? [{
       label: 'Materials',
       icon: 'fas fa-cubes',
       group: 'Setup',
       content: <Suspense fallback={tabFallback}><MaterialsTab /></Suspense>
-    },
+    }] : []),
     // Reports
-    ...(settings?.show_finances_tab !== false && settings?.accounting_provider !== 'disabled' ? [{
+    ...(adminVis.finances !== false && settings?.show_finances_tab !== false && settings?.accounting_provider !== 'disabled' ? [{
       label: 'Finances',
       icon: 'fas fa-dollar-sign',
       group: 'Reports',
       badge: unpaidCount,
       content: <Suspense fallback={tabFallback}><FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} /></Suspense>
     }] : []),
-    ...(settings?.show_insights_tab !== false ? [{
+    ...(adminVis.insights !== false && settings?.show_insights_tab !== false ? [{
       label: 'Insights',
       icon: 'fas fa-chart-pie',
       group: 'Reports',
@@ -249,7 +255,7 @@ function Dashboard() {
       group: 'Dev Tools',
       content: <Suspense fallback={tabFallback}><ChatTab /></Suspense>
     }] : [])
-  ], [isLoading, bookings, clients, workers, settings, unseenCalls, hasAIFeatures, reviewsData, overdueLeads, jobBadges, totalUnreadMessages, unpaidCount]);
+  ], [isLoading, bookings, clients, workers, settings, unseenCalls, hasAIFeatures, reviewsData, overdueLeads, jobBadges, totalUnreadMessages, unpaidCount, adminVis]);
 
   // Clear unseen call badge when user views the Calls tab
   const handleTabChange = useCallback((idx) => {

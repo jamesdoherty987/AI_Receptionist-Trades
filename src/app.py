@@ -3339,6 +3339,7 @@ def admin_update_account(company_id):
         'custom_stripe_price_id', 'custom_monthly_price',
         'custom_dashboard_price', 'custom_dashboard_stripe_price_id',
         'custom_pro_price', 'custom_pro_stripe_price_id',
+        'admin_tab_visibility',
     ]
     for field in admin_updatable:
         if field in data:
@@ -4994,6 +4995,12 @@ def business_settings_api():
             'easy_setup': company.get('easy_setup', True),
             # Accounting integration
             'accounting_provider': company.get('accounting_provider', 'builtin'),
+            # Admin-controlled tab visibility
+            'admin_tab_visibility': company.get('admin_tab_visibility') or {
+                'jobs': True, 'calls': True, 'calendar': True, 'workers': True,
+                'crm': True, 'services': True, 'materials': True, 'finances': True,
+                'insights': True, 'reviews': True,
+            },
             # Custom per-account pricing
             'custom_stripe_price_id': company.get('custom_stripe_price_id', ''),
             'custom_monthly_price': float(company['custom_monthly_price']) if company.get('custom_monthly_price') else None,

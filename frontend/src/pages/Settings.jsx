@@ -1525,7 +1525,7 @@ function Settings() {
                       </button>
                     </div>
                   )}
-                  {!acctStatus?.connected && (
+                  {!acctStatus?.connected && formData.admin_tab_visibility?.finances !== false && (
                     <div className="toggle-rows" style={{ marginTop: '1rem' }}>
                       <div className="toggle-row">
                         <div className="toggle-row-info">
@@ -1539,7 +1539,7 @@ function Settings() {
                       </div>
                     </div>
                   )}
-                  {formData.accounting_provider === 'disabled' && !acctStatus?.connected && (
+                  {formData.accounting_provider === 'disabled' && !acctStatus?.connected && formData.admin_tab_visibility?.finances !== false && (
                     <div className="gcal-help-text" style={{ marginTop: '0.5rem' }}>
                       <i className="fas fa-info-circle"></i>
                       <span>Built-in accounting is disabled. The Finances tab is hidden from your dashboard. Toggle this off or connect Xero/QuickBooks to re-enable.</span>
@@ -1557,6 +1557,7 @@ function Settings() {
                   </div>
                   <p className="section-description">Choose which features to show on your dashboard.</p>
                   <div className="toggle-rows">
+                    {(formData.admin_tab_visibility?.finances !== false) && (
                     <div className="toggle-row">
                       <div className="toggle-row-info">
                         <div className="toggle-row-label">Finances Tab{formData.accounting_provider === 'disabled' ? ' (accounting disabled)' : ''}</div>
@@ -1569,6 +1570,8 @@ function Settings() {
                         <span className="toggle-slider"></span>
                       </label>
                     </div>
+                    )}
+                    {(formData.admin_tab_visibility?.insights !== false) && (
                     <div className="toggle-row">
                       <div className="toggle-row-info">
                         <div className="toggle-row-label">Insights Tab</div>
@@ -1580,6 +1583,8 @@ function Settings() {
                         <span className="toggle-slider"></span>
                       </label>
                     </div>
+                    )}
+                    {(formData.admin_tab_visibility?.finances !== false) && (
                     <div className="toggle-row">
                       <div className="toggle-row-info">
                         <div className="toggle-row-label">Send Invoice Buttons</div>
@@ -1591,6 +1596,7 @@ function Settings() {
                         <span className="toggle-slider"></span>
                       </label>
                     </div>
+                    )}
                   </div>
                 </div>
 
