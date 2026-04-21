@@ -3888,7 +3888,7 @@ def get_invoices():
     if not customer_id:
         return jsonify({"success": True, "invoices": []})
     
-    invoices = get_customer_invoices(customer_id)
+    invoices = get_customer_invoices(customer_id, subscription_id=company.get('stripe_subscription_id'))
     
     return jsonify({
         "success": True,

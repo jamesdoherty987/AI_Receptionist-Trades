@@ -449,16 +449,20 @@ def handle_webhook_event(payload: bytes, sig_header: str, webhook_secret: str) -
     }
 
 
-def get_customer_invoices(customer_id: str, limit: int = 10) -> list:
-    """Get recent invoices for a customer"""
+def get_customer_invoices(customer_id: str, limit: int = 10, subscription_id: str = None) -> list:
+    """Get recent invoices for a customer, optionally filtered to a specific subscription"""
     if not is_stripe_configured() or not customer_id:
         return []
     
     try:
-        invoices = stripe.Invoice.list(
-            customer=customer_id,
-            limit=limit
-        )
+        params = {
+            'customer': customer_id,
+            'limit': limit
+        }
+        if subscription_id:
+            params['subscription'] = subscription_id
+
+        invoices = stripe.Invoice.list(**params)
         
         return [{
             'id': inv.id,
