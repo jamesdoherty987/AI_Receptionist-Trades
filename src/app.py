@@ -7854,6 +7854,75 @@ def booking_detail_api(booking_id):
         return jsonify({"error": "Failed to delete booking"}), 400
 
 
+@app.route("/api/bookings/<int:booking_id>/reject", methods=["POST"])
+@login_required
+@subscription_required
+def reject_booking_api(booking_id):
+    """Reject/refuse a booking. Sets status to 'rejected', notifies customer, removes from calendar."""
+    db = get_database()
+    company_id = session.get('company_id')
+
+    booking = db.get_booking(booking_id, company_id=company_id)
+    if not booking:
+        return jsonify({"error": "Booking not found"}), 404
+
+    data = request.get_json() or {}
+    reason = sanitize_string(data.get('reason', ''))
+
+    # Update status to rejected
+    success = db.update_booking(booking_id, company_id=company_id, status='rejected')
+    if not success:
+        return jsonify({"error": "Failed to reject booking"}), 500
+
+    # Store rejection reason as a note
+    if reason:
+        db.add_appointment_note(booking_id, f"[REJECTED] {reason}", created_by="owner")
+
+    # Remove from Google Calendar
+    try:
+        from src.services.google_calendar_oauth import get_company_google_calendar
+        gcal = get_company_google_calendar(company_id, db)
+        event_id = booking.get('calendar_event_id', '')
+        if gcal and event_id and not str(event_id).startswith('db_'):
+            gcal.cancel_appointment(event_id)
+    except Exception as e:
+        safe_print(f"[GCAL] Failed to remove rejected booking from calendar: {e}")
+
+    # Send rejection email to customer
+    customer_email = (booking.get('email') or '').strip()
+    if not customer_email and booking.get('client_id'):
+        try:
+            client = db.get_client(booking['client_id'], company_id=company_id)
+            if client:
+                customer_email = (client.get('email') or '').strip()
+        except Exception:
+            pass
+
+    company = db.get_company(company_id)
+    company_name = company.get('company_name') if company else 'Your Service Provider'
+    customer_name = booking.get('customer_name') or 'Customer'
+    service_type = booking.get('service_type') or 'appointment'
+    appt_time = booking.get('appointment_time')
+
+    if customer_email:
+        try:
+            from src.services.email_reminder import get_email_service
+            email_svc = get_email_service()
+            if email_svc.configured:
+                email_svc.send_rejection_email(
+                    to_email=customer_email,
+                    customer_name=customer_name,
+                    service_type=service_type,
+                    appointment_time=appt_time,
+                    company_name=company_name,
+                    reason=reason,
+                )
+        except Exception as e:
+            print(f"[WARNING] Failed to send rejection email: {e}")
+
+    return jsonify({"success": True, "message": "Job rejected and customer notified"})
+
+
 @app.route("/api/bookings/<int:booking_id>/photos", methods=["POST"])
 @login_required
 @subscription_required

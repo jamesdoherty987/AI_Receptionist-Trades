@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { getPortalData, portalRequestJob, portalUploadJobPhoto, portalUploadJobMedia } from '../services/api';
 import { getProxiedMediaUrl } from '../utils/helpers';
@@ -7,6 +7,7 @@ import './CustomerPortal.css';
 const statusColors = {
   pending: '#f59e0b', confirmed: '#3b82f6', 'in-progress': '#8b5cf6',
   completed: '#10b981', cancelled: '#94a3b8', scheduled: '#3b82f6',
+  rejected: '#ef4444',
 };
 
 const isVideoUrl = (url) => /\.(mp4|mov|webm|avi)(\?|$)/i.test(url);
@@ -49,7 +50,6 @@ function CustomerPortal() {
   const [expandedJob, setExpandedJob] = useState(null);
   const [uploadingFor, setUploadingFor] = useState(null);
   const [lightboxPhoto, setLightboxPhoto] = useState(null);
-  const fileInputRef = useRef(null);
 
   useEffect(() => {
     const load = async () => {
@@ -103,7 +103,8 @@ function CustomerPortal() {
       alert(err?.response?.data?.error || 'Upload failed. Please try again.');
     } finally {
       setUploadingFor(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      // Reset the file input so the same file can be re-selected
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -113,12 +114,12 @@ function CustomerPortal() {
 
   const now = new Date();
   const upcoming = (data.jobs || []).filter(j => {
-    if (j.status === 'completed' || j.status === 'cancelled') return false;
+    if (j.status === 'completed' || j.status === 'cancelled' || j.status === 'rejected') return false;
     return j.status === 'in-progress' || new Date(j.appointment_time) >= now;
   });
   const past = (data.jobs || []).filter(j => {
     if (j.status === 'cancelled') return false;
-    return j.status === 'completed' || (j.status !== 'in-progress' && new Date(j.appointment_time) < now);
+    return j.status === 'completed' || j.status === 'rejected' || (j.status !== 'in-progress' && new Date(j.appointment_time) < now);
   });
 
   const allMedia = (j) => [...(j.customer_photo_urls || []), ...(j.photo_urls || [])];
@@ -165,7 +166,6 @@ function CustomerPortal() {
                   )}
                 </label>
                 <input
-                  ref={fileInputRef}
                   id={`file-${j.id}`}
                   type="file"
                   accept="image/*,video/mp4,video/quicktime,video/webm"

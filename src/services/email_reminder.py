@@ -488,6 +488,68 @@ Best regards,
             print(f"[ERROR] Failed to send cancellation email: {e}")
             return False
 
+    def send_rejection_email(self, to_email: str, customer_name: str,
+                              service_type: str = "appointment", appointment_time=None,
+                              company_name: str = None, reason: str = None) -> bool:
+        """Send a job rejection/refusal email to the customer."""
+        if not self.configured:
+            return False
+        try:
+            business_name = company_name or 'Your Business'
+            time_str = ''
+            if appointment_time:
+                if isinstance(appointment_time, str):
+                    from datetime import datetime as _dt
+                    try:
+                        appointment_time = _dt.fromisoformat(appointment_time.replace('Z', '+00:00')).replace(tzinfo=None)
+                    except Exception:
+                        appointment_time = None
+                if appointment_time:
+                    time_str = appointment_time.strftime('%A, %B %d at %I:%M %p')
+
+            reason_html = ""
+            reason_text = ""
+            if reason:
+                import html as _html_mod
+                safe_reason = _html_mod.escape(reason)
+                reason_html = f'<p style="margin:10px 0;"><strong>Reason:</strong> {safe_reason}</p>'
+                reason_text = f"\nReason: {reason}\n"
+
+            subject = f'Booking Update - {service_type}'
+
+            text_body = (
+                f"{business_name}\n\n"
+                f"Hi {customer_name},\n\n"
+                f"Unfortunately, we're unable to take on your booking"
+                f"{' for ' + service_type if service_type != 'appointment' else ''}"
+                f"{' on ' + time_str if time_str else ''}.\n"
+                f"{reason_text}\n"
+                f"We apologise for any inconvenience. Please don't hesitate to contact us "
+                f"if you'd like to discuss alternatives or rebook.\n\n"
+                f"Best regards,\n{business_name}"
+            ).strip()
+
+            html_body = f"""
+<html><body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+<div style="max-width:600px;margin:0 auto;padding:20px;">
+    <div style="background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%);padding:25px;text-align:center;border-radius:12px 12px 0 0;">
+        <div style="font-size:24px;font-weight:800;color:white;">{business_name}</div>
+    </div>
+    <div style="background:white;padding:25px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;">
+        <h2 style="color:#ef4444;margin:0 0 15px;">Booking Update</h2>
+        <p>Hi {customer_name},</p>
+        <p>Unfortunately, we're unable to take on your booking{' for <strong>' + service_type + '</strong>' if service_type != 'appointment' else ''}{' on <strong>' + time_str + '</strong>' if time_str else ''}.</p>
+        {reason_html}
+        <p>We apologise for any inconvenience. Please don't hesitate to contact us if you'd like to discuss alternatives or rebook.</p>
+        <p style="margin-top:25px;">Best regards,<br><strong>{business_name}</strong></p>
+    </div>
+</div></body></html>""".strip()
+
+            return self._send_email(to_email, subject, html_body, text_body, business_name)
+        except Exception as e:
+            print(f"[ERROR] Failed to send rejection email: {e}")
+            return False
+
     def send_reschedule_email(self, to_email: str, customer_name: str,
                                new_time: datetime, service_type: str = "appointment",
                                company_name: str = None, is_full_day: bool = False) -> bool:

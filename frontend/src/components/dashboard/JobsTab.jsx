@@ -13,6 +13,7 @@ import './SharedDashboard.css';
 
 const STATUS_FILTERS = [
   { key: 'active', label: 'Upcoming', icon: 'fa-calendar-check' },
+  { key: 'recent', label: 'New', icon: 'fa-bell' },
   { key: 'overdue', label: 'Late', icon: 'fa-exclamation-circle' },
   { key: 'in-progress', label: 'In Progress', icon: 'fa-wrench' },
   { key: 'needs-invoice', label: 'Unpaid', icon: 'fa-file-invoice' },
@@ -94,14 +95,20 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const weekEnd = new Date(todayStart); weekEnd.setDate(weekEnd.getDate() + 7);
 
   const counts = useMemo(() => {
-    const activeAll = bookings.filter(j => !['completed', 'paid', 'cancelled'].includes(j.status));
+    const activeAll = bookings.filter(j => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status));
     const overdue = activeAll.filter(j => j.status !== 'in-progress' && new Date(j.appointment_time) < now);
     const active = activeAll.filter(j => j.status === 'in-progress' || new Date(j.appointment_time) >= now);
     const inProg = bookings.filter(j => j.status === 'in-progress');
     const needsInv = bookings.filter(j => j.status === 'completed' && j.payment_status !== 'paid');
     const done = bookings.filter(j => j.status === 'completed' || j.status === 'paid');
-    const canc = bookings.filter(j => j.status === 'cancelled');
-    return { active: active.length, overdue: overdue.length, 'in-progress': inProg.length, 'needs-invoice': needsInv.length, completed: done.length, cancelled: canc.length, all: bookings.length };
+    const canc = bookings.filter(j => j.status === 'cancelled' || j.status === 'rejected');
+    // Recently booked = created in last 48 hours
+    const recentCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    const recent = bookings.filter(j => {
+      const created = new Date(j.created_at);
+      return created >= recentCutoff && !['cancelled', 'rejected'].includes(j.status);
+    });
+    return { active: active.length, recent: recent.length, overdue: overdue.length, 'in-progress': inProg.length, 'needs-invoice': needsInv.length, completed: done.length, cancelled: canc.length, all: bookings.length };
   }, [bookings]);
 
   // Filter and group jobs
@@ -126,9 +133,15 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
     // Status filter
     if (statusFilter === 'active') {
-      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled'].includes(j.status) && (j.status === 'in-progress' || new Date(j.appointment_time) >= now));
+      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status) && (j.status === 'in-progress' || new Date(j.appointment_time) >= now));
+    } else if (statusFilter === 'recent') {
+      const recentCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+      jobs = jobs.filter(j => {
+        const created = new Date(j.created_at);
+        return created >= recentCutoff && !['cancelled', 'rejected'].includes(j.status);
+      });
     } else if (statusFilter === 'overdue') {
-      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'in-progress'].includes(j.status) && new Date(j.appointment_time) < now);
+      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'rejected', 'in-progress'].includes(j.status) && new Date(j.appointment_time) < now);
     } else if (statusFilter === 'in-progress') {
       jobs = jobs.filter(j => j.status === 'in-progress');
     } else if (statusFilter === 'needs-invoice') {
@@ -136,7 +149,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     } else if (statusFilter === 'completed') {
       jobs = jobs.filter(j => j.status === 'completed' || j.status === 'paid');
     } else if (statusFilter === 'cancelled') {
-      jobs = jobs.filter(j => j.status === 'cancelled');
+      jobs = jobs.filter(j => j.status === 'cancelled' || j.status === 'rejected');
     }
 
     jobs.sort((a, b) => {
@@ -148,7 +161,16 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
     // Group into sections
     const sections = [];
-    const isActive = (j) => !['completed', 'paid', 'cancelled'].includes(j.status);
+    const isActive = (j) => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status);
+
+    // For 'recent' filter, show as a single flat section sorted by creation time
+    if (statusFilter === 'recent') {
+      const sortedByCreated = [...jobs].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      if (sortedByCreated.length > 0) {
+        sections.push({ key: 'recent', label: 'Booked in Last 48 Hours', icon: 'fa-bell', color: '#8b5cf6', jobs: sortedByCreated });
+      }
+      return { groups: sections, totalFiltered: jobs.length };
+    }
 
     // In Progress (always shown first if any)
     const inProg = jobs.filter(j => j.status === 'in-progress');
@@ -190,10 +212,10 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       sections.push({ key: 'completed', label: 'Completed & Paid', icon: 'fa-check-circle', color: '#10b981', jobs: done.slice(0, 20) });
     }
 
-    // Cancelled
-    const canc = jobs.filter(j => j.status === 'cancelled');
+    // Cancelled / Rejected
+    const canc = jobs.filter(j => j.status === 'cancelled' || j.status === 'rejected');
     if (canc.length > 0 && (statusFilter === 'cancelled' || statusFilter === 'all')) {
-      sections.push({ key: 'cancelled', label: 'Cancelled', icon: 'fa-times-circle', color: '#9ca3af', jobs: canc.slice(0, 10) });
+      sections.push({ key: 'cancelled', label: 'Cancelled / Rejected', icon: 'fa-times-circle', color: '#9ca3af', jobs: canc.slice(0, 10) });
     }
 
     return { groups: sections, totalFiltered: jobs.length };
@@ -276,7 +298,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                       <div className="jt-card-body">
                         <div className="jt-card-top">
                           <h4>{job.customer_name || 'Unknown'}</h4>
-                          {(!job.assigned_worker_ids || job.assigned_worker_ids.length === 0) && !['completed', 'paid', 'cancelled'].includes(job.status) && (
+                          {(!job.assigned_worker_ids || job.assigned_worker_ids.length === 0) && !['completed', 'paid', 'cancelled', 'rejected'].includes(job.status) && (
                             <span className="jt-no-worker-badge" title="No worker assigned to this job">
                               <i className="fas fa-exclamation-triangle"></i> No Worker
                             </span>
@@ -314,6 +336,12 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                           )}
                         </div>
                         <div className="jt-card-bottom">
+                          {/* Customer media thumbnails */}
+                          {(job.customer_photo_urls?.length > 0 || job.photo_urls?.length > 0) && (
+                            <span className="jt-media-badge" title={`${(job.customer_photo_urls?.length || 0) + (job.photo_urls?.length || 0)} media files`}>
+                              <i className="fas fa-images"></i> {(job.customer_photo_urls?.length || 0) + (job.photo_urls?.length || 0)}
+                            </span>
+                          )}
                           {(job.phone || job.phone_number) && (
                             <a href={`tel:${job.phone || job.phone_number}`} className="jt-phone" onClick={e => e.stopPropagation()}>
                               <i className="fas fa-phone"></i> {job.phone || job.phone_number}
@@ -329,7 +357,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                                 : formatCurrency(job.charge || job.estimated_charge)}
                             </span>
                           )}
-                          {job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled' && (job.charge || job.estimated_charge) && (
+                          {job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled' && job.status !== 'rejected' && (job.charge || job.estimated_charge) && (
                             <button className="jt-mark-paid" onClick={e => { e.stopPropagation(); markPaidMutation.mutate(job.id); }}
                               disabled={markingPaidJobId === job.id}>
                               <i className={`fas ${markingPaidJobId === job.id ? 'fa-spinner fa-spin' : 'fa-check'}`}></i> Mark Paid

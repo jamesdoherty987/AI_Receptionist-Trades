@@ -98,6 +98,7 @@
 .jt-status-completed { background: #dcfce7; color: #166534; }
 .jt-status-paid { background: #dcfce7; color: #166534; }
 .jt-status-cancelled { background: #f3f4f6; color: #9ca3af; }
+.jt-status-rejected { background: #fef2f2; color: #dc2626; }
 
 .jt-card-info { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.4rem; align-items: center; }
 .jt-info-item { font-size: 0.78rem; color: #64748b; display: flex; align-items: center; gap: 0.3rem; }
@@ -113,6 +114,8 @@
 .jt-duration { font-size: 0.72rem; color: #94a3b8; display: flex; align-items: center; gap: 0.25rem; }
 .jt-duration i { font-size: 0.58rem; }
 .jt-charge { font-size: 0.8rem; font-weight: 700; color: #10b981; }
+.jt-media-badge { font-size: 0.7rem; color: #6366f1; display: flex; align-items: center; gap: 0.25rem; font-weight: 600; }
+.jt-media-badge i { font-size: 0.6rem; }
 .jt-mark-paid {
   font-size: 0.66rem; font-weight: 600; padding: 0.2rem 0.45rem;
   background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0;

@@ -131,6 +131,7 @@ export const getBooking = (id) => api.get(`/api/bookings/${id}`);
 export const createBooking = (data) => api.post('/api/bookings', data);
 export const updateBooking = (id, data) => api.put(`/api/bookings/${id}`, data);
 export const deleteBooking = (id) => api.delete(`/api/bookings/${id}`);
+export const rejectBooking = (id, reason = '') => api.post(`/api/bookings/${id}/reject`, { reason });
 export const checkAvailability = (date, serviceType, workerId = null, anyWorker = false, durationMinutes = null) => api.get('/api/bookings/availability', { params: { date, service_type: serviceType, worker_id: workerId, any_worker: anyWorker || undefined, duration_minutes: durationMinutes || undefined } });
 export const checkMonthlyAvailability = (year, month, serviceType, workerId = null, anyWorker = false, durationMinutes = null) => api.get('/api/bookings/availability/month', { params: { year, month, service_type: serviceType, worker_id: workerId, any_worker: anyWorker || undefined, duration_minutes: durationMinutes || undefined } });
 

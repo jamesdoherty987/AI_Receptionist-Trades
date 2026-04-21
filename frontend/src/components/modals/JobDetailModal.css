@@ -1173,3 +1173,15 @@
 .jdm-lq-edit-row input:focus { outline: none; border-color: #6366f1; }
 .jdm-lq-edit-total { font-size: 0.8rem; font-weight: 600; color: #374151; min-width: 60px; text-align: right; }
 .jdm-lq-edit-actions { display: flex; gap: 0.35rem; justify-content: flex-end; margin-top: 0.35rem; }
+
+/* Reject Modal */
+.reject-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.reject-modal { background: white; border-radius: 16px; padding: 24px; width: 100%; max-width: 440px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+.reject-modal h3 { margin: 0 0 8px; font-size: 1.05rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 8px; }
+
+/* Danger buttons */
+.btn-danger { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; min-height: 38px; }
+.btn-danger:hover { background: #dc2626; }
+.btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-danger-outline { background: transparent; color: #ef4444; border: 1px solid #fecaca; padding: 8px 16px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; min-height: 38px; transition: all 0.15s; }
+.btn-danger-outline:hover { background: #fef2f2; border-color: #ef4444; }

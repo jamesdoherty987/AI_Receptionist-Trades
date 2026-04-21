@@ -491,6 +491,7 @@ def get_or_create_portal_link(company_id: int, client_id: int) -> str:
         from src.services.db_postgres_wrapper import get_database
         db = get_database()
         conn = db.get_connection()
+        cur = None
         try:
             from psycopg2.extras import RealDictCursor
             cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -517,7 +518,8 @@ def get_or_create_portal_link(company_id: int, client_id: int) -> str:
             print(f"[PORTAL] ⚠️ Failed to get/create portal link: {e}")
             return ''
         finally:
-            cur.close()
+            if cur:
+                cur.close()
             db.return_connection(conn)
     except Exception as e:
         print(f"[PORTAL] ⚠️ Portal link generation error: {e}")

@@ -1314,12 +1314,13 @@ async def media_handler(ws):
                 _deferred_email = _retranscribed_email or getattr(call_state, '_deferred_customer_email', None)
                 _fallback_phone = _deferred_sms.pop('to_number', None)
                 _fallback_portal_link2 = _deferred_sms.pop('portal_link', '')
-                if not _fallback_portal_link2 and _deferred_email and company_id_int:
+                _company_id_int2 = int(company_id) if company_id else None
+                if not _fallback_portal_link2 and _deferred_email and _company_id_int2:
                     try:
                         _fb_client_id2 = getattr(call_state, '_deferred_sms_client_id', None)
                         if _fb_client_id2:
                             from src.services.sms_reminder import get_or_create_portal_link
-                            _fallback_portal_link2 = get_or_create_portal_link(company_id_int, _fb_client_id2)
+                            _fallback_portal_link2 = get_or_create_portal_link(_company_id_int2, _fb_client_id2)
                     except Exception:
                         pass
                 from src.services.sms_reminder import notify_customer

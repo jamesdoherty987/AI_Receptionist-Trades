@@ -118,7 +118,7 @@ export const getStatusBadgeClass = (status) => {
   const statusLower = status?.toLowerCase();
   if (statusLower === 'completed' || statusLower === 'confirmed' || statusLower === 'paid') return 'badge-success';
   if (statusLower === 'pending' || statusLower === 'unconfirmed') return 'badge-warning';
-  if (statusLower === 'cancelled') return 'badge-error';
+  if (statusLower === 'cancelled' || statusLower === 'rejected') return 'badge-error';
   if (statusLower === 'in-progress') return 'badge-primary';
   return 'badge-info';
 };

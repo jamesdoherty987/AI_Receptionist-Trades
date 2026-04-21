@@ -28,7 +28,8 @@ import {
   getBookingReview,
   getQuotes,
   updateQuote,
-  sendQuote
+  sendQuote,
+  rejectBooking
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
@@ -70,6 +71,8 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const [previewQuote, setPreviewQuote] = useState(null);
   const [editingQuoteId, setEditingQuoteId] = useState(null);
   const [editQuoteData, setEditQuoteData] = useState({ lineItems: [], notes: '' });
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
 
   const { data: job, isLoading } = useQuery({
     queryKey: ['booking', jobId],
@@ -308,6 +311,8 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       setShowAddMaterial(false);
       setShowServiceDetail(false);
       setShowAddTask(false);
+      setShowRejectModal(false);
+      setRejectReason('');
       setMaterialSearch('');
       setCustomMaterial({ name: '', unit_price: '', quantity: '1', unit: 'each' });
       setNewTask({ title: '', description: '', estimated_cost: '' });
@@ -489,6 +494,20 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       addToast('Photo removed', 'success');
     },
     onError: () => addToast('Failed to remove photo', 'error'),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (reason) => rejectBooking(jobId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      setShowRejectModal(false);
+      setRejectReason('');
+      addToast('Job rejected and customer notified', 'success');
+    },
+    onError: (error) => addToast(error.response?.data?.error || 'Failed to reject job', 'error'),
   });
 
   const handleSendInvoice = () => {
@@ -718,6 +737,11 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     e.currentTarget.classList.remove('show');
                   }}></div>
                 </div>
+                {job.status !== 'rejected' && job.status !== 'cancelled' && job.status !== 'completed' && job.status !== 'paid' && (
+                  <button className="btn btn-danger-outline" onClick={() => setShowRejectModal(true)} title="Reject this job and notify the customer">
+                    <i className="fas fa-ban"></i> Reject
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -1498,6 +1522,34 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
           status={previewQuote.status}
           onClose={() => setPreviewQuote(null)}
         />
+      )}
+      {/* Reject Job Modal */}
+      {showRejectModal && (
+        <div className="reject-modal-overlay" onClick={() => setShowRejectModal(false)}>
+          <div className="reject-modal" onClick={e => e.stopPropagation()}>
+            <h3><i className="fas fa-ban" style={{ color: '#ef4444' }}></i> Reject Job</h3>
+            <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 12px' }}>
+              This will reject the job and notify the customer via email. The job will be removed from the calendar.
+            </p>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Reason (optional — will be included in the email)</label>
+              <textarea
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                placeholder="e.g. Fully booked that week, outside our service area..."
+                rows={3}
+                style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit', boxSizing: 'border-box', resize: 'vertical' }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button className="btn btn-secondary" onClick={() => { setShowRejectModal(false); setRejectReason(''); }}>Cancel</button>
+              <button className="btn btn-danger" onClick={() => rejectMutation.mutate(rejectReason)} disabled={rejectMutation.isPending}>
+                <i className={`fas ${rejectMutation.isPending ? 'fa-spinner fa-spin' : 'fa-ban'}`}></i>
+                {rejectMutation.isPending ? ' Rejecting...' : ' Reject Job'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </Modal>
   );

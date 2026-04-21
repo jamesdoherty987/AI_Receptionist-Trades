@@ -196,8 +196,10 @@ function CalendarTab() {
   // Filter bookings by selected worker
   const filteredBookings = useMemo(() => {
     if (!bookings) return [];
-    if (!selectedWorkerId) return bookings;
-    return bookings.filter(booking => {
+    // Exclude rejected jobs from calendar
+    let filtered = bookings.filter(b => b.status !== 'rejected');
+    if (!selectedWorkerId) return filtered;
+    return filtered.filter(booking => {
       const assignedIds = booking.assigned_worker_ids || [];
       return assignedIds.includes(selectedWorkerId) || assignedIds.includes(String(selectedWorkerId));
     });
@@ -630,7 +632,7 @@ function CalendarTab() {
                             </span>
                             {event.assigned_worker_ids.map(id => getWorkerName(id)).join(', ')}
                           </div>
-                        ) : !['completed', 'paid', 'cancelled'].includes(event.status) && (
+                        ) : !['completed', 'paid', 'cancelled', 'rejected'].includes(event.status) && (
                           <div className="event-no-worker-warning">
                             <i className="fas fa-exclamation-triangle"></i> No worker assigned
                           </div>
@@ -805,7 +807,7 @@ function CalendarTab() {
                           {height > 40 && (
                             <div className="week-event-service">{event.service_type || event.service}</div>
                           )}
-                          {(!event.assigned_worker_ids || event.assigned_worker_ids.length === 0) && !['completed', 'paid', 'cancelled'].includes(event.status) && (
+                          {(!event.assigned_worker_ids || event.assigned_worker_ids.length === 0) && !['completed', 'paid', 'cancelled', 'rejected'].includes(event.status) && (
                             <div className="week-event-no-worker" title="No worker assigned">
                               <i className="fas fa-exclamation-triangle"></i>
                             </div>
