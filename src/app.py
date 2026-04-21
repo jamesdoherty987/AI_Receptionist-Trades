@@ -9274,6 +9274,105 @@ def call_logs_unseen_count():
             db.return_connection(conn)
 
 
+# ============================================
+# Outbound Calls — Lost Job Callback
+# ============================================
+
+@app.route("/api/call-logs/<int:call_log_id>/callback", methods=["POST"])
+@login_required
+def trigger_lost_job_callback(call_log_id):
+    """Trigger an AI callback to a lost job caller. Gated by OUTBOUND_CALLS_ENABLED."""
+    from src.services.outbound_caller import is_outbound_enabled, initiate_lost_job_callback
+
+    if not is_outbound_enabled():
+        return jsonify({"error": "Outbound calls are not enabled"}), 403
+
+    db = get_database()
+    company_id = session.get('company_id')
+
+    # Fetch the call log
+    conn = None
+    try:
+        conn = db.get_connection()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            "SELECT * FROM call_logs WHERE id = %s AND company_id = %s",
+            (call_log_id, company_id),
+        )
+        log = cursor.fetchone()
+    except Exception as e:
+        print(f"[ERROR] Fetching call log for callback: {e}")
+        return jsonify({"error": "Failed to fetch call log"}), 500
+    finally:
+        if conn:
+            db.return_connection(conn)
+
+    if not log:
+        return jsonify({"error": "Call log not found"}), 404
+
+    log = dict(log)
+    if not log.get("phone_number"):
+        return jsonify({"error": "No phone number on this call log"}), 400
+
+    result = initiate_lost_job_callback(
+        to_number=log["phone_number"],
+        company_id=company_id,
+        call_log_id=call_log_id,
+        caller_name=log.get("caller_name", ""),
+        lost_job_reason=log.get("lost_job_reason", ""),
+        ai_summary=log.get("ai_summary", ""),
+    )
+
+    if result.get("success"):
+        return jsonify(result)
+    else:
+        return jsonify(result), 500
+
+
+@app.route("/api/outbound-calls/enabled", methods=["GET"])
+@login_required
+def outbound_calls_enabled():
+    """Check if outbound calling feature is enabled (for UI feature gating)."""
+    from src.services.outbound_caller import is_outbound_enabled
+    return jsonify({"enabled": is_outbound_enabled()})
+
+
+@app.route("/telnyx/outbound-voice", methods=["POST"])
+def telnyx_outbound_voice():
+    """
+    Telnyx TeXML webhook for outbound calls.
+    When the outbound call connects, Telnyx POSTs here and we return TeXML
+    to connect the call to our media stream — same as inbound calls but with
+    outbound context parameters passed via query string.
+    """
+    # Context passed via query params from outbound_caller.py
+    company_id = request.args.get("company_id", "")
+    call_log_id = request.args.get("call_log_id", "")
+    call_type = request.args.get("call_type", "lost_job_callback")
+    caller_name = request.args.get("caller_name", "")
+    lost_reason = request.args.get("lost_reason", "")
+    ai_summary = request.args.get("ai_summary", "")
+    to_number = request.form.get("To", "") or request.args.get("To", "")
+
+    ws_url = config.WS_PUBLIC_URL
+
+    print(f"📞 [OUTBOUND] Call connected — company={company_id}, call_log={call_log_id}, to={to_number}")
+
+    twiml = VoiceResponse()
+    with twiml.connect() as connect:
+        stream = connect.stream(url=ws_url)
+        stream.parameter(name="From", value=to_number)
+        stream.parameter(name="CompanyId", value=company_id)
+        stream.parameter(name="CallType", value=call_type or "lost_job_callback")
+        stream.parameter(name="CallLogId", value=call_log_id)
+        stream.parameter(name="CallerName", value=caller_name)
+        stream.parameter(name="LostReason", value=lost_reason)
+        stream.parameter(name="AISummary", value=ai_summary)
+
+    return Response(str(twiml), mimetype="text/xml")
+
+
 @app.route("/api/notifications", methods=["GET"])
 @login_required
 def notifications_api():

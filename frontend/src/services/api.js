@@ -419,6 +419,10 @@ export const workerCreateClient = (data) => api.post('/api/worker/clients/create
 export const getCallLogs = (params = {}) => api.get('/api/call-logs', { params });
 export const getUnseenCallCount = (since) => api.get('/api/call-logs/unseen-count', { params: { since } });
 
+// Outbound Calls
+export const triggerLostJobCallback = (callLogId) => api.post(`/api/call-logs/${callLogId}/callback`);
+export const getOutboundCallsEnabled = () => api.get('/api/outbound-calls/enabled');
+
 // Reviews
 export const getCompanyReviews = () => api.get('/api/reviews');
 export const getBookingReview = (bookingId) => api.get(`/api/bookings/${bookingId}/review`);

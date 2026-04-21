@@ -154,6 +154,14 @@ async def media_handler(ws):
     caller_customer_name = None
     caller_customer_info = None
     
+    # Outbound call state (set in "start" event if this is an outbound call)
+    is_outbound = False
+    outbound_call_type = ""
+    outbound_call_log_id = ""
+    outbound_caller_name = ""
+    outbound_lost_reason = ""
+    outbound_ai_summary = ""
+    
     # TTS state
     speaking = False
     interrupt = False
@@ -664,9 +672,36 @@ async def media_handler(ws):
         respond_task = asyncio.create_task(run())
 
     async def greet():
-        """Send initial greeting — personalized for returning customers"""
+        """Send initial greeting — personalized for returning customers or outbound calls"""
         nonlocal speaking, stream_sid
-        if caller_is_returning and caller_customer_name and caller_customer_name.strip():
+        
+        if is_outbound and outbound_call_type == "lost_job_callback":
+            # Outbound: lost job follow-up greeting
+            first_name = ""
+            if outbound_caller_name and outbound_caller_name.strip():
+                first_name = outbound_caller_name.split()[0]
+            
+            # Get business name for the greeting
+            biz_name = "us"
+            if company_id:
+                try:
+                    from src.services.database import get_database
+                    _db = get_database()
+                    _company = _db.get_company(int(company_id))
+                    if _company and _company.get('company_name'):
+                        biz_name = _company['company_name']
+                except Exception:
+                    pass
+            
+            issue_brief = "your enquiry"
+            if outbound_ai_summary:
+                issue_brief = outbound_ai_summary.split('.')[0].strip().lower()
+                if len(issue_brief) > 60:
+                    issue_brief = issue_brief[:57] + "..."
+            
+            name_part = f" {first_name}" if first_name else ""
+            greeting = f"Hi{name_part}, this is {biz_name} calling. You rang us earlier about {issue_brief} — I just wanted to follow up and see if you still need help with that?"
+        elif caller_is_returning and caller_customer_name and caller_customer_name.strip():
             first_name = caller_customer_name.split()[0]
             greeting = f"Hi {first_name}, welcome back! How can I help you today?"
         else:
@@ -675,8 +710,8 @@ async def media_handler(ws):
         print(f"\n🤖 GREETING: {greeting}")
         conversation_log.append({"role": "assistant", "content": greeting, "timestamp": asyncio.get_event_loop().time()})
         
-        # Try pre-recorded greeting (only for new customers — returning customers get personalized TTS)
-        if not caller_is_returning and has_prerecorded_fillers():
+        # Try pre-recorded greeting (only for new inbound customers — returning customers and outbound get personalized TTS)
+        if not caller_is_returning and not is_outbound and has_prerecorded_fillers():
             audio = get_filler_audio("greeting")
             if audio:
                 await send_prerecorded_audio(ws, stream_sid, audio)
@@ -704,7 +739,17 @@ async def media_handler(ws):
                 caller_phone = custom_params.get("From", "") or data["start"].get("from", "")
                 company_id = custom_params.get("CompanyId", "") or None
                 
+                # Outbound call detection
+                is_outbound = bool(custom_params.get("CallType", ""))
+                outbound_call_type = custom_params.get("CallType", "")
+                outbound_call_log_id = custom_params.get("CallLogId", "")
+                outbound_caller_name = custom_params.get("CallerName", "")
+                outbound_lost_reason = custom_params.get("LostReason", "")
+                outbound_ai_summary = custom_params.get("AISummary", "")
+                
                 print(f"🎧 Stream started: {stream_sid}")
+                if is_outbound:
+                    print(f"📞 [OUTBOUND] Type: {outbound_call_type}, CallLog: {outbound_call_log_id}")
                 print(f"📱 Caller: {caller_phone}, Company: {company_id}")
 
                 # Format phone for display
@@ -751,8 +796,35 @@ async def media_handler(ws):
                     except Exception as e:
                         print(f"⚠️ [PHONE_LOOKUP] Error: {e}")
                 
-                # Build system context based on whether customer is returning or new
-                if caller_is_returning:
+                # Build system context based on call type
+                if is_outbound and outbound_call_type == "lost_job_callback":
+                    # OUTBOUND: Lost job follow-up call
+                    first_name = ""
+                    if outbound_caller_name and outbound_caller_name.strip():
+                        first_name = outbound_caller_name.split()[0]
+                    
+                    conversation.append({
+                        "role": "system",
+                        "content": (
+                            f"[SYSTEM: This is an OUTBOUND follow-up call to a customer who called earlier but didn't book. "
+                            f"Customer name: {outbound_caller_name or 'unknown'}. "
+                            f"What they called about: {outbound_ai_summary or 'unknown'}. "
+                            f"Why they didn't book: {outbound_lost_reason or 'unknown'}. "
+                            f"Your greeting has already been sent. DO NOT re-greet. "
+                            f"Be warm, friendly, NOT pushy. Keep it SHORT — under 2 minutes. "
+                            f"If they want to book, use get_next_available / search_availability / book_job. "
+                            f"If not interested, thank them and end gracefully. "
+                            f"NEVER be aggressive. If they seem annoyed, apologize and end the call. "
+                            f"You already know their phone number and name — do NOT ask again.]"
+                        )
+                    })
+                    
+                    # Set call_state for outbound context
+                    call_state['is_outbound'] = True
+                    call_state['outbound_type'] = outbound_call_type
+                    call_state['customer_name'] = outbound_caller_name
+                
+                elif caller_is_returning:
                     # RETURNING CUSTOMER — inject their info so AI can greet them by name
                     first_name = caller_customer_name.split()[0] if caller_customer_name and caller_customer_name.strip() else ''
                     info_parts = [f"RETURNING CUSTOMER identified by phone: {caller_customer_name or 'name unknown'}"]
@@ -811,66 +883,68 @@ async def media_handler(ws):
                 asyncio.create_task(greet())
                 
                 # Warmup OpenAI with real system prompt to prime prompt cache
-                async def warmup():
-                    try:
-                        from src.services.llm_stream import get_openai_client, get_cached_system_prompt
-                        from src.services.calendar_tools import CALENDAR_TOOLS
-                        client = get_openai_client()
-                        # Load the actual company system prompt — primes both
-                        # local _company_prompt_cache AND OpenAI's server-side prompt cache
-                        system_prompt = get_cached_system_prompt(company_id=company_id)
-                        def do_warmup():
-                            stream = client.chat.completions.create(
-                                model=config.CHAT_MODEL,
-                                messages=[
-                                    {"role": "system", "content": system_prompt},
-                                    {"role": "user", "content": "hi"},
-                                ],
-                                stream=True, temperature=0.1,
-                                tools=CALENDAR_TOOLS, tool_choice="none",
-                                **config.max_tokens_param(value=1)
-                            )
-                            for _ in stream: pass
-                        await asyncio.to_thread(do_warmup)
-                        print(f"🔥 OpenAI warmed up (prompt cache primed for company {company_id})")
-                    except Exception as e:
-                        print(f"⚠️ Warmup failed: {e}")
-                asyncio.create_task(warmup())
+                # (skip for outbound — shorter calls, not worth the extra API call)
+                if not is_outbound:
+                    async def warmup():
+                        try:
+                            from src.services.llm_stream import get_openai_client, get_cached_system_prompt
+                            from src.services.calendar_tools import CALENDAR_TOOLS
+                            client = get_openai_client()
+                            # Load the actual company system prompt — primes both
+                            # local _company_prompt_cache AND OpenAI's server-side prompt cache
+                            system_prompt = get_cached_system_prompt(company_id=company_id)
+                            def do_warmup():
+                                stream = client.chat.completions.create(
+                                    model=config.CHAT_MODEL,
+                                    messages=[
+                                        {"role": "system", "content": system_prompt},
+                                        {"role": "user", "content": "hi"},
+                                    ],
+                                    stream=True, temperature=0.1,
+                                    tools=CALENDAR_TOOLS, tool_choice="none",
+                                    **config.max_tokens_param(value=1)
+                                )
+                                for _ in stream: pass
+                            await asyncio.to_thread(do_warmup)
+                            print(f"🔥 OpenAI warmed up (prompt cache primed for company {company_id})")
+                        except Exception as e:
+                            print(f"⚠️ Warmup failed: {e}")
+                    asyncio.create_task(warmup())
 
-                # Warmup ElevenLabs TTS (belt-and-suspenders alongside server keepalive)
-                async def warmup_tts():
-                    try:
-                        if config.TTS_PROVIDER != 'elevenlabs' or not config.ELEVENLABS_API_KEY:
-                            return
-                        import websockets as ws_lib
-                        voice_id = config.ELEVENLABS_VOICE_ID
-                        uri = (
-                            f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input"
-                            f"?model_id=eleven_turbo_v2_5&output_format=ulaw_8000&optimize_streaming_latency=4"
-                        )
-                        async with ws_lib.connect(
-                            uri,
-                            extra_headers={"xi-api-key": config.ELEVENLABS_API_KEY},
-                            open_timeout=8, close_timeout=3,
-                        ) as tts:
-                            await tts.send(json.dumps({
-                                "text": " ",
-                                "voice_settings": {"stability": 0.5, "similarity_boost": 0.8},
-                            }))
-                            await tts.send(json.dumps({"text": "Hi.", "try_trigger_generation": True}))
-                            await tts.send(json.dumps({"text": ""}))
-                            while True:
-                                try:
-                                    msg = await asyncio.wait_for(tts.recv(), timeout=5.0)
-                                    data_msg = json.loads(msg)
-                                    if data_msg.get("isFinal"):
+                    # Warmup ElevenLabs TTS (belt-and-suspenders alongside server keepalive)
+                    async def warmup_tts():
+                        try:
+                            if config.TTS_PROVIDER != 'elevenlabs' or not config.ELEVENLABS_API_KEY:
+                                return
+                            import websockets as ws_lib
+                            voice_id = config.ELEVENLABS_VOICE_ID
+                            uri = (
+                                f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input"
+                                f"?model_id=eleven_turbo_v2_5&output_format=ulaw_8000&optimize_streaming_latency=4"
+                            )
+                            async with ws_lib.connect(
+                                uri,
+                                extra_headers={"xi-api-key": config.ELEVENLABS_API_KEY},
+                                open_timeout=8, close_timeout=3,
+                            ) as tts:
+                                await tts.send(json.dumps({
+                                    "text": " ",
+                                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.8},
+                                }))
+                                await tts.send(json.dumps({"text": "Hi.", "try_trigger_generation": True}))
+                                await tts.send(json.dumps({"text": ""}))
+                                while True:
+                                    try:
+                                        msg = await asyncio.wait_for(tts.recv(), timeout=5.0)
+                                        data_msg = json.loads(msg)
+                                        if data_msg.get("isFinal"):
+                                            break
+                                    except asyncio.TimeoutError:
                                         break
-                                except asyncio.TimeoutError:
-                                    break
-                        print(f"🔥 ElevenLabs TTS warmed up")
-                    except Exception as e:
-                        print(f"⚠️ ElevenLabs warmup failed: {e}")
-                asyncio.create_task(warmup_tts())
+                            print(f"🔥 ElevenLabs TTS warmed up")
+                        except Exception as e:
+                            print(f"⚠️ ElevenLabs warmup failed: {e}")
+                    asyncio.create_task(warmup_tts())
 
             elif event == "media":
                 if not stream_sid:

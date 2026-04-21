@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { getCallLogs } from '../../services/api';
+import { useQuery, useMutation, keepPreviousData } from '@tanstack/react-query';
+import { getCallLogs, triggerLostJobCallback, getOutboundCallsEnabled } from '../../services/api';
 import { formatPhone, getProxiedMediaUrl } from '../../utils/helpers';
+import { useToast } from '../Toast';
 import './CallLogsTab.css';
 import './SharedDashboard.css';
 
@@ -53,6 +54,30 @@ function CallLogsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [selectedLog, setSelectedLog] = useState(null);
+  const [callingBackId, setCallingBackId] = useState(null);
+  const { addToast } = useToast();
+
+  // Check if outbound calls feature is enabled
+  const { data: outboundData } = useQuery({
+    queryKey: ['outbound-calls-enabled'],
+    queryFn: async () => (await getOutboundCallsEnabled()).data,
+    staleTime: 5 * 60 * 1000,
+  });
+  const outboundEnabled = outboundData?.enabled || false;
+
+  // Trigger callback mutation
+  const callbackMutation = useMutation({
+    mutationFn: (callLogId) => triggerLostJobCallback(callLogId),
+    onMutate: (callLogId) => setCallingBackId(callLogId),
+    onSuccess: () => {
+      addToast('AI callback initiated — calling customer now', 'success');
+      setCallingBackId(null);
+    },
+    onError: (e) => {
+      addToast(e.response?.data?.error || 'Failed to initiate callback', 'error');
+      setCallingBackId(null);
+    },
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['call-logs', activeFilter, searchTerm, page],
@@ -158,6 +183,17 @@ function CallLogsTab() {
                 <span className={`call-outcome-badge ${log.call_outcome || 'no_action'}`}>
                   {OUTCOME_LABELS[log.call_outcome] || 'Unknown'}
                 </span>
+                {outboundEnabled && log.is_lost_job && log.phone_number && (
+                  <button
+                    className="outbound-callback-btn-sm"
+                    disabled={callingBackId === log.id || callbackMutation.isPending}
+                    onClick={(e) => { e.stopPropagation(); callbackMutation.mutate(log.id); }}
+                    title="AI Call Back"
+                  >
+                    <i className={`fas ${callingBackId === log.id ? 'fa-spinner fa-spin' : 'fa-phone-alt'}`}></i>
+                    {callingBackId === log.id ? 'Calling...' : 'Call Back'}
+                  </button>
+                )}
               </div>
             </div>
           ))
@@ -196,6 +232,18 @@ function CallLogsTab() {
                   <i className="fas fa-exclamation-triangle"></i>
                   <span>{selectedLog.lost_job_reason}</span>
                 </div>
+              )}
+
+              {/* AI Callback button for lost jobs with a phone number */}
+              {outboundEnabled && selectedLog.is_lost_job && selectedLog.phone_number && (
+                <button
+                  className="outbound-callback-btn"
+                  disabled={callingBackId === selectedLog.id || callbackMutation.isPending}
+                  onClick={(e) => { e.stopPropagation(); callbackMutation.mutate(selectedLog.id); }}
+                >
+                  <i className={`fas ${callingBackId === selectedLog.id ? 'fa-spinner fa-spin' : 'fa-phone-alt'}`}></i>
+                  {callingBackId === selectedLog.id ? 'Calling...' : 'AI Call Back'}
+                </button>
               )}
 
               <div className="call-detail-grid">
