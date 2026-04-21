@@ -318,6 +318,21 @@ def upgrade_subscription(subscription_id: str, new_plan: str = 'pro', custom_pri
             metadata={**dict(sub.metadata), 'plan': new_plan},
         )
 
+        # Immediately invoice the prorated amount so the customer is charged now
+        try:
+            invoice = stripe.Invoice.create(
+                customer=sub.customer,
+                subscription=subscription_id,
+                auto_advance=True,  # Automatically finalize and attempt payment
+            )
+            if invoice.status == 'draft':
+                stripe.Invoice.finalize_invoice(invoice.id)
+                stripe.Invoice.pay(invoice.id)
+            print(f"[SUCCESS] Proration invoice {invoice.id} created and charged for upgrade")
+        except stripe.error.InvalidRequestError as inv_err:
+            # "Nothing to invoice" means proration was zero (e.g. same price) — that's fine
+            print(f"[UPGRADE] No proration invoice needed: {inv_err}")
+
         print(f"[SUCCESS] Upgraded subscription {subscription_id} to {new_plan}")
         return {
             'subscription_id': updated_sub.id,

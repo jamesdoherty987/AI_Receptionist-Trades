@@ -4140,10 +4140,10 @@ def stripe_webhook():
                 print(f"[WEBHOOK]   - plan: {plan}")
                 
                 # Clear trial fields when upgrading to pro to ensure clean state
-                print(f"[WEBHOOK] Updating company {company_id} to pro (plan={plan})...")
+                print(f"[WEBHOOK] Updating company {company_id} (plan={plan})...")
                 db.update_company(
                     company_id,
-                    subscription_tier='pro',
+                    subscription_tier=plan,
                     subscription_status='active',
                     subscription_plan=plan,
                     stripe_customer_id=customer_id,
