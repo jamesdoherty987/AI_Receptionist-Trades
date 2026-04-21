@@ -77,20 +77,16 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "lookup_customer",
-            "description": "Look up existing customer information by name or phone. Call this right after spelling back the name and getting confirmation. CRITICAL: Use the FULL NAME (first AND last name) that you confirmed with the customer. Example: If you spelled 'J-A-M-E-S D-O-H-E-R-T-Y' and they said yes, use 'James Doherty' NOT just 'Doherty'.",
+            "description": "Look up existing customer by their phone number. The system already has the caller's phone from caller ID — call this tool with that phone number at the START of the call (before asking for name). If the customer is found, you'll get their name, address, email etc. If not found, they're a new customer.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_name": {
-                        "type": "string",
-                        "description": "Customer's FULL NAME (first name + last name) - e.g., 'James Doherty' NOT just 'Doherty'"
-                    },
                     "phone": {
                         "type": "string",
-                        "description": "Customer's phone number (optional - use caller's number if available)"
+                        "description": "Customer's phone number (use the caller ID phone number)"
                     }
                 },
-                "required": ["customer_name"]
+                "required": ["phone"]
             }
         }
     },
@@ -3879,28 +3875,23 @@ Return ONLY valid JSON, no explanation."""
             }
         
         elif tool_name == "lookup_customer":
-            customer_name = arguments.get('customer_name')
             phone = arguments.get('phone')
-            email = arguments.get('email')
             
-            if not customer_name:
+            if not phone:
                 return {
                     "success": False,
-                    "error": "Customer name is required"
+                    "error": "Phone number is required for customer lookup"
                 }
             
-            # Check database for existing customer
+            # Phone-first customer identification
             if db:
                 try:
-                    # Try by name, phone, or email - MUST filter by company_id for data isolation
-                    clients = db.get_clients_by_name(customer_name.lower(), company_id=company_id)
-                    if len(clients) == 1:
-                        client = clients[0]
-                        
-                        # Get address - prioritize client's stored address, fall back to last booking
+                    client = db.find_client_by_phone(phone, company_id=company_id)
+                    
+                    if client:
+                        # RETURNING CUSTOMER — found by phone number
                         last_address = client.get('address') or client.get('eircode')
                         if not last_address:
-                            # Fall back to most recent booking address
                             bookings = db.get_client_bookings(client['id'], company_id=company_id)
                             if bookings:
                                 for booking in bookings:
@@ -3908,14 +3899,12 @@ Return ONLY valid JSON, no explanation."""
                                         last_address = booking.get('address') or booking.get('eircode')
                                         break
                         
-                        # Build the message with all available info and address confirmation
                         msg_parts = [f"Found returning customer: {client['name']}"]
                         if client.get('phone'):
                             msg_parts.append(f"phone {client.get('phone')}")
                         if client.get('email'):
                             msg_parts.append(f"email {client.get('email')}")
                         
-                        # Create address confirmation message using validator
                         address_confirmation_msg = None
                         if last_address:
                             from src.utils.address_validator import enhance_customer_address_lookup
@@ -3925,7 +3914,7 @@ Return ONLY valid JSON, no explanation."""
                             msg_parts.append(f"last address {last_address}")
                         
                         tool_duration = time_module.time() - tool_start_time
-                        print(f"[TOOL_TIMING] ✅ lookup_customer completed in {tool_duration:.3f}s (returning customer)")
+                        print(f"[TOOL_TIMING] ✅ lookup_customer completed in {tool_duration:.3f}s (returning customer by phone)")
                         
                         return {
                             "success": True,
@@ -3941,226 +3930,18 @@ Return ONLY valid JSON, no explanation."""
                             "message": ", ".join(msg_parts),
                             "address_prompt": address_confirmation_msg
                         }
-                    elif len(clients) > 1:
-                        # Multiple customers with same name - try to match by phone or email
-                        logger.info(f"[LOOKUP] Multiple customers ({len(clients)}) found with name: {customer_name}")
-                        
-                        # Try to narrow down by phone number if provided
-                        if phone:
-                            normalized_phone = normalize_phone_for_comparison(phone)
-                            phone_matches = [c for c in clients if normalize_phone_for_comparison(c.get('phone') or '') == normalized_phone]
-                            if len(phone_matches) == 1:
-                                client = phone_matches[0]
-                                logger.info(f"[LOOKUP] Matched by name + phone: {client['name']} (ID: {client['id']})")
-                                # Get address - prioritize client's stored address, fall back to last booking
-                                last_address = client.get('address') or client.get('eircode')
-                                if not last_address:
-                                    bookings = db.get_client_bookings(client['id'], company_id=company_id)
-                                    if bookings:
-                                        for booking in bookings:
-                                            if booking.get('address') or booking.get('eircode'):
-                                                last_address = booking.get('address') or booking.get('eircode')
-                                                break
-                                
-                                msg_parts = [f"Found returning customer: {client['name']}"]
-                                if client.get('phone'):
-                                    msg_parts.append(f"phone {client.get('phone')}")
-                                if client.get('email'):
-                                    msg_parts.append(f"email {client.get('email')}")
-                                if last_address:
-                                    msg_parts.append(f"last address {last_address}")
-                                
-                                return {
-                                    "success": True,
-                                    "customer_exists": True,
-                                    "customer_info": {
-                                        "id": client['id'],
-                                        "name": client['name'],
-                                        "phone": client.get('phone'),
-                                        "email": client.get('email'),
-                                        "last_address": last_address
-                                    },
-                                    "message": ", ".join(msg_parts)
-                                }
-                            elif len(phone_matches) == 0:
-                                # Phone provided but doesn't match any existing customer - treat as new
-                                logger.info(f"[LOOKUP] Name matched {len(clients)} customers but phone doesn't match any - treating as NEW customer")
-                                return {
-                                    "success": True,
-                                    "customer_exists": False,
-                                    "message": f"No existing customer found for {customer_name} with that phone number. This is a new customer."
-                                }
-                        
-                        # Try to narrow down by email if provided
-                        if email:
-                            email_matches = [c for c in clients if c.get('email') and c.get('email').lower() == email.lower()]
-                            if len(email_matches) == 1:
-                                client = email_matches[0]
-                                logger.info(f"[LOOKUP] Matched by name + email: {client['name']} (ID: {client['id']})")
-                                # Get address - prioritize client's stored address, fall back to last booking
-                                last_address = client.get('address') or client.get('eircode')
-                                if not last_address:
-                                    bookings = db.get_client_bookings(client['id'], company_id=company_id)
-                                    if bookings:
-                                        for booking in bookings:
-                                            if booking.get('address') or booking.get('eircode'):
-                                                last_address = booking.get('address') or booking.get('eircode')
-                                                break
-                                
-                                msg_parts = [f"Found returning customer: {client['name']}"]
-                                if client.get('phone'):
-                                    msg_parts.append(f"phone {client.get('phone')}")
-                                if client.get('email'):
-                                    msg_parts.append(f"email {client.get('email')}")
-                                if last_address:
-                                    msg_parts.append(f"last address {last_address}")
-                                
-                                return {
-                                    "success": True,
-                                    "customer_exists": True,
-                                    "customer_info": {
-                                        "id": client['id'],
-                                        "name": client['name'],
-                                        "phone": client.get('phone'),
-                                        "email": client.get('email'),
-                                        "last_address": last_address
-                                    },
-                                    "message": ", ".join(msg_parts)
-                                }
-                            elif len(email_matches) == 0:
-                                # Email provided but doesn't match any existing customer - treat as new
-                                logger.info(f"[LOOKUP] Name matched {len(clients)} customers but email doesn't match any - treating as NEW customer")
-                                return {
-                                    "success": True,
-                                    "customer_exists": False,
-                                    "message": f"No existing customer found for {customer_name} with that email. This is a new customer."
-                                }
-                        
-                        # No phone or email provided - ask for phone to confirm
-                        return {
-                            "success": True,
-                            "customer_exists": True,
-                            "multiple_matches": True,
-                            "count": len(clients),
-                            "message": f"Found {len(clients)} customers named {customer_name}. Need phone or email to confirm which one."
-                        }
                     else:
-                        # FUZZY MATCH: Try phonetically similar names (for ASR errors)
-                        # MUST filter by company_id for data isolation
-                        from difflib import SequenceMatcher
-                        all_clients = db.get_all_clients(company_id=company_id)
-                        
-                        best_match = None
-                        best_similarity = 0
-                        best_match_reason = ""
-                        
-                        # Helper to split name into first/last
-                        def split_name(name):
-                            parts = name.strip().split()
-                            if len(parts) >= 2:
-                                return parts[0].lower(), ' '.join(parts[1:]).lower()
-                            return name.lower(), ""
-                        
-                        search_first, search_last = split_name(customer_name)
-                        
-                        for potential_client in all_clients:
-                            client_first, client_last = split_name(potential_client['name'])
-                            
-                            # Full name similarity
-                            full_similarity = SequenceMatcher(None, 
-                                customer_name.lower(), 
-                                potential_client['name'].lower()).ratio()
-                            
-                            # First name similarity (important for identity)
-                            first_similarity = SequenceMatcher(None, search_first, client_first).ratio()
-                            
-                            # Last name similarity (often has ASR errors like Dorothy/Doherty)
-                            last_similarity = SequenceMatcher(None, search_last, client_last).ratio() if search_last and client_last else 0
-                            
-                            # Check if phone matches
-                            phone_matches = False
-                            if phone and potential_client.get('phone'):
-                                norm_phone = ''.join(filter(str.isdigit, phone))[-10:]
-                                norm_client_phone = ''.join(filter(str.isdigit, potential_client.get('phone', '')))[-10:]
-                                phone_matches = norm_phone == norm_client_phone
-                            
-                            # Matching logic with multiple strategies:
-                            match_score = 0
-                            match_reason = ""
-                            
-                            # Strategy 1: Phone matches + first name exact/close + last name close
-                            # Tightened: last name needs 0.75+ to avoid Dorothy→Doherty (0.67)
-                            if phone_matches and first_similarity >= 0.90 and last_similarity >= 0.75:
-                                match_score = 0.95 + (last_similarity * 0.05)  # High confidence
-                                match_reason = f"phone+first_name (first:{first_similarity:.0%}, last:{last_similarity:.0%})"
-                            
-                            # Strategy 2: Phone matches + full name 91%+ similar
-                            # Tightened from 85% to avoid Josh Smith→John Smith (0.90)
-                            elif phone_matches and full_similarity >= 0.91:
-                                match_score = full_similarity + 0.10  # Boost for phone match
-                                match_reason = f"phone+name (full:{full_similarity:.0%})"
-                            
-                            # Strategy 3: No phone but very high name similarity (92%+)
-                            # Catches: "Jon Smith" vs "John Smith" without phone
-                            elif full_similarity >= 0.92:
-                                match_score = full_similarity
-                                match_reason = f"name_only (full:{full_similarity:.0%})"
-                            
-                            if match_score > best_similarity:
-                                best_similarity = match_score
-                                best_match = potential_client
-                                best_match_reason = match_reason
-                        
-                        logger.info(f"[LOOKUP] Search: '{customer_name}', phone: {phone}, best_match: {best_match['name'] if best_match else 'None'}, score: {best_similarity:.2%}, reason: {best_match_reason}")
-                        
-                        if best_match:
-                            logger.info(f"[LOOKUP] ✅ Fuzzy match: '{customer_name}' -> '{best_match['name']}' ({best_match_reason})")
-                            # Get address - prioritize client's stored address, fall back to last booking
-                            last_address = best_match.get('address') or best_match.get('eircode')
-                            if not last_address:
-                                bookings = db.get_client_bookings(best_match['id'], company_id=company_id)
-                                if bookings:
-                                    for booking in bookings:
-                                        if booking.get('address') or booking.get('eircode'):
-                                            last_address = booking.get('address') or booking.get('eircode')
-                                            break
-                            
-                            # Build the message with all available info
-                            msg_parts = [f"Found returning customer: {best_match['name']} (I heard {customer_name}, but found a close match)"]
-                            if best_match.get('phone'):
-                                msg_parts.append(f"phone {best_match.get('phone')}")
-                            if best_match.get('email'):
-                                msg_parts.append(f"email {best_match.get('email')}")
-                            if last_address:
-                                msg_parts.append(f"last address {last_address}")
-                            
-                            return {
-                                "success": True,
-                                "customer_exists": True,
-                                "fuzzy_match": True,
-                                "heard_name": customer_name,
-                                "actual_name": best_match['name'],
-                                "customer_info": {
-                                    "id": best_match['id'],
-                                    "name": best_match['name'],
-                                    "phone": best_match.get('phone'),
-                                    "email": best_match.get('email'),
-                                    "last_address": last_address
-                                },
-                                "message": ", ".join(msg_parts)
-                            }
-                        
+                        # NEW CUSTOMER — phone not found in database
                         tool_duration = time_module.time() - tool_start_time
-                        print(f"[TOOL_TIMING] ✅ lookup_customer completed in {tool_duration:.3f}s (new customer)")
+                        print(f"[TOOL_TIMING] ✅ lookup_customer completed in {tool_duration:.3f}s (new customer by phone)")
                         
                         return {
                             "success": True,
                             "customer_exists": False,
                             "customer_info": {
-                                "name": customer_name,
-                                "phone": phone  # Pass through caller's phone for new customers
+                                "phone": phone
                             },
-                            "message": f"No existing customer found for {customer_name}. This is a new customer."
+                            "message": f"No existing customer found for this phone number. This is a new customer."
                         }
                 except Exception as e:
                     tool_duration = time_module.time() - tool_start_time

@@ -150,6 +150,9 @@ async def media_handler(ws):
     call_sid = None
     caller_phone = None
     company_id = None
+    caller_is_returning = False
+    caller_customer_name = None
+    caller_customer_info = None
     
     # TTS state
     speaking = False
@@ -661,22 +664,26 @@ async def media_handler(ws):
         respond_task = asyncio.create_task(run())
 
     async def greet():
-        """Send initial greeting"""
+        """Send initial greeting — personalized for returning customers"""
         nonlocal speaking, stream_sid
-        greeting = "Hi, thank you for calling. How can I help you today?"
+        if caller_is_returning and caller_customer_name and caller_customer_name.strip():
+            first_name = caller_customer_name.split()[0]
+            greeting = f"Hi {first_name}, welcome back! How can I help you today?"
+        else:
+            greeting = "Hi, thank you for calling. How can I help you today?"
         
         print(f"\n🤖 GREETING: {greeting}")
         conversation_log.append({"role": "assistant", "content": greeting, "timestamp": asyncio.get_event_loop().time()})
         
-        # Try pre-recorded greeting
-        if has_prerecorded_fillers():
+        # Try pre-recorded greeting (only for new customers — returning customers get personalized TTS)
+        if not caller_is_returning and has_prerecorded_fillers():
             audio = get_filler_audio("greeting")
             if audio:
                 await send_prerecorded_audio(ws, stream_sid, audio)
                 speaking = False
                 return
         
-        # Fallback to TTS
+        # Fallback to TTS (always used for returning customers to say their name)
         async def tokens():
             yield greeting
         await start_tts(tokens(), label="greet")
@@ -707,25 +714,99 @@ async def media_handler(ws):
                     if len(local) == 10:
                         formatted_phone = f"{local[:3]} {local[3:6]} {local[6:]}"
                 
-                # Phone instruction
-                if caller_phone:
+                # Phone-first customer identification: look up caller by phone BEFORE the conversation starts
+                caller_is_returning = False
+                caller_customer_name = None
+                caller_customer_info = None
+                if caller_phone and company_id:
+                    try:
+                        from src.services.database import get_database
+                        _lookup_db = get_database()
+                        _existing_client = _lookup_db.find_client_by_phone(caller_phone, company_id=int(company_id))
+                        if _existing_client:
+                            caller_is_returning = True
+                            caller_customer_name = _existing_client.get('name', '')
+                            caller_customer_info = {
+                                'id': _existing_client.get('id'),
+                                'name': _existing_client.get('name'),
+                                'phone': _existing_client.get('phone'),
+                                'email': _existing_client.get('email'),
+                                'address': _existing_client.get('address'),
+                                'eircode': _existing_client.get('eircode'),
+                            }
+                            # Also get last address from bookings if not on client record
+                            if not caller_customer_info.get('address') and not caller_customer_info.get('eircode'):
+                                try:
+                                    _bookings = _lookup_db.get_client_bookings(_existing_client['id'], company_id=int(company_id))
+                                    if _bookings:
+                                        for _b in _bookings:
+                                            if _b.get('address') or _b.get('eircode'):
+                                                caller_customer_info['address'] = _b.get('address') or _b.get('eircode')
+                                                break
+                                except Exception:
+                                    pass
+                            print(f"📱 [PHONE_LOOKUP] Returning customer: {caller_customer_name} (ID: {_existing_client.get('id')})")
+                        else:
+                            print(f"📱 [PHONE_LOOKUP] New customer (phone not in database)")
+                    except Exception as e:
+                        print(f"⚠️ [PHONE_LOOKUP] Error: {e}")
+                
+                # Build system context based on whether customer is returning or new
+                if caller_is_returning:
+                    # RETURNING CUSTOMER — inject their info so AI can greet them by name
+                    first_name = caller_customer_name.split()[0] if caller_customer_name and caller_customer_name.strip() else ''
+                    info_parts = [f"RETURNING CUSTOMER identified by phone: {caller_customer_name or 'name unknown'}"]
+                    if caller_customer_info.get('email'):
+                        info_parts.append(f"email: {caller_customer_info['email']}")
+                    if caller_customer_info.get('address') or caller_customer_info.get('eircode'):
+                        addr = caller_customer_info.get('address') or caller_customer_info.get('eircode')
+                        info_parts.append(f"address on file: {addr}")
+                    customer_context = ". ".join(info_parts)
+                    
+                    phone_instruction = (
+                        f"PHONE NUMBER: Caller's number is {formatted_phone} (from caller ID). Already confirmed — do NOT ask again."
+                    )
+                    
+                    if first_name:
+                        greeting_note = f"Greeting already sent — you already said 'Hi {first_name}, welcome back!'."
+                        name_note = "Do NOT ask for their name — you already know it."
+                    else:
+                        greeting_note = "Greeting already sent. This is a returning customer but their name is not on file yet."
+                        name_note = "Ask for their name: 'Can I get your name please, and spell it out for me if possible?'"
+                    
+                    conversation.append({
+                        "role": "system",
+                        "content": (
+                            f"[SYSTEM: {greeting_note} "
+                            f"DO NOT re-introduce, re-greet, or ask 'how can I help' again. "
+                            f"Keep replies SHORT. "
+                            f"{customer_context}. "
+                            f"{name_note} Do NOT call lookup_customer — already done. "
+                            f"{phone_instruction} "
+                            f"The system will extract name, address, eircode, and email from the transcript after the call. "
+                            f"Say things ONCE only.]"
+                        )
+                    })
+                else:
+                    # NEW CUSTOMER — phone not found
                     phone_instruction = (
                         f"PHONE NUMBER: Caller's number is {formatted_phone} (from caller ID). "
                         f"Confirm this number with them: 'Is {formatted_phone} a good number to reach you?'"
-                    )
-                else:
-                    phone_instruction = "PHONE NUMBER: Not detected. Ask for their number."
-
-                # System context
-                conversation.append({
-                    "role": "system",
-                    "content": (
-                        "[SYSTEM: Greeting already sent. DO NOT re-introduce or ask 'how can I help' again. "
-                        "Keep replies SHORT. After they describe their issue, ask for NAME (spell it back). "
-                        f"{phone_instruction} "
-                        "After name confirmed, call lookup_customer BEFORE asking for eircode or address. Say things ONCE only.]"
-                    )
-                })
+                    ) if caller_phone else "PHONE NUMBER: Not detected. Ask for their number."
+                    
+                    conversation.append({
+                        "role": "system",
+                        "content": (
+                            "[SYSTEM: Greeting already sent. DO NOT re-introduce or ask 'how can I help' again. "
+                            "Keep replies SHORT. This is a NEW CUSTOMER (phone not in our system). "
+                            "After they describe their issue, ask for their name: 'Can I get your name please, and spell it out for me if possible?' "
+                            "Do NOT spell the name back or ask them to confirm spelling — the system will extract the correct name from the transcript after the call. "
+                            "Just acknowledge the name and move on. "
+                            f"{phone_instruction} "
+                            "The system will extract and verify name, address, eircode, and email from the transcript after the call. "
+                            "Say things ONCE only.]"
+                        )
+                    })
                 
                 asyncio.create_task(greet())
                 

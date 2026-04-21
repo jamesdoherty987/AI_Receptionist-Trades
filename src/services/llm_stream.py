@@ -592,99 +592,32 @@ def resetcall_state(call_state: CallState = None):
 
 def check_caller_in_database(caller_name: str, caller_phone: str = None, caller_email: str = None, company_id: int = None) -> dict:
     """
-    Check if caller exists in database by name (case-insensitive).
-    Can filter by phone or email for better matching.
+    Check if caller exists in database by phone number (primary) or name (fallback).
     MUST pass company_id for proper multi-tenant data isolation.
     Returns dict with client info or indication of new customer.
     """
-    # Safety check: ensure caller_name is not None
-    if not caller_name:
-        return {
-            "status": "new",
-            "message": "No name provided",
-            "clients": []
-        }
-    
     from src.services.database import get_database
     db = get_database()
     
-    # Normalize name for case-insensitive search
-    normalized_name = caller_name.lower().strip()
+    # Phone-first lookup
+    if caller_phone:
+        client = db.find_client_by_phone(caller_phone, company_id=company_id)
+        if client:
+            print(f"[CLIENT] Returning customer found by phone: {client['name']} (ID: {client['id']}, company_id: {company_id})")
+            description_text = f"\n\nCustomer History: {client['description']}" if client.get('description') else ""
+            return {
+                "status": "returning",
+                "message": f"Welcome back, {client['name']}!{description_text}",
+                "clients": [client]
+            }
     
-    # Get all clients with matching names - MUST filter by company_id for data isolation
-    matching_clients = db.get_clients_by_name(normalized_name, company_id=company_id)
-    
-    if len(matching_clients) == 0:
-        print(f"[CLIENT] New customer: {caller_name} (company_id: {company_id})")
-        return {
-            "status": "new",
-            "message": f"Welcome! I'll get you set up in our system.",
-            "clients": []
-        }
-    elif len(matching_clients) == 1:
-        client = matching_clients[0]
-        print(f"[CLIENT] Returning customer found by name: {client['name']} (ID: {client['id']}, company_id: {company_id})")
-        # Include description in the message if available
-        description_text = f"\n\nCustomer History: {client['description']}" if client.get('description') else ""
-        return {
-            "status": "returning",
-            "message": f"Great to hear from you again, {caller_name}!{description_text}",
-            "clients": [client]
-        }
-    else:
-        # Multiple clients with same name - try to filter by phone or email
-        print(f"[CLIENT] Multiple customers found with name: {caller_name} ({len(matching_clients)} matches, company_id: {company_id})")
-        
-        # Try to narrow down by phone number if provided
-        if caller_phone:
-            normalized_caller_phone = normalize_phone_for_comparison(caller_phone)
-            phone_matches = [c for c in matching_clients if normalize_phone_for_comparison(c.get('phone') or '') == normalized_caller_phone]
-            if len(phone_matches) == 1:
-                client = phone_matches[0]
-                print(f"[SUCCESS] Matched by phone number: {client['name']} (ID: {client['id']})")
-                description_text = f"\n\nCustomer History: {client['description']}" if client.get('description') else ""
-                return {
-                    "status": "returning",
-                    "message": f"Great to hear from you again, {caller_name}!{description_text}",
-                    "clients": [client]
-                }
-            elif len(phone_matches) == 0:
-                # Phone provided but doesn't match any existing customer - treat as new
-                print(f"[CLIENT] Name matched {len(matching_clients)} customers but phone doesn't match any - treating as NEW customer")
-                return {
-                    "status": "new",
-                    "message": f"Welcome! I'll get you set up in our system.",
-                    "clients": []
-                }
-        
-        # Try to narrow down by email if provided
-        if caller_email:
-            email_matches = [c for c in matching_clients if c.get('email') and c.get('email').lower() == caller_email.lower()]
-            if len(email_matches) == 1:
-                client = email_matches[0]
-                print(f"[SUCCESS] Matched by email: {client['name']} (ID: {client['id']})")
-                description_text = f"\n\nCustomer History: {client['description']}" if client.get('description') else ""
-                return {
-                    "status": "returning",
-                    "message": f"Great to hear from you again, {caller_name}!{description_text}",
-                    "clients": [client]
-                }
-            elif len(email_matches) == 0:
-                # Email provided but doesn't match any existing customer - treat as new
-                print(f"[CLIENT] Name matched {len(matching_clients)} customers but email doesn't match any - treating as NEW customer")
-                return {
-                    "status": "new",
-                    "message": f"Welcome! I'll get you set up in our system.",
-                    "clients": []
-                }
-        
-        # No phone or email provided - ask for phone to narrow down
-        return {
-            "status": "multiple",
-            "message": f"I have {len(matching_clients)} customers with that name. Can I get your phone number to confirm which {caller_name.split()[0]} you are?",
-            "clients": matching_clients,
-            "needs_contact": True
-        }
+    # No phone match — new customer
+    print(f"[CLIENT] New customer: phone={caller_phone} (company_id: {company_id})")
+    return {
+        "status": "new",
+        "message": "New customer — phone not in our system.",
+        "clients": []
+    }
 
 def spell_out_name(name: str) -> str:
     """Convert a name to spelled out format (e.g., 'John' -> 'J-O-H-N')"""
@@ -842,47 +775,11 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
                 checking_msg = random.choice(generic_fillers)
                 print(f"   ✅ [PRE-CHECK] Detected: RESCHEDULE REQUEST")
         
-        # 3. NAME SPELLING CONFIRMED - triggers lookup_customer (only if not already done)
-        if not likely_needs_tool and not already_did_lookup:
-            # Check if AI just spelled back a name (e.g., "J-A-M-E-S")
-            name_spelling_indicators = ["-a-", "-b-", "-c-", "-d-", "-e-", "-f-", "-g-", "-h-", "-i-", 
-                                        "-j-", "-k-", "-l-", "-m-", "-n-", "-o-", "-p-", "-r-", "-s-", 
-                                        "-t-", "-u-", "-v-", "-w-", "-y-", "-z-"]
-            is_name_spelling = any(ind in prev_assistant_msg for ind in name_spelling_indicators)
-            is_confirmation = any(phrase in user_message for phrase in ["yes", "yeah", "yep", "correct", "that's right"])
-            
-            # Make sure it's not an eircode/address/phone confirmation
-            # Eircodes have numbers (V-9-5-H-5-P-2), names don't (J-A-M-E-S)
-            is_eircode_context = any(phrase in prev_assistant_msg for phrase in ["eircode", "postcode", "address"])
-            has_numbers_in_spelling = any(f"-{d}-" in prev_assistant_msg for d in "0123456789")
-            is_phone_context = any(phrase in prev_assistant_msg for phrase in ["phone", "number", "reach you", "contact"])
-            
-            if is_name_spelling and is_confirmation and not is_eircode_context and not has_numbers_in_spelling and not is_phone_context:
-                likely_needs_tool = True
-                detected_intent = "NAME_SPELLING_CONFIRMED"
-                checking_msg = "Grand, one moment."
-                print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CONFIRMED")
+        # 3. NAME SPELLING CONFIRMED - NO LONGER USED (phone-first identification)
+        # Kept as comment for reference — lookup_customer is now called at call start by phone
         
-        # 3b. NAME SPELLING CORRECTION - user spells out their name letter by letter
-        # This triggers lookup_customer after AI confirms the corrected spelling
-        if not likely_needs_tool and not already_did_lookup:
-            # Detect if user is spelling out letters (e.g., "d o n n a c h a" or "D-O-N-N-A-C-H-A")
-            # Look for space-separated single letters or dash-separated letters
-            words = user_message.replace("-", " ").split()
-            single_letters = [w for w in words if len(w) == 1 and w.isalpha()]
-            # If more than 5 single letters AND they're consecutive, user is likely spelling something
-            # This avoids false positives from phrases like "I want a new wall"
-            if len(single_letters) >= 5:
-                # Check if letters are mostly consecutive (not scattered through sentence)
-                word_positions = [i for i, w in enumerate(words) if len(w) == 1 and w.isalpha()]
-                if len(word_positions) >= 5:
-                    # Check if at least 5 letters are within a 7-word span
-                    max_span = max(word_positions) - min(word_positions) + 1
-                    if max_span <= 7:
-                        likely_needs_tool = True
-                        detected_intent = "NAME_SPELLING_CORRECTION"
-                        checking_msg = "Let me look you up."
-                        print(f"   ✅ [PRE-CHECK] Detected: NAME SPELLING CORRECTION (user spelled {len(single_letters)} letters)")
+        # 3b. NAME SPELLING CORRECTION - NO LONGER USED (phone-first identification)
+        # Kept as comment for reference — names are extracted from transcript post-call
         
         # 4. EXPLICIT AVAILABILITY CHECK - triggers check_availability
         if not likely_needs_tool:
@@ -1084,10 +981,10 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
                 detected_intent = "SERVICE_DESCRIPTION"
                 print(f"   ℹ️ [PRE-CHECK] Detected: SERVICE DESCRIPTION (no filler - LLM will ask for name)")
             
-            # Name introduction - LLM will spell back name, no immediate tool call
+            # Name introduction - LLM will acknowledge name, no immediate tool call
             elif "my name is" in user_message or "name's" in user_message:
                 detected_intent = "NAME_INTRODUCTION"
-                print(f"   ℹ️ [PRE-CHECK] Detected: NAME INTRODUCTION (no filler - LLM will spell back)")
+                print(f"   ℹ️ [PRE-CHECK] Detected: NAME INTRODUCTION (no filler - LLM will acknowledge)")
         
         precheck_duration = time.time() - precheck_start
         
@@ -2079,41 +1976,21 @@ TOOL RULES:
                         customer_name = customer_info.get("name", "")
                         first_name = customer_name.split()[0] if customer_name else "there"
                         last_address = customer_info.get("last_address", "")
-                        stored_phone = customer_info.get("phone", "")
                         
                         if result_content.get("customer_exists"):
-                            # Returning customer - check what info we already have
-                            # Compare stored phone with caller's phone (if available)
-                            phone_matches = False
-                            if caller_phone and stored_phone:
-                                normalized_caller = normalize_phone_for_comparison(caller_phone)
-                                normalized_stored = normalize_phone_for_comparison(stored_phone)
-                                phone_matches = normalized_caller == normalized_stored
-                            
-                            # Build response based on what we need to confirm
-                            if phone_matches and last_address:
-                                # We have matching phone AND address - just confirm address
-                                direct_response = f"Great to hear from you again, {first_name}! Is it the same address as before - {last_address}?"
-                            elif phone_matches and not last_address:
-                                # We have matching phone but no address - ask for address
-                                direct_response = f"Great to hear from you again, {first_name}! What's the address for this job?"
-                            elif stored_phone and not phone_matches:
-                                # Different phone - confirm which to use
-                                direct_response = f"Great to hear from you again, {first_name}! I have your number as {stored_phone}. Is that still the best number?"
-                            elif last_address:
-                                # No stored phone but have address - confirm address
-                                direct_response = f"Great to hear from you again, {first_name}! I have your address as {last_address}. Is this job for the same location?"
+                            # Returning customer found by phone
+                            if last_address:
+                                direct_response = f"Is it the same address as before - {last_address}?"
                             else:
-                                # No phone or address on file
-                                direct_response = f"Great to hear from you again, {first_name}! What's the address for this job?"
+                                direct_response = f"Do you know your eircode?"
                         else:
-                            # New customer - phone was already confirmed by LLM before lookup was called
-                            # Go straight to asking for eircode (step 6b in prompt)
-                            direct_response = f"Welcome, {first_name}! Do you know your eircode?"
+                            # New customer — phone not in system
+                            direct_response = None  # Let LLM handle the new customer flow naturally
                     else:
-                        direct_response = "I couldn't find that name. Could you spell it for me?"
+                        direct_response = None  # Let LLM handle errors
                     
-                    print(f"   ⚡ [DIRECT] lookup_customer -> '{direct_response[:50]}...'")
+                    if direct_response:
+                        print(f"   ⚡ [DIRECT] lookup_customer -> '{direct_response[:50]}...'")
                 
                 # ========== CHECK_AVAILABILITY ==========
                 elif tool_name == "check_availability":

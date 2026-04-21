@@ -2077,30 +2077,58 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
     
     def find_client_by_phone(self, phone: str, company_id: int = None) -> Optional[Dict]:
-        """Find a client by phone number, optionally filtered by company_id"""
+        """Find a client by phone number, optionally filtered by company_id.
+        Tries exact match first (fast), then normalized comparison for format differences."""
         if not phone:
             return None
+        
+        import re as _re
+        
+        def _normalize(p):
+            if not p:
+                return ""
+            cleaned = _re.sub(r'[^\d+]', '', p.strip())
+            if cleaned.startswith('0') and len(cleaned) == 10:
+                cleaned = '+353' + cleaned[1:]
+            elif cleaned.startswith('353') and not cleaned.startswith('+'):
+                cleaned = '+' + cleaned
+            elif cleaned.startswith('00'):
+                cleaned = '+' + cleaned[2:]
+            return cleaned
+        
+        normalized_phone = _normalize(phone)
+        if not normalized_phone:
+            return None
+        
+        # Build all possible format variants for SQL IN query
+        # e.g., +353851234567 → also try 0851234567, 353851234567
+        phone_variants = {phone.strip(), normalized_phone}
+        if normalized_phone.startswith('+353'):
+            local = '0' + normalized_phone[4:]
+            phone_variants.add(local)
+            phone_variants.add('353' + normalized_phone[4:])
+        phone_variants = [p for p in phone_variants if p]
         
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            # Normalize phone number - remove common formatting
-            normalized_phone = phone.strip()
-            
+            # Fast path: try all common format variants in a single SQL query
             if company_id:
-                cursor.execute("""
+                placeholders = ','.join(['%s'] * len(phone_variants))
+                cursor.execute(f"""
                     SELECT * FROM clients 
-                    WHERE company_id = %s AND phone = %s
+                    WHERE company_id = %s AND phone IN ({placeholders})
                     ORDER BY updated_at DESC
                     LIMIT 1
-                """, (company_id, normalized_phone))
+                """, (company_id, *phone_variants))
             else:
-                cursor.execute("""
+                placeholders = ','.join(['%s'] * len(phone_variants))
+                cursor.execute(f"""
                     SELECT * FROM clients 
-                    WHERE phone = %s
+                    WHERE phone IN ({placeholders})
                     ORDER BY updated_at DESC
                     LIMIT 1
-                """, (normalized_phone,))
+                """, tuple(phone_variants))
             
             row = cursor.fetchone()
             
@@ -2111,6 +2139,8 @@ class PostgreSQLDatabaseWrapper:
                     'name': row['name'],
                     'phone': row['phone'],
                     'email': row['email'],
+                    'address': row.get('address'),
+                    'eircode': row.get('eircode'),
                     'first_visit': row.get('first_visit'),
                     'last_visit': row.get('last_visit'),
                     'total_appointments': row.get('total_appointments', 0),

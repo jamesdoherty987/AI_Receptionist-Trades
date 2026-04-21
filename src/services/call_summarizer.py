@@ -130,7 +130,19 @@ CALL LOG RULES:
 - Classify call_outcome accurately. When in doubt between 'enquiry' and 'lost_job', ALWAYS choose 'lost_job'
 - A caller who discusses ANY specific service need is a lost job, not an enquiry
 - ai_summary should be 1-3 factual sentences covering what happened start to finish
-- Extract caller_name, address, eircode, email if mentioned; leave as empty string if not"""
+- Extract caller_name, address, eircode, email if mentioned; leave as empty string if not
+
+NAME EXTRACTION RULES:
+- The caller may say their name naturally ("My name is James Doherty") OR spell it out letter by letter ("J-A-M-E-S D-O-H-E-R-T-Y" or "J A M E S")
+- If the name is spelled out, reconstruct the full name from the individual letters
+- If both a spoken name and a spelled-out version exist, prefer the spelled-out version (it's more accurate)
+- Always capitalize names properly (first letter of each word)
+
+EMAIL EXTRACTION RULES:
+- The caller may say their email naturally ("john at gmail dot com") OR spell it out ("j-o-h-n at g-m-a-i-l dot c-o-m")
+- Reconstruct the full email address from however it was provided
+- Convert "at" to "@" and "dot" to "."
+- If both a spoken and spelled-out version exist, prefer the spelled-out version"""
 
 
 def _build_transcript(conversation_log: List[Dict[str, Any]]) -> Optional[str]:
@@ -464,6 +476,7 @@ async def summarize_and_log_call(
     Makes ONE LLM call, then uses the result for both:
       1. Adding job notes to the booking (if a booking was made)
       2. Logging the call to call_logs table (always)
+      3. Updating client records with extracted name/email/address (phone-first identification)
     
     Returns the call_log id if successful.
     """
@@ -509,7 +522,76 @@ async def summarize_and_log_call(
         except Exception as e:
             print(f"⚠️ Call log error: {e}")
 
+    # 3. Post-call client record update — update name/email/address from transcript
+    # This handles both new customers (whose name was only spoken, not looked up)
+    # and returning customers (whose email/address may have been updated during the call)
+    if caller_phone and company_id:
+        try:
+            await _update_client_from_transcript(combined, caller_phone, company_id)
+        except Exception as e:
+            print(f"⚠️ Client update from transcript error: {e}")
+
     return call_log_id
+
+
+async def _update_client_from_transcript(
+    summary: Dict[str, Any],
+    caller_phone: str,
+    company_id: int,
+) -> None:
+    """
+    Post-call: update client record with name/email/address extracted from transcript.
+    For new customers, this fills in the name that was only spoken during the call.
+    For returning customers, this can update email/address if they provided new ones.
+    """
+    from src.services.database import get_database
+    
+    extracted_name = (summary.get("caller_name") or "").strip()
+    extracted_email = (summary.get("email") or "").strip()
+    extracted_address = (summary.get("address") or "").strip()
+    extracted_eircode = (summary.get("eircode") or "").strip()
+    
+    if not extracted_name and not extracted_email and not extracted_address and not extracted_eircode:
+        print(f"[POST_CALL] No name/email/address extracted from transcript — skipping client update")
+        return
+    
+    db = get_database()
+    client = db.find_client_by_phone(caller_phone, company_id=company_id)
+    
+    if client:
+        # Existing client — update fields that are missing or were provided fresh
+        updates = {}
+        
+        # Update name if the current name looks like a placeholder or is missing
+        current_name = (client.get('name') or '').strip()
+        if extracted_name and (not current_name or current_name.lower() in ('unknown', 'caller', '')):
+            updates['name'] = extracted_name
+            print(f"[POST_CALL] Updating client name: '{current_name}' → '{extracted_name}'")
+        
+        # Update email if not already set
+        if extracted_email and not client.get('email'):
+            updates['email'] = extracted_email
+            print(f"[POST_CALL] Setting client email: '{extracted_email}'")
+        
+        # Update address if not already set
+        if extracted_address and not client.get('address'):
+            updates['address'] = extracted_address
+            print(f"[POST_CALL] Setting client address: '{extracted_address}'")
+        
+        if extracted_eircode and not client.get('eircode'):
+            updates['eircode'] = extracted_eircode
+            print(f"[POST_CALL] Setting client eircode: '{extracted_eircode}'")
+        
+        if updates:
+            try:
+                db.update_client(client['id'], **updates)
+                print(f"[POST_CALL] ✅ Updated client {client['id']} with: {list(updates.keys())}")
+            except Exception as e:
+                print(f"[POST_CALL] ❌ Failed to update client {client['id']}: {e}")
+        else:
+            print(f"[POST_CALL] Client {client['id']} already has all info — no updates needed")
+    else:
+        print(f"[POST_CALL] No client found for phone {caller_phone} — skipping (client may not have been created yet)")
 
 
 # ---------------------------------------------------------------------------

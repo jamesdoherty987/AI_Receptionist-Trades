@@ -99,6 +99,14 @@ FILLER_PHRASES = {
     "worker_no_availability": "The assigned worker has no availability in that period. Would you like to try different dates?",
     "couldnt_check_worker": "I couldn't check the worker's availability. What dates would you like to try?",
     "no_availability_soon": "I don't have any availability soon. Would you like me to check further out?",
+    # New customer flow — prerecorded questions to avoid TTS on every call
+    "ask_name": "Can I get your name please, and spell it out for me if possible?",
+    "ask_email": "And can I get an email address for the account? Spell it out for me if possible.",
+    "ask_eircode": "Do you know your eircode?",
+    "ask_address": "No problem. Can I get the full address instead?",
+    "ask_phone_confirm": "Is that a good number to reach you on?",
+    "ask_what_day_booking": "What day is your booking for?",
+    "anything_else": "Is there anything else I can help with?",
 }
 
 # Context-specific filler groups
@@ -108,9 +116,11 @@ GENERIC_FILLERS = ["one_moment", "let_me_check", "bear_with_me", "just_a_moment"
 NAME_CONFIRMATION_FILLERS = ["got_it_checking", "perfect_one_moment", "grand_let_me_check", "grand_one_moment", "let_me_look_you_up"]
 NUMBER_CONFIRMATION_FILLERS = ["thanks_checking", "okay_checking", "one_moment", "let_me_check"]
 SHORT_ACKNOWLEDGMENT_FILLERS = ["grand", "perfect", "great", "got_it", "okay", "right", "sure", "no_problem", "absolutely", "of_course"]
-# Acknowledgment + one moment fillers (for name introductions and service descriptions)
 ACKNOWLEDGMENT_ONE_MOMENT_FILLERS = ["got_it_one_moment", "okay_one_moment", "right_one_moment", "sure_one_moment", "no_problem_one_moment"]
 TRANSFER_FILLERS = ["transferring", "connecting", "let_me_connect"]
+# Prerecorded questions — used by direct response path to skip TTS
+QUESTION_PHRASES = ["ask_name", "ask_email", "ask_eircode", "ask_address", "ask_phone_confirm", 
+                    "ask_what_day_booking", "anything_else"]
 
 # R2 folder for filler audio
 R2_FILLER_FOLDER = "audio/fillers"
