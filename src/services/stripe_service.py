@@ -41,9 +41,10 @@ def is_stripe_configured() -> bool:
     return bool(stripe.api_key and stripe.api_key.startswith(('sk_test_', 'sk_live_')))
 
 
-def get_or_create_customer(email: str, company_name: str, company_id: int) -> Optional[str]:
+def get_or_create_customer(email: str, company_name: str, company_id: int, existing_customer_id: str = None) -> Optional[str]:
     """
-    Get existing Stripe customer or create a new one
+    Get existing Stripe customer or create a new one.
+    Each company gets its own unique Stripe customer — never reuses by email.
     Returns the Stripe customer ID
     """
     if not is_stripe_configured():
@@ -51,19 +52,35 @@ def get_or_create_customer(email: str, company_name: str, company_id: int) -> Op
         return None
     
     try:
-        # Search for existing customer by email
-        customers = stripe.Customer.list(email=email, limit=1)
+        # If we already have a Stripe customer ID stored for this company, verify and return it
+        if existing_customer_id:
+            try:
+                customer = stripe.Customer.retrieve(existing_customer_id)
+                if not customer.get('deleted'):
+                    # Update metadata to keep it current
+                    stripe.Customer.modify(
+                        customer.id,
+                        metadata={'company_id': str(company_id), 'company_name': company_name}
+                    )
+                    return customer.id
+            except stripe.error.StripeError:
+                print(f"[WARN] Stored customer {existing_customer_id} not found in Stripe, creating new one")
+
+        # Search for existing customer by company_id metadata (not email)
+        customers = stripe.Customer.search(
+            query=f'metadata["company_id"]:"{company_id}"',
+            limit=1
+        )
         
         if customers.data:
             customer = customers.data[0]
-            # Update metadata if needed
             stripe.Customer.modify(
                 customer.id,
                 metadata={'company_id': str(company_id), 'company_name': company_name}
             )
             return customer.id
         
-        # Create new customer
+        # Create new customer — always unique per company
         customer = stripe.Customer.create(
             email=email,
             name=company_name,
@@ -73,7 +90,7 @@ def get_or_create_customer(email: str, company_name: str, company_id: int) -> Op
             }
         )
         
-        print(f"[SUCCESS] Created Stripe customer: {customer.id} for {email}")
+        print(f"[SUCCESS] Created Stripe customer: {customer.id} for company {company_id} ({email})")
         return customer.id
         
     except stripe.error.StripeError as e:
@@ -89,7 +106,8 @@ def create_checkout_session(
     cancel_url: str,
     with_trial: bool = True,
     plan: str = 'pro',
-    custom_price_id: str = None
+    custom_price_id: str = None,
+    existing_customer_id: str = None
 ) -> Optional[Dict[str, str]]:
     """
     Create a Stripe Checkout Session for subscription.
@@ -118,7 +136,7 @@ def create_checkout_session(
     
     try:
         # Get or create customer
-        customer_id = get_or_create_customer(email, company_name, company_id)
+        customer_id = get_or_create_customer(email, company_name, company_id, existing_customer_id)
         
         if not customer_id:
             return None

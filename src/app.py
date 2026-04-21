@@ -3673,7 +3673,8 @@ def create_checkout():
         cancel_url=f"{base_url}/settings?subscription=cancelled",
         with_trial=False,  # Trial is handled separately via start-trial endpoint
         plan=plan,
-        custom_price_id=custom_price_id
+        custom_price_id=custom_price_id,
+        existing_customer_id=company.get('stripe_customer_id')
     )
     
     if result:
