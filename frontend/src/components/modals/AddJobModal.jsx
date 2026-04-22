@@ -633,13 +633,13 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
                       <div className="time-slots-grid">
                         {availability.slots.map(slot => (
                           <button key={slot.time} type="button"
-                            className={`time-slot ${slot.available ? 'available' : 'booked'} ${formData.appointment_time === `${selectedDate}T${slot.time}` ? 'selected' : ''}`}
+                            className={`time-slot ${slot.available ? 'available' : slot.booking?.past ? 'past' : 'booked'} ${formData.appointment_time === `${selectedDate}T${slot.time}` ? 'selected' : ''}`}
                             onClick={() => handleTimeSlotClick(slot)}
                             disabled={!slot.available}
-                            title={slot.available ? 'Available' : `Booked: ${slot.booking?.client_name || ''} — ${slot.booking?.service_type || ''}`}
+                            title={slot.available ? 'Available' : slot.booking?.past ? 'Time has passed' : `Booked: ${slot.booking?.client_name || ''} — ${slot.booking?.service_type || ''}`}
                           >
                             <span className="slot-time">{slot.time}</span>
-                            {!slot.available && slot.booking && <span className="slot-info">{slot.booking.client_name}</span>}
+                            {!slot.available && slot.booking && !slot.booking.past && <span className="slot-info">{slot.booking.client_name}</span>}
                           </button>
                         ))}
                       </div>

@@ -6839,6 +6839,48 @@ def bookings_api():
                 update_client_description(client_id, company_id=company_id)
             except Exception as e:
                 print(f"[WARNING] Could not update client description: {e}")
+
+            # Send confirmation email/SMS to customer (same as AI-booked jobs)
+            try:
+                _company_info = db.get_company(company_id)
+                _send_confirm = _company_info.get('send_confirmation_sms', True) if _company_info else True
+                if _send_confirm:
+                    from src.services.sms_reminder import notify_customer, get_or_create_portal_link
+                    _company_name = _company_info.get('company_name') if _company_info else None
+                    _cust_email = (data.get('email') or '').strip() or (client.get('email') or '').strip() or None
+                    _cust_phone = (data.get('phone_number') or '').strip() or (client.get('phone') or '').strip() or None
+
+                    # Build portal link for the customer
+                    _portal_link = ''
+                    if _cust_email and client_id and company_id:
+                        try:
+                            _portal_link = get_or_create_portal_link(company_id, client_id)
+                        except Exception:
+                            pass
+
+                    # Gather assigned worker names
+                    _worker_names = []
+                    if assigned_worker_ids_for_notif:
+                        for _wid in assigned_worker_ids_for_notif:
+                            _w = db.get_worker(_wid, company_id=company_id)
+                            if _w:
+                                _worker_names.append(_w.get('name', ''))
+
+                    notify_customer(
+                        'booking_confirmation',
+                        customer_email=_cust_email,
+                        customer_phone=_cust_phone,
+                        appointment_time=appointment_dt,
+                        customer_name=client.get('name', 'Customer') if client else 'Customer',
+                        service_type=service_type or 'appointment',
+                        company_name=_company_name,
+                        worker_names=_worker_names if _worker_names else None,
+                        address=job_address,
+                        portal_link=_portal_link,
+                    )
+                    print(f"[INFO] Confirmation notification sent for manual booking {booking_id}")
+            except Exception as e:
+                print(f"[WARNING] Could not send confirmation for manual booking: {e}")
             
             # Auto-attach default materials from service/package
             try:
@@ -7291,9 +7333,19 @@ def check_availability_api():
         if any_worker and per_worker_bookings and workers_on_leave_today:
             per_worker_bookings = {wid: bk for wid, bk in per_worker_bookings.items() if wid not in workers_on_leave_today}
 
+        # For "today", compute the current time so we can mark past slots
+        now = datetime.now()
+        is_today = (target_date == now.date())
+
         current_hour = business_hours['start']
         current_minute = 0
         end_hour = business_hours['end']
+
+        # If any_worker mode but no workers exist at all, fall back to
+        # general (non-worker) availability so the daily view matches the
+        # monthly calendar which also falls back.
+        if any_worker and not per_worker_bookings:
+            day_bookings = _get_day_bookings(filter_worker_id=None)
         
         while current_hour < end_hour or (current_hour == end_hour and current_minute == 0):
             slot_time = datetime.combine(target_date, datetime.min.time().replace(hour=current_hour, minute=current_minute))
@@ -7314,8 +7366,12 @@ def check_availability_api():
             is_available = True
             booking_info = None
 
+            # Mark past slots for today as unavailable
+            if is_today and slot_time <= now:
+                is_available = False
+                booking_info = {'past': True, 'reason': 'Time has passed'}
             # If the specific worker is on leave, mark all slots unavailable
-            if worker_on_leave:
+            elif worker_on_leave:
                 is_available = False
                 booking_info = {'leave': True, 'reason': 'Worker is on leave this day'}
             elif any_worker and per_worker_bookings:
@@ -7340,8 +7396,19 @@ def check_availability_api():
                         'duration_minutes': first_conflict['duration']
                     }
             elif any_worker and not per_worker_bookings:
-                # No workers available (all on leave or none exist)
-                is_available = False
+                # No workers exist — fall back to general conflict check
+                for booking_data in day_bookings:
+                    if slot_time < booking_data['end'] and slot_end > booking_data['start']:
+                        is_available = False
+                        conflict = booking_data['booking']
+                        client = db.get_client(conflict['client_id'], company_id=company_id)
+                        booking_info = {
+                            'client_name': client['name'] if client else 'Unknown',
+                            'service_type': conflict['service_type'],
+                            'time': str(conflict['appointment_time']),
+                            'duration_minutes': booking_data['duration']
+                        }
+                        break
             else:
                 for booking_data in day_bookings:
                     if slot_time < booking_data['end'] and slot_end > booking_data['start']:
@@ -7496,7 +7563,7 @@ def check_monthly_availability_api():
         def _filter_bookings(filter_worker_id=None):
             result = []
             for b in all_bookings:
-                if b.get('status') in ['cancelled']:
+                if b.get('status') in ['cancelled', 'completed']:
                     continue
                 if filter_worker_id:
                     assigned_ids = b.get('assigned_worker_ids') or []
@@ -7521,6 +7588,20 @@ def check_monthly_availability_api():
             day_end_dt = day_start + timedelta(days=1)
             bh_end_dt = day_start.replace(hour=bh_end, minute=0, second=0)
             booked = 0
+
+            # For today, count past time slots as "booked" so the calendar
+            # accurately reflects only the remaining available slots.
+            now = datetime.now()
+            is_today_day = (day_date == now.date())
+            past_slots_count = 0
+            if is_today_day and slot_duration < 1440:
+                bh_start_dt = day_start.replace(hour=bh_start, minute=0, second=0)
+                past_end = min(now, bh_end_dt)
+                if past_end > bh_start_dt:
+                    past_mins = (past_end - bh_start_dt).total_seconds() / 60
+                    past_slots_count = max(0, int(past_mins // 30))
+                    booked += past_slots_count
+
             for rb in bookings_list:
                 appt = rb['start']
                 dur = rb['duration']
@@ -7528,6 +7609,10 @@ def check_monthly_availability_api():
                 if appt < day_end_dt and b_end > day_start:
                     overlap_start = max(appt, day_start)
                     overlap_end = min(b_end, bh_end_dt)
+                    # For today, only count the future portion of bookings
+                    # to avoid double-counting with past slots
+                    if is_today_day and past_slots_count > 0:
+                        overlap_start = max(overlap_start, now)
                     if overlap_end > overlap_start:
                         overlap_mins = (overlap_end - overlap_start).total_seconds() / 60
                         if slot_duration >= 1440:
@@ -8349,6 +8434,7 @@ def _build_invoice_config(db, company_id):
     # Check payment methods configured
     has_stripe = bool(company.get('stripe_connect_account_id')) if company else False
     stripe_charges_enabled = False
+    stripe_check_failed = False
     if has_stripe:
         try:
             import stripe
@@ -8357,19 +8443,26 @@ def _build_invoice_config(db, company_id):
                 stripe.api_key = stripe_key
                 acct = stripe.Account.retrieve(company['stripe_connect_account_id'])
                 stripe_charges_enabled = acct.get('charges_enabled', False)
+            else:
+                # No key to verify — assume configured since account ID exists
+                stripe_check_failed = True
         except Exception:
-            pass
+            # API call failed — don't penalise the user; assume configured
+            stripe_check_failed = True
 
     has_bank = bool(company.get('bank_iban')) if company else False
     has_revolut = bool(company.get('revolut_phone')) if company else False
-    has_any_payment = (has_stripe and stripe_charges_enabled) or has_bank or has_revolut
+    # Stripe counts as a payment method if the account exists (even if we
+    # couldn't verify charges_enabled due to API failure)
+    stripe_is_payment = has_stripe and (stripe_charges_enabled or stripe_check_failed)
+    has_any_payment = stripe_is_payment or has_bank or has_revolut
 
     can_send_invoice = service_configured
 
     warnings = []
     if not service_configured:
         warnings.append("Neither email nor SMS is configured. Set up email (RESEND_API_KEY) or Twilio for SMS.")
-    if has_stripe and not stripe_charges_enabled:
+    if has_stripe and not stripe_charges_enabled and not stripe_check_failed:
         warnings.append("Stripe Connect setup is incomplete. Complete your Stripe account to accept online payments. Invoices will be sent without a payment link.")
     elif not has_stripe:
         warnings.append("Stripe Connect not set up. Invoices will be sent without an online payment link. Set up Stripe in Settings > Payments.")
@@ -8383,11 +8476,11 @@ def _build_invoice_config(db, company_id):
         "email_configured": email_configured,
         "sms_configured": sms_configured,
         "can_send_invoice": can_send_invoice,
-        "has_stripe_connect": has_stripe and stripe_charges_enabled,
-        "stripe_setup_incomplete": has_stripe and not stripe_charges_enabled,
+        "has_stripe_connect": stripe_is_payment,
+        "stripe_setup_incomplete": has_stripe and not stripe_charges_enabled and not stripe_check_failed,
         "payment_methods": {
-            "stripe": has_stripe and stripe_charges_enabled,
-            "stripe_incomplete": has_stripe and not stripe_charges_enabled,
+            "stripe": stripe_is_payment,
+            "stripe_incomplete": has_stripe and not stripe_charges_enabled and not stripe_check_failed,
             "bank_transfer": has_bank,
             "revolut": has_revolut,
             "any_configured": has_any_payment
