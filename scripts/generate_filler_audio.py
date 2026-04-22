@@ -33,9 +33,17 @@ from src.services.prerecorded_audio import (
 
 
 async def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate pre-recorded filler audio files using ElevenLabs TTS")
+    parser.add_argument("--new-only", action="store_true",
+                        help="Only generate phrases that don't already exist in R2 (skip existing)")
+    args = parser.parse_args()
+
     print("🎙️  Generating pre-recorded filler audio files...")
     print(f"   ElevenLabs Voice ID: {config.ELEVENLABS_VOICE_ID or 'NOT SET'}")
     print(f"   R2 Public URL: {os.getenv('R2_PUBLIC_URL') or 'NOT SET'}")
+    if args.new_only:
+        print(f"   Mode: NEW ONLY (skipping existing phrases)")
     print()
     
     # Check required config
@@ -64,8 +72,23 @@ async def main():
         return
     
     success_count = 0
+    skipped_count = 0
     
     for phrase_id, text in FILLER_PHRASES.items():
+        # In --new-only mode, check if this phrase already exists in R2
+        if args.new_only:
+            try:
+                import httpx
+                url = f"{os.getenv('R2_PUBLIC_URL').rstrip('/')}/audio/fillers/{phrase_id}.raw"
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.head(url)
+                    if resp.status_code == 200:
+                        print(f"⏭️  Skipping (exists): '{text}'")
+                        skipped_count += 1
+                        continue
+            except Exception:
+                pass  # If check fails, generate anyway
+        
         print(f"📝 Generating: '{text}'")
         
         try:
@@ -93,13 +116,19 @@ async def main():
         print()
     
     print(f"{'='*60}")
-    if success_count == len(FILLER_PHRASES):
-        print(f"✅ Success! Generated all {success_count} filler phrases")
+    total = len(FILLER_PHRASES)
+    if args.new_only and skipped_count > 0:
+        print(f"⏭️  Skipped {skipped_count} existing phrases")
+    if success_count == total - skipped_count:
+        print(f"✅ Success! Generated {success_count} new filler phrases ({total} total in library)")
     elif success_count > 0:
-        print(f"⚠️ Partial success: Generated {success_count}/{len(FILLER_PHRASES)} filler phrases")
+        print(f"⚠️ Partial success: Generated {success_count}/{total - skipped_count} new filler phrases")
     else:
-        print(f"❌ Failed to generate any filler phrases")
-        return
+        if skipped_count == total:
+            print(f"✅ All {total} phrases already exist in R2 — nothing to generate")
+        else:
+            print(f"❌ Failed to generate any filler phrases")
+            return
     
     print()
     print("The server will automatically load these from R2 at startup.")

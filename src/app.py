@@ -4706,11 +4706,38 @@ def stripe_connect_webhook():
                         db.update_booking(booking_id, company_id=booking.get('company_id'),
                                           payment_status='paid', status='completed',
                                           payment_method='stripe')
+                        # Clear the checkout URL so /pay/:id shows "Already Paid"
+                        try:
+                            conn_pi = db.get_connection()
+                            cur_pi = conn_pi.cursor()
+                            cur_pi.execute("UPDATE bookings SET stripe_checkout_url = NULL WHERE id = %s", (booking_id,))
+                            conn_pi.commit()
+                            cur_pi.close()
+                            db.return_connection(conn_pi)
+                        except Exception:
+                            pass
                         print(f"[SUCCESS] Booking {booking_id} marked as paid via payment intent")
                     else:
                         print(f"[WARNING] Booking {booking_id} not found for payment intent")
                 except Exception as e:
                     print(f"[WARNING] Error updating booking {booking_id}: {e}")
+            else:
+                print(f"[WEBHOOK] payment_intent.succeeded received but no booking_id in metadata")
+
+        # Handle charge.succeeded as another fallback
+        elif event_type == 'charge.succeeded':
+            booking_id = data.get('metadata', {}).get('booking_id')
+            if booking_id:
+                try:
+                    booking_id = int(booking_id)
+                    booking = db.get_booking(booking_id)
+                    if booking and booking.get('payment_status') != 'paid':
+                        db.update_booking(booking_id, company_id=booking.get('company_id'),
+                                          payment_status='paid', status='completed',
+                                          payment_method='stripe')
+                        print(f"[SUCCESS] Booking {booking_id} marked as paid via charge.succeeded")
+                except Exception as e:
+                    print(f"[WARNING] Error updating booking from charge.succeeded: {e}")
     
     except Exception as e:
         print(f"[ERROR] Error processing Connect webhook {event_type}: {e}")
@@ -4847,7 +4874,14 @@ def short_payment_redirect(booking_id):
             
             platform_fee_cents = int(os.getenv('STRIPE_PLATFORM_FEE_CENTS', '200'))
             if platform_fee_cents > 0:
-                checkout_params['payment_intent_data'] = { 'application_fee_amount': platform_fee_cents }
+                checkout_params['payment_intent_data'] = {
+                    'application_fee_amount': platform_fee_cents,
+                    'metadata': { 'booking_id': str(booking_id), 'company_id': str(company_id) },
+                }
+            else:
+                checkout_params['payment_intent_data'] = {
+                    'metadata': { 'booking_id': str(booking_id), 'company_id': str(company_id) },
+                }
             
             checkout_session = stripe.checkout.Session.create(**checkout_params, stripe_account=connected_account_id)
             
@@ -8519,7 +8553,7 @@ def get_leads():
         conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
-        db.release_connection(conn)
+        db.return_connection(conn)
 
 
 @app.route("/api/leads", methods=["POST"])
@@ -8563,7 +8597,7 @@ def create_lead():
         conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
-        db.release_connection(conn)
+        db.return_connection(conn)
 
 
 @app.route("/api/leads/<int:lead_id>", methods=["PUT"])
@@ -8615,7 +8649,7 @@ def update_lead(lead_id):
         conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
-        db.release_connection(conn)
+        db.return_connection(conn)
 
 
 @app.route("/api/leads/<int:lead_id>", methods=["DELETE"])
@@ -8639,7 +8673,7 @@ def delete_lead(lead_id):
             return jsonify({"error": "Lead not found"}), 404
         return jsonify({"error": str(e)}), 500
     finally:
-        db.release_connection(conn)
+        db.return_connection(conn)
 
 
 @app.route("/api/leads/<int:lead_id>/convert", methods=["POST"])
@@ -8679,7 +8713,7 @@ def convert_lead_to_client(lead_id):
         conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
-        db.release_connection(conn)
+        db.return_connection(conn)
 
 
 @app.route("/api/clients/<int:client_id>/tags", methods=["PUT"])
@@ -8712,7 +8746,7 @@ def update_client_tags(client_id):
             return jsonify({"message": "Tags feature not yet migrated"}), 200
         return jsonify({"error": str(e)}), 500
     finally:
-        db.release_connection(conn)
+        db.return_connection(conn)
 
 
 @app.route("/api/crm/stats", methods=["GET"])
@@ -8755,7 +8789,7 @@ def get_crm_stats():
                 if ch.get(key) and hasattr(ch[key], 'isoformat'):
                     ch[key] = ch[key].isoformat()
     finally:
-        db.release_connection(conn)
+        db.return_connection(conn)
 
     # Fetch lead counts separately so a missing leads table doesn't break everything
     lead_counts = {'new': 0, 'contacted': 0, 'quoted': 0, 'won': 0, 'lost': 0}
@@ -8771,7 +8805,7 @@ def get_crm_stats():
     except Exception:
         pass  # leads table may not exist yet — that's fine
     finally:
-        db.release_connection(conn2)
+        db.return_connection(conn2)
 
     return jsonify({
         "client_stats": client_stats,
@@ -8977,6 +9011,17 @@ def send_invoice_api(booking_id):
                 if platform_fee_cents > 0:
                     checkout_params['payment_intent_data'] = {
                         'application_fee_amount': platform_fee_cents,
+                        'metadata': {
+                            'booking_id': str(booking_id),
+                            'company_id': str(company_id),
+                        },
+                    }
+                else:
+                    checkout_params['payment_intent_data'] = {
+                        'metadata': {
+                            'booking_id': str(booking_id),
+                            'company_id': str(company_id),
+                        },
                     }
                 
                 checkout_session = stripe.checkout.Session.create(

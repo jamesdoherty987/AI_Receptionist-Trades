@@ -40,7 +40,6 @@ FILLER_PHRASES = {
     "grand_one_moment": "Grand, one moment.",  # Irish-style acknowledgment for name confirmation
     "sure_one_sec": "Sure, one second.",
     "okay_let_me_see": "Okay, let me see.",
-    "right_one_moment": "Right, one moment.",
     "give_me_a_sec": "Give me a second.",
     "let_me_pull_that_up": "Let me pull that up.",
     # Name/spelling confirmation fillers
@@ -107,12 +106,56 @@ FILLER_PHRASES = {
     "ask_phone_confirm": "Is that a good number to reach you on?",
     "ask_what_day_booking": "What day is your booking for?",
     "anything_else": "Is there anything else I can help with?",
+    # === Direct response phrases (bypass ElevenLabs for tool result responses) ===
+    # Cancel responses
+    "cancelled_anything_else": "That's cancelled for you. Is there anything else I can help with?",
+    "couldnt_find_booking_what_day": "I couldn't find that booking. What day was it for?",
+    # Reschedule responses
+    "rescheduled_anything_else": "Your booking has been rescheduled. Anything else?",
+    "what_day_move_to": "What day would you like to move it to?",
+    # Modify responses
+    "updated_anything_else": "I've updated that for you. Anything else?",
+    "what_change_appointment": "What would you like to change about the appointment?",
+    "couldnt_find_appointment": "I couldn't find that appointment. What date and time was it for?",
+    # Transfer responses
+    "transferring_please_hold": "Transferring you now, please hold.",
+    "unable_to_transfer": "I'm sorry, I'm unable to transfer you right now. Is there anything else I can help you with?",
+    # Match issue responses
+    "no_service_match": "I'm not sure I have a service that matches. Could you describe the issue in a bit more detail?",
+    "general_callout_fallback": "No problem, I'll book you in for a general callout and we can take a look. Can I get your name please?",
+    "investigation_question": "Do you know what's causing the issue, or would you like us to investigate it first?",
+    "more_detail_service": "Can you tell me a bit more about the issue so I can match you with the right service?",
+    "investigation_cause_question": "Do you know what's causing the issue, or do you think it will need investigation first?",
+    # Generic tool fallbacks
+    "done_what_else": "I've done that for you. What else can I help with?",
+    "couldnt_complete_retry": "I couldn't complete that. Could you try again?",
+    # Safety / error fallback responses
+    "sorry_say_again": "Sorry, could you say that again?",
+    "technical_difficulties": "I apologize, I'm having technical difficulties. Please try again.",
+    "trouble_processing": "I apologize, I'm having trouble processing your request.",
+    "how_can_help": "How can I help you with that?",
+    "what_day_works_best": "What day works best for you?",
+    "let_me_check_available": "Let me check what we have available for you.",
+    "how_can_help_today": "How can I help you today?",
+    # Availability tail phrases (appended after dynamic natural_summary)
+    "which_time_works_best": "Which time works best for you?",
+    "which_day_works_best": "Which day works best for you?",
+    "which_day_and_time": "Which day and time works for you?",
+    "which_works_best": "Which works best for you?",
+    "does_that_day_work": "Does that day work for you?",
+    "which_day_suits": "Which day suits you?",
+    "which_works_for_you": "Which works for you?",
+    "does_that_day_work_short": "Does that day work?",
+    # Availability error responses (some duplicate old entries kept for backward compat)
+    "worker_no_avail_speak": "The assigned worker has no availability then. Would you like to speak with someone?",
+    # Pre-check safety phrases
+    "let_me_check_schedule": "Let me just check the schedule.",
 }
 
 # Context-specific filler groups
 BOOKING_FILLERS = ["let_me_book", "let_me_confirm", "booking_that_now", "grand_let_me_book"]
 GENERIC_FILLERS = ["one_moment", "let_me_check", "bear_with_me", "just_a_moment", "let_me_look", 
-                   "sure_one_sec", "okay_let_me_see", "right_one_moment", "give_me_a_sec", "let_me_pull_that_up"]
+                   "sure_one_sec", "okay_let_me_see", "give_me_a_sec", "let_me_pull_that_up"]
 NAME_CONFIRMATION_FILLERS = ["got_it_checking", "perfect_one_moment", "grand_let_me_check", "grand_one_moment", "let_me_look_you_up"]
 NUMBER_CONFIRMATION_FILLERS = ["thanks_checking", "okay_checking", "one_moment", "let_me_check"]
 SHORT_ACKNOWLEDGMENT_FILLERS = ["grand", "perfect", "great", "got_it", "okay", "right", "sure", "no_problem", "absolutely", "of_course"]
@@ -121,6 +164,22 @@ TRANSFER_FILLERS = ["transferring", "connecting", "let_me_connect"]
 # Prerecorded questions — used by direct response path to skip TTS
 QUESTION_PHRASES = ["ask_name", "ask_email", "ask_eircode", "ask_address", "ask_phone_confirm", 
                     "ask_what_day_booking", "anything_else"]
+
+# Direct response phrases — used by get_filler_id_from_message to match tool result responses
+DIRECT_RESPONSE_PHRASES = [
+    "cancelled_anything_else", "couldnt_find_booking_what_day",
+    "rescheduled_anything_else", "what_day_move_to", "updated_anything_else",
+    "what_change_appointment", "couldnt_find_appointment", "transferring_please_hold",
+    "unable_to_transfer", "no_service_match", "general_callout_fallback",
+    "investigation_question", "more_detail_service", "investigation_cause_question",
+    "done_what_else", "couldnt_complete_retry",
+    "sorry_say_again", "technical_difficulties", "trouble_processing",
+    "how_can_help", "what_day_works_best", "let_me_check_available",
+    "how_can_help_today", "which_time_works_best", "which_day_works_best",
+    "which_day_and_time", "which_works_best", "does_that_day_work",
+    "which_day_suits", "which_works_for_you", "does_that_day_work_short",
+    "worker_no_avail_speak", "let_me_check_schedule",
+]
 
 # R2 folder for filler audio
 R2_FILLER_FOLDER = "audio/fillers"
