@@ -253,7 +253,7 @@ class TestPromptInstructions:
         The prompt should have instructions for handling full-day jobs.
         """
         # Read the prompt file
-        with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+        with open('prompts/trades_prompt.txt', 'r') as f:
             prompt = f.read()
         
         # Check for full-day job instructions
@@ -263,7 +263,7 @@ class TestPromptInstructions:
         """
         The prompt should use trades-friendly language.
         """
-        with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+        with open('prompts/trades_prompt.txt', 'r') as f:
             prompt = f.read()
         
         # Check for trades language instructions (uses ❌ symbol or text)

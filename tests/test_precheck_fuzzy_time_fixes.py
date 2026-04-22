@@ -239,7 +239,7 @@ class TestTimeFilterBeforeAfter:
 
     def test_system_prompt_mentions_before(self):
         """System prompt should guide LLM to use search_availability for time prefs."""
-        with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+        with open('prompts/trades_prompt.txt', 'r') as f:
             content = f.read()
         assert "before 2pm" in content.lower() or "before" in content.lower()
         assert "search_availability" in content

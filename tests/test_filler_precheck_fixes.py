@@ -114,7 +114,7 @@ class TestBookingFlowOrder:
         The prompt should instruct to call lookup_customer BEFORE asking for eircode.
         This is because returning customers already have their address on file.
         """
-        with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+        with open('prompts/trades_prompt.txt', 'r') as f:
             prompt = f.read()
         
         # Find the booking flow section
@@ -136,7 +136,7 @@ class TestBookingFlowOrder:
         """
         The prompt should have instructions for returning customers to skip eircode.
         """
-        with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+        with open('prompts/trades_prompt.txt', 'r') as f:
             prompt = f.read()
         
         # Should mention returning customers
@@ -209,7 +209,7 @@ class TestIntegration:
         3. Ask for eircode (WRONG - should lookup first!)
         4. Call lookup_customer
         """
-        with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+        with open('prompts/trades_prompt.txt', 'r') as f:
             prompt = f.read()
         
         # Extract the booking flow steps

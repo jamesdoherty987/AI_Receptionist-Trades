@@ -17,7 +17,7 @@ class TestBookingFlowEircodeConfirmation:
     
     def test_prompt_has_eircode_confirmation_step(self):
         """Verify the prompt includes explicit eircode confirmation step"""
-        with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+        with open('prompts/trades_prompt.txt', 'r') as f:
             prompt = f.read()
         
         # Check for eircode confirmation instructions
@@ -26,7 +26,7 @@ class TestBookingFlowEircodeConfirmation:
         
     def test_prompt_has_final_confirmation_with_address(self):
         """Verify the prompt requires final confirmation with all details including address"""
-        with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+        with open('prompts/trades_prompt.txt', 'r') as f:
             prompt = f.read()
         
         # Check for final confirmation with address
@@ -35,7 +35,7 @@ class TestBookingFlowEircodeConfirmation:
         
     def test_prompt_booking_flow_order(self):
         """Verify the booking flow has phone before eircode/address for new customers"""
-        with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+        with open('prompts/trades_prompt.txt', 'r') as f:
             prompt = f.read()
         
         # In step 7b, phone comes before eircode/address
@@ -48,7 +48,7 @@ class TestBookingFlowEircodeConfirmation:
         
     def test_new_customer_eircode_example(self):
         """Verify the prompt has an example of spelling back eircode"""
-        with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+        with open('prompts/trades_prompt.txt', 'r') as f:
             prompt = f.read()
         
         # Check for eircode example in the SPELLING OUT section
@@ -169,7 +169,7 @@ class TestConversationFlowSimulation:
         ]
         
         # Read prompt to verify flow is documented
-        with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+        with open('prompts/trades_prompt.txt', 'r') as f:
             prompt = f.read()
         
         # Verify key steps are in the prompt

@@ -329,7 +329,7 @@ def load_system_prompt(company_id=None):
         print(f"[PROMPT_DEBUG] ⚡ USING MINIMAL PROMPT (USE_MINIMAL_PROMPT=true)")
         prompt_file = 'receptionist_prompt_minimal.txt'
     else:
-        prompt_file = 'receptionist_prompt_fast.txt'
+        prompt_file = 'trades_prompt.txt'
     
     # Use fast/condensed prompt for better performance
     prompt_path = os.path.join(

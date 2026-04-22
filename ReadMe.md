@@ -181,7 +181,7 @@ This serves the Flask API, Twilio webhooks, Stripe webhooks, and the Twilio Medi
 │       ├── audio_utils.py           # Audio processing
 │       └── ai_logger.py            # AI interaction logging
 ├── prompts/
-│   └── receptionist_prompt_fast.txt # Main AI system prompt
+│   └── trades_prompt.txt             # Main AI system prompt
 ├── db_scripts/                      # Database migrations and utilities
 ├── scripts/                         # Dev utilities (demo call, filler audio, migration)
 ├── tests/                           # 50+ pytest test files

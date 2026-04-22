@@ -334,7 +334,7 @@ class TestReturningCustomerFlow:
 
     def test_prompt_still_confirms_stored_address(self):
         """Returning customers should still hear their stored address for confirmation."""
-        with open("prompts/receptionist_prompt_fast.txt", "r") as f:
+        with open("prompts/trades_prompt.txt", "r") as f:
             prompt = f.read()
 
         # Step 7a should still confirm stored address
@@ -367,7 +367,7 @@ class TestPromptAddressChanges:
     """Verify the prompt no longer asks AI to repeat addresses."""
 
     def test_prompt_does_not_repeat_address(self):
-        with open("prompts/receptionist_prompt_fast.txt", "r") as f:
+        with open("prompts/trades_prompt.txt", "r") as f:
             prompt = f.read()
 
         assert "repeat back what you heard" not in prompt.lower()
@@ -376,20 +376,20 @@ class TestPromptAddressChanges:
 
     def test_prompt_has_natural_acknowledgment(self):
         """AI should say something natural like 'Grand, got that' after hearing address."""
-        with open("prompts/receptionist_prompt_fast.txt", "r") as f:
+        with open("prompts/trades_prompt.txt", "r") as f:
             prompt = f.read()
 
         assert "Grand, got that" in prompt
         assert "acknowledge naturally" in prompt
 
     def test_prompt_still_spells_eircode(self):
-        with open("prompts/receptionist_prompt_fast.txt", "r") as f:
+        with open("prompts/trades_prompt.txt", "r") as f:
             prompt = f.read()
 
         assert "spell out eircode character by character" in prompt.lower()
 
     def test_final_confirm_excludes_address(self):
-        with open("prompts/receptionist_prompt_fast.txt", "r") as f:
+        with open("prompts/trades_prompt.txt", "r") as f:
             prompt = f.read()
 
         assert "NOT the address" in prompt
@@ -397,7 +397,7 @@ class TestPromptAddressChanges:
 
     def test_confirm_rule_has_address_exception(self):
         """The 'ALWAYS confirm details' rule should note the address exception."""
-        with open("prompts/receptionist_prompt_fast.txt", "r") as f:
+        with open("prompts/trades_prompt.txt", "r") as f:
             prompt = f.read()
 
         assert "EXCEPT for addresses" in prompt

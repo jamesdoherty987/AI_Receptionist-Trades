@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(
 
 def load_system_prompt():
     """Load the system prompt with test business info"""
-    with open('prompts/receptionist_prompt_fast.txt', 'r') as f:
+    with open('prompts/trades_prompt.txt', 'r') as f:
         prompt = f.read()
     
     # Replace placeholders with test values
