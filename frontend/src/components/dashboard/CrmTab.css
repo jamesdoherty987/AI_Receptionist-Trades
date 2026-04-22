@@ -4,7 +4,10 @@
 .crm-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .crm-header-left { display: flex; align-items: center; gap: 1rem; }
 .crm-header-left h2 { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin: 0; }
-.crm-header-right { display: flex; align-items: center; gap: 0.75rem; }
+.crm-header-right { display: flex; align-items: center; gap: 0.75rem; flex: 1; }
+.crm-header-right .dash-search { max-width: 500px; flex: 1; padding: 0.45rem 0.75rem; }
+.crm-header-right .dash-search input { font-size: 0.88rem; }
+.crm-header-right .dash-search i.fa-search { font-size: 0.8rem; }
 
 .crm-view-switcher { display: flex; gap: 2px; background: #f1f5f9; border-radius: 8px; padding: 2px; }
 .crm-view-btn {

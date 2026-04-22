@@ -69,8 +69,8 @@ function Account() {
   const handleAvatarChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      setSaveMessage('Image too large. Please use an image under 2MB.');
+    if (file.size > 5 * 1024 * 1024) {
+      setSaveMessage('Image too large. Please use an image under 5MB.');
       setTimeout(() => setSaveMessage(''), 5000);
       return;
     }

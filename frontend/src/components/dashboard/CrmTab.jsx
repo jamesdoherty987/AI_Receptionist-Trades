@@ -530,14 +530,6 @@ function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFi
 
   return (
     <>
-      {/* Customer Stats - compact strip */}
-      <div className="crm-mini-stats">
-        <span className="crm-mini-stat"><i className="fas fa-users" style={{ color: '#3b82f6' }}></i> {clientStats.total_clients || 0} customers</span>
-        <span className="crm-mini-stat"><i className="fas fa-user-plus" style={{ color: '#10b981' }}></i> {clientStats.new_this_month || 0} new this month</span>
-        <span className="crm-mini-stat"><i className="fas fa-crown" style={{ color: '#f59e0b' }}></i> {segmentCounts.vip} VIP</span>
-        <span className="crm-mini-stat"><i className="fas fa-moon" style={{ color: '#94a3b8' }}></i> {segmentCounts.dormant} dormant</span>
-      </div>
-
       {/* Segment Filter + Sort */}
       <div className="crm-customer-toolbar">
         <div className="crm-segment-filters">

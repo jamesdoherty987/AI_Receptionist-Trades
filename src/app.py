@@ -8023,6 +8023,46 @@ def booking_detail_api(booking_id):
             except Exception as e:
                 print(f"[RECURRING] Error in main update: {e}")
 
+        # Send review email when job is marked as completed
+        if success and sanitized_data.get('status') == 'completed':
+            try:
+                company = db.get_company(company_id)
+                send_reviews_enabled = company.get('send_review_emails', True) if company else True
+                if send_reviews_enabled:
+                    updated_b = db.get_booking(booking_id, company_id=company_id)
+                    client_id_r = updated_b.get('client_id') if updated_b else None
+                    client_r = db.get_client(client_id_r, company_id=company_id) if client_id_r else None
+                    customer_email_r = (updated_b or {}).get('email') or (client_r.get('email') if client_r else None)
+                    if customer_email_r:
+                        existing_review = db.get_booking_review(booking_id, company_id=company_id)
+                        if not existing_review:
+                            import secrets
+                            review_token = secrets.token_urlsafe(32)
+                            customer_name_r = (client_r.get('name') if client_r else None) or 'Customer'
+                            service_type_r = (updated_b or {}).get('service_type', 'Service')
+                            review_record = db.create_job_review(
+                                booking_id=booking_id, company_id=company_id,
+                                client_id=client_id_r, review_token=review_token,
+                                customer_name=customer_name_r, service_type=service_type_r
+                            )
+                            if review_record:
+                                from src.utils.config import config
+                                public_url = getattr(config, 'PUBLIC_URL', 'https://bookedforyou.ie')
+                                review_url = f"{public_url}/review/{review_token}"
+                                from src.services.email_reminder import get_email_service
+                                email_svc = get_email_service()
+                                sent = email_svc.send_satisfaction_survey(
+                                    to_email=customer_email_r, customer_name=customer_name_r,
+                                    service_type=service_type_r, review_url=review_url,
+                                    company_name=company.get('company_name', '') if company else '',
+                                    appointment_time=(updated_b or {}).get('appointment_time')
+                                )
+                                if sent:
+                                    db.mark_review_email_sent(review_record['id'])
+                                    safe_print(f"[REVIEW] Review email sent to {customer_email_r} for booking {booking_id}")
+            except Exception as e:
+                safe_print(f"[REVIEW] Review email failed (non-critical): {e}")
+
         # Update notes if provided
         if notes is not None:
             # Clear existing notes and add the new note
