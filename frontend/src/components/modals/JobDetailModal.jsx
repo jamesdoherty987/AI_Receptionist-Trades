@@ -39,7 +39,6 @@ import { formatDateTime, getStatusBadgeClass, formatCurrency, formatPhone, getPr
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
 import HelpTooltip from '../HelpTooltip';
 import CreateQuoteFromJobModal from './CreateQuoteFromJobModal';
-import DocumentPreview from '../accounting/DocumentPreview';
 import './JobDetailModal.css';
 
 function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
@@ -68,7 +67,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTask, setNewTask] = useState({ title: '', description: '', estimated_cost: '' });
   const [showCreateQuote, setShowCreateQuote] = useState(false);
-  const [previewQuote, setPreviewQuote] = useState(null);
   const [editingQuoteId, setEditingQuoteId] = useState(null);
   const [editQuoteData, setEditQuoteData] = useState({ lineItems: [], notes: '' });
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -1170,9 +1168,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                         </div>
                         <span className="jdm-lq-total">{formatCurrency(q.total)}</span>
                         <div className="jdm-lq-actions">
-                          <button className="quote-action-btn quote-action-preview" onClick={() => setPreviewQuote(q)} title="Preview">
-                            <i className="fas fa-eye"></i>
-                          </button>
                           {q.status !== 'converted' && (
                             <button className="quote-action-btn quote-action-edit" title="Edit quote"
                               onClick={() => { setEditingQuoteId(q.id); setEditQuoteData({ lineItems: lineItems.length > 0 ? lineItems : [{ description: q.title, quantity: 1, amount: q.total }], notes: q.notes || '' }); }}>
@@ -1507,22 +1502,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
         onClose={() => setShowCreateQuote(false)}
         job={job}
       />
-      {previewQuote && (
-        <DocumentPreview
-          type="quote"
-          docNumber={previewQuote.quote_number}
-          date={previewQuote.created_at}
-          customer={{ name: previewQuote.client_name, phone: previewQuote.client_phone, email: previewQuote.client_email }}
-          lineItems={(typeof previewQuote.line_items === 'string' ? JSON.parse(previewQuote.line_items) : previewQuote.line_items) || []}
-          subtotal={previewQuote.subtotal}
-          taxRate={previewQuote.tax_rate}
-          taxAmount={previewQuote.tax_amount}
-          total={previewQuote.total}
-          notes={previewQuote.notes}
-          status={previewQuote.status}
-          onClose={() => setPreviewQuote(null)}
-        />
-      )}
       {/* Reject Job Modal */}
       {showRejectModal && (
         <div className="reject-modal-overlay" onClick={() => setShowRejectModal(false)}>
