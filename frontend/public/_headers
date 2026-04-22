@@ -6,6 +6,12 @@
   X-XSS-Protection: 1; mode=block
   Content-Security-Policy: frame-ancestors 'none'
 
+/index.html
+  Cache-Control: no-cache, must-revalidate
+
+/
+  Cache-Control: no-cache, must-revalidate
+
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
   Service-Worker-Allowed: /

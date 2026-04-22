@@ -1,6 +1,6 @@
 // BookedForYou Service Worker v1.1.0
-const CACHE_NAME = 'bfy-cache-v1.2';
-const RUNTIME_CACHE = 'bfy-runtime-v1.2';
+const CACHE_NAME = 'bfy-cache-v1.3';
+const RUNTIME_CACHE = 'bfy-runtime-v1.3';
 
 // Only pre-cache actual static files (not SPA routes)
 const PRECACHE_URLS = [
@@ -75,6 +75,18 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.match(request).then((cached) => {
         const fetchPromise = fetch(request).then((response) => {
+          // If the server returned HTML for a JS/CSS request, the asset is gone
+          // (stale build). Don't cache it — let the page reload pick up new assets.
+          const contentType = response.headers.get('content-type') || '';
+          const isWrongType = (url.pathname.endsWith('.js') || url.pathname.endsWith('.css'))
+            && contentType.includes('text/html');
+          if (isWrongType) {
+            // Trigger a reload on the client so it picks up the new index.html
+            self.clients.matchAll({ type: 'window' }).then((clients) => {
+              clients.forEach((client) => client.navigate(client.url));
+            });
+            return response;
+          }
           if (response.ok) {
             const clone = response.clone();
             caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, clone));
