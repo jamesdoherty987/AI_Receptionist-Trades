@@ -632,7 +632,7 @@ function CalendarTab() {
                             </span>
                             {event.assigned_worker_ids.map(id => getWorkerName(id)).join(', ')}
                           </div>
-                        ) : !['completed', 'paid', 'cancelled', 'rejected'].includes(event.status) && (
+                        ) : !['completed', 'cancelled', 'rejected'].includes(event.status) && (
                           <div className="event-no-worker-warning">
                             <i className="fas fa-exclamation-triangle"></i> No worker assigned
                           </div>
@@ -807,7 +807,7 @@ function CalendarTab() {
                           {height > 40 && (
                             <div className="week-event-service">{event.service_type || event.service}</div>
                           )}
-                          {(!event.assigned_worker_ids || event.assigned_worker_ids.length === 0) && !['completed', 'paid', 'cancelled', 'rejected'].includes(event.status) && (
+                          {(!event.assigned_worker_ids || event.assigned_worker_ids.length === 0) && !['completed', 'cancelled', 'rejected'].includes(event.status) && (
                             <div className="week-event-no-worker" title="No worker assigned">
                               <i className="fas fa-exclamation-triangle"></i>
                             </div>

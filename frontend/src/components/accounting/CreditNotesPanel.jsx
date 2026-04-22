@@ -41,7 +41,7 @@ function CreditNotesPanel() {
     if (!formData.client_id) return [];
     return (Array.isArray(bookings) ? bookings : []).filter(b =>
       String(b.client_id) === String(formData.client_id) &&
-      (b.status === 'completed' || b.status === 'paid' || b.payment_status === 'paid')
+      (b.status === 'completed' || b.payment_status === 'paid')
     ).sort((a, b) => new Date(b.appointment_time || 0) - new Date(a.appointment_time || 0));
   }, [bookings, formData.client_id]);
 

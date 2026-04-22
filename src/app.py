@@ -2287,23 +2287,18 @@ def worker_update_job_status(job_id):
     data = request.json
     new_status = data.get('status', '').strip()
 
-    allowed_statuses = ['pending', 'confirmed', 'scheduled', 'in-progress', 'completed', 'paid', 'cancelled']
+    allowed_statuses = ['pending', 'confirmed', 'scheduled', 'in-progress', 'completed', 'cancelled']
     if new_status not in allowed_statuses:
         return jsonify({"error": f"Invalid status. Allowed: {', '.join(allowed_statuses)}"}), 400
 
     # Build update kwargs
     update_kwargs = {'status': new_status}
 
-    # When worker marks as paid, also set payment fields
-    if new_status == 'paid':
-        update_kwargs['payment_status'] = 'paid'
-        update_kwargs['payment_method'] = 'manual'
-
     # Custom status label (e.g. "Waiting for Parts", "Customer No-Show")
     status_label = data.get('status_label', '').strip()
     if status_label:
         update_kwargs['status_label'] = status_label
-    elif new_status in ('completed', 'cancelled', 'paid'):
+    elif new_status in ('completed', 'cancelled'):
         # Clear label when job reaches a terminal status
         update_kwargs['status_label'] = None
 
@@ -2442,7 +2437,7 @@ def worker_bulk_complete_jobs():
     week_start = today_start - timedelta(days=today_start.weekday())  # Monday
 
     completed_ids = []
-    skipped_statuses = {'completed', 'cancelled', 'paid'}
+    skipped_statuses = {'completed', 'cancelled'}
 
     for job in worker_jobs:
         if job['status'] in skipped_statuses:
@@ -4638,6 +4633,28 @@ def stripe_connect_webhook():
     
     db = get_database()
     
+    def _auto_win_linked_quotes(booking_id, company_id):
+        """When a booking is paid, move any linked quotes to 'won' in the pipeline"""
+        try:
+            conn_q = db.get_connection()
+            cur_q = conn_q.cursor()
+            cur_q.execute("""
+                UPDATE quotes SET pipeline_stage = 'won', status = 'converted',
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE company_id = %s 
+                    AND (source_booking_id = %s OR converted_booking_id = %s)
+                    AND status NOT IN ('converted', 'declined')
+                    AND (pipeline_stage IS NULL OR pipeline_stage NOT IN ('won', 'lost'))
+            """, (company_id, booking_id, booking_id))
+            updated = cur_q.rowcount
+            conn_q.commit()
+            cur_q.close()
+            db.return_connection(conn_q)
+            if updated > 0:
+                print(f"[WEBHOOK] Auto-moved {updated} linked quote(s) to 'won' for booking {booking_id}")
+        except Exception as e:
+            print(f"[WARNING] Could not auto-win quotes for booking {booking_id}: {e}")
+    
     try:
         # Handle account updates (onboarding completed, verification, etc.)
         if event_type == 'account.updated':
@@ -4690,6 +4707,7 @@ def stripe_connect_webhook():
                         except Exception:
                             pass
                         print(f"[SUCCESS] Booking {booking_id} marked as paid via Stripe Connect checkout")
+                        _auto_win_linked_quotes(booking_id, booking.get('company_id'))
                     else:
                         print(f"[WARNING] Booking {booking_id} not found for checkout session")
                 except Exception as e:
@@ -4717,6 +4735,7 @@ def stripe_connect_webhook():
                         except Exception:
                             pass
                         print(f"[SUCCESS] Booking {booking_id} marked as paid via payment intent")
+                        _auto_win_linked_quotes(booking_id, booking.get('company_id'))
                     else:
                         print(f"[WARNING] Booking {booking_id} not found for payment intent")
                 except Exception as e:
@@ -4736,6 +4755,7 @@ def stripe_connect_webhook():
                                           payment_status='paid',
                                           payment_method='stripe')
                         print(f"[SUCCESS] Booking {booking_id} marked as paid via charge.succeeded")
+                        _auto_win_linked_quotes(booking_id, booking.get('company_id'))
                 except Exception as e:
                     print(f"[WARNING] Error updating booking from charge.succeeded: {e}")
     
@@ -7924,6 +7944,28 @@ def booking_detail_api(booking_id):
         
         success = db.update_booking(booking_id, company_id=company_id, **sanitized_data)
         
+        # Auto-move linked quotes to 'won' when payment is marked as paid
+        if success and sanitized_data.get('payment_status') == 'paid':
+            try:
+                conn_q = db.get_connection()
+                cur_q = conn_q.cursor()
+                cur_q.execute("""
+                    UPDATE quotes SET pipeline_stage = 'won', status = 'converted',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE company_id = %s 
+                        AND (source_booking_id = %s OR converted_booking_id = %s)
+                        AND status NOT IN ('converted', 'declined')
+                        AND (pipeline_stage IS NULL OR pipeline_stage NOT IN ('won', 'lost'))
+                """, (company_id, booking_id, booking_id))
+                updated_q = cur_q.rowcount
+                conn_q.commit()
+                cur_q.close()
+                db.return_connection(conn_q)
+                if updated_q > 0:
+                    print(f"[MARK-PAID] Auto-moved {updated_q} linked quote(s) to 'won' for booking {booking_id}")
+            except Exception as e:
+                print(f"[WARNING] Could not auto-win quotes for booking {booking_id}: {e}")
+
         # Auto-create next occurrence for recurring jobs when completed
         if success and sanitized_data.get('status') == 'completed':
             try:
@@ -10938,8 +10980,8 @@ def mark_bookings_paid():
         updated = 0
         
         for booking in bookings:
-            # Skip already paid/cancelled
-            if booking.get('status') in ['completed', 'paid', 'cancelled']:
+            # Skip cancelled or already paid
+            if booking.get('status') == 'cancelled':
                 continue
             if booking.get('payment_status') == 'paid':
                 continue
@@ -10964,7 +11006,7 @@ def mark_bookings_paid():
             if appt_time <= cutoff:
                 try:
                     db.update_booking(booking['id'], company_id=company_id,
-                                      status='completed', payment_status='paid',
+                                      payment_status='paid',
                                       payment_method='manual')
                     updated += 1
                 except Exception as e:
@@ -11798,7 +11840,7 @@ def get_invoice_aging():
         }
         
         for b in bookings:
-            if b.get('status') in ['completed', 'paid', 'cancelled']:
+            if b.get('status') == 'cancelled':
                 continue
             if b.get('payment_status') == 'paid':
                 continue
@@ -12581,7 +12623,7 @@ def get_customer_statement(client_id):
         charge = float(b.get('charge', 0) or 0)
         if charge <= 0:
             continue
-        is_paid = b.get('status') in ['completed', 'paid'] or b.get('payment_status') == 'paid'
+        is_paid = b.get('payment_status') == 'paid'
         total_charged += charge
         if is_paid:
             total_paid += charge

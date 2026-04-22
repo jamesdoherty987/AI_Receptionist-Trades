@@ -455,14 +455,14 @@ function WorkerDashboard() {
 
   // Helper: is this a completed/paid job whose appointment was today?
   const isCompletedToday = (j) => {
-    if (j.status !== 'completed' && j.status !== 'paid') return false;
+    if (j.status !== 'completed') return false;
     const t = new Date(j.appointment_time);
     return t >= todayStart && t < tomorrowStart;
   };
 
   // Also treat overdue jobs completed today (appointment before today but completed_at is today)
   const isCompletedTodayOverdue = (j) => {
-    if (j.status !== 'completed' && j.status !== 'paid') return false;
+    if (j.status !== 'completed') return false;
     const t = new Date(j.appointment_time);
     if (t >= todayStart) return false; // not overdue
     // Check if it was completed today
@@ -472,8 +472,8 @@ function WorkerDashboard() {
 
   const isTodayDone = (j) => isCompletedToday(j) || isCompletedTodayOverdue(j);
 
-  const activeJobs = jobs.filter(j => (j.status !== 'completed' && j.status !== 'cancelled' && j.status !== 'paid') || isTodayDone(j));
-  const completedJobs = jobs.filter(j => (j.status === 'completed' || j.status === 'paid') && !isTodayDone(j));
+  const activeJobs = jobs.filter(j => (j.status !== 'completed' && j.status !== 'cancelled') || isTodayDone(j));
+  const completedJobs = jobs.filter(j => j.status === 'completed' && !isTodayDone(j));
 
   // In-progress jobs always on top
   const inProgressJobs = activeJobs.filter(j => j.status === 'in-progress');
@@ -685,11 +685,11 @@ function WorkerDashboard() {
                 </div>
 
                 {/* Time Tracking & Charge Card (shown after completion or when time data exists) */}
-                {(job.status === 'completed' || job.status === 'paid' || job.actual_duration_minutes || job.job_started_at) && (
+                {(job.status === 'completed' || job.actual_duration_minutes || job.job_started_at) && (
                   <div className="wjd-card wjd-time-card">
                     <div className="wjd-time-card-header">
                       <h3><i className="fas fa-stopwatch"></i> Time & Charge</h3>
-                      {!isEditingJobDetails && (job.status === 'completed' || job.status === 'paid') && (
+                      {!isEditingJobDetails && job.status === 'completed' && (
                         <button className="wjd-btn wjd-btn-sm" onClick={() => {
                           setEditActualCharge(job.charge || job.estimated_charge || '');
                           setEditActualDuration(job.actual_duration_minutes || '');

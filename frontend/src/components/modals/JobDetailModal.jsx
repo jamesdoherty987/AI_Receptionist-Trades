@@ -357,11 +357,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const statusMutation = useMutation({
     mutationFn: ({ id, status }) => {
       const data = { status };
-      // When manually marking as paid, also set payment fields
-      if (status === 'paid') {
-        data.payment_status = 'paid';
-        data.payment_method = 'manual';
-      }
       return updateBooking(id, data);
     },
     onMutate: async ({ status }) => {
@@ -723,7 +718,6 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                       { key: 'scheduled', icon: 'fa-calendar-check', color: '#3b82f6', label: 'Scheduled' },
                       { key: 'in-progress', icon: 'fa-wrench', color: '#8b5cf6', label: 'In Progress' },
                       { key: 'completed', icon: 'fa-check-circle', color: '#22c55e', label: 'Completed' },
-                      { key: 'paid', icon: 'fa-money-check-alt', color: '#10b981', label: 'Paid' },
                       { key: 'cancelled', icon: 'fa-times-circle', color: '#ef4444', label: 'Cancelled' },
                     ].map(s => (
                       <button key={s.key} onClick={() => handleStatusChange(s.key)} className={job.status === s.key ? 'active' : ''}>
@@ -737,7 +731,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     e.currentTarget.classList.remove('show');
                   }}></div>
                 </div>
-                {job.status !== 'rejected' && job.status !== 'cancelled' && job.status !== 'completed' && job.status !== 'paid' && (
+                {job.status !== 'rejected' && job.status !== 'cancelled' && job.status !== 'completed' && (
                   <button className="btn btn-danger-outline" onClick={() => setShowRejectModal(true)} title="Reject this job and notify the customer">
                     <i className="fas fa-ban"></i> Reject
                   </button>

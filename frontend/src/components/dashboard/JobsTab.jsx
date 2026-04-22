@@ -97,12 +97,12 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const weekEnd = new Date(todayStart); weekEnd.setDate(weekEnd.getDate() + 7);
 
   const counts = useMemo(() => {
-    const activeAll = bookings.filter(j => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status));
+    const activeAll = bookings.filter(j => !['completed', 'cancelled', 'rejected'].includes(j.status));
     const overdue = activeAll.filter(j => j.status !== 'in-progress' && new Date(j.appointment_time) < now);
     const active = activeAll.filter(j => j.status === 'in-progress' || new Date(j.appointment_time) >= now);
     const inProg = bookings.filter(j => j.status === 'in-progress');
     const needsInv = bookings.filter(j => j.status === 'completed' && j.payment_status !== 'paid');
-    const done = bookings.filter(j => j.status === 'completed' || j.status === 'paid');
+    const done = bookings.filter(j => j.status === 'completed');
     const canc = bookings.filter(j => j.status === 'cancelled');
     const rej = bookings.filter(j => j.status === 'rejected');
     // Recently booked = created in last 48 hours
@@ -136,7 +136,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
     // Status filter
     if (statusFilter === 'active') {
-      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status) && (j.status === 'in-progress' || new Date(j.appointment_time) >= now));
+      jobs = jobs.filter(j => !['completed', 'cancelled', 'rejected'].includes(j.status) && (j.status === 'in-progress' || new Date(j.appointment_time) >= now));
     } else if (statusFilter === 'recent') {
       const recentCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000);
       jobs = jobs.filter(j => {
@@ -144,13 +144,13 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
         return created >= recentCutoff && !['cancelled', 'rejected'].includes(j.status);
       });
     } else if (statusFilter === 'overdue') {
-      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'rejected', 'in-progress'].includes(j.status) && new Date(j.appointment_time) < now);
+      jobs = jobs.filter(j => !['completed', 'cancelled', 'rejected', 'in-progress'].includes(j.status) && new Date(j.appointment_time) < now);
     } else if (statusFilter === 'in-progress') {
       jobs = jobs.filter(j => j.status === 'in-progress');
     } else if (statusFilter === 'needs-invoice') {
       jobs = jobs.filter(j => j.status === 'completed' && j.payment_status !== 'paid');
     } else if (statusFilter === 'completed') {
-      jobs = jobs.filter(j => j.status === 'completed' || j.status === 'paid');
+      jobs = jobs.filter(j => j.status === 'completed');
     } else if (statusFilter === 'cancelled') {
       jobs = jobs.filter(j => j.status === 'cancelled');
     } else if (statusFilter === 'rejected') {
@@ -166,7 +166,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
     // Group into sections
     const sections = [];
-    const isActive = (j) => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status);
+    const isActive = (j) => !['completed', 'cancelled', 'rejected'].includes(j.status);
 
     // For 'recent' filter, show as a single flat section sorted by creation time
     if (statusFilter === 'recent') {
@@ -212,7 +212,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     }
 
     // Completed/Paid
-    const done = jobs.filter(j => (j.status === 'completed' && j.payment_status === 'paid') || j.status === 'paid');
+    const done = jobs.filter(j => j.status === 'completed' && j.payment_status === 'paid');
     if (done.length > 0 && (statusFilter === 'completed' || statusFilter === 'all')) {
       sections.push({ key: 'completed', label: 'Completed & Paid', icon: 'fa-check-circle', color: '#10b981', jobs: done.slice(0, 20) });
     }
@@ -295,7 +295,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
               </div>
               <div className="jt-cards">
                 {section.jobs.map(job => {
-                  const isPast = new Date(job.appointment_time) < now && job.status !== 'in-progress' && job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled';
+                  const isPast = new Date(job.appointment_time) < now && job.status !== 'in-progress' && job.status !== 'completed' && job.status !== 'cancelled';
                   const isNow = Math.abs(new Date(job.appointment_time) - now) < 30 * 60 * 1000 && job.status !== 'completed' && job.status !== 'cancelled';
                   return (
                     <div key={job.id} className={`jt-card ${isPast ? 'jt-card-overdue' : ''} ${isNow ? 'jt-card-now' : ''} ${job.status === 'in-progress' ? 'jt-card-active' : ''}`}
@@ -309,7 +309,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                       <div className="jt-card-body">
                         <div className="jt-card-top">
                           <h4>{job.customer_name || 'Unknown'}</h4>
-                          {(!job.assigned_worker_ids || job.assigned_worker_ids.length === 0) && !['completed', 'paid', 'cancelled', 'rejected'].includes(job.status) && (
+                          {(!job.assigned_worker_ids || job.assigned_worker_ids.length === 0) && !['completed', 'cancelled', 'rejected'].includes(job.status) && (
                             <span className="jt-no-worker-badge" title="No worker assigned to this job">
                               <i className="fas fa-exclamation-triangle"></i> No Worker
                             </span>
@@ -370,7 +370,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                                 : formatCurrency(job.charge || job.estimated_charge)}
                             </span>
                           )}
-                          {job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled' && job.status !== 'rejected' && job.payment_status !== 'paid' && (job.charge || job.estimated_charge) && (
+                          {job.status !== 'completed' && job.status !== 'cancelled' && job.status !== 'rejected' && job.payment_status !== 'paid' && (job.charge || job.estimated_charge) && (
                             <button className="jt-mark-paid" onClick={e => { e.stopPropagation(); markPaidMutation.mutate(job.id); }}
                               disabled={markingPaidJobId === job.id}>
                               <i className={`fas ${markingPaidJobId === job.id ? 'fa-spinner fa-spin' : 'fa-check'}`}></i> Mark Paid
@@ -533,7 +533,7 @@ function JobAiInsights({ bookings, counts }) {
     // Today's workload
     const todayJobs = bookings.filter(b => {
       const d = new Date(b.appointment_time);
-      return d.toDateString() === todayStr && !['completed', 'paid', 'cancelled'].includes(b.status);
+      return d.toDateString() === todayStr && !['completed', 'cancelled'].includes(b.status);
     });
     if (todayJobs.length > 5) {
       items.push({ icon: 'fa-calendar-day', text: `Busy day ahead — ${todayJobs.length} jobs scheduled for today. Make sure all workers are briefed.`, type: 'action' });
