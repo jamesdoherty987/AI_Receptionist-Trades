@@ -1047,8 +1047,8 @@ function Landing() {
   ];
 
   const pricingPlans = [
-    { name: "Dashboard", price: "€99", period: "/month", description: "Business management tools for your trade", features: ["Job management & scheduling", "Customer management", "Worker management", "Calendar & availability", "Financial tracking & invoicing", "Materials tracking", "Insights & reports"], cta: "Get Started", highlighted: false, link: "/signup" },
-    { name: "Pro", price: "Custom", period: "pricing", description: "Everything + AI receptionist", features: ["Everything in Dashboard, plus:", "AI receptionist & phone calls", "Smart AI scheduling", "Dedicated AI phone number", "24/7 call handling", "Automatic booking from calls", "Priority support"], cta: "Contact Us", highlighted: true, link: "mailto:contact@bookedforyou.ie?subject=BookedForYou Pro Plan Enquiry" },
+    { name: "Dashboard", description: "Business management tools for your trade", features: ["Job management & scheduling", "Customer management", "Worker management", "Calendar & availability", "Financial tracking & invoicing", "Materials tracking", "Insights & reports"], cta: "Contact Us", highlighted: false, link: "mailto:contact@bookedforyou.ie?subject=BookedForYou Dashboard Plan Enquiry" },
+    { name: "Pro", description: "Everything + AI receptionist", features: ["Everything in Dashboard, plus:", "AI receptionist & phone calls", "Smart AI scheduling", "Dedicated AI phone number", "24/7 call handling", "Automatic booking from calls", "Priority support"], cta: "Contact Us", highlighted: true, link: "mailto:contact@bookedforyou.ie?subject=BookedForYou Pro Plan Enquiry" },
   ];
 
   const BENTO_TINTS = [
@@ -1215,14 +1215,9 @@ function Landing() {
                 <SpotlightCard key={i} className={`pricing-card ${plan.highlighted ? 'highlighted' : ''} reveal-child`} style={{ transitionDelay: `${i * 0.15}s` }}>
                   {plan.highlighted && <div className="popular-badge">Most Popular</div>}
                   <h3>{plan.name}</h3>
-                  <div className="price"><span className="amount">{plan.price}</span><span className="period">{plan.period}</span></div>
                   <p className="plan-description">{plan.description}</p>
                   <ul className="plan-features">{plan.features.map((f, j) => <li key={j}><i className="fas fa-check"></i>{f}</li>)}</ul>
-                  {plan.link?.startsWith('mailto:') ? (
-                    <a href={plan.link} className={`plan-btn ${plan.highlighted ? 'primary' : 'secondary'}`}>{plan.cta}</a>
-                  ) : (
-                    <Link to={plan.link || '/signup'} className={`plan-btn ${plan.highlighted ? 'primary' : 'secondary'}`}>{plan.cta}</Link>
-                  )}
+                  <a href={plan.link} className={`plan-btn ${plan.highlighted ? 'primary' : 'secondary'}`}>{plan.cta}</a>
                 </SpotlightCard>
               ))}
             </div>
