@@ -21,6 +21,7 @@ const ServicesTab = lazy(() => import('../components/dashboard/ServicesTab'));
 const MaterialsTab = lazy(() => import('../components/dashboard/MaterialsTab'));
 const InsightsTab = lazy(() => import('../components/dashboard/InsightsTab'));
 const CallLogsTab = lazy(() => import('../components/dashboard/CallLogsTab'));
+const PipelineTab = lazy(() => import('../components/dashboard/PipelineTab'));
 
 function Dashboard() {
   const { user, subscription } = useAuth();
@@ -221,6 +222,13 @@ function Dashboard() {
       badge: overdueLeads,
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><CrmTab clients={clients} bookings={bookings} /></Suspense>
     }] : []),
+    // Pipeline
+    ...[{
+      label: 'Pipeline',
+      icon: 'fas fa-stream',
+      group: 'Team & Clients',
+      content: <Suspense fallback={tabFallback}><PipelineTab /></Suspense>
+    }],
     // Setup
     ...(adminVis.services !== false ? [{
       label: 'Services',
