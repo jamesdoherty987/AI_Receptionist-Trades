@@ -4677,7 +4677,7 @@ def stripe_connect_webhook():
                     booking = db.get_booking(booking_id)  # company_id extracted from booking itself
                     if booking:
                         db.update_booking(booking_id, company_id=booking.get('company_id'),
-                                          payment_status='paid', status='completed',
+                                          payment_status='paid',
                                           payment_method='stripe')
                         # Clear the checkout URL so /pay/:id shows "Already Paid"
                         try:
@@ -4704,7 +4704,7 @@ def stripe_connect_webhook():
                     booking = db.get_booking(booking_id)
                     if booking:
                         db.update_booking(booking_id, company_id=booking.get('company_id'),
-                                          payment_status='paid', status='completed',
+                                          payment_status='paid',
                                           payment_method='stripe')
                         # Clear the checkout URL so /pay/:id shows "Already Paid"
                         try:
@@ -4733,7 +4733,7 @@ def stripe_connect_webhook():
                     booking = db.get_booking(booking_id)
                     if booking and booking.get('payment_status') != 'paid':
                         db.update_booking(booking_id, company_id=booking.get('company_id'),
-                                          payment_status='paid', status='completed',
+                                          payment_status='paid',
                                           payment_method='stripe')
                         print(f"[SUCCESS] Booking {booking_id} marked as paid via charge.succeeded")
                 except Exception as e:
