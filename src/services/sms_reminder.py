@@ -488,7 +488,7 @@ def get_or_create_portal_link(company_id: int, client_id: int) -> str:
     try:
         import os
         import secrets as _secrets
-        from src.services.db_postgres_wrapper import get_database
+        from src.services.database import get_database
         db = get_database()
         conn = db.get_connection()
         cur = None

@@ -342,11 +342,6 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
         ))}
       </div>
 
-      {/* AI Job Insights */}
-      {bookings.length > 3 && statusFilter === 'active' && !searchTerm && (
-        <JobAiInsights bookings={bookings} counts={counts} />
-      )}
-
       {/* Job sections */}
       <div className="jt-sections">
         {groups.length === 0 ? (
