@@ -121,7 +121,11 @@ function Header({ onNotificationNavigate, mobileMenuOpen, onMenuToggle }) {
                 onClick={() => { if (onMenuToggle) onMenuToggle(false); setShowUserMenu(!showUserMenu); }}
               >
                 <div className="user-avatar">
-                  {user?.owner_name?.charAt(0).toUpperCase() || 'U'}
+                  {user?.logo_url ? (
+                    <img src={user.logo_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                  ) : (
+                    user?.owner_name?.charAt(0).toUpperCase() || 'U'
+                  )}
                 </div>
                 <span className="user-name">{user?.owner_name || 'User'}</span>
                 <i className={`fas fa-chevron-${showUserMenu ? 'up' : 'down'}`}></i>

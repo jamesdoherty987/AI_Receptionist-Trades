@@ -4747,14 +4747,39 @@ def stripe_connect_webhook():
 
 @app.route("/payment-success")
 def payment_success_page():
-    """Simple thank-you page shown after a customer pays an invoice via Stripe"""
-    return """<!DOCTYPE html>
+    """Thank-you page shown after a customer pays an invoice via Stripe"""
+    # Try to get company info from the session_id to show their branding
+    session_id = request.args.get('session_id')
+    company_name = ''
+    logo_url = ''
+    if session_id:
+        try:
+            import stripe as stripe_lib
+            if not stripe_lib.api_key:
+                stripe_lib.api_key = os.getenv('STRIPE_SECRET_KEY')
+            checkout = stripe_lib.checkout.Session.retrieve(session_id)
+            booking_id = checkout.metadata.get('booking_id')
+            if booking_id:
+                db = get_database()
+                booking = db.get_booking(int(booking_id))
+                if booking and booking.get('company_id'):
+                    company = db.get_company(booking['company_id'])
+                    if company:
+                        company_name = company.get('company_name', '')
+                        logo_url = company.get('logo_url', '')
+        except Exception as e:
+            print(f"[PAYMENT-SUCCESS] Could not fetch company info: {e}")
+    
+    logo_html = f'<img src="{logo_url}" alt="{company_name}" style="width:56px;height:56px;border-radius:12px;object-fit:contain;margin-bottom:16px">' if logo_url and not logo_url.startswith('data:') else ''
+    name_html = f'<p style="font-weight:600;color:#1e293b;margin:0 0 20px;font-size:15px">{company_name}</p>' if company_name else ''
+    
+    return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Payment Successful</title>
-<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f0fdf4;color:#166534}
-.card{text-align:center;background:#fff;padding:48px 40px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:440px}
-.icon{font-size:64px;margin-bottom:16px}h1{margin:0 0 12px;font-size:24px}p{margin:0;color:#4b5563;line-height:1.6}</style></head>
-<body><div class="card"><div class="icon">✅</div><h1>Payment Received</h1><p>Thank you! Your payment has been processed successfully. You can close this page.</p></div></body></html>""", 200
+<style>body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f0fdf4;color:#166534}}
+.card{{text-align:center;background:#fff;padding:48px 40px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:440px}}
+.icon{{font-size:64px;margin-bottom:16px}}h1{{margin:0 0 12px;font-size:24px}}p{{margin:0;color:#4b5563;line-height:1.6}}</style></head>
+<body><div class="card">{logo_html}{name_html}<div class="icon">✅</div><h1>Payment Received</h1><p>Thank you! Your payment has been processed successfully. You can close this page.</p></div></body></html>""", 200
 
 
 @app.route("/payment-cancelled")
@@ -5028,6 +5053,7 @@ def business_settings_api():
         # Twilio phone number assigned from pool (read-only)
         settings = {
             'business_name': company.get('company_name'),
+            'owner_name': company.get('owner_name'),
             'business_type': company.get('trade_type'),  # Trade type from signup
             'business_phone': company.get('phone'),
             'business_email': company.get('email'),
@@ -5118,6 +5144,7 @@ def business_settings_api():
         update_data = {}
         field_mapping = {
             'business_name': 'company_name',
+            'owner_name': 'owner_name',
             'business_type': 'trade_type',  # Trade type from signup
             'business_phone': 'phone',
             'business_email': 'email',

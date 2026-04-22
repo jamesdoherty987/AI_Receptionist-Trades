@@ -1329,7 +1329,8 @@ class PostgreSQLDatabaseWrapper:
                               'custom_dashboard_price',
                               'custom_dashboard_stripe_price_id',
                               'custom_pro_price',
-                              'custom_pro_stripe_price_id']
+                              'custom_pro_stripe_price_id',
+                              'accounting_provider']
             
             # Get actual columns that exist in the database
             cursor.execute("""

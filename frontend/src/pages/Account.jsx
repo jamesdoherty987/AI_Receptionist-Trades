@@ -14,6 +14,7 @@ function Account() {
   const [saveMessage, setSaveMessage] = useState('');
   const [ownerName, setOwnerName] = useState('');
   const [email, setEmail] = useState('');
+  const [avatarPreview, setAvatarPreview] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteError, setDeleteError] = useState('');
@@ -58,7 +59,24 @@ function Account() {
 
   const handleSave = (e) => {
     e.preventDefault();
-    saveMutation.mutate({ owner_name: ownerName });
+    const payload = { owner_name: ownerName };
+    if (avatarPreview) {
+      payload.logo_url = avatarPreview;
+    }
+    saveMutation.mutate(payload);
+  };
+
+  const handleAvatarChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setSaveMessage('Image too large. Please use an image under 2MB.');
+      setTimeout(() => setSaveMessage(''), 5000);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => setAvatarPreview(ev.target.result);
+    reader.readAsDataURL(file);
   };
 
   const handleDeleteAccount = () => {
@@ -91,9 +109,17 @@ function Account() {
           </div>
 
           <div className="account-profile-card">
-            <div className="account-avatar-large">
-              {ownerName?.charAt(0)?.toUpperCase() || 'U'}
-            </div>
+            <label className="account-avatar-large account-avatar-clickable" htmlFor="avatar-upload" title="Click to change profile picture">
+              {(avatarPreview || settings?.logo_url) ? (
+                <img src={avatarPreview || settings?.logo_url} alt="Profile" className="account-avatar-img" />
+              ) : (
+                ownerName?.charAt(0)?.toUpperCase() || 'U'
+              )}
+              <div className="account-avatar-overlay">
+                <i className="fas fa-camera"></i>
+              </div>
+              <input type="file" id="avatar-upload" accept="image/*" onChange={handleAvatarChange} style={{ display: 'none' }} />
+            </label>
             <div className="account-profile-info">
               <h1>{ownerName || 'Your Account'}</h1>
               <p className="account-email">{email}</p>

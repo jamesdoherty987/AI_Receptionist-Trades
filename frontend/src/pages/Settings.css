@@ -269,6 +269,30 @@
   margin-bottom: 1.5rem;
 }
 
+.ai-no-phone-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  margin-bottom: 1rem;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+.ai-no-phone-banner i { color: #f59e0b; }
+
+.toggle-slider-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.section-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .toggle-content {
   display: flex;
   justify-content: space-between;

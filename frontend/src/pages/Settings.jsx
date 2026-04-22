@@ -1010,7 +1010,10 @@ function Settings() {
                     </p>
                     <div className="form-grid">
                       <div className="form-group full-width">
-                        <label htmlFor="twilio_phone_number">Assigned Phone Number</label>
+                        <label htmlFor="twilio_phone_number"><i className="fas fa-robot" style={{ marginRight: '0.4rem', color: '#6366f1' }}></i>AI Receptionist Number</label>
+                        <small className="form-help" style={{ marginBottom: '0.4rem' }}>
+                          This is the number your customers call. The AI answers here and forwards to your business phone when needed.
+                        </small>
                         <div className="phone-number-display">
                           <input type="tel" id="twilio_phone_number" name="twilio_phone_number" value={formData.twilio_phone_number || 'Not assigned'} readOnly disabled style={{ backgroundColor: 'var(--bg-tertiary)', cursor: 'not-allowed' }} />
                           {!formData.twilio_phone_number && hasAIFeatures && (
@@ -1022,10 +1025,16 @@ function Settings() {
                             <small style={{ marginLeft: '1rem', color: '#9ca3af' }}>Available on Pro plan only</small>
                           )}
                         </div>
-                        <small className="form-help">
-                          {formData.twilio_phone_number ? 'This is your dedicated phone number. It cannot be changed once assigned.' : 'You need to configure a phone number to receive calls.'}
-                        </small>
                       </div>
+                      {formData.twilio_phone_number && aiStatus?.business_phone && (
+                        <div className="form-group full-width">
+                          <label><i className="fas fa-building" style={{ marginRight: '0.4rem', color: '#10b981' }}></i>Your Business Phone (Fallback)</label>
+                          <small className="form-help" style={{ marginBottom: '0.4rem' }}>
+                            When the AI can't handle a call or is turned off, calls are forwarded to this number.
+                          </small>
+                          <input type="tel" value={aiStatus.business_phone} readOnly disabled style={{ backgroundColor: 'var(--bg-tertiary)', cursor: 'not-allowed' }} />
+                        </div>
+                      )}
                     </div>
                   </div>
                   ) : (
@@ -1139,6 +1148,12 @@ function Settings() {
               {hasAIFeatures ? (
               <>
               <div className="ai-toggle-card">
+                {!formData.twilio_phone_number && (
+                  <div className="ai-no-phone-banner">
+                    <i className="fas fa-exclamation-triangle"></i>
+                    <span>Configure a phone number first to enable the AI Receptionist</span>
+                  </div>
+                )}
                 <div className="toggle-content">
                   <div className="toggle-info">
                     <h3>
@@ -1146,7 +1161,9 @@ function Settings() {
                       AI Receptionist
                     </h3>
                     <p>
-                      {!aiManuallyEnabled && hasSchedule && isWithinSchedule
+                      {!formData.twilio_phone_number
+                        ? 'No phone number configured yet'
+                        : !aiManuallyEnabled && hasSchedule && isWithinSchedule
                         ? 'Manually turned off — schedule paused'
                         : !aiManuallyEnabled && !hasSchedule
                           ? 'Calls are being forwarded to your fallback number'
@@ -1158,8 +1175,8 @@ function Settings() {
                     </p>
                   </div>
                   <label className="toggle-switch">
-                    <input type="checkbox" checked={aiEffectivelyOn} onChange={handleToggleAI} disabled={toggleMutation.isPending || scheduleSaving} />
-                    <span className="toggle-slider"></span>
+                    <input type="checkbox" checked={aiEffectivelyOn} onChange={handleToggleAI} disabled={toggleMutation.isPending || scheduleSaving || !formData.twilio_phone_number} />
+                    <span className={`toggle-slider ${!formData.twilio_phone_number ? 'toggle-slider-disabled' : ''}`}></span>
                   </label>
                 </div>
                 <div className="toggle-status">
@@ -1177,9 +1194,6 @@ function Settings() {
                   )}
                   {hasSchedule && !aiManuallyEnabled && !isWithinSchedule && (
                     <span className="schedule-status-hint"><i className="far fa-clock"></i> Outside scheduled hours</span>
-                  )}
-                  {aiStatus?.business_phone && (
-                    <span className="fallback-info"><i className="fas fa-phone"></i> Fallback: {aiStatus.business_phone}</span>
                   )}
                 </div>
 
@@ -1302,19 +1316,21 @@ function Settings() {
               </div>
 
               {/* Bypass Numbers */}
-              <div className="bypass-numbers-section">
+              <div className={`bypass-numbers-section ${!formData.twilio_phone_number ? 'section-disabled' : ''}`}>
                 <div className="form-section-header">
                   <i className="fas fa-phone-slash" style={{ color: '#ef4444' }}></i>
                   <h3>Always Forward Numbers</h3>
                 </div>
                 <p className="section-description">
-                  Calls from these numbers will always be forwarded directly to your business phone, bypassing the AI receptionist entirely.
+                  {!formData.twilio_phone_number
+                    ? 'Configure a phone number first to set up call forwarding rules.'
+                    : 'Calls from these numbers will always be forwarded directly to your business phone, bypassing the AI receptionist entirely.'}
                 </p>
                 <small className="form-help" style={{ display: 'block', marginBottom: '0.75rem' }}>
-                  Any format works — 085 123 4567, 353851234567, or +353 85 123 4567.
+                  {formData.twilio_phone_number ? 'Any format works — 085 123 4567, 353851234567, or +353 85 123 4567.' : ''}
                 </small>
                 <div className="bypass-add-row">
-                  <input type="text" placeholder="Name (e.g. John)" value={newBypassName} onChange={(e) => setNewBypassName(e.target.value)} className="bypass-input bypass-name"
+                  <input type="text" placeholder="Name (e.g. John)" value={newBypassName} onChange={(e) => setNewBypassName(e.target.value)} className="bypass-input bypass-name" disabled={!formData.twilio_phone_number}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -1326,7 +1342,7 @@ function Settings() {
                       }
                     }}
                   />
-                  <input type="tel" placeholder="Phone number" value={newBypassPhone} onChange={(e) => setNewBypassPhone(e.target.value)} className="bypass-input bypass-phone"
+                  <input type="tel" placeholder="Phone number" value={newBypassPhone} onChange={(e) => setNewBypassPhone(e.target.value)} className="bypass-input bypass-phone" disabled={!formData.twilio_phone_number}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -1338,7 +1354,7 @@ function Settings() {
                       }
                     }}
                   />
-                  <button type="button" className="btn btn-primary btn-sm" disabled={!newBypassPhone.trim()}
+                  <button type="button" className="btn btn-primary btn-sm" disabled={!newBypassPhone.trim() || !formData.twilio_phone_number}
                     onClick={() => {
                       if (newBypassPhone.trim()) {
                         const phone = newBypassPhone.trim();

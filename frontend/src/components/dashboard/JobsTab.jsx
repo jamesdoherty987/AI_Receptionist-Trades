@@ -316,6 +316,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                           )}
                           <span className={`jt-status-badge jt-status-${job.status}`}>{job.status === 'in-progress' ? 'In Progress' : job.status}</span>
                           {job.payment_status === 'paid' && <span className="jt-paid-badge"><i className="fas fa-check-circle"></i> Paid</span>}
+                          {job.payment_status === 'invoiced' && <span className="jt-invoiced-badge"><i className="fas fa-file-invoice"></i> Invoiced</span>}
                           {job.urgency === 'emergency' && <span className="jt-emergency-badge"><i className="fas fa-bolt"></i> Emergency{job.emergency_status === 'pending_acceptance' ? ' — Pending' : job.emergency_status === 'accepted' ? ' — Accepted' : ''}</span>}
                           {job.status_label && <span className="jt-label-badge"><i className="fas fa-tag"></i> {job.status_label}</span>}
                           {job.recurrence_pattern && <span className="jt-recurring-badge"><i className="fas fa-redo"></i> {job.recurrence_pattern}</span>}
@@ -369,7 +370,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                                 : formatCurrency(job.charge || job.estimated_charge)}
                             </span>
                           )}
-                          {job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled' && job.status !== 'rejected' && (job.charge || job.estimated_charge) && (
+                          {job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled' && job.status !== 'rejected' && job.payment_status !== 'paid' && (job.charge || job.estimated_charge) && (
                             <button className="jt-mark-paid" onClick={e => { e.stopPropagation(); markPaidMutation.mutate(job.id); }}
                               disabled={markingPaidJobId === job.id}>
                               <i className={`fas ${markingPaidJobId === job.id ? 'fa-spinner fa-spin' : 'fa-check'}`}></i> Mark Paid
