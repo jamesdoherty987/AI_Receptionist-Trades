@@ -43,8 +43,6 @@ const LEAD_SOURCES = [
 
 const CRM_VIEWS = [
   { key: 'customers', label: 'Customers', icon: 'fa-users' },
-  { key: 'leads', label: 'Leads', icon: 'fa-stream' },
-  { key: 'quotes', label: 'Quotes', icon: 'fa-file-invoice' },
   { key: 'reviews', label: 'Reviews', icon: 'fa-star' },
 ];
 
@@ -276,15 +274,10 @@ function CrmTab({ clients, bookings = [] }) {
         <div className="crm-header-right">
           <div className="dash-search">
             <i className="fas fa-search"></i>
-            <input type="text" placeholder={activeView === 'leads' ? 'Search leads...' : activeView === 'customers' ? 'Search customers...' : activeView === 'quotes' ? 'Search quotes...' : 'Search reviews...'}
+            <input type="text" placeholder={activeView === 'customers' ? 'Search customers...' : 'Search reviews...'}
               value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             {searchTerm && <button className="dash-search-clear" onClick={() => setSearchTerm('')}><i className="fas fa-times"></i></button>}
           </div>
-          {activeView === 'leads' && (
-            <button className="btn-add" onClick={() => setShowAddLead(true)}>
-              <i className="fas fa-plus"></i> Add Lead
-            </button>
-          )}
           {activeView === 'customers' && (
             <button className="btn-add" onClick={() => {
               if (!isSubscriptionActive) { addToast('Please upgrade your plan to add customers', 'warning'); return; }
@@ -295,24 +288,6 @@ function CrmTab({ clients, bookings = [] }) {
           )}
         </div>
       </div>
-
-      {/* Leads View */}
-      {activeView === 'leads' && (
-        <PipelineView
-          leads={leads}
-          searchTerm={searchTerm}
-          pipelineStats={pipelineStats}
-          onStageDrop={handleStageDrop}
-          onEdit={setEditingLead}
-          onDelete={handleDeleteLead}
-          onConvert={id => convertMutation.mutate(id)}
-        />
-      )}
-
-      {/* Quotes View — renders the PipelineTab component */}
-      {activeView === 'quotes' && (
-        <QuotePipelineEmbed />
-      )}
 
       {/* Customers View */}
       {activeView === 'customers' && (

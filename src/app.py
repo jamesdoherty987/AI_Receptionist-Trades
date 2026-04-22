@@ -2287,7 +2287,7 @@ def worker_update_job_status(job_id):
     data = request.json
     new_status = data.get('status', '').strip()
 
-    allowed_statuses = ['pending', 'confirmed', 'scheduled', 'in-progress', 'completed', 'cancelled']
+    allowed_statuses = ['pending', 'confirmed', 'quote_sent', 'scheduled', 'in-progress', 'completed', 'cancelled']
     if new_status not in allowed_statuses:
         return jsonify({"error": f"Invalid status. Allowed: {', '.join(allowed_statuses)}"}), 400
 
@@ -11525,9 +11525,13 @@ def send_quote_sms(quote_id):
                 err = f"Both email ({email}) and SMS ({phone}) failed. Check contact details."
             return jsonify({"error": err}), 503
 
-        # Update status to sent if still draft
+        # Update status and pipeline_stage to sent if still draft
         if quote.get('status') == 'draft':
-            cur.execute("UPDATE quotes SET status = 'sent', sent_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s", (quote_id, company_id))
+            cur.execute("UPDATE quotes SET status = 'sent', pipeline_stage = 'sent', sent_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s", (quote_id, company_id))
+            # Also update linked booking status to 'quote_sent' if still pending
+            source_booking_id = quote.get('source_booking_id')
+            if source_booking_id:
+                cur.execute("UPDATE bookings SET status = 'quote_sent', updated_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s AND status = 'pending'", (source_booking_id, company_id))
             conn.commit()
 
         cur.close()

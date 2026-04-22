@@ -752,8 +752,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   </button>
                   <div className="status-dropdown-menu">
                     {[
-                      { key: 'pending', icon: 'fa-clock', color: '#f59e0b', label: 'Pending' },
-                      { key: 'scheduled', icon: 'fa-calendar-check', color: '#3b82f6', label: 'Scheduled' },
+                      { key: 'pending', icon: 'fa-clock', color: '#f59e0b', label: 'New' },
+                      { key: 'quote_sent', icon: 'fa-paper-plane', color: '#3b82f6', label: 'Quote Sent' },
+                      { key: 'scheduled', icon: 'fa-calendar-check', color: '#6366f1', label: 'Scheduled' },
                       { key: 'in-progress', icon: 'fa-wrench', color: '#8b5cf6', label: 'In Progress' },
                       { key: 'completed', icon: 'fa-check-circle', color: '#22c55e', label: 'Completed' },
                       { key: 'cancelled', icon: 'fa-times-circle', color: '#ef4444', label: 'Cancelled' },

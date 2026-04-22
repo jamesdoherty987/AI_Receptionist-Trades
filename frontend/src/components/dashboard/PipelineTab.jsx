@@ -141,11 +141,6 @@ function PipelineTab() {
               <input placeholder="Search quotes..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>
           )}
-          <div className="pipe-view-toggle">
-            <button className={view === 'pipeline' ? 'active' : ''} onClick={() => setView('pipeline')}><i className="fas fa-columns"></i> Board</button>
-            <button className={view === 'sequences' ? 'active' : ''} onClick={() => setView('sequences')}><i className="fas fa-paper-plane"></i> Sequences</button>
-            <button className={view === 'automations' ? 'active' : ''} onClick={() => setView('automations')}><i className="fas fa-bolt"></i> Automations</button>
-          </div>
         </div>
       </div>
 
@@ -165,7 +160,7 @@ function PipelineTab() {
             <div className="seq-empty">
               <i className="fas fa-file-invoice-dollar"></i>
               <h4>No quotes yet</h4>
-              <p>Create quotes from the Finances tab to start tracking them through your pipeline.</p>
+              <p>Create quotes from job details to start tracking them here.</p>
             </div>
           ) : (
             <div className="pipe-board">
@@ -199,9 +194,6 @@ function PipelineTab() {
           )}
         </>
       )}
-
-      {view === 'sequences' && <SequencesView />}
-      {view === 'automations' && <AutomationsView />}
 
       {/* Follow-up modal */}
       {followUpModal && (

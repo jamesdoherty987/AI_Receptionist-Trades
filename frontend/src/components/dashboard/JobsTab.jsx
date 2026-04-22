@@ -314,7 +314,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                               <i className="fas fa-exclamation-triangle"></i> No Worker
                             </span>
                           )}
-                          <span className={`jt-status-badge jt-status-${job.status}`}>{job.status === 'in-progress' ? 'In Progress' : job.status}</span>
+                          <span className={`jt-status-badge jt-status-${job.status}`}>{job.status === 'in-progress' ? 'In Progress' : job.status === 'quote_sent' ? 'Quote Sent' : job.status === 'pending' ? 'New' : job.status}</span>
                           {job.payment_status === 'paid' && <span className="jt-paid-badge"><i className="fas fa-check-circle"></i> Paid</span>}
                           {job.payment_status === 'invoiced' && <span className="jt-invoiced-badge"><i className="fas fa-file-invoice"></i> Invoiced</span>}
                           {job.urgency === 'emergency' && <span className="jt-emergency-badge"><i className="fas fa-bolt"></i> Emergency{job.emergency_status === 'pending_acceptance' ? ' — Pending' : job.emergency_status === 'accepted' ? ' — Accepted' : ''}</span>}

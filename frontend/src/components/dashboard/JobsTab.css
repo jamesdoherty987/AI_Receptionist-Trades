@@ -93,10 +93,10 @@
 }
 .jt-status-pending { background: #fef9c3; color: #a16207; }
 .jt-status-confirmed { background: #dbeafe; color: #1e40af; }
+.jt-status-quote_sent { background: #dbeafe; color: #1d4ed8; }
 .jt-status-scheduled { background: #e0e7ff; color: #3730a3; }
 .jt-status-in-progress { background: #ede9fe; color: #6d28d9; }
 .jt-status-completed { background: #dcfce7; color: #166534; }
-.jt-status-paid { background: #dcfce7; color: #166534; }
 .jt-status-cancelled { background: #f3f4f6; color: #9ca3af; }
 .jt-status-rejected { background: #fef2f2; color: #dc2626; }
 
