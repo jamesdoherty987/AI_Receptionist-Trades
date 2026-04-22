@@ -6,6 +6,7 @@ import { useToast } from '../Toast';
 import { getLeads, createLead, updateLead, deleteLead, convertLead, getCrmStats, getCompanyReviews, generatePortalLink } from '../../services/api';
 import AddClientModal from '../modals/AddClientModal';
 import CustomerDetailModal from '../modals/CustomerDetailModal';
+import EmailComposerModal from '../modals/EmailComposerModal';
 import PipelineTab from './PipelineTab';
 import './CrmTab.css';
 import './SharedDashboard.css';
@@ -43,6 +44,7 @@ const LEAD_SOURCES = [
 
 const CRM_VIEWS = [
   { key: 'customers', label: 'Customers', icon: 'fa-users' },
+  { key: 'pipeline', label: 'Leads', icon: 'fa-stream' },
   { key: 'reviews', label: 'Reviews', icon: 'fa-star' },
 ];
 
@@ -60,6 +62,7 @@ function CrmTab({ clients, bookings = [] }) {
   const [customerSort, setCustomerSort] = useState('recent');
   const [customerFilter, setCustomerFilter] = useState('all');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [emailModal, setEmailModal] = useState({ open: false, mode: 'individual', recipient: null });
 
   // Fetch leads
   const { data: leadsData } = useQuery({
@@ -276,16 +279,32 @@ function CrmTab({ clients, bookings = [] }) {
         <div className="crm-controls-right">
           <div className="dash-search crm-search">
             <i className="fas fa-search"></i>
-            <input type="text" placeholder={activeView === 'customers' ? 'Search customers...' : 'Search reviews...'}
+            <input type="text" placeholder={activeView === 'pipeline' ? 'Search leads...' : activeView === 'customers' ? 'Search customers...' : 'Search reviews...'}
               value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             {searchTerm && <button className="dash-search-clear" onClick={() => setSearchTerm('')}><i className="fas fa-times"></i></button>}
           </div>
           {activeView === 'customers' && (
+            <>
+              <button className="btn-add" style={{ background: '#6366f1' }} onClick={() => {
+                if (!isSubscriptionActive) { addToast('Please upgrade your plan', 'warning'); return; }
+                setEmailModal({ open: true, mode: 'bulk', recipient: null });
+              }}>
+                <i className={`fas ${isSubscriptionActive ? 'fa-paper-plane' : 'fa-lock'}`}></i> Bulk Email
+              </button>
+              <button className="btn-add" onClick={() => {
+                if (!isSubscriptionActive) { addToast('Please upgrade your plan to add customers', 'warning'); return; }
+                setShowAddClient(true);
+              }}>
+                <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Customer
+              </button>
+            </>
+          )}
+          {activeView === 'pipeline' && (
             <button className="btn-add" onClick={() => {
-              if (!isSubscriptionActive) { addToast('Please upgrade your plan to add customers', 'warning'); return; }
-              setShowAddClient(true);
+              if (!isSubscriptionActive) { addToast('Please upgrade your plan', 'warning'); return; }
+              setShowAddLead(true);
             }}>
-              <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Customer
+              <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Lead
             </button>
           )}
         </div>
@@ -293,21 +312,40 @@ function CrmTab({ clients, bookings = [] }) {
 
       {/* Customers View */}
       {activeView === 'customers' && (
-        <CustomersView
-          customers={filteredCustomers}
-          segmentCounts={segmentCounts}
-          customerFilter={customerFilter}
-          setCustomerFilter={setCustomerFilter}
-          customerSort={customerSort}
-          setCustomerSort={setCustomerSort}
-          onSelectClient={setSelectedClientId}
-          crmStats={crmStats}
-          onPortalLink={(clientId) => {
-            generatePortalLink(clientId).then(res => {
-              navigator.clipboard?.writeText(res.data.link);
-              addToast('Portal link copied to clipboard', 'success');
-            }).catch(() => addToast('Failed to generate portal link', 'error'));
-          }}
+        <>
+          <CustomersView
+            customers={filteredCustomers}
+            segmentCounts={segmentCounts}
+            customerFilter={customerFilter}
+            setCustomerFilter={setCustomerFilter}
+            customerSort={customerSort}
+            setCustomerSort={setCustomerSort}
+            onSelectClient={setSelectedClientId}
+            crmStats={crmStats}
+            onPortalLink={(clientId) => {
+              generatePortalLink(clientId).then(res => {
+                navigator.clipboard?.writeText(res.data.link);
+                addToast('Portal link copied to clipboard', 'success');
+              }).catch(() => addToast('Failed to generate portal link', 'error'));
+            }}
+            onEmailClient={(customer) => {
+              if (!customer.email) { addToast('This customer has no email address', 'warning'); return; }
+              setEmailModal({ open: true, mode: 'individual', recipient: customer });
+            }}
+          />
+        </>
+      )}
+
+      {/* Pipeline / Leads View */}
+      {activeView === 'pipeline' && (
+        <PipelineView
+          leads={leads}
+          searchTerm={searchTerm}
+          pipelineStats={pipelineStats}
+          onStageDrop={handleStageDrop}
+          onEdit={setEditingLead}
+          onDelete={handleDeleteLead}
+          onConvert={(id) => convertMutation.mutate(id)}
         />
       )}
 
@@ -334,6 +372,13 @@ function CrmTab({ clients, bookings = [] }) {
       )}
       <AddClientModal isOpen={showAddClient} onClose={() => setShowAddClient(false)} />
       <CustomerDetailModal isOpen={!!selectedClientId} onClose={() => setSelectedClientId(null)} clientId={selectedClientId} />
+      <EmailComposerModal
+        isOpen={emailModal.open}
+        onClose={() => setEmailModal({ open: false, mode: 'individual', recipient: null })}
+        mode={emailModal.mode}
+        recipient={emailModal.recipient}
+        customers={customerHealth}
+      />
 
       {/* Delete Confirmation */}
       {deleteConfirm && (
@@ -400,8 +445,12 @@ function PipelineView({ leads, searchTerm, pipelineStats, onStageDrop, onEdit, o
 
   return (
     <>
-      {/* Pipeline Stats - compact strip */}
+      {/* Pipeline explainer + stats */}
       <div className="crm-mini-stats">
+        <span className="crm-mini-stat" style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+          <i className="fas fa-robot" style={{ color: '#6366f1' }}></i> Leads auto-created from calls that don't result in a booking
+        </span>
+        <span style={{ flex: 1 }}></span>
         <span className="crm-mini-stat"><i className="fas fa-stream" style={{ color: '#3b82f6' }}></i> {pipelineStats.active} active</span>
         <span className="crm-mini-stat"><i className="fas fa-trophy" style={{ color: '#10b981' }}></i> {pipelineStats.won} won</span>
         <span className="crm-mini-stat"><i className="fas fa-coins" style={{ color: '#f59e0b' }}></i> {pipelineStats.pipelineValue > 0 ? formatCurrency(pipelineStats.pipelineValue) : '—'} pipeline</span>
@@ -432,7 +481,7 @@ function PipelineView({ leads, searchTerm, pipelineStats, onStageDrop, onEdit, o
               {(leadsByStage[stage.key] || []).length === 0 && (
                 <div className="pipeline-empty">
                   <i className={`fas ${stage.icon}`}></i>
-                  <span>{stage.key === 'new' ? 'Add your first lead' : 'No leads'}</span>
+                  <span>{stage.key === 'new' ? 'Leads auto-appear from calls' : 'No leads'}</span>
                 </div>
               )}
             </div>
@@ -500,6 +549,11 @@ function LeadCard({ lead, stage, onDragStart, onEdit, onDelete, onConvert }) {
         })()}
       </div>
       {lead.notes && <p className="lead-notes">{lead.notes}</p>}
+      {lead.lost_reason && !lead.notes?.includes(lead.lost_reason) && (
+        <p className="lead-notes" style={{ color: '#ef4444' }}>
+          <i className="fas fa-info-circle" style={{ marginRight: 4 }}></i>{lead.lost_reason}
+        </p>
+      )}
       {lead.created_at && (
         <div className="lead-card-bottom">
           <span className="lead-created-time">{formatRelativeTime(lead.created_at)}</span>
@@ -518,7 +572,7 @@ function LeadCard({ lead, stage, onDragStart, onEdit, onDelete, onConvert }) {
 /* ============================================
    CUSTOMERS VIEW
    ============================================ */
-function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFilter, customerSort, setCustomerSort, onSelectClient, crmStats, onPortalLink }) {
+function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFilter, customerSort, setCustomerSort, onSelectClient, crmStats, onPortalLink, onEmailClient }) {
   const SEGMENTS = [
     { key: 'all', label: 'All', icon: 'fa-users', color: '#64748b' },
     { key: 'vip', label: 'VIP', icon: 'fa-crown', color: '#f59e0b' },
@@ -592,9 +646,9 @@ function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFi
                   </a>
                 )}
                 {c.email && (
-                  <a href={`mailto:${c.email}`} className="crm-quick-btn" onClick={e => e.stopPropagation()} title="Email">
+                  <button className="crm-quick-btn" onClick={e => { e.stopPropagation(); onEmailClient(c); }} title="Send Email">
                     <i className="fas fa-envelope"></i>
-                  </a>
+                  </button>
                 )}
               </div>
               <div className="crm-customer-metrics">
@@ -856,79 +910,6 @@ function QuotePipelineEmbed() {
   return (
     <div className="crm-quotes-embed">
       <PipelineTab />
-    </div>
-  );
-}
-
-/* AI CRM Insights */
-function CrmAiInsights({ leads, customerHealth, reviews, pipelineStats }) {
-  const insights = useMemo(() => {
-    const items = [];
-
-    // Stale leads
-    const now = new Date();
-    const staleDays = 7;
-    const staleLeads = leads.filter(l => {
-      if (l.stage === 'won' || l.stage === 'lost') return false;
-      const updated = new Date(l.updated_at || l.created_at);
-      return (now - updated) / (1000 * 60 * 60 * 24) > staleDays;
-    });
-    if (staleLeads.length > 0) {
-      items.push({ icon: 'fa-hourglass-half', text: `${staleLeads.length} lead${staleLeads.length > 1 ? 's' : ''} haven't been updated in ${staleDays}+ days. Follow up to keep them warm.`, type: 'action' });
-    }
-
-    // Dormant customers
-    const dormant = customerHealth.filter(c => c.segment === 'dormant');
-    if (dormant.length > 2) {
-      items.push({ icon: 'fa-user-clock', text: `${dormant.length} dormant customers. Send a re-engagement message or special offer to win them back.`, type: 'action' });
-    }
-
-    // VIP customers
-    const vips = customerHealth.filter(c => c.segment === 'vip');
-    if (vips.length > 0) {
-      items.push({ icon: 'fa-crown', text: `${vips.length} VIP customer${vips.length > 1 ? 's' : ''} — your top spenders. Consider loyalty perks or priority scheduling.`, type: 'positive' });
-    }
-
-    // Review score
-    if (reviews.length > 0) {
-      const avgRating = reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length;
-      if (avgRating >= 4.5) {
-        items.push({ icon: 'fa-star', text: `Excellent ${avgRating.toFixed(1)}★ average rating across ${reviews.length} reviews. Share these on your website!`, type: 'positive' });
-      } else if (avgRating < 3.5 && reviews.length > 3) {
-        items.push({ icon: 'fa-star-half-alt', text: `Average rating is ${avgRating.toFixed(1)}★. Review recent feedback for improvement areas.`, type: 'warning' });
-      }
-    }
-
-    // Pipeline conversion
-    if (pipelineStats) {
-      const total = leads.length;
-      const won = leads.filter(l => l.stage === 'won').length;
-      if (total > 5 && won / total < 0.2) {
-        items.push({ icon: 'fa-filter-circle-dollar', text: `Lead conversion is below 20%. Focus on moving "Contacted" leads to "Quoted" stage.`, type: 'action' });
-      }
-    }
-
-    if (items.length === 0) {
-      items.push({ icon: 'fa-check-circle', text: 'CRM is in good shape. Keep nurturing your customer relationships!', type: 'positive' });
-    }
-
-    return items.slice(0, 3);
-  }, [leads, customerHealth, reviews, pipelineStats]);
-
-  return (
-    <div className="ai-insight-card">
-      <div className="ai-insight-header">
-        <span className="ai-insight-badge"><i className="fas fa-sparkles"></i> AI</span>
-        <span className="ai-insight-title">Relationship Insights</span>
-      </div>
-      <div className="ai-insight-body">
-        {insights.map((item, i) => (
-          <div key={i} className="ai-insight-item">
-            <i className={`fas ${item.icon}`} style={{ color: item.type === 'positive' ? '#10b981' : item.type === 'warning' ? '#f59e0b' : '#6366f1' }}></i>
-            <span>{item.text}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

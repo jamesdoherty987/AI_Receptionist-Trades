@@ -531,7 +531,168 @@ async def summarize_and_log_call(
         except Exception as e:
             print(f"⚠️ Client update from transcript error: {e}")
 
+    # 4. Auto-create lead for non-booking calls that had real interest
+    # Calls that result in a booking already create a customer, so skip those.
+    # Also skip wrong numbers, hang-ups with no conversation, and pure no-action calls.
+    if company_id and call_log_id:
+        outcome = combined.get("call_outcome", "no_action")
+        is_lost = combined.get("is_lost_job", False)
+        has_content = combined.get("has_job_content", False)
+        # Create a lead if: lost job, enquiry with job content, or cancelled/rescheduled (they may rebook)
+        should_create_lead = (
+            outcome in ("lost_job", "enquiry") and (is_lost or has_content)
+        ) or (
+            outcome == "cancelled" and has_content
+        )
+        if should_create_lead:
+            try:
+                await _create_lead_from_call(
+                    combined=combined,
+                    caller_phone=caller_phone,
+                    company_id=company_id,
+                    call_log_id=call_log_id,
+                    call_state=call_state,
+                )
+            except Exception as e:
+                print(f"⚠️ Auto-lead creation error: {e}")
+
     return call_log_id
+
+
+async def _create_lead_from_call(
+    combined: Dict[str, Any],
+    caller_phone: str,
+    company_id: int,
+    call_log_id: int,
+    call_state=None,
+) -> Optional[int]:
+    """
+    Auto-create a lead from a non-booking call.
+    Uses phone number, caller name, email, address, job description, and AI summary
+    extracted from the call. Skips if:
+    - A lead already exists for this call_log_id
+    - There's already a recent lead from the same phone (within 24h) — updates it instead
+    - The caller is already an existing customer (no need to track as a lead)
+    """
+    from src.services.database import get_database
+    db = get_database()
+    conn = None
+
+    # Build lead data from the AI-extracted call summary
+    caller_name = combined.get("caller_name", "")
+    # Enrich from call_state if available
+    if call_state and not caller_name:
+        caller_name = call_state.get("customer_name", "")
+
+    # Use phone number as fallback name
+    name = caller_name.strip() if caller_name else (caller_phone or "Unknown Caller")
+    phone = caller_phone or ""
+    email = (combined.get("email") or "").strip()
+    address = (combined.get("address") or "").strip()
+    job_desc = (combined.get("job_description") or "").strip()
+    ai_summary = (combined.get("ai_summary") or "").strip()
+    lost_reason = (combined.get("lost_job_reason") or "").strip()
+    outcome = combined.get("call_outcome", "no_action")
+
+    # Determine source and initial stage
+    source = "ai_call"
+    if outcome == "lost_job":
+        stage = "new"  # They wanted to book but couldn't — hot lead
+    elif outcome == "cancelled":
+        stage = "contacted"  # They were a customer, might rebook
+    else:
+        stage = "new"  # Enquiry or other
+
+    # Build notes from AI summary + lost reason
+    notes_parts = []
+    if ai_summary:
+        notes_parts.append(ai_summary)
+    if lost_reason:
+        notes_parts.append(f"Reason: {lost_reason}")
+    notes = " | ".join(notes_parts) if notes_parts else None
+
+    # Service interest from job description (truncate if very long)
+    service_interest = job_desc[:200] if job_desc else None
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+
+        # Skip if the caller is already an existing customer
+        # (they don't need to be tracked as a lead)
+        if phone:
+            cursor.execute(
+                "SELECT id FROM clients WHERE company_id = %s AND phone = %s LIMIT 1",
+                (company_id, phone)
+            )
+            if cursor.fetchone():
+                print(f"[LEAD] Caller {phone} is already a customer, skipping lead creation")
+                return None
+
+        # Dedup: skip if a lead already exists for this exact call_log_id
+        cursor.execute(
+            "SELECT id FROM leads WHERE company_id = %s AND call_log_id = %s",
+            (company_id, call_log_id)
+        )
+        if cursor.fetchone():
+            print(f"[LEAD] Lead already exists for call_log_id={call_log_id}, skipping")
+            return None
+
+        # Dedup: if there's a lead from the same phone in the last 24 hours,
+        # update it with the new call info instead of creating a duplicate
+        if phone:
+            cursor.execute("""
+                SELECT id FROM leads
+                WHERE company_id = %s AND phone = %s
+                  AND created_at > NOW() - INTERVAL '24 hours'
+                  AND stage NOT IN ('won', 'lost')
+                ORDER BY created_at DESC LIMIT 1
+            """, (company_id, phone))
+            existing = cursor.fetchone()
+            if existing:
+                update_vals = []
+                set_clauses = ["updated_at = NOW()", "call_log_id = %s"]
+                update_vals.append(call_log_id)
+                if notes:
+                    set_clauses.append("notes = COALESCE(notes, '') || %s")
+                    update_vals.append(f"\n📞 Follow-up call: {notes}")
+                update_vals.append(existing[0])
+                cursor.execute(
+                    f"UPDATE leads SET {', '.join(set_clauses)} WHERE id = %s",
+                    tuple(update_vals)
+                )
+                conn.commit()
+                print(f"[LEAD] Updated existing lead id={existing[0]} with new call info")
+                return existing[0]
+
+        # Create the lead
+        cursor.execute("""
+            INSERT INTO leads (company_id, call_log_id, name, phone, email, address,
+                               source, stage, notes, service_interest, lost_reason,
+                               created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            RETURNING id
+        """, (
+            company_id, call_log_id, name, phone or None, email or None,
+            address or None, source, stage, notes, service_interest,
+            lost_reason or None,
+        ))
+        lead_id = cursor.fetchone()[0]
+        conn.commit()
+        print(f"[LEAD] Auto-created lead id={lead_id} from call_log_id={call_log_id} "
+              f"(outcome={outcome}, name={name}, phone={phone})")
+        return lead_id
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"[ERROR] Failed to auto-create lead: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+    finally:
+        if conn:
+            db.return_connection(conn)
 
 
 async def _update_client_from_transcript(

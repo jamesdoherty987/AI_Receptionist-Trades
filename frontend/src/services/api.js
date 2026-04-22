@@ -438,6 +438,8 @@ export const deleteLead = (id) => api.delete(`/api/leads/${id}`);
 export const convertLead = (id) => api.post(`/api/leads/${id}/convert`);
 export const getCrmStats = () => api.get('/api/crm/stats');
 export const updateClientTags = (id, tags) => api.put(`/api/clients/${id}/tags`, { tags });
+export const sendCrmEmail = (data) => api.post('/api/crm/send-email', data);
+export const sendBulkCrmEmail = (data) => api.post('/api/crm/send-bulk-email', data);
 
 // Quote Pipeline
 export const getQuotePipeline = () => api.get('/api/quotes/pipeline');

@@ -8916,23 +8916,47 @@ def convert_lead_to_client(lead_id):
         if not lead:
             return jsonify({"error": "Lead not found"}), 404
 
-        # Create client from lead data
-        client_id = db.add_client(
-            name=lead['name'],
-            phone=lead.get('phone'),
-            email=lead.get('email'),
-            address=lead.get('address'),
-            company_id=company_id,
-        )
+        # Check if a customer with this phone already exists (avoid duplicates)
+        existing_client_id = None
+        if lead.get('phone'):
+            cursor.execute(
+                "SELECT id FROM clients WHERE company_id = %s AND phone = %s LIMIT 1",
+                (company_id, lead['phone'])
+            )
+            row = cursor.fetchone()
+            if row:
+                existing_client_id = row['id']
+                # Enrich existing client with any new info from the lead
+                enrich_parts = []
+                enrich_vals = []
+                if lead.get('address'):
+                    enrich_parts.append("address = COALESCE(NULLIF(address, ''), %s)")
+                    enrich_vals.append(lead['address'])
+                if lead.get('email'):
+                    enrich_parts.append("email = COALESCE(NULLIF(email, ''), %s)")
+                    enrich_vals.append(lead['email'])
+                if enrich_parts:
+                    enrich_vals.append(existing_client_id)
+                    cursor.execute(f"UPDATE clients SET {', '.join(enrich_parts)} WHERE id = %s", tuple(enrich_vals))
+
+        if not existing_client_id:
+            # Create client from lead data
+            existing_client_id = db.add_client(
+                name=lead['name'],
+                phone=lead.get('phone'),
+                email=lead.get('email'),
+                address=lead.get('address'),
+                company_id=company_id,
+            )
 
         # Update lead as won with client reference
         cursor.execute("""
             UPDATE leads SET stage = 'won', client_id = %s, converted_at = CURRENT_TIMESTAMP,
                              updated_at = CURRENT_TIMESTAMP
             WHERE id = %s AND company_id = %s
-        """, (client_id, lead_id, company_id))
+        """, (existing_client_id, lead_id, company_id))
         conn.commit()
-        return jsonify({"client_id": client_id, "message": "Lead converted to customer"})
+        return jsonify({"client_id": existing_client_id, "message": "Lead converted to customer"})
     except Exception as e:
         conn.rollback()
         return jsonify({"error": str(e)}), 500
@@ -9579,6 +9603,168 @@ def call_logs_unseen_count():
     finally:
         if conn:
             db.return_connection(conn)
+
+
+# ============================================
+# CRM EMAIL ENDPOINTS
+# ============================================
+
+@app.route("/api/crm/send-email", methods=["POST"])
+@login_required
+@subscription_required
+def crm_send_email():
+    """Send an individual email to a customer from the CRM."""
+    db = get_database()
+    company_id = session['company_id']
+    data = request.get_json() or {}
+
+    to_email = (data.get('to_email') or '').strip()
+    subject = (data.get('subject') or '').strip()
+    body_html = (data.get('body_html') or '').strip()
+    body_text = (data.get('body_text') or '').strip()
+    client_id = data.get('client_id')
+
+    if not to_email:
+        return jsonify({"error": "Recipient email is required"}), 400
+    if not subject:
+        return jsonify({"error": "Subject is required"}), 400
+    if not body_html and not body_text:
+        return jsonify({"error": "Email body is required"}), 400
+
+    # Get company name for from_name
+    company = db.get_company(company_id)
+    company_name = company.get('company_name', 'BookedForYou') if company else 'BookedForYou'
+
+    # If no HTML provided, wrap plain text in basic HTML
+    if not body_html:
+        body_html = f"<div style='font-family:sans-serif;font-size:14px;color:#333;line-height:1.6;'>{body_text.replace(chr(10), '<br>')}</div>"
+    if not body_text:
+        # Strip HTML tags for plain text fallback
+        import re
+        body_text = re.sub(r'<[^>]+>', '', body_html)
+
+    try:
+        from src.services.email_reminder import get_email_service
+        email_svc = get_email_service()
+        if not email_svc.configured:
+            return jsonify({"error": "Email service is not configured. Set up RESEND_API_KEY or SMTP settings."}), 400
+
+        sent = email_svc._send_email(to_email, subject, body_html, body_text, from_name=company_name)
+        if sent:
+            # Log the activity on the client timeline if client_id provided
+            if client_id:
+                try:
+                    conn = db.get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        INSERT INTO client_notes (client_id, company_id, note, created_at)
+                        VALUES (%s, %s, %s, NOW())
+                    """, (client_id, company_id, f"📧 Email sent: {subject}"))
+                    conn.commit()
+                except Exception:
+                    if conn:
+                        conn.rollback()
+                finally:
+                    if conn:
+                        db.return_connection(conn)
+            return jsonify({"success": True, "message": "Email sent successfully"})
+        else:
+            return jsonify({"error": "Failed to send email. Check your email configuration."}), 500
+    except Exception as e:
+        print(f"[CRM-EMAIL] Error sending email: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/crm/send-bulk-email", methods=["POST"])
+@login_required
+@subscription_required
+def crm_send_bulk_email():
+    """Send a bulk email to multiple customers from the CRM."""
+    db = get_database()
+    company_id = session['company_id']
+    data = request.get_json() or {}
+
+    recipients = data.get('recipients') or []  # list of {email, name, client_id}
+    subject = (data.get('subject') or '').strip()
+    body_html = (data.get('body_html') or '').strip()
+    body_text = (data.get('body_text') or '').strip()
+    segment = data.get('segment')  # optional: 'all', 'vip', 'loyal', 'dormant', 'new', 'regular'
+
+    if not subject:
+        return jsonify({"error": "Subject is required"}), 400
+    if not body_html and not body_text:
+        return jsonify({"error": "Email body is required"}), 400
+
+    # If segment provided, fetch recipients from DB
+    if segment and not recipients:
+        try:
+            conn = db.get_connection()
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT id, name, email FROM clients
+                WHERE company_id = %s AND email IS NOT NULL AND email != ''
+            """, (company_id,))
+            all_clients = cursor.fetchall()
+            recipients = [{"email": c["email"], "name": c["name"], "client_id": c["id"]} for c in all_clients]
+        except Exception as e:
+            return jsonify({"error": f"Failed to fetch recipients: {e}"}), 500
+        finally:
+            if conn:
+                db.return_connection(conn)
+
+    if not recipients:
+        return jsonify({"error": "No recipients provided or found"}), 400
+
+    # Filter out empty emails
+    recipients = [r for r in recipients if (r.get('email') or '').strip()]
+    if not recipients:
+        return jsonify({"error": "No valid email addresses found"}), 400
+
+    company = db.get_company(company_id)
+    company_name = company.get('company_name', 'BookedForYou') if company else 'BookedForYou'
+
+    if not body_html:
+        body_html = f"<div style='font-family:sans-serif;font-size:14px;color:#333;line-height:1.6;'>{body_text.replace(chr(10), '<br>')}</div>"
+    if not body_text:
+        import re
+        body_text = re.sub(r'<[^>]+>', '', body_html)
+
+    try:
+        from src.services.email_reminder import get_email_service
+        email_svc = get_email_service()
+        if not email_svc.configured:
+            return jsonify({"error": "Email service is not configured"}), 400
+
+        sent_count = 0
+        failed_count = 0
+        for r in recipients:
+            to = (r.get('email') or '').strip()
+            if not to:
+                continue
+            # Personalize: replace {{name}} with customer name
+            name = r.get('name') or 'Customer'
+            personalized_html = body_html.replace('{{name}}', name)
+            personalized_text = body_text.replace('{{name}}', name)
+            try:
+                ok = email_svc._send_email(to, subject, personalized_html, personalized_text, from_name=company_name)
+                if ok:
+                    sent_count += 1
+                else:
+                    failed_count += 1
+            except Exception:
+                failed_count += 1
+
+        return jsonify({
+            "success": True,
+            "sent": sent_count,
+            "failed": failed_count,
+            "total": len(recipients),
+            "message": f"Sent {sent_count} of {len(recipients)} emails"
+        })
+    except Exception as e:
+        print(f"[CRM-BULK-EMAIL] Error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # ============================================
