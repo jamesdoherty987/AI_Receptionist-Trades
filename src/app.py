@@ -8026,6 +8026,7 @@ def booking_detail_api(booking_id):
         # Send review email when job is marked as completed
         if success and sanitized_data.get('status') == 'completed':
             try:
+                safe_print(f"[REVIEW] Job {booking_id} marked completed, checking review email...")
                 company = db.get_company(company_id)
                 send_reviews_enabled = company.get('send_review_emails', True) if company else True
                 if send_reviews_enabled:
@@ -8046,8 +8047,7 @@ def booking_detail_api(booking_id):
                                 customer_name=customer_name_r, service_type=service_type_r
                             )
                             if review_record:
-                                from src.utils.config import config
-                                public_url = getattr(config, 'PUBLIC_URL', 'https://bookedforyou.ie')
+                                public_url = os.getenv('PUBLIC_URL', os.getenv('FRONTEND_URL', 'https://bookedforyou.ie'))
                                 review_url = f"{public_url}/review/{review_token}"
                                 from src.services.email_reminder import get_email_service
                                 email_svc = get_email_service()
@@ -8060,8 +8060,19 @@ def booking_detail_api(booking_id):
                                 if sent:
                                     db.mark_review_email_sent(review_record['id'])
                                     safe_print(f"[REVIEW] Review email sent to {customer_email_r} for booking {booking_id}")
+                                else:
+                                    safe_print(f"[REVIEW] Email service returned False for {customer_email_r}")
+                            else:
+                                safe_print(f"[REVIEW] Failed to create review record for booking {booking_id}")
+                        else:
+                            safe_print(f"[REVIEW] Review already exists for booking {booking_id}, skipping")
+                    else:
+                        safe_print(f"[REVIEW] No email on file for booking {booking_id}, skipping review")
+                else:
+                    safe_print(f"[REVIEW] Review emails disabled for company {company_id}")
             except Exception as e:
                 safe_print(f"[REVIEW] Review email failed (non-critical): {e}")
+                import traceback; traceback.print_exc()
 
         # Update notes if provided
         if notes is not None:
@@ -8988,7 +8999,7 @@ def get_crm_stats():
             SELECT c.id, c.name, c.phone, c.email, c.created_at,
                    COUNT(b.id) as total_jobs,
                    COUNT(CASE WHEN b.status = 'completed' THEN 1 END) as completed_jobs,
-                   COALESCE(SUM(CASE WHEN b.status = 'completed' THEN COALESCE(b.charge, b.estimated_charge, 0) END), 0) as total_revenue,
+                   COALESCE(SUM(CASE WHEN b.status = 'completed' THEN COALESCE(b.charge, 0) END), 0) as total_revenue,
                    MAX(b.appointment_time) as last_job_date
             FROM clients c
             LEFT JOIN bookings b ON b.client_id = c.id AND b.company_id = c.company_id

@@ -1,15 +1,16 @@
 .crm-tab { display: flex; flex-direction: column; gap: 1rem; }
 
-/* Header */
-.crm-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
-.crm-header-left { display: flex; align-items: center; gap: 1rem; }
-.crm-header-left h2 { font-size: 1.1rem; font-weight: 700; color: #1e293b; margin: 0; }
-.crm-header-right { display: flex; align-items: center; gap: 0.75rem; flex: 1; }
-.crm-header-right .dash-search { max-width: 500px; flex: 1; padding: 0.45rem 0.75rem; }
-.crm-header-right .dash-search input { font-size: 0.88rem; }
-.crm-header-right .dash-search i.fa-search { font-size: 0.8rem; }
+/* Controls row */
+.crm-controls {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 0.75rem; flex-wrap: wrap;
+}
+.crm-controls-right { display: flex; align-items: center; gap: 0.5rem; flex: 1; justify-content: flex-end; }
+.crm-search { max-width: 400px; flex: 1; padding: 0.38rem 0.75rem; }
+.crm-search input { font-size: 0.85rem; }
+.crm-search i.fa-search { font-size: 0.75rem; }
 
-.crm-view-switcher { display: flex; gap: 2px; background: #f1f5f9; border-radius: 8px; padding: 2px; }
+.crm-view-switcher { display: flex; gap: 2px; background: #f1f5f9; border-radius: 10px; padding: 3px; }
 .crm-view-btn {
   padding: 6px 14px; border: none; background: transparent; border-radius: 6px;
   font-size: 0.82rem; font-weight: 500; color: #64748b; cursor: pointer;
@@ -288,10 +289,9 @@
   .crm-pipeline { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 768px) {
-  .crm-header { flex-direction: column; align-items: stretch; }
-  .crm-header-left { flex-direction: column; align-items: stretch; gap: 0.5rem; }
-  .crm-header-right { flex-direction: row; gap: 0.5rem; }
-  .crm-header-right .search-box { flex: 1; min-width: 0; }
+  .crm-controls { flex-direction: column; align-items: stretch; }
+  .crm-controls-right { flex-direction: row; gap: 0.5rem; }
+  .crm-search { max-width: 100%; }
   .crm-mini-stats { gap: 8px; padding: 5px 8px; }
   .crm-mini-stat { font-size: 0.68rem; }
   .crm-stats-row { grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }

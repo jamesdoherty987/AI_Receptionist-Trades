@@ -1099,7 +1099,6 @@ Thank you,
 <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
 <div style="background:white;border-radius:16px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);overflow:hidden;">
   <div style="background:linear-gradient(135deg,#059669 0%,#10b981 100%);padding:35px;text-align:center;">
-    <div style="width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.2);display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;"><span style="font-size:28px;color:white;font-weight:bold;">&#10003;</span></div>
     <h1 style="color:white;margin:0;font-size:22px;font-weight:700;">Job Complete!</h1>
     <p style="color:rgba(255,255,255,0.9);margin:8px 0 0;font-size:14px;">We'd love to hear your feedback</p>
   </div>

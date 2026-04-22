@@ -1883,19 +1883,6 @@ function ReviewAutomationSettings() {
           {form.review_auto_send && (
             <div className="form-grid" style={{ marginTop: '1.25rem' }}>
               <div className="form-group">
-                <label>Send review request after</label>
-                <select value={form.review_delay_hours}
-                  onChange={e => setForm({ ...form, review_delay_hours: parseInt(e.target.value) })}>
-                  <option value="1">1 hour</option>
-                  <option value="4">4 hours</option>
-                  <option value="24">1 day</option>
-                  <option value="48">2 days</option>
-                  <option value="72">3 days</option>
-                  <option value="168">1 week</option>
-                </select>
-              </div>
-
-              <div className="form-group">
                 <label>Google review redirect threshold</label>
                 <select value={form.google_review_threshold}
                   onChange={e => setForm({ ...form, google_review_threshold: parseInt(e.target.value) })}>

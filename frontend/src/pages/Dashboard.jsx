@@ -239,7 +239,6 @@ function Dashboard() {
       label: 'Finances',
       icon: 'fas fa-dollar-sign',
       group: 'Reports',
-      badge: unpaidCount,
       content: <Suspense fallback={tabFallback}><FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} /></Suspense>
     }] : []),
     ...(adminVis.insights !== false && settings?.show_insights_tab !== false ? [{

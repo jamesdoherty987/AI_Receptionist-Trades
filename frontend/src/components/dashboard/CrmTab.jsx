@@ -258,21 +258,23 @@ function CrmTab({ clients, bookings = [] }) {
 
   return (
     <div className="crm-tab">
-      {/* CRM Header */}
-      <div className="crm-header">
-        <div className="crm-header-left">
-          <h2>CRM</h2>
-          <div className="crm-view-switcher">
-            {CRM_VIEWS.map(v => (
-              <button key={v.key} className={`crm-view-btn ${activeView === v.key ? 'active' : ''}`}
-                onClick={() => handleViewSwitch(v.key)}>
-                <i className={`fas ${v.icon}`}></i> {v.label}
-              </button>
-            ))}
-          </div>
+      {/* Page Title */}
+      <div className="tab-page-header">
+        <h2 className="tab-page-title">CRM</h2>
+      </div>
+
+      {/* Controls Row */}
+      <div className="crm-controls">
+        <div className="crm-view-switcher">
+          {CRM_VIEWS.map(v => (
+            <button key={v.key} className={`crm-view-btn ${activeView === v.key ? 'active' : ''}`}
+              onClick={() => handleViewSwitch(v.key)}>
+              <i className={`fas ${v.icon}`}></i> {v.label}
+            </button>
+          ))}
         </div>
-        <div className="crm-header-right">
-          <div className="dash-search">
+        <div className="crm-controls-right">
+          <div className="dash-search crm-search">
             <i className="fas fa-search"></i>
             <input type="text" placeholder={activeView === 'customers' ? 'Search customers...' : 'Search reviews...'}
               value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
