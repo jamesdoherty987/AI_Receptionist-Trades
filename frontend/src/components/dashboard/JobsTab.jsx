@@ -18,6 +18,8 @@ const STATUS_FILTERS = [
   { key: 'in-progress', label: 'In Progress', icon: 'fa-wrench' },
   { key: 'needs-invoice', label: 'Unpaid', icon: 'fa-file-invoice' },
   { key: 'completed', label: 'Done', icon: 'fa-check-circle' },
+  { key: 'cancelled', label: 'Cancelled', icon: 'fa-ban' },
+  { key: 'rejected', label: 'Rejected', icon: 'fa-times-circle' },
   { key: 'all', label: 'All', icon: 'fa-list' },
 ];
 
@@ -101,14 +103,15 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     const inProg = bookings.filter(j => j.status === 'in-progress');
     const needsInv = bookings.filter(j => j.status === 'completed' && j.payment_status !== 'paid');
     const done = bookings.filter(j => j.status === 'completed' || j.status === 'paid');
-    const canc = bookings.filter(j => j.status === 'cancelled' || j.status === 'rejected');
+    const canc = bookings.filter(j => j.status === 'cancelled');
+    const rej = bookings.filter(j => j.status === 'rejected');
     // Recently booked = created in last 48 hours
     const recentCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000);
     const recent = bookings.filter(j => {
       const created = new Date(j.created_at);
       return created >= recentCutoff && !['cancelled', 'rejected'].includes(j.status);
     });
-    return { active: active.length, recent: recent.length, overdue: overdue.length, 'in-progress': inProg.length, 'needs-invoice': needsInv.length, completed: done.length, cancelled: canc.length, all: bookings.length };
+    return { active: active.length, recent: recent.length, overdue: overdue.length, 'in-progress': inProg.length, 'needs-invoice': needsInv.length, completed: done.length, cancelled: canc.length, rejected: rej.length, all: bookings.length };
   }, [bookings]);
 
   // Filter and group jobs
@@ -149,7 +152,9 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     } else if (statusFilter === 'completed') {
       jobs = jobs.filter(j => j.status === 'completed' || j.status === 'paid');
     } else if (statusFilter === 'cancelled') {
-      jobs = jobs.filter(j => j.status === 'cancelled' || j.status === 'rejected');
+      jobs = jobs.filter(j => j.status === 'cancelled');
+    } else if (statusFilter === 'rejected') {
+      jobs = jobs.filter(j => j.status === 'rejected');
     }
 
     jobs.sort((a, b) => {
@@ -212,10 +217,16 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       sections.push({ key: 'completed', label: 'Completed & Paid', icon: 'fa-check-circle', color: '#10b981', jobs: done.slice(0, 20) });
     }
 
-    // Cancelled / Rejected
-    const canc = jobs.filter(j => j.status === 'cancelled' || j.status === 'rejected');
+    // Cancelled
+    const canc = jobs.filter(j => j.status === 'cancelled');
     if (canc.length > 0 && (statusFilter === 'cancelled' || statusFilter === 'all')) {
-      sections.push({ key: 'cancelled', label: 'Cancelled / Rejected', icon: 'fa-times-circle', color: '#9ca3af', jobs: canc.slice(0, 10) });
+      sections.push({ key: 'cancelled', label: 'Cancelled', icon: 'fa-ban', color: '#9ca3af', jobs: canc.slice(0, 10) });
+    }
+
+    // Rejected
+    const rej = jobs.filter(j => j.status === 'rejected');
+    if (rej.length > 0 && (statusFilter === 'rejected' || statusFilter === 'all')) {
+      sections.push({ key: 'rejected', label: 'Rejected', icon: 'fa-times-circle', color: '#ef4444', jobs: rej.slice(0, 10) });
     }
 
     return { groups: sections, totalFiltered: jobs.length };

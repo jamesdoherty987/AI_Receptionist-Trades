@@ -296,11 +296,6 @@ function CrmTab({ clients, bookings = [] }) {
         </div>
       </div>
 
-      {/* AI CRM Insights */}
-      {(leads.length > 0 || customerHealth.length > 0) && !searchTerm && (
-        <CrmAiInsights leads={leads} customerHealth={customerHealth} reviews={reviews} pipelineStats={pipelineStats} />
-      )}
-
       {/* Leads View */}
       {activeView === 'leads' && (
         <PipelineView

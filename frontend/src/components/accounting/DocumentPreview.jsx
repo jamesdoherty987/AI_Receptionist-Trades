@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { getBusinessSettings, getTaxSettings } from '../../services/api';
+import './Accounting.css';
 
 function DocumentPreview({ type = 'invoice', docNumber, date, dueDate, customer, supplier,
   lineItems = [], subtotal, taxRate: propTaxRate, taxAmount: propTaxAmount, total,

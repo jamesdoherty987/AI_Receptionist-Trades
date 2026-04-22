@@ -1812,6 +1812,9 @@ class PostgreSQLDatabaseWrapper:
                 'emergency_accepted_at': row.get('emergency_accepted_at'),
                 'updated_at': row.get('updated_at'),
                 'gcal_synced_at': row.get('gcal_synced_at'),
+                'status_label': row.get('status_label'),
+                'recurrence_pattern': row.get('recurrence_pattern'),
+                'stripe_checkout_session_id': row.get('stripe_checkout_session_id'),
             } for row in rows]
         finally:
             self.return_connection(conn)

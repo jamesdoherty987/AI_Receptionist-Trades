@@ -439,11 +439,6 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
       </div>
       )}
 
-      {/* AI Smart Summary */}
-      {bookings.length > 0 && (
-        <AiSmartSummary stats={stats} clients={clients} bookings={bookings} workers={workers} leads={leads} callLogs={callLogs} />
-      )}
-
       {/* Overview Cards */}
       {showSections.overviewCards && (
       <div className="insights-overview">

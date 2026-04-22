@@ -336,19 +336,6 @@ function FinancesTab() {
       )}
 
       {acctTab === 'overview' && (<>
-      {/* AI Cash Flow Insights */}
-      <AiFinanceInsights
-        totalRevenue={total_revenue}
-        paidRevenue={paid_revenue}
-        unpaidRevenue={unpaid_revenue}
-        totalExpenses={totalExpenses}
-        materialsCost={total_materials_cost}
-        netCashFlow={netCashFlow}
-        profitMargin={profit_margin}
-        transactions={transactions}
-        insights={insights}
-      />
-
       {/* Section Visibility Picker */}
       {showSectionPicker && (
       <div className="fin-section-toggle-bar">
