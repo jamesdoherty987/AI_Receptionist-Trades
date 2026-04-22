@@ -30,11 +30,14 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const { addToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('active');
+  const [viewMode, setViewMode] = useState('list');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [markingPaidJobId, setMarkingPaidJobId] = useState(null);
   const [servicePopup, setServicePopup] = useState(null);
   const [invoiceJob, setInvoiceJob] = useState(null);
+  const [dragOverCol, setDragOverCol] = useState(null);
+  const [localStatusOverrides, setLocalStatusOverrides] = useState({});
 
   // Single batch request replaces 3 separate fetches (invoice-config, services-menu, packages)
   const { data: jobSetupData } = useQuery({
@@ -72,6 +75,35 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     onError: () => { addToast('Failed to mark job as paid', 'error'); setMarkingPaidJobId(null); }
   });
 
+  const dragStatusMutation = useMutation({
+    mutationFn: ({ jobId, status }) => updateBooking(jobId, { status }),
+    onSuccess: (_, { jobId }) => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      // Clear override once server confirms
+      setLocalStatusOverrides(prev => { const n = { ...prev }; delete n[jobId]; return n; });
+    },
+    onError: (_, { jobId }) => {
+      // Roll back the local override
+      setLocalStatusOverrides(prev => { const n = { ...prev }; delete n[jobId]; return n; });
+      addToast('Failed to update status', 'error');
+    },
+  });
+
+  const handleBoardDrop = (e, targetStatus) => {
+    e.preventDefault();
+    setDragOverCol(null);
+    const jobId = parseInt(e.dataTransfer.getData('text/plain'));
+    if (!jobId) return;
+    const job = bookings.find(b => b.id === jobId);
+    if (!job) return;
+    const currentStatus = localStatusOverrides[jobId] || (job.status === 'confirmed' ? 'scheduled' : job.status);
+    if (currentStatus === targetStatus) return;
+    // Instantly move the card via local state
+    setLocalStatusOverrides(prev => ({ ...prev, [jobId]: targetStatus }));
+    // Fire the API call in the background
+    dragStatusMutation.mutate({ jobId, status: targetStatus });
+  };
+
   const invoiceMutation = useMutation({
     mutationFn: ({ jobId, invoiceData }) => sendInvoice(jobId, invoiceData),
     onSuccess: (response) => {
@@ -97,12 +129,14 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const weekEnd = new Date(todayStart); weekEnd.setDate(weekEnd.getDate() + 7);
 
   const counts = useMemo(() => {
-    const activeAll = bookings.filter(j => !['completed', 'cancelled', 'rejected'].includes(j.status));
+    // Normalize legacy 'paid' status to 'completed' for counting
+    const norm = (s) => s === 'paid' ? 'completed' : s;
+    const activeAll = bookings.filter(j => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status));
     const overdue = activeAll.filter(j => j.status !== 'in-progress' && new Date(j.appointment_time) < now);
     const active = activeAll.filter(j => j.status === 'in-progress' || new Date(j.appointment_time) >= now);
     const inProg = bookings.filter(j => j.status === 'in-progress');
-    const needsInv = bookings.filter(j => j.status === 'completed' && j.payment_status !== 'paid');
-    const done = bookings.filter(j => j.status === 'completed');
+    const needsInv = bookings.filter(j => (norm(j.status) === 'completed') && j.payment_status !== 'paid');
+    const done = bookings.filter(j => norm(j.status) === 'completed');
     const canc = bookings.filter(j => j.status === 'cancelled');
     const rej = bookings.filter(j => j.status === 'rejected');
     // Recently booked = created in last 48 hours
@@ -136,7 +170,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
     // Status filter
     if (statusFilter === 'active') {
-      jobs = jobs.filter(j => !['completed', 'cancelled', 'rejected'].includes(j.status) && (j.status === 'in-progress' || new Date(j.appointment_time) >= now));
+      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status) && (j.status === 'in-progress' || new Date(j.appointment_time) >= now));
     } else if (statusFilter === 'recent') {
       const recentCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000);
       jobs = jobs.filter(j => {
@@ -144,13 +178,13 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
         return created >= recentCutoff && !['cancelled', 'rejected'].includes(j.status);
       });
     } else if (statusFilter === 'overdue') {
-      jobs = jobs.filter(j => !['completed', 'cancelled', 'rejected', 'in-progress'].includes(j.status) && new Date(j.appointment_time) < now);
+      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'rejected', 'in-progress'].includes(j.status) && new Date(j.appointment_time) < now);
     } else if (statusFilter === 'in-progress') {
       jobs = jobs.filter(j => j.status === 'in-progress');
     } else if (statusFilter === 'needs-invoice') {
-      jobs = jobs.filter(j => j.status === 'completed' && j.payment_status !== 'paid');
+      jobs = jobs.filter(j => (j.status === 'completed' || j.status === 'paid') && j.payment_status !== 'paid');
     } else if (statusFilter === 'completed') {
-      jobs = jobs.filter(j => j.status === 'completed');
+      jobs = jobs.filter(j => j.status === 'completed' || j.status === 'paid');
     } else if (statusFilter === 'cancelled') {
       jobs = jobs.filter(j => j.status === 'cancelled');
     } else if (statusFilter === 'rejected') {
@@ -166,7 +200,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
     // Group into sections
     const sections = [];
-    const isActive = (j) => !['completed', 'cancelled', 'rejected'].includes(j.status);
+    const isActive = (j) => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status);
 
     // For 'recent' filter, show as a single flat section sorted by creation time
     if (statusFilter === 'recent') {
@@ -202,7 +236,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     if (later.length > 0) sections.push({ key: 'later', label: 'Upcoming', icon: 'fa-calendar-alt', color: '#0ea5e9', jobs: later });
 
     // Needs Invoice
-    const needsInv = jobs.filter(j => j.status === 'completed' && j.payment_status !== 'paid');
+    const needsInv = jobs.filter(j => (j.status === 'completed' || j.status === 'paid') && j.payment_status !== 'paid');
     if (needsInv.length > 0 && statusFilter !== 'needs-invoice') {
       // Only show as separate section if not already filtered to it
     }
@@ -212,7 +246,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     }
 
     // Completed/Paid
-    const done = jobs.filter(j => j.status === 'completed' && j.payment_status === 'paid');
+    const done = jobs.filter(j => (j.status === 'completed' || j.status === 'paid') && j.payment_status === 'paid');
     if (done.length > 0 && (statusFilter === 'completed' || statusFilter === 'all')) {
       sections.push({ key: 'completed', label: 'Completed & Paid', icon: 'fa-check-circle', color: '#10b981', jobs: done.slice(0, 20) });
     }
@@ -239,6 +273,36 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     return addr || code || 'No address';
   };
 
+  const BOARD_COLUMNS = [
+    { key: 'pending', label: 'New', color: '#f59e0b', icon: 'fa-clock' },
+    { key: 'quote_sent', label: 'Quote Sent', color: '#3b82f6', icon: 'fa-paper-plane' },
+    { key: 'scheduled', label: 'Scheduled', color: '#6366f1', icon: 'fa-calendar-check' },
+    { key: 'in-progress', label: 'In Progress', color: '#8b5cf6', icon: 'fa-wrench' },
+    { key: 'completed', label: 'Completed', color: '#22c55e', icon: 'fa-check-circle' },
+  ];
+
+  const boardData = useMemo(() => {
+    const cols = {};
+    BOARD_COLUMNS.forEach(c => { cols[c.key] = []; });
+    let filtered = [...bookings];
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(j =>
+        j.customer_name?.toLowerCase().includes(term) || j.service_type?.toLowerCase().includes(term) ||
+        j.phone?.includes(term) || j.job_address?.toLowerCase().includes(term)
+      );
+    }
+    filtered.forEach(j => {
+      if (['cancelled', 'rejected'].includes(j.status)) return;
+      // Apply local overrides for instant drag feedback
+      const effectiveStatus = localStatusOverrides[j.id] || (j.status === 'confirmed' ? 'scheduled' : j.status === 'paid' ? 'completed' : j.status);
+      if (cols[effectiveStatus]) cols[effectiveStatus].push(j);
+      else if (cols.pending) cols.pending.push(j);
+    });
+    Object.values(cols).forEach(arr => arr.sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time)));
+    return cols;
+  }, [bookings, searchTerm, localStatusOverrides]);
+
   return (
     <div className="jobs-tab">
       {/* Page Header */}
@@ -253,12 +317,20 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
           <input type="text" placeholder="Search by name, service, address, phone..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           {searchTerm && <button className="jt-search-clear" onClick={() => setSearchTerm('')}><i className="fas fa-times"></i></button>}
         </div>
-        <button className="btn-add" onClick={handleAddClick}>
-          <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Job
-        </button>
+        <div className="jt-header-actions">
+          <div className="jt-view-toggle">
+            <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')} title="List view"><i className="fas fa-list"></i> List</button>
+            <button className={viewMode === 'board' ? 'active' : ''} onClick={() => setViewMode('board')} title="Board view"><i className="fas fa-columns"></i> Board</button>
+          </div>
+          <button className="btn-add" onClick={handleAddClick}>
+            <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Job
+          </button>
+        </div>
       </div>
 
-      {/* Filter pills */}
+      {/* Filter pills - list view only */}
+      {viewMode === 'list' && (
+      <>
       <div className="jt-filters">
         {STATUS_FILTERS.map(f => (
           <button key={f.key} className={`jt-filter ${statusFilter === f.key ? 'active' : ''} ${f.key === 'overdue' && counts.overdue > 0 ? 'has-alert' : ''}`}
@@ -295,7 +367,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
               </div>
               <div className="jt-cards">
                 {section.jobs.map(job => {
-                  const isPast = new Date(job.appointment_time) < now && job.status !== 'in-progress' && job.status !== 'completed' && job.status !== 'cancelled';
+                  const isPast = new Date(job.appointment_time) < now && job.status !== 'in-progress' && job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled';
                   const isNow = Math.abs(new Date(job.appointment_time) - now) < 30 * 60 * 1000 && job.status !== 'completed' && job.status !== 'cancelled';
                   return (
                     <div key={job.id} className={`jt-card ${isPast ? 'jt-card-overdue' : ''} ${isNow ? 'jt-card-now' : ''} ${job.status === 'in-progress' ? 'jt-card-active' : ''}`}
@@ -314,7 +386,13 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                               <i className="fas fa-exclamation-triangle"></i> No Worker
                             </span>
                           )}
-                          <span className={`jt-status-badge jt-status-${job.status}`}>{job.status === 'in-progress' ? 'In Progress' : job.status === 'quote_sent' ? 'Quote Sent' : job.status === 'pending' ? 'New' : job.status}</span>
+                          <span className={`jt-status-badge jt-status-${job.status === 'paid' ? 'completed' : job.status}`}>{
+                            job.status === 'in-progress' ? 'In Progress' :
+                            job.status === 'quote_sent' ? 'Quote Sent' :
+                            job.status === 'pending' ? 'New' :
+                            job.status === 'paid' ? 'Completed' :
+                            job.status
+                          }</span>
                           {job.payment_status === 'paid' && <span className="jt-paid-badge"><i className="fas fa-check-circle"></i> Paid</span>}
                           {job.payment_status === 'invoiced' && <span className="jt-invoiced-badge"><i className="fas fa-file-invoice"></i> Invoiced</span>}
                           {job.payment_status === 'refunded' && <span className="jt-refunded-badge"><i className="fas fa-undo"></i> Refunded</span>}
@@ -400,6 +478,51 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
           ))
         )}
       </div>
+      </>
+      )}
+
+      {/* Board View */}
+      {viewMode === 'board' && (
+        <div className="jt-board">
+          {BOARD_COLUMNS.map(col => (
+            <div key={col.key}
+              className={`jt-board-col ${dragOverCol === col.key ? 'jt-board-col-dragover' : ''}`}
+              onDragOver={e => { e.preventDefault(); setDragOverCol(col.key); }}
+              onDragLeave={() => setDragOverCol(null)}
+              onDrop={e => handleBoardDrop(e, col.key)}>
+              <div className="jt-board-col-head">
+                <span className="jt-board-dot" style={{ background: col.color }}></span>
+                <span className="jt-board-col-label">{col.label}</span>
+                <span className="jt-board-col-count">{boardData[col.key]?.length || 0}</span>
+              </div>
+              <div className="jt-board-cards">
+                {(boardData[col.key] || []).map(job => (
+                  <div key={job.id} className="jt-board-card"
+                    draggable
+                    onDragStart={e => e.dataTransfer.setData('text/plain', String(job.id))}
+                    onClick={() => setSelectedJobId(job.id)}>
+                    <div className="jt-board-card-top">
+                      <span className="jt-board-card-name">{job.customer_name || 'Unknown'}</span>
+                      {job.payment_status === 'paid' && <span className="jt-paid-badge"><i className="fas fa-check-circle"></i> Paid</span>}
+                      {job.payment_status === 'invoiced' && <span className="jt-invoiced-badge"><i className="fas fa-file-invoice"></i> Invoiced</span>}
+                      {job.payment_status === 'refunded' && <span className="jt-refunded-badge"><i className="fas fa-undo"></i> Refunded</span>}
+                    </div>
+                    <div className="jt-board-card-service">{job.service_type || job.service || 'Service'}</div>
+                    <div className="jt-board-card-meta">
+                      <span><i className="fas fa-calendar"></i> {new Date(job.appointment_time).toLocaleDateString('en-IE', { day: 'numeric', month: 'short' })}</span>
+                      {!!(job.charge || job.estimated_charge) && <span className="jt-board-card-charge">{formatCurrency(job.charge || job.estimated_charge)}</span>}
+                    </div>
+                    {job.status_label && <span className="jt-label-badge" style={{ fontSize: '0.62rem', marginTop: '0.25rem' }}><i className="fas fa-tag"></i> {job.status_label}</span>}
+                  </div>
+                ))}
+                {(boardData[col.key] || []).length === 0 && (
+                  <div className="jt-board-empty">Drag jobs here</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Service/Package Detail Popup */}
       {servicePopup && (

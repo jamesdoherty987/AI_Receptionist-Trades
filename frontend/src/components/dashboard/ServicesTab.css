@@ -42,10 +42,10 @@
   min-width: 180px;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.55rem 0.75rem;
+  gap: 0.3rem;
+  padding: 0.18rem 0.55rem;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 8px;
   background: white;
   transition: border-color 0.2s;
 }
@@ -57,7 +57,7 @@
 
 .svc-search i {
   color: var(--text-secondary);
-  font-size: 0.85rem;
+  font-size: 0.68rem;
   flex-shrink: 0;
 }
 
@@ -65,7 +65,7 @@
   border: none;
   outline: none;
   flex: 1;
-  font-size: 0.95rem;
+  font-size: 0.78rem;
   font-family: inherit;
   background: transparent;
   color: var(--text-primary);
@@ -1485,10 +1485,10 @@
 
 .dm-search {
   width: 100%;
-  padding: 0.35rem 0.5rem;
+  padding: 0.18rem 0.5rem;
   border: 1px solid var(--border-color, #ddd);
   border-radius: 6px;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   margin-bottom: 0.4rem;
   background: var(--bg-primary, #fff);
   color: var(--text-primary, #333);

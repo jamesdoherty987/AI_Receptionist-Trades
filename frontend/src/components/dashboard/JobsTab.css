@@ -3,13 +3,13 @@
 /* Header */
 .jt-header { display: flex; gap: 0.75rem; align-items: center; }
 .jt-search {
-  flex: 1; display: flex; align-items: center; gap: 0.4rem;
-  padding: 0.35rem 0.65rem; background: white; border: 1px solid #e2e8f0;
+  flex: 1; display: flex; align-items: center; gap: 0.3rem;
+  padding: 0.18rem 0.55rem; background: white; border: 1px solid #e2e8f0;
   border-radius: 7px; transition: border-color 0.2s;
 }
 .jt-search:focus-within { border-color: #94a3b8; box-shadow: 0 0 0 2px rgba(148,163,184,0.08); }
-.jt-search i { color: #94a3b8; font-size: 0.75rem; }
-.jt-search input { border: none; outline: none; flex: 1; font-size: 0.82rem; font-family: inherit; background: transparent; color: #1e293b; }
+.jt-search i { color: #94a3b8; font-size: 0.68rem; }
+.jt-search input { border: none; outline: none; flex: 1; font-size: 0.78rem; font-family: inherit; background: transparent; color: #1e293b; }
 .jt-search-clear { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 2px 6px; font-size: 0.8rem; }
 
 /* Filter pills — subtle, muted */
@@ -307,6 +307,57 @@
   font-size: 0.65rem; font-weight: 600; white-space: nowrap; text-transform: capitalize;
 }
 .jt-recurring-badge i { font-size: 0.55rem; }
+
+/* View toggle */
+.jt-header-actions { display: flex; align-items: center; gap: 0.5rem; }
+.jt-view-toggle { display: flex; background: #f1f5f9; border-radius: 10px; padding: 3px; gap: 2px; }
+.jt-view-toggle button {
+  border: none; background: transparent; padding: 0.5rem 1rem; border-radius: 8px;
+  cursor: pointer; color: #94a3b8; font-size: 0.82rem; font-weight: 600;
+  transition: all 0.15s; display: flex; align-items: center; gap: 0.4rem;
+}
+.jt-view-toggle button.active { background: white; color: #1e293b; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+.jt-view-toggle button:hover:not(.active) { color: #64748b; }
+
+/* Board View */
+.jt-board {
+  display: flex; gap: 0.75rem; overflow-x: auto; padding-bottom: 1rem;
+  min-height: 400px;
+}
+.jt-board-col {
+  flex: 1; min-width: 200px; max-width: 280px;
+  background: #f8fafc; border-radius: 10px; padding: 0.5rem;
+}
+.jt-board-col-head {
+  display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 0.4rem;
+  font-size: 0.78rem; font-weight: 600; color: #475569;
+}
+.jt-board-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.jt-board-col-count {
+  margin-left: auto; background: #e2e8f0; color: #64748b;
+  font-size: 0.65rem; padding: 0.1rem 0.4rem; border-radius: 10px;
+}
+.jt-board-cards { display: flex; flex-direction: column; gap: 0.4rem; }
+.jt-board-card {
+  background: white; border-radius: 8px; padding: 0.6rem 0.7rem;
+  border: 1px solid #e2e8f0; cursor: pointer; transition: box-shadow 0.15s;
+}
+.jt-board-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.jt-board-card[draggable="true"] { cursor: grab; }
+.jt-board-card[draggable="true"]:active { cursor: grabbing; opacity: 0.7; }
+.jt-board-col-dragover { background: #eef2ff; border: 2px dashed #6366f1; border-radius: 10px; }
+.jt-board-card-top { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.2rem; }
+.jt-board-card-name { font-size: 0.82rem; font-weight: 600; color: #1e293b; }
+.jt-board-card-service { font-size: 0.72rem; color: #64748b; margin-bottom: 0.25rem; }
+.jt-board-card-meta { display: flex; align-items: center; gap: 0.5rem; font-size: 0.68rem; color: #94a3b8; }
+.jt-board-card-meta i { font-size: 0.58rem; }
+.jt-board-card-charge { font-weight: 600; color: #1e293b; }
+.jt-board-empty { text-align: center; padding: 1.5rem 0.5rem; color: #cbd5e1; font-size: 0.75rem; }
+
+@media (max-width: 768px) {
+  .jt-board { flex-direction: column; }
+  .jt-board-col { max-width: 100%; min-width: 0; }
+}
 
 /* ── Emergency Badge ─────────────────────────────────────── */
 
