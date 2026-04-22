@@ -29,7 +29,8 @@ import {
   getQuotes,
   updateQuote,
   sendQuote,
-  rejectBooking
+  rejectBooking,
+  createCreditNote
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
@@ -73,6 +74,8 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const [editQuoteData, setEditQuoteData] = useState({ lineItems: [], notes: '' });
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [refundData, setRefundData] = useState({ amount: '', reason: '', notes: '', stripe_refund: false });
 
   const { data: job, isLoading } = useQuery({
     queryKey: ['booking', jobId],
@@ -505,6 +508,36 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     onError: (error) => addToast(error.response?.data?.error || 'Failed to reject job', 'error'),
   });
 
+  const refundMutation = useMutation({
+    mutationFn: (data) => createCreditNote(data),
+    onSuccess: (res) => {
+      const d = res.data;
+      queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
+      setShowRefundModal(false);
+      if (d.stripe_refund_status === 'success') {
+        addToast(`Refund of €${d.amount} processed via Stripe`, 'success');
+      } else if (d.stripe_refund_error) {
+        addToast(`Credit note created but Stripe refund failed: ${d.stripe_refund_error}`, 'warning');
+      } else {
+        addToast(`Credit note of €${d.amount} created`, 'success');
+      }
+    },
+    onError: (error) => addToast(error.response?.data?.error || 'Failed to process refund', 'error'),
+  });
+
+  const openRefundModal = () => {
+    setRefundData({
+      amount: job?.charge || job?.estimated_charge || '',
+      reason: '',
+      notes: '',
+      stripe_refund: job?.payment_method === 'stripe',
+    });
+    setShowRefundModal(true);
+  };
+
   const handleSendInvoice = () => {
     if (!isSubscriptionActive) {
       addToast('Please upgrade your plan to send invoices', 'warning');
@@ -696,6 +729,11 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   <i className="fas fa-file-invoice"></i>
                   Quote
                 </button>
+                {job.payment_status === 'paid' && (
+                  <button className="btn btn-danger-outline" onClick={openRefundModal} title="Issue a refund for this job">
+                    <i className="fas fa-undo"></i> Refund
+                  </button>
+                )}
                 {getDirectionsUrl() && (
                   <a href={getDirectionsUrl()} target="_blank" rel="noopener noreferrer" className="btn btn-success">
                     <i className="fas fa-directions"></i> Directions
@@ -1540,6 +1578,72 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
               <button className="btn btn-danger" onClick={() => rejectMutation.mutate(rejectReason)} disabled={rejectMutation.isPending}>
                 <i className={`fas ${rejectMutation.isPending ? 'fa-spinner fa-spin' : 'fa-ban'}`}></i>
                 {rejectMutation.isPending ? ' Rejecting...' : ' Reject Job'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Refund Modal */}
+      {showRefundModal && (
+        <div className="reject-modal-overlay" onClick={() => setShowRefundModal(false)}>
+          <div className="reject-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+            <h3><i className="fas fa-undo" style={{ color: '#ef4444' }}></i> Issue Refund</h3>
+            <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 16px' }}>
+              Create a credit note{refundData.stripe_refund ? ' and process a Stripe refund' : ''} for this job.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Refund Amount (€)</label>
+                <input type="number" step="0.01" min="0" max={job?.charge || 9999}
+                  value={refundData.amount}
+                  onChange={e => setRefundData(d => ({ ...d, amount: e.target.value }))}
+                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                />
+                {job?.charge && parseFloat(refundData.amount) < parseFloat(job.charge) && parseFloat(refundData.amount) > 0 && (
+                  <small style={{ color: '#f59e0b', fontSize: '0.72rem' }}>Partial refund — original charge was €{parseFloat(job.charge).toFixed(2)}</small>
+                )}
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Reason</label>
+                <input type="text" value={refundData.reason}
+                  onChange={e => setRefundData(d => ({ ...d, reason: e.target.value }))}
+                  placeholder="e.g. Customer dissatisfied, job not completed..."
+                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Notes (optional)</label>
+                <textarea value={refundData.notes}
+                  onChange={e => setRefundData(d => ({ ...d, notes: e.target.value }))}
+                  placeholder="Internal notes..."
+                  rows={2}
+                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit', boxSizing: 'border-box', resize: 'vertical' }}
+                />
+              </div>
+              {job?.payment_method === 'stripe' && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#475569', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={refundData.stripe_refund}
+                    onChange={e => setRefundData(d => ({ ...d, stripe_refund: e.target.checked }))}
+                  />
+                  <i className="fab fa-stripe-s" style={{ color: '#6366f1' }}></i>
+                  Process refund via Stripe (returns money to customer's card)
+                </label>
+              )}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+              <button className="btn btn-secondary" onClick={() => setShowRefundModal(false)}>Cancel</button>
+              <button className="btn btn-danger"
+                disabled={refundMutation.isPending || !refundData.amount || parseFloat(refundData.amount) <= 0}
+                onClick={() => refundMutation.mutate({
+                  booking_id: jobId,
+                  client_id: job?.client_id,
+                  amount: parseFloat(refundData.amount),
+                  reason: refundData.reason,
+                  notes: refundData.notes,
+                  stripe_refund: refundData.stripe_refund,
+                })}>
+                <i className={`fas ${refundMutation.isPending ? 'fa-spinner fa-spin' : 'fa-undo'}`}></i>
+                {refundMutation.isPending ? ' Processing...' : ` Refund €${parseFloat(refundData.amount || 0).toFixed(2)}`}
               </button>
             </div>
           </div>
