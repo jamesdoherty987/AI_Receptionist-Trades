@@ -4632,15 +4632,18 @@ class PostgreSQLDatabaseWrapper:
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                SELECT jr.*, c.name as company_name
+                SELECT jr.*, c.company_name as company_name
                 FROM job_reviews jr
                 JOIN companies c ON c.id = jr.company_id
                 WHERE jr.review_token = %s
             """, (token,))
             row = cursor.fetchone()
+            if not row:
+                print(f"[REVIEW] Token not found in database: {token[:20]}...")
             return dict(row) if row else None
         except Exception as e:
             conn.rollback()
+            print(f"[ERROR] get_review_by_token failed: {e}")
             return None
         finally:
             self.return_connection(conn)

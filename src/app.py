@@ -8674,8 +8674,10 @@ def get_booking_review(booking_id):
 def get_review_by_token(token):
     """Public endpoint: get review info by token for the submission page."""
     db = get_database()
+    print(f"[REVIEW] Looking up review token: {token[:20]}...")
     review = db.get_review_by_token(token)
     if not review:
+        print(f"[REVIEW] Token not found: {token}")
         return jsonify({"error": "Review not found or link expired"}), 404
     if review.get('submitted_at'):
         return jsonify({"already_submitted": True, "rating": review.get('rating')})
