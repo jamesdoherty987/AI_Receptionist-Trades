@@ -7330,6 +7330,7 @@ def check_availability_api():
         worker_on_leave = worker_id and worker_id in workers_on_leave_today
 
         # For "any worker" mode, remove workers on leave from the pool
+        had_eligible_workers = any_worker and bool(per_worker_bookings)
         if any_worker and per_worker_bookings and workers_on_leave_today:
             per_worker_bookings = {wid: bk for wid, bk in per_worker_bookings.items() if wid not in workers_on_leave_today}
 
@@ -7341,10 +7342,13 @@ def check_availability_api():
         current_minute = 0
         end_hour = business_hours['end']
 
-        # If any_worker mode but no workers exist at all, fall back to
-        # general (non-worker) availability so the daily view matches the
-        # monthly calendar which also falls back.
-        if any_worker and not per_worker_bookings:
+        # If any_worker mode but no workers exist at all (not just on leave),
+        # fall back to general (non-worker) availability so the daily view
+        # matches the monthly calendar which also falls back.
+        # But if eligible workers existed and are ALL on leave, keep slots unavailable.
+        all_workers_on_leave = any_worker and not per_worker_bookings and had_eligible_workers
+        no_workers_exist = any_worker and not per_worker_bookings and not had_eligible_workers
+        if no_workers_exist:
             day_bookings = _get_day_bookings(filter_worker_id=None)
         
         while current_hour < end_hour or (current_hour == end_hour and current_minute == 0):
@@ -7395,7 +7399,11 @@ def check_availability_api():
                         'time': str(conflict_booking['appointment_time']),
                         'duration_minutes': first_conflict['duration']
                     }
-            elif any_worker and not per_worker_bookings:
+            elif all_workers_on_leave:
+                # All workers are on leave — no availability
+                is_available = False
+                booking_info = {'leave': True, 'reason': 'All workers on leave'}
+            elif no_workers_exist:
                 # No workers exist — fall back to general conflict check
                 for booking_data in day_bookings:
                     if slot_time < booking_data['end'] and slot_end > booking_data['start']:
@@ -7597,9 +7605,10 @@ def check_monthly_availability_api():
             if is_today_day and slot_duration < 1440:
                 bh_start_dt = day_start.replace(hour=bh_start, minute=0, second=0)
                 past_end = min(now, bh_end_dt)
-                if past_end > bh_start_dt:
+                if past_end >= bh_start_dt:
                     past_mins = (past_end - bh_start_dt).total_seconds() / 60
-                    past_slots_count = max(0, int(past_mins // 30))
+                    # +1 because the slot AT bh_start is also past (daily uses <=)
+                    past_slots_count = min(int(past_mins // 30) + 1, slots_per_day)
                     booked += past_slots_count
 
             for rb in bookings_list:

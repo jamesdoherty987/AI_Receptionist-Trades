@@ -813,15 +813,14 @@
   box-shadow: 0 4px 16px rgba(0,0,0,0.15);
   font-family: 'Georgia', 'Times New Roman', 'Garamond', serif;
   font-size: 0.85rem;
-  /* True A4: 210mm x 297mm. Use width-based scaling with padding to simulate */
+  /* True A4: 210mm × 297mm */
   width: 100%;
-  max-width: 595px; /* A4 at 72dpi */
-  min-height: 842px; /* 595 * 1.414 */
+  max-width: 595px; /* A4 at 72 dpi */
+  min-height: 842px; /* 595 × 1.414 — keeps the A4 look even with little content */
   padding: 48px 40px;
   margin: 0 auto;
   position: relative;
   border: 1px solid #e2e8f0;
-  aspect-ratio: 210 / 297;
 }
 
 /* Header */
@@ -910,7 +909,12 @@
 
 @media (max-width: 768px) {
   .doc-preview-modal { padding: 0.5rem; }
-  .doc-preview-paper { padding: 1.25rem 1rem; min-height: 600px; }
+  .doc-preview-paper {
+    padding: 1.25rem 1rem;
+    /* Scale min-height proportionally on mobile so the A4 shape is preserved */
+    min-height: 0;
+    aspect-ratio: 210 / 297;
+  }
   .doc-preview-header { flex-direction: column; gap: 0.75rem; }
   .doc-preview-title-block { text-align: left; }
   .doc-preview-parties { flex-direction: column; gap: 0.75rem; }
