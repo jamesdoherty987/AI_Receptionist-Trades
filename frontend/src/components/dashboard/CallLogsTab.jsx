@@ -125,11 +125,6 @@ function CallLogsTab() {
         </div>
       </div>
 
-      {/* AI Call Pattern Insights */}
-      {logs.length > 5 && !searchTerm && activeFilter === 'all' && (
-        <CallPatternInsights logs={logs} total={total} />
-      )}
-
       <div className="call-logs-filters">
         {FILTERS.map(f => (
           <button
@@ -306,63 +301,6 @@ function CallLogsTab() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-/* AI Call Pattern Insights */
-function CallPatternInsights({ logs, total }) {
-  const insights = useMemo(() => {
-    const items = [];
-    const booked = logs.filter(l => l.call_outcome === 'booked').length;
-    const lost = logs.filter(l => l.is_lost_job || l.call_outcome === 'lost_job').length;
-    const noAction = logs.filter(l => l.call_outcome === 'no_action' || l.call_outcome === 'hung_up').length;
-    const bookingRate = logs.length > 0 ? (booked / logs.length * 100) : 0;
-
-    if (bookingRate > 50) {
-      items.push({ icon: 'fa-chart-line', text: `${bookingRate.toFixed(0)}% of calls convert to bookings — your AI receptionist is performing well.`, type: 'positive' });
-    } else if (bookingRate < 30 && logs.length > 10) {
-      items.push({ icon: 'fa-chart-line', text: `Only ${bookingRate.toFixed(0)}% booking rate. Review lost job summaries to identify common reasons callers don't book.`, type: 'action' });
-    }
-
-    if (lost > 3) {
-      items.push({ icon: 'fa-exclamation-triangle', text: `${lost} lost jobs detected. Check if pricing, availability, or service area is causing drop-offs.`, type: 'warning' });
-    }
-
-    if (noAction > 5) {
-      items.push({ icon: 'fa-phone-slash', text: `${noAction} calls with no action — these may be spam or callers who hung up early.`, type: 'action' });
-    }
-
-    // Average call duration
-    const durations = logs.filter(l => l.duration_seconds > 0).map(l => l.duration_seconds);
-    if (durations.length > 0) {
-      const avg = durations.reduce((s, d) => s + d, 0) / durations.length;
-      if (avg < 30) {
-        items.push({ icon: 'fa-clock', text: `Average call is ${Math.round(avg)}s — very short. Callers may not be getting enough info before hanging up.`, type: 'action' });
-      }
-    }
-
-    if (items.length === 0) {
-      items.push({ icon: 'fa-check-circle', text: 'Call patterns look normal. No issues detected.', type: 'positive' });
-    }
-
-    return items.slice(0, 3);
-  }, [logs, total]);
-
-  return (
-    <div className="ai-insight-card">
-      <div className="ai-insight-header">
-        <span className="ai-insight-badge"><i className="fas fa-sparkles"></i> AI</span>
-        <span className="ai-insight-title">Call Pattern Analysis</span>
-      </div>
-      <div className="ai-insight-body">
-        {insights.map((item, i) => (
-          <div key={i} className="ai-insight-item">
-            <i className={`fas ${item.icon}`} style={{ color: item.type === 'positive' ? '#10b981' : item.type === 'warning' ? '#f59e0b' : '#6366f1' }}></i>
-            <span>{item.text}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

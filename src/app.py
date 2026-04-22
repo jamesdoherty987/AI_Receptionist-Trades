@@ -14494,7 +14494,7 @@ def get_portal_data(token):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT pt.client_id, pt.company_id, c.name as client_name, c.email, c.phone,
-                   co.company_name, co.business_phone, co.logo_url as company_logo
+                   co.company_name, co.phone as business_phone, co.logo_url as company_logo
             FROM customer_portal_tokens pt
             JOIN clients c ON pt.client_id = c.id
             JOIN companies co ON pt.company_id = co.id
