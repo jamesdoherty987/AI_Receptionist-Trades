@@ -59,6 +59,7 @@ function FinancesTab() {
     paid_revenue = 0,
     unpaid_revenue = 0,
     total_materials_cost = 0,
+    total_refunds = 0,
     gross_profit = 0,
     profit_margin = 0,
     transactions = [],
@@ -387,6 +388,17 @@ function FinancesTab() {
             <div className="revenue-label">Outstanding</div>
           </div>
         </div>
+        {total_refunds > 0 && (
+          <div className="revenue-card">
+            <div className="revenue-icon" style={{ background: 'rgba(239, 68, 68, 0.1)' }}>
+              <i className="fas fa-undo" style={{ color: '#ef4444' }}></i>
+            </div>
+            <div className="revenue-content">
+              <div className="revenue-value" style={{ color: '#ef4444' }}>-{formatCurrency(total_refunds)}</div>
+              <div className="revenue-label">Refunds</div>
+            </div>
+          </div>
+        )}
         {total_materials_cost > 0 && (
           <div className="revenue-card materials-cost">
             <div className="revenue-icon" style={{ background: 'rgba(239, 68, 68, 0.1)' }}>

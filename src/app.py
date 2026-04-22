@@ -10918,6 +10918,27 @@ def get_finances():
         gross_profit = total_revenue - total_materials_cost
         profit_margin = (gross_profit / total_revenue * 100) if total_revenue > 0 else 0
 
+        # Calculate total refunds/credit notes
+        total_refunds = 0
+        try:
+            conn_cn = db.get_connection()
+            try:
+                cur_cn = conn_cn.cursor(cursor_factory=_RDC)
+                cur_cn.execute("SELECT COALESCE(SUM(amount), 0) as total FROM credit_notes WHERE company_id = %s", (company_id,))
+                row_cn = cur_cn.fetchone()
+                total_refunds = float(row_cn['total'] or 0) if row_cn else 0
+                cur_cn.close()
+            finally:
+                db.return_connection(conn_cn)
+        except Exception:
+            pass  # Table might not exist yet
+
+        # Adjust revenue figures for refunds
+        paid_revenue = paid_revenue - total_refunds
+        total_revenue = paid_revenue + unpaid_revenue
+        gross_profit = total_revenue - total_materials_cost
+        profit_margin = (gross_profit / total_revenue * 100) if total_revenue > 0 else 0
+
         # Add materials_cost to each transaction
         for t in transactions:
             t['materials_cost'] = materials_by_booking.get(t['id'], 0)
@@ -10930,6 +10951,7 @@ def get_finances():
             "pending_revenue": unpaid_revenue,
             "completed_revenue": paid_revenue,
             "total_materials_cost": round(total_materials_cost, 2),
+            "total_refunds": round(total_refunds, 2),
             "gross_profit": round(gross_profit, 2),
             "profit_margin": round(profit_margin, 1),
             "daily_revenue": daily_revenue,
@@ -12500,6 +12522,27 @@ def create_credit_note():
         """, (company_id, cn_num, client_id, booking_id,
               amount, data.get('reason', ''), data.get('notes', ''), stripe_refund_id))
         note = cur.fetchone()
+        
+        # Update booking payment_status if full refund
+        if booking_id and amount > 0:
+            try:
+                booking = db.get_booking(int(booking_id), company_id=company_id)
+                if booking:
+                    booking_charge = float(booking.get('charge', 0) or 0)
+                    # Check total refunds for this booking
+                    cur2 = conn.cursor(cursor_factory=RealDictCursor)
+                    cur2.execute("SELECT COALESCE(SUM(amount), 0) as total FROM credit_notes WHERE booking_id = %s AND company_id = %s", (booking_id, company_id))
+                    total_refunded = float(cur2.fetchone()['total'] or 0)
+                    cur2.close()
+                    if total_refunded >= booking_charge and booking_charge > 0:
+                        db.update_booking(int(booking_id), company_id=company_id, payment_status='refunded')
+                        print(f"[REFUND] Booking {booking_id} fully refunded — payment_status set to 'refunded'")
+                    elif total_refunded > 0:
+                        db.update_booking(int(booking_id), company_id=company_id, payment_status='partial_refund')
+                        print(f"[REFUND] Booking {booking_id} partially refunded (€{total_refunded} of €{booking_charge})")
+            except Exception as e:
+                print(f"[WARNING] Could not update booking payment_status after refund: {e}")
+        
         conn.commit()
         cur.close()
         note['amount'] = float(note.get('amount', 0) or 0)

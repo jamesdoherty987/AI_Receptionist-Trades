@@ -1001,8 +1001,10 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                         <span className={`info-value payment-badge ${job.payment_status}`}>
                           {job.payment_status === 'paid' && <><i className="fas fa-check-circle"></i> Paid</>}
                           {job.payment_status === 'invoiced' && <><i className="fas fa-file-invoice"></i> Invoiced</>}
+                          {job.payment_status === 'refunded' && <><i className="fas fa-undo"></i> Refunded</>}
+                          {job.payment_status === 'partial_refund' && <><i className="fas fa-undo"></i> Partial Refund</>}
                           {job.payment_status === 'pending' && <><i className="fas fa-clock"></i> Pending</>}
-                          {!['paid', 'invoiced', 'pending'].includes(job.payment_status) && job.payment_status}
+                          {!['paid', 'invoiced', 'pending', 'refunded', 'partial_refund'].includes(job.payment_status) && job.payment_status}
                         </span>
                       </div>
                     </div>
