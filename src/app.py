@@ -14525,7 +14525,7 @@ def get_portal_data(token):
         # Get upcoming jobs
         try:
             cur.execute("""
-                SELECT id, service_type, appointment_time, status, address, duration_minutes, price,
+                SELECT id, service_type, appointment_time, status, address, duration_minutes, charge,
                        photo_urls, customer_photo_urls
                 FROM bookings WHERE company_id = %s AND client_id = %s AND status NOT IN ('cancelled')
                 ORDER BY appointment_time DESC LIMIT 20
@@ -14534,7 +14534,7 @@ def get_portal_data(token):
             conn.rollback()
             # Fallback if customer_photo_urls column doesn't exist yet
             cur.execute("""
-                SELECT id, service_type, appointment_time, status, address, duration_minutes, price,
+                SELECT id, service_type, appointment_time, status, address, duration_minutes, charge,
                        photo_urls
                 FROM bookings WHERE company_id = %s AND client_id = %s AND status NOT IN ('cancelled')
                 ORDER BY appointment_time DESC LIMIT 20

@@ -145,7 +145,7 @@ function CustomerPortal() {
             <span className="portal-status" style={{ background: `${statusColors[j.status]}15`, color: statusColors[j.status] }}>
               {j.status}
             </span>
-            {j.price > 0 && <span className="portal-job-price">€{Number(j.price).toFixed(2)}</span>}
+            {(j.charge || j.price) > 0 && <span className="portal-job-price">€{Number(j.charge || j.price).toFixed(2)}</span>}
             <i className={`fas fa-chevron-${isExpanded ? 'up' : 'down'} portal-chevron`}></i>
           </div>
         </div>
