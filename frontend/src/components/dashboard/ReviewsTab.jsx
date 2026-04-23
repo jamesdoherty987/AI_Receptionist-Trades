@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
+import { useIndustry } from '../../context/IndustryContext';
 import { getCompanyReviews } from '../../services/api';
 import './ReviewsTab.css';
 
 function ReviewsTab() {
+  const { terminology } = useIndustry();
   const { data, isLoading } = useQuery({
     queryKey: ['reviews'],
     queryFn: async () => (await getCompanyReviews()).data,
@@ -83,8 +85,8 @@ function ReviewsTab() {
             <div key={review.id} className={`review-item ${review.submitted_at ? 'submitted' : 'pending'}`}>
               <div className="review-item-header">
                 <div className="review-item-left">
-                  <span className="review-customer">{review.customer_name || 'Customer'}</span>
-                  <span className="review-service">{review.service_type || 'Job'}</span>
+                  <span className="review-customer">{review.customer_name || terminology.client}</span>
+                  <span className="review-service">{review.service_type || terminology.job}</span>
                 </div>
                 <div className="review-item-right">
                   {review.submitted_at ? (

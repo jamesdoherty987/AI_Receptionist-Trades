@@ -95,6 +95,9 @@ class CallState:
     # --- Match issue tracking (prevents infinite loop when no service matches) ---
     match_issue_fail_count: int = 0
     
+    # --- Industry type (loaded from company settings at call start) ---
+    industry_type: str = 'trades'
+    
     def reset(self):
         """Reset all state to initial values."""
         self.active_booking = False

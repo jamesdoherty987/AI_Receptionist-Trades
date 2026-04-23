@@ -58,6 +58,7 @@ function AdminPanel() {
   // Create form
   const [createForm, setCreateForm] = useState({
     company_name: '', owner_name: '', email: '', phone: '', trade_type: '',
+    industry_type: 'trades',
     company_context: '', coverage_area: '', address: '',
     business_hours: '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
     auto_assign_phone: false, phone_number: '', subscription_tier: 'none', subscription_status: 'inactive',
@@ -283,6 +284,7 @@ function AdminPanel() {
         showToast('Account created!');
         setCreateForm({
           company_name: '', owner_name: '', email: '', phone: '', trade_type: '',
+          industry_type: 'trades',
           company_context: '', coverage_area: '', address: '',
           business_hours: formatHours(),
           auto_assign_phone: false, phone_number: '', subscription_tier: 'none', subscription_status: 'inactive',
@@ -643,6 +645,12 @@ function AdminPanel() {
                       <span>{companyInsights.company.trade_type}</span>
                     </div>
                   )}
+                  {companyInsights.company.industry_type && (
+                    <div className="ap-info-item">
+                      <i className="fas fa-industry"></i>
+                      <span style={{ textTransform: 'capitalize' }}>{companyInsights.company.industry_type}</span>
+                    </div>
+                  )}
                   {companyInsights.company.twilio_phone_number && (
                     <div className="ap-info-item">
                       <i className="fas fa-robot"></i>
@@ -801,13 +809,31 @@ function AdminPanel() {
                   </p>
                   <div className="ap-toggles-grid">
                     {(() => {
-                      const defaultVis = { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: true, finances: true, insights: true, reviews: true };
+                      const industryType = companyInsights.company.industry_type || 'trades';
+                      // Industry-aware defaults: hide materials for non-trades industries
+                      const industryDefaults = {
+                        trades: { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: true, finances: true, insights: true, reviews: true },
+                        salon: { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: false, finances: true, insights: true, reviews: true },
+                        cleaning: { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: true, finances: true, insights: true, reviews: true },
+                        restaurant: { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: false, finances: true, insights: true, reviews: true },
+                      };
+                      const defaultVis = industryDefaults[industryType] || industryDefaults.trades;
                       const vis = { ...defaultVis, ...(companyInsights.company.admin_tab_visibility || {}) };
+                      
+                      // Industry-aware tab labels
+                      const industryLabels = {
+                        trades: { jobs: 'Jobs', workers: 'Workers' },
+                        salon: { jobs: 'Appointments', workers: 'Stylists' },
+                        cleaning: { jobs: 'Jobs', workers: 'Cleaners' },
+                        restaurant: { jobs: 'Reservations', workers: 'Staff' },
+                      };
+                      const labels = industryLabels[industryType] || industryLabels.trades;
+                      
                       const tabDefs = [
-                        ['jobs', 'Jobs', 'fas fa-briefcase'],
+                        ['jobs', labels.jobs, 'fas fa-briefcase'],
                         ['calls', 'Calls', 'fas fa-phone-alt'],
                         ['calendar', 'Calendar', 'fas fa-calendar'],
-                        ['workers', 'Workers', 'fas fa-hard-hat'],
+                        ['workers', labels.workers, 'fas fa-hard-hat'],
                         ['crm', 'CRM', 'fas fa-address-book'],
                         ['services', 'Services', 'fas fa-concierge-bell'],
                         ['materials', 'Materials', 'fas fa-cubes'],
@@ -824,6 +850,37 @@ function AdminPanel() {
                       ));
                     })()}
                   </div>
+                </div>
+
+                {/* Industry Type */}
+                <div className="ap-card">
+                  <h3><i className="fas fa-industry"></i> Industry Type</h3>
+                  <p style={{ color: '#9ca3af', fontSize: '0.85rem', margin: '0 0 1rem' }}>
+                    Controls AI prompt, terminology, and default feature visibility for this account.
+                  </p>
+                  <select
+                    value={companyInsights.company.industry_type || 'trades'}
+                    onChange={async (e) => {
+                      const newIndustry = e.target.value;
+                      try {
+                        await adminFetch(`/api/admin/accounts/${selectedCompanyId}`, {
+                          method: 'PUT',
+                          body: JSON.stringify({ industry_type: newIndustry }),
+                        });
+                        setCompanyInsights(prev => prev ? {
+                          ...prev,
+                          company: { ...prev.company, industry_type: newIndustry }
+                        } : prev);
+                        showToast(`Industry changed to ${newIndustry}`);
+                      } catch { showToast('Failed to update industry'); }
+                    }}
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid #374151', background: '#1f2937', color: '#e5e7eb', fontSize: '0.9rem' }}
+                  >
+                    <option value="trades">Trades & Home Services</option>
+                    <option value="salon">Salon & Barbershop</option>
+                    <option value="cleaning">Cleaning Services</option>
+                    <option value="restaurant">Restaurant & Café</option>
+                  </select>
                 </div>
 
                 {/* Feature toggles */}
@@ -972,6 +1029,15 @@ function AdminPanel() {
                     <select value={createForm.trade_type} onChange={e => setCreateForm(p => ({...p, trade_type: e.target.value}))}>
                       <option value="">Select...</option>
                       {['Plumbing','Electrical','Roofing','HVAC','Carpentry','Painting','Landscaping','General Contracting','Flooring','Masonry','Other'].map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className="ap-field">
+                    <label>Industry</label>
+                    <select value={createForm.industry_type} onChange={e => setCreateForm(p => ({...p, industry_type: e.target.value}))}>
+                      <option value="trades">Trades & Home Services</option>
+                      <option value="salon">Salon & Barbershop</option>
+                      <option value="cleaning">Cleaning Services</option>
+                      <option value="restaurant">Restaurant & Café</option>
                     </select>
                   </div>
                   <div className="ap-field">

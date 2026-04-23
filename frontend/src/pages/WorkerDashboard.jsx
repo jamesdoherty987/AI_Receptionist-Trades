@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
+import { useIndustry } from '../context/IndustryContext';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   getWorkerDashboard,
@@ -67,6 +68,7 @@ function JobTimer({ startedAt }) {
 
 function WorkerDashboard() {
   const { user, logout } = useAuth();
+  const { terminology } = useIndustry();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('jobs');
@@ -527,10 +529,10 @@ function WorkerDashboard() {
   const upcomingJobs = activeJobs;
 
   const tabs = [
-    { id: 'jobs', label: 'My Jobs', icon: 'fas fa-briefcase' },
+    { id: 'jobs', label: `My ${terminology.jobs}`, icon: 'fas fa-briefcase' },
     { id: 'messages', label: 'Messages', icon: 'fas fa-comment-dots' },
     { id: 'schedule', label: 'Schedule', icon: 'fas fa-calendar' },
-    { id: 'customers', label: 'Customers', icon: 'fas fa-users' },
+    { id: 'customers', label: terminology.clients, icon: 'fas fa-users' },
     { id: 'hr', label: 'HR', icon: 'fas fa-user-clock' },
     { id: 'profile', label: 'Profile', icon: 'fas fa-user' },
   ];

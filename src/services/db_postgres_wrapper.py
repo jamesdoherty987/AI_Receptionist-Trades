@@ -110,6 +110,7 @@ class PostgreSQLDatabaseWrapper:
                     password_hash TEXT NOT NULL,
                     phone TEXT,
                     trade_type TEXT,
+                    industry_type TEXT DEFAULT 'trades',
                     address TEXT,
                     logo_url TEXT,
                     business_hours TEXT DEFAULT '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
@@ -1296,7 +1297,7 @@ class PostgreSQLDatabaseWrapper:
         try:
             allowed_fields = ['company_name', 'owner_name', 'phone', 'email', 'trade_type', 
                               'address', 'logo_url', 'business_hours', 'ai_enabled',
-                              'password_hash',
+                              'password_hash', 'industry_type',
                               'subscription_tier', 'subscription_status',
                               'stripe_customer_id', 'stripe_subscription_id',
                               'stripe_connect_account_id', 'stripe_connect_status',

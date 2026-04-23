@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { getPortalData, portalRequestJob, portalUploadJobPhoto, portalUploadJobMedia } from '../services/api';
 import { getProxiedMediaUrl } from '../utils/helpers';
+import industryProfiles from '../config/industryProfiles';
 import './CustomerPortal.css';
 
 const statusColors = {
@@ -112,6 +113,12 @@ function CustomerPortal() {
   if (error) return <div className="portal-page"><div className="portal-card"><div className="portal-icon">😕</div><h1>Oops</h1><p>{error}</p></div></div>;
   if (!data) return null;
 
+  // Resolve terminology from the industry profile the backend sent, falling back to local config
+  const industryType = data.industry_type || 'trades';
+  const backendTerminology = data.industry_profile?.terminology;
+  const localProfile = industryProfiles[industryType] || industryProfiles.trades;
+  const terminology = backendTerminology || localProfile.terminology;
+
   const now = new Date();
   const upcoming = (data.jobs || []).filter(j => {
     if (j.status === 'completed' || j.status === 'cancelled' || j.status === 'rejected') return false;
@@ -201,7 +208,7 @@ function CustomerPortal() {
             {/* All media on the job (worker/owner uploads) */}
             {(j.photo_urls || []).length > 0 && (
               <div className="portal-media-section">
-                <h4><i className="fas fa-camera"></i> Job Photos</h4>
+                <h4><i className="fas fa-camera"></i> {terminology.job} Photos</h4>
                 <div className="portal-media-grid">
                   {(j.photo_urls || []).map((url, idx) => (
                     <div key={idx} className="portal-media-item" onClick={() => setLightboxPhoto(url)}>
@@ -220,7 +227,7 @@ function CustomerPortal() {
             )}
 
             {media.length === 0 && !canUpload && (
-              <p className="portal-no-media">No media for this job</p>
+              <p className="portal-no-media">No media for this {terminology.job.toLowerCase()}</p>
             )}
           </div>
         )}
@@ -251,7 +258,7 @@ function CustomerPortal() {
         {/* Tabs */}
         <div className="portal-tabs">
           <button className={tab === 'jobs' ? 'active' : ''} onClick={() => setTab('jobs')}>
-            <i className="fas fa-briefcase"></i> My Jobs
+            <i className="fas fa-briefcase"></i> My {terminology.jobs}
           </button>
           <button className={tab === 'quotes' ? 'active' : ''} onClick={() => setTab('quotes')}>
             <i className="fas fa-file-invoice"></i> Quotes
@@ -269,13 +276,14 @@ function CustomerPortal() {
         {tab === 'jobs' && (
           <div className="portal-section">
             <div className="portal-section-head">
-              <h2>Upcoming Jobs</h2>
+              <h2>Upcoming {terminology.jobs}</h2>
+              {/* Request new job/appointment button */}
               <button className="portal-req-btn" onClick={() => setShowRequest(true)}>
-                <i className="fas fa-plus"></i> Request New Job
+                <i className="fas fa-plus"></i> Request New {terminology.job}
               </button>
             </div>
             {upcoming.length === 0 ? (
-              <div className="portal-empty"><i className="fas fa-calendar-check"></i><p>No upcoming jobs</p></div>
+              <div className="portal-empty"><i className="fas fa-calendar-check"></i><p>No upcoming {terminology.jobs.toLowerCase()}</p></div>
             ) : (
               <div className="portal-jobs">
                 {upcoming.map(j => renderJobCard(j))}
@@ -284,7 +292,7 @@ function CustomerPortal() {
 
             {past.length > 0 && (
               <>
-                <h2 className="portal-past-title">Past Jobs</h2>
+                <h2 className="portal-past-title">Past {terminology.jobs}</h2>
                 <div className="portal-jobs">
                   {past.slice(0, 10).map(j => renderJobCard(j, true))}
                 </div>

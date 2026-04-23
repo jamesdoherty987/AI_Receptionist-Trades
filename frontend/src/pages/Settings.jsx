@@ -6,6 +6,7 @@ import Header from '../components/Header';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
 import HelpTooltip from '../components/HelpTooltip';
+import { useIndustry } from '../context/IndustryContext';
 import PhoneConfigModal from '../components/modals/PhoneConfigModal';
 import SubscriptionManager from '../components/dashboard/SubscriptionManager';
 import PaymentSetup from '../components/dashboard/PaymentSetup';
@@ -39,6 +40,7 @@ function Settings() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { checkAuth, logout, subscription: authSubscription } = useAuth();
+  const { availableIndustries } = useIndustry();
   
   // Determine if user has AI features based on plan
   const currentPlan = authSubscription?.plan || 'pro';
@@ -927,6 +929,14 @@ function Settings() {
                       <div className="form-group">
                         <label htmlFor="business_type">Business Type</label>
                         <input type="text" id="business_type" name="business_type" value={formData.business_type || ''} onChange={handleChange} placeholder="e.g., Plumbing, HVAC, Electrical" />
+                      </div>
+                      <div className="form-group">
+                        <label htmlFor="industry_type">Industry <HelpTooltip text="Controls which AI prompt, terminology, and features are active. Changing this affects how the dashboard and AI receptionist behave." /></label>
+                        <select id="industry_type" name="industry_type" value={formData.industry_type || 'trades'} onChange={handleChange}>
+                          {(availableIndustries || []).map(ind => (
+                            <option key={ind.value} value={ind.value}>{ind.label}</option>
+                          ))}
+                        </select>
                       </div>
                       <div className="form-group full-width">
                         <label>Business Hours</label>

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
+import { useIndustry } from '../../context/IndustryContext';
 import { useToast } from '../Toast';
 import { getWorkerHoursThisWeek, getWorkersHoursThisWeek, getCompanyTimeOffRequests, reviewTimeOffRequest, getUnreadMessageCounts } from '../../services/api';
 import MessageWorkerModal from '../modals/MessageWorkerModal';
@@ -17,6 +18,7 @@ const WORKER_COLORS = [
 
 function WorkersTab({ workers, bookings }) {
   const { hasActiveSubscription } = useAuth();
+  const { terminology } = useIndustry();
   const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
   const queryClient = useQueryClient();
@@ -78,7 +80,7 @@ function WorkersTab({ workers, bookings }) {
 
   const handleAddClick = () => {
     if (!isSubscriptionActive) {
-      addToast('Please upgrade your plan to add workers', 'warning');
+      addToast(`Please upgrade your plan to add ${terminology.workers.toLowerCase()}`, 'warning');
       return;
     }
     setShowAddModal(true);
@@ -224,7 +226,7 @@ function WorkersTab({ workers, bookings }) {
     <div className="workers-tab">
       <div className="tab-page-header">
         <div>
-          <h2>Workers</h2>
+          <h2>{terminology.workers}</h2>
           {workers.length > 0 && (
             <div className="workers-stats-bar" style={{ marginTop: '0.35rem' }}>
               <span className="ws-stat">{stats.total} total</span>
@@ -238,7 +240,7 @@ function WorkersTab({ workers, bookings }) {
           className="btn-add" 
           onClick={handleAddClick}
         >
-          <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Worker
+          <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add {terminology.worker}
         </button>
       </div>
 
@@ -366,7 +368,7 @@ function WorkersTab({ workers, bookings }) {
             {searchQuery || statusFilter !== 'all' ? (
               <>
                 <div className="empty-state-icon">🔍</div>
-                <p>No workers match your filters</p>
+                <p>No {terminology.workers.toLowerCase()} match your filters</p>
                 <button className="btn btn-secondary btn-sm" onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}>
                   Clear Filters
                 </button>
@@ -374,7 +376,7 @@ function WorkersTab({ workers, bookings }) {
             ) : (
               <>
                 <div className="empty-state-icon">👷</div>
-                <p>No workers found</p>
+                <p>No {terminology.workers.toLowerCase()} found</p>
               </>
             )}
           </div>

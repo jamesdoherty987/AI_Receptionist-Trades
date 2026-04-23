@@ -4,71 +4,87 @@ import PhoneConfigModal from '../modals/PhoneConfigModal';
 import HelpTooltip from '../HelpTooltip';
 import { getBusinessSettings, updateBusinessSettings, startFreeTrial, createCheckoutSession, getSubscriptionStatus, getServicesMenu, getWorkers, getMaterials } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { useIndustry } from '../../context/IndustryContext';
 import './OnboardingWizard.css';
 
-const ALL_STEPS = [
-  {
-    id: 'subscription',
-    title: 'Subscription',
-    icon: 'fa-crown',
-    iconClass: 'subscription-icon',
-    description: 'Activate your plan'
-  },
-  {
-    id: 'service-area',
-    title: 'Service Area',
-    icon: 'fa-map-marker-alt',
-    iconClass: 'welcome-icon',
-    description: 'Where do you provide services?'
-  },
-  {
-    id: 'company-details',
-    title: 'Company Details',
-    icon: 'fa-info-circle',
-    iconClass: '',
-    description: 'Help your AI receptionist know your business'
-  },
-  {
-    id: 'payment',
-    title: 'Payment Details',
-    icon: 'fa-university',
-    iconClass: '',
-    description: 'Bank details for invoices'
-  },
-  {
-    id: 'workers',
-    title: 'Add Workers',
-    icon: 'fa-hard-hat',
-    iconClass: 'workers-icon',
-    description: 'Who does the work?'
-  },
-  {
-    id: 'services',
-    title: 'Add Services',
-    icon: 'fa-concierge-bell',
-    iconClass: 'services-icon',
-    description: 'What services do you offer?'
-  },
-  {
-    id: 'materials',
-    title: 'Add Materials',
-    icon: 'fa-cubes',
-    iconClass: '',
-    description: 'Track materials used on jobs'
-  },
-  {
+// Build onboarding steps dynamically based on industry profile
+function buildSteps(industryProfile) {
+  const { terminology, onboarding, features } = industryProfile;
+  const steps = [
+    {
+      id: 'subscription',
+      title: 'Subscription',
+      icon: 'fa-crown',
+      iconClass: 'subscription-icon',
+      description: 'Activate your plan'
+    },
+    {
+      id: 'service-area',
+      title: 'Service Area',
+      icon: 'fa-map-marker-alt',
+      iconClass: 'welcome-icon',
+      description: 'Where do you provide services?'
+    },
+    {
+      id: 'company-details',
+      title: 'Company Details',
+      icon: 'fa-info-circle',
+      iconClass: '',
+      description: 'Help your AI receptionist know your business'
+    },
+    {
+      id: 'payment',
+      title: 'Payment Details',
+      icon: 'fa-university',
+      iconClass: '',
+      description: 'Bank details for invoices'
+    },
+    {
+      id: 'workers',
+      title: onboarding.workerLabel || 'Add Workers',
+      icon: onboarding.workerIcon || 'fa-hard-hat',
+      iconClass: 'workers-icon',
+      description: `Who ${features.materials ? 'does the work' : 'is on your team'}?`
+    },
+    {
+      id: 'services',
+      title: 'Add Services',
+      icon: 'fa-concierge-bell',
+      iconClass: 'services-icon',
+      description: 'What services do you offer?'
+    },
+  ];
+
+  // Only include materials step if the industry uses materials
+  if (onboarding.showMaterialsStep) {
+    steps.push({
+      id: 'materials',
+      title: 'Add Materials',
+      icon: 'fa-cubes',
+      iconClass: '',
+      description: `Track materials used on ${terminology.jobs?.toLowerCase() || 'jobs'}`
+    });
+  }
+
+  steps.push({
     id: 'phone',
     title: 'AI Phone Number',
     icon: 'fa-phone',
     iconClass: 'phone-icon',
     description: 'Your AI receptionist number',
     proOnly: true
-  }
-];
+  });
+
+  return steps;
+}
 
 function OnboardingWizard({ onComplete }) {
   const queryClient = useQueryClient();
   const { user, subscription, hasActiveSubscription, getSubscriptionTier, checkAuth } = useAuth();
+  const industryProfile = useIndustry();
+  
+  // Build steps dynamically based on industry
+  const ALL_STEPS = buildSteps(industryProfile);
   
   // Filter steps based on plan — phone step only for pro/trial users
   const currentPlan = subscription?.plan || 'pro';
@@ -671,7 +687,7 @@ function OnboardingWizard({ onComplete }) {
                     value={formData.company_context}
                     onChange={handleChange}
                     rows={6}
-                    placeholder={"Examples:\n- Free parking available behind the building\n- Family-run business since 2005\n- All technicians are fully insured\n- 12-month warranty on all work"}
+                    placeholder={industryProfile.onboarding?.companyContextPlaceholder || "Examples:\n- Free parking available behind the building\n- Family-run business since 2005\n- All technicians are fully insured\n- 12-month warranty on all work"}
                     style={{ minHeight: '140px', resize: 'vertical' }}
                   />
                   <small>This helps your AI answer customer questions accurately - parking info, policies, certifications, etc.</small>

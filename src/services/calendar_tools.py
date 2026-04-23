@@ -137,7 +137,7 @@ CALENDAR_TOOLS = [
                         "description": "Type of property: 'residential' for homes, 'commercial' for businesses"
                     }
                 },
-                "required": ["customer_name", "phone", "job_address", "job_description", "appointment_datetime", "urgency_level"]
+                "required": ["customer_name", "phone", "job_description", "appointment_datetime", "urgency_level"]
             }
         }
     },
@@ -4917,12 +4917,21 @@ Return ONLY valid JSON, no explanation."""
             # Keep the field optional for backwards compatibility
             
             if not job_address:
-                logger.warning(f"[BOOK_JOB] Missing job address")
-                return {
-                    "success": False,
-                    "error": "Job address is required. Please ask for the full address where the work will be performed.",
-                    "needs_clarification": "job_address"
-                }
+                # Only require address for industries that collect it (trades, cleaning, etc.)
+                # For salons/restaurants, the client comes to the business — no job address needed
+                from src.utils.industry_config import get_features
+                industry_type = services.get('industry_type', 'trades')
+                industry_features = get_features(industry_type)
+                if industry_features.get('job_address', True):
+                    logger.warning(f"[BOOK_JOB] Missing job address")
+                    return {
+                        "success": False,
+                        "error": "Job address is required. Please ask for the full address where the work will be performed.",
+                        "needs_clarification": "job_address"
+                    }
+                else:
+                    logger.info(f"[BOOK_JOB] No job address (industry={industry_type}, job_address feature disabled)")
+                    job_address = None
             
             # Enhanced address validation and processing
             logger.info(f"[BOOK_JOB] Validating address: {job_address}")

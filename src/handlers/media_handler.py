@@ -690,6 +690,8 @@ async def media_handler(ws):
                     _company = _db.get_company(int(company_id))
                     if _company and _company.get('company_name'):
                         biz_name = _company['company_name']
+                    # Set industry type on call state for tool execution
+                    call_state.industry_type = (_company or {}).get('industry_type', 'trades')
                 except Exception:
                     pass
             

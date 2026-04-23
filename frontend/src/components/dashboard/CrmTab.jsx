@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
+import { useIndustry } from '../../context/IndustryContext';
 import { formatPhone, formatCurrency } from '../../utils/helpers';
 import { useToast } from '../Toast';
 import { getLeads, createLead, updateLead, deleteLead, convertLead, getCrmStats, getCompanyReviews, generatePortalLink, triggerLostJobCallback, getOutboundCallsEnabled } from '../../services/api';
@@ -42,15 +43,21 @@ const LEAD_SOURCES = [
   { key: 'ai_call', label: 'AI Call', icon: 'fa-robot' },
 ];
 
-const CRM_VIEWS = [
-  { key: 'customers', label: 'Customers', icon: 'fa-users' },
+const CRM_VIEWS_BASE = [
+  { key: 'customers', icon: 'fa-users' },
   { key: 'pipeline', label: 'Leads', icon: 'fa-stream' },
   { key: 'reviews', label: 'Reviews', icon: 'fa-star' },
 ];
 
 function CrmTab({ clients, bookings = [] }) {
   const { hasActiveSubscription } = useAuth();
+  const { terminology } = useIndustry();
   const isSubscriptionActive = hasActiveSubscription();
+
+  // Build CRM_VIEWS with industry-appropriate "Customers/Clients" label
+  const CRM_VIEWS = useMemo(() => CRM_VIEWS_BASE.map(v =>
+    v.key === 'customers' ? { ...v, label: terminology.clients } : v
+  ), [terminology]);
   const { addToast } = useToast();
   const queryClient = useQueryClient();
   const [activeView, setActiveView] = useState('customers');

@@ -4,6 +4,7 @@ import { queryClient } from './queryClient'
 import { useEffect, lazy, Suspense } from 'react'
 import { ToastProvider } from './components/Toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { IndustryProvider } from './context/IndustryContext'
 
 // Loading component (keep eager — used as fallback)
 import LoadingSpinner from './components/LoadingSpinner'
@@ -274,10 +275,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <AuthProvider>
-          <Router>
-            <AppRoutes />
-            <PWAInstallPrompt />
-          </Router>
+          <IndustryProvider>
+            <Router>
+              <AppRoutes />
+              <PWAInstallPrompt />
+            </Router>
+          </IndustryProvider>
         </AuthProvider>
       </ToastProvider>
     </QueryClientProvider>

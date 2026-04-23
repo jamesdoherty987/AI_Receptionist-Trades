@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
+import { useIndustry } from '../../context/IndustryContext';
 import { formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
 import { formatDuration } from '../../utils/durationOptions';
 import { updateBooking, getJobSetupData, sendInvoice } from '../../services/api';
@@ -26,6 +27,7 @@ const STATUS_FILTERS = [
 function JobsTab({ bookings, showInvoiceButtons = true }) {
   const queryClient = useQueryClient();
   const { hasActiveSubscription } = useAuth();
+  const { terminology, features } = useIndustry();
   const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
@@ -118,7 +120,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   });
 
   const handleAddClick = () => {
-    if (!isSubscriptionActive) { addToast('Please upgrade your plan to add jobs', 'warning'); return; }
+    if (!isSubscriptionActive) { addToast(`Please upgrade your plan to add ${terminology.jobs.toLowerCase()}`, 'warning'); return; }
     setShowAddModal(true);
   };
 
@@ -307,7 +309,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     <div className="jobs-tab">
       {/* Page Header */}
       <div className="tab-page-header">
-        <h2 className="tab-page-title">Jobs</h2>
+        <h2 className="tab-page-title">{terminology.jobs}</h2>
       </div>
 
       {/* Header with search and add */}
@@ -322,8 +324,8 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
             <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')} title="List view"><i className="fas fa-list"></i> List</button>
             <button className={viewMode === 'board' ? 'active' : ''} onClick={() => setViewMode('board')} title="Board view"><i className="fas fa-columns"></i> Board</button>
           </div>
-          <button className="btn-add" onClick={handleAddClick} title="Create a new job">
-            <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Job
+          <button className="btn-add" onClick={handleAddClick} title={`Create a new ${terminology.job.toLowerCase()}`}>
+            <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add {terminology.job}
           </button>
         </div>
       </div>
@@ -347,8 +349,8 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
         {groups.length === 0 ? (
           <div className="dash-empty">
             <span className="dash-empty-icon">{statusFilter === 'overdue' ? '✅' : statusFilter === 'needs-invoice' ? '💰' : '📋'}</span>
-            <h3>{statusFilter === 'overdue' ? 'All caught up' : statusFilter === 'needs-invoice' ? 'All invoiced' : searchTerm ? 'No matches' : 'No jobs yet'}</h3>
-            <p>{statusFilter === 'overdue' ? 'No overdue jobs — nice work!' : statusFilter === 'needs-invoice' ? 'All completed jobs have been invoiced' : searchTerm ? 'Try a different search term' : 'Jobs will appear here as they are booked'}</p>
+            <h3>{statusFilter === 'overdue' ? 'All caught up' : statusFilter === 'needs-invoice' ? 'All invoiced' : searchTerm ? 'No matches' : `No ${terminology.jobs.toLowerCase()} yet`}</h3>
+            <p>{statusFilter === 'overdue' ? `No overdue ${terminology.jobs.toLowerCase()} — nice work!` : statusFilter === 'needs-invoice' ? `All completed ${terminology.jobs.toLowerCase()} have been invoiced` : searchTerm ? 'Try a different search term' : `${terminology.jobs} will appear here as they are booked`}</p>
           </div>
         ) : (
           groups.map(section => (
@@ -392,7 +394,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                           {job.payment_status === 'invoiced' && <span className="jt-invoiced-badge"><i className="fas fa-file-invoice"></i> Invoiced</span>}
                           {job.payment_status === 'refunded' && <span className="jt-refunded-badge"><i className="fas fa-undo"></i> Refunded</span>}
                           {job.payment_status === 'partial_refund' && <span className="jt-refunded-badge"><i className="fas fa-undo"></i> Partial Refund</span>}
-                          {job.urgency === 'emergency' && <span className="jt-emergency-badge"><i className="fas fa-bolt"></i> Emergency{job.emergency_status === 'pending_acceptance' ? ' — Pending' : job.emergency_status === 'accepted' ? ' — Accepted' : ''}</span>}
+                          {features.emergencyJobs && job.urgency === 'emergency' && <span className="jt-emergency-badge"><i className="fas fa-bolt"></i> Emergency{job.emergency_status === 'pending_acceptance' ? ' — Pending' : job.emergency_status === 'accepted' ? ' — Accepted' : ''}</span>}
                           {job.status_label && <span className="jt-label-badge"><i className="fas fa-tag"></i> {job.status_label}</span>}
                           {job.recurrence_pattern && <span className="jt-recurring-badge"><i className="fas fa-redo"></i> {job.recurrence_pattern}</span>}
                         </div>

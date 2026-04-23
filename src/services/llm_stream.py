@@ -223,7 +223,8 @@ def load_business_info(company_id=None):
                 'email': company.get('email') or 'Not configured',
                 'address': company.get('address') or 'Not configured',
                 'company_context': company.get('company_context') or '',
-                'coverage_area': company.get('coverage_area') or ''
+                'coverage_area': company.get('coverage_area') or '',
+                'industry_type': company.get('industry_type') or 'trades',
             }
     except Exception as e:
         load_time = time_module.time() - load_start
@@ -236,7 +237,8 @@ def load_business_info(company_id=None):
         'phone': 'Not configured',
         'email': 'Not configured',
         'address': 'Not configured',
-        'coverage_area': ''
+        'coverage_area': '',
+        'industry_type': 'trades',
     }
 
 
@@ -323,27 +325,39 @@ def load_system_prompt(company_id=None):
     
     print(f"\n[PROMPT_DEBUG] load_system_prompt called with company_id={company_id}")
     
-    # Check if we should use minimal prompt for debugging
-    use_minimal = config.USE_MINIMAL_PROMPT
-    if use_minimal:
-        print(f"[PROMPT_DEBUG] ⚡ USING MINIMAL PROMPT (USE_MINIMAL_PROMPT=true)")
-        prompt_file = 'receptionist_prompt_minimal.txt'
-    else:
-        prompt_file = 'trades_prompt.txt'
-    
-    # Use fast/condensed prompt for better performance
-    prompt_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
-        'prompts', prompt_file
-    )
-    print(f"[PROMPT_DEBUG] Loading prompt from: {prompt_file}")
-    
-    # Load business info (for specific company if ID provided) and services menu
+    # Load business info first — we need industry_type to pick the right prompt
     biz_info_start = time_module.time()
     print(f"[PROMPT_DEBUG] Loading business info...")
     business_info = load_business_info(company_id=company_id)
     biz_info_time = time_module.time() - biz_info_start
     print(f"[PROMPT_DEBUG] Business info loaded in {biz_info_time*1000:.1f}ms")
+    
+    # Pick prompt file based on industry type (or minimal for debugging)
+    use_minimal = config.USE_MINIMAL_PROMPT
+    if use_minimal:
+        print(f"[PROMPT_DEBUG] ⚡ USING MINIMAL PROMPT (USE_MINIMAL_PROMPT=true)")
+        prompt_file = 'receptionist_prompt_minimal.txt'
+    else:
+        from src.utils.industry_config import get_prompt_file
+        industry_type = business_info.get('industry_type', 'trades')
+        prompt_file = get_prompt_file(industry_type)
+        print(f"[PROMPT_DEBUG] Industry: {industry_type} → prompt: {prompt_file}")
+    
+    prompt_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+        'prompts', prompt_file
+    )
+    
+    # Fall back to trades prompt if the industry-specific file doesn't exist yet
+    if not os.path.exists(prompt_path) or os.path.getsize(prompt_path) == 0:
+        print(f"[PROMPT_DEBUG] Prompt file '{prompt_file}' missing or empty, falling back to trades_prompt.txt")
+        prompt_file = 'trades_prompt.txt'
+        prompt_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+            'prompts', prompt_file
+        )
+    
+    print(f"[PROMPT_DEBUG] Loading prompt from: {prompt_file}")
     
     services_start = time_module.time()
     print(f"[PROMPT_DEBUG] Loading services menu...")
@@ -1573,7 +1587,8 @@ TOOL RULES:
             'google_calendar_sync': google_calendar_sync,
             'db': db,
             'company_id': company_id_int,
-            'call_state': call_state
+            'call_state': call_state,
+            'industry_type': call_state.industry_type if call_state and hasattr(call_state, 'industry_type') else 'trades',
         }
         print(f"   📦 [TOOL_SETUP] Services ready: calendar={calendar is not None}, db={db is not None}, gcal_sync={google_calendar_sync is not None}")
         

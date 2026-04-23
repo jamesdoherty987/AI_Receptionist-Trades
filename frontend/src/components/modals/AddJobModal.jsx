@@ -6,6 +6,7 @@ import {
 } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
+import { useIndustry } from '../../context/IndustryContext';
 import AddClientModal from './AddClientModal';
 import HelpTooltip from '../HelpTooltip';
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
@@ -93,6 +94,7 @@ function MiniCalendar({ selectedDate, onSelectDate, monthData, isLoading, calMon
 function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = null }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
+  const { terminology, features } = useIndustry();
 
   // Select API functions based on mode
   const apiFns = useMemo(() => workerMode ? {
@@ -437,7 +439,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title={workerMode ? "Create Job" : "Add New Job"} size="large">
+      <Modal isOpen={isOpen} onClose={onClose} title={workerMode ? `Create ${terminology.job}` : `Add New ${terminology.job}`} size="large">
         <form onSubmit={handleSubmit} className="form add-job-form">
           
           {/* Worker mode banner */}
@@ -673,20 +675,26 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
                 ))}
               </select>
             </div>
+            {features.propertyType && (
             <div className="form-group">
               <label className="form-label">Property Type <HelpTooltip text="The type of property for this job — e.g. house, apartment, office. Helps workers prepare." /></label>
               <input type="text" name="property_type" className="form-input" value={formData.property_type} onChange={handleChange} placeholder="e.g., House" />
             </div>
+            )}
+            {features.jobAddress && (
             <div className="form-group">
               <label className="form-label">Eircode <HelpTooltip text="Irish postal code for the job location. Helps with routing and navigation." /></label>
               <input type="text" name="eircode" className="form-input" value={formData.eircode} onChange={handleChange} />
             </div>
+            )}
           </div>
 
+          {features.jobAddress && (
           <div className="form-group">
-            <label className="form-label">Job Address</label>
-            <textarea name="job_address" className="form-textarea" value={formData.job_address} onChange={handleChange} rows="2" placeholder="If different from customer's address" />
+            <label className="form-label">{terminology.job} Address</label>
+            <textarea name="job_address" className="form-textarea" value={formData.job_address} onChange={handleChange} rows="2" placeholder={`If different from ${terminology.client.toLowerCase()}'s address`} />
           </div>
+          )}
           
           <div className="form-group">
             <label className="form-label">Estimated Charge (€) <HelpTooltip text="The price you'll charge the customer. Pre-filled from the service — adjust if needed for this specific job." /></label>
@@ -705,6 +713,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
           </div>
 
           {/* Initial Callout Toggle */}
+          {features.callouts && (
           <div className="form-group">
             <label className="form-label">Requires Initial Callout? <HelpTooltip text="Enable if a worker needs to visit the site first to assess the job. This books the callout service from your Services tab rather than the full job." /></label>
             <div className="callout-toggle-wrapper">
@@ -716,9 +725,10 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
               <span className="callout-toggle-label">{formData.requires_callout ? 'Yes — callout visit needed before work begins' : 'No — go straight to the job'}</span>
             </div>
           </div>
+          )}
 
           {/* Quote Visit Toggle */}
-          {!formData.requires_callout && (
+          {features.quotes && !formData.requires_callout && (
           <div className="form-group">
             <label className="form-label">Requires Quote Visit? <HelpTooltip text="Enable if a worker needs to visit the site first to give a free quote. This books the quote service from your Services tab rather than the full job." /></label>
             <div className="callout-toggle-wrapper">
@@ -733,6 +743,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
           )}
           
           {/* Emergency Job Toggle */}
+          {features.emergencyJobs && (
           <div className="form-group">
             <label className="form-label">Emergency Job? <HelpTooltip text="Mark as emergency to immediately notify all available workers via dashboard and email. A worker must accept the job to be dispatched." /></label>
             <div className="callout-toggle-wrapper">
@@ -744,6 +755,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
               <span className="callout-toggle-label">{formData.is_emergency ? 'Yes — notify workers immediately' : 'No — standard job'}</span>
             </div>
           </div>
+          )}
 
           {/* Recurring Job Toggle */}
           <div className="form-group">

@@ -1724,6 +1724,11 @@ def get_current_worker():
 
     company = db.get_company(account['company_id'])
     company_name = company['company_name'] if company else ''
+    
+    # Include industry profile so worker portal shows correct terminology
+    from src.utils.industry_config import get_industry_profile
+    industry_type = (company or {}).get('industry_type') or 'trades'
+    industry_profile = get_industry_profile(industry_type)
 
     return jsonify({
         "authenticated": True,
@@ -1735,7 +1740,9 @@ def get_current_worker():
             "trade_specialty": worker.get('trade_specialty', ''),
             "image_url": worker.get('image_url', ''),
             "company_name": company_name,
-            "role": "worker"
+            "role": "worker",
+            "industry_type": industry_type,
+            "industry_profile": industry_profile,
         }
     })
 
@@ -3115,6 +3122,8 @@ def admin_create_account():
         update_fields['business_hours'] = data['business_hours']
     if data.get('address'):
         update_fields['address'] = sanitize_string(data['address'], max_length=500)
+    if data.get('industry_type'):
+        update_fields['industry_type'] = sanitize_string(data['industry_type'], max_length=50)
 
     # Custom per-account pricing (per-plan)
     for plan_key in ('dashboard', 'pro'):
@@ -3325,7 +3334,7 @@ def admin_update_account(company_id):
         'company_name', 'owner_name', 'phone', 'email', 'trade_type',
         'address', 'business_hours', 'company_context', 'coverage_area',
         'subscription_tier', 'subscription_status', 'ai_enabled',
-        'subscription_plan',
+        'subscription_plan', 'industry_type',
         'easy_setup', 'setup_wizard_complete',
         'send_confirmation_sms', 'send_reminder_sms',
         'show_finances_tab', 'show_insights_tab', 'show_invoice_buttons',
@@ -5075,8 +5084,8 @@ def business_settings_api():
             'business_name': company.get('company_name'),
             'owner_name': company.get('owner_name'),
             'business_type': company.get('trade_type'),  # Trade type from signup
-            'business_phone': company.get('phone'),
-            'business_email': company.get('email'),
+            'industry_type': company.get('industry_type', 'trades'),
+            'business_phone': company.get('phone'),            'business_email': company.get('email'),
             'business_address': company.get('address'),
             'logo_url': company.get('logo_url'),
             'country_code': '+353',  # Default, could be added to schema if needed
@@ -5127,6 +5136,12 @@ def business_settings_api():
             'custom_pro_price': float(company['custom_pro_price']) if company.get('custom_pro_price') else None,
             'custom_pro_stripe_price_id': company.get('custom_pro_stripe_price_id', ''),
         }
+        
+        # Include the industry profile so the frontend has feature flags and terminology
+        from src.utils.industry_config import get_industry_profile, get_available_industries
+        settings['industry_profile'] = get_industry_profile(settings['industry_type'])
+        settings['available_industries'] = get_available_industries()
+        
         return jsonify(settings)
     
     elif request.method == "POST":
@@ -5166,6 +5181,7 @@ def business_settings_api():
             'business_name': 'company_name',
             'owner_name': 'owner_name',
             'business_type': 'trade_type',  # Trade type from signup
+            'industry_type': 'industry_type',
             'business_phone': 'phone',
             'business_email': 'email',
             'business_address': 'address',
@@ -14534,6 +14550,16 @@ def get_portal_data(token):
         portal = cur.fetchone()
         if not portal:
             return jsonify({"error": "Invalid portal link"}), 404
+        
+        # Safely get industry_type (column may not exist if migration hasn't run)
+        _portal_industry_type = 'trades'
+        try:
+            cur.execute("SELECT industry_type FROM companies WHERE id = %s", (portal['company_id'],))
+            _it_row = cur.fetchone()
+            if _it_row and _it_row.get('industry_type'):
+                _portal_industry_type = _it_row['industry_type']
+        except Exception:
+            pass  # Column doesn't exist yet — use default
         client_id = portal['client_id']
         company_id = portal['company_id']
         # Update last accessed
@@ -14583,6 +14609,10 @@ def get_portal_data(token):
             for k in list(q.keys()):
                 if q.get(k) and hasattr(q[k], 'isoformat'):
                     q[k] = q[k].isoformat()
+        # Get industry profile so customer portal can show the correct terminology
+        from src.utils.industry_config import get_industry_profile
+        _industry_profile = get_industry_profile(_portal_industry_type)
+        
         return jsonify({
             "client_name": portal['client_name'],
             "company_name": portal['company_name'],
@@ -14591,6 +14621,8 @@ def get_portal_data(token):
             "email": portal['email'],
             "jobs": jobs,
             "quotes": quotes,
+            "industry_type": _portal_industry_type,
+            "industry_profile": _industry_profile,
         })
     except Exception as e:
         if 'relation "customer_portal_tokens" does not exist' in str(e):

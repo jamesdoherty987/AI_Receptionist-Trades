@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react
 import { useQuery } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useIndustry } from '../context/IndustryContext';
 import Header from '../components/Header';
 import Tabs from '../components/Tabs';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -24,6 +25,7 @@ const CallLogsTab = lazy(() => import('../components/dashboard/CallLogsTab'));
 
 function Dashboard() {
   const { user, subscription } = useAuth();
+  const { terminology, features, tabs: industryTabs, icons } = useIndustry();
   const location = useLocation();
   const nav = useNavigate();
   const userKey = user?.email || 'default';
@@ -187,8 +189,8 @@ function Dashboard() {
   const tabs = useMemo(() => [
     // Day-to-day
     ...(adminVis.jobs !== false ? [{
-      label: 'Jobs',
-      icon: 'fas fa-briefcase',
+      label: terminology.jobs,
+      icon: icons.job || 'fas fa-briefcase',
       group: 'Day-to-Day',
       badge: jobBadges,
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><JobsTab bookings={bookings} showInvoiceButtons={settings?.show_invoice_buttons !== false} /></Suspense>
@@ -208,8 +210,8 @@ function Dashboard() {
     }] : []),
     // Team & Clients
     ...(adminVis.workers !== false ? [{
-      label: 'Workers',
-      icon: 'fas fa-hard-hat',
+      label: terminology.workers,
+      icon: icons.worker || 'fas fa-hard-hat',
       group: 'Team & Clients',
       badge: totalUnreadMessages,
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><WorkersTab workers={workers} bookings={bookings} /></Suspense>
@@ -228,7 +230,7 @@ function Dashboard() {
       group: 'Setup',
       content: <Suspense fallback={tabFallback}><ServicesTab /></Suspense>
     }] : []),
-    ...(adminVis.materials !== false ? [{
+    ...(adminVis.materials !== false && industryTabs.materials !== false && features.materials ? [{
       label: 'Materials',
       icon: 'fas fa-cubes',
       group: 'Setup',
@@ -254,7 +256,7 @@ function Dashboard() {
       group: 'Dev Tools',
       content: <Suspense fallback={tabFallback}><ChatTab /></Suspense>
     }] : [])
-  ], [isLoading, bookings, clients, workers, settings, unseenCalls, hasAIFeatures, reviewsData, overdueLeads, jobBadges, totalUnreadMessages, unpaidCount, adminVis]);
+  ], [isLoading, bookings, clients, workers, settings, unseenCalls, hasAIFeatures, reviewsData, overdueLeads, jobBadges, totalUnreadMessages, unpaidCount, adminVis, terminology, features, industryTabs, icons]);
 
   // Clear unseen call badge when user views the Calls tab
   const handleTabChange = useCallback((idx) => {
@@ -272,26 +274,26 @@ function Dashboard() {
     if (tabs.length === 0) return;
     const label = tabs[activeTab]?.label;
     if (label === 'Services') localStorage.setItem(`services_setup_visited_${userKey}`, 'true');
-    if (label === 'Workers') localStorage.setItem(`workers_setup_visited_${userKey}`, 'true');
+    if (label === terminology.workers) localStorage.setItem(`workers_setup_visited_${userKey}`, 'true');
     if (label === 'Materials') localStorage.setItem(`materials_setup_visited_${userKey}`, 'true');
-  }, [activeTab, tabs, userKey]);
+  }, [activeTab, tabs, userKey, terminology]);
 
   // Map notification types to tab labels for navigation
   const handleNotificationNavigate = useCallback((notif) => {
     const typeToLabel = {
-      'new_booking': 'Jobs',
-      'cancelled': 'Jobs',
-      'completed': 'Jobs',
-      'rescheduled': 'Jobs',
-      'time_off_request': 'Workers',
-      'new_message': 'Workers',
+      'new_booking': terminology.jobs,
+      'cancelled': terminology.jobs,
+      'completed': terminology.jobs,
+      'rescheduled': terminology.jobs,
+      'time_off_request': terminology.workers,
+      'new_message': terminology.workers,
     };
     const targetLabel = typeToLabel[notif.type];
     if (targetLabel) {
       const idx = tabs.findIndex(t => t.label === targetLabel);
       if (idx !== -1) handleTabChange(idx);
     }
-  }, [tabs, handleTabChange]);
+  }, [tabs, handleTabChange, terminology]);
 
   // Handle notification navigation from other pages (e.g. Settings → Dashboard)
   useEffect(() => {
