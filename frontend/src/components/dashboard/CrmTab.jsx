@@ -151,8 +151,13 @@ function CrmTab({ clients, bookings = [] }) {
   });
 
   const handleStageDrop = useCallback((leadId, newStage) => {
-    updateMutation.mutate({ id: leadId, stage: newStage });
-  }, [updateMutation]);
+    if (newStage === 'won') {
+      // Dragging to Won should convert the lead to a customer
+      convertMutation.mutate(leadId);
+    } else {
+      updateMutation.mutate({ id: leadId, stage: newStage });
+    }
+  }, [updateMutation, convertMutation]);
 
   // Clear search when switching views
   const handleViewSwitch = useCallback((view) => {
