@@ -920,7 +920,7 @@ async def media_handler(ws):
                             voice_id = config.ELEVENLABS_VOICE_ID
                             uri = (
                                 f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input"
-                                f"?model_id=eleven_turbo_v2_5&output_format=ulaw_8000&optimize_streaming_latency=4"
+                                f"?model_id=eleven_flash_v2_5&output_format=ulaw_8000&optimize_streaming_latency=4"
                             )
                             async with ws_lib.connect(
                                 uri,

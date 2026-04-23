@@ -305,7 +305,7 @@ async def warmup_elevenlabs():
     voice_id = config.ELEVENLABS_VOICE_ID
     uri = (
         f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input"
-        f"?model_id=eleven_turbo_v2_5"
+        f"?model_id=eleven_flash_v2_5"
         f"&output_format=ulaw_8000"
         f"&optimize_streaming_latency=4"
     )
