@@ -707,7 +707,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
           <div className="job-modal-actions">
             {!isEditing ? (
               <>
-                <button className="btn btn-edit" onClick={() => setIsEditing(true)}>
+                <button className="btn btn-edit" onClick={() => setIsEditing(true)} title="Edit job details">
                   <i className="fas fa-pen"></i> Edit
                 </button>
                 {!!(job.estimated_charge || job.charge) && showInvoiceButtons && (
@@ -735,7 +735,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   </button>
                 )}
                 {getDirectionsUrl() && (
-                  <a href={getDirectionsUrl()} target="_blank" rel="noopener noreferrer" className="btn btn-success">
+                  <a href={getDirectionsUrl()} target="_blank" rel="noopener noreferrer" className="btn btn-success" title="Open directions in Google Maps">
                     <i className="fas fa-directions"></i> Directions
                   </a>
                 )}

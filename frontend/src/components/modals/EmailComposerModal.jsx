@@ -25,7 +25,7 @@ function EmailComposerModal({ isOpen, onClose, mode = 'individual', recipient = 
       setShowRecipientPicker(false);
       if (mode === 'individual' && recipient) {
         setToEmail(recipient.email || '');
-        const firstName = (recipient.name || '').split(' ')[0];
+        const firstName = (recipient.name || '').split(' ')[0] || 'there';
         setBody(`Hi ${firstName},\n\n\n\nKind regards,\n${companyName}`);
       } else {
         setToEmail('');

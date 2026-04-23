@@ -8953,6 +8953,9 @@ def convert_lead_to_client(lead_id):
                 company_id=company_id,
             )
 
+        if not existing_client_id:
+            return jsonify({"error": "Failed to create customer profile"}), 500
+
         # Update lead as won with client reference
         cursor.execute("""
             UPDATE leads SET stage = 'won', client_id = %s, converted_at = CURRENT_TIMESTAMP,
@@ -14541,7 +14544,7 @@ def get_portal_data(token):
             cur.execute("""
                 SELECT id, service_type, appointment_time, status, address, duration_minutes, charge,
                        photo_urls, customer_photo_urls
-                FROM bookings WHERE company_id = %s AND client_id = %s AND status NOT IN ('cancelled')
+                FROM bookings WHERE company_id = %s AND client_id = %s AND status NOT IN ('cancelled', 'rejected')
                 ORDER BY appointment_time DESC LIMIT 20
             """, (company_id, client_id))
         except Exception:
@@ -14550,7 +14553,7 @@ def get_portal_data(token):
             cur.execute("""
                 SELECT id, service_type, appointment_time, status, address, duration_minutes, charge,
                        photo_urls
-                FROM bookings WHERE company_id = %s AND client_id = %s AND status NOT IN ('cancelled')
+                FROM bookings WHERE company_id = %s AND client_id = %s AND status NOT IN ('cancelled', 'rejected')
                 ORDER BY appointment_time DESC LIMIT 20
             """, (company_id, client_id))
         jobs = cur.fetchall()

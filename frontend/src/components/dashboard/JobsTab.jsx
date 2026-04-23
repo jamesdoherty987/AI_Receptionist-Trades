@@ -322,7 +322,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
             <button className={viewMode === 'list' ? 'active' : ''} onClick={() => setViewMode('list')} title="List view"><i className="fas fa-list"></i> List</button>
             <button className={viewMode === 'board' ? 'active' : ''} onClick={() => setViewMode('board')} title="Board view"><i className="fas fa-columns"></i> Board</button>
           </div>
-          <button className="btn-add" onClick={handleAddClick}>
+          <button className="btn-add" onClick={handleAddClick} title="Create a new job">
             <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Job
           </button>
         </div>

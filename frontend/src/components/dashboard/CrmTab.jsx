@@ -301,13 +301,13 @@ function CrmTab({ clients, bookings = [] }) {
               <button className="btn-add" style={{ background: '#6366f1' }} onClick={() => {
                 if (!isSubscriptionActive) { addToast('Please upgrade your plan', 'warning'); return; }
                 setEmailModal({ open: true, mode: 'bulk', recipient: null });
-              }}>
+              }} title="Send an email to multiple customers at once">
                 <i className={`fas ${isSubscriptionActive ? 'fa-paper-plane' : 'fa-lock'}`}></i> Bulk Email
               </button>
               <button className="btn-add" onClick={() => {
                 if (!isSubscriptionActive) { addToast('Please upgrade your plan to add customers', 'warning'); return; }
                 setShowAddClient(true);
-              }}>
+              }} title="Add a new customer manually">
                 <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Customer
               </button>
             </>
@@ -316,7 +316,7 @@ function CrmTab({ clients, bookings = [] }) {
             <button className="btn-add" onClick={() => {
               if (!isSubscriptionActive) { addToast('Please upgrade your plan', 'warning'); return; }
               setShowAddLead(true);
-            }}>
+            }} title="Manually add a new lead">
               <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Lead
             </button>
           )}
@@ -668,12 +668,12 @@ function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFi
               </div>
               <div className="crm-customer-quick-actions">
                 {c.phone && (
-                  <a href={`tel:${c.phone}`} className="crm-quick-btn" onClick={e => e.stopPropagation()} title="Call">
+                  <a href={`tel:${c.phone}`} className="crm-quick-btn" onClick={e => e.stopPropagation()} title={`Call ${c.name}`}>
                     <i className="fas fa-phone"></i>
                   </a>
                 )}
                 {c.email && (
-                  <button className="crm-quick-btn" onClick={e => { e.stopPropagation(); onEmailClient(c); }} title="Send Email">
+                  <button className="crm-quick-btn" onClick={e => { e.stopPropagation(); onEmailClient(c); }} title={`Send email to ${c.name}`}>
                     <i className="fas fa-envelope"></i>
                   </button>
                 )}
