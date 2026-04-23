@@ -73,9 +73,14 @@ class EmailReminderService:
         # For backward compatibility, expose a from_email property
         # Prefers Resend from_email, falls back to SMTP from_email
         self.from_email = self.resend_from_email or self.smtp_from_email
+        
+        # Per-company reply-to: set this before sending to have all emails
+        # include a Reply-To header pointing to the company's own email.
+        # Reset to None after use to avoid leaking between companies.
+        self.company_reply_to = None
     
     def _send_via_resend(self, to_email: str, subject: str, html_body: str, 
-                         text_body: str, from_name: str = None) -> bool:
+                         text_body: str, from_name: str = None, reply_to: str = None) -> bool:
         """Send email using Resend API. Also stores the email ID for bounce tracking."""
         try:
             from_addr = self.resend_from_email or "onboarding@resend.dev"
@@ -88,6 +93,9 @@ class EmailReminderService:
                 "html": html_body,
                 "text": text_body,
             }
+            
+            if reply_to:
+                params["reply_to"] = reply_to
             
             response = resend.Emails.send(params)
             email_id = response.get('id', 'unknown')
@@ -102,13 +110,16 @@ class EmailReminderService:
             return False
     
     def _send_via_smtp(self, to_email: str, subject: str, html_body: str, 
-                       text_body: str, from_name: str = None) -> bool:
+                       text_body: str, from_name: str = None, reply_to: str = None) -> bool:
         """Send email using SMTP (fallback)"""
         try:
             msg = MIMEMultipart('alternative')
             msg['Subject'] = subject
             msg['From'] = f'{from_name} <{self.smtp_from_email}>' if from_name else self.smtp_from_email
             msg['To'] = to_email
+            
+            if reply_to:
+                msg['Reply-To'] = reply_to
             
             part1 = MIMEText(text_body, 'plain')
             part2 = MIMEText(html_body, 'html')
@@ -130,28 +141,32 @@ class EmailReminderService:
             return False
     
     def _send_email(self, to_email: str, subject: str, html_body: str, 
-                    text_body: str, from_name: str = None) -> bool:
+                    text_body: str, from_name: str = None, reply_to: str = None) -> bool:
         """
-        Send email using best available method (Resend first, then SMTP fallback)
+        Send email using best available method (Resend first, then SMTP fallback).
+        If reply_to is not provided, falls back to self.company_reply_to (if set).
         """
         if not self.configured:
             print("[ERROR] Email service not configured")
             return False
         
+        # Use instance-level reply-to as fallback
+        effective_reply_to = reply_to or self.company_reply_to
+        
         # Try Resend first
         if self.use_resend:
-            success = self._send_via_resend(to_email, subject, html_body, text_body, from_name)
+            success = self._send_via_resend(to_email, subject, html_body, text_body, from_name, effective_reply_to)
             if success:
                 return True
             # If Resend fails, try SMTP fallback
             if self.smtp_configured:
                 print("[INFO] Resend failed, trying SMTP fallback...")
-                return self._send_via_smtp(to_email, subject, html_body, text_body, from_name)
+                return self._send_via_smtp(to_email, subject, html_body, text_body, from_name, effective_reply_to)
             return False
         
         # Use SMTP if Resend not configured
         if self.smtp_configured:
-            return self._send_via_smtp(to_email, subject, html_body, text_body, from_name)
+            return self._send_via_smtp(to_email, subject, html_body, text_body, from_name, effective_reply_to)
         
         return False
     

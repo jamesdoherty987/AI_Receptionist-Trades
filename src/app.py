@@ -6921,6 +6921,7 @@ def bookings_api():
                         customer_name=client.get('name', 'Customer') if client else 'Customer',
                         service_type=service_type or 'appointment',
                         company_name=_company_name,
+                        company_email=(_company_info.get('email') or '').strip() if _company_info else None,
                         worker_names=_worker_names if _worker_names else None,
                         address=job_address,
                         portal_link=_portal_link,
@@ -8051,6 +8052,7 @@ def booking_detail_api(booking_id):
                                 review_url = f"{public_url}/review/{review_token}"
                                 from src.services.email_reminder import get_email_service
                                 email_svc = get_email_service()
+                                email_svc.company_reply_to = (company.get('email') or '').strip() if company else None
                                 sent = email_svc.send_satisfaction_survey(
                                     to_email=customer_email_r, customer_name=customer_name_r,
                                     service_type=service_type_r, review_url=review_url,
@@ -8202,6 +8204,7 @@ def reject_booking_api(booking_id):
             from src.services.email_reminder import get_email_service
             email_svc = get_email_service()
             if email_svc.configured:
+                email_svc.company_reply_to = (company.get('email') or '').strip() if company else None
                 email_svc.send_rejection_email(
                     to_email=customer_email,
                     customer_name=customer_name,
@@ -8440,6 +8443,7 @@ def complete_booking_api(booking_id):
                         
                         from src.services.email_reminder import get_email_service
                         email_svc = get_email_service()
+                        email_svc.company_reply_to = (company.get('email') or '').strip() if company else None
                         sent = email_svc.send_satisfaction_survey(
                             to_email=customer_email,
                             customer_name=customer_name,
@@ -9379,6 +9383,8 @@ def send_invoice_api(booking_id):
                 from src.services.email_reminder import get_email_service
                 email_svc = get_email_service()
                 safe_print(f"[INVOICE] Email service configured: {email_svc.configured}, use_resend: {email_svc.use_resend}, smtp_configured: {email_svc.smtp_configured}")
+                # Set reply-to to company's email so customer replies go to the business
+                email_svc.company_reply_to = (company.get('email') or '').strip() if company else None
                 if email_svc.configured:
                     safe_print(f"[INVOICE] Attempting email send to {to_email}...")
                     email_sent = email_svc.send_invoice(
@@ -9631,9 +9637,10 @@ def crm_send_email():
     if not body_html and not body_text:
         return jsonify({"error": "Email body is required"}), 400
 
-    # Get company name for from_name
+    # Get company name and email for from_name and reply-to
     company = db.get_company(company_id)
     company_name = company.get('company_name', 'BookedForYou') if company else 'BookedForYou'
+    company_email = (company.get('email') or company.get('business_email') or '').strip() if company else ''
 
     # If no HTML provided, wrap plain text in basic HTML
     if not body_html:
@@ -9649,24 +9656,25 @@ def crm_send_email():
         if not email_svc.configured:
             return jsonify({"error": "Email service is not configured. Set up RESEND_API_KEY or SMTP settings."}), 400
 
-        sent = email_svc._send_email(to_email, subject, body_html, body_text, from_name=company_name)
+        sent = email_svc._send_email(to_email, subject, body_html, body_text, from_name=company_name, reply_to=company_email or None)
         if sent:
             # Log the activity on the client timeline if client_id provided
             if client_id:
+                conn_note = None
                 try:
-                    conn = db.get_connection()
-                    cursor = conn.cursor()
+                    conn_note = db.get_connection()
+                    cursor = conn_note.cursor()
                     cursor.execute("""
                         INSERT INTO client_notes (client_id, company_id, note, created_at)
                         VALUES (%s, %s, %s, NOW())
                     """, (client_id, company_id, f"📧 Email sent: {subject}"))
-                    conn.commit()
+                    conn_note.commit()
                 except Exception:
-                    if conn:
-                        conn.rollback()
+                    if conn_note:
+                        conn_note.rollback()
                 finally:
-                    if conn:
-                        db.return_connection(conn)
+                    if conn_note:
+                        db.return_connection(conn_note)
             return jsonify({"success": True, "message": "Email sent successfully"})
         else:
             return jsonify({"error": "Failed to send email. Check your email configuration."}), 500
@@ -9697,10 +9705,11 @@ def crm_send_bulk_email():
 
     # If segment provided, fetch recipients from DB
     if segment and not recipients:
+        conn_seg = None
         try:
-            conn = db.get_connection()
+            conn_seg = db.get_connection()
             from psycopg2.extras import RealDictCursor
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor = conn_seg.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
                 SELECT id, name, email FROM clients
                 WHERE company_id = %s AND email IS NOT NULL AND email != ''
@@ -9710,8 +9719,8 @@ def crm_send_bulk_email():
         except Exception as e:
             return jsonify({"error": f"Failed to fetch recipients: {e}"}), 500
         finally:
-            if conn:
-                db.return_connection(conn)
+            if conn_seg:
+                db.return_connection(conn_seg)
 
     if not recipients:
         return jsonify({"error": "No recipients provided or found"}), 400
@@ -9723,6 +9732,7 @@ def crm_send_bulk_email():
 
     company = db.get_company(company_id)
     company_name = company.get('company_name', 'BookedForYou') if company else 'BookedForYou'
+    company_email = (company.get('email') or company.get('business_email') or '').strip() if company else ''
 
     if not body_html:
         body_html = f"<div style='font-family:sans-serif;font-size:14px;color:#333;line-height:1.6;'>{body_text.replace(chr(10), '<br>')}</div>"
@@ -9747,7 +9757,7 @@ def crm_send_bulk_email():
             personalized_html = body_html.replace('{{name}}', name)
             personalized_text = body_text.replace('{{name}}', name)
             try:
-                ok = email_svc._send_email(to, subject, personalized_html, personalized_text, from_name=company_name)
+                ok = email_svc._send_email(to, subject, personalized_html, personalized_text, from_name=company_name, reply_to=company_email or None)
                 if ok:
                     sent_count += 1
                 else:
@@ -10096,6 +10106,7 @@ def worker_accept_emergency(booking_id):
                 customer_name=booking.get('customer_name', 'Customer'),
                 service_type=booking.get('service_type', 'Emergency'),
                 company_name=_company_name,
+                company_email=(_company.get('email') or '').strip() if _company else None,
                 worker_names=[worker_name],
                 address=booking.get('address'),
                 portal_link=_emerg_portal_link,
@@ -11725,6 +11736,8 @@ def send_quote_sms(quote_id):
                 from src.services.email_reminder import get_email_service
                 email_svc = get_email_service()
                 if email_svc.configured:
+                    # Set reply-to so customer replies go to the business
+                    email_svc.company_reply_to = (company.get('email') or '').strip() if company else None
                     items_html = ""
                     if quote.get('line_items'):
                         li = quote['line_items'] if isinstance(quote['line_items'], list) else []
@@ -14300,6 +14313,7 @@ def send_quote_follow_up(quote_id):
                 from src.services.email_reminder import get_email_service
                 email_svc = get_email_service()
                 if email_svc.configured:
+                    email_svc.company_reply_to = (company.get('email') or '').strip() if company else None
                     html = f"""<div style='font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:560px;margin:0 auto'>
 <h2 style='color:#1e293b'>Following up on your quote</h2>
 <p style='color:#475569'>{body}</p>

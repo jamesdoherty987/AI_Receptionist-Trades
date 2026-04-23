@@ -556,6 +556,8 @@ def notify_customer(notification_type: str, customer_email: str = None,
             from src.services.email_reminder import get_email_service
             email_svc = get_email_service()
             if email_svc.configured:
+                # Set reply-to to company's email so customer replies go to the business
+                email_svc.company_reply_to = kwargs.get('company_email') or None
                 if notification_type == 'booking_confirmation':
                     sent = email_svc.send_booking_confirmation(
                         to_email=customer_email,

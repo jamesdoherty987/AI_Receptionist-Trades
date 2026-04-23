@@ -574,12 +574,12 @@ function LeadCard({ lead, stage, onDragStart, onEdit, onDelete, onConvert }) {
    ============================================ */
 function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFilter, customerSort, setCustomerSort, onSelectClient, crmStats, onPortalLink, onEmailClient }) {
   const SEGMENTS = [
-    { key: 'all', label: 'All', icon: 'fa-users', color: '#64748b' },
-    { key: 'vip', label: 'VIP', icon: 'fa-crown', color: '#f59e0b' },
-    { key: 'loyal', label: 'Loyal', icon: 'fa-heart', color: '#ec4899' },
-    { key: 'regular', label: 'Regular', icon: 'fa-user', color: '#3b82f6' },
-    { key: 'new', label: 'New', icon: 'fa-user-plus', color: '#10b981' },
-    { key: 'dormant', label: 'Dormant', icon: 'fa-moon', color: '#94a3b8' },
+    { key: 'all', label: 'All', icon: 'fa-users', color: '#64748b', tip: 'All customers' },
+    { key: 'vip', label: 'VIP', icon: 'fa-crown', color: '#f59e0b', tip: 'Repeat customers with €500+ revenue — auto-assigned' },
+    { key: 'loyal', label: 'Loyal', icon: 'fa-heart', color: '#ec4899', tip: 'Customers with 2+ completed jobs' },
+    { key: 'regular', label: 'Regular', icon: 'fa-user', color: '#3b82f6', tip: 'Active customers with at least one job' },
+    { key: 'new', label: 'New', icon: 'fa-user-plus', color: '#10b981', tip: 'Recently added, no jobs yet' },
+    { key: 'dormant', label: 'Dormant', icon: 'fa-moon', color: '#94a3b8', tip: 'No activity in 120+ days' },
   ];
 
   const clientStats = crmStats?.client_stats || { total_clients: customers.length, new_this_month: 0 };
@@ -593,6 +593,7 @@ function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFi
             <button key={s.key}
               className={`crm-segment-btn ${customerFilter === s.key ? 'active' : ''}`}
               onClick={() => setCustomerFilter(s.key)}
+              title={s.tip}
               style={customerFilter === s.key ? { borderColor: s.color, color: s.color } : {}}>
               <i className={`fas ${s.icon}`}></i>
               <span>{s.label}</span>
@@ -660,7 +661,7 @@ function CustomersView({ customers, segmentCounts, customerFilter, setCustomerFi
                   <span className="crm-metric-value">{formatCurrency(c.revenue)}</span>
                   <span className="crm-metric-label">Revenue</span>
                 </div>
-                <div className="crm-metric">
+                <div className="crm-metric" title="Health score (0–100): based on completed jobs, recency, and revenue. Updates automatically.">
                   <span className={`crm-metric-value crm-health-${c.status}`}>{c.score}</span>
                   <span className="crm-metric-label">Health</span>
                 </div>
