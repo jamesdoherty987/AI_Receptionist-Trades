@@ -312,3 +312,21 @@
   .crm-stat-card { padding: 8px 10px; }
   .crm-review-left { flex-direction: column; align-items: flex-start; gap: 4px; }
 }
+
+/* Fast tooltips on lead action buttons */
+.lead-action-btn[title] { position: relative; }
+.lead-action-btn[title]:hover::after {
+  content: attr(title);
+  position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  background: #1e293b; color: white; font-size: 0.68rem; font-weight: 500;
+  padding: 4px 8px; border-radius: 5px; white-space: nowrap; z-index: 10;
+  pointer-events: none; margin-bottom: 4px;
+  animation: tooltipFadeIn 0.1s ease;
+}
+.lead-action-btn[title]:hover::before {
+  content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  border: 4px solid transparent; border-top-color: #1e293b; z-index: 10;
+  pointer-events: none; margin-bottom: -4px;
+  animation: tooltipFadeIn 0.1s ease;
+}
+@keyframes tooltipFadeIn { from { opacity: 0; } to { opacity: 1; } }

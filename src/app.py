@@ -11730,6 +11730,17 @@ def send_quote_sms(quote_id):
 
         sent_via = None
 
+        # Auto-generate accept token so the customer can accept via link
+        import secrets as _secrets_q
+        accept_token = quote.get('accept_token')
+        if not accept_token:
+            accept_token = _secrets_q.token_urlsafe(32)
+            cur.execute("UPDATE quotes SET accept_token = %s WHERE id = %s AND company_id = %s",
+                        (accept_token, quote_id, company_id))
+            conn.commit()
+        public_url = os.getenv('PUBLIC_URL', request.host_url.rstrip('/'))
+        accept_link = f"{public_url}/quote/accept/{accept_token}"
+
         # Try email first
         if email:
             try:
@@ -11756,7 +11767,10 @@ def send_quote_sms(quote_id):
 </div>
 {vu_html}
 {f"<p style='color:#475569;font-size:13px;background:#f8fafc;padding:10px;border-radius:6px'>{quote.get('notes')}</p>" if quote.get('notes') else ""}
-<p style='color:#64748b;font-size:13px;margin-top:20px'>Please reply to this email to accept or decline this quote.</p>
+<div style='text-align:center;margin:24px 0'>
+<a href='{accept_link}' style='display:inline-block;background:#10b981;color:white;text-decoration:none;padding:14px 40px;font-size:16px;font-weight:700;border-radius:8px;box-shadow:0 4px 12px rgba(16,185,129,0.3)'>Accept Quote</a>
+</div>
+<p style='color:#94a3b8;font-size:12px;text-align:center'>Or reply to this email if you have any questions.</p>
 </div>"""
                     txt = f"Quote from {company_name}\n\n{title}\n{items_summary}\n\nTotal: €{total:.2f}{valid_until}\n\nPlease reply to accept or decline."
                     subject = f"Quote from {company_name} — {title} (€{total:.2f})"
@@ -14613,6 +14627,21 @@ def portal_request_job(token):
               portal['phone'], portal['email'], service, description, address))
         lead_id = cur.fetchone()['id']
         conn.commit()
+
+        # Notify owner about the portal job request
+        try:
+            svc_text = f" for {service}" if service and service != 'General' else ""
+            db.create_notification(
+                company_id=portal['company_id'],
+                recipient_type='owner',
+                recipient_id=0,
+                notif_type='new_lead',
+                message=f"Portal request from {portal['name']}{svc_text}",
+                metadata={'lead_id': lead_id, 'source': 'portal'},
+            )
+        except Exception:
+            pass
+
         return jsonify({"success": True, "lead_id": lead_id, "message": "Request submitted! We'll be in touch soon."})
     except Exception as e:
         conn.rollback()

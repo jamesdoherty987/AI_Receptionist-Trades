@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../Toast';
 import {
@@ -103,6 +103,16 @@ function PipelineTab() {
     return g;
   }, [filtered]);
 
+  const handleDragOver = useCallback((e, stageKey) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverStage(prev => prev === stageKey ? prev : stageKey);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverStage(null);
+  }, []);
+
   const handleDrop = useCallback((e, stage) => {
     e.preventDefault();
     const id = parseInt(e.dataTransfer.getData('text/plain'));
@@ -167,8 +177,8 @@ function PipelineTab() {
               {STAGES.map(stage => (
                 <div key={stage.key}
                   className={`pipe-col ${dragOverStage === stage.key ? 'drag-over' : ''}`}
-                  onDragOver={e => { e.preventDefault(); setDragOverStage(stage.key); }}
-                  onDragLeave={() => setDragOverStage(null)}
+                  onDragOver={e => handleDragOver(e, stage.key)}
+                  onDragLeave={handleDragLeave}
                   onDrop={e => handleDrop(e, stage.key)}>
                   <div className="pipe-col-head">
                     <span className="pipe-dot" style={{ background: stage.color }}></span>
@@ -250,7 +260,7 @@ function PipelineTab() {
   );
 }
 
-function QuoteCard({ quote, stage, onFollowUp, onCopyLink, linkCopied, onStageChange, onMarkLost }) {
+const QuoteCard = memo(function QuoteCard({ quote, stage, onFollowUp, onCopyLink, linkCopied, onStageChange, onMarkLost }) {
   const q = quote;
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   return (
@@ -301,7 +311,7 @@ function QuoteCard({ quote, stage, onFollowUp, onCopyLink, linkCopied, onStageCh
       )}
     </div>
   );
-}
+});
 
 /* ===== Sequences View ===== */
 function SequencesView() {

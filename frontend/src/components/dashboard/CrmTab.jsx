@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { formatPhone, formatCurrency } from '../../utils/helpers';
 import { useToast } from '../Toast';
-import { getLeads, createLead, updateLead, deleteLead, convertLead, getCrmStats, getCompanyReviews, generatePortalLink } from '../../services/api';
+import { getLeads, createLead, updateLead, deleteLead, convertLead, getCrmStats, getCompanyReviews, generatePortalLink, triggerLostJobCallback, getOutboundCallsEnabled } from '../../services/api';
 import AddClientModal from '../modals/AddClientModal';
 import CustomerDetailModal from '../modals/CustomerDetailModal';
 import EmailComposerModal from '../modals/EmailComposerModal';
@@ -83,6 +83,14 @@ function CrmTab({ clients, bookings = [] }) {
     queryFn: async () => (await getCompanyReviews()).data,
   });
   const reviews = reviewsData?.reviews || [];
+
+  // Check if outbound AI calls are enabled
+  const { data: outboundData } = useQuery({
+    queryKey: ['outbound-calls-enabled'],
+    queryFn: async () => (await getOutboundCallsEnabled()).data,
+    staleTime: 5 * 60 * 1000,
+  });
+  const outboundEnabled = outboundData?.enabled || false;
 
   // Mutations
   const createMutation = useMutation({
@@ -346,6 +354,13 @@ function CrmTab({ clients, bookings = [] }) {
           onEdit={setEditingLead}
           onDelete={handleDeleteLead}
           onConvert={(id) => convertMutation.mutate(id)}
+          onCallback={(lead) => {
+            if (!lead.call_log_id) { addToast('No call log linked to this lead', 'warning'); return; }
+            triggerLostJobCallback(lead.call_log_id)
+              .then(() => addToast(`Calling ${lead.name} back...`, 'success'))
+              .catch(e => addToast(e.response?.data?.error || 'Failed to initiate callback', 'error'));
+          }}
+          outboundEnabled={outboundEnabled}
         />
       )}
 
@@ -401,7 +416,7 @@ function CrmTab({ clients, bookings = [] }) {
 /* ============================================
    PIPELINE VIEW
    ============================================ */
-function PipelineView({ leads, searchTerm, pipelineStats, onStageDrop, onEdit, onDelete, onConvert }) {
+function PipelineView({ leads, searchTerm, pipelineStats, onStageDrop, onEdit, onDelete, onConvert, onCallback, outboundEnabled }) {
   const [dragOverStage, setDragOverStage] = useState(null);
 
   const filteredLeads = useMemo(() => {
@@ -476,7 +491,8 @@ function PipelineView({ leads, searchTerm, pipelineStats, onStageDrop, onEdit, o
               {(leadsByStage[stage.key] || []).map(lead => (
                 <LeadCard key={lead.id} lead={lead} stage={stage}
                   onDragStart={handleDragStart} onEdit={onEdit}
-                  onDelete={onDelete} onConvert={onConvert} />
+                  onDelete={onDelete} onConvert={onConvert} onCallback={onCallback}
+                  outboundEnabled={outboundEnabled} />
               ))}
               {(leadsByStage[stage.key] || []).length === 0 && (
                 <div className="pipeline-empty">
@@ -496,7 +512,7 @@ function PipelineView({ leads, searchTerm, pipelineStats, onStageDrop, onEdit, o
 /* ============================================
    LEAD CARD
    ============================================ */
-function LeadCard({ lead, stage, onDragStart, onEdit, onDelete, onConvert }) {
+function LeadCard({ lead, stage, onDragStart, onEdit, onDelete, onConvert, onCallback, outboundEnabled }) {
   const [showActions, setShowActions] = useState(false);
   const sourceInfo = LEAD_SOURCES.find(s => s.key === lead.source) || LEAD_SOURCES[4];
 
@@ -508,15 +524,20 @@ function LeadCard({ lead, stage, onDragStart, onEdit, onDelete, onConvert }) {
         <span className="lead-name">{lead.name}</span>
         {showActions && (
           <div className="lead-actions">
-            <button className="lead-action-btn" onClick={() => onEdit(lead)} title="Edit">
+            <button className="lead-action-btn" onClick={() => onEdit(lead)} title="Edit lead details">
               <i className="fas fa-pen"></i>
             </button>
+            {outboundEnabled && lead.call_log_id && lead.phone && lead.stage !== 'won' && lead.stage !== 'lost' && (
+              <button className="lead-action-btn convert" onClick={() => onCallback(lead)} title="AI calls them back automatically">
+                <i className="fas fa-phone-alt"></i>
+              </button>
+            )}
             {lead.stage !== 'won' && lead.stage !== 'lost' && (
-              <button className="lead-action-btn convert" onClick={() => onConvert(lead.id)} title="Convert to customer">
+              <button className="lead-action-btn convert" onClick={() => onConvert(lead.id)} title="Convert to customer — creates a customer profile">
                 <i className="fas fa-user-plus"></i>
               </button>
             )}
-            <button className="lead-action-btn delete" onClick={() => onDelete(lead.id)} title="Delete">
+            <button className="lead-action-btn delete" onClick={() => onDelete(lead.id)} title="Delete this lead">
               <i className="fas fa-trash"></i>
             </button>
           </div>

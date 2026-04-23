@@ -681,6 +681,21 @@ async def _create_lead_from_call(
         conn.commit()
         print(f"[LEAD] Auto-created lead id={lead_id} from call_log_id={call_log_id} "
               f"(outcome={outcome}, name={name}, phone={phone})")
+
+        # Create notification for the owner about the new lead
+        try:
+            svc_text = f" interested in {service_interest}" if service_interest else ""
+            db.create_notification(
+                company_id=company_id,
+                recipient_type='owner',
+                recipient_id=0,
+                notif_type='new_lead',
+                message=f"New lead: {name}{svc_text}",
+                metadata={'lead_id': lead_id, 'source': source, 'phone': phone},
+            )
+        except Exception:
+            pass  # Non-critical
+
         return lead_id
 
     except Exception as e:
