@@ -105,10 +105,30 @@ try:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_employee_id ON messages(employee_id)")
     print("  Migrated messages index")
 
-    # 4. Migrate data values: sender_type 'worker' -> 'employee' in messages table
+    # 4. Drop CHECK constraints that reference 'worker', update data, recreate with 'employee'
+    # Find and drop all CHECK constraints on messages and notifications that contain 'worker'
+    cursor.execute("""
+        SELECT conname, conrelid::regclass AS table_name
+        FROM pg_constraint
+        WHERE contype = 'c'
+          AND conrelid::regclass::text IN ('messages', 'notifications')
+          AND pg_get_constraintdef(oid) ILIKE '%worker%'
+    """)
+    check_constraints = cursor.fetchall()
+    for cc in check_constraints:
+        cursor.execute(f"ALTER TABLE {cc['table_name']} DROP CONSTRAINT {cc['conname']}")
+        print(f"  Dropped CHECK constraint {cc['conname']} on {cc['table_name']}")
+
+    # Now update the data
     if table_exists("messages") and column_exists("messages", "sender_type"):
         cursor.execute("UPDATE messages SET sender_type = 'employee' WHERE sender_type = 'worker'")
         print(f"  Updated messages.sender_type: 'worker' -> 'employee' ({cursor.rowcount} rows)")
+        # Recreate the constraint with 'employee' instead of 'worker'
+        cursor.execute("""
+            ALTER TABLE messages ADD CONSTRAINT messages_sender_type_check
+            CHECK (sender_type IN ('owner', 'employee'))
+        """)
+        print("  Recreated messages_sender_type_check with 'employee'")
 
     # 5. Migrate data values: created_by 'worker:*' -> 'employee:*' in appointment_notes
     if table_exists("appointment_notes") and column_exists("appointment_notes", "created_by"):
@@ -119,6 +139,14 @@ try:
     if table_exists("notifications") and column_exists("notifications", "recipient_type"):
         cursor.execute("UPDATE notifications SET recipient_type = 'employee' WHERE recipient_type = 'worker'")
         print(f"  Updated notifications.recipient_type: 'worker' -> 'employee' ({cursor.rowcount} rows)")
+        # Recreate constraint if one was dropped
+        notif_constraints = [cc for cc in check_constraints if cc['table_name'] == 'notifications']
+        if notif_constraints:
+            cursor.execute("""
+                ALTER TABLE notifications ADD CONSTRAINT notifications_recipient_type_check
+                CHECK (recipient_type IN ('owner', 'employee'))
+            """)
+            print("  Recreated notifications_recipient_type_check with 'employee'")
 
     # 7. Migrate JSONB data: worker_restrictions key employee_ids (already correct key name)
     # The JSONB content uses 'employee_ids' already in the code, but old data may have 'worker_ids'
