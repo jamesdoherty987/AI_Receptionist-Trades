@@ -1047,8 +1047,11 @@ function Landing() {
   ];
 
   const pricingPlans = [
-    { name: "Dashboard", description: "Business management tools for your trade", features: ["Job management & scheduling", "Customer management", "Worker management", "Calendar & availability", "Financial tracking & invoicing", "Materials tracking", "Insights & reports"], cta: "Contact Us", highlighted: false, link: "mailto:contact@bookedforyou.ie?subject=BookedForYou Dashboard Plan Enquiry" },
-    { name: "Pro", description: "Everything + AI receptionist", features: ["Everything in Dashboard, plus:", "AI receptionist & phone calls", "Smart AI scheduling", "Dedicated AI phone number", "24/7 call handling", "Automatic booking from calls", "Priority support"], cta: "Contact Us", highlighted: true, link: "mailto:contact@bookedforyou.ie?subject=BookedForYou Pro Plan Enquiry" },
+    { name: "Dashboard", price: "€99", period: "/mo", description: "Business management tools", features: ["Job management & scheduling", "Customer & worker management", "Calendar & availability", "Financial tracking & invoicing", "Materials tracking", "Insights & reports"], cta: "Get Started", highlighted: false, link: "/auth?plan=dashboard" },
+    { name: "Starter", price: "€199", period: "/mo", description: "200 AI call mins included", features: ["Everything in Dashboard, plus:", "AI receptionist & phone calls", "Dedicated AI phone number", "Smart AI scheduling", "200 AI call minutes/month", "€0.12/min after that"], cta: "Get Started", highlighted: false, link: "/auth?plan=starter" },
+    { name: "Professional", price: "€399", period: "/mo", description: "800 AI call mins included", features: ["Everything in Starter, plus:", "800 AI call minutes/month", "€0.12/min after that", "Priority support"], cta: "Get Started", highlighted: true, link: "/auth?plan=professional" },
+    { name: "Business", price: "€599", period: "/mo", description: "2,000 AI call mins included", features: ["Everything in Professional, plus:", "2,000 AI call minutes/month", "€0.12/min after that", "Priority support"], cta: "Get Started", highlighted: false, link: "/auth?plan=business" },
+    { name: "Enterprise", price: "Custom", period: "", description: "Unlimited mins — custom setup", features: ["Everything in Business, plus:", "Unlimited AI call minutes", "Custom onboarding & setup", "Dedicated account manager", "Custom integrations"], cta: "Contact Us", highlighted: false, link: null, isEnterprise: true },
   ];
 
   const BENTO_TINTS = [
@@ -1212,12 +1215,24 @@ function Landing() {
             </div>
             <div className="pricing-grid">
               {pricingPlans.map((plan, i) => (
-                <SpotlightCard key={i} className={`pricing-card ${plan.highlighted ? 'highlighted' : ''} reveal-child`} style={{ transitionDelay: `${i * 0.15}s` }}>
+                <SpotlightCard key={i} className={`pricing-card ${plan.highlighted ? 'highlighted' : ''} reveal-child`} style={{ transitionDelay: `${i * 0.1}s` }}>
                   {plan.highlighted && <div className="popular-badge">Most Popular</div>}
                   <h3>{plan.name}</h3>
+                  <div className="plan-price-display">
+                    <span className="plan-price-amount">{plan.price}</span>
+                    {plan.period && <span className="plan-price-period">{plan.period}</span>}
+                  </div>
                   <p className="plan-description">{plan.description}</p>
                   <ul className="plan-features">{plan.features.map((f, j) => <li key={j}><i className="fas fa-check"></i>{f}</li>)}</ul>
-                  <a href={plan.link} className={`plan-btn ${plan.highlighted ? 'primary' : 'secondary'}`}>{plan.cta}</a>
+                  {plan.isEnterprise ? (
+                    <button
+                      type="button"
+                      className="plan-btn secondary"
+                      onClick={(e) => { e.preventDefault(); setShowContactModal(true); }}
+                    >{plan.cta}</button>
+                  ) : (
+                    <a href={plan.link} className={`plan-btn ${plan.highlighted ? 'primary' : 'secondary'}`}>{plan.cta}</a>
+                  )}
                 </SpotlightCard>
               ))}
             </div>

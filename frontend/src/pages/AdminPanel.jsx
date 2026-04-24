@@ -62,9 +62,9 @@ function AdminPanel() {
     company_context: '', coverage_area: '', address: '',
     business_hours: '8 AM - 6 PM Mon-Sat (24/7 emergency available)',
     auto_assign_phone: false, phone_number: '', subscription_tier: 'none', subscription_status: 'inactive',
-    subscription_plan: 'pro',
-    custom_dashboard_price: '', custom_dashboard_stripe_price_id: '',
+    subscription_plan: 'professional',
     custom_pro_price: '', custom_pro_stripe_price_id: '',
+    included_minutes: '', overage_rate_cents: '',
   });
   const [newWorkers, setNewWorkers] = useState([]);
   const [newServices, setNewServices] = useState([]);
@@ -288,9 +288,9 @@ function AdminPanel() {
           company_context: '', coverage_area: '', address: '',
           business_hours: formatHours(),
           auto_assign_phone: false, phone_number: '', subscription_tier: 'none', subscription_status: 'inactive',
-          subscription_plan: 'pro',
-          custom_dashboard_price: '', custom_dashboard_stripe_price_id: '',
+          subscription_plan: 'professional',
           custom_pro_price: '', custom_pro_stripe_price_id: '',
+          included_minutes: '', overage_rate_cents: '',
         });
         setNewWorkers([]); setNewServices([]);
         loadAccounts(); loadPhones(); loadOverview();
@@ -657,6 +657,37 @@ function AdminPanel() {
                       <span>AI: {companyInsights.company.twilio_phone_number}</span>
                     </div>
                   )}
+                  {/* Usage meter in admin view */}
+                  {(companyInsights.company.included_minutes > 0) && companyInsights.company.included_minutes < 99999 && (
+                    <div className="ap-info-item" style={{ width: '100%', marginTop: '0.5rem' }}>
+                      <div style={{ width: '100%' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                          <span><i className="fas fa-phone-alt" style={{ marginRight: '0.3rem' }}></i>Minutes: {companyInsights.company.minutes_used || 0} / {companyInsights.company.included_minutes}</span>
+                          <span>€{((companyInsights.company.overage_rate_cents || 0) / 100).toFixed(2)}/min overage</span>
+                        </div>
+                        <div style={{ height: '8px', background: '#e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{
+                            height: '100%', borderRadius: '4px',
+                            width: `${Math.min(((companyInsights.company.minutes_used || 0) / (companyInsights.company.included_minutes || 1)) * 100, 100)}%`,
+                            background: ((companyInsights.company.minutes_used || 0) > (companyInsights.company.included_minutes || 0)) ? '#ef4444' : ((companyInsights.company.minutes_used || 0) > (companyInsights.company.included_minutes || 0) * 0.8) ? '#f59e0b' : '#10b981',
+                          }}></div>
+                        </div>
+                        {(companyInsights.company.minutes_used || 0) > (companyInsights.company.included_minutes || 0) && (
+                          <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.25rem' }}>
+                            ⚠️ {(companyInsights.company.minutes_used || 0) - (companyInsights.company.included_minutes || 0)} overage mins = €{(((companyInsights.company.minutes_used || 0) - (companyInsights.company.included_minutes || 0)) * (companyInsights.company.overage_rate_cents || 0) / 100).toFixed(2)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {companyInsights.company.included_minutes >= 99999 && (
+                    <div className="ap-info-item" style={{ width: '100%', marginTop: '0.5rem' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#6366f1' }}>
+                        <i className="fas fa-infinity" style={{ marginRight: '0.3rem' }}></i>
+                        Unlimited minutes — {companyInsights.company.minutes_used || 0} used this period
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* KPI cards */}
@@ -881,6 +912,73 @@ function AdminPanel() {
                     <option value="cleaning">Cleaning Services</option>
                     <option value="restaurant">Restaurant & Café</option>
                   </select>
+                </div>
+
+                {/* Usage Limits */}
+                <div className="ap-card">
+                  <h3><i className="fas fa-phone-alt"></i> Usage Limits</h3>
+                  <p style={{ color: '#9ca3af', fontSize: '0.85rem', margin: '0 0 1rem' }}>
+                    Configure included minutes and overage rate for this account.
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.8rem', color: '#9ca3af', display: 'block', marginBottom: '0.25rem' }}>Included Minutes/Month</label>
+                      <input
+                        type="number" min="0"
+                        value={companyInsights.company.included_minutes ?? 200}
+                        onChange={async (e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          try {
+                            await adminFetch(`/api/admin/accounts/${selectedCompanyId}`, {
+                              method: 'PUT',
+                              body: JSON.stringify({ included_minutes: val }),
+                            });
+                            setCompanyInsights(prev => prev ? { ...prev, company: { ...prev.company, included_minutes: val } } : prev);
+                          } catch { showToast('Failed to update'); }
+                        }}
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid #374151', background: '#1f2937', color: '#e5e7eb' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.8rem', color: '#9ca3af', display: 'block', marginBottom: '0.25rem' }}>Overage Rate (cents/min)</label>
+                      <input
+                        type="number" min="0"
+                        value={companyInsights.company.overage_rate_cents ?? 15}
+                        onChange={async (e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          try {
+                            await adminFetch(`/api/admin/accounts/${selectedCompanyId}`, {
+                              method: 'PUT',
+                              body: JSON.stringify({ overage_rate_cents: val }),
+                            });
+                            setCompanyInsights(prev => prev ? { ...prev, company: { ...prev.company, overage_rate_cents: val } } : prev);
+                          } catch { showToast('Failed to update'); }
+                        }}
+                        style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid #374151', background: '#1f2937', color: '#e5e7eb' }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
+                      Current usage: <strong style={{ color: '#e5e7eb' }}>{companyInsights.company.minutes_used || 0}</strong> mins used this period
+                    </span>
+                    <button
+                      className="ap-btn secondary small"
+                      onClick={async () => {
+                        if (!confirm('Reset minutes used to 0?')) return;
+                        try {
+                          await adminFetch(`/api/admin/accounts/${selectedCompanyId}`, {
+                            method: 'PUT',
+                            body: JSON.stringify({ minutes_used: 0, usage_alert_sent: false }),
+                          });
+                          setCompanyInsights(prev => prev ? { ...prev, company: { ...prev.company, minutes_used: 0, usage_alert_sent: false } } : prev);
+                          showToast('Usage reset');
+                        } catch { showToast('Failed to reset'); }
+                      }}
+                    >
+                      <i className="fas fa-redo"></i> Reset Usage
+                    </button>
+                  </div>
                 </div>
 
                 {/* Feature toggles */}
@@ -1117,7 +1215,10 @@ function AdminPanel() {
                       }));
                     }}>
                       <option value="dashboard">Dashboard Only (no AI phone)</option>
-                      <option value="pro">Pro (AI phone + dashboard)</option>
+                      <option value="starter">Starter (200 mins)</option>
+                      <option value="professional">Professional (800 mins)</option>
+                      <option value="business">Business (2,000 mins)</option>
+                      <option value="enterprise">Enterprise (Unlimited)</option>
                     </select>
                   </div>
                   <div className="ap-field">
@@ -1128,7 +1229,7 @@ function AdminPanel() {
                       <option value="pro">Active</option>
                     </select>
                   </div>
-                  {createForm.subscription_plan === 'pro' && (
+                  {createForm.subscription_plan !== 'dashboard' && (
                     <div className="ap-field">
                       <label>AI Phone Number</label>
                       <select value={createForm.phone_number} onChange={e => setCreateForm(p => ({...p, phone_number: e.target.value}))}>
@@ -1148,24 +1249,27 @@ function AdminPanel() {
                       <label>AI Phone Number</label>
                       <div style={{padding: '0.5rem 0', color: '#9ca3af', fontSize: '0.85rem'}}>
                         <i className="fas fa-info-circle" style={{marginRight: '0.35rem'}}></i>
-                        Phone numbers are only available on the Pro plan
+                        Phone numbers are only available on AI plans
                       </div>
                     </div>
                   )}
+                  <h4 style={{marginTop: '1rem', color: '#6366f1'}}><i className="fas fa-phone-alt"></i> Usage Limits</h4>
                   <div className="ap-field">
-                    <label>Dashboard Custom Price (€/month)</label>
-                    <input type="number" step="0.01" min="0" value={createForm.custom_dashboard_price} onChange={e => setCreateForm(p => ({...p, custom_dashboard_price: e.target.value}))} placeholder="Leave blank for default (€99)" />
+                    <label>Included Minutes/Month</label>
+                    <input type="number" min="0" value={createForm.included_minutes || ''} onChange={e => setCreateForm(p => ({...p, included_minutes: e.target.value}))} placeholder={createForm.subscription_plan === 'enterprise' ? '99999 (Unlimited)' : 'Auto-set from plan if blank'} />
+                    <small style={{color: '#6b7280', fontSize: '0.75rem'}}>Leave blank to use plan defaults. Starter=200, Professional=800, Business=2000, Enterprise=Unlimited</small>
                   </div>
                   <div className="ap-field">
-                    <label>Dashboard Stripe Price ID</label>
-                    <input value={createForm.custom_dashboard_stripe_price_id} onChange={e => setCreateForm(p => ({...p, custom_dashboard_stripe_price_id: e.target.value}))} placeholder="price_xxx (optional)" />
+                    <label>Overage Rate (cents/min)</label>
+                    <input type="number" min="0" value={createForm.overage_rate_cents || ''} onChange={e => setCreateForm(p => ({...p, overage_rate_cents: e.target.value}))} placeholder={createForm.subscription_plan === 'enterprise' ? '0' : '12'} />
                   </div>
                   <div className="ap-field">
-                    <label>Pro Custom Price (€/month)</label>
-                    <input type="number" step="0.01" min="0" value={createForm.custom_pro_price} onChange={e => setCreateForm(p => ({...p, custom_pro_price: e.target.value}))} placeholder="Leave blank for default (€249)" />
+                    <label>Custom Monthly Price (€)</label>
+                    <input type="number" step="0.01" min="0" value={createForm.custom_pro_price} onChange={e => setCreateForm(p => ({...p, custom_pro_price: e.target.value}))} placeholder="Leave blank for default plan price" />
+                    <small style={{color: '#6b7280', fontSize: '0.75rem'}}>Override the standard plan price for this account</small>
                   </div>
                   <div className="ap-field">
-                    <label>Pro Stripe Price ID</label>
+                    <label>Custom Stripe Price ID</label>
                     <input value={createForm.custom_pro_stripe_price_id} onChange={e => setCreateForm(p => ({...p, custom_pro_stripe_price_id: e.target.value}))} placeholder="price_xxx (optional)" />
                   </div>
                 </div>

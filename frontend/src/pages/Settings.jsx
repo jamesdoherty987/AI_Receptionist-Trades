@@ -46,7 +46,7 @@ function Settings() {
   const currentPlan = authSubscription?.plan || 'pro';
   const currentTier = authSubscription?.tier || 'none';
   const isSubscriptionActive = authSubscription?.is_active === true;
-  const hasAIFeatures = currentPlan === 'pro' && isSubscriptionActive;
+  const hasAIFeatures = ['pro', 'starter', 'professional', 'business', 'enterprise'].includes(currentPlan) && isSubscriptionActive;
   const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({});
   const isManagedAccount = formData.easy_setup === false;
@@ -930,6 +930,8 @@ function Settings() {
                         <label htmlFor="business_type">Business Type</label>
                         <input type="text" id="business_type" name="business_type" value={formData.business_type || ''} onChange={handleChange} placeholder="e.g., Plumbing, HVAC, Electrical" />
                       </div>
+                      {/* Industry selector — hidden for now (trades only). Admin can still change via admin panel. */}
+                      {isManagedAccount && (availableIndustries || []).length > 1 && (
                       <div className="form-group">
                         <label htmlFor="industry_type">Industry <HelpTooltip text="Controls which AI prompt, terminology, and features are active. Changing this affects how the dashboard and AI receptionist behave." /></label>
                         <select id="industry_type" name="industry_type" value={formData.industry_type || 'trades'} onChange={handleChange}>
@@ -938,6 +940,7 @@ function Settings() {
                           ))}
                         </select>
                       </div>
+                      )}
                       <div className="form-group full-width">
                         <label>Business Hours</label>
                         <div className="hours-config">

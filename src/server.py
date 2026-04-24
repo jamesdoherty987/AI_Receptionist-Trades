@@ -165,12 +165,10 @@ async def startup_event():
     except Exception as e:
         print(f"[STARTUP] ⚠️ ElevenLabs warmup failed: {e}")
     
-    # Start background keepalive tasks to prevent connections going cold
-    # NOTE: Only OpenAI gets a keepalive loop. ElevenLabs warmup happens per-call
-    # in media_handler.py (during greeting playback) to avoid burning credits.
-    global _keepalive_task, _elevenlabs_keepalive_task
-    _keepalive_task = asyncio.create_task(openai_keepalive_loop())
-    _elevenlabs_keepalive_task = None  # No ElevenLabs keepalive - too expensive (3 credits per ping)
+    # NOTE: No keepalive loop needed. The OpenAI Python SDK uses httpx which
+    # has a default keepalive_expiry of 5 seconds — idle connections are dropped
+    # automatically. A periodic ping can't keep them warm. The startup warmup
+    # above is sufficient; subsequent calls just open fresh connections (fast).
     
     total_startup = time.time() - startup_start
     print(f"\n{'='*70}")
@@ -196,93 +194,21 @@ async def warmup_openai():
     try:
         client = get_openai_client()
         # Run sync OpenAI call in thread pool to avoid blocking event loop
-        # CRITICAL: Include tools to warm up the same path as actual calls
+        # Include tools to warm up the same path as actual calls
         await asyncio.to_thread(
             client.chat.completions.create,
             model=config.CHAT_MODEL,
             messages=[{"role": "user", "content": "hi"}],
-            stream=True,  # Use streaming to match actual calls
-            tools=CALENDAR_TOOLS,  # Include tools to warm up full path
-            tool_choice="none",  # Don't actually call tools
-            **config.max_tokens_param(value=1)
+            stream=True,
+            tools=CALENDAR_TOOLS,
+            tool_choice="none",
+            **config.max_tokens_param(value=5)
         )
         elapsed = time.time() - start
         print(f"[STARTUP] OpenAI warmup complete in {elapsed:.2f}s (with {len(CALENDAR_TOOLS)} tools)")
     except Exception as e:
         elapsed = time.time() - start
         print(f"[STARTUP] OpenAI warmup failed after {elapsed:.2f}s: {e}")
-
-
-OPENAI_KEEPALIVE_INTERVAL = 60  # Ping every 60 seconds to keep connection warm
-_keepalive_task = None  # Track task for graceful shutdown
-_elevenlabs_keepalive_task = None  # Not used - per-call warmup only (credits too expensive)
-
-
-async def openai_keepalive_loop():
-    """
-    Background task that pings OpenAI periodically to keep the connection warm.
-    Prevents cold start delays after idle periods.
-    
-    IMPORTANT: Uses stream=True AND tools to match actual LLM calls - streaming and non-streaming
-    may use different connection paths in OpenAI's infrastructure.
-    
-    Cost: ~$0.01/month (negligible)
-    """
-    from src.services.llm_stream import get_openai_client
-    from src.services.calendar_tools import CALENDAR_TOOLS
-    from src.utils.config import config
-    
-    print(f"[KEEPALIVE] Started OpenAI keepalive (every {OPENAI_KEEPALIVE_INTERVAL}s, with tools)")
-    
-    consecutive_failures = 0
-    max_failures_before_warning = 3
-    
-    while True:
-        try:
-            await asyncio.sleep(OPENAI_KEEPALIVE_INTERVAL)
-        except asyncio.CancelledError:
-            print("[KEEPALIVE] Shutting down gracefully")
-            return
-        
-        try:
-            client = get_openai_client()
-            start = time.time()
-            
-            # Use stream=True AND tools to match actual LLM calls
-            # This warms up the exact same path used for responses
-            def do_streaming_ping():
-                stream = client.chat.completions.create(
-                    model=config.CHAT_MODEL,
-                    messages=[{"role": "user", "content": "hi"}],
-                    stream=True,  # CRITICAL: Match actual LLM calls
-                    temperature=0.1,
-                    tools=CALENDAR_TOOLS,  # CRITICAL: Include tools
-                    tool_choice="none",  # Don't actually call tools
-                    **config.max_tokens_param(value=1)
-                )
-                # Consume the stream to complete the request
-                for _ in stream:
-                    pass
-            
-            await asyncio.to_thread(do_streaming_ping)
-            elapsed = time.time() - start
-            consecutive_failures = 0  # Reset on success
-            # Log first ping and then every 5 pings (5 minutes)
-            if hasattr(openai_keepalive_loop, '_ping_count'):
-                openai_keepalive_loop._ping_count += 1
-            else:
-                openai_keepalive_loop._ping_count = 1
-            if openai_keepalive_loop._ping_count == 1 or openai_keepalive_loop._ping_count % 5 == 0:
-                print(f"[KEEPALIVE] ✓ OpenAI streaming connection warm (ping #{openai_keepalive_loop._ping_count}, {elapsed:.2f}s)")
-        except asyncio.CancelledError:
-            print("[KEEPALIVE] Shutting down gracefully")
-            return
-        except Exception as e:
-            consecutive_failures += 1
-            # Only log after multiple failures to avoid log spam
-            if consecutive_failures >= max_failures_before_warning:
-                print(f"[KEEPALIVE] Ping failed {consecutive_failures}x: {e}")
-                consecutive_failures = 0  # Reset to avoid continuous logging
 
 
 async def warmup_elevenlabs():
@@ -350,20 +276,10 @@ async def warmup_elevenlabs():
 
 async def shutdown_event():
     """Clean up background tasks on shutdown"""
-    global _keepalive_task, _elevenlabs_keepalive_task
-    
     print("\n" + "="*70)
     print("[SHUTDOWN] ⚠️ Server shutting down - cleaning up...")
     print("[SHUTDOWN] Active WebSocket connections will be terminated")
     print("="*70 + "\n")
-    
-    for task in (_keepalive_task, _elevenlabs_keepalive_task):
-        if task and not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
     
     # Give active calls a moment to wrap up (Render sends SIGTERM then waits)
     print("[SHUTDOWN] Waiting 2s for active calls to finish...")

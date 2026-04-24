@@ -15,38 +15,65 @@ import {
 import './SubscriptionManager.css';
 
 const PLAN_FEATURES = {
-  dashboard: {
-    name: 'Dashboard',
-    price: 99,
-    tagline: 'Business management tools',
+  starter: {
+    name: 'Starter',
+    price: 199,
+    tagline: 'AI receptionist — 200 mins included',
+    includedMinutes: 200,
+    overageRate: 0.12,
+    selfService: true,
     features: [
-      { text: 'Job management & scheduling', included: true },
-      { text: 'Customer management', included: true },
-      { text: 'Worker management', included: true },
-      { text: 'Calendar & availability', included: true },
-      { text: 'Financial tracking & invoicing', included: true },
-      { text: 'Materials tracking', included: true },
-      { text: 'Insights & reports', included: true },
-      { text: 'AI receptionist & phone calls', included: false },
-      { text: 'Smart AI scheduling', included: false },
-      { text: 'Dedicated AI phone number', included: false },
-    ],
-  },
-  pro: {
-    name: 'Pro',
-    price: 249,
-    tagline: 'Everything + AI receptionist',
-    features: [
-      { text: 'Job management & scheduling', included: true },
-      { text: 'Customer management', included: true },
-      { text: 'Worker management', included: true },
-      { text: 'Calendar & availability', included: true },
-      { text: 'Financial tracking & invoicing', included: true },
-      { text: 'Materials tracking', included: true },
-      { text: 'Insights & reports', included: true },
       { text: 'AI receptionist & phone calls', included: true },
       { text: 'Smart AI scheduling', included: true },
       { text: 'Dedicated AI phone number', included: true },
+      { text: 'Job management & scheduling', included: true },
+      { text: 'Customer & worker management', included: true },
+      { text: 'Financial tracking & invoicing', included: true },
+      { text: '200 AI call minutes/month', included: true },
+      { text: '€0.12/min after that', included: true },
+    ],
+  },
+  professional: {
+    name: 'Professional',
+    price: 399,
+    tagline: 'AI receptionist — 800 mins included',
+    includedMinutes: 800,
+    overageRate: 0.12,
+    selfService: true,
+    features: [
+      { text: 'Everything in Starter, plus:', included: true },
+      { text: '800 AI call minutes/month', included: true },
+      { text: '€0.12/min after that', included: true },
+      { text: 'Priority support', included: true },
+    ],
+  },
+  business: {
+    name: 'Business',
+    price: 599,
+    tagline: 'AI receptionist — 2,000 mins included',
+    includedMinutes: 2000,
+    overageRate: 0.12,
+    selfService: true,
+    features: [
+      { text: 'Everything in Professional, plus:', included: true },
+      { text: '2,000 AI call minutes/month', included: true },
+      { text: '€0.12/min after that', included: true },
+      { text: 'Priority support', included: true },
+    ],
+  },
+  enterprise: {
+    name: 'Enterprise',
+    price: null,
+    tagline: 'Unlimited minutes — custom setup',
+    includedMinutes: 99999,
+    overageRate: 0,
+    selfService: false,
+    features: [
+      { text: 'Everything in Business, plus:', included: true },
+      { text: 'Unlimited AI call minutes', included: true },
+      { text: 'Custom onboarding & setup', included: true },
+      { text: 'Dedicated account manager', included: true },
+      { text: 'Custom integrations', included: true },
     ],
   },
 };
@@ -56,7 +83,7 @@ function SubscriptionManager() {
   const queryClient = useQueryClient();
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [syncAttempted, setSyncAttempted] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState('dashboard');
+  const [selectedPlan, setSelectedPlan] = useState('starter');
 
   const { data: subscriptionData, isLoading, refetch } = useQuery({
     queryKey: ['subscription-status'],
@@ -211,14 +238,22 @@ function SubscriptionManager() {
   const subscription = subscriptionData || {};
   const isActive = subscription.is_active;
   const isTrial = subscription.tier === 'trial';
-  const isPro = subscription.tier === 'pro';
-  const currentPlan = subscription.plan || 'pro';
+  const isPro = subscription.tier === 'pro' || subscription.tier === 'starter' || subscription.tier === 'professional' || subscription.tier === 'business' || subscription.tier === 'enterprise';
+  const currentPlan = subscription.plan || 'professional';
   const isNone = subscription.tier === 'none' || (!subscription.tier && !isActive);
   const cancelAtPeriodEnd = subscription.cancel_at_period_end;
   const hasUsedTrial = subscription.has_used_trial;
   const customPrice = subscription.custom_monthly_price;
   const customDashboardPrice = subscription.custom_dashboard_price;
   const customProPrice = subscription.custom_pro_price;
+
+  // Usage data
+  const includedMinutes = subscription.included_minutes || 0;
+  const minutesUsed = subscription.minutes_used || 0;
+  const overageMinutes = subscription.overage_minutes || 0;
+  const overageRateCents = subscription.overage_rate_cents || 0;
+  const overageCostCents = subscription.overage_cost_cents || 0;
+  const usagePct = includedMinutes > 0 ? Math.min((minutesUsed / includedMinutes) * 100, 100) : 0;
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -229,7 +264,7 @@ function SubscriptionManager() {
 
   // Active subscriber view — show current plan status
   if (isPro && isActive) {
-    const planInfo = PLAN_FEATURES[currentPlan] || PLAN_FEATURES.pro;
+    const planInfo = PLAN_FEATURES[currentPlan] || PLAN_FEATURES.professional;
     return (
       <div className="subscription-manager">
         <div className="subscription-card active">
@@ -244,8 +279,14 @@ function SubscriptionManager() {
               <h3>BookedForYou {planInfo.name}</h3>
             </div>
             <div className="plan-price">
-              <span className="price">&euro;{customPrice || planInfo.price}</span>
-              <span className="period">/month</span>
+              {planInfo.price || customPrice ? (
+                <>
+                  <span className="price">&euro;{customPrice || planInfo.price}</span>
+                  <span className="period">/month</span>
+                </>
+              ) : (
+                <span className="price" style={{ fontSize: '1.2rem' }}>Custom</span>
+              )}
             </div>
           </div>
 
@@ -278,28 +319,126 @@ function SubscriptionManager() {
             </ul>
           </div>
 
-          {/* Upgrade prompt for dashboard users */}
+          {/* Usage Meter — only for AI plans with tracked minutes (not enterprise/unlimited) */}
+          {includedMinutes > 0 && includedMinutes < 99999 && (
+            <div className="usage-meter-section">
+              <h4><i className="fas fa-phone-alt"></i> AI Call Minutes This Period</h4>
+              <div className="usage-meter">
+                <div className="usage-bar">
+                  <div
+                    className={`usage-bar-fill ${usagePct >= 100 ? 'over' : usagePct >= 80 ? 'warning' : ''}`}
+                    style={{ width: `${Math.min(usagePct, 100)}%` }}
+                  ></div>
+                </div>
+                <div className="usage-stats">
+                  <span>{minutesUsed.toLocaleString()} / {includedMinutes.toLocaleString()} minutes used</span>
+                  <span>{Math.max(0, includedMinutes - minutesUsed).toLocaleString()} remaining</span>
+                </div>
+              </div>
+              {overageMinutes > 0 && (
+                <div className="overage-info">
+                  <i className="fas fa-exclamation-triangle"></i>
+                  <span>
+                    {overageMinutes} overage minutes × €{(overageRateCents / 100).toFixed(2)}/min = <strong>€{(overageCostCents / 100).toFixed(2)}</strong> extra this period
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {includedMinutes >= 99999 && (
+            <div className="usage-meter-section">
+              <h4><i className="fas fa-phone-alt"></i> AI Call Minutes</h4>
+              <div className="usage-unlimited" style={{ padding: '0.75rem', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6366f1', fontWeight: 500 }}>
+                <i className="fas fa-infinity"></i>
+                <span>Unlimited — {minutesUsed.toLocaleString()} mins used this period</span>
+              </div>
+            </div>
+          )}
+
+          {/* Upgrade prompt for lower-tier users */}
           {currentPlan === 'dashboard' && (
             <div className="upgrade-banner">
               <div className="upgrade-banner-content">
                 <i className="fas fa-rocket"></i>
                 <div>
-                  <strong>Upgrade to Pro</strong>
-                  <p>Add AI receptionist, smart scheduling, and a dedicated phone number for just €150/month more.</p>
+                  <strong>Add AI Receptionist</strong>
+                  <p>Get a dedicated AI phone number with smart scheduling. Plans from €199/month.</p>
                 </div>
               </div>
               <button
                 className="btn btn-primary"
-                onClick={() => upgradeMutation.mutate('pro')}
+                onClick={() => checkoutMutation.mutate('starter')}
+                disabled={checkoutMutation.isPending}
+              >
+                {checkoutMutation.isPending ? 'Loading...' : 'View AI Plans'}
+              </button>
+            </div>
+          )}
+          {currentPlan === 'starter' && (
+            <div className="upgrade-banner">
+              <div className="upgrade-banner-content">
+                <i className="fas fa-arrow-up"></i>
+                <div>
+                  <strong>Need more minutes?</strong>
+                  <p>Upgrade to Professional (800 mins) or Business (2,000 mins) for more minutes at the same €0.12/min overage.</p>
+                </div>
+              </div>
+              <button
+                className="btn btn-primary"
+                onClick={() => upgradeMutation.mutate('professional')}
                 disabled={upgradeMutation.isPending}
               >
-                {upgradeMutation.isPending ? 'Upgrading...' : 'Upgrade to Pro'}
+                {upgradeMutation.isPending ? 'Upgrading...' : 'Upgrade to Professional'}
               </button>
+            </div>
+          )}
+          {(currentPlan === 'professional' || currentPlan === 'pro') && (
+            <div className="upgrade-banner">
+              <div className="upgrade-banner-content">
+                <i className="fas fa-arrow-up"></i>
+                <div>
+                  <strong>Need more minutes?</strong>
+                  <p>Upgrade to Business (2,000 mins) or contact us for Enterprise with unlimited minutes.</p>
+                </div>
+              </div>
+              <button
+                className="btn btn-primary"
+                onClick={() => upgradeMutation.mutate('business')}
+                disabled={upgradeMutation.isPending}
+              >
+                {upgradeMutation.isPending ? 'Upgrading...' : 'Upgrade to Business'}
+              </button>
+            </div>
+          )}
+          {currentPlan === 'business' && (
+            <div className="upgrade-banner">
+              <div className="upgrade-banner-content">
+                <i className="fas fa-building"></i>
+                <div>
+                  <strong>Need unlimited minutes?</strong>
+                  <p>Contact us for an Enterprise plan with unlimited AI call minutes and custom setup.</p>
+                </div>
+              </div>
+              <a
+                href="mailto:contact@bookedforyou.ie?subject=BookedForYou Enterprise Upgrade"
+                className="btn btn-primary"
+              >
+                <i className="fas fa-envelope"></i> Contact Us
+              </a>
             </div>
           )}
 
           <div className="subscription-actions">
-            {!cancelAtPeriodEnd ? (
+            {currentPlan === 'enterprise' ? (
+              <div className="pro-actions">
+                <a
+                  href="mailto:contact@bookedforyou.ie?subject=Enterprise Account Billing"
+                  className="btn btn-secondary"
+                >
+                  <i className="fas fa-envelope"></i> Contact Support for Billing
+                </a>
+              </div>
+            ) : !cancelAtPeriodEnd ? (
               <div className="pro-actions">
                 <button className="btn btn-secondary" onClick={() => portalMutation.mutate()} disabled={portalMutation.isPending}>
                   <i className="fas fa-file-invoice-dollar"></i>
@@ -458,26 +597,33 @@ function SubscriptionManager() {
           Subscribe instantly — no setup calls needed. Pick a plan and start using BookedForYou right away.
         </p>
         <div className="plan-cards">
-          {['dashboard', 'pro'].map((planKey) => {
+          {['starter', 'professional', 'business', 'enterprise'].map((planKey) => {
             const plan = PLAN_FEATURES[planKey];
             const isSelected = selectedPlan === planKey;
-            const isHighlighted = planKey === 'pro';
+            const isHighlighted = planKey === 'professional';
+            const isEnterprise = planKey === 'enterprise';
             return (
               <div
                 key={planKey}
                 className={`plan-card ${isSelected ? 'selected' : ''} ${isHighlighted ? 'highlighted' : ''}`}
-                onClick={() => setSelectedPlan(planKey)}
+                onClick={() => !isEnterprise && setSelectedPlan(planKey)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedPlan(planKey); }}
+                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !isEnterprise) setSelectedPlan(planKey); }}
               >
                 {isHighlighted && <div className="popular-badge">Most Popular</div>}
                 <div className="plan-card-header">
                   <h4>{plan.name}</h4>
                   <p className="plan-card-tagline">{plan.tagline}</p>
                   <div className="plan-card-price">
-                    <span className="plan-card-amount">&euro;{(planKey === 'dashboard' ? customDashboardPrice : customProPrice) || plan.price}</span>
-                    <span className="plan-card-period">/month</span>
+                    {plan.price ? (
+                      <>
+                        <span className="plan-card-amount">&euro;{plan.price}</span>
+                        <span className="plan-card-period">/month</span>
+                      </>
+                    ) : (
+                      <span className="plan-card-amount" style={{ fontSize: '1.2rem' }}>Custom Pricing</span>
+                    )}
                   </div>
                 </div>
                 <ul className="plan-card-features">
@@ -488,16 +634,26 @@ function SubscriptionManager() {
                     </li>
                   ))}
                 </ul>
-                <button
-                  className={`btn ${isHighlighted ? 'btn-primary' : 'btn-secondary'} btn-subscribe plan-card-cta`}
-                  onClick={(e) => { e.stopPropagation(); checkoutMutation.mutate(planKey); }}
-                  disabled={checkoutMutation.isPending}
-                >
-                  <i className="fas fa-credit-card"></i>
-                  {checkoutMutation.isPending
-                    ? 'Loading...'
-                    : `Subscribe — €${(planKey === 'dashboard' ? customDashboardPrice : customProPrice) || plan.price}/month`}
-                </button>
+                {isEnterprise ? (
+                  <a
+                    href="mailto:contact@bookedforyou.ie?subject=BookedForYou Enterprise Enquiry"
+                    className="btn btn-secondary btn-subscribe plan-card-cta"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <i className="fas fa-envelope"></i> Contact Us
+                  </a>
+                ) : (
+                  <button
+                    className={`btn ${isHighlighted ? 'btn-primary' : 'btn-secondary'} btn-subscribe plan-card-cta`}
+                    onClick={(e) => { e.stopPropagation(); checkoutMutation.mutate(planKey); }}
+                    disabled={checkoutMutation.isPending}
+                  >
+                    <i className="fas fa-credit-card"></i>
+                    {checkoutMutation.isPending
+                      ? 'Loading...'
+                      : `Subscribe — €${plan.price}/month`}
+                  </button>
+                )}
               </div>
             );
           })}

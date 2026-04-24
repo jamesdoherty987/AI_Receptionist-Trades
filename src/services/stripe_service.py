@@ -13,19 +13,56 @@ stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
 # Subscription configuration
 TRIAL_DAYS = 14
 
-# Plan definitions — two tiers
+# Plan definitions — three self-service AI tiers + enterprise (admin-only)
 PLANS = {
+    'starter': {
+        'price_id': os.getenv('STRIPE_PRICE_ID_STARTER'),
+        'monthly_price_eur': float(os.getenv('STARTER_MONTHLY_PRICE', '199')),
+        'name': 'BookedForYou Starter',
+        'description': 'AI Receptionist — 200 minutes included',
+        'included_minutes': 200,
+        'overage_rate_cents': 12,
+    },
+    'professional': {
+        'price_id': os.getenv('STRIPE_PRICE_ID_PROFESSIONAL'),
+        'monthly_price_eur': float(os.getenv('PROFESSIONAL_MONTHLY_PRICE', '399')),
+        'name': 'BookedForYou Professional',
+        'description': 'AI Receptionist — 800 minutes included',
+        'included_minutes': 800,
+        'overage_rate_cents': 12,
+    },
+    'business': {
+        'price_id': os.getenv('STRIPE_PRICE_ID_BUSINESS'),
+        'monthly_price_eur': float(os.getenv('BUSINESS_MONTHLY_PRICE', '599')),
+        'name': 'BookedForYou Business',
+        'description': 'AI Receptionist — 2000 minutes included',
+        'included_minutes': 2000,
+        'overage_rate_cents': 12,
+    },
+    'enterprise': {
+        'price_id': None,
+        'monthly_price_eur': float(os.getenv('ENTERPRISE_MONTHLY_PRICE', '999')),
+        'name': 'BookedForYou Enterprise',
+        'description': 'AI Receptionist — Unlimited minutes, custom setup',
+        'included_minutes': 99999,
+        'overage_rate_cents': 0,
+    },
+    # Legacy aliases for backwards compatibility with existing DB records
     'dashboard': {
         'price_id': os.getenv('STRIPE_PRICE_ID_DASHBOARD'),
         'monthly_price_eur': float(os.getenv('DASHBOARD_MONTHLY_PRICE', '99')),
-        'name': 'BookedForYou Dashboard',
-        'description': 'Business Management Dashboard — Jobs, Scheduling, Invoicing & More',
+        'name': 'BookedForYou Dashboard (Legacy)',
+        'description': 'Business Management Dashboard — Legacy plan',
+        'included_minutes': 0,
+        'overage_rate_cents': 0,
     },
     'pro': {
         'price_id': os.getenv('STRIPE_PRICE_ID_PRO') or os.getenv('STRIPE_PRICE_ID'),
-        'monthly_price_eur': float(os.getenv('PRO_MONTHLY_PRICE', '249')),
-        'name': 'BookedForYou Pro',
-        'description': 'AI Receptionist & Business Management — All Features',
+        'monthly_price_eur': float(os.getenv('PRO_MONTHLY_PRICE', '399')),
+        'name': 'BookedForYou Professional (Legacy)',
+        'description': 'AI Receptionist — Legacy plan',
+        'included_minutes': 800,
+        'overage_rate_cents': 12,
     },
 }
 
@@ -214,16 +251,18 @@ def create_checkout_session(
 
 
 def get_plan_from_price_id(price_id: str) -> str:
-    """Map a Stripe price ID back to a plan name. Falls back to 'pro'."""
+    """Map a Stripe price ID back to a plan name. Falls back to 'professional'."""
     if not price_id:
-        return 'pro'
+        return 'professional'
     for plan_name, config in PLANS.items():
+        if plan_name == 'pro':
+            continue  # Skip legacy alias
         if config['price_id'] and config['price_id'] == price_id:
             return plan_name
-    # Legacy: if the price_id matches the old STRIPE_PRICE_ID env var, it's pro
+    # Legacy: if the price_id matches the old STRIPE_PRICE_ID env var, it's professional
     if SUBSCRIPTION_PRICE_ID and price_id == SUBSCRIPTION_PRICE_ID:
-        return 'pro'
-    return 'pro'
+        return 'professional'
+    return 'professional'
 
 
 def create_billing_portal_session(customer_id: str, return_url: str) -> Optional[str]:
@@ -301,7 +340,7 @@ def get_subscription_status(customer_id: str) -> Dict[str, Any]:
         return default_response
 
 
-def upgrade_subscription(subscription_id: str, new_plan: str = 'pro', custom_price_id: str = None) -> Optional[Dict[str, Any]]:
+def upgrade_subscription(subscription_id: str, new_plan: str = 'professional', custom_price_id: str = None) -> Optional[Dict[str, Any]]:
     """
     Upgrade an existing subscription to a new plan by swapping the price.
     Prorates the charge immediately.

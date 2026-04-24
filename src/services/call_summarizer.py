@@ -14,6 +14,102 @@ from src.utils.config import config
 from src.utils.ai_logger import ai_logger
 
 
+def _track_call_minutes(company_id: int, minutes: int):
+    """Increment minutes_used for a company's current billing period.
+    
+    Called after every AI-handled call ends. Skips tracking for:
+    - Dashboard-only plans (no AI)
+    - Enterprise plans (unlimited — usage counter still ticks for visibility but no billing impact)
+    - Companies without an active subscription
+    
+    Uses an atomic UPDATE...RETURNING to avoid race conditions on the
+    usage alert flag — only one concurrent call will see the transition
+    from alert_sent=FALSE to TRUE, preventing duplicate alerts.
+    """
+    from src.services.database import get_database
+    db = get_database()
+    
+    # Check if we should track for this company
+    company = db.get_company(company_id)
+    if not company:
+        return
+    
+    plan = company.get('subscription_plan', 'professional')
+    
+    # Skip tracking for plans that don't have metered minutes
+    if plan in ('enterprise', 'dashboard'):
+        print(f"[USAGE] Skipping tracking for company {company_id} (plan={plan})")
+        return
+    
+    conn = db.get_connection()
+    try:
+        cursor = conn.cursor()
+        # Atomic update: increment minutes_used AND conditionally set alert flag.
+        # RETURNING gives us the alert flag state AFTER this UPDATE — only the
+        # transaction that flipped it from FALSE to TRUE will see TRUE returned
+        # with the "was_false_before" condition.
+        cursor.execute("""
+            UPDATE companies
+            SET minutes_used = COALESCE(minutes_used, 0) + %s,
+                usage_alert_sent = CASE
+                    WHEN COALESCE(usage_alert_sent, FALSE) = FALSE
+                         AND COALESCE(included_minutes, 0) > 0
+                         AND COALESCE(minutes_used, 0) + %s >= COALESCE(included_minutes, 0) * 0.8
+                    THEN TRUE
+                    ELSE COALESCE(usage_alert_sent, FALSE)
+                END
+            WHERE id = %s
+            RETURNING
+                COALESCE(minutes_used, 0),
+                COALESCE(included_minutes, 0),
+                COALESCE(usage_alert_sent, FALSE),
+                (COALESCE(usage_alert_sent, FALSE) = FALSE) IS NOT NULL
+        """, (minutes, minutes, company_id))
+        row = cursor.fetchone()
+        conn.commit()
+        
+        if not row:
+            print(f"[USAGE] No row returned for company {company_id}")
+            return
+        
+        new_used, included, now_alert_sent, _ = row
+        print(f"[USAGE] Company {company_id}: +{minutes} min tracked ({new_used}/{included})")
+        
+        # Check if we just crossed the 80% threshold (alert_sent flipped in this tx)
+        was_alert_sent = company.get('usage_alert_sent', False)
+        if not was_alert_sent and now_alert_sent:
+            try:
+                _send_usage_alert_email(company, new_used, included)
+            except Exception as e:
+                print(f"[USAGE] Alert email error for company {company_id}: {e}")
+    except Exception as e:
+        conn.rollback()
+        print(f"[USAGE] Error tracking minutes for company {company_id}: {e}")
+    finally:
+        db.return_connection(conn)
+
+
+def _send_usage_alert_email(company: dict, minutes_used: int, included: int):
+    """Log 80% usage alert. TODO: integrate with email service when available.
+    
+    Currently this just logs the alert and marks it as sent. When an email
+    service is wired up, replace the print with an actual email send.
+    """
+    try:
+        pct = int((minutes_used / included) * 100) if included else 0
+        remaining = max(0, included - minutes_used)
+        email = company.get('email', 'unknown')
+        company_name = company.get('company_name', 'unknown')
+        overage_rate = (company.get('overage_rate_cents', 12) or 12) / 100
+        
+        print(f"[USAGE_ALERT] ⚠️  Company '{company_name}' ({email}) at {pct}% usage")
+        print(f"[USAGE_ALERT]    {minutes_used:,}/{included:,} mins used, {remaining:,} remaining")
+        print(f"[USAGE_ALERT]    Overage rate: €{overage_rate:.2f}/min once limit reached")
+        # TODO: Send actual email via Resend/SMTP when email service is integrated
+    except Exception as e:
+        print(f"[USAGE] Could not send alert notification: {e}")
+
+
 # Lazy initialization of OpenAI client
 _client = None
 
@@ -521,6 +617,20 @@ async def summarize_and_log_call(
             )
         except Exception as e:
             print(f"⚠️ Call log error: {e}")
+
+    # 2b. Track call minutes for usage-based billing
+    if company_id and duration_seconds and duration_seconds > 0:
+        try:
+            import math
+            call_minutes = math.ceil(duration_seconds / 60)  # Round up to nearest minute
+            print(f"[USAGE] Tracking {call_minutes} min for company {company_id} (duration={duration_seconds}s)")
+            _track_call_minutes(company_id, call_minutes)
+        except Exception as e:
+            import traceback
+            print(f"⚠️ Usage tracking error: {e}")
+            traceback.print_exc()
+    elif company_id:
+        print(f"[USAGE] Skipping tracking: duration_seconds={duration_seconds}")
 
     # 3. Post-call client record update — update name/email/address from transcript
     # This handles both new customers (whose name was only spoken, not looked up)

@@ -442,6 +442,36 @@ def get_subscription_info(company: dict) -> dict:
     else:
         print(f"[GET_SUB_INFO] Unknown tier '{subscription_tier}', is_active=False")
     
+    # Usage tracking
+    included_minutes = company.get('included_minutes', 200)
+    overage_rate_cents = company.get('overage_rate_cents', 12)
+    minutes_used = company.get('minutes_used', 0)
+    usage_period_start = company.get('usage_period_start')
+    usage_period_end = company.get('usage_period_end')
+    usage_alert_sent = bool(company.get('usage_alert_sent', False))
+
+    # Parse usage period dates (fix: direct assignment, locals() mutation doesn't work)
+    if isinstance(usage_period_start, str):
+        try:
+            parsed = datetime.fromisoformat(usage_period_start.replace('Z', '+00:00'))
+            usage_period_start = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+        except Exception:
+            usage_period_start = None
+    elif usage_period_start and hasattr(usage_period_start, 'tzinfo') and usage_period_start.tzinfo:
+        usage_period_start = usage_period_start.replace(tzinfo=None)
+
+    if isinstance(usage_period_end, str):
+        try:
+            parsed = datetime.fromisoformat(usage_period_end.replace('Z', '+00:00'))
+            usage_period_end = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+        except Exception:
+            usage_period_end = None
+    elif usage_period_end and hasattr(usage_period_end, 'tzinfo') and usage_period_end.tzinfo:
+        usage_period_end = usage_period_end.replace(tzinfo=None)
+
+    overage_minutes = max(0, minutes_used - included_minutes)
+    overage_cost_cents = overage_minutes * overage_rate_cents
+
     result = {
         'tier': subscription_tier,
         'status': subscription_status,
@@ -457,9 +487,19 @@ def get_subscription_info(company: dict) -> dict:
         'custom_monthly_price': float(company['custom_monthly_price']) if company.get('custom_monthly_price') else None,
         'custom_dashboard_price': float(company['custom_dashboard_price']) if company.get('custom_dashboard_price') else None,
         'custom_pro_price': float(company['custom_pro_price']) if company.get('custom_pro_price') else None,
+        # Usage-based pricing fields
+        'included_minutes': included_minutes,
+        'overage_rate_cents': overage_rate_cents,
+        'minutes_used': minutes_used,
+        'overage_minutes': overage_minutes,
+        'overage_cost_cents': overage_cost_cents,
+        'usage_period_start': usage_period_start.isoformat() if usage_period_start and hasattr(usage_period_start, 'isoformat') else usage_period_start,
+        'usage_period_end': usage_period_end.isoformat() if usage_period_end and hasattr(usage_period_end, 'isoformat') else usage_period_end,
+        'usage_alert_sent': usage_alert_sent,
+        'max_monthly_overage_cents': company.get('max_monthly_overage_cents'),
     }
     
-    print(f"[GET_SUB_INFO] Returning: tier={result['tier']}, is_active={result['is_active']}")
+    print(f"[GET_SUB_INFO] Returning: tier={result['tier']}, is_active={result['is_active']}, minutes={minutes_used}/{included_minutes}")
     
     return result
 
@@ -561,6 +601,15 @@ def twilio_voice():
     if subscription_expired:
         print(f"[SUBSCRIPTION] Company {company.get('id')} subscription expired — forwarding to business phone")
     
+    # Hard cap protection: check if overage has exceeded the company's max allowed
+    over_hard_cap = False
+    max_overage = company.get('max_monthly_overage_cents')
+    if max_overage is not None and max_overage > 0:
+        current_overage_cost = subscription_info.get('overage_cost_cents', 0)
+        if current_overage_cost >= max_overage:
+            over_hard_cap = True
+            print(f"[USAGE] Company {company.get('id')} hit overage hard cap (€{current_overage_cost/100:.2f} >= €{max_overage/100:.2f}) — forwarding to business phone")
+    
     # Check if account is dashboard-only (no AI features)
     is_dashboard_only = company.get('subscription_plan', 'pro') == 'dashboard'
     if is_dashboard_only:
@@ -643,12 +692,12 @@ def twilio_voice():
     
     twiml = VoiceResponse()
     
-    if not ai_enabled or bypass_forward or ai_schedule_off or subscription_expired or is_dashboard_only:
+    if not ai_enabled or bypass_forward or ai_schedule_off or subscription_expired or is_dashboard_only or over_hard_cap:
         # AI is disabled - forward to business phone number
         business_phone = company.get('phone') if company else None
         
         print("=" * 60)
-        print(f"📞 Incoming Call - {'BYPASS NUMBER' if bypass_forward else 'SUBSCRIPTION EXPIRED' if subscription_expired else 'DASHBOARD ONLY' if is_dashboard_only else 'SCHEDULED OFF' if ai_schedule_off else 'AI DISABLED'}")
+        print(f"📞 Incoming Call - {'BYPASS NUMBER' if bypass_forward else 'SUBSCRIPTION EXPIRED' if subscription_expired else 'OVERAGE CAP REACHED' if over_hard_cap else 'DASHBOARD ONLY' if is_dashboard_only else 'SCHEDULED OFF' if ai_schedule_off else 'AI DISABLED'}")
         print(f"[PHONE] Caller: {caller_phone}")
         print(f"[PHONE] Forwarding to business phone: {business_phone or 'No phone number set!'}")
         print("=" * 60)
@@ -3108,9 +3157,9 @@ def admin_create_account():
     update_fields['subscription_tier'] = sub_tier
     update_fields['subscription_status'] = sub_status
 
-    # Set subscription plan (dashboard or pro)
-    sub_plan = data.get('subscription_plan', 'pro')
-    if sub_plan in ('dashboard', 'pro'):
+    # Set subscription plan (dashboard, starter, professional, or business)
+    sub_plan = data.get('subscription_plan', 'professional')
+    if sub_plan in ('dashboard', 'starter', 'professional', 'business', 'enterprise', 'pro'):
         update_fields['subscription_plan'] = sub_plan
 
     # Optional fields the admin can set
@@ -3124,6 +3173,34 @@ def admin_create_account():
         update_fields['address'] = sanitize_string(data['address'], max_length=500)
     if data.get('industry_type'):
         update_fields['industry_type'] = sanitize_string(data['industry_type'], max_length=50)
+
+    # Usage-based pricing fields
+    if data.get('included_minutes') is not None and data.get('included_minutes') != '':
+        try:
+            update_fields['included_minutes'] = int(data['included_minutes'])
+        except (ValueError, TypeError):
+            pass
+    if data.get('overage_rate_cents') is not None and data.get('overage_rate_cents') != '':
+        try:
+            update_fields['overage_rate_cents'] = int(data['overage_rate_cents'])
+        except (ValueError, TypeError):
+            pass
+    if data.get('max_monthly_overage_cents') is not None and data.get('max_monthly_overage_cents') != '':
+        try:
+            update_fields['max_monthly_overage_cents'] = int(data['max_monthly_overage_cents'])
+        except (ValueError, TypeError):
+            pass
+    
+    # Enterprise plan defaults to unlimited if not specified
+    if sub_plan == 'enterprise' and 'included_minutes' not in update_fields:
+        update_fields['included_minutes'] = 99999
+        update_fields['overage_rate_cents'] = 0
+    # For other plans, set defaults from PLANS config if not specified
+    elif sub_plan in ('starter', 'professional', 'business') and 'included_minutes' not in update_fields:
+        from src.services.stripe_service import PLANS as STRIPE_PLANS
+        plan_cfg = STRIPE_PLANS.get(sub_plan, {})
+        update_fields['included_minutes'] = plan_cfg.get('included_minutes', 200)
+        update_fields['overage_rate_cents'] = plan_cfg.get('overage_rate_cents', 12)
 
     # Custom per-account pricing (per-plan)
     for plan_key in ('dashboard', 'pro'):
@@ -3162,9 +3239,9 @@ def admin_create_account():
 
     db.update_company(company_id, **update_fields)
 
-    # Assign phone number if requested (pro plan only)
+    # Assign phone number if requested (AI plans only)
     assigned_phone = None
-    if sub_plan == 'pro':
+    if sub_plan in ('pro', 'starter', 'professional', 'business', 'enterprise'):
         if data.get('phone_number'):
             try:
                 assigned_phone = db.assign_phone_number(company_id, data['phone_number'])
@@ -3344,6 +3421,9 @@ def admin_update_account(company_id):
         'custom_dashboard_price', 'custom_dashboard_stripe_price_id',
         'custom_pro_price', 'custom_pro_stripe_price_id',
         'admin_tab_visibility',
+        'included_minutes', 'overage_rate_cents', 'minutes_used',
+        'usage_period_start', 'usage_period_end', 'usage_alert_sent',
+        'max_monthly_overage_cents',
     ]
     for field in admin_updatable:
         if field in data:
@@ -3660,8 +3740,8 @@ def create_checkout():
     plan = data.get('plan', 'pro')
     
     # Validate plan
-    if plan not in ('dashboard', 'pro'):
-        return jsonify({"error": "Invalid plan. Choose 'dashboard' or 'pro'."}), 400
+    if plan not in ('dashboard', 'starter', 'professional', 'business', 'enterprise', 'pro'):
+        return jsonify({"error": "Invalid plan. Choose 'starter', 'professional', or 'business'."}), 400
     
     print(f"[CHECKOUT] Base URL: {base_url}")
     print(f"[CHECKOUT] Plan: {plan}")
@@ -3724,9 +3804,9 @@ def upgrade_plan():
         return jsonify({"error": "No active subscription to upgrade. Please subscribe first."}), 400
 
     data = request.json or {}
-    new_plan = data.get('plan', 'pro')
+    new_plan = data.get('plan', 'professional')
 
-    if new_plan not in ('dashboard', 'pro'):
+    if new_plan not in ('dashboard', 'starter', 'professional', 'business', 'enterprise', 'pro'):
         return jsonify({"error": "Invalid plan"}), 400
 
     current_plan = company.get('subscription_plan', 'pro')
@@ -3779,7 +3859,14 @@ def start_trial():
         subscription_status='active',
         trial_start=trial_start,
         trial_end=trial_end,
-        has_used_trial=1
+        has_used_trial=1,
+        # Trial users get 1000 minutes during their 14 days
+        included_minutes=1000,
+        overage_rate_cents=0,
+        minutes_used=0,
+        usage_period_start=trial_start,
+        usage_period_end=trial_end,
+        usage_alert_sent=False,
     )
     
     print(f"[SUCCESS] Free trial started for company {company['id']} until {trial_end}")
@@ -3801,6 +3888,12 @@ def billing_portal():
     
     if not company:
         return jsonify({"error": "Company not found"}), 404
+    
+    # Enterprise accounts are billed manually, no Stripe portal available
+    if company.get('subscription_plan') == 'enterprise':
+        return jsonify({
+            "error": "Enterprise accounts are billed manually. Please contact support at contact@bookedforyou.ie for billing inquiries."
+        }), 400
     
     customer_id = company.get('stripe_customer_id')
     if not customer_id:
@@ -3898,6 +3991,39 @@ def get_invoices():
         "success": True,
         "invoices": invoices
     })
+
+
+@app.route("/api/subscription/usage-history", methods=["GET"])
+@login_required
+def get_usage_history():
+    """Get historical monthly usage for the company (last 12 months)."""
+    db = get_database()
+    company_id = session.get('company_id')
+    if not company_id:
+        return jsonify({"error": "Authentication required"}), 401
+    
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT period_start, period_end, minutes_used, included_minutes,
+                   overage_minutes, overage_cost_cents, plan
+            FROM usage_history
+            WHERE company_id = %s
+            ORDER BY period_start DESC
+            LIMIT 12
+        """, (company_id,))
+        rows = [dict(r) for r in cursor.fetchall()]
+        for row in rows:
+            for k in ('period_start', 'period_end'):
+                if row.get(k) and hasattr(row[k], 'isoformat'):
+                    row[k] = row[k].isoformat()
+        return jsonify({"success": True, "history": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        db.return_connection(conn)
 
 
 @app.route("/api/subscription/sync", methods=["POST"])
@@ -4083,10 +4209,40 @@ def stripe_webhook():
     
     event_type = result['event_type']
     data = result['data']
+    event_id = result.get('event_id')
     db = get_database()
     
     print(f"[WEBHOOK] Event type: {event_type}")
-    print(f"[WEBHOOK] Event ID: {result.get('event_id')}")
+    print(f"[WEBHOOK] Event ID: {event_id}")
+    
+    # Idempotency check — skip if this event has already been processed.
+    # Stripe retries failed webhooks, so we need to ensure we don't double-apply
+    # effects like resetting usage counters or archiving history.
+    if event_id:
+        conn_check = db.get_connection()
+        try:
+            cur_check = conn_check.cursor()
+            cur_check.execute(
+                "SELECT 1 FROM webhook_events WHERE event_id = %s LIMIT 1",
+                (event_id,)
+            )
+            if cur_check.fetchone():
+                print(f"[WEBHOOK] Duplicate event {event_id} — already processed, acknowledging without reprocessing")
+                return jsonify({"received": True, "duplicate": True})
+            # Insert the event record up front. If processing fails, Stripe will
+            # retry with the same event_id and we'll skip it — accept this rather
+            # than risk double-processing.
+            cur_check.execute(
+                "INSERT INTO webhook_events (event_id, event_type) VALUES (%s, %s) ON CONFLICT (event_id) DO NOTHING",
+                (event_id, event_type)
+            )
+            conn_check.commit()
+        except Exception as e:
+            conn_check.rollback()
+            # Table might not exist yet (migration not run). Log and continue.
+            print(f"[WEBHOOK] Idempotency check failed (table may not exist): {e}")
+        finally:
+            db.return_connection(conn_check)
     
     def get_company_id_from_event(event_data, db_instance):
         """Helper to get company_id from event data with fallbacks"""
@@ -4136,8 +4292,14 @@ def stripe_webhook():
                 
                 # Determine which plan from metadata
                 plan = data.get('metadata', {}).get('plan') or sub.metadata.get('plan', 'pro')
-                if plan not in ('dashboard', 'pro'):
-                    plan = 'pro'
+                if plan not in ('dashboard', 'starter', 'professional', 'business', 'enterprise', 'pro'):
+                    plan = 'professional'
+                
+                # Get usage limits from plan config
+                from src.services.stripe_service import PLANS as STRIPE_PLANS
+                plan_config = STRIPE_PLANS.get(plan, STRIPE_PLANS.get('pro', {}))
+                plan_included_minutes = plan_config.get('included_minutes', 800)
+                plan_overage_rate = plan_config.get('overage_rate_cents', 12)
                 
                 print(f"[WEBHOOK] Stripe subscription retrieved:")
                 print(f"[WEBHOOK]   - status: {sub.status}")
@@ -4156,7 +4318,14 @@ def stripe_webhook():
                     subscription_current_period_end=datetime.fromtimestamp(sub.current_period_end),
                     subscription_cancel_at_period_end=0,
                     trial_start=None,
-                    trial_end=None
+                    trial_end=None,
+                    # Initialize usage tracking for new subscription
+                    minutes_used=0,
+                    usage_period_start=datetime.fromtimestamp(sub.current_period_start) if hasattr(sub, 'current_period_start') and sub.current_period_start else datetime.now(),
+                    usage_period_end=datetime.fromtimestamp(sub.current_period_end),
+                    usage_alert_sent=False,
+                    included_minutes=plan_included_minutes,
+                    overage_rate_cents=plan_overage_rate,
                 )
                 
                 # Verify the update
@@ -4173,7 +4342,7 @@ def stripe_webhook():
                 print(f"[WEBHOOK]   - customer: {customer_id}")
         
         elif event_type == 'customer.subscription.updated':
-            # Subscription updated (e.g., renewed, cancelled)
+            # Subscription updated (e.g., renewed, cancelled, plan changed)
             subscription_id = data.get('id')
             status = data.get('status')
             cancel_at_period_end = data.get('cancel_at_period_end', False)
@@ -4197,8 +4366,14 @@ def stripe_webhook():
                     update_data['subscription_tier'] = 'pro'
                     # Detect plan from subscription metadata
                     plan = data.get('metadata', {}).get('plan')
-                    if plan in ('dashboard', 'pro'):
+                    if plan in ('dashboard', 'starter', 'professional', 'business', 'enterprise', 'pro'):
                         update_data['subscription_plan'] = plan
+                        # Also update usage limits to match the new plan
+                        from src.services.stripe_service import PLANS as STRIPE_PLANS
+                        plan_cfg = STRIPE_PLANS.get(plan)
+                        if plan_cfg:
+                            update_data['included_minutes'] = plan_cfg.get('included_minutes', 800)
+                            update_data['overage_rate_cents'] = plan_cfg.get('overage_rate_cents', 12)
                 
                 db.update_company(company_id, **update_data)
                 print(f"[SUCCESS] Subscription updated for company {company_id}: {status}")
@@ -4236,14 +4411,61 @@ def stripe_webhook():
                     import stripe
                     sub = stripe.Subscription.retrieve(subscription_id)
                     
+                    new_period_end = datetime.fromtimestamp(sub.current_period_end)
+                    new_period_start = datetime.fromtimestamp(sub.current_period_start) if hasattr(sub, 'current_period_start') and sub.current_period_start else datetime.now()
+                    
+                    # Detect current plan and its limits
+                    plan = sub.metadata.get('plan') if sub.metadata else None
+                    if plan not in ('dashboard', 'starter', 'professional', 'business', 'enterprise', 'pro'):
+                        plan = company.get('subscription_plan', 'professional')
+                    
+                    from src.services.stripe_service import PLANS as STRIPE_PLANS
+                    plan_cfg = STRIPE_PLANS.get(plan, STRIPE_PLANS.get('professional', {}))
+                    plan_included = plan_cfg.get('included_minutes', 800)
+                    plan_overage = plan_cfg.get('overage_rate_cents', 12)
+                    
+                    # Archive the previous period's usage to usage_history
+                    try:
+                        prev_used = company.get('minutes_used', 0) or 0
+                        prev_included = company.get('included_minutes', 0) or 0
+                        prev_period_start = company.get('usage_period_start')
+                        prev_period_end = company.get('usage_period_end')
+                        prev_plan = company.get('subscription_plan', 'professional')
+                        if prev_used > 0 and prev_period_start and prev_period_end:
+                            overage_mins = max(0, prev_used - prev_included)
+                            overage_cost = overage_mins * (company.get('overage_rate_cents', 12) or 12)
+                            conn_h = db.get_connection()
+                            try:
+                                cur_h = conn_h.cursor()
+                                cur_h.execute("""
+                                    INSERT INTO usage_history 
+                                    (company_id, period_start, period_end, minutes_used, included_minutes, overage_minutes, overage_cost_cents, plan)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                """, (company['id'], prev_period_start, prev_period_end, prev_used, prev_included, overage_mins, overage_cost, prev_plan))
+                                conn_h.commit()
+                                print(f"[USAGE] Archived period: {prev_used}/{prev_included} mins, {overage_mins} overage")
+                            finally:
+                                db.return_connection(conn_h)
+                    except Exception as e:
+                        print(f"[USAGE] Could not archive usage history: {e}")
+                    
                     db.update_company(
                         company['id'],
                         subscription_tier='pro',
                         subscription_status='active',
-                        subscription_current_period_end=datetime.fromtimestamp(sub.current_period_end),
-                        subscription_cancel_at_period_end=0
+                        subscription_plan=plan,
+                        subscription_current_period_end=new_period_end,
+                        subscription_cancel_at_period_end=0,
+                        # Reset usage counters for new billing period
+                        minutes_used=0,
+                        usage_period_start=new_period_start,
+                        usage_period_end=new_period_end,
+                        usage_alert_sent=False,
+                        # Set limits to match current plan (in case of upgrade/downgrade)
+                        included_minutes=plan_included,
+                        overage_rate_cents=plan_overage,
                     )
-                    print(f"[SUCCESS] Payment succeeded, subscription renewed for company {company['id']}")
+                    print(f"[SUCCESS] Payment succeeded, subscription renewed for company {company['id']} (plan={plan}, {plan_included} mins included) — usage reset to 0")
         
         elif event_type == 'invoice.payment_failed':
             # Payment failed

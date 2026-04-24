@@ -87,10 +87,9 @@ function OnboardingWizard({ onComplete }) {
   const ALL_STEPS = buildSteps(industryProfile);
   
   // Filter steps based on plan — phone step only for pro/trial users
-  const currentPlan = subscription?.plan || 'pro';
-  const currentTier = subscription?.tier || 'none';
+  const currentPlan = subscription?.plan || 'professional';
   const isSubscriptionActive = subscription?.is_active === true;
-  const hasAIFeatures = currentPlan === 'pro' && isSubscriptionActive;
+  const hasAIFeatures = ['pro', 'starter', 'professional', 'business', 'enterprise'].includes(currentPlan) && isSubscriptionActive;
   const STEPS = hasAIFeatures ? ALL_STEPS : ALL_STEPS.filter(s => !s.proOnly);
   const userKey = user?.email || 'default';
   const [currentStepIndex, setCurrentStepIndex] = useState(null);
@@ -503,7 +502,7 @@ function OnboardingWizard({ onComplete }) {
                   <>
                     <div className="subscription-active-display">
                       <i className="fas fa-check-circle"></i>
-                      <span>{getSubscriptionTier() === 'pro' ? 'Pro Plan Active' : getSubscriptionTier() === 'trial' ? 'Free Trial Active' : 'Plan Active'}</span>
+                      <span>{getSubscriptionTier() === 'trial' ? 'Free Trial Active' : `${(currentPlan || 'professional').charAt(0).toUpperCase() + (currentPlan || 'professional').slice(1)} Plan Active`}</span>
                     </div>
                     <div className="step-actions">
                       <button className="btn btn-primary" onClick={() => setCurrentStepIndex(null)}>
@@ -532,24 +531,36 @@ function OnboardingWizard({ onComplete }) {
                       <div className="onboarding-plan-cards">
                         <button
                           className="onboarding-plan-card"
-                          onClick={() => checkoutMutation.mutate('dashboard')}
+                          onClick={() => checkoutMutation.mutate('starter')}
                           disabled={checkoutMutation.isPending}
                         >
-                          <span className="onboarding-plan-name">Dashboard</span>
-                          <span className="onboarding-plan-price">€99/month</span>
-                          <span className="onboarding-plan-desc">Jobs, scheduling, invoicing & more</span>
+                          <span className="onboarding-plan-name">Starter</span>
+                          <span className="onboarding-plan-price">€199/month</span>
+                          <span className="onboarding-plan-desc">200 AI call minutes included</span>
                         </button>
                         <button
                           className="onboarding-plan-card highlighted"
-                          onClick={() => checkoutMutation.mutate('pro')}
+                          onClick={() => checkoutMutation.mutate('professional')}
                           disabled={checkoutMutation.isPending}
                         >
                           <span className="onboarding-plan-badge">Recommended</span>
-                          <span className="onboarding-plan-name">Pro</span>
-                          <span className="onboarding-plan-price">€249/month</span>
-                          <span className="onboarding-plan-desc">Everything + AI receptionist</span>
+                          <span className="onboarding-plan-name">Professional</span>
+                          <span className="onboarding-plan-price">€399/month</span>
+                          <span className="onboarding-plan-desc">800 AI call minutes included</span>
+                        </button>
+                        <button
+                          className="onboarding-plan-card"
+                          onClick={() => checkoutMutation.mutate('business')}
+                          disabled={checkoutMutation.isPending}
+                        >
+                          <span className="onboarding-plan-name">Business</span>
+                          <span className="onboarding-plan-price">€599/month</span>
+                          <span className="onboarding-plan-desc">2,000 AI call minutes included</span>
                         </button>
                       </div>
+                      <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '0.5rem 0 0' }}>
+                        All plans include €0.12/min for additional minutes. <a href="mailto:contact@bookedforyou.ie?subject=Enterprise Enquiry" style={{ color: '#818cf8' }}>Contact us</a> for Enterprise with unlimited minutes.
+                      </p>
                       <button className="btn btn-secondary" onClick={handleSkipStep}>
                         Skip for now
                       </button>

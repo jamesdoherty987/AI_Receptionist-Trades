@@ -31,10 +31,10 @@ function Dashboard() {
   const userKey = user?.email || 'default';
   
   // Determine if user has AI features (pro plan or trial gets full access)
-  const currentPlan = subscription?.plan || 'pro';
+  const currentPlan = subscription?.plan || 'professional';
   const currentTier = subscription?.tier || 'none';
   const isSubscriptionActive = subscription?.is_active === true;
-  const hasAIFeatures = currentPlan === 'pro' && isSubscriptionActive;
+  const hasAIFeatures = ['pro', 'starter', 'professional', 'business', 'enterprise'].includes(currentPlan) && isSubscriptionActive;
 
   // Onboarding dismissed state — initialized from localStorage, then synced with backend
   const [onboardingDismissed, setOnboardingDismissed] = useState(
