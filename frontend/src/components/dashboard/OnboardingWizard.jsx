@@ -535,8 +535,8 @@ function OnboardingWizard({ onComplete }) {
                           disabled={checkoutMutation.isPending}
                         >
                           <span className="onboarding-plan-name">Starter</span>
-                          <span className="onboarding-plan-price">€199/month</span>
-                          <span className="onboarding-plan-desc">200 AI call minutes included</span>
+                          <span className="onboarding-plan-price">€99/month</span>
+                          <span className="onboarding-plan-desc">500 AI call minutes included</span>
                         </button>
                         <button
                           className="onboarding-plan-card highlighted"
@@ -545,8 +545,8 @@ function OnboardingWizard({ onComplete }) {
                         >
                           <span className="onboarding-plan-badge">Recommended</span>
                           <span className="onboarding-plan-name">Professional</span>
-                          <span className="onboarding-plan-price">€399/month</span>
-                          <span className="onboarding-plan-desc">800 AI call minutes included</span>
+                          <span className="onboarding-plan-price">€249/month</span>
+                          <span className="onboarding-plan-desc">1,200 AI call minutes included</span>
                         </button>
                         <button
                           className="onboarding-plan-card"
@@ -555,11 +555,11 @@ function OnboardingWizard({ onComplete }) {
                         >
                           <span className="onboarding-plan-name">Business</span>
                           <span className="onboarding-plan-price">€599/month</span>
-                          <span className="onboarding-plan-desc">2,000 AI call minutes included</span>
+                          <span className="onboarding-plan-desc">4,000 AI call minutes included</span>
                         </button>
                       </div>
                       <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '0.5rem 0 0' }}>
-                        All plans include €0.12/min for additional minutes. <a href="mailto:contact@bookedforyou.ie?subject=Enterprise Enquiry" style={{ color: '#818cf8' }}>Contact us</a> for Enterprise with unlimited minutes.
+                        All plans include €0.15/min for additional minutes. <a href="mailto:contact@bookedforyou.ie?subject=Enterprise Enquiry" style={{ color: '#818cf8' }}>Contact us</a> for Enterprise with unlimited minutes.
                       </p>
                       <button className="btn btn-secondary" onClick={handleSkipStep}>
                         Skip for now

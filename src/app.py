@@ -443,8 +443,8 @@ def get_subscription_info(company: dict) -> dict:
         print(f"[GET_SUB_INFO] Unknown tier '{subscription_tier}', is_active=False")
     
     # Usage tracking
-    included_minutes = company.get('included_minutes', 200)
-    overage_rate_cents = company.get('overage_rate_cents', 12)
+    included_minutes = company.get('included_minutes', 500)
+    overage_rate_cents = company.get('overage_rate_cents', 15)
     minutes_used = company.get('minutes_used', 0)
     usage_period_start = company.get('usage_period_start')
     usage_period_end = company.get('usage_period_end')
@@ -1278,6 +1278,106 @@ def delete_account():
         return jsonify({
             "error": "Failed to delete account. Please contact support."
         }), 500
+
+
+@app.route("/api/auth/export-data", methods=["GET"])
+@login_required
+@rate_limit(max_requests=5, window_seconds=3600)  # 5 exports per hour
+def export_user_data():
+    """
+    GDPR Article 20 - Data Portability.
+    Export all personal data for the logged-in user in JSON format.
+    """
+    company_id = session.get('company_id')
+    db = get_database()
+    company = db.get_company(company_id)
+
+    if not company:
+        return jsonify({"error": "Account not found"}), 404
+
+    conn = db.get_connection()
+    from psycopg2.extras import RealDictCursor
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+    def fetch_all(query, params=(company_id,)):
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+
+    def serialize(obj):
+        """JSON-safe serializer for dates/decimals."""
+        if obj is None:
+            return None
+        import decimal
+        from datetime import datetime, date
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        if isinstance(obj, decimal.Decimal):
+            return float(obj)
+        return str(obj)
+
+    try:
+        export = {
+            "exported_at": __import__('datetime').datetime.utcnow().isoformat() + "Z",
+            "account": {
+                "company_name": company.get('company_name'),
+                "owner_name": company.get('owner_name'),
+                "email": company.get('email'),
+                "phone": company.get('phone'),
+                "address": company.get('address'),
+                "trade_type": company.get('trade_type'),
+                "industry_type": company.get('industry_type'),
+                "business_hours": company.get('business_hours'),
+                "created_at": serialize(company.get('created_at')),
+            },
+            "clients": fetch_all(
+                "SELECT name, phone, email, date_of_birth, description, address, eircode, first_visit, last_visit, total_appointments, created_at FROM clients WHERE company_id = %s ORDER BY id"
+            ),
+            "bookings": fetch_all(
+                "SELECT appointment_time, duration_minutes, service_type, status, urgency, address, eircode, phone_number, email, charge, charge_max, payment_status, payment_method, created_at FROM bookings WHERE company_id = %s ORDER BY id"
+            ),
+            "workers": fetch_all(
+                "SELECT name, phone, email, trade_specialty, status, weekly_hours_expected, created_at FROM workers WHERE company_id = %s ORDER BY id"
+            ),
+            "services": fetch_all(
+                "SELECT name, description, price, duration_minutes, created_at FROM services WHERE company_id = %s ORDER BY id"
+            ),
+            "call_logs": fetch_all(
+                "SELECT phone_number, caller_name, duration_seconds, call_outcome, ai_summary, created_at FROM call_logs WHERE company_id = %s ORDER BY id"
+            ),
+        }
+
+        # Optional tables — skip gracefully if they don't exist yet
+        optional_queries = {
+            "expenses": "SELECT description, amount, category, date, created_at FROM expenses WHERE company_id = %s ORDER BY id",
+            "quotes": "SELECT title, description, total, status, valid_until, created_at FROM quotes WHERE company_id = %s ORDER BY id",
+            "messages": "SELECT sender_type, content, created_at FROM messages WHERE company_id = %s ORDER BY id",
+        }
+        for key, query in optional_queries.items():
+            cursor.execute("SAVEPOINT sp_export")
+            try:
+                export[key] = fetch_all(query)
+                cursor.execute("RELEASE SAVEPOINT sp_export")
+            except Exception:
+                cursor.execute("ROLLBACK TO SAVEPOINT sp_export")
+                export[key] = []
+
+        db.return_connection(conn)
+
+        # Serialize dates/decimals in nested data
+        import json
+        json_str = json.dumps(export, default=serialize, indent=2)
+
+        response = Response(json_str, mimetype='application/json')
+        response.headers['Content-Disposition'] = f'attachment; filename="bookedforyou-data-export-{company_id}.json"'
+        print(f"[GDPR_EXPORT] Data export generated for company {company_id}")
+        return response
+
+    except Exception as e:
+        db.return_connection(conn)
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Failed to export data. Please try again or contact support."}), 500
 
 
 @app.route("/api/auth/me", methods=["GET"])

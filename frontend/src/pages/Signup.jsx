@@ -18,6 +18,7 @@ function Signup() {
     password: '',
     confirm_password: ''
   });
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [passwordFocus, setPasswordFocus] = useState(false);
@@ -91,6 +92,10 @@ function Signup() {
     }
     if (formData.password !== formData.confirm_password) {
       setError('Passwords do not match');
+      return false;
+    }
+    if (!agreedToTerms) {
+      setError('You must agree to the Terms of Service and Privacy Policy');
       return false;
     }
     return true;
@@ -331,12 +336,26 @@ function Signup() {
                   )}
                 </div>
 
+                <div className="form-group consent-group">
+                  <label className="consent-label">
+                    <input
+                      type="checkbox"
+                      checked={agreedToTerms}
+                      onChange={(e) => { setAgreedToTerms(e.target.checked); setError(''); }}
+                      aria-required="true"
+                    />
+                    <span>
+                      I agree to the <Link to="/terms" target="_blank" rel="noopener noreferrer">Terms of Service</Link> and <Link to="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</Link>
+                    </span>
+                  </label>
+                </div>
+
                 <div className="form-buttons">
                   <button type="button" className="auth-back" onClick={handleBack}>
                     <i className="fas fa-arrow-left"></i>
                     Back
                   </button>
-                  <button type="submit" className="auth-submit" disabled={loading}>
+                  <button type="submit" className="auth-submit" disabled={loading || !agreedToTerms}>
                     {loading ? (
                       <>
                         <span className="spinner-small"></span>
@@ -362,10 +381,7 @@ function Signup() {
           </div>
         </div>
 
-        <p className="auth-terms">
-          By creating an account, you agree to our{' '}
-          <Link to="/terms">Terms of Service</Link> and <Link to="/privacy">Privacy Policy</Link>
-        </p>
+        {/* Consent is now captured via explicit checkbox in the form */}
       </div>
     </div>
   );

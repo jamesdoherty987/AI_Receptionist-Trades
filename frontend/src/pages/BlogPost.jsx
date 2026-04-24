@@ -29,7 +29,7 @@ function BlogPost() {
           </Link>
           <div className="nav-right">
             <Link to="/blog" className="nav-link-btn">All Articles</Link>
-            <a href="mailto:contact@bookedforyou.ie?subject=Get Started with BookedForYou" className="nav-btn-primary">Get Started</a>
+            <Link to="/#pricing" className="nav-btn-primary">Get Started</Link>
           </div>
         </div>
       </nav>

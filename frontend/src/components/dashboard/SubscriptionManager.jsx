@@ -17,10 +17,10 @@ import './SubscriptionManager.css';
 const PLAN_FEATURES = {
   starter: {
     name: 'Starter',
-    price: 199,
-    tagline: 'AI receptionist — 200 mins included',
-    includedMinutes: 200,
-    overageRate: 0.12,
+    price: 99,
+    tagline: 'AI receptionist — 500 mins included',
+    includedMinutes: 500,
+    overageRate: 0.15,
     selfService: true,
     features: [
       { text: 'AI receptionist & phone calls', included: true },
@@ -29,35 +29,35 @@ const PLAN_FEATURES = {
       { text: 'Job management & scheduling', included: true },
       { text: 'Customer & worker management', included: true },
       { text: 'Financial tracking & invoicing', included: true },
-      { text: '200 AI call minutes/month', included: true },
-      { text: '€0.12/min after that', included: true },
+      { text: '500 AI call minutes/month', included: true },
+      { text: '€0.15/min after that', included: true },
     ],
   },
   professional: {
     name: 'Professional',
-    price: 399,
-    tagline: 'AI receptionist — 800 mins included',
-    includedMinutes: 800,
-    overageRate: 0.12,
+    price: 249,
+    tagline: 'AI receptionist — 1,200 mins included',
+    includedMinutes: 1200,
+    overageRate: 0.15,
     selfService: true,
     features: [
       { text: 'Everything in Starter, plus:', included: true },
-      { text: '800 AI call minutes/month', included: true },
-      { text: '€0.12/min after that', included: true },
+      { text: '1,200 AI call minutes/month', included: true },
+      { text: '€0.15/min after that', included: true },
       { text: 'Priority support', included: true },
     ],
   },
   business: {
     name: 'Business',
     price: 599,
-    tagline: 'AI receptionist — 2,000 mins included',
-    includedMinutes: 2000,
-    overageRate: 0.12,
+    tagline: 'AI receptionist — 4,000 mins included',
+    includedMinutes: 4000,
+    overageRate: 0.15,
     selfService: true,
     features: [
       { text: 'Everything in Professional, plus:', included: true },
-      { text: '2,000 AI call minutes/month', included: true },
-      { text: '€0.12/min after that', included: true },
+      { text: '4,000 AI call minutes/month', included: true },
+      { text: '€0.15/min after that', included: true },
       { text: 'Priority support', included: true },
     ],
   },
@@ -362,7 +362,7 @@ function SubscriptionManager() {
                 <i className="fas fa-rocket"></i>
                 <div>
                   <strong>Add AI Receptionist</strong>
-                  <p>Get a dedicated AI phone number with smart scheduling. Plans from €199/month.</p>
+                  <p>Get a dedicated AI phone number with smart scheduling. Plans from €99/month.</p>
                 </div>
               </div>
               <button
@@ -380,7 +380,7 @@ function SubscriptionManager() {
                 <i className="fas fa-arrow-up"></i>
                 <div>
                   <strong>Need more minutes?</strong>
-                  <p>Upgrade to Professional (800 mins) or Business (2,000 mins) for more minutes at the same €0.12/min overage.</p>
+                  <p>Upgrade to Professional (1,200 mins) or Business (4,000 mins) for more included minutes at €0.15/min overage.</p>
                 </div>
               </div>
               <button

@@ -18,6 +18,7 @@ import {
   updateAISchedule,
   syncSubscription,
   deleteAccount,
+  exportUserData,
   getGoogleCalendarStatus,
   connectGoogleCalendar,
   disconnectGoogleCalendar,
@@ -56,6 +57,7 @@ function Settings() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deleteError, setDeleteError] = useState('');
+  const [exportingData, setExportingData] = useState(false);
   const [gcalConnecting, setGcalConnecting] = useState(false);
   const [gcalSyncing, setGcalSyncing] = useState(false);
   const [workerWarning, setWorkerWarning] = useState('');
@@ -1115,6 +1117,47 @@ function Settings() {
                     </div>
                   </div>
                 </form>
+              </div>
+
+              {/* GDPR Data Export */}
+              <div className="settings-card">
+                <div className="form-section">
+                  <div className="form-section-header">
+                    <i className="fas fa-download" style={{ color: '#0ea5e9' }}></i>
+                    <h3>Download My Data</h3>
+                  </div>
+                  <p className="section-description">
+                    Export all your personal data in a machine-readable JSON format (GDPR Article 20).
+                  </p>
+                  <button 
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={exportingData}
+                    onClick={async () => {
+                      setExportingData(true);
+                      try {
+                        const response = await exportUserData();
+                        const blob = new Blob([typeof response.data === 'string' ? response.data : JSON.stringify(response.data, null, 2)], { type: 'application/json' });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `bookedforyou-data-export.json`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        window.URL.revokeObjectURL(url);
+                        setSaveMessage('Data export downloaded successfully');
+                      } catch (err) {
+                        setSaveMessage('Failed to export data. Please try again.');
+                      } finally {
+                        setExportingData(false);
+                      }
+                    }}
+                  >
+                    <i className={exportingData ? 'fas fa-spinner fa-spin' : 'fas fa-file-export'}></i>
+                    {exportingData ? 'Preparing export...' : 'Export My Data'}
+                  </button>
+                </div>
               </div>
 
               {/* Danger Zone - Delete Account */}

@@ -17,27 +17,27 @@ TRIAL_DAYS = 14
 PLANS = {
     'starter': {
         'price_id': os.getenv('STRIPE_PRICE_ID_STARTER'),
-        'monthly_price_eur': float(os.getenv('STARTER_MONTHLY_PRICE', '199')),
+        'monthly_price_eur': float(os.getenv('STARTER_MONTHLY_PRICE', '99')),
         'name': 'BookedForYou Starter',
-        'description': 'AI Receptionist — 200 minutes included',
-        'included_minutes': 200,
-        'overage_rate_cents': 12,
+        'description': 'AI Receptionist — 500 minutes included',
+        'included_minutes': 500,
+        'overage_rate_cents': 15,
     },
     'professional': {
         'price_id': os.getenv('STRIPE_PRICE_ID_PROFESSIONAL'),
-        'monthly_price_eur': float(os.getenv('PROFESSIONAL_MONTHLY_PRICE', '399')),
+        'monthly_price_eur': float(os.getenv('PROFESSIONAL_MONTHLY_PRICE', '249')),
         'name': 'BookedForYou Professional',
-        'description': 'AI Receptionist — 800 minutes included',
-        'included_minutes': 800,
-        'overage_rate_cents': 12,
+        'description': 'AI Receptionist — 1200 minutes included',
+        'included_minutes': 1200,
+        'overage_rate_cents': 15,
     },
     'business': {
         'price_id': os.getenv('STRIPE_PRICE_ID_BUSINESS'),
         'monthly_price_eur': float(os.getenv('BUSINESS_MONTHLY_PRICE', '599')),
         'name': 'BookedForYou Business',
-        'description': 'AI Receptionist — 2000 minutes included',
-        'included_minutes': 2000,
-        'overage_rate_cents': 12,
+        'description': 'AI Receptionist — 4000 minutes included',
+        'included_minutes': 4000,
+        'overage_rate_cents': 15,
     },
     'enterprise': {
         'price_id': None,
@@ -50,7 +50,7 @@ PLANS = {
     # Legacy aliases for backwards compatibility with existing DB records
     'dashboard': {
         'price_id': os.getenv('STRIPE_PRICE_ID_DASHBOARD'),
-        'monthly_price_eur': float(os.getenv('DASHBOARD_MONTHLY_PRICE', '99')),
+        'monthly_price_eur': float(os.getenv('DASHBOARD_MONTHLY_PRICE', '49')),
         'name': 'BookedForYou Dashboard (Legacy)',
         'description': 'Business Management Dashboard — Legacy plan',
         'included_minutes': 0,
@@ -58,11 +58,11 @@ PLANS = {
     },
     'pro': {
         'price_id': os.getenv('STRIPE_PRICE_ID_PRO') or os.getenv('STRIPE_PRICE_ID'),
-        'monthly_price_eur': float(os.getenv('PRO_MONTHLY_PRICE', '399')),
+        'monthly_price_eur': float(os.getenv('PRO_MONTHLY_PRICE', '249')),
         'name': 'BookedForYou Professional (Legacy)',
         'description': 'AI Receptionist — Legacy plan',
-        'included_minutes': 800,
-        'overage_rate_cents': 12,
+        'included_minutes': 1200,
+        'overage_rate_cents': 15,
     },
 }
 
