@@ -559,7 +559,7 @@ function OnboardingWizard({ onComplete }) {
                         </button>
                       </div>
                       <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '0.5rem 0 0' }}>
-                        All plans include €0.15/min for additional minutes. <a href="mailto:contact@bookedforyou.ie?subject=Enterprise Enquiry" style={{ color: '#818cf8' }}>Contact us</a> for Enterprise with unlimited minutes.
+                        All plans include €0.15/min for additional minutes. 14-day free trial on all plans. <a href="mailto:contact@bookedforyou.ie?subject=Enterprise Enquiry" style={{ color: '#818cf8' }}>Contact us</a> for Enterprise with unlimited minutes.
                       </p>
                       <button className="btn btn-secondary" onClick={handleSkipStep}>
                         Skip for now

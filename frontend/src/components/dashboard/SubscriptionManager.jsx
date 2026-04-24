@@ -380,7 +380,7 @@ function SubscriptionManager() {
                 <i className="fas fa-arrow-up"></i>
                 <div>
                   <strong>Need more minutes?</strong>
-                  <p>Upgrade to Professional (1,200 mins) or Business (4,000 mins) for more included minutes at €0.15/min overage.</p>
+                  <p>Upgrade to Professional (1,200 mins) or Business (4,000 mins) for more minutes at the same €0.15/min overage.</p>
                 </div>
               </div>
               <button

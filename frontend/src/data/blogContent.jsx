@@ -98,7 +98,7 @@ function CTA() {
     <div className="blog-cta-box">
       <h3>Ready to stop missing calls?</h3>
       <p>Try BookedForYou free for 14 days. No credit card required.</p>
-      <a href="mailto:contact@bookedforyou.ie?subject=Get Started with BookedForYou" className="blog-cta-btn">
+      <a href="/signup" className="blog-cta-btn">
         <i className="fas fa-rocket"></i> Get Started Free
       </a>
     </div>

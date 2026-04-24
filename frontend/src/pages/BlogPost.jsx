@@ -29,7 +29,7 @@ function BlogPost() {
           </Link>
           <div className="nav-right">
             <Link to="/blog" className="nav-link-btn">All Articles</Link>
-            <Link to="/#pricing" className="nav-btn-primary">Get Started</Link>
+            <Link to="/signup" className="nav-btn-primary">Get Started</Link>
           </div>
         </div>
       </nav>

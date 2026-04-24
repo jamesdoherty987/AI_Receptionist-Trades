@@ -29,7 +29,7 @@ function Blog() {
           </Link>
           <div className="nav-right">
             <Link to="/login" className="nav-link-btn">Log In</Link>
-            <Link to="/#pricing" className="nav-btn-primary">Get Started</Link>
+            <Link to="/signup" className="nav-btn-primary">Get Started</Link>
           </div>
         </div>
       </nav>

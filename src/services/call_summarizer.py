@@ -100,7 +100,7 @@ def _send_usage_alert_email(company: dict, minutes_used: int, included: int):
         remaining = max(0, included - minutes_used)
         email = company.get('email', 'unknown')
         company_name = company.get('company_name', 'unknown')
-        overage_rate = (company.get('overage_rate_cents', 15) or 15) / 100
+        overage_rate = (company.get('overage_rate_cents', 12) or 12) / 100
         
         print(f"[USAGE_ALERT] ⚠️  Company '{company_name}' ({email}) at {pct}% usage")
         print(f"[USAGE_ALERT]    {minutes_used:,}/{included:,} mins used, {remaining:,} remaining")

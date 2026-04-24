@@ -443,8 +443,8 @@ def get_subscription_info(company: dict) -> dict:
         print(f"[GET_SUB_INFO] Unknown tier '{subscription_tier}', is_active=False")
     
     # Usage tracking
-    included_minutes = company.get('included_minutes', 500)
-    overage_rate_cents = company.get('overage_rate_cents', 15)
+    included_minutes = company.get('included_minutes', 200)
+    overage_rate_cents = company.get('overage_rate_cents', 12)
     minutes_used = company.get('minutes_used', 0)
     usage_period_start = company.get('usage_period_start')
     usage_period_end = company.get('usage_period_end')

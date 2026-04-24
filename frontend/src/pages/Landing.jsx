@@ -1047,10 +1047,10 @@ function Landing() {
   ];
 
   const pricingPlans = [
-    { name: "Dashboard", price: "€49", period: "/mo", description: "Business management tools", features: ["Job management & scheduling", "Customer & worker management", "Calendar & availability", "Financial tracking & invoicing", "Materials tracking", "Insights & reports"], cta: "Get Started", highlighted: false, link: "/auth?plan=dashboard" },
-    { name: "Starter", price: "€99", period: "/mo", description: "500 AI call mins included", features: ["Everything in Dashboard, plus:", "AI receptionist & phone calls", "Dedicated AI phone number", "Smart AI scheduling", "500 AI call minutes/month", "€0.15/min after that"], cta: "Get Started", highlighted: false, link: "/auth?plan=starter" },
-    { name: "Professional", price: "€249", period: "/mo", description: "1,200 AI call mins included", features: ["Everything in Starter, plus:", "1,200 AI call minutes/month", "€0.15/min after that", "Priority support"], cta: "Get Started", highlighted: true, link: "/auth?plan=professional" },
-    { name: "Business", price: "€599", period: "/mo", description: "4,000 AI call mins included", features: ["Everything in Professional, plus:", "4,000 AI call minutes/month", "€0.15/min after that", "Priority support"], cta: "Get Started", highlighted: false, link: "/auth?plan=business" },
+    { name: "Dashboard", price: "€49", period: "/mo", description: "Business management tools", features: ["Job management & scheduling", "Customer & worker management", "Calendar & availability", "Financial tracking & invoicing", "Materials tracking", "Insights & reports"], cta: "Start Free Trial", highlighted: false, link: "/auth?plan=dashboard" },
+    { name: "Starter", price: "€99", period: "/mo", description: "500 AI call mins included", features: ["Everything in Dashboard, plus:", "AI receptionist & phone calls", "Dedicated AI phone number", "Smart AI scheduling", "500 AI call minutes/month", "€0.15/min after that"], cta: "Start Free Trial", highlighted: false, link: "/auth?plan=starter" },
+    { name: "Professional", price: "€249", period: "/mo", description: "1,200 AI call mins included", features: ["Everything in Starter, plus:", "1,200 AI call minutes/month", "€0.15/min after that", "Priority support"], cta: "Start Free Trial", highlighted: true, link: "/auth?plan=professional" },
+    { name: "Business", price: "€599", period: "/mo", description: "4,000 AI call mins included", features: ["Everything in Professional, plus:", "4,000 AI call minutes/month", "€0.15/min after that", "Priority support"], cta: "Start Free Trial", highlighted: false, link: "/auth?plan=business" },
     { name: "Enterprise", price: "Custom", period: "", description: "Unlimited mins — custom setup", features: ["Everything in Business, plus:", "Unlimited AI call minutes", "Custom onboarding & setup", "Dedicated account manager", "Custom integrations"], cta: "Contact Us", highlighted: false, link: null, isEnterprise: true },
   ];
 
@@ -1092,7 +1092,7 @@ function Landing() {
             {showPricing && <a href="#pricing">Pricing</a>}
             <Link to="/install">Get the App</Link>
             <Link to="/login" className="nav-link-btn">Log In</Link>
-            <a href="#pricing" className="nav-btn-primary">Get Started</a>
+            <Link to="/signup" className="nav-btn-primary">Get Started</Link>
           </div>
         </div>
       </nav>
@@ -1108,7 +1108,7 @@ function Landing() {
             <Typewriter text={heroSubtitle} speed={30} delay={600} />
           </p>
           <div className="hero-cta">
-            <a href="#pricing" className="btn-hero-primary"><i className="fas fa-rocket"></i> Get Started</a>
+            <Link to="/signup" className="btn-hero-primary"><i className="fas fa-rocket"></i> Get Started</Link>
             {showWatchDemo && <a href="#demo" className="btn-hero-secondary"><i className="fas fa-play-circle"></i> Watch Demo</a>}
           </div>
           <ParallaxLayer speed={-0.04} className="hero-stats-parallax">
@@ -1223,6 +1223,7 @@ function Landing() {
                     {plan.period && <span className="plan-price-period">{plan.period}</span>}
                   </div>
                   <p className="plan-description">{plan.description}</p>
+                  {!plan.isEnterprise && <div className="trial-badge"><i className="fas fa-gift"></i> 14-day free trial</div>}
                   <ul className="plan-features">{plan.features.map((f, j) => <li key={j}><i className="fas fa-check"></i>{f}</li>)}</ul>
                   {plan.isEnterprise ? (
                     <button
@@ -1248,7 +1249,7 @@ function Landing() {
           <div className="cta-content">
             <h2>Ready to never miss a call again?</h2>
             <p>Join hundreds of tradespeople who are growing their business with BookedForYou.</p>
-            <a href="#pricing" className="btn-cta">Get Started <i className="fas fa-arrow-right"></i></a>
+            <Link to="/signup" className="btn-cta">Get Started <i className="fas fa-arrow-right"></i></Link>
           </div>
         </div>
       </SectionReveal>
