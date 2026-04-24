@@ -1,17 +1,17 @@
 """
-Test for the worker availability buffer mismatch bug.
+Test for the employee availability buffer mismatch bug.
 
-Bug: When creating a job in the worker portal with multiple workers assigned,
+Bug: When creating a job in the employee portal with multiple employees assigned,
 the calendar shows a time slot as available (green) but clicking "Create Job"
-fails with "Worker is not available at this time".
+fails with "Employee is not available at this time".
 
 Root cause: The calendar availability endpoint computed booking end times using
-exact durations (no buffer), but db.check_worker_availability() added a 15-minute
+exact durations (no buffer), but db.check_employee_availability() added a 15-minute
 buffer to both the new appointment and existing bookings. This caused the
-pre-submit availability check (checkWorkerAvailability) to find false conflicts
+pre-submit availability check (checkEmployeeAvailability) to find false conflicts
 for slots immediately after existing bookings.
 
-Fix: Removed the phantom 15-minute buffer from check_worker_availability and
+Fix: Removed the phantom 15-minute buffer from check_employee_availability and
 get_conflicting_bookings so they match the calendar display.
 """
 import pytest
@@ -20,7 +20,7 @@ from unittest.mock import patch, MagicMock
 
 
 class TestBufferMismatchFix:
-    """Verify that check_worker_availability matches calendar slot availability."""
+    """Verify that check_employee_availability matches calendar slot availability."""
 
     def _make_db(self):
         """Create a real DB wrapper instance (no DB connection needed for _calculate_job_end_time)."""
@@ -51,16 +51,16 @@ class TestBufferMismatchFix:
         assert end == datetime(2026, 3, 30, 10, 15), f"Expected 10:15, got {end}"
 
 
-class TestWorkerAvailabilityNoFalseConflict:
+class TestEmployeeAvailabilityNoFalseConflict:
     """
     Reproduce the exact bug scenario:
-    - Worker A has a job from 9:00-10:00
+    - Employee A has a job from 9:00-10:00
     - Calendar shows 10:00 as available (green)
-    - check_worker_availability should ALSO say 10:00 is available
+    - check_employee_availability should ALSO say 10:00 is available
     """
 
     def _make_db_mock(self, existing_jobs):
-        """Create a mock DB that returns the given existing jobs for a worker."""
+        """Create a mock DB that returns the given existing jobs for an employee."""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
         db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
 
@@ -80,7 +80,7 @@ class TestWorkerAvailabilityNoFalseConflict:
 
     def test_slot_right_after_existing_job_is_available(self):
         """A slot starting exactly when another job ends should be available."""
-        # Worker has a 1-hour job from 9:00-10:00
+        # Employee has a 1-hour job from 9:00-10:00
         existing_jobs = [{
             'id': 100,
             'appointment_time': datetime(2026, 3, 30, 9, 0),
@@ -97,8 +97,8 @@ class TestWorkerAvailabilityNoFalseConflict:
             mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
 
             # Check availability at 10:00 (right after the existing job ends)
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time=datetime(2026, 3, 30, 10, 0),
                 duration_minutes=60,
                 company_id=1
@@ -111,7 +111,7 @@ class TestWorkerAvailabilityNoFalseConflict:
 
     def test_overlapping_slot_is_unavailable(self):
         """A slot that genuinely overlaps with an existing job should be unavailable."""
-        # Worker has a 2-hour job from 9:00-11:00
+        # Employee has a 2-hour job from 9:00-11:00
         existing_jobs = [{
             'id': 100,
             'appointment_time': datetime(2026, 3, 30, 9, 0),
@@ -128,8 +128,8 @@ class TestWorkerAvailabilityNoFalseConflict:
             mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
 
             # Check availability at 10:00 (overlaps with 9:00-11:00 job)
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time=datetime(2026, 3, 30, 10, 0),
                 duration_minutes=60,
                 company_id=1
@@ -140,39 +140,39 @@ class TestWorkerAvailabilityNoFalseConflict:
             f"Got: available={result['available']}"
         )
 
-    def test_multi_worker_back_to_back_all_available(self):
+    def test_multi_employee_back_to_back_all_available(self):
         """
         Reproduce the exact user scenario:
-        3 workers, each has different jobs, but all are free at 14:00.
-        check_worker_availability should say available for all of them.
+        3 employees, each has different jobs, but all are free at 14:00.
+        check_employee_availability should say available for all of them.
         """
-        # Worker 1: job 9:00-10:00
+        # Employee 1: job 9:00-10:00
         jobs_w1 = [{
             'id': 101, 'appointment_time': datetime(2026, 3, 30, 9, 0),
             'duration_minutes': 60, 'service_type': 'Plumbing',
             'client_name': 'Alice', 'address': '1 St'
         }]
-        # Worker 2: job 10:00-12:00
+        # Employee 2: job 10:00-12:00
         jobs_w2 = [{
             'id': 102, 'appointment_time': datetime(2026, 3, 30, 10, 0),
             'duration_minutes': 120, 'service_type': 'Electrical',
             'client_name': 'Bob', 'address': '2 St'
         }]
-        # Worker 3: job 12:00-13:00
+        # Employee 3: job 12:00-13:00
         jobs_w3 = [{
             'id': 103, 'appointment_time': datetime(2026, 3, 30, 12, 0),
             'duration_minutes': 60, 'service_type': 'Painting',
             'client_name': 'Carol', 'address': '3 St'
         }]
 
-        for worker_id, jobs, label in [(1, jobs_w1, 'W1'), (2, jobs_w2, 'W2'), (3, jobs_w3, 'W3')]:
+        for employee_id, jobs, label in [(1, jobs_w1, 'W1'), (2, jobs_w2, 'W2'), (3, jobs_w3, 'W3')]:
             db = self._make_db_mock(jobs)
             with patch('src.utils.config.config') as mock_config:
                 mock_config.get_business_hours.return_value = {'start': 9, 'end': 17}
                 mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
 
-                result = db.check_worker_availability(
-                    worker_id=worker_id,
+                result = db.check_employee_availability(
+                    employee_id=employee_id,
                     appointment_time=datetime(2026, 3, 30, 14, 0),
                     duration_minutes=60,
                     company_id=1
@@ -185,9 +185,9 @@ class TestWorkerAvailabilityNoFalseConflict:
 
     def test_back_to_back_slot_not_falsely_rejected(self):
         """
-        The key bug scenario: Worker has job ending at 13:00.
+        The key bug scenario: Employee has job ending at 13:00.
         User picks 13:00 slot (shown as green on calendar).
-        check_worker_availability must NOT reject it.
+        check_employee_availability must NOT reject it.
         """
         existing_jobs = [{
             'id': 100,
@@ -204,8 +204,8 @@ class TestWorkerAvailabilityNoFalseConflict:
             mock_config.get_business_hours.return_value = {'start': 9, 'end': 17}
             mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
 
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time=datetime(2026, 3, 30, 13, 0),
                 duration_minutes=60,
                 company_id=1

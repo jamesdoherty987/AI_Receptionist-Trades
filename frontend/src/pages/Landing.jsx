@@ -411,19 +411,19 @@ function MiniChart() {
   );
 }
 
-// 4. Mini Worker Dispatch Board (Worker Management)
-function MiniWorkerSchedule() {
+// 4. Mini Employee Dispatch Board (Employee Management)
+function MiniEmployeeSchedule() {
   const [step, setStep] = useState(-1);
-  const workers = [
+  const employees = [
     { name: 'Mike', initials: 'M', color: '#0ea5e9', icon: 'fa-wrench' },
     { name: 'Sarah', initials: 'S', color: '#ec4899', icon: 'fa-toolbox' },
     { name: 'James', initials: 'J', color: '#8b5cf6', icon: 'fa-hard-hat' },
   ];
   const jobs = [
-    { label: 'Pipe repair', time: '9am', worker: 0 },
-    { label: 'Drain clean', time: '10am', worker: 1 },
-    { label: 'Radiator install', time: '11am', worker: 2 },
-    { label: 'Boiler service', time: '2pm', worker: 0 },
+    { label: 'Pipe repair', time: '9am', employee: 0 },
+    { label: 'Drain clean', time: '10am', employee: 1 },
+    { label: 'Radiator install', time: '11am', employee: 2 },
+    { label: 'Boiler service', time: '2pm', employee: 0 },
   ];
 
   useEffect(() => {
@@ -438,10 +438,10 @@ function MiniWorkerSchedule() {
 
   return (
     <div className="dispatch-board">
-      <div className="dispatch-workers">
-        {workers.map((w, wi) => {
-          const active = jobs.some((j, ji) => j.worker === wi && ji <= step);
-          const pinging = jobs.some((j, ji) => j.worker === wi && ji === step);
+      <div className="dispatch-employees">
+        {employees.map((w, wi) => {
+          const active = jobs.some((j, ji) => j.employee === wi && ji <= step);
+          const pinging = jobs.some((j, ji) => j.employee === wi && ji === step);
           return (
             <div key={wi} className={`dispatch-avatar ${active ? 'active' : ''} ${pinging ? 'ping' : ''}`}>
               <div className="dispatch-avatar-circle" style={{ background: w.color }}>
@@ -456,14 +456,14 @@ function MiniWorkerSchedule() {
       <div className="dispatch-feed">
         {jobs.map((job, ji) => (
           <div key={ji} className={`dispatch-job ${ji <= step ? 'dispatched' : ''} ${ji === step ? 'latest' : ''}`}>
-            <div className="dispatch-job-line" style={{ background: workers[job.worker].color }}></div>
+            <div className="dispatch-job-line" style={{ background: employees[job.employee].color }}></div>
             <div className="dispatch-job-content">
               <span className="dispatch-job-label">{job.label}</span>
               <span className="dispatch-job-meta">
-                <i className="far fa-clock"></i> {job.time} · {workers[job.worker].name}
+                <i className="far fa-clock"></i> {job.time} · {employees[job.employee].name}
               </span>
             </div>
-            <div className={`dispatch-job-badge ${ji <= step ? 'show' : ''}`} style={{ background: workers[job.worker].color }}>
+            <div className={`dispatch-job-badge ${ji <= step ? 'show' : ''}`} style={{ background: employees[job.employee].color }}>
               <i className="fas fa-check"></i>
             </div>
           </div>
@@ -1041,13 +1041,13 @@ function Landing() {
     { icon: "fas fa-phone-volume", title: "24/7 AI Receptionist", description: "Never miss a call again. Our AI answers professionally, day or night, capturing every lead.", size: 'large' },
     { icon: "fas fa-calendar-check", title: "Smart Scheduling", description: "Automatic appointment booking synced with your calendar. No double bookings, no hassle.", size: 'medium' },
     { icon: "fas fa-users", title: "Customer Management", description: "Keep track of all your clients, their job history, and preferences in one place.", size: 'medium' },
-    { icon: "fas fa-hard-hat", title: "Worker Management", description: "Assign jobs to your team, track their schedules, and prevent conflicts.", size: 'small' },
+    { icon: "fas fa-hard-hat", title: "Employee Management", description: "Assign jobs to your team, track their schedules, and prevent conflicts.", size: 'small' },
     { icon: "fas fa-boxes", title: "Materials & Invoicing", description: "Track materials, costs, and send professional invoices directly from the dashboard.", size: 'small' },
     { icon: "fas fa-chart-line", title: "Financial Tracking", description: "Monitor revenue, track payments, and see your business performance at a glance.", size: 'small' },
   ];
 
   const pricingPlans = [
-    { name: "Dashboard", price: "€49", period: "/mo", description: "Business management tools", features: ["Job management & scheduling", "Customer & worker management", "Calendar & availability", "Financial tracking & invoicing", "Materials tracking", "Insights & reports"], cta: "Start Free Trial", highlighted: false, link: "/auth?plan=dashboard" },
+    { name: "Dashboard", price: "€49", period: "/mo", description: "Business management tools", features: ["Job management & scheduling", "Customer & employee management", "Calendar & availability", "Financial tracking & invoicing", "Materials tracking", "Insights & reports"], cta: "Start Free Trial", highlighted: false, link: "/auth?plan=dashboard" },
     { name: "Starter", price: "€99", period: "/mo", description: "500 AI call mins included", features: ["Everything in Dashboard, plus:", "AI receptionist & phone calls", "Dedicated AI phone number", "Smart AI scheduling", "500 AI call minutes/month", "€0.15/min after that"], cta: "Start Free Trial", highlighted: false, link: "/auth?plan=starter" },
     { name: "Professional", price: "€249", period: "/mo", description: "1,200 AI call mins included", features: ["Everything in Starter, plus:", "1,200 AI call minutes/month", "€0.15/min after that", "Priority support"], cta: "Start Free Trial", highlighted: true, link: "/auth?plan=professional" },
     { name: "Business", price: "€599", period: "/mo", description: "4,000 AI call mins included", features: ["Everything in Professional, plus:", "4,000 AI call minutes/month", "€0.15/min after that", "Priority support"], cta: "Start Free Trial", highlighted: false, link: "/auth?plan=business" },
@@ -1058,7 +1058,7 @@ function Landing() {
     'bento-tint-blue',    // AI Receptionist
     'bento-tint-green',   // Smart Scheduling
     'bento-tint-purple',  // Customer Management
-    'bento-tint-pink',    // Worker Management
+    'bento-tint-pink',    // Employee Management
     'bento-tint-orange',  // Materials & Invoicing
     'bento-tint-violet',  // Financial Tracking
   ];
@@ -1067,7 +1067,7 @@ function Landing() {
     <LiveTranscript />,
     <MiniCalendar />,
     <MiniContactStack />,
-    <MiniWorkerSchedule />,
+    <MiniEmployeeSchedule />,
     <MiniMaterials />,
     <MiniChart />,
   ];

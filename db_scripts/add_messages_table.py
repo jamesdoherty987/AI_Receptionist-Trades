@@ -1,5 +1,5 @@
 """
-Create messages table for owner-worker messaging.
+Create messages table for owner-employee messaging.
 """
 import os
 import sys
@@ -34,17 +34,17 @@ def migrate():
         CREATE TABLE messages (
             id SERIAL PRIMARY KEY,
             company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-            worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
-            sender_type VARCHAR(10) NOT NULL CHECK (sender_type IN ('owner', 'worker')),
+            employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+            sender_type VARCHAR(10) NOT NULL CHECK (sender_type IN ('owner', 'employee')),
             content TEXT NOT NULL,
             read BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP DEFAULT NOW()
         )
     """)
 
-    cursor.execute("CREATE INDEX idx_messages_company_worker ON messages(company_id, worker_id)")
+    cursor.execute("CREATE INDEX idx_messages_company_employee ON messages(company_id, employee_id)")
     cursor.execute("CREATE INDEX idx_messages_created ON messages(created_at DESC)")
-    cursor.execute("CREATE INDEX idx_messages_unread ON messages(company_id, worker_id, read) WHERE read = FALSE")
+    cursor.execute("CREATE INDEX idx_messages_unread ON messages(company_id, employee_id, read) WHERE read = FALSE")
 
     conn.commit()
     cursor.close()

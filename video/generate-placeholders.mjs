@@ -14,7 +14,7 @@ mkdirSync(dir, { recursive: true });
 // We'll create simple HTML files that can be opened, but for Remotion we need actual images.
 // Let's create minimal placeholder PNGs using a data approach.
 
-const tabs = ['jobs', 'calls', 'calendar', 'workers', 'customers', 'services', 'materials'];
+const tabs = ['jobs', 'calls', 'calendar', 'employees', 'customers', 'services', 'materials'];
 const colors = ['#3b82f6', '#06d6a0', '#7c3aed', '#ff6b35', '#ff006e', '#ffd60a', '#3a86ff'];
 const icons = ['📋', '📞', '📅', '👷', '👥', '🔧', '📦'];
 

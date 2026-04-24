@@ -4,7 +4,7 @@ Tests the day-based lookup with fuzzy name matching for:
 - Single job on a day
 - Multiple jobs on a day
 - Full-day jobs
-- Workers with multiple jobs
+- Employees with multiple jobs
 - Fuzzy name matching edge cases
 """
 
@@ -116,7 +116,7 @@ class TestFindJobsOnDay:
         """Create a mock database with given bookings"""
         mock_db = Mock()
         mock_db.get_all_bookings.return_value = bookings
-        mock_db.get_worker.return_value = None
+        mock_db.get_employee.return_value = None
         return mock_db
     
     def test_single_job_on_day(self):
@@ -130,7 +130,7 @@ class TestFindJobsOnDay:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         mock_db = self.create_mock_db(bookings)
@@ -153,7 +153,7 @@ class TestFindJobsOnDay:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt1',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             },
             {
                 'id': 2,
@@ -163,7 +163,7 @@ class TestFindJobsOnDay:
                 'duration_minutes': 120,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt2',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             },
             {
                 'id': 3,
@@ -173,7 +173,7 @@ class TestFindJobsOnDay:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt3',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             }
         ]
         
@@ -197,7 +197,7 @@ class TestFindJobsOnDay:
             'duration_minutes': 480,  # 8 hours = full day
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         mock_db = self.create_mock_db(bookings)
@@ -219,7 +219,7 @@ class TestFindJobsOnDay:
                 'duration_minutes': 60,
                 'status': 'cancelled',
                 'calendar_event_id': 'evt1',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             },
             {
                 'id': 2,
@@ -229,7 +229,7 @@ class TestFindJobsOnDay:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt2',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             }
         ]
         
@@ -250,7 +250,7 @@ class TestFindJobsOnDay:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         mock_db = self.create_mock_db(bookings)
@@ -266,7 +266,7 @@ class TestCancelAppointmentHandler:
         """Create mock services for testing"""
         mock_db = Mock()
         mock_db.get_all_bookings.return_value = bookings
-        mock_db.get_worker.return_value = None
+        mock_db.get_employee.return_value = None
         mock_db.delete_booking.return_value = True
         
         mock_calendar = Mock()
@@ -290,7 +290,7 @@ class TestCancelAppointmentHandler:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -317,7 +317,7 @@ class TestCancelAppointmentHandler:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt1',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             },
             {
                 'id': 2,
@@ -327,7 +327,7 @@ class TestCancelAppointmentHandler:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt2',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             }
         ]
         
@@ -355,7 +355,7 @@ class TestCancelAppointmentHandler:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -381,7 +381,7 @@ class TestCancelAppointmentHandler:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt1',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             },
             {
                 'id': 2,
@@ -391,7 +391,7 @@ class TestCancelAppointmentHandler:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt2',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             }
         ]
         
@@ -417,7 +417,7 @@ class TestCancelAppointmentHandler:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -441,7 +441,7 @@ class TestCancelAppointmentHandler:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -459,13 +459,13 @@ class TestCancelAppointmentHandler:
 class TestRescheduleAppointmentHandler:
     """Test the reschedule_appointment tool handler"""
     
-    def create_mock_services(self, bookings, has_workers=False):
+    def create_mock_services(self, bookings, has_employees=False):
         """Create mock services for testing"""
         mock_db = Mock()
         mock_db.get_all_bookings.return_value = bookings
-        mock_db.get_worker.return_value = None
+        mock_db.get_employee.return_value = None
         mock_db.update_booking.return_value = True
-        mock_db.has_workers.return_value = has_workers
+        mock_db.has_employees.return_value = has_employees
         
         mock_calendar = Mock()
         mock_calendar.reschedule_appointment.return_value = {'id': 'evt1'}
@@ -489,7 +489,7 @@ class TestRescheduleAppointmentHandler:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -514,7 +514,7 @@ class TestRescheduleAppointmentHandler:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -539,7 +539,7 @@ class TestRescheduleAppointmentHandler:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -585,7 +585,7 @@ class TestRescheduleAppointmentHandler:
             'duration_minutes': 480,  # Full day
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -671,9 +671,9 @@ class TestEdgeCases:
     def create_mock_services(self, bookings):
         mock_db = Mock()
         mock_db.get_all_bookings.return_value = bookings
-        mock_db.get_worker.return_value = None
+        mock_db.get_employee.return_value = None
         mock_db.delete_booking.return_value = True
-        mock_db.has_workers.return_value = False
+        mock_db.has_employees.return_value = False
         
         mock_calendar = Mock()
         mock_calendar.cancel_appointment.return_value = True
@@ -716,8 +716,8 @@ class TestEdgeCases:
         assert result['success'] == False
         assert 'ask the customer' in result['error'].lower()
     
-    def test_worker_with_multiple_jobs_same_day(self):
-        """Should handle worker with multiple jobs on same day"""
+    def test_employee_with_multiple_jobs_same_day(self):
+        """Should handle employee with multiple jobs on same day"""
         bookings = [
             {
                 'id': 1,
@@ -727,7 +727,7 @@ class TestEdgeCases:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt1',
-                'assigned_worker_ids': [1]  # Worker 1
+                'assigned_employee_ids': [1]  # Employee 1
             },
             {
                 'id': 2,
@@ -737,7 +737,7 @@ class TestEdgeCases:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt2',
-                'assigned_worker_ids': [1]  # Same worker
+                'assigned_employee_ids': [1]  # Same employee
             }
         ]
         
@@ -764,7 +764,7 @@ class TestEdgeCases:
                 'duration_minutes': 480,  # Full day
                 'status': 'scheduled',
                 'calendar_event_id': 'evt1',
-                'assigned_worker_ids': [1]
+                'assigned_employee_ids': [1]
             },
             {
                 'id': 2,
@@ -774,7 +774,7 @@ class TestEdgeCases:
                 'duration_minutes': 30,  # Short job
                 'status': 'scheduled',
                 'calendar_event_id': 'evt2',
-                'assigned_worker_ids': [2]  # Different worker
+                'assigned_employee_ids': [2]  # Different employee
             }
         ]
         

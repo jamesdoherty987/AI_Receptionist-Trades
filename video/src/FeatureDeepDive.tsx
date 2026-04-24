@@ -355,14 +355,14 @@ const CalendarScene: React.FC = () => {
           </Pop>
           <Pop delay={16} direction="up">
             <p style={{ fontSize: 21, color: C.gray, lineHeight: 1.6, margin: "0 0 24px" }}>
-              Google Calendar integration with real-time availability checking. Handles multi-day jobs, worker schedules, business hours, and prevents double-bookings automatically.
+              Google Calendar integration with real-time availability checking. Handles multi-day jobs, employee schedules, business hours, and prevents double-bookings automatically.
             </p>
           </Pop>
           <Pop delay={24} direction="up">
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {[
                 "Multi-day job support (week-long projects)",
-                "Worker availability & conflict detection",
+                "Employee availability & conflict detection",
                 "Business hours enforcement",
                 "Emergency / Same-Day / Scheduled / Quote",
                 "Bidirectional Google Calendar sync",
@@ -563,11 +563,11 @@ const FinancesScene: React.FC = () => {
 };
 
 // ═══════════════════════════════════════════════════════════
-// SCENE 6: WORKER MANAGEMENT
+// SCENE 6: EMPLOYEE MANAGEMENT
 // ═══════════════════════════════════════════════════════════
-const WorkersScene: React.FC = () => {
+const EmployeesScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const workers = [
+  const employees = [
     { name: "Paddy O'Brien", role: "Senior Plumber", status: "On Job", hours: "32h", color: C.blue },
     { name: "Sean Kelly", role: "Apprentice", status: "Available", hours: "28h", color: C.cyan },
     { name: "Liam Murphy", role: "Electrician", status: "On Job", hours: "36h", color: C.purple },
@@ -580,13 +580,13 @@ const WorkersScene: React.FC = () => {
           <Pop delay={0}><Badge text="Team" color={C.purple} /></Pop>
           <Pop delay={8} direction="up">
             <h2 style={{ fontSize: 50, fontWeight: 900, color: C.white, margin: "20px 0 16px", lineHeight: 1.15 }}>
-              Worker
+              Employee
               <br /><GradientText>Management</GradientText>
             </h2>
           </Pop>
           <Pop delay={16} direction="up">
             <p style={{ fontSize: 21, color: C.gray, lineHeight: 1.6, margin: "0 0 24px" }}>
-              Assign jobs to your team, set service restrictions per worker, track weekly hours, and prevent scheduling conflicts. The AI knows who's available.
+              Assign jobs to your team, set service restrictions per employee, track weekly hours, and prevent scheduling conflicts. The AI knows who's available.
             </p>
           </Pop>
           <Pop delay={24} direction="up">
@@ -597,9 +597,9 @@ const WorkersScene: React.FC = () => {
             </div>
           </Pop>
         </div>
-        {/* Worker cards */}
+        {/* Employee cards */}
         <div style={{ width: 420, display: "flex", flexDirection: "column", gap: 14 }}>
-          {workers.map((w, i) => {
+          {employees.map((w, i) => {
             const delay = 15 + i * 12;
             const opacity = interpolate(frame, [delay, delay + 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
             const translateX = interpolate(frame, [delay, delay + 10], [40, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -731,7 +731,7 @@ const OnboardingScene: React.FC = () => {
     { icon: "🏢", label: "Company Details", done: true },
     { icon: "🏦", label: "Payment", done: true },
     { icon: "🔧", label: "Services", done: true },
-    { icon: "👷", label: "Workers", done: false },
+    { icon: "👷", label: "Employees", done: false },
     { icon: "📞", label: "Phone Number", done: false },
   ];
   const activeStep = Math.min(Math.floor(interpolate(frame, [20, 120], [0, 7], { extrapolateRight: "clamp" })), 6);
@@ -747,7 +747,7 @@ const OnboardingScene: React.FC = () => {
         </Pop>
         <Pop delay={12} direction="up">
           <p style={{ fontSize: 22, color: C.gray, margin: "0 0 40px" }}>
-            A guided wizard walks you through everything. Set up your business, add services, configure workers, and go live.
+            A guided wizard walks you through everything. Set up your business, add services, configure employees, and go live.
           </p>
         </Pop>
         {/* Step progress */}
@@ -894,7 +894,7 @@ const FinalCTAScene: React.FC = () => {
         </Pop>
         <Pop delay={20} direction="up">
           <p style={{ fontSize: 24, color: C.gray, margin: "0 0 40px", maxWidth: 600, marginLeft: "auto", marginRight: "auto" }}>
-            AI receptionist. Smart scheduling. Invoicing. Worker management. All for €99/month.
+            AI receptionist. Smart scheduling. Invoicing. Employee management. All for €99/month.
           </p>
         </Pop>
         <Pop delay={30} direction="scale">
@@ -950,7 +950,7 @@ export const FeatureDeepDive: React.FC = () => {
     { component: CalendarScene, duration: 150 },        // 5s
     { component: CustomersScene, duration: 135 },       // 4.5s
     { component: FinancesScene, duration: 150 },        // 5s
-    { component: WorkersScene, duration: 135 },         // 4.5s
+    { component: EmployeesScene, duration: 135 },         // 4.5s
     { component: ServicesAndSMSScene, duration: 150 },  // 5s
     { component: OnboardingScene, duration: 150 },      // 5s
     { component: StatsScene, duration: 120 },           // 4s

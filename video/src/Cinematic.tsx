@@ -470,7 +470,7 @@ const FeatureOrbitScene: React.FC = () => {
     { icon: "📅", label: "Smart Calendar", color: C.blue },
     { icon: "👥", label: "Customer CRM", color: C.pink },
     { icon: "💰", label: "Invoicing", color: C.gold },
-    { icon: "👷", label: "Workers", color: C.purple },
+    { icon: "👷", label: "Employees", color: C.purple },
     { icon: "📱", label: "SMS Reminders", color: C.cyan },
     { icon: "🔧", label: "Services", color: C.orange },
     { icon: "📊", label: "Analytics", color: C.blue },
@@ -623,7 +623,7 @@ const CalendarZoomScene: React.FC = () => {
         </Pop>
         <Pop delay={90} direction="up" style={{ marginTop: 20 }}>
           <div style={{ display: "flex", justifyContent: "center", gap: 20 }}>
-            {["Google Calendar Sync", "Multi-day Jobs", "Worker Schedules", "No Double Bookings"].map((t, i) => (
+            {["Google Calendar Sync", "Multi-day Jobs", "Employee Schedules", "No Double Bookings"].map((t, i) => (
               <div key={i} style={{ padding: "8px 16px", borderRadius: 10, background: `${C.blue}15`, border: `1px solid ${C.blue}33`, fontSize: 14, color: C.blue, fontWeight: 600 }}>{t}</div>
             ))}
           </div>
@@ -650,7 +650,7 @@ const DashboardMontageScene: React.FC = () => {
       items: ["Daily/monthly charts", "Stripe payment links", "One-click invoices", "Paid vs unpaid tracking"],
     },
     {
-      title: "Worker Management", icon: "👷", color: C.purple, delay: 60, dir: "left" as const,
+      title: "Employee Management", icon: "👷", color: C.purple, delay: 60, dir: "left" as const,
       items: ["Assign jobs to team", "Service restrictions", "Weekly hours tracking", "Conflict prevention"],
     },
     {

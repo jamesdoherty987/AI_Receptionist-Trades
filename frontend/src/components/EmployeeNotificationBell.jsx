@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getWorkerNotifications, acceptEmergencyJob } from '../services/api';
+import { getEmployeeNotifications, acceptEmergencyJob } from '../services/api';
 import './NotificationBell.css';
 
-function WorkerNotificationBell({ onNavigate }) {
+function EmployeeNotificationBell({ onNavigate }) {
   const [isOpen, setIsOpen] = useState(false);
   const [seenIds, setSeenIds] = useState(() => {
     try {
-      const stored = localStorage.getItem('workerSeenNotifications');
+      const stored = localStorage.getItem('employeeSeenNotifications');
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];
@@ -17,9 +17,9 @@ function WorkerNotificationBell({ onNavigate }) {
   const queryClient = useQueryClient();
 
   const { data } = useQuery({
-    queryKey: ['worker-notifications'],
+    queryKey: ['employee-notifications'],
     queryFn: async () => {
-      const response = await getWorkerNotifications();
+      const response = await getEmployeeNotifications();
       return response.data;
     },
     refetchInterval: 30000,
@@ -39,8 +39,8 @@ function WorkerNotificationBell({ onNavigate }) {
     onSuccess: (_, bookingId) => {
       setAcceptedIds(prev => new Set([...prev, bookingId]));
       setAcceptingId(null);
-      queryClient.invalidateQueries({ queryKey: ['worker-notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
     },
     onError: (error, bookingId) => {
       setAcceptErrors(prev => ({ ...prev, [bookingId]: error?.response?.data?.error || 'Failed' }));
@@ -70,7 +70,7 @@ function WorkerNotificationBell({ onNavigate }) {
       const nonEmergencyIds = notifications.filter(n => n.type !== 'emergency_job').map(n => n.id);
       const newSeenIds = [...new Set([...seenIds, ...nonEmergencyIds])].slice(-100);
       setSeenIds(newSeenIds);
-      localStorage.setItem('workerSeenNotifications', JSON.stringify(newSeenIds));
+      localStorage.setItem('employeeSeenNotifications', JSON.stringify(newSeenIds));
     }
   };
 
@@ -140,7 +140,7 @@ function WorkerNotificationBell({ onNavigate }) {
               {notifications.length > 0 && (
                 <button
                   className="refresh-btn"
-                  onClick={() => queryClient.invalidateQueries({ queryKey: ['worker-notifications'] })}
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ['employee-notifications'] })}
                   aria-label="Refresh notifications"
                 >
                   <i className="fas fa-sync-alt"></i>
@@ -210,4 +210,4 @@ function WorkerNotificationBell({ onNavigate }) {
   );
 }
 
-export default WorkerNotificationBell;
+export default EmployeeNotificationBell;

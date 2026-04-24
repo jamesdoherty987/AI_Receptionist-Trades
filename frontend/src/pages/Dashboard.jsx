@@ -14,12 +14,12 @@ import './Dashboard.css';
 // Lazy-load tab components — only loaded when the tab is actually rendered
 const JobsTab = lazy(() => import('../components/dashboard/JobsTab'));
 const CrmTab = lazy(() => import('../components/dashboard/CrmTab'));
-const WorkersTab = lazy(() => import('../components/dashboard/WorkersTab'));
+const EmployeesTab = lazy(() => import('../components/dashboard/EmployeesTab'));
 const FinancesTab = lazy(() => import('../components/dashboard/FinancesTab'));
 const CalendarTab = lazy(() => import('../components/dashboard/CalendarTab'));
 const ChatTab = lazy(() => import('../components/dashboard/ChatTab'));
 const ServicesTab = lazy(() => import('../components/dashboard/ServicesTab'));
-const MaterialsTab = lazy(() => import('../components/dashboard/MaterialsTab'));
+const InventoryTab = lazy(() => import('../components/dashboard/InventoryTab'));
 const InsightsTab = lazy(() => import('../components/dashboard/InsightsTab'));
 const CallLogsTab = lazy(() => import('../components/dashboard/CallLogsTab'));
 
@@ -95,7 +95,7 @@ function Dashboard() {
 
   const bookings = dashboardData?.bookings || [];
   const clients = dashboardData?.clients || [];
-  const workers = dashboardData?.workers || [];
+  const employees = dashboardData?.employees || [];
 
   // Controlled tab state for notification navigation
   const [activeTab, setActiveTab] = useState(0);
@@ -166,7 +166,7 @@ function Dashboard() {
     ).length;
   }, [bookings]);
 
-  // Unread worker messages for Workers tab badge
+  // Unread employee messages for Employees tab badge
   const { data: unreadMsgData } = useQuery({
     queryKey: ['unread-message-counts'],
     queryFn: async () => (await getUnreadMessageCounts()).data,
@@ -182,7 +182,7 @@ function Dashboard() {
 
   // Admin tab visibility — defaults to all on
   const adminVis = useMemo(() => {
-    const defaults = { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: true, finances: true, insights: true, reviews: true };
+    const defaults = { jobs: true, calls: true, calendar: true, employees: true, crm: true, services: true, inventory: true, finances: true, insights: true, reviews: true };
     return { ...defaults, ...(settings?.admin_tab_visibility || {}) };
   }, [settings]);
 
@@ -209,12 +209,12 @@ function Dashboard() {
       content: <Suspense fallback={tabFallback}><CalendarTab /></Suspense>
     }] : []),
     // Team & Clients
-    ...(adminVis.workers !== false ? [{
-      label: terminology.workers,
-      icon: icons.worker || 'fas fa-hard-hat',
+    ...(adminVis.employees !== false ? [{
+      label: terminology.employees,
+      icon: icons.employee || 'fas fa-hard-hat',
       group: 'Team & Clients',
       badge: totalUnreadMessages,
-      content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><WorkersTab workers={workers} bookings={bookings} /></Suspense>
+      content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><EmployeesTab employees={employees} bookings={bookings} /></Suspense>
     }] : []),
     ...(adminVis.crm !== false ? [{
       label: 'CRM',
@@ -230,11 +230,11 @@ function Dashboard() {
       group: 'Setup',
       content: <Suspense fallback={tabFallback}><ServicesTab /></Suspense>
     }] : []),
-    ...(adminVis.materials !== false && industryTabs.materials !== false && features.materials ? [{
-      label: 'Materials',
-      icon: 'fas fa-cubes',
+    ...(adminVis.inventory !== false && industryTabs.inventory !== false ? [{
+      label: 'Inventory',
+      icon: 'fas fa-boxes-stacked',
       group: 'Setup',
-      content: <Suspense fallback={tabFallback}><MaterialsTab /></Suspense>
+      content: <Suspense fallback={tabFallback}><InventoryTab /></Suspense>
     }] : []),
     // Reports
     ...(adminVis.finances !== false && settings?.show_finances_tab !== false && settings?.accounting_provider !== 'disabled' ? [{
@@ -247,7 +247,7 @@ function Dashboard() {
       label: 'Insights',
       icon: 'fas fa-chart-pie',
       group: 'Reports',
-      content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><InsightsTab bookings={bookings} clients={clients} workers={workers} reviews={reviewsData} /></Suspense>
+      content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><InsightsTab bookings={bookings} clients={clients} employees={employees} reviews={reviewsData} /></Suspense>
     }] : []),
     // Dev tools
     ...(import.meta.env.VITE_ENABLE_TEST_CHAT === 'true' ? [{
@@ -256,7 +256,7 @@ function Dashboard() {
       group: 'Dev Tools',
       content: <Suspense fallback={tabFallback}><ChatTab /></Suspense>
     }] : [])
-  ], [isLoading, bookings, clients, workers, settings, unseenCalls, hasAIFeatures, reviewsData, overdueLeads, jobBadges, totalUnreadMessages, unpaidCount, adminVis, terminology, features, industryTabs, icons]);
+  ], [isLoading, bookings, clients, employees, settings, unseenCalls, hasAIFeatures, reviewsData, overdueLeads, jobBadges, totalUnreadMessages, unpaidCount, adminVis, terminology, features, industryTabs, icons]);
 
   // Clear unseen call badge when user views the Calls tab
   const handleTabChange = useCallback((idx) => {
@@ -274,8 +274,8 @@ function Dashboard() {
     if (tabs.length === 0) return;
     const label = tabs[activeTab]?.label;
     if (label === 'Services') localStorage.setItem(`services_setup_visited_${userKey}`, 'true');
-    if (label === terminology.workers) localStorage.setItem(`workers_setup_visited_${userKey}`, 'true');
-    if (label === 'Materials') localStorage.setItem(`materials_setup_visited_${userKey}`, 'true');
+    if (label === terminology.employees) localStorage.setItem(`employees_setup_visited_${userKey}`, 'true');
+    if (label === 'Inventory') localStorage.setItem(`inventory_setup_visited_${userKey}`, 'true');
   }, [activeTab, tabs, userKey, terminology]);
 
   // Map notification types to tab labels for navigation
@@ -285,8 +285,8 @@ function Dashboard() {
       'cancelled': terminology.jobs,
       'completed': terminology.jobs,
       'rescheduled': terminology.jobs,
-      'time_off_request': terminology.workers,
-      'new_message': terminology.workers,
+      'time_off_request': terminology.employees,
+      'new_message': terminology.employees,
     };
     const targetLabel = typeToLabel[notif.type];
     if (targetLabel) {

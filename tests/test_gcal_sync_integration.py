@@ -2,7 +2,7 @@
 Integration tests for Google Calendar sync architecture.
 
 Tests the hybrid approach:
-- Database calendar is ALWAYS the primary scheduler (availability, workers, etc.)
+- Database calendar is ALWAYS the primary scheduler (availability, employees, etc.)
 - Google Calendar is a SYNC TARGET (events pushed after booking)
 - Sync failures never block bookings
 - Initial sync on connect pushes existing future bookings

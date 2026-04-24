@@ -27,7 +27,7 @@ const PLAN_FEATURES = {
       { text: 'Smart AI scheduling', included: true },
       { text: 'Dedicated AI phone number', included: true },
       { text: 'Job management & scheduling', included: true },
-      { text: 'Customer & worker management', included: true },
+      { text: 'Customer & employee management', included: true },
       { text: 'Financial tracking & invoicing', included: true },
       { text: '500 AI call minutes/month', included: true },
       { text: '€0.15/min after that', included: true },

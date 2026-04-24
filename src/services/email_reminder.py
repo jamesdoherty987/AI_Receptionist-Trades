@@ -364,7 +364,7 @@ Best regards,
     
     def send_booking_confirmation(self, to_email: str, appointment_time: datetime,
                                     customer_name: str, service_type: str = "appointment",
-                                    company_name: str = None, worker_names: list = None,
+                                    company_name: str = None, employee_names: list = None,
                                     address: str = None, portal_link: str = None) -> bool:
         """Send a booking confirmation email."""
         if not self.configured:
@@ -383,9 +383,9 @@ Best regards,
             time_str = appointment_time.strftime('%A, %B %d at %I:%M %p')
             date_only = appointment_time.strftime('%A, %B %d')
 
-            worker_line = ""
-            if worker_names:
-                worker_line = f"<p style='margin:5px 0;'><strong>Assigned:</strong> {', '.join(worker_names)}</p>"
+            employee_line = ""
+            if employee_names:
+                employee_line = f"<p style='margin:5px 0;'><strong>Assigned:</strong> {', '.join(employee_names)}</p>"
             address_line = ""
             if address:
                 address_line = f"<p style='margin:5px 0;'><strong>Location:</strong> {address}</p>"
@@ -412,7 +412,7 @@ Best regards,
                 f"Your booking is confirmed:\n"
                 f"Service: {service_type}\n"
                 f"Date & Time: {time_str}\n"
-                f"{'Assigned: ' + ', '.join(worker_names) if worker_names else ''}\n"
+                f"{'Assigned: ' + ', '.join(employee_names) if employee_names else ''}\n"
                 f"{'Location: ' + address if address else ''}\n"
                 f"{portal_section_text}\n"
                 f"To cancel or reschedule, please contact us.\n\n"
@@ -432,7 +432,7 @@ Best regards,
         <div style="background:#f0fdf4;border-left:4px solid #10b981;padding:15px;margin:20px 0;border-radius:0 8px 8px 0;">
             <p style="margin:5px 0;"><strong>Service:</strong> {service_type}</p>
             <p style="margin:5px 0;"><strong>Date & Time:</strong> {time_str}</p>
-            {worker_line}
+            {employee_line}
             {address_line}
         </div>
         {portal_section_html}
@@ -624,7 +624,7 @@ Best regards,
 
     def send_day_before_reminder(self, to_email: str, appointment_time: datetime,
                                   customer_name: str, service_type: str = "appointment",
-                                  company_name: str = None, worker_names: list = None) -> bool:
+                                  company_name: str = None, employee_names: list = None) -> bool:
         """Send a day-before reminder email."""
         if not self.configured:
             return False
@@ -633,9 +633,9 @@ Best regards,
             time_str = appointment_time.strftime('%A, %B %d at %I:%M %p')
             date_only = appointment_time.strftime('%A, %B %d')
 
-            worker_line = ""
-            if worker_names:
-                worker_line = f"<p style='margin:5px 0;'><strong>Assigned:</strong> {', '.join(worker_names)}</p>"
+            employee_line = ""
+            if employee_names:
+                employee_line = f"<p style='margin:5px 0;'><strong>Assigned:</strong> {', '.join(employee_names)}</p>"
 
             subject = f'Reminder: {service_type} Tomorrow - {date_only}'
 
@@ -644,7 +644,7 @@ Best regards,
                 f"Hi {customer_name},\n\n"
                 f"Reminder: your {service_type} is tomorrow.\n"
                 f"Date & Time: {time_str}\n"
-                f"{'Assigned: ' + ', '.join(worker_names) if worker_names else ''}\n\n"
+                f"{'Assigned: ' + ', '.join(employee_names) if employee_names else ''}\n\n"
                 f"To cancel or reschedule, please contact us.\n\n"
                 f"Best regards,\n{business_name}"
             ).strip()
@@ -662,7 +662,7 @@ Best regards,
         <div style="background:#fffbeb;border-left:4px solid #f59e0b;padding:15px;margin:20px 0;border-radius:0 8px 8px 0;">
             <p style="margin:5px 0;"><strong>Service:</strong> {service_type}</p>
             <p style="margin:5px 0;"><strong>Date & Time:</strong> {time_str}</p>
-            {worker_line}
+            {employee_line}
         </div>
         <p>To cancel or reschedule, please contact us.</p>
         <p style="margin-top:25px;">Best regards,<br><strong>{business_name}</strong></p>

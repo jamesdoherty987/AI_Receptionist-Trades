@@ -1,37 +1,37 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getMessages, sendMessageToWorker } from '../../services/api';
+import { getMessages, sendMessageToEmployee } from '../../services/api';
 import Modal from './Modal';
-import './MessageWorkerModal.css';
+import './MessageEmployeeModal.css';
 
-function MessageWorkerModal({ isOpen, onClose, workerId, workerName }) {
+function MessageEmployeeModal({ isOpen, onClose, employeeId, employeeName }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef(null);
   const queryClient = useQueryClient();
 
-  // Reset input when modal opens/closes or worker changes
+  // Reset input when modal opens/closes or employee changes
   useEffect(() => {
     if (!isOpen) setInput('');
-  }, [isOpen, workerId]);
+  }, [isOpen, employeeId]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['messages', workerId],
+    queryKey: ['messages', employeeId],
     queryFn: async () => {
-      const r = await getMessages(workerId);
+      const r = await getMessages(employeeId);
       // Messages are marked as read server-side on fetch — invalidate unread counts
       queryClient.invalidateQueries({ queryKey: ['unread-message-counts'] });
       return r.data;
     },
-    enabled: isOpen && !!workerId,
+    enabled: isOpen && !!employeeId,
     refetchInterval: isOpen ? 8000 : false,
   });
 
   const sendMutation = useMutation({
-    mutationFn: (content) => sendMessageToWorker(workerId, content),
+    mutationFn: (content) => sendMessageToEmployee(employeeId, content),
     // Optimistic update — message appears instantly before server confirms
     onMutate: async (content) => {
-      await queryClient.cancelQueries({ queryKey: ['messages', workerId] });
-      const previous = queryClient.getQueryData(['messages', workerId]);
+      await queryClient.cancelQueries({ queryKey: ['messages', employeeId] });
+      const previous = queryClient.getQueryData(['messages', employeeId]);
       const optimisticMsg = {
         id: `temp-${Date.now()}`,
         sender_type: 'owner',
@@ -40,7 +40,7 @@ function MessageWorkerModal({ isOpen, onClose, workerId, workerName }) {
         read: false,
         _optimistic: true,
       };
-      queryClient.setQueryData(['messages', workerId], (old) => ({
+      queryClient.setQueryData(['messages', employeeId], (old) => ({
         ...old,
         messages: [...(old?.messages || []), optimisticMsg],
       }));
@@ -50,13 +50,13 @@ function MessageWorkerModal({ isOpen, onClose, workerId, workerName }) {
     onError: (error, _content, context) => {
       // Roll back on failure
       if (context?.previous) {
-        queryClient.setQueryData(['messages', workerId], context.previous);
+        queryClient.setQueryData(['messages', employeeId], context.previous);
       }
       console.error('Failed to send message:', error);
     },
     onSettled: () => {
       // Refetch to get the real server data
-      queryClient.invalidateQueries({ queryKey: ['messages', workerId] });
+      queryClient.invalidateQueries({ queryKey: ['messages', employeeId] });
       queryClient.invalidateQueries({ queryKey: ['unread-message-counts'] });
     },
   });
@@ -115,7 +115,7 @@ function MessageWorkerModal({ isOpen, onClose, workerId, workerName }) {
   });
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Message ${workerName || 'Worker'}`} size="large">
+    <Modal isOpen={isOpen} onClose={onClose} title={`Message ${employeeName || 'Employee'}`} size="large">
       <div className="msg-modal">
         <div className="msg-messages">
           {isLoading ? (
@@ -129,7 +129,7 @@ function MessageWorkerModal({ isOpen, onClose, workerId, workerName }) {
                 <i className="fas fa-comments"></i>
               </div>
               <h3>Start a conversation</h3>
-              <p>Send a message to {workerName || 'this worker'}</p>
+              <p>Send a message to {employeeName || 'this employee'}</p>
             </div>
           ) : (
             groupedMessages.map((item, i) => {
@@ -181,4 +181,4 @@ function MessageWorkerModal({ isOpen, onClose, workerId, workerName }) {
   );
 }
 
-export default MessageWorkerModal;
+export default MessageEmployeeModal;

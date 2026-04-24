@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { workerResetPassword } from '../services/api';
+import { employeeResetPassword } from '../services/api';
 import './Auth.css';
 
-function WorkerResetPassword() {
+function EmployeeResetPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token');
@@ -41,7 +41,7 @@ function WorkerResetPassword() {
     setError('');
 
     try {
-      const response = await workerResetPassword(token, formData.password);
+      const response = await employeeResetPassword(token, formData.password);
       if (response.data.success) {
         setSuccess(true);
       } else {
@@ -79,7 +79,7 @@ function WorkerResetPassword() {
                 <i className="fas fa-exclamation-triangle"></i>
               </div>
               <p className="reset-success-text">Please request a new password reset link.</p>
-              <Link to="/worker/forgot-password" className="auth-submit" style={{ display: 'flex', textDecoration: 'none', marginTop: '1rem' }}>
+              <Link to="/employee/forgot-password" className="auth-submit" style={{ display: 'flex', textDecoration: 'none', marginTop: '1rem' }}>
                 <i className="fas fa-redo"></i>
                 Request new link
               </Link>
@@ -102,7 +102,7 @@ function WorkerResetPassword() {
         <div className="auth-card">
           <div className="auth-header">
             <h1>{success ? 'Password reset!' : 'Reset your password'}</h1>
-            <p>{success ? 'You can now log in with your new password.' : 'Enter a new password for your worker account.'}</p>
+            <p>{success ? 'You can now log in with your new password.' : 'Enter a new password for your employee account.'}</p>
           </div>
 
           {error && (
@@ -120,11 +120,11 @@ function WorkerResetPassword() {
               <p className="reset-success-text">Your password has been reset.</p>
               <button
                 className="auth-submit"
-                onClick={() => navigate('/worker/login')}
+                onClick={() => navigate('/employee/login')}
                 style={{ marginTop: '1rem' }}
               >
                 <i className="fas fa-sign-in-alt"></i>
-                Go to Worker Login
+                Go to Employee Login
               </button>
             </div>
           ) : (
@@ -198,4 +198,4 @@ function WorkerResetPassword() {
   );
 }
 
-export default WorkerResetPassword;
+export default EmployeeResetPassword;

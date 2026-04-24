@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { workerForgotPassword } from '../services/api';
+import { employeeForgotPassword } from '../services/api';
 import { validateEmail, rateLimiter } from '../utils/security';
 import './Auth.css';
 
-function WorkerForgotPassword() {
+function EmployeeForgotPassword() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -13,7 +13,7 @@ function WorkerForgotPassword() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!rateLimiter.isAllowed('worker-forgot-password', 3, 60000)) {
+    if (!rateLimiter.isAllowed('employee-forgot-password', 3, 60000)) {
       setError('Too many attempts. Please wait a moment.');
       return;
     }
@@ -27,7 +27,7 @@ function WorkerForgotPassword() {
     setError('');
 
     try {
-      const response = await workerForgotPassword(email);
+      const response = await employeeForgotPassword(email);
       if (response.data.success) {
         setSuccess(true);
       } else {
@@ -81,9 +81,9 @@ function WorkerForgotPassword() {
               <p className="reset-success-text">
                 Check your inbox for a password reset link. It will expire in 1 hour.
               </p>
-              <Link to="/worker/login" className="auth-submit" style={{ display: 'flex', textDecoration: 'none', marginTop: '1rem' }}>
+              <Link to="/employee/login" className="auth-submit" style={{ display: 'flex', textDecoration: 'none', marginTop: '1rem' }}>
                 <i className="fas fa-arrow-left"></i>
-                Back to Worker Login
+                Back to Employee Login
               </Link>
             </div>
           ) : (
@@ -120,7 +120,7 @@ function WorkerForgotPassword() {
 
           <div className="auth-footer">
             <p>
-              Remember your password? <Link to="/worker/login">Sign in</Link>
+              Remember your password? <Link to="/employee/login">Sign in</Link>
             </p>
           </div>
         </div>
@@ -129,4 +129,4 @@ function WorkerForgotPassword() {
   );
 }
 
-export default WorkerForgotPassword;
+export default EmployeeForgotPassword;

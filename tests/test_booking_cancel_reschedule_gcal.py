@@ -24,15 +24,15 @@ from src.services.calendar_tools import execute_tool_call
 # Helpers
 # ============================================================
 
-def make_mock_db(bookings=None, has_workers=False):
+def make_mock_db(bookings=None, has_employees=False):
     db = MagicMock()
     db.get_all_bookings.return_value = bookings or []
     db.add_booking.return_value = 100
     db.update_booking.return_value = True
     db.delete_booking.return_value = True
     db.find_or_create_client.return_value = 50
-    db.has_workers.return_value = has_workers
-    db.get_worker.return_value = None
+    db.has_employees.return_value = has_employees
+    db.get_employee.return_value = None
     db.get_company.return_value = {'id': 1, 'company_name': 'Test Plumbing'}
     return db
 
@@ -58,8 +58,8 @@ def make_mock_calendar():
     return cal
 
 
-def make_services(bookings=None, has_workers=False, gcal_sync=True):
-    db = make_mock_db(bookings, has_workers)
+def make_services(bookings=None, has_employees=False, gcal_sync=True):
+    db = make_mock_db(bookings, has_employees)
     cal = make_mock_calendar()
     gcal = make_mock_gcal_sync() if gcal_sync else None
     return {
@@ -80,7 +80,7 @@ THURSDAY_BOOKING = {
     'duration_minutes': 180,
     'status': 'scheduled',
     'calendar_event_id': 'gcal_evt_original',
-    'assigned_worker_ids': [],
+    'assigned_employee_ids': [],
 }
 
 
@@ -369,14 +369,14 @@ class TestBookingWithGCalSync:
                 'duration': 60,
                 'duration_minutes': 60,
                 'price': 100,
-                'workers_required': 1,
-                'worker_restrictions': None,
+                'employees_required': 1,
+                'employee_restrictions': None,
                 'requires_callout': False,
             },
             'confidence': 100
         }
 
-        services = make_services(bookings=[], has_workers=False)
+        services = make_services(bookings=[], has_employees=False)
 
         result = execute_tool_call(
             'book_job',
@@ -410,14 +410,14 @@ class TestBookingWithGCalSync:
                 'duration': 60,
                 'duration_minutes': 60,
                 'price': 100,
-                'workers_required': 1,
-                'worker_restrictions': None,
+                'employees_required': 1,
+                'employee_restrictions': None,
                 'requires_callout': False,
             },
             'confidence': 100
         }
 
-        services = make_services(bookings=[], has_workers=False, gcal_sync=False)
+        services = make_services(bookings=[], has_employees=False, gcal_sync=False)
 
         result = execute_tool_call(
             'book_job',
@@ -448,14 +448,14 @@ class TestBookingWithGCalSync:
                 'duration': 60,
                 'duration_minutes': 60,
                 'price': 100,
-                'workers_required': 1,
-                'worker_restrictions': None,
+                'employees_required': 1,
+                'employee_restrictions': None,
                 'requires_callout': False,
             },
             'confidence': 100
         }
 
-        services = make_services(bookings=[], has_workers=False)
+        services = make_services(bookings=[], has_employees=False)
         services['google_calendar_sync'].book_appointment.side_effect = Exception("Google API error")
 
         result = execute_tool_call(

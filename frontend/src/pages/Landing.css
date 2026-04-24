@@ -3708,14 +3708,14 @@
   }
 }
 
-/* --- Dispatch Board (Worker Management) --- */
+/* --- Dispatch Board (Employee Management) --- */
 .dispatch-board {
   padding: 0.6rem;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
 }
-.dispatch-workers {
+.dispatch-employees {
   display: flex;
   justify-content: center;
   gap: 1rem;

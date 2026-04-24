@@ -93,8 +93,8 @@ class TestDatabaseIsolation:
             assert 'company_id' in query.lower(), "Query should filter by company_id"
             assert 100 in params, "company_id should be in query parameters"
     
-    def test_get_worker_with_company_id_filter(self):
-        """Test that get_worker filters by company_id when provided"""
+    def test_get_employee_with_company_id_filter(self):
+        """Test that get_employee filters by company_id when provided"""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
         
         mock_conn = MagicMock()
@@ -107,7 +107,7 @@ class TestDatabaseIsolation:
             db.return_connection = MagicMock()
             
             mock_cursor.fetchone.return_value = None
-            result = db.get_worker(1, company_id=100)
+            result = db.get_employee(1, company_id=100)
             
             call_args = mock_cursor.execute.call_args
             query = call_args[0][0]
@@ -140,8 +140,8 @@ class TestDatabaseIsolation:
             assert 'company_id' in query.lower(), "Query should filter by company_id"
             assert 100 in params, "company_id should be in query parameters"
     
-    def test_get_job_workers_with_company_id_filter(self):
-        """Test that get_job_workers filters by company_id when provided"""
+    def test_get_job_employees_with_company_id_filter(self):
+        """Test that get_job_employees filters by company_id when provided"""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
         
         mock_conn = MagicMock()
@@ -154,7 +154,7 @@ class TestDatabaseIsolation:
             db.return_connection = MagicMock()
             
             mock_cursor.fetchall.return_value = []
-            result = db.get_job_workers(1, company_id=100)
+            result = db.get_job_employees(1, company_id=100)
             
             call_args = mock_cursor.execute.call_args
             query = call_args[0][0]
@@ -163,8 +163,8 @@ class TestDatabaseIsolation:
             assert 'company_id' in query.lower(), "Query should filter by company_id"
             assert 100 in params, "company_id should be in query parameters"
     
-    def test_get_worker_jobs_with_company_id_filter(self):
-        """Test that get_worker_jobs filters by company_id when provided"""
+    def test_get_employee_jobs_with_company_id_filter(self):
+        """Test that get_employee_jobs filters by company_id when provided"""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
         
         mock_conn = MagicMock()
@@ -177,7 +177,7 @@ class TestDatabaseIsolation:
             db.return_connection = MagicMock()
             
             mock_cursor.fetchall.return_value = []
-            result = db.get_worker_jobs(1, include_completed=False, company_id=100)
+            result = db.get_employee_jobs(1, include_completed=False, company_id=100)
             
             call_args = mock_cursor.execute.call_args
             query = call_args[0][0]
@@ -297,13 +297,13 @@ class TestAPIEndpointIsolation:
         assert 'db.get_client(client_id, company_id=company_id)' in content, \
             "client_api should pass company_id to get_client"
     
-    def test_worker_endpoint_uses_company_id(self):
-        """Verify worker API endpoint passes company_id to database"""
+    def test_employee_endpoint_uses_company_id(self):
+        """Verify employee API endpoint passes company_id to database"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
-        assert 'db.get_worker(worker_id, company_id=company_id)' in content, \
-            "worker_api should pass company_id to get_worker"
+        assert 'db.get_employee(employee_id, company_id=company_id)' in content, \
+            "employee_api should pass company_id to get_employee"
     
     def test_no_unfiltered_get_booking_calls(self):
         """Ensure all get_booking calls in API endpoints use company_id"""
@@ -344,16 +344,16 @@ class TestAPIEndpointIsolation:
         for call in all_calls:
             assert 'company_id=' in call, f"Unfiltered get_client call found: {call}"
     
-    def test_no_unfiltered_get_worker_calls_in_api(self):
-        """Ensure critical get_worker calls use company_id"""
+    def test_no_unfiltered_get_employee_calls_in_api(self):
+        """Ensure critical get_employee calls use company_id"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
         import re
-        all_calls = re.findall(r'db\.get_worker\([^)]+\)', content)
+        all_calls = re.findall(r'db\.get_employee\([^)]+\)', content)
         
         for call in all_calls:
-            assert 'company_id=' in call, f"Unfiltered get_worker call found: {call}"
+            assert 'company_id=' in call, f"Unfiltered get_employee call found: {call}"
 
 
 class TestFrontendCacheClear:

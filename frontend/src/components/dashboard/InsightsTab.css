@@ -167,7 +167,7 @@
   font-weight: 500;
 }
 
-/* Worker Leaderboard */
+/* Employee Leaderboard */
 .leaderboard {
   display: flex;
   flex-direction: column;
@@ -685,7 +685,7 @@
   flex-shrink: 0;
 }
 
-/* ===== Worker Utilization ===== */
+/* ===== Employee Utilization ===== */
 .utilization-list {
   display: flex;
   flex-direction: column;

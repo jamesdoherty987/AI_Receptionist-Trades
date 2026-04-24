@@ -60,7 +60,7 @@ function Settings() {
   const [exportingData, setExportingData] = useState(false);
   const [gcalConnecting, setGcalConnecting] = useState(false);
   const [gcalSyncing, setGcalSyncing] = useState(false);
-  const [workerWarning, setWorkerWarning] = useState('');
+  const [employeeWarning, setEmployeeWarning] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   // Accounting integration state
   const [acctConnecting, setAcctConnecting] = useState(false);
@@ -837,7 +837,7 @@ function Settings() {
             </button>
           </div>
           
-          {(saveMessage || workerWarning) && (
+          {(saveMessage || employeeWarning) && (
             <div className="settings-message-row">
               {saveMessage && (
                 <div className={`settings-message ${saveMessage.includes('cancelled') || saveMessage.includes('Error') || saveMessage.includes('Failed') ? 'warning' : 'success'}`}>
@@ -845,10 +845,10 @@ function Settings() {
                   {saveMessage}
                 </div>
               )}
-              {workerWarning && (
+              {employeeWarning && (
                 <div className="settings-message warning">
                   <i className="fas fa-exclamation-triangle"></i>
-                  {workerWarning}
+                  {employeeWarning}
                 </div>
               )}
             </div>
@@ -1532,12 +1532,12 @@ function Settings() {
                     <div className="toggle-rows" style={{ marginTop: '0.75rem' }}>
                       <div className="toggle-row">
                         <div className="toggle-row-info">
-                          <div className="toggle-row-label">Invite Workers to Calendar Events</div>
-                          <div className="toggle-row-desc">Workers with email addresses will receive Google Calendar invites for their assigned jobs</div>
+                          <div className="toggle-row-label">Invite Employees to Calendar Events</div>
+                          <div className="toggle-row-desc">Employees with email addresses will receive Google Calendar invites for their assigned jobs</div>
                         </div>
                         <label className="toggle-switch">
-                          <input type="checkbox" checked={formData.gcal_invite_workers || false}
-                            onChange={(e) => { setFormData(prev => ({ ...prev, gcal_invite_workers: e.target.checked })); setHasUnsavedChanges(true); }} />
+                          <input type="checkbox" checked={formData.gcal_invite_employees || false}
+                            onChange={(e) => { setFormData(prev => ({ ...prev, gcal_invite_employees: e.target.checked })); setHasUnsavedChanges(true); }} />
                           <span className="toggle-slider"></span>
                         </label>
                       </div>
@@ -1792,7 +1792,7 @@ function Settings() {
                   <li>All your business information</li>
                   <li>All customers and their data</li>
                   <li>All jobs and bookings</li>
-                  <li>All workers</li>
+                  <li>All employees</li>
                   <li>All services</li>
                   <li>Your subscription (if active)</li>
                 </ul>

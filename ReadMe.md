@@ -1,6 +1,6 @@
 # BookedForYou — AI Receptionist for Trades Companies
 
-Professional AI-powered phone receptionist with job booking, worker management, and Google Calendar integration — built for plumbing, electrical, heating, and general trade businesses.
+Professional AI-powered phone receptionist with job booking, employee management, and Google Calendar integration — built for plumbing, electrical, heating, and general trade businesses.
 
 ## Features
 
@@ -8,10 +8,10 @@ Professional AI-powered phone receptionist with job booking, worker management, 
 - 🤖 Natural language AI using OpenAI GPT-4o-mini with function calling
 - 🎤 Speech recognition powered by Deepgram ASR
 - 🗣️ Text-to-speech with Deepgram (ElevenLabs fallback)
-- 📊 React dashboard — jobs, workers, customers, calendar, call logs, finances, materials, services, insights
+- 📊 React dashboard — jobs, employees, customers, calendar, call logs, finances, materials, services, insights
 - 🔧 Intelligent job booking (emergency / same-day / scheduled / quotes / multi-day)
 - 📆 Google Calendar integration with availability checking and bidirectional sync
-- 👷 Worker management — assign jobs, track availability, time-off, per-worker calendars
+- 👷 Employee management — assign jobs, track availability, time-off, per-employee calendars
 - 💳 Stripe Connect — subscriptions, invoicing with payment links
 - 📱 Automatic phone & email capture with validation
 - 📍 Address collection with Eircode support and AI re-transcription
@@ -24,7 +24,7 @@ Professional AI-powered phone receptionist with job booking, worker management, 
 - 🧾 Invoice generation and delivery (email / SMS)
 - ⚙️ Settings management — business hours, services, pricing, packages, feature toggles
 - 🔐 Auth with password hashing (bcrypt), rate limiting, OWASP security headers
-- 👨‍🔧 Worker portal — separate login, dashboard, notifications, set-password flow
+- 👨‍🔧 Employee portal — separate login, dashboard, notifications, set-password flow
 - 🎬 Remotion video generation for marketing content
 
 ## Quick Start
@@ -134,11 +134,11 @@ This serves the Flask API, Twilio webhooks, Stripe webhooks, and the Twilio Medi
 ├── frontend/                        # React dashboard (Vite)
 │   └── src/
 │       ├── components/
-│       │   ├── dashboard/           # Tab components (Jobs, Workers, Calendar, etc.)
+│       │   ├── dashboard/           # Tab components (Jobs, Employees, Calendar, etc.)
 │       │   └── modals/              # AddJob, AddClient, JobDetail, Invoice, etc.
 │       ├── context/                 # AuthContext
 │       ├── pages/                   # Landing, Login, Signup, Dashboard, Settings,
-│       │                            #   WorkerDashboard, WorkerLogin, ForgotPassword, etc.
+│       │                            #   EmployeeDashboard, EmployeeLogin, ForgotPassword, etc.
 │       ├── services/api.js          # HTTP client
 │       └── utils/                   # Helpers, duration options, security
 ├── src/                             # Python backend
@@ -200,7 +200,7 @@ This serves the Flask API, Twilio webhooks, Stripe webhooks, and the Twilio Medi
 
 Migration scripts live in `db_scripts/`. Run them directly:
 ```bash
-python db_scripts/add_worker_accounts_table.py
+python db_scripts/add_employee_accounts_table.py
 python db_scripts/add_packages_table.py
 # etc.
 ```
@@ -231,7 +231,7 @@ Per-user OAuth flow — each business connects their own Google Calendar from th
 pytest tests/
 ```
 
-50+ test files covering booking flows, cancellation/rescheduling, worker availability, service matching, reminders, security, data isolation, Stripe subscriptions, Google Calendar sync, and more.
+50+ test files covering booking flows, cancellation/rescheduling, employee availability, service matching, reminders, security, data isolation, Stripe subscriptions, Google Calendar sync, and more.
 
 ## Architecture
 

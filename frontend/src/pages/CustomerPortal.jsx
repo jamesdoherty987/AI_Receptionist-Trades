@@ -205,7 +205,7 @@ function CustomerPortal() {
               </div>
             )}
 
-            {/* All media on the job (worker/owner uploads) */}
+            {/* All media on the job (employee/owner uploads) */}
             {(j.photo_urls || []).length > 0 && (
               <div className="portal-media-section">
                 <h4><i className="fas fa-camera"></i> {terminology.job} Photos</h4>

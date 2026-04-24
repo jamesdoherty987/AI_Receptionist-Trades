@@ -1,7 +1,7 @@
 """
 Migration: Add customer_photo_urls column to bookings table.
 Stores JSON array of R2 URLs for media uploaded by customers via the portal.
-Separate from photo_urls (worker/owner uploads) so they can be displayed distinctly.
+Separate from photo_urls (employee/owner uploads) so they can be displayed distinctly.
 """
 import os
 import psycopg2

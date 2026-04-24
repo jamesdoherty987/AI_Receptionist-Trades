@@ -216,13 +216,13 @@ const blogPosts = [
     keywords: 'digital tools tradespeople Ireland, trade business software Ireland, paperless trades',
   },
   {
-    slug: 'managing-multiple-workers-scheduling',
-    title: 'Managing a Team of Workers? Here\'s How to Stop the Scheduling Chaos',
+    slug: 'managing-multiple-employees-scheduling',
+    title: 'Managing a Team of Employees? Here\'s How to Stop the Scheduling Chaos',
     description: 'When you grow from solo to a team, scheduling gets exponentially harder. These systems keep everyone on the same page.',
     date: '2025-10-31',
     readTime: '7 min read',
     category: 'Productivity',
-    keywords: 'manage workers scheduling, team scheduling tradespeople, multi-worker calendar',
+    keywords: 'manage employees scheduling, team scheduling tradespeople, multi-employee calendar',
   },
   {
     slug: 'seai-grants-driving-trade-demand-ireland',

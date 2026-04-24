@@ -29,9 +29,9 @@ class TestCancelFlowIntegration:
     def create_mock_services(self, bookings):
         mock_db = Mock()
         mock_db.get_all_bookings.return_value = bookings
-        mock_db.get_worker.return_value = None
+        mock_db.get_employee.return_value = None
         mock_db.delete_booking.return_value = True
-        mock_db.has_workers.return_value = False
+        mock_db.has_employees.return_value = False
         
         mock_calendar = Mock()
         mock_calendar.cancel_appointment.return_value = True
@@ -63,7 +63,7 @@ class TestCancelFlowIntegration:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -102,7 +102,7 @@ class TestCancelFlowIntegration:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt1',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             },
             {
                 'id': 2,
@@ -112,7 +112,7 @@ class TestCancelFlowIntegration:
                 'duration_minutes': 90,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt2',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             },
             {
                 'id': 3,
@@ -122,7 +122,7 @@ class TestCancelFlowIntegration:
                 'duration_minutes': 120,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt3',
-                'assigned_worker_ids': []
+                'assigned_employee_ids': []
             }
         ]
         
@@ -164,7 +164,7 @@ class TestCancelFlowIntegration:
             'duration_minutes': 480,  # Full day
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -198,7 +198,7 @@ class TestCancelFlowIntegration:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -217,12 +217,12 @@ class TestCancelFlowIntegration:
 class TestRescheduleFlowIntegration:
     """Test complete reschedule flow scenarios"""
     
-    def create_mock_services(self, bookings, has_workers=False):
+    def create_mock_services(self, bookings, has_employees=False):
         mock_db = Mock()
         mock_db.get_all_bookings.return_value = bookings
-        mock_db.get_worker.return_value = None
+        mock_db.get_employee.return_value = None
         mock_db.update_booking.return_value = True
-        mock_db.has_workers.return_value = has_workers
+        mock_db.has_employees.return_value = has_employees
         
         mock_calendar = Mock()
         mock_calendar.reschedule_appointment.return_value = {'id': 'evt1'}
@@ -257,7 +257,7 @@ class TestRescheduleFlowIntegration:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -324,7 +324,7 @@ class TestRescheduleFlowIntegration:
             'duration_minutes': 480,  # Full day
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)
@@ -374,10 +374,10 @@ class TestMixedJobsScenarios:
     def create_mock_services(self, bookings):
         mock_db = Mock()
         mock_db.get_all_bookings.return_value = bookings
-        mock_db.get_worker.return_value = None
+        mock_db.get_employee.return_value = None
         mock_db.delete_booking.return_value = True
         mock_db.update_booking.return_value = True
-        mock_db.has_workers.return_value = False
+        mock_db.has_employees.return_value = False
         
         mock_calendar = Mock()
         mock_calendar.cancel_appointment.return_value = True
@@ -394,7 +394,7 @@ class TestMixedJobsScenarios:
     def test_full_day_and_short_jobs_same_day(self):
         """
         Scenario: One full-day job and one short job on same day
-        (Different workers would handle these)
+        (Different employees would handle these)
         """
         bookings = [
             {
@@ -405,7 +405,7 @@ class TestMixedJobsScenarios:
                 'duration_minutes': 480,  # Full day
                 'status': 'scheduled',
                 'calendar_event_id': 'evt1',
-                'assigned_worker_ids': [1]
+                'assigned_employee_ids': [1]
             },
             {
                 'id': 2,
@@ -415,7 +415,7 @@ class TestMixedJobsScenarios:
                 'duration_minutes': 30,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt2',
-                'assigned_worker_ids': [2]  # Different worker
+                'assigned_employee_ids': [2]  # Different employee
             }
         ]
         
@@ -432,9 +432,9 @@ class TestMixedJobsScenarios:
         assert 'John Smith' in result['message']
         assert 'Jane Doe' in result['message']
     
-    def test_same_worker_multiple_short_jobs(self):
+    def test_same_employee_multiple_short_jobs(self):
         """
-        Scenario: Same worker has multiple short jobs on same day
+        Scenario: Same employee has multiple short jobs on same day
         """
         bookings = [
             {
@@ -445,7 +445,7 @@ class TestMixedJobsScenarios:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt1',
-                'assigned_worker_ids': [1]
+                'assigned_employee_ids': [1]
             },
             {
                 'id': 2,
@@ -455,7 +455,7 @@ class TestMixedJobsScenarios:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt2',
-                'assigned_worker_ids': [1]  # Same worker
+                'assigned_employee_ids': [1]  # Same employee
             },
             {
                 'id': 3,
@@ -465,7 +465,7 @@ class TestMixedJobsScenarios:
                 'duration_minutes': 60,
                 'status': 'scheduled',
                 'calendar_event_id': 'evt3',
-                'assigned_worker_ids': [1]  # Same worker
+                'assigned_employee_ids': [1]  # Same employee
             }
         ]
         
@@ -490,9 +490,9 @@ class TestErrorScenarios:
     def create_mock_services(self, bookings):
         mock_db = Mock()
         mock_db.get_all_bookings.return_value = bookings
-        mock_db.get_worker.return_value = None
+        mock_db.get_employee.return_value = None
         mock_db.delete_booking.return_value = True
-        mock_db.has_workers.return_value = False
+        mock_db.has_employees.return_value = False
         
         mock_calendar = Mock()
         mock_calendar.cancel_appointment.return_value = True
@@ -527,7 +527,7 @@ class TestErrorScenarios:
             'duration_minutes': 60,
             'status': 'scheduled',
             'calendar_event_id': 'evt1',
-            'assigned_worker_ids': []
+            'assigned_employee_ids': []
         }]
         
         services = self.create_mock_services(bookings)

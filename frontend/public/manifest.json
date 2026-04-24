@@ -43,9 +43,9 @@
       "icons": [{ "src": "/logo.png", "sizes": "512x512" }]
     },
     {
-      "name": "Worker Portal",
-      "short_name": "Worker",
-      "url": "/worker/login",
+      "name": "Employee Portal",
+      "short_name": "Employee",
+      "url": "/employee/login",
       "icons": [{ "src": "/logo.png", "sizes": "512x512" }]
     }
   ]

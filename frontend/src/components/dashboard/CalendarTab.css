@@ -113,8 +113,8 @@
   color: white;
 }
 
-/* Worker Filter */
-.worker-filter-select {
+/* Employee Filter */
+.employee-filter-select {
   padding: 0.625rem 1rem;
   border: 1px solid var(--border-color);
   border-radius: 10px;
@@ -127,18 +127,18 @@
   transition: all 0.2s;
 }
 
-.worker-filter-select:hover {
+.employee-filter-select:hover {
   border-color: var(--accent-blue);
 }
 
-.worker-filter-select:focus {
+.employee-filter-select:focus {
   outline: none;
   border-color: var(--accent-blue);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-/* Worker Legend */
-.worker-legend {
+/* Employee Legend */
+.employee-legend {
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -178,13 +178,13 @@
 }
 
 .legend-item:hover {
-  border-color: var(--worker-color);
+  border-color: var(--employee-color);
   background: rgba(59, 130, 246, 0.05);
 }
 
 .legend-item.active {
-  border-color: var(--worker-color);
-  background: var(--worker-color);
+  border-color: var(--employee-color);
+  background: var(--employee-color);
   color: white;
 }
 
@@ -331,7 +331,7 @@
   background: var(--accent-blue);
 }
 
-.event-dot.worker-colored {
+.event-dot.employee-colored {
   background: currentColor;
 }
 
@@ -439,8 +439,8 @@
   background: rgba(34, 197, 94, 0.07);
 }
 
-/* Multi-worker segmented color bar (replaces gradient) */
-.multi-worker-border {
+/* Multi-employee segmented color bar (replaces gradient) */
+.multi-employee-border {
   position: absolute;
   left: 0;
   top: 0;
@@ -452,7 +452,7 @@
   border-radius: 10px 0 0 10px;
 }
 
-.week-event .multi-worker-border {
+.week-event .multi-employee-border {
   width: 3px;
   border-radius: 6px 0 0 6px;
 }
@@ -544,7 +544,7 @@
   font-size: 0.7rem;
 }
 
-.event-worker {
+.event-employee {
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -553,14 +553,14 @@
   margin-bottom: 0.25rem;
 }
 
-.worker-indicators {
+.employee-indicators {
   display: inline-flex;
   gap: 3px;
   align-items: center;
   flex-shrink: 0;
 }
 
-.worker-indicator {
+.employee-indicator {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -605,7 +605,7 @@
     gap: 0.5rem;
   }
 
-  .worker-filter-select {
+  .employee-filter-select {
     width: 100%;
   }
 
@@ -626,7 +626,7 @@
     font-size: 0.85rem;
   }
 
-  .worker-legend {
+  .employee-legend {
     padding: 0.5rem 0.75rem;
   }
 
@@ -716,16 +716,16 @@
     font-size: 0.75rem;
   }
 
-  .event-worker {
+  .event-employee {
     font-size: 0.7rem;
   }
 
-  .worker-indicator {
+  .employee-indicator {
     width: 6px;
     height: 6px;
   }
 
-  .worker-indicators {
+  .employee-indicators {
     gap: 2px;
   }
 
@@ -1075,17 +1075,17 @@
 }
 
 
-/* No worker warning — calendar events panel */
-.event-no-worker-warning {
+/* No employee warning — calendar events panel */
+.event-no-employee-warning {
   display: flex; align-items: center; gap: 0.3rem;
   font-size: 0.72rem; color: #92400e; background: #fef3c7;
   padding: 0.15rem 0.45rem; border-radius: 4px; margin-top: 0.15rem;
   width: fit-content;
 }
-.event-no-worker-warning i { font-size: 0.62rem; color: #d97706; }
+.event-no-employee-warning i { font-size: 0.62rem; color: #d97706; }
 
-/* No worker warning — week view event bubble */
-.week-event-no-worker {
+/* No employee warning — week view event bubble */
+.week-event-no-employee {
   position: absolute; top: 2px; right: 2px;
   color: #fbbf24; font-size: 0.6rem; line-height: 1;
   filter: drop-shadow(0 0 1px rgba(0,0,0,0.3));

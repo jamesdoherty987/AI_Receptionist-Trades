@@ -126,7 +126,7 @@ class SMSReminderService:
     def send_day_before_reminder(self, to_number: str, appointment_time: datetime,
                                   customer_name: str, service_type: str = "appointment",
                                   company_name: str = None,
-                                  worker_names: list = None) -> bool:
+                                  employee_names: list = None) -> bool:
         """Send a day-before SMS reminder (kept under 160 chars, no emojis)."""
         if not self.client:
             return False
@@ -143,10 +143,10 @@ class SMSReminderService:
                 f"Hi {customer_name}, reminder:",
                 f"{service_type} - {date_str} at {time_str}",
             ]
-            if worker_names:
-                worker_line = f"Assigned: {', '.join(worker_names)}"
-                if len("\n".join(lines + [worker_line, "To cancel/reschedule, contact us."])) <= 160:
-                    lines.append(worker_line)
+            if employee_names:
+                employee_line = f"Assigned: {', '.join(employee_names)}"
+                if len("\n".join(lines + [employee_line, "To cancel/reschedule, contact us."])) <= 160:
+                    lines.append(employee_line)
             lines.append("To cancel/reschedule, contact us.")
             message_body = "\n".join(lines)
 
@@ -175,7 +175,7 @@ class SMSReminderService:
     def send_booking_confirmation(self, to_number: str, appointment_time: datetime,
                                    customer_name: str, service_type: str = "appointment",
                                    company_name: str = None,
-                                   worker_names: list = None,
+                                   employee_names: list = None,
                                    address: str = None) -> bool:
         """Send booking confirmation SMS (kept under 160 chars, no emojis)."""
         if not self.client:
@@ -193,10 +193,10 @@ class SMSReminderService:
                 f"Hi {customer_name}, confirmed:",
                 f"{service_type} - {date_str} at {time_str}",
             ]
-            if worker_names:
-                worker_line = f"With: {', '.join(worker_names)}"
-                if len("\n".join(lines + [worker_line])) <= 160:
-                    lines.append(worker_line)
+            if employee_names:
+                employee_line = f"With: {', '.join(employee_names)}"
+                if len("\n".join(lines + [employee_line])) <= 160:
+                    lines.append(employee_line)
             if address:
                 addr_line = f"At: {address}"
                 if len("\n".join(lines + [addr_line])) <= 160:
@@ -434,7 +434,7 @@ def handle_email_bounce(resend_email_id: str, bounce_type: str = 'bounce') -> bo
                 customer_name=kwargs.get('customer_name', 'Customer'),
                 service_type=kwargs.get('service_type', 'appointment'),
                 company_name=kwargs.get('company_name'),
-                worker_names=kwargs.get('worker_names'),
+                employee_names=kwargs.get('employee_names'),
                 address=kwargs.get('address'),
             )
         elif notification_type == 'cancellation':
@@ -462,7 +462,7 @@ def handle_email_bounce(resend_email_id: str, bounce_type: str = 'bounce') -> bo
                 customer_name=kwargs.get('customer_name', 'Customer'),
                 service_type=kwargs.get('service_type', 'appointment'),
                 company_name=kwargs.get('company_name'),
-                worker_names=kwargs.get('worker_names'),
+                employee_names=kwargs.get('employee_names'),
             )
 
         if sent:
@@ -565,7 +565,7 @@ def notify_customer(notification_type: str, customer_email: str = None,
                         customer_name=kwargs.get('customer_name', 'Customer'),
                         service_type=kwargs.get('service_type', 'appointment'),
                         company_name=kwargs.get('company_name'),
-                        worker_names=kwargs.get('worker_names'),
+                        employee_names=kwargs.get('employee_names'),
                         address=kwargs.get('address'),
                         portal_link=kwargs.get('portal_link'),
                     )
@@ -594,7 +594,7 @@ def notify_customer(notification_type: str, customer_email: str = None,
                         customer_name=kwargs.get('customer_name', 'Customer'),
                         service_type=kwargs.get('service_type', 'appointment'),
                         company_name=kwargs.get('company_name'),
-                        worker_names=kwargs.get('worker_names'),
+                        employee_names=kwargs.get('employee_names'),
                     )
                 
                 if sent:
@@ -620,7 +620,7 @@ def notify_customer(notification_type: str, customer_email: str = None,
                         customer_name=kwargs.get('customer_name', 'Customer'),
                         service_type=kwargs.get('service_type', 'appointment'),
                         company_name=kwargs.get('company_name'),
-                        worker_names=kwargs.get('worker_names'),
+                        employee_names=kwargs.get('employee_names'),
                         address=kwargs.get('address'),
                     )
                 elif notification_type == 'cancellation':
@@ -648,7 +648,7 @@ def notify_customer(notification_type: str, customer_email: str = None,
                         customer_name=kwargs.get('customer_name', 'Customer'),
                         service_type=kwargs.get('service_type', 'appointment'),
                         company_name=kwargs.get('company_name'),
-                        worker_names=kwargs.get('worker_names'),
+                        employee_names=kwargs.get('employee_names'),
                     )
                 
                 if sent:
@@ -693,12 +693,12 @@ def send_day_before_reminders() -> int:
                 c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
                 comp.company_name,
                 COALESCE(comp.send_reminder_sms, FALSE) AS send_reminder_sms,
-                ARRAY_AGG(w.name) FILTER (WHERE w.name IS NOT NULL) AS worker_names
+                ARRAY_AGG(w.name) FILTER (WHERE w.name IS NOT NULL) AS employee_names
             FROM bookings b
             LEFT JOIN clients c ON b.client_id = c.id
             LEFT JOIN companies comp ON b.company_id = comp.id
-            LEFT JOIN worker_assignments wa ON b.id = wa.booking_id
-            LEFT JOIN workers w ON wa.worker_id = w.id
+            LEFT JOIN employee_assignments wa ON b.id = wa.booking_id
+            LEFT JOIN employees w ON wa.employee_id = w.id
             WHERE b.appointment_time >= %s
               AND b.appointment_time < %s
               AND b.status = 'scheduled'
@@ -737,7 +737,7 @@ def send_day_before_reminders() -> int:
         customer_name = booking.get('client_name') or 'Customer'
         service_type = booking.get('service_type') or 'appointment'
         company_name = booking.get('company_name')
-        worker_names = booking.get('worker_names') or []
+        employee_names = booking.get('employee_names') or []
         appt_time = booking['appointment_time']
 
         if isinstance(appt_time, str):
@@ -751,7 +751,7 @@ def send_day_before_reminders() -> int:
             customer_name=customer_name,
             service_type=service_type,
             company_name=company_name,
-            worker_names=worker_names,
+            employee_names=employee_names,
         )
         if success:
             sent_count += 1

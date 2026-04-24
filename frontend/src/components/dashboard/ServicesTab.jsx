@@ -6,7 +6,7 @@ import {
   createService,
   updateService,
   deleteService,
-  getWorkers,
+  getEmployees,
   getPackages,
   createPackage,
   updatePackage,
@@ -40,8 +40,8 @@ function ServicesTab() {
     price_max: null,
     duration: '1440', 
     image_url: '', 
-    workers_required: '1',
-    worker_restrictions: { type: 'all', worker_ids: [] },
+    employees_required: '1',
+    employee_restrictions: { type: 'all', employee_ids: [] },
     requires_callout: false,
     requires_quote: false,
     package_only: false,
@@ -50,15 +50,15 @@ function ServicesTab() {
   });
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, service: null });
 
-  const { data: workersData } = useQuery({
-    queryKey: ['workers'],
+  const { data: employeesData } = useQuery({
+    queryKey: ['employees'],
     queryFn: async () => {
-      const response = await getWorkers();
+      const response = await getEmployees();
       return response.data;
     },
   });
 
-  const workers = Array.isArray(workersData) ? workersData : (workersData?.workers || []);
+  const employees = Array.isArray(employeesData) ? employeesData : (employeesData?.employees || []);
 
   const { data: materialsData } = useQuery({
     queryKey: ['materials'],
@@ -110,8 +110,8 @@ function ServicesTab() {
         price_max: null,
         duration: '1440', 
         image_url: '', 
-        workers_required: '1',
-        worker_restrictions: { type: 'all', worker_ids: [] },
+        employees_required: '1',
+        employee_restrictions: { type: 'all', employee_ids: [] },
         requires_callout: false,
         requires_quote: false,
         package_only: false,
@@ -151,16 +151,16 @@ function ServicesTab() {
     e.preventDefault();
     if (!formData.name.trim()) return;
     
-    const restrictionType = formData.worker_restrictions?.type;
-    const hasWorkerIds = formData.worker_restrictions?.worker_ids?.length > 0;
-    if ((restrictionType === 'only' || restrictionType === 'except') && !hasWorkerIds) {
-      addToast('Please select at least one worker for the restriction', 'warning');
+    const restrictionType = formData.employee_restrictions?.type;
+    const hasEmployeeIds = formData.employee_restrictions?.employee_ids?.length > 0;
+    if ((restrictionType === 'only' || restrictionType === 'except') && !hasEmployeeIds) {
+      addToast('Please select at least one employee for the restriction', 'warning');
       return;
     }
     
-    const restrictions = formData.worker_restrictions?.type === 'all' 
+    const restrictions = formData.employee_restrictions?.type === 'all' 
       ? null 
-      : formData.worker_restrictions;
+      : formData.employee_restrictions;
     
     createMutation.mutate({
       name: formData.name,
@@ -171,8 +171,8 @@ function ServicesTab() {
         : null,
       duration_minutes: parseInt(formData.duration) || 60,
       image_url: formData.image_url,
-      workers_required: parseInt(formData.workers_required) || 1,
-      worker_restrictions: restrictions,
+      employees_required: parseInt(formData.employees_required) || 1,
+      employee_restrictions: restrictions,
       requires_callout: formData.requires_callout,
       requires_quote: formData.requires_quote,
       package_only: formData.package_only,
@@ -181,16 +181,16 @@ function ServicesTab() {
   };
 
   const handleUpdate = (service) => {
-    const restrictionType = service.worker_restrictions?.type;
-    const hasWorkerIds = service.worker_restrictions?.worker_ids?.length > 0;
-    if ((restrictionType === 'only' || restrictionType === 'except') && !hasWorkerIds) {
-      addToast('Please select at least one worker for the restriction', 'warning');
+    const restrictionType = service.employee_restrictions?.type;
+    const hasEmployeeIds = service.employee_restrictions?.employee_ids?.length > 0;
+    if ((restrictionType === 'only' || restrictionType === 'except') && !hasEmployeeIds) {
+      addToast('Please select at least one employee for the restriction', 'warning');
       return;
     }
     
-    const restrictions = service.worker_restrictions?.type === 'all' 
+    const restrictions = service.employee_restrictions?.type === 'all' 
       ? null 
-      : service.worker_restrictions;
+      : service.employee_restrictions;
     
     updateMutation.mutate({
       id: service.id,
@@ -203,8 +203,8 @@ function ServicesTab() {
           : null,
         duration_minutes: parseInt(service.duration_minutes) || 60,
         image_url: service.image_url,
-        workers_required: parseInt(service.workers_required) || 1,
-        worker_restrictions: restrictions,
+        employees_required: parseInt(service.employees_required) || 1,
+        employee_restrictions: restrictions,
         requires_callout: service.requires_callout || false,
         requires_quote: service.requires_quote || false,
         package_only: service.package_only || false,
@@ -252,8 +252,8 @@ function ServicesTab() {
         case 'duration':
           cmp = (a.duration_minutes || 0) - (b.duration_minutes || 0);
           break;
-        case 'workers':
-          cmp = (a.workers_required || 1) - (b.workers_required || 1);
+        case 'employees':
+          cmp = (a.employees_required || 1) - (b.employees_required || 1);
           break;
         default:
           cmp = 0;
@@ -432,39 +432,39 @@ function ServicesTab() {
 
           <div className="form-grid">
             <div className="form-group">
-              <label>Workers Required <HelpTooltip text="How many workers are needed on-site at the same time for this service." /></label>
-              <div className="workers-input-wrapper">
+              <label>Employees Required <HelpTooltip text="How many employees are needed on-site at the same time for this service." /></label>
+              <div className="employees-input-wrapper">
                 <button 
                   type="button" 
-                  className="workers-btn"
-                  onClick={() => setFormData({ ...formData, workers_required: Math.max(1, parseInt(formData.workers_required || 1) - 1).toString() })}
-                  disabled={parseInt(formData.workers_required || 1) <= 1}
+                  className="employees-btn"
+                  onClick={() => setFormData({ ...formData, employees_required: Math.max(1, parseInt(formData.employees_required || 1) - 1).toString() })}
+                  disabled={parseInt(formData.employees_required || 1) <= 1}
                 >
                   <i className="fas fa-minus"></i>
                 </button>
-                <span className="workers-value">{formData.workers_required || 1}</span>
+                <span className="employees-value">{formData.employees_required || 1}</span>
                 <button 
                   type="button" 
-                  className="workers-btn"
-                  onClick={() => setFormData({ ...formData, workers_required: (parseInt(formData.workers_required || 1) + 1).toString() })}
-                  disabled={parseInt(formData.workers_required || 1) >= 10}
+                  className="employees-btn"
+                  onClick={() => setFormData({ ...formData, employees_required: (parseInt(formData.employees_required || 1) + 1).toString() })}
+                  disabled={parseInt(formData.employees_required || 1) >= 10}
                 >
                   <i className="fas fa-plus"></i>
                 </button>
               </div>
-              <span className="form-hint">How many workers needed for this job</span>
+              <span className="form-hint">How many employees needed for this job</span>
             </div>
           </div>
           
-          <WorkerRestrictions
-            restrictions={formData.worker_restrictions}
-            onChange={(restrictions) => setFormData({ ...formData, worker_restrictions: restrictions })}
-            workers={workers}
+          <EmployeeRestrictions
+            restrictions={formData.employee_restrictions}
+            onChange={(restrictions) => setFormData({ ...formData, employee_restrictions: restrictions })}
+            employees={employees}
           />
           
           {!formData.package_only && (
           <div className="callout-toggle-group">
-            <label>Requires Initial Callout? <HelpTooltip text="If enabled, the AI books a callout visit first so a worker can assess the job. The callout service is configured in your Services tab." /></label>
+            <label>Requires Initial Callout? <HelpTooltip text="If enabled, the AI books a callout visit first so an employee can assess the job. The callout service is configured in your Services tab." /></label>
             <div className="callout-toggle-row">
               <button
                 type="button"
@@ -486,7 +486,7 @@ function ServicesTab() {
           
           {!formData.package_only && !formData.requires_callout && (
           <div className="callout-toggle-group">
-            <label>Requires Quote Visit? <HelpTooltip text="If enabled, the AI books a free quote visit first so a worker can assess and quote the job. The quote service is configured in your Services tab." /></label>
+            <label>Requires Quote Visit? <HelpTooltip text="If enabled, the AI books a free quote visit first so an employee can assess and quote the job. The quote service is configured in your Services tab." /></label>
             <div className="callout-toggle-row">
               <button
                 type="button"
@@ -618,7 +618,7 @@ function ServicesTab() {
               onCancel={() => setEditingId(null)}
               onDelete={() => handleDelete(service)}
               isPending={updateMutation.isPending || deleteMutation.isPending}
-              workers={workers}
+              employees={employees}
               viewMode={viewMode}
               materialsCatalog={materialsCatalog}
             />
@@ -783,36 +783,36 @@ function DefaultMaterialsPicker({ materials, selectedMaterials, onChange }) {
   );
 }
 
-function WorkerRestrictions({ restrictions, onChange, workers }) {
+function EmployeeRestrictions({ restrictions, onChange, employees }) {
   const type = restrictions?.type || 'all';
-  const selectedIds = restrictions?.worker_ids || [];
+  const selectedIds = restrictions?.employee_ids || [];
 
   const handleTypeChange = (newType) => {
-    onChange({ type: newType, worker_ids: newType === 'all' ? [] : selectedIds });
+    onChange({ type: newType, employee_ids: newType === 'all' ? [] : selectedIds });
   };
 
-  const toggleWorker = (workerId) => {
-    const newIds = selectedIds.includes(workerId)
-      ? selectedIds.filter(id => id !== workerId)
-      : [...selectedIds, workerId];
-    onChange({ type, worker_ids: newIds });
+  const toggleEmployee = (employeeId) => {
+    const newIds = selectedIds.includes(employeeId)
+      ? selectedIds.filter(id => id !== employeeId)
+      : [...selectedIds, employeeId];
+    onChange({ type, employee_ids: newIds });
   };
 
-  if (!workers || workers.length === 0) {
+  if (!employees || employees.length === 0) {
     return (
-      <div className="worker-restrictions">
-        <label>Who Can Do This Job <HelpTooltip text="Control which workers are eligible for this service. Useful if only certain tradespeople are qualified." /></label>
-        <div className="no-workers-message">
+      <div className="employee-restrictions">
+        <label>Who Can Do This Job <HelpTooltip text="Control which employees are eligible for this service. Useful if only certain tradespeople are qualified." /></label>
+        <div className="no-employees-message">
           <i className="fas fa-info-circle"></i>
-          <span>Add workers in the Workers tab to set job restrictions</span>
+          <span>Add employees in the Employees tab to set job restrictions</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="worker-restrictions">
-      <label>Who Can Do This Job <HelpTooltip text="Control which workers are eligible for this service. Useful if only certain tradespeople are qualified." /></label>
+    <div className="employee-restrictions">
+      <label>Who Can Do This Job <HelpTooltip text="Control which employees are eligible for this service. Useful if only certain tradespeople are qualified." /></label>
       <div className="restriction-type-selector">
         <button
           type="button"
@@ -820,7 +820,7 @@ function WorkerRestrictions({ restrictions, onChange, workers }) {
           onClick={() => handleTypeChange('all')}
         >
           <i className="fas fa-users"></i>
-          All Workers
+          All Employees
         </button>
         <button
           type="button"
@@ -841,29 +841,29 @@ function WorkerRestrictions({ restrictions, onChange, workers }) {
       </div>
       
       {type !== 'all' && (
-        <div className="worker-selection">
+        <div className="employee-selection">
           <span className="selection-hint">
             {type === 'only' 
-              ? 'Select workers who CAN do this job:' 
-              : 'Select workers who CANNOT do this job:'}
+              ? 'Select employees who CAN do this job:' 
+              : 'Select employees who CANNOT do this job:'}
           </span>
-          <div className="worker-chips">
-            {workers.map(worker => (
+          <div className="employee-chips">
+            {employees.map(employee => (
               <button
-                key={worker.id}
+                key={employee.id}
                 type="button"
-                className={`worker-chip ${selectedIds.includes(worker.id) ? 'selected' : ''}`}
-                onClick={() => toggleWorker(worker.id)}
+                className={`employee-chip ${selectedIds.includes(employee.id) ? 'selected' : ''}`}
+                onClick={() => toggleEmployee(employee.id)}
               >
-                <i className={`fas ${selectedIds.includes(worker.id) ? 'fa-check' : 'fa-user'}`}></i>
-                {worker.name}
+                <i className={`fas ${selectedIds.includes(employee.id) ? 'fa-check' : 'fa-user'}`}></i>
+                {employee.name}
               </button>
             ))}
           </div>
           {type !== 'all' && selectedIds.length === 0 && (
             <span className="selection-warning">
               <i className="fas fa-exclamation-circle"></i>
-              Select at least one worker
+              Select at least one employee
             </span>
           )}
         </div>
@@ -872,7 +872,7 @@ function WorkerRestrictions({ restrictions, onChange, workers }) {
   );
 }
 
-function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, isPending, workers, viewMode, materialsCatalog }) {
+function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, isPending, employees, viewMode, materialsCatalog }) {
   const [editData, setEditData] = useState(service);
   const [imageError, setImageError] = useState(false);
 
@@ -883,7 +883,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
       setEditData({
         ...service,
         price_max: hasRange ? service.price_max : null,
-        worker_restrictions: service.worker_restrictions || { type: 'all', worker_ids: [] },
+        employee_restrictions: service.employee_restrictions || { type: 'all', employee_ids: [] },
         show_price_duration: service.package_only ? (parseFloat(service.price) > 0) : false,
         default_materials: Array.isArray(service.default_materials) ? service.default_materials : 
           (typeof service.default_materials === 'string' ? JSON.parse(service.default_materials || '[]') : [])
@@ -901,12 +901,12 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
   };
 
   const getRestrictionSummary = () => {
-    const restrictions = service.worker_restrictions;
+    const restrictions = service.employee_restrictions;
     if (!restrictions || restrictions.type === 'all') return null;
     
-    const count = restrictions.worker_ids?.length || 0;
+    const count = restrictions.employee_ids?.length || 0;
     if (restrictions.type === 'only') {
-      return `${count} worker${count !== 1 ? 's' : ''} only`;
+      return `${count} employee${count !== 1 ? 's' : ''} only`;
     } else {
       return `All except ${count}`;
     }
@@ -1042,22 +1042,22 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               </select>
             </div>
             <div className="form-group">
-              <label>Workers</label>
-              <div className="workers-input-wrapper compact">
+              <label>Employees</label>
+              <div className="employees-input-wrapper compact">
                 <button 
                   type="button" 
-                  className="workers-btn"
-                  onClick={() => setEditData({ ...editData, workers_required: Math.max(1, (editData.workers_required || 1) - 1) })}
-                  disabled={(editData.workers_required || 1) <= 1}
+                  className="employees-btn"
+                  onClick={() => setEditData({ ...editData, employees_required: Math.max(1, (editData.employees_required || 1) - 1) })}
+                  disabled={(editData.employees_required || 1) <= 1}
                 >
                   <i className="fas fa-minus"></i>
                 </button>
-                <span className="workers-value">{editData.workers_required || 1}</span>
+                <span className="employees-value">{editData.employees_required || 1}</span>
                 <button 
                   type="button" 
-                  className="workers-btn"
-                  onClick={() => setEditData({ ...editData, workers_required: (editData.workers_required || 1) + 1 })}
-                  disabled={(editData.workers_required || 1) >= 10}
+                  className="employees-btn"
+                  onClick={() => setEditData({ ...editData, employees_required: (editData.employees_required || 1) + 1 })}
+                  disabled={(editData.employees_required || 1) >= 10}
                 >
                   <i className="fas fa-plus"></i>
                 </button>
@@ -1069,22 +1069,22 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           {!showPriceDuration && (
           <div className="edit-row">
             <div className="form-group">
-              <label>Workers</label>
-              <div className="workers-input-wrapper compact">
+              <label>Employees</label>
+              <div className="employees-input-wrapper compact">
                 <button 
                   type="button" 
-                  className="workers-btn"
-                  onClick={() => setEditData({ ...editData, workers_required: Math.max(1, (editData.workers_required || 1) - 1) })}
-                  disabled={(editData.workers_required || 1) <= 1}
+                  className="employees-btn"
+                  onClick={() => setEditData({ ...editData, employees_required: Math.max(1, (editData.employees_required || 1) - 1) })}
+                  disabled={(editData.employees_required || 1) <= 1}
                 >
                   <i className="fas fa-minus"></i>
                 </button>
-                <span className="workers-value">{editData.workers_required || 1}</span>
+                <span className="employees-value">{editData.employees_required || 1}</span>
                 <button 
                   type="button" 
-                  className="workers-btn"
-                  onClick={() => setEditData({ ...editData, workers_required: (editData.workers_required || 1) + 1 })}
-                  disabled={(editData.workers_required || 1) >= 10}
+                  className="employees-btn"
+                  onClick={() => setEditData({ ...editData, employees_required: (editData.employees_required || 1) + 1 })}
+                  disabled={(editData.employees_required || 1) >= 10}
                 >
                   <i className="fas fa-plus"></i>
                 </button>
@@ -1093,15 +1093,15 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           </div>
           )}
           
-          <WorkerRestrictions
-            restrictions={editData.worker_restrictions}
-            onChange={(restrictions) => setEditData({ ...editData, worker_restrictions: restrictions })}
-            workers={workers}
+          <EmployeeRestrictions
+            restrictions={editData.employee_restrictions}
+            onChange={(restrictions) => setEditData({ ...editData, employee_restrictions: restrictions })}
+            employees={employees}
           />
           
           {!editData.package_only && (
           <div className="callout-toggle-group">
-            <label>Requires Initial Callout? <HelpTooltip text="If enabled, the AI books a callout visit first so a worker can assess the job. The callout service is configured in your Services tab." /></label>
+            <label>Requires Initial Callout? <HelpTooltip text="If enabled, the AI books a callout visit first so an employee can assess the job. The callout service is configured in your Services tab." /></label>
             <div className="callout-toggle-row">
               <button
                 type="button"
@@ -1123,7 +1123,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           
           {!editData.package_only && !editData.requires_callout && (
           <div className="callout-toggle-group">
-            <label>Requires Quote Visit? <HelpTooltip text="If enabled, the AI books a free quote visit first so a worker can assess and quote the job. The quote service is configured in your Services tab." /></label>
+            <label>Requires Quote Visit? <HelpTooltip text="If enabled, the AI books a free quote visit first so an employee can assess and quote the job. The quote service is configured in your Services tab." /></label>
             <div className="callout-toggle-row">
               <button
                 type="button"
@@ -1198,11 +1198,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
               <i className="fas fa-clock"></i> {formatDuration(service.duration_minutes || service.duration)}
             </span>
           )}
-          <span className="meta-item workers" title="Workers required for this job">
-            <i className="fas fa-user-hard-hat"></i> {service.workers_required || 1}
+          <span className="meta-item employees" title="Employees required for this job">
+            <i className="fas fa-user-hard-hat"></i> {service.employees_required || 1}
           </span>
           {restrictionSummary && (
-            <span className="meta-item restriction" title="Worker restrictions">
+            <span className="meta-item restriction" title="Employee restrictions">
               <i className="fas fa-user-lock"></i> {restrictionSummary}
             </span>
           )}
@@ -1680,8 +1680,8 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
           </button>
           <span className="callout-toggle-label">
             {formData.use_when_uncertain
-              ? 'Yes — the worker needs to assess/investigate before starting the actual work'
-              : 'No — the worker can start the job straight away'}
+              ? 'Yes — the employee needs to assess/investigate before starting the actual work'
+              : 'No — the employee can start the job straight away'}
           </span>
         </div>
         <span className="form-hint">
@@ -1815,7 +1815,7 @@ function PackageCard({ pkg, services, isEditing, onEdit, onSave, onCancel, onDel
             </span>
           )}
           {pkg.use_when_uncertain && (
-            <span className="badge-uncertain" title="Worker needs to assess/investigate before starting — time and scope may vary">
+            <span className="badge-uncertain" title="Employee needs to assess/investigate before starting — time and scope may vary">
               🔍 Requires investigation
             </span>
           )}

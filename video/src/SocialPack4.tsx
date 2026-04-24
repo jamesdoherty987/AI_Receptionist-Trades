@@ -143,7 +143,7 @@ const V13_S1: React.FC = () => (
             📅 Books jobs automatically<br />
             💬 Sends SMS reminders<br />
             👥 Saves customer details<br />
-            👷 Assigns workers<br />
+            👷 Assigns employees<br />
             💰 Tracks revenue<br />
             🔧 Knows all your services
           </div>
@@ -404,7 +404,7 @@ const L6_Bingo: React.FC = () => {
     { icon: "📅", label: "Auto Book", delay: 35 },
     { icon: "💬", label: "SMS", delay: 50 },
     { icon: "👥", label: "CRM", delay: 65 },
-    { icon: "👷", label: "Workers", delay: 80 },
+    { icon: "👷", label: "Employees", delay: 80 },
     { icon: "💰", label: "Invoicing", delay: 95 },
     { icon: "🔧", label: "Services", delay: 110 },
     { icon: "📊", label: "Analytics", delay: 125 },

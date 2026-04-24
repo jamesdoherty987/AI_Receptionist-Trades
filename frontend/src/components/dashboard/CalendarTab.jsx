@@ -1,14 +1,14 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getBookings, getWorkers, getBusinessHours, getCompanyTimeOffRequests, getBusinessSettings } from '../../services/api';
+import { getBookings, getEmployees, getBusinessHours, getCompanyTimeOffRequests, getBusinessSettings } from '../../services/api';
 import { getStatusBadgeClass, parseServerDate } from '../../utils/helpers';
 import LoadingSpinner from '../LoadingSpinner';
 import JobDetailModal from '../modals/JobDetailModal';
 import './CalendarTab.css';
 import './SharedDashboard.css';
 
-// Color palette for workers
-const WORKER_COLORS = [
+// Color palette for employees
+const EMPLOYEE_COLORS = [
   '#3b82f6', // blue
   '#10b981', // green
   '#f59e0b', // amber
@@ -111,7 +111,7 @@ function CalendarTab() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedJobId, setSelectedJobId] = useState(null);
-  const [selectedWorkerId, setSelectedWorkerId] = useState(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [viewMode, setViewMode] = useState('month'); // 'month' or 'week'
   
   const { data: settings } = useQuery({
@@ -130,10 +130,10 @@ function CalendarTab() {
     },
   });
 
-  const { data: workers, isLoading: workersLoading } = useQuery({
-    queryKey: ['workers'],
+  const { data: employees, isLoading: employeesLoading } = useQuery({
+    queryKey: ['employees'],
     queryFn: async () => {
-      const response = await getWorkers();
+      const response = await getEmployees();
       return response.data;
     },
   });
@@ -168,44 +168,44 @@ function CalendarTab() {
     return [1, 2, 3, 4, 5]; // Mon-Fri default
   }, [businessHours]);
 
-  // Create worker color map
-  const workerColorMap = useMemo(() => {
+  // Create employee color map
+  const employeeColorMap = useMemo(() => {
     const map = {};
-    (workers || []).forEach((worker, index) => {
-      map[worker.id] = WORKER_COLORS[index % WORKER_COLORS.length];
+    (employees || []).forEach((employee, index) => {
+      map[employee.id] = EMPLOYEE_COLORS[index % EMPLOYEE_COLORS.length];
     });
     return map;
-  }, [workers]);
+  }, [employees]);
 
-  // Get worker color for a booking
-  const getWorkerColor = (booking) => {
-    const assignedIds = booking.assigned_worker_ids || [];
+  // Get employee color for a booking
+  const getEmployeeColor = (booking) => {
+    const assignedIds = booking.assigned_employee_ids || [];
     if (assignedIds.length > 0) {
-      return workerColorMap[assignedIds[0]] || '#94a3b8';
+      return employeeColorMap[assignedIds[0]] || '#94a3b8';
     }
     return '#94a3b8';
   };
 
-  // Get all worker colors for a booking (for multi-worker display)
-  const getWorkerColors = (booking) => {
-    const assignedIds = booking.assigned_worker_ids || [];
+  // Get all employee colors for a booking (for multi-employee display)
+  const getEmployeeColors = (booking) => {
+    const assignedIds = booking.assigned_employee_ids || [];
     if (assignedIds.length === 0) return ['#94a3b8'];
-    return assignedIds.map(id => workerColorMap[id] || '#94a3b8');
+    return assignedIds.map(id => employeeColorMap[id] || '#94a3b8');
   };
 
-  // Filter bookings by selected worker
+  // Filter bookings by selected employee
   const filteredBookings = useMemo(() => {
     if (!bookings) return [];
     // Exclude rejected jobs from calendar
     let filtered = bookings.filter(b => b.status !== 'rejected');
-    if (!selectedWorkerId) return filtered;
+    if (!selectedEmployeeId) return filtered;
     return filtered.filter(booking => {
-      const assignedIds = booking.assigned_worker_ids || [];
-      return assignedIds.includes(selectedWorkerId) || assignedIds.includes(String(selectedWorkerId));
+      const assignedIds = booking.assigned_employee_ids || [];
+      return assignedIds.includes(selectedEmployeeId) || assignedIds.includes(String(selectedEmployeeId));
     });
-  }, [bookings, selectedWorkerId]);
+  }, [bookings, selectedEmployeeId]);
 
-  const isLoading = bookingsLoading || workersLoading;
+  const isLoading = bookingsLoading || employeesLoading;
 
   // Get week data for week view
   const weekData = useMemo(() => {
@@ -311,8 +311,8 @@ function CalendarTab() {
     if (!approvedTimeOff) return [];
     const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     return approvedTimeOff.filter(to => {
-      // Filter by selected worker if applicable
-      if (selectedWorkerId && to.worker_id !== selectedWorkerId) return false;
+      // Filter by selected employee if applicable
+      if (selectedEmployeeId && to.employee_id !== selectedEmployeeId) return false;
       return dateStr >= to.start_date && dateStr <= to.end_date;
     });
   };
@@ -322,15 +322,15 @@ function CalendarTab() {
     if (!selectedDate || !approvedTimeOff) return [];
     const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
     return approvedTimeOff.filter(to => {
-      if (selectedWorkerId && to.worker_id !== selectedWorkerId) return false;
+      if (selectedEmployeeId && to.employee_id !== selectedEmployeeId) return false;
       return dateStr >= to.start_date && dateStr <= to.end_date;
     });
-  }, [selectedDate, approvedTimeOff, selectedWorkerId]);
+  }, [selectedDate, approvedTimeOff, selectedEmployeeId]);
 
-  // Get worker name by ID (just name, no specialty)
-  const getWorkerName = (workerId) => {
-    const worker = (workers || []).find(w => w.id === workerId || w.id === Number(workerId));
-    return worker?.name || 'Unknown';
+  // Get employee name by ID (just name, no specialty)
+  const getEmployeeName = (employeeId) => {
+    const employee = (employees || []).find(w => w.id === employeeId || w.id === Number(employeeId));
+    return employee?.name || 'Unknown';
   };
 
   // Navigation
@@ -431,16 +431,16 @@ function CalendarTab() {
               <i className="fas fa-calendar-week"></i> Week
             </button>
           </div>
-          <div className="worker-filter">
+          <div className="employee-filter">
             <select 
-              value={selectedWorkerId || ''} 
-              onChange={(e) => setSelectedWorkerId(e.target.value ? Number(e.target.value) : null)}
-              className="worker-filter-select"
+              value={selectedEmployeeId || ''} 
+              onChange={(e) => setSelectedEmployeeId(e.target.value ? Number(e.target.value) : null)}
+              className="employee-filter-select"
             >
-              <option value="">All Workers</option>
-              {(workers || []).map(worker => (
-                <option key={worker.id} value={worker.id}>
-                  {worker.name}
+              <option value="">All Employees</option>
+              {(employees || []).map(employee => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.name}
                 </option>
               ))}
             </select>
@@ -455,24 +455,24 @@ function CalendarTab() {
         </div>
       </div>
 
-      {/* Worker Legend */}
-      {workers && workers.length > 0 && (
-        <div className="worker-legend">
-          <span className="legend-label">Workers:</span>
+      {/* Employee Legend */}
+      {employees && employees.length > 0 && (
+        <div className="employee-legend">
+          <span className="legend-label">Employees:</span>
           <div className="legend-items">
-            {workers.map(worker => (
+            {employees.map(employee => (
               <button
-                key={worker.id}
-                className={`legend-item ${selectedWorkerId === worker.id ? 'active' : ''}`}
-                onClick={() => setSelectedWorkerId(selectedWorkerId === worker.id ? null : worker.id)}
-                style={{ '--worker-color': workerColorMap[worker.id] }}
+                key={employee.id}
+                className={`legend-item ${selectedEmployeeId === employee.id ? 'active' : ''}`}
+                onClick={() => setSelectedEmployeeId(selectedEmployeeId === employee.id ? null : employee.id)}
+                style={{ '--employee-color': employeeColorMap[employee.id] }}
               >
-                <span className="legend-dot" style={{ backgroundColor: workerColorMap[worker.id] }}></span>
-                {worker.name}
+                <span className="legend-dot" style={{ backgroundColor: employeeColorMap[employee.id] }}></span>
+                {employee.name}
               </button>
             ))}
-            {selectedWorkerId && (
-              <button className="legend-clear" onClick={() => setSelectedWorkerId(null)}>
+            {selectedEmployeeId && (
+              <button className="legend-clear" onClick={() => setSelectedEmployeeId(null)}>
                 <i className="fas fa-times"></i> Clear
               </button>
             )}
@@ -503,7 +503,7 @@ function CalendarTab() {
                   >
                     <span className="day-number">{dayData.day}</span>
                     {hasTimeOff && (
-                      <div className="time-off-indicator" title={timeOff.map(t => `${t.worker_name} - ${t.type}`).join(', ')}>
+                      <div className="time-off-indicator" title={timeOff.map(t => `${t.employee_name} - ${t.type}`).join(', ')}>
                         <i className="fas fa-umbrella-beach"></i>
                       </div>
                     )}
@@ -512,12 +512,12 @@ function CalendarTab() {
                         {(() => {
                           const allDots = [];
                           for (const event of events.slice(0, 3)) {
-                            const colors = getWorkerColors(event);
+                            const colors = getEmployeeColors(event);
                             for (const [ci, color] of colors.entries()) {
                               allDots.push(
                                 <span 
                                   key={`${event.id}-${ci}`} 
-                                  className={`event-dot worker-colored${event.status === 'completed' ? ' completed' : ''}`}
+                                  className={`event-dot employee-colored${event.status === 'completed' ? ' completed' : ''}`}
                                   style={{ backgroundColor: event.status === 'completed' ? 'var(--success)' : color }}
                                   title={`${event.customer_name || 'Customer'} - ${event.service_type || 'Service'}`}
                                 ></span>
@@ -579,7 +579,7 @@ function CalendarTab() {
                       </div>
                       <div className="event-info">
                         <div className="event-header">
-                          <span className="event-customer">{to.worker_name}</span>
+                          <span className="event-customer">{to.employee_name}</span>
                           <span className="badge badge-sm time-off-badge">{to.type}</span>
                         </div>
                         <div className="event-service time-off-dates">
@@ -594,7 +594,7 @@ function CalendarTab() {
                   ))}
                   {/* Job events */}
                   {selectedDateEvents.map(event => {
-                  const colors = event.status === 'completed' ? ['#22c55e'] : getWorkerColors(event);
+                  const colors = event.status === 'completed' ? ['#22c55e'] : getEmployeeColors(event);
                   return (
                     <div 
                       key={event.id} 
@@ -603,7 +603,7 @@ function CalendarTab() {
                       style={colors.length === 1 ? { borderLeftColor: colors[0] } : { borderLeftColor: 'transparent' }}
                     >
                       {colors.length > 1 && (
-                        <div className="multi-worker-border" aria-hidden="true">
+                        <div className="multi-employee-border" aria-hidden="true">
                           {colors.map((c, i) => (
                             <span key={i} style={{ background: c, flex: 1 }} />
                           ))}
@@ -623,18 +623,18 @@ function CalendarTab() {
                           <i className="fas fa-wrench"></i>
                           {event.service_type || event.service || 'Service'}
                         </div>
-                        {(event.assigned_worker_ids?.length > 0) ? (
-                          <div className="event-worker">
-                            <span className="worker-indicators">
-                              {getWorkerColors(event).map((c, ci) => (
-                                <span key={ci} className="worker-indicator" style={{ backgroundColor: c }}></span>
+                        {(event.assigned_employee_ids?.length > 0) ? (
+                          <div className="event-employee">
+                            <span className="employee-indicators">
+                              {getEmployeeColors(event).map((c, ci) => (
+                                <span key={ci} className="employee-indicator" style={{ backgroundColor: c }}></span>
                               ))}
                             </span>
-                            {event.assigned_worker_ids.map(id => getWorkerName(id)).join(', ')}
+                            {event.assigned_employee_ids.map(id => getEmployeeName(id)).join(', ')}
                           </div>
                         ) : !['completed', 'cancelled', 'rejected'].includes(event.status) && (
-                          <div className="event-no-worker-warning">
-                            <i className="fas fa-exclamation-triangle"></i> No worker assigned
+                          <div className="event-no-employee-warning">
+                            <i className="fas fa-exclamation-triangle"></i> No employee assigned
                           </div>
                         )}
                         {(event.job_address || event.address) && (
@@ -732,7 +732,7 @@ function CalendarTab() {
                       {date.getDate()}
                     </span>
                     {dayTimeOff.length > 0 && (
-                      <span className="week-time-off-badge" title={dayTimeOff.map(t => `${t.worker_name} - ${t.type}`).join(', ')}>
+                      <span className="week-time-off-badge" title={dayTimeOff.map(t => `${t.employee_name} - ${t.type}`).join(', ')}>
                         <i className="fas fa-umbrella-beach"></i>
                       </span>
                     )}
@@ -775,7 +775,7 @@ function CalendarTab() {
                       const width = totalColumns > 1 ? `calc((100% - 8px) / ${totalColumns})` : 'calc(100% - 8px)';
                       const left = totalColumns > 1 ? `calc(4px + (100% - 8px) * ${column} / ${totalColumns})` : '4px';
                       
-                      const weekColors = event.status === 'completed' ? ['#22c55e'] : getWorkerColors(event);
+                      const weekColors = event.status === 'completed' ? ['#22c55e'] : getEmployeeColors(event);
                       
                       return (
                         <div
@@ -787,14 +787,14 @@ function CalendarTab() {
                             width,
                             left,
                             right: 'auto',
-                            backgroundColor: event.status === 'completed' ? '#22c55e' : getWorkerColor(event),
+                            backgroundColor: event.status === 'completed' ? '#22c55e' : getEmployeeColor(event),
                             borderColor: weekColors.length === 1 ? weekColors[0] : 'transparent'
                           }}
                           onClick={() => setSelectedJobId(event.id)}
                           title={`${event.customer_name} - ${event.service_type || 'Service'}`}
                         >
                           {weekColors.length > 1 && (
-                            <div className="multi-worker-border" aria-hidden="true">
+                            <div className="multi-employee-border" aria-hidden="true">
                               {weekColors.map((c, i) => (
                                 <span key={i} style={{ background: c, flex: 1 }} />
                               ))}
@@ -807,8 +807,8 @@ function CalendarTab() {
                           {height > 40 && (
                             <div className="week-event-service">{event.service_type || event.service}</div>
                           )}
-                          {(!event.assigned_worker_ids || event.assigned_worker_ids.length === 0) && !['completed', 'cancelled', 'rejected'].includes(event.status) && (
-                            <div className="week-event-no-worker" title="No worker assigned">
+                          {(!event.assigned_employee_ids || event.assigned_employee_ids.length === 0) && !['completed', 'cancelled', 'rejected'].includes(event.status) && (
+                            <div className="week-event-no-employee" title="No employee assigned">
                               <i className="fas fa-exclamation-triangle"></i>
                             </div>
                           )}

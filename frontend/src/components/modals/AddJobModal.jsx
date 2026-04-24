@@ -1,8 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  createBooking, getClients, getClient, checkAvailability, checkMonthlyAvailability, getServicesMenu, getWorkers, checkWorkerAvailability,
-  workerCreateBooking, workerGetClients, workerGetClient, workerCheckAvailability, workerCheckMonthlyAvailability, workerGetServices, workerGetWorkers, workerCheckWorkerAvailability
+  createBooking, getClients, getClient, checkAvailability, checkMonthlyAvailability, getServicesMenu, getEmployees, checkEmployeeAvailability,
+  employeeCreateBooking, employeeGetClients, employeeGetClient, employeeCheckAvailability, employeeCheckMonthlyAvailability, employeeGetServices, employeeGetEmployees, employeeCheckEmployeeAvailability
 } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
@@ -58,7 +58,7 @@ function MiniCalendar({ selectedDate, onSelectDate, monthData, isLoading, calMon
         className={`mc-cell mc-day ${statusClass} ${isSelected ? 'mc-selected' : ''}`}
         disabled={isDisabled}
         onClick={() => !isDisabled && onSelectDate(iso)}
-        title={isPast ? 'Past date' : dayInfo?.status === 'closed' ? 'Closed' : dayInfo?.status === 'leave' ? 'Worker on leave' : dayInfo?.status === 'full' ? 'Fully booked' : dayInfo?.status === 'partial' ? `${dayInfo.free} slot${dayInfo.free !== 1 ? 's' : ''} free` : 'Available'}
+        title={isPast ? 'Past date' : dayInfo?.status === 'closed' ? 'Closed' : dayInfo?.status === 'leave' ? 'Employee on leave' : dayInfo?.status === 'full' ? 'Fully booked' : dayInfo?.status === 'partial' ? `${dayInfo.free} slot${dayInfo.free !== 1 ? 's' : ''} free` : 'Available'}
       >
         {d}
       </button>
@@ -91,31 +91,31 @@ function MiniCalendar({ selectedDate, onSelectDate, monthData, isLoading, calMon
   );
 }
 
-function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = null }) {
+function AddJobModal({ isOpen, onClose, employeeMode = false, currentEmployeeId = null }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const { terminology, features } = useIndustry();
 
   // Select API functions based on mode
-  const apiFns = useMemo(() => workerMode ? {
-    createBooking: workerCreateBooking, getClients: workerGetClients, getClient: workerGetClient,
-    checkAvailability: workerCheckAvailability, checkMonthlyAvailability: workerCheckMonthlyAvailability,
-    getServicesMenu: workerGetServices, getWorkers: workerGetWorkers, checkWorkerAvailability: workerCheckWorkerAvailability,
+  const apiFns = useMemo(() => employeeMode ? {
+    createBooking: employeeCreateBooking, getClients: employeeGetClients, getClient: employeeGetClient,
+    checkAvailability: employeeCheckAvailability, checkMonthlyAvailability: employeeCheckMonthlyAvailability,
+    getServicesMenu: employeeGetServices, getEmployees: employeeGetEmployees, checkEmployeeAvailability: employeeCheckEmployeeAvailability,
   } : {
     createBooking, getClients, getClient, checkAvailability, checkMonthlyAvailability,
-    getServicesMenu, getWorkers, checkWorkerAvailability,
-  }, [workerMode]);
+    getServicesMenu, getEmployees, checkEmployeeAvailability,
+  }, [employeeMode]);
   
   const [formData, setFormData] = useState({
     client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '',
-    property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false, is_emergency: false, recurrence_pattern: '', recurrence_end_date: ''
+    property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', employee_id: '', requires_callout: false, requires_quote: false, is_emergency: false, recurrence_pattern: '', recurrence_end_date: ''
   });
   
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedService, setSelectedService] = useState(null);
-  const [anyWorkerMode, setAnyWorkerMode] = useState(true);
-  const [assignedWorkers, setAssignedWorkers] = useState([]); // [{id, name, trade_specialty, availability}]
-  const assignedWorkersRef = useRef([]);
+  const [anyEmployeeMode, setAnyEmployeeMode] = useState(true);
+  const [assignedEmployees, setAssignedEmployees] = useState([]); // [{id, name, trade_specialty, availability}]
+  const assignedEmployeesRef = useRef([]);
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -129,43 +129,43 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
 
   useEffect(() => { if (!isOpen) resetForm(); }, [isOpen]);
 
-  const { data: clients } = useQuery({ queryKey: ['clients', workerMode], queryFn: async () => (await apiFns.getClients()).data, enabled: isOpen });
-  const { data: servicesMenu } = useQuery({ queryKey: ['services-menu', workerMode], queryFn: async () => (await apiFns.getServicesMenu()).data, enabled: isOpen });
-  const { data: workers } = useQuery({ queryKey: ['workers', workerMode], queryFn: async () => (await apiFns.getWorkers()).data, enabled: isOpen });
+  const { data: clients } = useQuery({ queryKey: ['clients', employeeMode], queryFn: async () => (await apiFns.getClients()).data, enabled: isOpen });
+  const { data: servicesMenu } = useQuery({ queryKey: ['services-menu', employeeMode], queryFn: async () => (await apiFns.getServicesMenu()).data, enabled: isOpen });
+  const { data: employees } = useQuery({ queryKey: ['employees', employeeMode], queryFn: async () => (await apiFns.getEmployees()).data, enabled: isOpen });
 
   // Monthly availability (fires when service is selected)
   const durationMins = parseInt(formData.duration_minutes) || 60;
-  // In worker mode, always include the creating worker in availability checks
-  const effectiveWorkerList = useMemo(() => {
-    if (workerMode && currentWorkerId && assignedWorkers.length > 0) {
-      // Add current worker if not already in the list
-      if (!assignedWorkers.some(w => w.id === currentWorkerId)) {
-        return [{ id: currentWorkerId }, ...assignedWorkers];
+  // In employee mode, always include the creating employee in availability checks
+  const effectiveEmployeeList = useMemo(() => {
+    if (employeeMode && currentEmployeeId && assignedEmployees.length > 0) {
+      // Add current employee if not already in the list
+      if (!assignedEmployees.some(w => w.id === currentEmployeeId)) {
+        return [{ id: currentEmployeeId }, ...assignedEmployees];
       }
     }
-    return assignedWorkers;
-  }, [assignedWorkers, workerMode, currentWorkerId]);
-  const assignedWorkerIds = effectiveWorkerList.map(w => w.id).sort().join(',');
+    return assignedEmployees;
+  }, [assignedEmployees, employeeMode, currentEmployeeId]);
+  const assignedEmployeeIds = effectiveEmployeeList.map(w => w.id).sort().join(',');
 
   const { data: monthlyData, isLoading: isLoadingMonthly } = useQuery({
-    queryKey: ['monthly-availability', calYear, calMonth + 1, formData.service_type, formData.worker_id, anyWorkerMode, durationMins, workerMode, assignedWorkerIds, currentWorkerId],
+    queryKey: ['monthly-availability', calYear, calMonth + 1, formData.service_type, formData.employee_id, anyEmployeeMode, durationMins, employeeMode, assignedEmployeeIds, currentEmployeeId],
     queryFn: async () => {
-      console.log('[MONTHLY_AVAIL] Fetching:', { calYear, calMonth: calMonth + 1, service: formData.service_type, duration: durationMins, anyWorker: anyWorkerMode, workers: assignedWorkerIds });
-      // When workers are assigned, fetch each worker's availability and intersect
-      if (effectiveWorkerList.length > 0) {
+      console.log('[MONTHLY_AVAIL] Fetching:', { calYear, calMonth: calMonth + 1, service: formData.service_type, duration: durationMins, anyEmployee: anyEmployeeMode, employees: assignedEmployeeIds });
+      // When employees are assigned, fetch each employee's availability and intersect
+      if (effectiveEmployeeList.length > 0) {
         const results = await Promise.all(
-          effectiveWorkerList.map(w => apiFns.checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, w.id, false, durationMins).then(r => r.data))
+          effectiveEmployeeList.map(w => apiFns.checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, w.id, false, durationMins).then(r => r.data))
         );
         if (!results.length || !results[0]) return results[0];
         const merged = { ...results[0], days: { ...results[0].days } };
         if (merged.days) {
           for (const dayKey of Object.keys(merged.days)) {
             const dayStatuses = results.map(r => r.days?.[dayKey]?.status || 'closed');
-            // If business is closed for any worker's result, mark closed
+            // If business is closed for any employee's result, mark closed
             if (dayStatuses.some(s => s === 'closed')) {
               merged.days[dayKey] = { ...merged.days[dayKey], status: 'closed', free: 0 };
             } else if (dayStatuses.some(s => s === 'leave' || s === 'full')) {
-              // If any worker is on leave or fully booked, no availability
+              // If any employee is on leave or fully booked, no availability
               merged.days[dayKey] = { ...merged.days[dayKey], status: 'full', free: 0 };
             } else if (dayStatuses.some(s => s === 'partial')) {
               const minFree = Math.min(...results.map(r => r.days?.[dayKey]?.free ?? 0));
@@ -176,10 +176,10 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
         }
         return merged;
       }
-      // In worker mode with no extra workers, show the creating worker's own availability
-      const effectiveWorkerId = workerMode && currentWorkerId ? currentWorkerId : (anyWorkerMode ? null : (formData.worker_id || null));
-      const effectiveAnyWorker = workerMode && currentWorkerId ? false : anyWorkerMode;
-      const result = (await apiFns.checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, effectiveWorkerId, effectiveAnyWorker, durationMins)).data;
+      // In employee mode with no extran employees, show the creating employee's own availability
+      const effectiveEmployeeId = employeeMode && currentEmployeeId ? currentEmployeeId : (anyEmployeeMode ? null : (formData.employee_id || null));
+      const effectiveAnyEmployee = employeeMode && currentEmployeeId ? false : anyEmployeeMode;
+      const result = (await apiFns.checkMonthlyAvailability(calYear, calMonth + 1, formData.service_type, effectiveEmployeeId, effectiveAnyEmployee, durationMins)).data;
       console.log('[MONTHLY_AVAIL] Result:', { hasDays: !!result?.days, dayCount: result?.days ? Object.keys(result.days).length : 0, sampleDay: result?.days ? Object.values(result.days)[0] : null });
       return result;
     },
@@ -188,17 +188,17 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
 
   // Daily slots (fires when date is selected)
   const { data: availability, isLoading: isLoadingAvailability } = useQuery({
-    queryKey: ['availability', selectedDate, formData.service_type, formData.worker_id, anyWorkerMode, durationMins, workerMode, assignedWorkerIds, currentWorkerId],
+    queryKey: ['availability', selectedDate, formData.service_type, formData.employee_id, anyEmployeeMode, durationMins, employeeMode, assignedEmployeeIds, currentEmployeeId],
     queryFn: async () => {
-      // When workers are assigned, fetch each worker's slots and intersect
-      if (effectiveWorkerList.length > 0) {
+      // When employees are assigned, fetch each employee's slots and intersect
+      if (effectiveEmployeeList.length > 0) {
         const results = await Promise.all(
-          effectiveWorkerList.map(w => apiFns.checkAvailability(selectedDate, formData.service_type, w.id, false, durationMins).then(r => r.data))
+          effectiveEmployeeList.map(w => apiFns.checkAvailability(selectedDate, formData.service_type, w.id, false, durationMins).then(r => r.data))
         );
         if (!results.length || !results[0]) return results[0];
         const merged = { ...results[0] };
         if (merged.slots) {
-          // Build lookup maps by time for each worker's slots (safer than index matching)
+          // Build lookup maps by time for each employee's slots (safer than index matching)
           const slotMaps = results.map(r => {
             const map = {};
             (r.slots || []).forEach(s => { map[s.time] = s; });
@@ -207,7 +207,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
           merged.slots = merged.slots.map(slot => {
             const allAvailable = slotMaps.every(m => m[slot.time]?.available);
             if (!allAvailable) {
-              // Find the first conflicting worker's booking info
+              // Find the first conflicting employee's booking info
               const conflictMap = slotMaps.find(m => m[slot.time] && !m[slot.time].available);
               return { ...slot, available: false, booking: conflictMap?.[slot.time]?.booking || slot.booking };
             }
@@ -216,25 +216,25 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
         }
         return merged;
       }
-      // In worker mode with no extra workers, show the creating worker's own availability
-      const effectiveWorkerId = workerMode && currentWorkerId ? currentWorkerId : (anyWorkerMode ? null : (formData.worker_id || null));
-      const effectiveAnyWorker = workerMode && currentWorkerId ? false : anyWorkerMode;
-      return (await apiFns.checkAvailability(selectedDate, formData.service_type, effectiveWorkerId, effectiveAnyWorker, durationMins)).data;
+      // In employee mode with no extran employees, show the creating employee's own availability
+      const effectiveEmployeeId = employeeMode && currentEmployeeId ? currentEmployeeId : (anyEmployeeMode ? null : (formData.employee_id || null));
+      const effectiveAnyEmployee = employeeMode && currentEmployeeId ? false : anyEmployeeMode;
+      return (await apiFns.checkAvailability(selectedDate, formData.service_type, effectiveEmployeeId, effectiveAnyEmployee, durationMins)).data;
     },
     enabled: !!selectedDate && !!formData.service_type && isOpen
   });
 
   const isFullDayJob = durationMins >= 1440;
 
-  // Filter workers based on selected service's worker_restrictions
-  const eligibleWorkers = useMemo(() => {
-    if (!workers) return [];
-    if (!selectedService?.worker_restrictions || selectedService.worker_restrictions.type === 'all') return workers;
-    const { type, worker_ids } = selectedService.worker_restrictions;
-    if (type === 'only') return workers.filter(w => worker_ids.includes(w.id));
-    if (type === 'except') return workers.filter(w => !worker_ids.includes(w.id));
-    return workers;
-  }, [workers, selectedService]);
+  // Filter employees based on selected service's employee_restrictions
+  const eligibleEmployees = useMemo(() => {
+    if (!employees) return [];
+    if (!selectedService?.employee_restrictions || selectedService.employee_restrictions.type === 'all') return employees;
+    const { type, employee_ids } = selectedService.employee_restrictions;
+    if (type === 'only') return employees.filter(w => employee_ids.includes(w.id));
+    if (type === 'except') return employees.filter(w => !employee_ids.includes(w.id));
+    return employees;
+  }, [employees, selectedService]);
 
   const filteredCustomers = useMemo(() => {
     if (!clients) return [];
@@ -259,8 +259,8 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
       queryClient.invalidateQueries({ queryKey: ['monthly-availability'] });
       queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
-      if (workerMode) {
-        queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
+      if (employeeMode) {
+        queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
       }
       onClose();
       addToast('Job created successfully!', 'success');
@@ -269,8 +269,8 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
   });
 
   const resetForm = () => {
-    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', worker_id: '', requires_callout: false, requires_quote: false, is_emergency: false, recurrence_pattern: '', recurrence_end_date: '' });
-    setSelectedDate(''); setSelectedService(null); setAnyWorkerMode(true); setAssignedWorkers([]);
+    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', employee_id: '', requires_callout: false, requires_quote: false, is_emergency: false, recurrence_pattern: '', recurrence_end_date: '' });
+    setSelectedDate(''); setSelectedService(null); setAnyEmployeeMode(true); setAssignedEmployees([]);
     setCustomerPickerOpen(false); setCustomerSearch(''); setSelectedCustomer(null);
     const n = new Date(); setCalMonth(n.getMonth()); setCalYear(n.getFullYear());
   };
@@ -320,72 +320,72 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
     // Reset date selection when service changes (availability changes)
     setSelectedDate('');
 
-    // Clear ineligible assigned workers when service changes
-    if (service.worker_restrictions && service.worker_restrictions.type !== 'all') {
-      const { type, worker_ids } = service.worker_restrictions;
-      setAssignedWorkers(prev => prev.filter(w => {
-        if (type === 'only') return worker_ids.includes(w.id);
-        if (type === 'except') return !worker_ids.includes(w.id);
+    // Clear ineligible assigned employees when service changes
+    if (service.employee_restrictions && service.employee_restrictions.type !== 'all') {
+      const { type, employee_ids } = service.employee_restrictions;
+      setAssignedEmployees(prev => prev.filter(w => {
+        if (type === 'only') return employee_ids.includes(w.id);
+        if (type === 'except') return !employee_ids.includes(w.id);
         return true;
       }));
     }
   };
 
-  const handleWorkerSelect = async (workerId) => {
-    if (workerId === 'any') {
-      // "Any Worker" mode — combined availability across all workers
-      setAnyWorkerMode(true);
+  const handleEmployeeSelect = async (employeeId) => {
+    if (employeeId === 'any') {
+      // "Any Employee" mode — combined availability across all employees
+      setAnyEmployeeMode(true);
       setSelectedDate('');
-      setFormData(prev => ({ ...prev, worker_id: '', appointment_time: '' }));
+      setFormData(prev => ({ ...prev, employee_id: '', appointment_time: '' }));
       return;
     }
-    // "" = no worker filter
-    setAnyWorkerMode(false);
-    setFormData(prev => ({ ...prev, worker_id: '' }));
+    // "" = no employee filter
+    setAnyEmployeeMode(false);
+    setFormData(prev => ({ ...prev, employee_id: '' }));
   };
 
-  const addWorkerToJob = async (workerId) => {
-    if (!workerId) return;
-    const id = parseInt(workerId);
-    if (assignedWorkers.some(w => w.id === id)) { addToast('Worker already assigned', 'warning'); return; }
-    const worker = workers?.find(w => w.id === id);
-    if (!worker) return;
-    // Clear any-worker mode when switching to multi-worker
-    setAnyWorkerMode(false);
-    setFormData(prev => ({ ...prev, worker_id: '' }));
+  const addEmployeeToJob = async (employeeId) => {
+    if (!employeeId) return;
+    const id = parseInt(employeeId);
+    if (assignedEmployees.some(w => w.id === id)) { addToast('Employee already assigned', 'warning'); return; }
+    const employee = employees?.find(w => w.id === id);
+    if (!employee) return;
+    // Clear any-employee mode when switching to multi-employee
+    setAnyEmployeeMode(false);
+    setFormData(prev => ({ ...prev, employee_id: '' }));
     let avail = null;
     if (formData.appointment_time) {
       try {
-        const res = await apiFns.checkWorkerAvailability(id, formData.appointment_time, formData.duration_minutes || 60);
+        const res = await apiFns.checkEmployeeAvailability(id, formData.appointment_time, formData.duration_minutes || 60);
         avail = res.data;
       } catch { /* ignore */ }
     }
-    setAssignedWorkers(prev => [...prev, { id: worker.id, name: worker.name, trade_specialty: worker.trade_specialty, availability: avail }]);
+    setAssignedEmployees(prev => [...prev, { id: employee.id, name: employee.name, trade_specialty: employee.trade_specialty, availability: avail }]);
   };
 
-  const removeWorkerFromJob = (workerId) => {
-    setAssignedWorkers(prev => {
-      const updated = prev.filter(w => w.id !== workerId);
-      // If all workers removed, go back to "Any available worker" mode
-      if (updated.length === 0) setAnyWorkerMode(true);
+  const removeEmployeeFromJob = (employeeId) => {
+    setAssignedEmployees(prev => {
+      const updated = prev.filter(w => w.id !== employeeId);
+      // If all employees removed, go back to "Any available employee" mode
+      if (updated.length === 0) setAnyEmployeeMode(true);
       return updated;
     });
   };
 
-  // Re-check availability for all assigned workers when date/time changes
+  // Re-check availability for all assigned employees when date/time changes
   // Uses ref to avoid stale closure issues
-  useEffect(() => { assignedWorkersRef.current = assignedWorkers; }, [assignedWorkers]);
+  useEffect(() => { assignedEmployeesRef.current = assignedEmployees; }, [assignedEmployees]);
 
-  const recheckAssignedWorkers = async (appointmentTime, duration) => {
-    const current = assignedWorkersRef.current;
+  const recheckAssignedEmployees = async (appointmentTime, duration) => {
+    const current = assignedEmployeesRef.current;
     if (!appointmentTime || current.length === 0) return;
     const updated = await Promise.all(current.map(async (w) => {
       try {
-        const res = await apiFns.checkWorkerAvailability(w.id, appointmentTime, duration || 60);
+        const res = await apiFns.checkEmployeeAvailability(w.id, appointmentTime, duration || 60);
         return { ...w, availability: res.data };
       } catch { return { ...w, availability: null }; }
     }));
-    setAssignedWorkers(updated);
+    setAssignedEmployees(updated);
   };
 
   const handleDateSelect = (iso) => {
@@ -393,7 +393,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
     if (isFullDayJob) {
       const dateTime = `${iso}T${String(monthlyData?.business_hours?.start || 9).padStart(2, '0')}:00`;
       setFormData(prev => ({ ...prev, appointment_time: dateTime }));
-      recheckAssignedWorkers(dateTime, formData.duration_minutes || 60);
+      recheckAssignedEmployees(dateTime, formData.duration_minutes || 60);
     } else {
       setFormData(prev => ({ ...prev, appointment_time: '' }));
     }
@@ -403,7 +403,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
     if (!slot.available) { addToast(`Slot booked${slot.booking?.client_name ? ` for ${slot.booking.client_name}` : ''}`, 'warning'); return; }
     const dateTime = `${selectedDate}T${slot.time}`;
     setFormData(prev => ({ ...prev, appointment_time: dateTime }));
-    recheckAssignedWorkers(dateTime, formData.duration_minutes || 60);
+    recheckAssignedEmployees(dateTime, formData.duration_minutes || 60);
   };
 
   const handleChange = (e) => {
@@ -420,16 +420,16 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.client_id || !formData.appointment_time || !formData.service_type) { addToast('Please fill in all required fields', 'warning'); return; }
-    // Check multi-worker availability
-    const unavailableWorker = assignedWorkers.find(w => w.availability && !w.availability.available);
-    if (unavailableWorker) { addToast(`${unavailableWorker.name} is not available at this time`, 'error'); return; }
-    // Build worker_ids from the multi-worker list
-    const allWorkerIds = assignedWorkers.map(w => w.id);
-    // Strip worker_id from payload — we use worker_ids exclusively now
-    const { worker_id: _unused, ...cleanFormData } = formData;
-    // If "Any available worker" mode and no workers manually assigned, ask backend to auto-assign
-    const autoAssign = anyWorkerMode && allWorkerIds.length === 0;
-    mutation.mutate({ ...cleanFormData, worker_ids: allWorkerIds, auto_assign_worker: autoAssign });
+    // Check multi-employee availability
+    const unavailableEmployee = assignedEmployees.find(w => w.availability && !w.availability.available);
+    if (unavailableEmployee) { addToast(`${unavailableEmployee.name} is not available at this time`, 'error'); return; }
+    // Build employee_ids from the multi-employee list
+    const allEmployeeIds = assignedEmployees.map(w => w.id);
+    // Strip employee_id from payload — we use employee_ids exclusively now
+    const { employee_id: _unused, ...cleanFormData } = formData;
+    // If "Any available employee" mode and no employees manually assigned, ask backend to auto-assign
+    const autoAssign = anyEmployeeMode && allEmployeeIds.length === 0;
+    mutation.mutate({ ...cleanFormData, employee_ids: allEmployeeIds, auto_assign_employee: autoAssign });
   };
 
   const handleOpenAddClient = () => { setCustomerPickerOpen(false); setIsAddClientModalOpen(true); };
@@ -439,14 +439,14 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title={workerMode ? `Create ${terminology.job}` : `Add New ${terminology.job}`} size="large">
+      <Modal isOpen={isOpen} onClose={onClose} title={employeeMode ? `Create ${terminology.job}` : `Add New ${terminology.job}`} size="large">
         <form onSubmit={handleSubmit} className="form add-job-form">
           
-          {/* Worker mode banner */}
-          {workerMode && (
-            <div className="worker-job-banner">
+          {/* Employee mode banner */}
+          {employeeMode && (
+            <div className="employee-job-banner">
               <i className="fas fa-hard-hat"></i>
-              <span>You'll be automatically assigned to this job. You can also add other workers below.</span>
+              <span>You'll be automatically assigned to this job. You can also add other employees below.</span>
             </div>
           )}
 
@@ -522,69 +522,69 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
             )}
           </div>
 
-          {/* Worker Assignment */}
+          {/* Employee Assignment */}
           <div className="form-group">
-            <label className="form-label">{workerMode ? 'Additional Workers' : 'Assign Workers'}</label>
-            {/* Assigned workers list */}
-            {assignedWorkers.length > 0 && (
-              <div className="assigned-workers-list">
-                {assignedWorkers.map(w => (
-                  <div key={w.id} className={`assigned-worker-chip ${w.availability && !w.availability.available ? 'conflict' : ''}`}>
+            <label className="form-label">{employeeMode ? 'Additional Employees' : 'Assign Employees'}</label>
+            {/* Assigned employees list */}
+            {assignedEmployees.length > 0 && (
+              <div className="assigned-employees-list">
+                {assignedEmployees.map(w => (
+                  <div key={w.id} className={`assigned-employee-chip ${w.availability && !w.availability.available ? 'conflict' : ''}`}>
                     <i className="fas fa-hard-hat"></i>
-                    <span className="assigned-worker-name">{w.name}</span>
-                    {w.trade_specialty && <span className="assigned-worker-specialty">({w.trade_specialty})</span>}
+                    <span className="assigned-employee-name">{w.name}</span>
+                    {w.trade_specialty && <span className="assigned-employee-specialty">({w.trade_specialty})</span>}
                     {w.availability && !w.availability.available && (
-                      <span className="assigned-worker-conflict" title={w.availability.message}><i className="fas fa-exclamation-triangle"></i></span>
+                      <span className="assigned-employee-conflict" title={w.availability.message}><i className="fas fa-exclamation-triangle"></i></span>
                     )}
                     {w.availability && w.availability.available && (
-                      <span className="assigned-worker-ok"><i className="fas fa-check-circle"></i></span>
+                      <span className="assigned-employee-ok"><i className="fas fa-check-circle"></i></span>
                     )}
-                    <button type="button" className="assigned-worker-remove" onClick={() => removeWorkerFromJob(w.id)} title="Remove worker"><i className="fas fa-times"></i></button>
+                    <button type="button" className="assigned-employee-remove" onClick={() => removeEmployeeFromJob(w.id)} title="Remove employee"><i className="fas fa-times"></i></button>
                   </div>
                 ))}
               </div>
             )}
-            {/* When workers are assigned: show "add another" dropdown only */}
-            {assignedWorkers.length > 0 && (
-              <div className="add-worker-row">
-                <select className="form-input add-worker-select" value="" onChange={(e) => { if (e.target.value) addWorkerToJob(e.target.value); }}>
-                  <option value="">+ Add another worker...</option>
-                  {eligibleWorkers.filter(w => !assignedWorkers.some(aw => aw.id === w.id)).map(w => (
+            {/* When employees are assigned: show "add another" dropdown only */}
+            {assignedEmployees.length > 0 && (
+              <div className="add-employee-row">
+                <select className="form-input add-employee-select" value="" onChange={(e) => { if (e.target.value) addEmployeeToJob(e.target.value); }}>
+                  <option value="">+ Add another employee...</option>
+                  {eligibleEmployees.filter(w => !assignedEmployees.some(aw => aw.id === w.id)).map(w => (
                     <option key={w.id} value={w.id}>{w.name} {w.trade_specialty && `(${w.trade_specialty})`}</option>
                   ))}
                 </select>
               </div>
             )}
-            {/* When no workers assigned: show combined dropdown with availability modes + worker list */}
-            {assignedWorkers.length === 0 && (
-              <div className="add-worker-row">
-                <select className="form-input" value={anyWorkerMode ? 'any' : ''} onChange={(e) => {
+            {/* When no employees assigned: show combined dropdown with availability modes + employee list */}
+            {assignedEmployees.length === 0 && (
+              <div className="add-employee-row">
+                <select className="form-input" value={anyEmployeeMode ? 'any' : ''} onChange={(e) => {
                   const val = e.target.value;
                   if (val === 'any') {
-                    handleWorkerSelect(val);
+                    handleEmployeeSelect(val);
                   } else if (val) {
-                    // Add to multi-worker list instead of single-select
-                    addWorkerToJob(val);
+                    // Add to multi-employee list instead of single-select
+                    addEmployeeToJob(val);
                   }
                 }}>
-                  <option value="any">Any available worker</option>
-                  {eligibleWorkers.map(w => (
+                  <option value="any">Any available employee</option>
+                  {eligibleEmployees.map(w => (
                     <option key={w.id} value={w.id}>{w.name} {w.trade_specialty && `(${w.trade_specialty})`}</option>
                   ))}
                 </select>
               </div>
             )}
-            {anyWorkerMode && assignedWorkers.length === 0 && (
-              workerMode 
-                ? <div className="worker-selected-info any-worker-info"><i className="fas fa-user-check"></i> You're assigned to this job. Select additional workers if needed.</div>
-                : <div className="worker-selected-info any-worker-info"><i className="fas fa-users"></i> Showing combined availability — slot is open if <strong>any</strong> worker is free</div>
+            {anyEmployeeMode && assignedEmployees.length === 0 && (
+              employeeMode 
+                ? <div className="employee-selected-info any-employee-info"><i className="fas fa-user-check"></i> You're assigned to this job. Select additional employees if needed.</div>
+                : <div className="employee-selected-info any-employee-info"><i className="fas fa-users"></i> Showing combined availability — slot is open if <strong>any</strong> employee is free</div>
             )}
-            {assignedWorkers.length > 0 && <div className="worker-selected-info"><i className="fas fa-users"></i> <strong>{assignedWorkers.length}</strong> worker{assignedWorkers.length !== 1 ? 's' : ''} assigned</div>}
-            {selectedService?.worker_restrictions?.type === 'only' && (
-              <div className="worker-restriction-hint"><i className="fas fa-info-circle"></i> Only workers qualified for "{selectedService.name}" are shown</div>
+            {assignedEmployees.length > 0 && <div className="employee-selected-info"><i className="fas fa-users"></i> <strong>{assignedEmployees.length}</strong> employee{assignedEmployees.length !== 1 ? 's' : ''} assigned</div>}
+            {selectedService?.employee_restrictions?.type === 'only' && (
+              <div className="employee-restriction-hint"><i className="fas fa-info-circle"></i> Only employees qualified for "{selectedService.name}" are shown</div>
             )}
-            {selectedService?.worker_restrictions?.type === 'except' && (
-              <div className="worker-restriction-hint"><i className="fas fa-info-circle"></i> Some workers are excluded from "{selectedService.name}"</div>
+            {selectedService?.employee_restrictions?.type === 'except' && (
+              <div className="employee-restriction-hint"><i className="fas fa-info-circle"></i> Some employees are excluded from "{selectedService.name}"</div>
             )}
           </div>
 
@@ -626,7 +626,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
                       <h4>
                         <i className="fas fa-clock"></i>{' '}
                         {new Date(selectedDate + 'T00:00').toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' })}
-                        {assignedWorkers.length > 0 ? ` — ${assignedWorkers.length} worker${assignedWorkers.length !== 1 ? 's' : ''}` : anyWorkerMode ? ' — Any Worker' : ''}
+                        {assignedEmployees.length > 0 ? ` — ${assignedEmployees.length} employee${assignedEmployees.length !== 1 ? 's' : ''}` : anyEmployeeMode ? ' — Any Employee' : ''}
                       </h4>
                     </div>
                     {isLoadingAvailability ? (
@@ -677,7 +677,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
             </div>
             {features.propertyType && (
             <div className="form-group">
-              <label className="form-label">Property Type <HelpTooltip text="The type of property for this job — e.g. house, apartment, office. Helps workers prepare." /></label>
+              <label className="form-label">Property Type <HelpTooltip text="The type of property for this job — e.g. house, apartment, office. Helps employees prepare." /></label>
               <input type="text" name="property_type" className="form-input" value={formData.property_type} onChange={handleChange} placeholder="e.g., House" />
             </div>
             )}
@@ -715,7 +715,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
           {/* Initial Callout Toggle */}
           {features.callouts && (
           <div className="form-group">
-            <label className="form-label">Requires Initial Callout? <HelpTooltip text="Enable if a worker needs to visit the site first to assess the job. This books the callout service from your Services tab rather than the full job." /></label>
+            <label className="form-label">Requires Initial Callout? <HelpTooltip text="Enable if an employee needs to visit the site first to assess the job. This books the callout service from your Services tab rather than the full job." /></label>
             <div className="callout-toggle-wrapper">
               <button type="button" className={`callout-toggle ${formData.requires_callout ? 'active' : ''}`}
                 onClick={() => setFormData(prev => ({ ...prev, requires_callout: !prev.requires_callout, requires_quote: false }))}
@@ -730,7 +730,7 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
           {/* Quote Visit Toggle */}
           {features.quotes && !formData.requires_callout && (
           <div className="form-group">
-            <label className="form-label">Requires Quote Visit? <HelpTooltip text="Enable if a worker needs to visit the site first to give a free quote. This books the quote service from your Services tab rather than the full job." /></label>
+            <label className="form-label">Requires Quote Visit? <HelpTooltip text="Enable if an employee needs to visit the site first to give a free quote. This books the quote service from your Services tab rather than the full job." /></label>
             <div className="callout-toggle-wrapper">
               <button type="button" className={`callout-toggle ${formData.requires_quote ? 'active' : ''}`}
                 onClick={() => setFormData(prev => ({ ...prev, requires_quote: !prev.requires_quote }))}
@@ -745,14 +745,14 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
           {/* Emergency Job Toggle */}
           {features.emergencyJobs && (
           <div className="form-group">
-            <label className="form-label">Emergency Job? <HelpTooltip text="Mark as emergency to immediately notify all available workers via dashboard and email. A worker must accept the job to be dispatched." /></label>
+            <label className="form-label">Emergency Job? <HelpTooltip text="Mark as emergency to immediately notify all available employees via dashboard and email. An employee must accept the job to be dispatched." /></label>
             <div className="callout-toggle-wrapper">
               <button type="button" className={`callout-toggle emergency-toggle ${formData.is_emergency ? 'active' : ''}`}
                 onClick={() => setFormData(prev => ({ ...prev, is_emergency: !prev.is_emergency }))}
                 role="switch" aria-checked={formData.is_emergency}>
                 <span className="callout-toggle-slider" />
               </button>
-              <span className="callout-toggle-label">{formData.is_emergency ? 'Yes — notify workers immediately' : 'No — standard job'}</span>
+              <span className="callout-toggle-label">{formData.is_emergency ? 'Yes — notify employees immediately' : 'No — standard job'}</span>
             </div>
           </div>
           )}
@@ -794,11 +794,11 @@ function AddJobModal({ isOpen, onClose, workerMode = false, currentWorkerId = nu
 
           <div className="form-actions">
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={mutation.isPending}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={mutation.isPending}>{mutation.isPending ? 'Creating...' : workerMode ? 'Create & Assign to Me' : 'Create Job'}</button>
+            <button type="submit" className="btn btn-primary" disabled={mutation.isPending}>{mutation.isPending ? 'Creating...' : employeeMode ? 'Create & Assign to Me' : 'Create Job'}</button>
           </div>
         </form>
       </Modal>
-      <AddClientModal isOpen={isAddClientModalOpen} onClose={handleCloseAddClient} workerMode={workerMode} />
+      <AddClientModal isOpen={isAddClientModalOpen} onClose={handleCloseAddClient} employeeMode={employeeMode} />
     </>
   );
 }

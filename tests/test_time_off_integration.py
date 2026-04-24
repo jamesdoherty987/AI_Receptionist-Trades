@@ -1,10 +1,10 @@
 """
-Integration tests for worker time-off blocking bookings.
+Integration tests for employee time-off blocking bookings.
 
 Tests that:
-1. check_worker_availability blocks when worker has approved leave
-2. check_worker_availability allows when leave is pending/denied
-3. _find_available_workers_batch skips workers on leave
+1. check_employee_availability blocks when employee has approved leave
+2. check_employee_availability allows when leave is pending/denied
+3. _find_available_employees_batch skips employees on leave
 4. Normal bookings still work when no leave
 5. Search availability skips leave days
 6. Multi-day leave blocks all days in range
@@ -29,7 +29,7 @@ def next_weekday(hour=10, days_ahead=7):
 def make_db_with_time_off(time_off_records=None, existing_bookings=None):
     """
     Create a mock DB wrapper that supports time-off checking
-    in check_worker_availability.
+    in check_employee_availability.
     """
     from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
 
@@ -54,11 +54,11 @@ def make_db_with_time_off(time_off_records=None, existing_bookings=None):
     def cursor_fetchone():
         query = _last_query[0] or ''
         params = _last_params[0]
-        if 'worker_time_off' in query and params:
-            worker_id = params[0]
+        if 'employee_time_off' in query and params:
+            employee_id = params[0]
             appt_date = params[1]
             for rec in time_off_records:
-                if rec['worker_id'] != worker_id:
+                if rec['employee_id'] != employee_id:
                     continue
                 if rec.get('status', 'approved') != 'approved':
                     continue
@@ -83,11 +83,11 @@ def make_db_with_time_off(time_off_records=None, existing_bookings=None):
     def cursor_fetchall():
         query = _last_query[0] or ''
         params = _last_params[0]
-        if 'worker_assignments' in query or 'bookings' in query:
+        if 'employee_assignments' in query or 'bookings' in query:
             if params and len(params) >= 1:
-                worker_id = params[0]
+                employee_id = params[0]
                 return [b for b in existing_bookings
-                        if worker_id in b.get('assigned_worker_ids', [])]
+                        if employee_id in b.get('assigned_employee_ids', [])]
         return []
 
     mock_cursor.fetchone = cursor_fetchone
@@ -100,28 +100,28 @@ def make_db_with_time_off(time_off_records=None, existing_bookings=None):
 
 
 # ============================================================
-# Test: check_worker_availability blocks on approved leave
+# Test: check_employee_availability blocks on approved leave
 # ============================================================
 
 class TestTimeOffBlocksAvailability:
-    """Worker with approved time-off should be unavailable."""
+    """Employee with approved time-off should be unavailable."""
 
     def test_approved_leave_blocks_booking(self):
-        """Worker on approved vacation should not be available."""
+        """Employee on approved vacation should not be available."""
         appt = next_weekday(hour=10)
         appt_date_str = appt.strftime('%Y-%m-%d')
 
         db = make_db_with_time_off(time_off_records=[{
             'id': 1,
-            'worker_id': 1,
+            'employee_id': 1,
             'start_date': appt_date_str,
             'end_date': appt_date_str,
             'type': 'vacation',
             'status': 'approved'
         }])
 
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time=appt.isoformat(),
             duration_minutes=60,
             company_id=1
@@ -132,21 +132,21 @@ class TestTimeOffBlocksAvailability:
         assert 'vacation' in result.get('message', '').lower()
 
     def test_approved_sick_leave_blocks_booking(self):
-        """Worker on approved sick leave should not be available."""
+        """Employee on approved sick leave should not be available."""
         appt = next_weekday(hour=14)
         appt_date_str = appt.strftime('%Y-%m-%d')
 
         db = make_db_with_time_off(time_off_records=[{
             'id': 2,
-            'worker_id': 5,
+            'employee_id': 5,
             'start_date': appt_date_str,
             'end_date': appt_date_str,
             'type': 'sick',
             'status': 'approved'
         }])
 
-        result = db.check_worker_availability(
-            worker_id=5,
+        result = db.check_employee_availability(
+            employee_id=5,
             appointment_time=appt.isoformat(),
             duration_minutes=120,
             company_id=1
@@ -165,7 +165,7 @@ class TestTimeOffBlocksAvailability:
 
         db = make_db_with_time_off(time_off_records=[{
             'id': 3,
-            'worker_id': 1,
+            'employee_id': 1,
             'start_date': leave_start,
             'end_date': leave_end,
             'type': 'vacation',
@@ -175,8 +175,8 @@ class TestTimeOffBlocksAvailability:
         # Check each day in the range
         for day_offset in range(3):
             appt = start + timedelta(days=day_offset)
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time=appt.isoformat(),
                 duration_minutes=60,
                 company_id=1
@@ -194,15 +194,15 @@ class TestTimeOffBlocksAvailability:
 
         db = make_db_with_time_off(time_off_records=[{
             'id': 4,
-            'worker_id': 1,
+            'employee_id': 1,
             'start_date': leave_day.strftime('%Y-%m-%d'),
             'end_date': leave_day.strftime('%Y-%m-%d'),
             'type': 'vacation',
             'status': 'approved'
         }])
 
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time=day_before.isoformat(),
             duration_minutes=60,
             company_id=1
@@ -219,15 +219,15 @@ class TestTimeOffBlocksAvailability:
 
         db = make_db_with_time_off(time_off_records=[{
             'id': 5,
-            'worker_id': 1,
+            'employee_id': 1,
             'start_date': leave_day.strftime('%Y-%m-%d'),
             'end_date': leave_day.strftime('%Y-%m-%d'),
             'type': 'vacation',
             'status': 'approved'
         }])
 
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time=day_after.isoformat(),
             duration_minutes=60,
             company_id=1
@@ -245,15 +245,15 @@ class TestPendingDeniedLeaveDoesNotBlock:
 
         db = make_db_with_time_off(time_off_records=[{
             'id': 10,
-            'worker_id': 1,
+            'employee_id': 1,
             'start_date': appt.strftime('%Y-%m-%d'),
             'end_date': appt.strftime('%Y-%m-%d'),
             'type': 'vacation',
             'status': 'pending'
         }])
 
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time=appt.isoformat(),
             duration_minutes=60,
             company_id=1
@@ -267,15 +267,15 @@ class TestPendingDeniedLeaveDoesNotBlock:
 
         db = make_db_with_time_off(time_off_records=[{
             'id': 11,
-            'worker_id': 1,
+            'employee_id': 1,
             'start_date': appt.strftime('%Y-%m-%d'),
             'end_date': appt.strftime('%Y-%m-%d'),
             'type': 'personal',
             'status': 'denied'
         }])
 
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time=appt.isoformat(),
             duration_minutes=60,
             company_id=1
@@ -284,24 +284,24 @@ class TestPendingDeniedLeaveDoesNotBlock:
         assert result['available'] is True
 
 
-class TestOtherWorkerLeaveDoesNotAffect:
-    """Leave for one worker should not affect another."""
+class TestOtherEmployeeLeaveDoesNotAffect:
+    """Leave for one employee should not affect another."""
 
-    def test_different_worker_leave_no_effect(self):
-        """Worker 2's leave should not block Worker 1."""
+    def test_different_employee_leave_no_effect(self):
+        """Employee 2's leave should not block Employee 1."""
         appt = next_weekday(hour=10)
 
         db = make_db_with_time_off(time_off_records=[{
             'id': 20,
-            'worker_id': 2,
+            'employee_id': 2,
             'start_date': appt.strftime('%Y-%m-%d'),
             'end_date': appt.strftime('%Y-%m-%d'),
             'type': 'vacation',
             'status': 'approved'
         }])
 
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time=appt.isoformat(),
             duration_minutes=60,
             company_id=1
@@ -311,11 +311,11 @@ class TestOtherWorkerLeaveDoesNotAffect:
 
 
 # ============================================================
-# Test: _find_available_workers_batch respects leave
+# Test: _find_available_employees_batch respects leave
 # ============================================================
 
 class TestBatchAvailabilityWithLeave:
-    """The batch availability function should skip workers on leave."""
+    """The batch availability function should skip employees on leave."""
 
     def _make_batch_db(self):
         """Create a minimal DB mock for _calculate_job_end_time."""
@@ -329,24 +329,24 @@ class TestBatchAvailabilityWithLeave:
         db.return_connection = MagicMock()
         return db
 
-    def test_worker_on_leave_excluded_from_batch(self):
-        """Worker with approved leave should not appear in available list."""
-        from src.services.calendar_tools import _find_available_workers_batch
+    def test_employee_on_leave_excluded_from_batch(self):
+        """Employee with approved leave should not appear in available list."""
+        from src.services.calendar_tools import _find_available_employees_batch
 
         slot = next_weekday(hour=10)
         db = self._make_batch_db()
 
         leave_records = [{
-            'worker_id': 1,
+            'employee_id': 1,
             'start_date': slot.strftime('%Y-%m-%d'),
             'end_date': slot.strftime('%Y-%m-%d'),
         }]
 
-        result = _find_available_workers_batch(
+        result = _find_available_employees_batch(
             slot_time=slot,
             duration_minutes=60,
-            worker_bookings_by_id={1: [], 2: []},
-            all_worker_ids=[1, 2],
+            employee_bookings_by_id={1: [], 2: []},
+            all_employee_ids=[1, 2],
             db=db,
             company_id=1,
             leave_records=leave_records
@@ -355,18 +355,18 @@ class TestBatchAvailabilityWithLeave:
         assert 1 not in result
         assert 2 in result
 
-    def test_no_leave_all_workers_available(self):
-        """Without leave records, all workers should be available."""
-        from src.services.calendar_tools import _find_available_workers_batch
+    def test_no_leave_all_employees_available(self):
+        """Without leave records, all employees should be available."""
+        from src.services.calendar_tools import _find_available_employees_batch
 
         slot = next_weekday(hour=10)
         db = self._make_batch_db()
 
-        result = _find_available_workers_batch(
+        result = _find_available_employees_batch(
             slot_time=slot,
             duration_minutes=60,
-            worker_bookings_by_id={1: [], 2: [], 3: []},
-            all_worker_ids=[1, 2, 3],
+            employee_bookings_by_id={1: [], 2: [], 3: []},
+            all_employee_ids=[1, 2, 3],
             db=db,
             company_id=1,
             leave_records=[]
@@ -374,23 +374,23 @@ class TestBatchAvailabilityWithLeave:
 
         assert set(result) == {1, 2, 3}
 
-    def test_all_workers_on_leave_none_available(self):
-        """If all workers are on leave, none should be available."""
-        from src.services.calendar_tools import _find_available_workers_batch
+    def test_all_employees_on_leave_none_available(self):
+        """If all employees are on leave, none should be available."""
+        from src.services.calendar_tools import _find_available_employees_batch
 
         slot = next_weekday(hour=10)
         db = self._make_batch_db()
 
         leave_records = [
-            {'worker_id': 1, 'start_date': slot.strftime('%Y-%m-%d'), 'end_date': slot.strftime('%Y-%m-%d')},
-            {'worker_id': 2, 'start_date': slot.strftime('%Y-%m-%d'), 'end_date': slot.strftime('%Y-%m-%d')},
+            {'employee_id': 1, 'start_date': slot.strftime('%Y-%m-%d'), 'end_date': slot.strftime('%Y-%m-%d')},
+            {'employee_id': 2, 'start_date': slot.strftime('%Y-%m-%d'), 'end_date': slot.strftime('%Y-%m-%d')},
         ]
 
-        result = _find_available_workers_batch(
+        result = _find_available_employees_batch(
             slot_time=slot,
             duration_minutes=60,
-            worker_bookings_by_id={1: [], 2: []},
-            all_worker_ids=[1, 2],
+            employee_bookings_by_id={1: [], 2: []},
+            all_employee_ids=[1, 2],
             db=db,
             company_id=1,
             leave_records=leave_records
@@ -400,23 +400,23 @@ class TestBatchAvailabilityWithLeave:
 
     def test_leave_on_different_day_no_effect(self):
         """Leave on a different day should not affect the slot day."""
-        from src.services.calendar_tools import _find_available_workers_batch
+        from src.services.calendar_tools import _find_available_employees_batch
 
         slot = next_weekday(hour=10)
         other_day = (slot + timedelta(days=3)).strftime('%Y-%m-%d')
         db = self._make_batch_db()
 
         leave_records = [{
-            'worker_id': 1,
+            'employee_id': 1,
             'start_date': other_day,
             'end_date': other_day,
         }]
 
-        result = _find_available_workers_batch(
+        result = _find_available_employees_batch(
             slot_time=slot,
             duration_minutes=60,
-            worker_bookings_by_id={1: []},
-            all_worker_ids=[1],
+            employee_bookings_by_id={1: []},
+            all_employee_ids=[1],
             db=db,
             company_id=1,
             leave_records=leave_records
@@ -426,7 +426,7 @@ class TestBatchAvailabilityWithLeave:
 
     def test_multi_day_leave_blocks_middle_day(self):
         """Multi-day leave should block a slot in the middle of the range."""
-        from src.services.calendar_tools import _find_available_workers_batch
+        from src.services.calendar_tools import _find_available_employees_batch
 
         slot = next_weekday(hour=10, days_ahead=14)
         leave_start = (slot - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -434,16 +434,16 @@ class TestBatchAvailabilityWithLeave:
         db = self._make_batch_db()
 
         leave_records = [{
-            'worker_id': 1,
+            'employee_id': 1,
             'start_date': leave_start,
             'end_date': leave_end,
         }]
 
-        result = _find_available_workers_batch(
+        result = _find_available_employees_batch(
             slot_time=slot,
             duration_minutes=60,
-            worker_bookings_by_id={1: [], 2: []},
-            all_worker_ids=[1, 2],
+            employee_bookings_by_id={1: [], 2: []},
+            all_employee_ids=[1, 2],
             db=db,
             company_id=1,
             leave_records=leave_records
@@ -460,14 +460,14 @@ class TestBatchAvailabilityWithLeave:
 class TestNormalBookingsStillWork:
     """Ensure normal booking flow is not broken by time-off changes."""
 
-    def test_worker_available_no_leave_no_conflicts(self):
-        """Worker with no leave and no conflicts should be available."""
+    def test_employee_available_no_leave_no_conflicts(self):
+        """Employee with no leave and no conflicts should be available."""
         appt = next_weekday(hour=10)
 
         db = make_db_with_time_off(time_off_records=[], existing_bookings=[])
 
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time=appt.isoformat(),
             duration_minutes=60,
             company_id=1
@@ -475,8 +475,8 @@ class TestNormalBookingsStillWork:
 
         assert result['available'] is True
 
-    def test_worker_unavailable_due_to_conflict_not_leave(self):
-        """Worker with a conflicting booking (not leave) should be unavailable."""
+    def test_employee_unavailable_due_to_conflict_not_leave(self):
+        """Employee with a conflicting booking (not leave) should be unavailable."""
         appt = next_weekday(hour=10)
 
         db = make_db_with_time_off(
@@ -488,12 +488,12 @@ class TestNormalBookingsStillWork:
                 'service_type': 'Plumbing',
                 'client_name': 'Test',
                 'address': '123 Main St',
-                'assigned_worker_ids': [1]
+                'assigned_employee_ids': [1]
             }]
         )
 
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time=appt.isoformat(),
             duration_minutes=60,
             company_id=1
@@ -504,7 +504,7 @@ class TestNormalBookingsStillWork:
         assert result.get('on_leave') is not True
 
     def test_different_time_no_conflict(self):
-        """Worker with a booking at a different time should be available."""
+        """Employee with a booking at a different time should be available."""
         appt = next_weekday(hour=10)
         other_time = appt.replace(hour=15)
 
@@ -517,12 +517,12 @@ class TestNormalBookingsStillWork:
                 'service_type': 'Cleaning',
                 'client_name': 'Test',
                 'address': '',
-                'assigned_worker_ids': [1]
+                'assigned_employee_ids': [1]
             }]
         )
 
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time=appt.isoformat(),
             duration_minutes=60,
             company_id=1
@@ -532,19 +532,19 @@ class TestNormalBookingsStillWork:
 
 
 # ============================================================
-# Test: get_workers_on_leave DB function
+# Test: get_employees_on_leave DB function
 # ============================================================
 
-class TestGetWorkersOnLeave:
-    """Test the get_workers_on_leave database function."""
+class TestGetEmployeesOnLeave:
+    """Test the get_employees_on_leave database function."""
 
     def test_function_exists(self):
-        """get_workers_on_leave should exist on the DB wrapper."""
+        """get_employees_on_leave should exist on the DB wrapper."""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
-        assert hasattr(PostgreSQLDatabaseWrapper, 'get_workers_on_leave')
+        assert hasattr(PostgreSQLDatabaseWrapper, 'get_employees_on_leave')
 
     def test_returns_list(self):
-        """get_workers_on_leave should return a list."""
+        """get_employees_on_leave should return a list."""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
 
         db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
@@ -555,7 +555,7 @@ class TestGetWorkersOnLeave:
         db.get_connection = MagicMock(return_value=mock_conn)
         db.return_connection = MagicMock()
 
-        result = db.get_workers_on_leave(1, date.today(), date.today() + timedelta(days=7))
+        result = db.get_employees_on_leave(1, date.today(), date.today() + timedelta(days=7))
         assert isinstance(result, list)
 
     def test_handles_missing_table_gracefully(self):
@@ -570,7 +570,7 @@ class TestGetWorkersOnLeave:
         db.get_connection = MagicMock(return_value=mock_conn)
         db.return_connection = MagicMock()
 
-        result = db.get_workers_on_leave(1, date.today(), date.today() + timedelta(days=7))
+        result = db.get_employees_on_leave(1, date.today(), date.today() + timedelta(days=7))
         assert result == []
 
 
@@ -587,15 +587,15 @@ class TestLeaveMessageContent:
 
         db = make_db_with_time_off(time_off_records=[{
             'id': 30,
-            'worker_id': 1,
+            'employee_id': 1,
             'start_date': appt.strftime('%Y-%m-%d'),
             'end_date': appt.strftime('%Y-%m-%d'),
             'type': 'personal',
             'status': 'approved'
         }])
 
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time=appt.isoformat(),
             duration_minutes=60,
             company_id=1
@@ -611,15 +611,15 @@ class TestLeaveMessageContent:
 
         db = make_db_with_time_off(time_off_records=[{
             'id': 31,
-            'worker_id': 1,
+            'employee_id': 1,
             'start_date': start,
             'end_date': end,
             'type': 'vacation',
             'status': 'approved'
         }])
 
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time=appt.isoformat(),
             duration_minutes=60,
             company_id=1

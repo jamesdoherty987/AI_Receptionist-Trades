@@ -181,9 +181,9 @@ function Login() {
             </p>
           </div>
 
-          <Link to="/worker/login" className="worker-portal-btn">
+          <Link to="/employee/login" className="employee-portal-btn">
             <i className="fas fa-hard-hat"></i>
-            Worker Portal Login
+            Employee Portal Login
             <i className="fas fa-arrow-right"></i>
           </Link>
 

@@ -2,8 +2,8 @@
 Add job time tracking columns to bookings table.
 
 Columns:
-  - job_started_at: timestamp when worker pressed "Start Job"
-  - job_completed_at: timestamp when worker pressed "Mark Complete"
+  - job_started_at: timestamp when employee pressed "Start Job"
+  - job_completed_at: timestamp when employee pressed "Mark Complete"
   - actual_duration_minutes: actual time taken (auto-calculated or manually edited)
 """
 import os

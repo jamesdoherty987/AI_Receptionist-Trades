@@ -19,17 +19,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 def make_services(include_general_callout=True, callout_duration=60):
     services = [
         {'name': 'Kitchen Renovation', 'duration_minutes': 2880, 'price': 5000,
-         'requires_callout': True, 'workers_required': 1, 'worker_restrictions': None},
+         'requires_callout': True, 'employees_required': 1, 'employee_restrictions': None},
         {'name': 'Plumbing Repair', 'duration_minutes': 120, 'price': 150,
-         'requires_callout': False, 'workers_required': 1, 'worker_restrictions': None},
+         'requires_callout': False, 'employees_required': 1, 'employee_restrictions': None},
         {'name': 'Roof Repair', 'duration_minutes': 1440, 'price': 3000,
-         'requires_callout': True, 'workers_required': 2, 'worker_restrictions': None},
+         'requires_callout': True, 'employees_required': 2, 'employee_restrictions': None},
     ]
     if include_general_callout:
         services.append({
             'name': 'General Callout', 'duration_minutes': callout_duration,
-            'price': 50, 'requires_callout': False, 'workers_required': 1,
-            'worker_restrictions': None
+            'price': 50, 'requires_callout': False, 'employees_required': 1,
+            'employee_restrictions': None
         })
     return services
 
@@ -259,7 +259,7 @@ class TestAvailabilityCalloutDuration:
 
         mock_match.return_value = {
             'service': {'name': 'Kitchen Renovation', 'duration_minutes': 2880,
-                        'requires_callout': True, 'workers_required': 1, 'worker_restrictions': None},
+                        'requires_callout': True, 'employees_required': 1, 'employee_restrictions': None},
             'matched_name': 'Kitchen Renovation', 'score': 95
         }
         mock_resolve.return_value = 45
@@ -267,7 +267,7 @@ class TestAvailabilityCalloutDuration:
         mock_cal = MagicMock()
         mock_cal.get_available_slots_for_day.return_value = [_next_weekday(10)]
         mock_db = MagicMock()
-        mock_db.has_workers.return_value = False
+        mock_db.has_employees.return_value = False
 
         tomorrow = _next_weekday(10).strftime('%Y-%m-%d')
         result = execute_tool_call('check_availability', {
@@ -294,7 +294,7 @@ class TestAvailabilityCalloutDuration:
 
         mock_match.return_value = {
             'service': {'name': 'Roof Repair', 'duration_minutes': 1440,
-                        'requires_callout': True, 'workers_required': 1, 'worker_restrictions': None},
+                        'requires_callout': True, 'employees_required': 1, 'employee_restrictions': None},
             'matched_name': 'Roof Repair', 'score': 90
         }
         mock_resolve.return_value = 60
@@ -302,7 +302,7 @@ class TestAvailabilityCalloutDuration:
         mock_cal = MagicMock()
         mock_cal.get_available_slots_for_day.return_value = [_next_weekday(9)]
         mock_db = MagicMock()
-        mock_db.has_workers.return_value = False
+        mock_db.has_employees.return_value = False
 
         result = execute_tool_call('get_next_available', {
             'job_description': 'roof repair',
@@ -324,7 +324,7 @@ class TestAvailabilityCalloutDuration:
 
         mock_match.return_value = {
             'service': {'name': 'Plumbing', 'duration_minutes': 120,
-                        'requires_callout': False, 'workers_required': 1, 'worker_restrictions': None},
+                        'requires_callout': False, 'employees_required': 1, 'employee_restrictions': None},
             'matched_name': 'Plumbing', 'score': 95
         }
         mock_resolve.return_value = 120
@@ -332,7 +332,7 @@ class TestAvailabilityCalloutDuration:
         mock_cal = MagicMock()
         mock_cal.get_available_slots_for_day.return_value = [_next_weekday(10)]
         mock_db = MagicMock()
-        mock_db.has_workers.return_value = False
+        mock_db.has_employees.return_value = False
 
         tomorrow = _next_weekday(10).strftime('%Y-%m-%d')
         result = execute_tool_call('check_availability', {

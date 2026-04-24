@@ -9,7 +9,7 @@ BookedForYou is a SaaS product that provides an AI receptionist for trade busine
 - AI Receptionist: Answers business calls professionally, 24 hours a day, 7 days a week
 - Smart Scheduling: Automatically books appointments and syncs with Google Calendar
 - Customer Management: Tracks clients, job history, and preferences
-- Worker Management: Assigns jobs to team members and prevents scheduling conflicts
+- Employee Management: Assigns jobs to team members and prevents scheduling conflicts
 - Materials & Invoicing: Tracks materials, costs, and sends professional invoices
 - Financial Tracking: Monitors revenue, payments, and business performance
 - SMS Notifications: Sends booking confirmations and day-before reminders
@@ -22,7 +22,7 @@ BookedForYou is a SaaS product that provides an AI receptionist for trade busine
 
 ## Target Audience
 
-Small to medium trade businesses in Ireland who miss calls while on the job and lose potential customers as a result. Typical users are sole traders or small teams of 1-10 workers.
+Small to medium trade businesses in Ireland who miss calls while on the job and lose potential customers as a result. Typical users are sole traders or small teams of 1-10 employees.
 
 ## Links
 

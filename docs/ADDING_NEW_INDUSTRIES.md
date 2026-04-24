@@ -13,8 +13,8 @@ Edit `src/utils/industry_config.py`. Add an entry to `INDUSTRY_PROFILES`:
     'terminology': {
         'job': 'Appointment',
         'jobs': 'Appointments',
-        'worker': 'Dentist',
-        'workers': 'Dentists',
+        'employee': 'Dentist',
+        'employees': 'Dentists',
         'client': 'Patient',
         'clients': 'Patients',
         'service': 'Treatment',
@@ -37,8 +37,8 @@ Edit `src/utils/industry_config.py`. Add an entry to `INDUSTRY_PROFILES`:
         'urgency_options': ['scheduled', 'emergency'],
     },
     'onboarding': {
-        'worker_icon': 'fa-tooth',
-        'worker_label': 'Add Dentists',
+        'employee_icon': 'fa-tooth',
+        'employee_label': 'Add Dentists',
         'show_materials_step': False,
         'company_context_placeholder': (
             "Examples:\n"
@@ -58,7 +58,7 @@ Edit `frontend/src/config/industryProfiles.js`. Add a matching entry with the sa
 ```javascript
 dental: {
   label: 'Dental Clinic',
-  terminology: { job: 'Appointment', jobs: 'Appointments', worker: 'Dentist', workers: 'Dentists', client: 'Patient', clients: 'Patients', service: 'Treatment', booking: 'Appointment' },
+  terminology: { job: 'Appointment', jobs: 'Appointments', employee: 'Dentist', employees: 'Dentists', client: 'Patient', clients: 'Patients', service: 'Treatment', booking: 'Appointment' },
   features: {
     materials: false,
     callouts: false,
@@ -70,16 +70,16 @@ dental: {
     multiDayJobs: false,
   },
   tabs: {
-    jobs: true, calls: true, calendar: true, workers: true, crm: true,
+    jobs: true, calls: true, calendar: true, employees: true, crm: true,
     services: true, materials: false, finances: true, insights: true,
   },
   icons: {
-    worker: 'fas fa-tooth',
+    employee: 'fas fa-tooth',
     job: 'fas fa-calendar-check',
   },
   onboarding: {
-    workerIcon: 'fa-tooth',
-    workerLabel: 'Add Dentists',
+    employeeIcon: 'fa-tooth',
+    employeeLabel: 'Add Dentists',
     showMaterialsStep: false,
     companyContextPlaceholder: "Examples:\n- Accepting new patients\n- Emergency appointments available\n...",
   },
@@ -112,13 +112,13 @@ That's literally it. A business owner can now pick "Dental Clinic" from the Indu
 - `frontend/src/pages/Dashboard.jsx` → tab labels and visibility
 - `frontend/src/components/dashboard/*.jsx` → tab component labels
 - `frontend/src/components/modals/AddJobModal.jsx` → feature gates for callouts/quotes/emergency
-- `frontend/src/components/dashboard/OnboardingWizard.jsx` → worker label, materials step visibility
+- `frontend/src/components/dashboard/OnboardingWizard.jsx` → employee label, materials step visibility
 - `frontend/src/pages/CustomerPortal.jsx` → uses data from portal API directly
-- `frontend/src/pages/WorkerDashboard.jsx` → uses industry from worker auth endpoint
+- `frontend/src/pages/EmployeeDashboard.jsx` → uses industry from employee auth endpoint
 
 ### Data flow for customer portal
 
-The customer portal is different from admin/worker UIs — it's public, token-based, and can't use the AuthContext.
+The customer portal is different from admin/employee UIs — it's public, token-based, and can't use the AuthContext.
 The portal API (`GET /api/portal/<token>`) returns `industry_type` and `industry_profile` directly in the response,
 and `CustomerPortal.jsx` reads them from `data` instead of using the `useIndustry()` hook.
 

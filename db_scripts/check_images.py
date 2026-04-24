@@ -92,16 +92,16 @@ def check_recent_images():
     except Exception as e:
         print(f"   ⚠️ Error checking companies: {e}")
     
-    # Check workers with images
-    print("\n3️⃣ Workers with Images:")
+    # Check employees with images
+    print("\n3️⃣ Employees with Images:")
     try:
-        workers = db.get_all_workers()
-        workers_with_images = [w for w in workers if w.get('image_url')]
+        employees = db.get_all_employees()
+        employees_with_images = [w for w in employees if w.get('image_url')]
         
-        if workers_with_images:
-            for worker in workers_with_images:
-                print(f"\n   Worker: {worker['name']}")
-                image_url = worker.get('image_url', '')
+        if employees_with_images:
+            for employee in employees_with_images:
+                print(f"\n   Employee: {employee['name']}")
+                image_url = employee.get('image_url', '')
                 if image_url.startswith('data:image/'):
                     print(f"   Storage: BASE64 in database")
                     print(f"   Size: ~{len(image_url)} characters")
@@ -112,9 +112,9 @@ def check_recent_images():
                     print(f"   Storage: Unknown")
                     print(f"   Value: {image_url[:100]}...")
         else:
-            print("   No workers with images found")
+            print("   No employees with images found")
     except Exception as e:
-        print(f"   ⚠️ Error checking workers: {e}")
+        print(f"   ⚠️ Error checking employees: {e}")
     
     print("\n" + "=" * 70)
     print("CHECK COMPLETE")

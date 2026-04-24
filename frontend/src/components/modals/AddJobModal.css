@@ -211,28 +211,28 @@
   display: flex; align-items: center; gap: 0.5rem;
 }
 
-/* Worker Availability */
-.worker-selected-info {
+/* Employee Availability */
+.employee-selected-info {
   margin-top: 0.5rem; padding: 0.5rem 0.75rem;
   background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px;
   color: #1e40af; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;
 }
-.worker-selected-info i { color: #3b82f6; }
-.worker-selected-info.any-worker-info {
+.employee-selected-info i { color: #3b82f6; }
+.employee-selected-info.any-employee-info {
   background: #f0fdf4; border-color: #86efac; color: #166534;
 }
-.worker-selected-info.any-worker-info i { color: #22c55e; }
-.worker-restriction-hint {
+.employee-selected-info.any-employee-info i { color: #22c55e; }
+.employee-restriction-hint {
   margin-top: 0.375rem; padding: 0.4rem 0.75rem;
   background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px;
   color: #92400e; font-size: 0.8rem; display: flex; align-items: center; gap: 0.5rem;
 }
-.worker-conflict-warning {
+.employee-conflict-warning {
   margin-top: 0.5rem; padding: 0.625rem 0.875rem;
   background: #fee2e2; border: 1px solid #fca5a5; border-radius: 8px;
   color: #dc2626; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;
 }
-.worker-available-badge {
+.employee-available-badge {
   margin-top: 0.5rem; padding: 0.625rem 0.875rem;
   background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 8px;
   color: #047857; font-size: 0.85rem; display: flex; align-items: center; gap: 0.5rem;
@@ -266,38 +266,38 @@
   .mc-legend { gap: 0.5rem; }
 }
 
-/* ===== Multi-Worker Assignment ===== */
-.assigned-workers-list {
+/* ===== Multi-Employee Assignment ===== */
+.assigned-employees-list {
   display: flex; flex-direction: column; gap: 0.375rem;
   margin-bottom: 0.5rem;
 }
-.assigned-worker-chip {
+.assigned-employee-chip {
   display: flex; align-items: center; gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
   border: 1.5px solid #6ee7b7; border-radius: 8px;
   font-size: 0.875rem; transition: all 0.15s;
 }
-.assigned-worker-chip.conflict {
+.assigned-employee-chip.conflict {
   background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
   border-color: #fca5a5;
 }
-.assigned-worker-chip i.fa-hard-hat { color: #059669; font-size: 0.8rem; }
-.assigned-worker-chip.conflict i.fa-hard-hat { color: #dc2626; }
-.assigned-worker-name { font-weight: 600; color: #047857; }
-.assigned-worker-chip.conflict .assigned-worker-name { color: #dc2626; }
-.assigned-worker-specialty { color: #6b7280; font-size: 0.8rem; }
-.assigned-worker-conflict { color: #dc2626; margin-left: auto; }
-.assigned-worker-ok { color: #059669; margin-left: auto; }
-.assigned-worker-remove {
+.assigned-employee-chip i.fa-hard-hat { color: #059669; font-size: 0.8rem; }
+.assigned-employee-chip.conflict i.fa-hard-hat { color: #dc2626; }
+.assigned-employee-name { font-weight: 600; color: #047857; }
+.assigned-employee-chip.conflict .assigned-employee-name { color: #dc2626; }
+.assigned-employee-specialty { color: #6b7280; font-size: 0.8rem; }
+.assigned-employee-conflict { color: #dc2626; margin-left: auto; }
+.assigned-employee-ok { color: #059669; margin-left: auto; }
+.assigned-employee-remove {
   width: 24px; height: 24px; border: none; border-radius: 6px;
   background: rgba(0,0,0,0.06); color: #6b7280;
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   font-size: 0.7rem; transition: all 0.15s; flex-shrink: 0;
 }
-.assigned-worker-remove:hover { background: #fee2e2; color: #dc2626; }
-.add-worker-row { margin-bottom: 0.375rem; }
-.add-worker-select { font-size: 0.9rem; }
+.assigned-employee-remove:hover { background: #fee2e2; color: #dc2626; }
+.add-employee-row { margin-bottom: 0.375rem; }
+.add-employee-select { font-size: 0.9rem; }
 .availability-mode-row { margin-top: 0.25rem; }
 
 /* Price Range */
@@ -327,8 +327,8 @@
   flex-direction: column;
 }
 
-/* Worker mode banner */
-.worker-job-banner {
+/* Employee mode banner */
+.employee-job-banner {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -340,7 +340,7 @@
   color: #6d28d9;
   margin-bottom: 0.5rem;
 }
-.worker-job-banner i {
+.employee-job-banner i {
   font-size: 1rem;
   color: #8b5cf6;
 }

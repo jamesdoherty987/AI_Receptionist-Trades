@@ -23,13 +23,13 @@ const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
 const TermsOfService = lazy(() => import('./pages/TermsOfService'))
-const WorkerLogin = lazy(() => import('./pages/WorkerLogin'))
-const WorkerSetPassword = lazy(() => import('./pages/WorkerSetPassword'))
+const EmployeeLogin = lazy(() => import('./pages/EmployeeLogin'))
+const EmployeeSetPassword = lazy(() => import('./pages/EmployeeSetPassword'))
 const SetPassword = lazy(() => import('./pages/SetPassword'))
 const AdminPanel = lazy(() => import('./pages/AdminPanel'))
-const WorkerForgotPassword = lazy(() => import('./pages/WorkerForgotPassword'))
-const WorkerResetPassword = lazy(() => import('./pages/WorkerResetPassword'))
-const WorkerDashboard = lazy(() => import('./pages/WorkerDashboard'))
+const EmployeeForgotPassword = lazy(() => import('./pages/EmployeeForgotPassword'))
+const EmployeeResetPassword = lazy(() => import('./pages/EmployeeResetPassword'))
+const EmployeeDashboard = lazy(() => import('./pages/EmployeeDashboard'))
 const Blog = lazy(() => import('./pages/Blog'))
 const BlogPost = lazy(() => import('./pages/BlogPost'))
 const InstallApp = lazy(() => import('./pages/InstallApp'))
@@ -43,7 +43,7 @@ import { isStandalone } from './components/PWAInstallPrompt'
 
 // Protected Route component - requires authentication
 function ProtectedRoute({ children, requireSubscription = false }) {
-  const { isAuthenticated, isWorker, hasActiveSubscription, loading, initialized } = useAuth();
+  const { isAuthenticated, isEmployee, hasActiveSubscription, loading, initialized } = useAuth();
 
   if (!initialized || loading) {
     return (
@@ -63,9 +63,9 @@ function ProtectedRoute({ children, requireSubscription = false }) {
     return <Navigate to="/login" replace />;
   }
 
-  // Workers shouldn't access owner routes
-  if (isWorker) {
-    return <Navigate to="/worker/dashboard" replace />;
+  // Employees shouldn't access owner routes
+  if (isEmployee) {
+    return <Navigate to="/employee/dashboard" replace />;
   }
 
   // If subscription is required and user doesn't have one, redirect to settings
@@ -78,7 +78,7 @@ function ProtectedRoute({ children, requireSubscription = false }) {
 
 // Public Route component (redirects to dashboard if already logged in)
 function PublicRoute({ children }) {
-  const { isAuthenticated, isWorker, loading, initialized } = useAuth();
+  const { isAuthenticated, isEmployee, loading, initialized } = useAuth();
 
   if (!initialized || loading) {
     return (
@@ -95,15 +95,15 @@ function PublicRoute({ children }) {
   }
 
   if (isAuthenticated) {
-    return <Navigate to={isWorker ? "/worker/dashboard" : "/dashboard"} replace />;
+    return <Navigate to={isEmployee ? "/employee/dashboard" : "/dashboard"} replace />;
   }
 
   return children;
 }
 
-// Worker Protected Route - requires worker authentication
-function WorkerRoute({ children }) {
-  const { isAuthenticated, isWorker, loading, initialized } = useAuth();
+// Employee Protected Route - requires employee authentication
+function EmployeeRoute({ children }) {
+  const { isAuthenticated, isEmployee, loading, initialized } = useAuth();
 
   if (!initialized || loading) {
     return (
@@ -119,8 +119,8 @@ function WorkerRoute({ children }) {
     );
   }
 
-  if (!isAuthenticated || !isWorker) {
-    return <Navigate to="/worker/login" replace />;
+  if (!isAuthenticated || !isEmployee) {
+    return <Navigate to="/employee/login" replace />;
   }
 
   return children;
@@ -243,17 +243,17 @@ function AppRoutes() {
       <Route path="/portal/:token" element={<CustomerPortal />} />
       <Route path="/quote/accept/:token" element={<QuoteAccept />} />
 
-      {/* Worker Portal routes */}
-      <Route path="/worker/login" element={<WorkerLogin />} />
-      <Route path="/worker/set-password" element={<WorkerSetPassword />} />
-      <Route path="/worker/forgot-password" element={<WorkerForgotPassword />} />
-      <Route path="/worker/reset-password" element={<WorkerResetPassword />} />
+      {/* Employee Portal routes */}
+      <Route path="/employee/login" element={<EmployeeLogin />} />
+      <Route path="/employee/set-password" element={<EmployeeSetPassword />} />
+      <Route path="/employee/forgot-password" element={<EmployeeForgotPassword />} />
+      <Route path="/employee/reset-password" element={<EmployeeResetPassword />} />
       <Route 
-        path="/worker/dashboard" 
+        path="/employee/dashboard" 
         element={
-          <WorkerRoute>
-            <WorkerDashboard />
-          </WorkerRoute>
+          <EmployeeRoute>
+            <EmployeeDashboard />
+          </EmployeeRoute>
         } 
       />
 

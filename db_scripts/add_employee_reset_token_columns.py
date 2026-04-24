@@ -1,6 +1,6 @@
 """
-Add reset_token and reset_token_expires columns to worker_accounts table
-to support worker password reset flow.
+Add reset_token and reset_token_expires columns to employee_accounts table
+to support employee password reset flow.
 """
 import os
 import sys
@@ -23,22 +23,22 @@ def migrate():
     # Check if columns already exist
     cursor.execute("""
         SELECT column_name FROM information_schema.columns
-        WHERE table_name = 'worker_accounts' AND column_name = 'reset_token'
+        WHERE table_name = 'employee_accounts' AND column_name = 'reset_token'
     """)
     if cursor.fetchone():
-        print("Column reset_token already exists in worker_accounts")
+        print("Column reset_token already exists in employee_accounts")
         conn.close()
         return
 
     cursor.execute("""
-        ALTER TABLE worker_accounts
+        ALTER TABLE employee_accounts
         ADD COLUMN reset_token VARCHAR(255),
         ADD COLUMN reset_token_expires TIMESTAMP
     """)
-    cursor.execute("CREATE INDEX idx_worker_accounts_reset_token ON worker_accounts(reset_token)")
+    cursor.execute("CREATE INDEX idx_employee_accounts_reset_token ON employee_accounts(reset_token)")
 
     conn.commit()
-    print("Added reset_token and reset_token_expires columns to worker_accounts")
+    print("Added reset_token and reset_token_expires columns to employee_accounts")
     cursor.close()
     conn.close()
 

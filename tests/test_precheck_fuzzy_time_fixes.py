@@ -643,8 +643,8 @@ class TestSearchAvailabilityBeforeFilter:
 
     def _make_mock_db(self):
         db = MagicMock()
-        db.has_workers.return_value = False
-        db.get_all_workers.return_value = []
+        db.has_employees.return_value = False
+        db.get_all_employees.return_value = []
         db.get_all_bookings.return_value = []
         return db
 
@@ -680,7 +680,7 @@ class TestSearchAvailabilityBeforeFilter:
         services = {'google_calendar': cal, 'db': db, 'company_id': 1}
 
         svc = {'name': 'Tap Replacement', 'duration_minutes': 150,
-               'workers_required': 1, 'worker_restrictions': None}
+               'employees_required': 1, 'employee_restrictions': None}
 
         with patch('src.services.calendar_tools.match_service') as mock_match:
             mock_match.return_value = {'service': svc, 'confidence': 1.0}
@@ -716,7 +716,7 @@ class TestSearchAvailabilityBeforeFilter:
         services = {'google_calendar': cal, 'db': db, 'company_id': 1}
 
         svc = {'name': 'Tap Replacement', 'duration_minutes': 60,
-               'workers_required': 1, 'worker_restrictions': None}
+               'employees_required': 1, 'employee_restrictions': None}
 
         with patch('src.services.calendar_tools.match_service') as mock_match:
             mock_match.return_value = {'service': svc, 'confidence': 1.0}

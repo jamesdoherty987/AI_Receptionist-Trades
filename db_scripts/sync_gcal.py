@@ -267,9 +267,9 @@ def sync_company(company_id: int, db, dry_run: bool = False,
     from datetime import timedelta
     sync_cutoff = now - timedelta(days=30)
 
-    # Check if worker invites are enabled for this company
+    # Check if employee invites are enabled for this company
     company = db.get_company(company_id)
-    invite_workers = company.get('gcal_invite_workers', False) if company else False
+    invite_employees = company.get('gcal_invite_employees', False) if company else False
 
     # Track known gcal event IDs so pull phase can skip them
     known_gcal_ids = set()
@@ -329,13 +329,13 @@ def sync_company(company_id: int, db, dry_run: bool = False,
             address = booking.get('address') or ''
             summary = f"{'✅ ' if is_completed else ''}{service} - {customer_name}"
 
-            # Build worker info
+            # Build employee info
             bid = booking.get('id', '?')
-            job_workers = db.get_job_workers(bid, company_id=company_id) if bid != '?' else []
-            worker_lines = ''
-            if job_workers:
-                worker_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_workers]
-                worker_lines = f"\nWorkers: {', '.join(worker_names)}"
+            job_employees = db.get_job_employees(bid, company_id=company_id) if bid != '?' else []
+            employee_lines = ''
+            if job_employees:
+                employee_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_employees]
+                employee_lines = f"\nEmployees: {', '.join(employee_names)}"
 
             desc = (
                 f"Synced from BookedForYou\n"
@@ -344,13 +344,13 @@ def sync_company(company_id: int, db, dry_run: bool = False,
                 f"Phone: {phone}\n"
                 f"Address: {address}\n"
                 f"Duration: {duration} mins"
-                f"{worker_lines}"
+                f"{employee_lines}"
             )
 
             # Build attendee list if enabled
             attendee_emails = None
-            if invite_workers and job_workers:
-                attendee_emails = [w['email'] for w in job_workers if w.get('email')]
+            if invite_employees and job_employees:
+                attendee_emails = [w['email'] for w in job_employees if w.get('email')]
                 if not attendee_emails:
                     attendee_emails = None
 

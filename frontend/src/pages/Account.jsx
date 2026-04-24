@@ -232,7 +232,7 @@ function Account() {
                   <li>All your business information</li>
                   <li>All customers and their data</li>
                   <li>All jobs and bookings</li>
-                  <li>All workers and services</li>
+                  <li>All employees and services</li>
                   <li>Your subscription (if active)</li>
                 </ul>
               </div>

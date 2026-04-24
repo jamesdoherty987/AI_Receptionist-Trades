@@ -67,21 +67,21 @@ def _new_job_range(appt_dt, dur_mins):
     return appt_dt, end
 
 
-def _check(existing, worker_ids, appt_dt, dur_mins):
-    """Full conflict pipeline: range calc + DB query + worker match."""
+def _check(existing, employee_ids, appt_dt, dur_mins):
+    """Full conflict pipeline: range calc + DB query + employee match."""
     start, end = _new_job_range(appt_dt, dur_mins)
     conflicts = _make_conflict_checker(existing)(
         start_time=start.strftime('%Y-%m-%d %H:%M:%S'),
         end_time=end.strftime('%Y-%m-%d %H:%M:%S'),
         company_id=1,
     )
-    if not conflicts or not worker_ids:
+    if not conflicts or not employee_ids:
         return bool(conflicts), None
     bw = {}
     for b in existing:
-        for wid in b.get('assigned_worker_ids', []):
+        for wid in b.get('assigned_employee_ids', []):
             bw.setdefault(b['id'], []).append({'id': wid})
-    for wid in worker_ids:
+    for wid in employee_ids:
         for cb in conflicts:
             if any(w['id'] == wid for w in bw.get(cb['id'], [])):
                 return True, cb
@@ -94,7 +94,7 @@ class TestAdjacentDayNoFalseConflict:
         existing = [{'id': 10, 'client_id': 5,
             'appointment_time': datetime(2026, 4, 20, 8, 0),
             'service_type': 'Brick wall build', 'duration_minutes': 1440,
-            'status': 'confirmed', 'assigned_worker_ids': [1]}]
+            'status': 'confirmed', 'assigned_employee_ids': [1]}]
         hit, _ = _check(existing, [1, 2, 3], datetime(2026, 4, 21, 8, 0), 1440)
         assert not hit, "Full-day job on Apr 20 should NOT block Apr 21"
 
@@ -102,7 +102,7 @@ class TestAdjacentDayNoFalseConflict:
         existing = [{'id': 10, 'client_id': 5,
             'appointment_time': datetime(2026, 4, 16, 8, 0),
             'service_type': 'Brick wall build', 'duration_minutes': 2880,
-            'status': 'confirmed', 'assigned_worker_ids': [1]}]
+            'status': 'confirmed', 'assigned_employee_ids': [1]}]
         hit, _ = _check(existing, [1, 2, 3], datetime(2026, 4, 20, 8, 0), 1440)
         assert not hit, "2-day job Thu-Fri should NOT block Monday"
 
@@ -110,7 +110,7 @@ class TestAdjacentDayNoFalseConflict:
         existing = [{'id': 10, 'client_id': 5,
             'appointment_time': datetime(2026, 4, 20, 8, 0),
             'service_type': 'Brick wall build', 'duration_minutes': 4320,
-            'status': 'confirmed', 'assigned_worker_ids': [1]}]
+            'status': 'confirmed', 'assigned_employee_ids': [1]}]
         hit, info = _check(existing, [1, 2, 3], datetime(2026, 4, 21, 8, 0), 1440)
         assert hit, "3-day job Mon-Wed SHOULD block Tuesday"
         assert info['id'] == 10
@@ -119,7 +119,7 @@ class TestAdjacentDayNoFalseConflict:
         existing = [{'id': 10, 'client_id': 5,
             'appointment_time': datetime(2026, 4, 20, 8, 0),
             'service_type': 'Quick fix', 'duration_minutes': 120,
-            'status': 'confirmed', 'assigned_worker_ids': [1]}]
+            'status': 'confirmed', 'assigned_employee_ids': [1]}]
         hit, _ = _check(existing, [1], datetime(2026, 4, 21, 8, 0), 120)
         assert not hit, "2h job on Apr 20 should NOT block Apr 21"
 
@@ -127,17 +127,17 @@ class TestAdjacentDayNoFalseConflict:
         existing = [{'id': 10, 'client_id': 5,
             'appointment_time': datetime(2026, 4, 21, 8, 0),
             'service_type': 'Morning job', 'duration_minutes': 120,
-            'status': 'confirmed', 'assigned_worker_ids': [1]}]
+            'status': 'confirmed', 'assigned_employee_ids': [1]}]
         hit, _ = _check(existing, [1], datetime(2026, 4, 21, 9, 0), 120)
         assert hit, "8am-10am job SHOULD block 9am booking"
 
-    def test_different_worker_not_blocked(self):
+    def test_different_employee_not_blocked(self):
         existing = [{'id': 10, 'client_id': 5,
             'appointment_time': datetime(2026, 4, 21, 8, 0),
             'service_type': 'Job', 'duration_minutes': 1440,
-            'status': 'confirmed', 'assigned_worker_ids': [1]}]
+            'status': 'confirmed', 'assigned_employee_ids': [1]}]
         hit, _ = _check(existing, [2, 3], datetime(2026, 4, 21, 8, 0), 1440)
-        assert not hit, "Worker 2 should NOT be blocked by worker 1's job"
+        assert not hit, "Employee 2 should NOT be blocked by employee 1's job"
 
     def test_old_range_would_false_positive(self):
         """Verify the OLD buggy range extends before the new job's date."""
@@ -151,7 +151,7 @@ class TestAdjacentDayNoFalseConflict:
         existing = [{'id': 10, 'client_id': 5,
             'appointment_time': datetime(2026, 4, 20, 8, 0),
             'service_type': 'Kitchen install', 'duration_minutes': 10080,
-            'status': 'confirmed', 'assigned_worker_ids': [1]}]
+            'status': 'confirmed', 'assigned_employee_ids': [1]}]
         hit, _ = _check(existing, [1], datetime(2026, 4, 22, 8, 0), 60)
         assert hit, "Week job should block Wednesday"
 
@@ -159,6 +159,6 @@ class TestAdjacentDayNoFalseConflict:
         existing = [{'id': 10, 'client_id': 5,
             'appointment_time': datetime(2026, 4, 20, 8, 0),
             'service_type': 'Kitchen install', 'duration_minutes': 10080,
-            'status': 'confirmed', 'assigned_worker_ids': [1]}]
+            'status': 'confirmed', 'assigned_employee_ids': [1]}]
         hit, _ = _check(existing, [1], datetime(2026, 4, 27, 8, 0), 60)
         assert not hit, "Week job should NOT block next Monday"

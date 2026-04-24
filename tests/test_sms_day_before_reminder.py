@@ -60,14 +60,14 @@ class TestSendDayBeforeReminder:
             customer_name="Jane",
             service_type="Drain Cleaning",
             company_name="FixIt Co",
-            worker_names=["Mike"],
+            employee_names=["Mike"],
         )
 
         body = svc.client.messages.create.call_args.kwargs["body"]
         # No emojis anywhere
         for char in body:
             assert ord(char) < 0x1F600 or ord(char) > 0x1F64F, f"Found emoji: {char}"
-        # Specifically no location/worker emojis
+        # Specifically no location/employee emojis
         assert "\U0001f4cd" not in body  # 📍
         assert "\U0001f477" not in body  # 👷
 
@@ -87,7 +87,7 @@ class TestSendDayBeforeReminder:
         body = svc.client.messages.create.call_args.kwargs["body"]
         assert "Location" not in body
 
-    def test_worker_names_included(self):
+    def test_employee_names_included(self):
         svc = self._make_service()
         svc.client.messages.create = MagicMock(return_value=MagicMock(sid="SM123"))
 
@@ -98,14 +98,14 @@ class TestSendDayBeforeReminder:
             customer_name="Tom",
             service_type="Plumbing",
             company_name="QuickFix",
-            worker_names=["Alice", "Bob"],
+            employee_names=["Alice", "Bob"],
         )
 
         body = svc.client.messages.create.call_args.kwargs["body"]
         assert "Alice, Bob" in body
         assert "Assigned:" in body
 
-    def test_no_workers_omits_assigned_line(self):
+    def test_no_employees_omits_assigned_line(self):
         svc = self._make_service()
         svc.client.messages.create = MagicMock(return_value=MagicMock(sid="SM123"))
 
@@ -206,7 +206,7 @@ class TestSendDayBeforeReminders:
                 "client_name": "John",
                 "client_phone": "+353851111111",
                 "company_name": "ABC Plumbing",
-                "worker_names": ["Mike"],
+                "employee_names": ["Mike"],
             }
         ]
 
@@ -225,7 +225,7 @@ class TestSendDayBeforeReminders:
         assert call_kwargs["customer_name"] == "John"
         assert call_kwargs["company_name"] == "ABC Plumbing"
         assert call_kwargs["service_type"] == "Boiler Repair"
-        assert call_kwargs["worker_names"] == ["Mike"]
+        assert call_kwargs["employee_names"] == ["Mike"]
         assert "address" not in call_kwargs
 
     @patch("src.services.sms_reminder.get_sms_service")
@@ -243,7 +243,7 @@ class TestSendDayBeforeReminders:
                 "client_name": "NoPhone",
                 "client_phone": None,
                 "company_name": "Co",
-                "worker_names": [],
+                "employee_names": [],
             }
         ]
 
@@ -297,7 +297,7 @@ class TestSendDayBeforeReminders:
                 "client_name": "Fallback",
                 "client_phone": "+353859999999",
                 "company_name": "PaintCo",
-                "worker_names": [],
+                "employee_names": [],
             }
         ]
 
@@ -326,7 +326,7 @@ class TestSendDayBeforeReminders:
                 "client_name": "StrTime",
                 "client_phone": None,
                 "company_name": "ElecCo",
-                "worker_names": None,
+                "employee_names": None,
             }
         ]
 

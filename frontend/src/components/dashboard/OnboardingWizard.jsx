@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import PhoneConfigModal from '../modals/PhoneConfigModal';
 import HelpTooltip from '../HelpTooltip';
-import { getBusinessSettings, updateBusinessSettings, startFreeTrial, createCheckoutSession, getSubscriptionStatus, getServicesMenu, getWorkers, getMaterials } from '../../services/api';
+import { getBusinessSettings, updateBusinessSettings, startFreeTrial, createCheckoutSession, getSubscriptionStatus, getServicesMenu, getEmployees, getMaterials } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useIndustry } from '../../context/IndustryContext';
 import './OnboardingWizard.css';
@@ -40,10 +40,10 @@ function buildSteps(industryProfile) {
       description: 'Bank details for invoices'
     },
     {
-      id: 'workers',
-      title: onboarding.workerLabel || 'Add Workers',
-      icon: onboarding.workerIcon || 'fa-hard-hat',
-      iconClass: 'workers-icon',
+      id: 'employees',
+      title: onboarding.employeeLabel || 'Add Employees',
+      icon: onboarding.employeeIcon || 'fa-hard-hat',
+      iconClass: 'employees-icon',
       description: `Who ${features.materials ? 'does the work' : 'is on your team'}?`
     },
     {
@@ -55,14 +55,14 @@ function buildSteps(industryProfile) {
     },
   ];
 
-  // Only include materials step if the industry uses materials
+  // Only include inventory step if the industry uses materials
   if (onboarding.showMaterialsStep) {
     steps.push({
       id: 'materials',
-      title: 'Add Materials',
-      icon: 'fa-cubes',
+      title: 'Set Up Inventory',
+      icon: 'fa-boxes-stacked',
       iconClass: '',
-      description: `Track materials used on ${terminology.jobs?.toLowerCase() || 'jobs'}`
+      description: `Track inventory and stock levels`
     });
   }
 
@@ -219,10 +219,10 @@ function OnboardingWizard({ onComplete }) {
     },
   });
 
-  const { data: workersData } = useQuery({
-    queryKey: ['workers'],
+  const { data: employeesData } = useQuery({
+    queryKey: ['employees'],
     queryFn: async () => {
-      const response = await getWorkers();
+      const response = await getEmployees();
       return response.data;
     },
   });
@@ -324,13 +324,13 @@ function OnboardingWizard({ onComplete }) {
     }
   }, [settings]);
 
-  // Auto-mark workers/services/materials complete when actual data exists
+  // Auto-mark employees/services/materials complete when actual data exists
   useEffect(() => {
     const newCompleted = [];
-    const workers = Array.isArray(workersData) ? workersData : [];
-    if (workers.length > 0 && !completedSteps.includes('workers')) {
-      newCompleted.push('workers');
-      localStorage.setItem(`workers_setup_visited_${userKey}`, 'true');
+    const employees = Array.isArray(employeesData) ? employeesData : [];
+    if (employees.length > 0 && !completedSteps.includes('employees')) {
+      newCompleted.push('employees');
+      localStorage.setItem(`employees_setup_visited_${userKey}`, 'true');
     }
     const services = servicesData?.services || [];
     if (services.length > 0 && !completedSteps.includes('services')) {
@@ -340,7 +340,7 @@ function OnboardingWizard({ onComplete }) {
     const materials = materialsData?.materials || [];
     if (materials.length > 0 && !completedSteps.includes('materials')) {
       newCompleted.push('materials');
-      localStorage.setItem(`materials_setup_visited_${userKey}`, 'true');
+      localStorage.setItem(`inventory_setup_visited_${userKey}`, 'true');
     }
     if (newCompleted.length > 0) {
       setCompletedSteps(prev => {
@@ -348,7 +348,7 @@ function OnboardingWizard({ onComplete }) {
         return [...merged];
       });
     }
-  }, [workersData, servicesData, materialsData, userKey]);
+  }, [employeesData, servicesData, materialsData, userKey]);
 
   const saveMutation = useMutation({
     mutationFn: updateBusinessSettings,
@@ -440,8 +440,8 @@ function OnboardingWizard({ onComplete }) {
     if (stepId === 'company-details') return !!settings?.company_context || completedSteps.includes('company-details');
     if (stepId === 'payment') return !!(settings?.bank_iban || settings?.bank_account_holder) || isPaymentSkipped() || completedSteps.includes('payment');
     if (stepId === 'services') return (servicesData?.services || []).length > 0 || localStorage.getItem(`services_setup_visited_${userKey}`) === 'true' || completedSteps.includes('services');
-    if (stepId === 'workers') return (Array.isArray(workersData) ? workersData : []).length > 0 || localStorage.getItem(`workers_setup_visited_${userKey}`) === 'true' || completedSteps.includes('workers');
-    if (stepId === 'materials') return (materialsData?.materials || []).length > 0 || localStorage.getItem(`materials_setup_visited_${userKey}`) === 'true' || completedSteps.includes('materials');
+    if (stepId === 'employees') return (Array.isArray(employeesData) ? employeesData : []).length > 0 || localStorage.getItem(`employees_setup_visited_${userKey}`) === 'true' || completedSteps.includes('employees');
+    if (stepId === 'materials') return (materialsData?.materials || []).length > 0 || localStorage.getItem(`inventory_setup_visited_${userKey}`) === 'true' || localStorage.getItem(`materials_setup_visited_${userKey}`) === 'true' || completedSteps.includes('materials');
     return completedSteps.includes(stepId);
   };
 
@@ -806,25 +806,25 @@ function OnboardingWizard({ onComplete }) {
               </div>
             )}
 
-            {currentStep.id === 'workers' && (
+            {currentStep.id === 'employees' && (
               <div className="onboarding-form" style={{ textAlign: 'center' }}>
-                {(Array.isArray(workersData) ? workersData : []).length > 0 && (
+                {(Array.isArray(employeesData) ? employeesData : []).length > 0 && (
                   <div className="subscription-active-display" style={{ marginBottom: '1rem' }}>
                     <i className="fas fa-check-circle"></i>
-                    <span>{workersData.length} worker{workersData.length !== 1 ? 's' : ''} added</span>
+                    <span>{employeesData.length} employee{employeesData.length !== 1 ? 's' : ''} added</span>
                   </div>
                 )}
                 <p className="subscription-cta-text">
-                  {(Array.isArray(workersData) ? workersData : []).length > 0
-                    ? 'Review or add more workers for job assignments.'
-                    : 'Add your workers so jobs can be assigned to them.'}
+                  {(Array.isArray(employeesData) ? employeesData : []).length > 0
+                    ? 'Review or add more employees for job assignments.'
+                    : 'Add your employees so jobs can be assigned to them.'}
                 </p>
                 <div className="step-actions">
                   <button className="btn btn-secondary" onClick={handleSkipStep}>
                     Skip for now
                   </button>
-                  <button className="btn btn-primary" onClick={() => { localStorage.setItem(`workers_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('workers')) { setCompletedSteps(prev => [...prev, 'workers']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Workers')) btn.click(); }); }, 100); }}>
-                    <i className="fas fa-hard-hat"></i> Go to Workers
+                  <button className="btn btn-primary" onClick={() => { localStorage.setItem(`employees_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('employees')) { setCompletedSteps(prev => [...prev, 'employees']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Employees')) btn.click(); }); }, 100); }}>
+                    <i className="fas fa-hard-hat"></i> Go to Employees
                   </button>
                 </div>
               </div>
@@ -835,20 +835,20 @@ function OnboardingWizard({ onComplete }) {
                 {(materialsData?.materials || []).length > 0 && (
                   <div className="subscription-active-display" style={{ marginBottom: '1rem' }}>
                     <i className="fas fa-check-circle"></i>
-                    <span>{materialsData.materials.length} material{materialsData.materials.length !== 1 ? 's' : ''} added</span>
+                    <span>{materialsData.materials.length} item{materialsData.materials.length !== 1 ? 's' : ''} added</span>
                   </div>
                 )}
                 <p className="subscription-cta-text">
                   {(materialsData?.materials || []).length > 0
-                    ? 'Review or add more materials to your catalog.'
-                    : 'Add materials you commonly use so you can track costs on jobs.'}
+                    ? 'Review or add more items to your inventory.'
+                    : 'Add items you use or sell. Track stock levels and pricing in one place.'}
                 </p>
                 <div className="step-actions">
                   <button className="btn btn-secondary" onClick={handleSkipStep}>
                     Skip for now
                   </button>
-                  <button className="btn btn-primary" onClick={() => { localStorage.setItem(`materials_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('materials')) { setCompletedSteps(prev => [...prev, 'materials']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Materials')) btn.click(); }); }, 100); }}>
-                    <i className="fas fa-cubes"></i> Go to Materials
+                  <button className="btn btn-primary" onClick={() => { localStorage.setItem(`inventory_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('materials')) { setCompletedSteps(prev => [...prev, 'materials']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.sidebar-item, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Inventory')) btn.click(); }); }, 100); }}>
+                    <i className="fas fa-boxes-stacked"></i> Go to Inventory
                   </button>
                 </div>
               </div>

@@ -5,9 +5,9 @@ import { validateEmail, rateLimiter } from '../utils/security';
 import { isStandalone } from '../components/PWAInstallPrompt';
 import './Auth.css';
 
-function WorkerLogin() {
+function EmployeeLogin() {
   const navigate = useNavigate();
-  const { workerLogin } = useAuth();
+  const { employeeLogin } = useAuth();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,7 +20,7 @@ function WorkerLogin() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!rateLimiter.isAllowed('worker-login', 10, 60000)) {
+    if (!rateLimiter.isAllowed('employee-login', 10, 60000)) {
       setError('Too many login attempts. Please wait a moment.');
       return;
     }
@@ -34,9 +34,9 @@ function WorkerLogin() {
     setError('');
 
     try {
-      const result = await workerLogin(formData.email, formData.password);
+      const result = await employeeLogin(formData.email, formData.password);
       if (result.success) {
-        navigate('/worker/dashboard');
+        navigate('/employee/dashboard');
       } else {
         setError(result.error || 'Login failed. Please try again.');
       }
@@ -61,7 +61,7 @@ function WorkerLogin() {
 
         <div className="auth-card">
           <div className="auth-header">
-            <h1>Worker Portal</h1>
+            <h1>Employee Portal</h1>
             <p>Sign in to view your jobs and schedule</p>
           </div>
 
@@ -116,7 +116,7 @@ function WorkerLogin() {
 
           <div className="auth-footer">
             <p>
-              <Link to="/worker/forgot-password">Forgot your password?</Link>
+              <Link to="/employee/forgot-password">Forgot your password?</Link>
             </p>
             <p style={{ marginTop: '0.5rem' }}>
               Business owner? <Link to="/login">Owner login</Link>
@@ -135,4 +135,4 @@ function WorkerLogin() {
   );
 }
 
-export default WorkerLogin;
+export default EmployeeLogin;

@@ -158,8 +158,8 @@ def main():
             cursor = conn.cursor()
             for item in to_delete:
                 bid = item['id']
-                # Delete worker assignments first (FK constraint)
-                cursor.execute("DELETE FROM worker_assignments WHERE booking_id = %s", (bid,))
+                # Delete employee assignments first (FK constraint)
+                cursor.execute("DELETE FROM employee_assignments WHERE booking_id = %s", (bid,))
                 cursor.execute("DELETE FROM appointment_notes WHERE booking_id = %s", (bid,))
                 cursor.execute("DELETE FROM bookings WHERE id = %s", (bid,))
             conn.commit()

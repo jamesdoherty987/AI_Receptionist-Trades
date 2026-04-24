@@ -459,7 +459,7 @@ const Step3BookingConfirmed: React.FC = () => {
   const actions = [
     { icon: "📅", title: "Calendar Updated", desc: "Job added to Thursday 10 AM slot", color: C.blue, delay: 20 },
     { icon: "👤", title: "Customer Saved", desc: "John Murphy added to CRM with phone & address", color: C.pink, delay: 35 },
-    { icon: "👷", title: "Worker Assigned", desc: "Mike O'Brien notified of new job", color: C.purple, delay: 50 },
+    { icon: "👷", title: "Employee Assigned", desc: "Mike O'Brien notified of new job", color: C.purple, delay: 50 },
     { icon: "💬", title: "SMS Confirmation", desc: "Customer receives booking confirmation text", color: C.cyan, delay: 65 },
     { icon: "⏰", title: "Reminder Scheduled", desc: "24-hour reminder queued for Wednesday", color: C.orange, delay: 80 },
     { icon: "📊", title: "Revenue Tracked", desc: "€150 emergency callout logged to finances", color: C.gold, delay: 95 },
@@ -545,7 +545,7 @@ const Step4SMSReminder: React.FC = () => {
     { time: "Day of Booking", event: "Confirmation SMS sent", icon: "✅", done: frame > 10 },
     { time: "24 Hours Before", event: "Reminder SMS sent", icon: "⏰", done: frame > 30 },
     { time: "Customer Replies", event: "YES — Confirmed", icon: "💬", done: frame > 75 },
-    { time: "Job Day", event: "Worker arrives on time", icon: "👷", done: frame > 95 },
+    { time: "Job Day", event: "Employee arrives on time", icon: "👷", done: frame > 95 },
   ];
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
@@ -669,8 +669,8 @@ const WhatMakesItSpecial: React.FC = () => {
       desc: "Captures and verifies addresses. Spells back names for accuracy.",
     },
     {
-      icon: "👷", title: "Smart Worker Assignment", color: C.cyan,
-      desc: "Assigns the right worker based on skills, availability, and location.",
+      icon: "👷", title: "Smart Employee Assignment", color: C.cyan,
+      desc: "Assigns the right employee based on skills, availability, and location.",
     },
     {
       icon: "🛡️", title: "Conflict Prevention", color: C.gold,

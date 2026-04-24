@@ -89,24 +89,24 @@ def check_database_for_base64_images():
         else:
             print(f"\n🎉 No base64 images found! All images are using URLs or no images uploaded yet.")
         
-        # Also check workers table for image_url
+        # Also check employees table for image_url
         if hasattr(db, 'use_postgres') and db.use_postgres:
             conn = db.get_connection()
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("SELECT id, name, image_url FROM workers WHERE image_url IS NOT NULL AND image_url LIKE 'data:image%'")
-            workers = cursor.fetchall()
+            cursor.execute("SELECT id, name, image_url FROM employees WHERE image_url IS NOT NULL AND image_url LIKE 'data:image%'")
+            employees = cursor.fetchall()
             db.return_connection(conn)
         else:
             conn = db.get_connection()
             conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, image_url FROM workers WHERE image_url IS NOT NULL AND image_url LIKE 'data:image%'")
-            workers = cursor.fetchall()
+            cursor.execute("SELECT id, name, image_url FROM employees WHERE image_url IS NOT NULL AND image_url LIKE 'data:image%'")
+            employees = cursor.fetchall()
             conn.close()
         
-        if len(workers) > 0:
-            print(f"\n👷 Workers with base64 images: {len(workers)}")
-            print(f"   (Worker images are not currently migrated by this script)")
+        if len(employees) > 0:
+            print(f"\n👷 Employees with base64 images: {len(employees)}")
+            print(f"   (Employee images are not currently migrated by this script)")
         
     except Exception as e:
         print(f"❌ Error checking database: {e}")

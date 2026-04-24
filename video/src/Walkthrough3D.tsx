@@ -16,7 +16,7 @@ const S = {
   jobs: staticFile("screenshots/jobs.png"),
   calls: staticFile("screenshots/calls.png"),
   calendar: staticFile("screenshots/calendar.png"),
-  workers: staticFile("screenshots/workers.png"),
+  employees: staticFile("screenshots/employees.png"),
   customers: staticFile("screenshots/customers.png"),
   services: staticFile("screenshots/services.png"),
   materials: staticFile("screenshots/materials.png"),
@@ -81,7 +81,7 @@ const Intro: React.FC = () => {
   const { fps } = useVideoConfig();
   const logoS = spring({ frame: f - 5, fps, config: { damping: 6, mass: 0.3, stiffness: 250 } });
   // Screens whooshing past in background
-  const allKeys: SK[] = ["jobs", "calls", "calendar", "workers", "customers", "services", "materials"];
+  const allKeys: SK[] = ["jobs", "calls", "calendar", "employees", "customers", "services", "materials"];
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
       <Orbs colors={[C.purpleGlow, C.cyanGlow, C.blueGlow]} />
@@ -189,9 +189,9 @@ const CalendarScene: React.FC = () => {
 
 
 // ═══════════════════════════════════════════════════════════
-// SCENE 5: WORKERS — Two screens side by side, sliding in from edges
+// SCENE 5: EMPLOYEES — Two screens side by side, sliding in from edges
 // ═══════════════════════════════════════════════════════════
-const WorkersScene: React.FC = () => {
+const EmployeesScene: React.FC = () => {
   const f = useCurrentFrame();
   // Main screen slides from left
   const leftX = interpolate(f, [0, 30], [-800, 60], { extrapolateRight: "clamp", easing: (t) => 1 - Math.pow(1 - t, 3) });
@@ -204,13 +204,13 @@ const WorkersScene: React.FC = () => {
       {/* Main screen — tilted left */}
       <div style={{ perspective: 1200, position: "absolute", left: leftX, top: "50%", transform: "translateY(-50%)" }}>
         <Chrome style={{ transform: "rotateY(12deg) rotateX(3deg)", width: 900, boxShadow: `0 30px 80px rgba(0,0,0,0.5),0 0 40px rgba(255,107,53,0.2)` }}>
-          <Img src={S.workers} style={{ width: "100%", display: "block" }} />
+          <Img src={S.employees} style={{ width: "100%", display: "block" }} />
         </Chrome>
       </div>
       {/* Zoomed detail — tilted right */}
       <div style={{ perspective: 1200, position: "absolute", left: rightX, top: "50%", transform: "translateY(-50%)" }}>
         <Chrome style={{ transform: `rotateY(-8deg) rotateX(2deg) scale(${rightScale})`, width: 900, boxShadow: `0 30px 80px rgba(0,0,0,0.5),0 0 40px ${C.purpleGlow}` }}>
-          <Img src={S.workers} style={{ width: "100%", display: "block", transform: "scale(1.8) translate(-15%, -10%)" }} />
+          <Img src={S.employees} style={{ width: "100%", display: "block", transform: "scale(1.8) translate(-15%, -10%)" }} />
         </Chrome>
       </div>
       <BigWord text="👷 TEAM" delay={5} size={90} y={80} color={C.orange} />
@@ -281,7 +281,7 @@ const ServicesScene: React.FC = () => {
 const MaterialsScene: React.FC = () => {
   const f = useCurrentFrame();
   // Stack effect — multiple screens stacked with offset
-  const stackScreens: SK[] = ["services", "workers", "materials"];
+  const stackScreens: SK[] = ["services", "employees", "materials"];
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
       <Orbs colors={[C.blueGlow, C.cyanGlow]} />
@@ -317,7 +317,7 @@ const OrbitScene: React.FC = () => {
     { key: "jobs", icon: "📋", label: "Jobs", color: C.blue },
     { key: "calls", icon: "📞", label: "Calls", color: C.cyan },
     { key: "calendar", icon: "📅", label: "Calendar", color: C.purple },
-    { key: "workers", icon: "👷", label: "Workers", color: C.orange },
+    { key: "employees", icon: "👷", label: "Employees", color: C.orange },
     { key: "customers", icon: "👥", label: "Customers", color: C.pink },
     { key: "services", icon: "🔧", label: "Services", color: C.gold },
     { key: "materials", icon: "📦", label: "Materials", color: C.blue },
@@ -402,7 +402,7 @@ export const Walkthrough3D: React.FC = () => {
     { component: JobsScene, duration: 150 },        // 5s — swoops up, zooms in
     { component: CallsScene, duration: 150 },       // 5s — card flip
     { component: CalendarScene, duration: 165 },    // 5.5s — drops + pans
-    { component: WorkersScene, duration: 135 },     // 4.5s — dual screens
+    { component: EmployeesScene, duration: 135 },     // 4.5s — dual screens
     { component: CustomersScene, duration: 150 },   // 5s — tiny to full zoom
     { component: ServicesScene, duration: 150 },     // 5s — 3D spin
     { component: MaterialsScene, duration: 120 },   // 4s — card stack

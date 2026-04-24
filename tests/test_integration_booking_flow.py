@@ -38,18 +38,18 @@ def next_monday(hour=8):
     )
 
 
-def make_mock_db(existing_bookings=None, workers=None, company_id=1):
-    """Create a mock DB that supports worker-based availability checks."""
+def make_mock_db(existing_bookings=None, employees=None, company_id=1):
+    """Create a mock DB that supports employee-based availability checks."""
     db = MagicMock()
-    db.has_workers.return_value = bool(workers)
-    db.get_all_workers.return_value = workers or []
+    db.has_employees.return_value = bool(employees)
+    db.get_all_employees.return_value = employees or []
     db.get_all_bookings.return_value = existing_bookings or []
     db.get_all_clients.return_value = []
     db.get_clients_by_name.return_value = []
     db.find_or_create_client.return_value = 1
     db.add_booking.return_value = 100
     db.add_appointment_note.return_value = True
-    db.assign_worker_to_job.return_value = {'success': True}
+    db.assign_employee_to_job.return_value = {'success': True}
     db.get_client.return_value = {'id': 1, 'name': 'Test Client', 'phone': '0851234567'}
     db.get_company.return_value = {
         'id': company_id, 'company_name': 'Test Co',
@@ -58,7 +58,7 @@ def make_mock_db(existing_bookings=None, workers=None, company_id=1):
     db.update_booking.return_value = True
     db.update_client.return_value = True
 
-    # Wire up real check_worker_availability logic
+    # Wire up real check_employee_availability logic
     from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
     real_db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
 
@@ -66,18 +66,18 @@ def make_mock_db(existing_bookings=None, workers=None, company_id=1):
     mock_cursor = MagicMock()
     mock_conn.cursor.return_value = mock_cursor
 
-    worker_jobs_by_id = {}
+    employee_jobs_by_id = {}
     for b in (existing_bookings or []):
-        if b.get('assigned_worker_ids'):
-            for wid in b['assigned_worker_ids']:
-                worker_jobs_by_id.setdefault(wid, []).append({
+        if b.get('assigned_employee_ids'):
+            for wid in b['assigned_employee_ids']:
+                employee_jobs_by_id.setdefault(wid, []).append({
                     'id': b['id'],
                     'appointment_time': b['appointment_time'],
                     'duration_minutes': b.get('duration_minutes', 60),
                     'service_type': b.get('service_type', 'Service'),
                     'client_name': b.get('client_name', 'Client'),
                     'address': b.get('address', ''),
-                    'worker_id': wid
+                    'employee_id': wid
                 })
 
     _last_params = [None]
@@ -92,24 +92,24 @@ def make_mock_db(existing_bookings=None, workers=None, company_id=1):
         params = _last_params[0]
         if params and len(params) >= 1:
             wid = params[0]
-            return worker_jobs_by_id.get(wid, [])
+            return employee_jobs_by_id.get(wid, [])
         return []
     mock_cursor.fetchall = cursor_fetchall
 
     real_db.get_connection = MagicMock(return_value=mock_conn)
     real_db.return_connection = MagicMock()
 
-    def find_available_workers(appointment_time, duration_minutes, company_id=None):
+    def find_available_employees(appointment_time, duration_minutes, company_id=None):
         available = []
-        for w in (workers or []):
-            result = real_db.check_worker_availability(
+        for w in (employees or []):
+            result = real_db.check_employee_availability(
                 w['id'], appointment_time, duration_minutes, company_id=company_id
             )
             if result.get('available', False):
                 available.append(w)
         return available
 
-    db.find_available_workers_for_slot = MagicMock(side_effect=find_available_workers)
+    db.find_available_employees_for_slot = MagicMock(side_effect=find_available_employees)
     return db
 
 
@@ -159,13 +159,13 @@ def make_mock_calendar(existing_bookings=None, biz_start=8, biz_end=17):
 
 
 SERVICE_CONFIGS = {
-    'short_1h': {'name': 'Boiler Repair', 'duration_minutes': 60, 'workers_required': 1},
-    'short_2h': {'name': 'Pipe Fix', 'duration_minutes': 120, 'workers_required': 1},
-    'full_day': {'name': 'General Service', 'duration_minutes': 1440, 'workers_required': 1},
-    'half_day': {'name': 'Painting', 'duration_minutes': 480, 'workers_required': 1},
-    'week': {'name': 'Kitchen Installation', 'duration_minutes': 10080, 'workers_required': 1},
-    'month': {'name': 'House Renovation', 'duration_minutes': 40320, 'workers_required': 1},
-    'two_day': {'name': 'Tiling', 'duration_minutes': 2880, 'workers_required': 1},
+    'short_1h': {'name': 'Boiler Repair', 'duration_minutes': 60, 'employees_required': 1},
+    'short_2h': {'name': 'Pipe Fix', 'duration_minutes': 120, 'employees_required': 1},
+    'full_day': {'name': 'General Service', 'duration_minutes': 1440, 'employees_required': 1},
+    'half_day': {'name': 'Painting', 'duration_minutes': 480, 'employees_required': 1},
+    'week': {'name': 'Kitchen Installation', 'duration_minutes': 10080, 'employees_required': 1},
+    'month': {'name': 'House Renovation', 'duration_minutes': 40320, 'employees_required': 1},
+    'two_day': {'name': 'Tiling', 'duration_minutes': 2880, 'employees_required': 1},
 }
 
 
@@ -394,35 +394,35 @@ class TestMultiDayClashDetection:
     and prevent overlapping bookings.
     """
 
-    def test_week_job_blocks_all_5_days_worker_based(self):
-        """A 1-week job starting Monday should block Mon-Fri for that worker."""
+    def test_week_job_blocks_all_5_days_employee_based(self):
+        """A 1-week job starting Monday should block Mon-Fri for that employee."""
         monday = next_monday(hour=8)
-        workers = [{'id': 1, 'name': 'Worker A'}]
+        employees = [{'id': 1, 'name': 'Employee A'}]
         existing = [{
             'id': 1,
             'appointment_time': monday,
             'duration_minutes': 10080,
             'service_type': 'Kitchen Install',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
             'client_name': 'Existing Client',
             'address': '123 Test Street Limerick',
         }]
-        db = make_mock_db(existing_bookings=existing, workers=workers)
+        db = make_mock_db(existing_bookings=existing, employees=employees)
 
-        # Try to book the same worker on Wednesday of the same week
+        # Try to book the same employee on Wednesday of the same week
         wednesday = monday + timedelta(days=2)
-        available = db.find_available_workers_for_slot(
+        available = db.find_available_employees_for_slot(
             appointment_time=wednesday.replace(hour=8),
             duration_minutes=60,
             company_id=1
         )
-        assert len(available) == 0, "Worker should be blocked on Wednesday by week-long job"
+        assert len(available) == 0, "Employee should be blocked on Wednesday by week-long job"
 
-    def test_week_job_worker_free_next_week(self):
-        """Worker should be free the week after a 1-week job."""
+    def test_week_job_employee_free_next_week(self):
+        """Employee should be free the week after a 1-week job."""
         monday = next_monday(hour=8)
-        workers = [{'id': 1, 'name': 'Worker A'}]
+        employees = [{'id': 1, 'name': 'Employee A'}]
         # 5-day job (Mon-Fri) = 5 * 1440 = 7200 mins
         existing = [{
             'id': 1,
@@ -430,44 +430,44 @@ class TestMultiDayClashDetection:
             'duration_minutes': 7200,  # 5 business days
             'service_type': 'Renovation',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
             'client_name': 'Client',
             'address': '456 Test Road Limerick',
         }]
-        db = make_mock_db(existing_bookings=existing, workers=workers)
+        db = make_mock_db(existing_bookings=existing, employees=employees)
 
         # Next Monday should be free
         next_mon = monday + timedelta(days=7)
-        available = db.find_available_workers_for_slot(
+        available = db.find_available_employees_for_slot(
             appointment_time=next_mon.replace(hour=8),
             duration_minutes=60,
             company_id=1
         )
-        assert len(available) == 1, "Worker should be free next Monday"
+        assert len(available) == 1, "Employee should be free next Monday"
 
     def test_short_job_doesnt_block_next_day(self):
         """A 2-hour job on Monday shouldn't block Tuesday."""
         monday = next_monday(hour=10)
-        workers = [{'id': 1, 'name': 'Worker A'}]
+        employees = [{'id': 1, 'name': 'Employee A'}]
         existing = [{
             'id': 1,
             'appointment_time': monday,
             'duration_minutes': 120,
             'service_type': 'Boiler Repair',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
             'client_name': 'Client',
             'address': '789 Test Lane Limerick',
         }]
-        db = make_mock_db(existing_bookings=existing, workers=workers)
+        db = make_mock_db(existing_bookings=existing, employees=employees)
 
         tuesday = monday + timedelta(days=1)
-        available = db.find_available_workers_for_slot(
+        available = db.find_available_employees_for_slot(
             appointment_time=tuesday.replace(hour=10),
             duration_minutes=120,
             company_id=1
         )
-        assert len(available) == 1, "Worker should be free on Tuesday after Monday 2h job"
+        assert len(available) == 1, "Employee should be free on Tuesday after Monday 2h job"
 
 
 # ─── Full execute_tool_call flow tests ────────────────────────────────

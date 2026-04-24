@@ -27,8 +27,8 @@ INDUSTRY_PROFILES = {
         'terminology': {
             'job': 'Job',
             'jobs': 'Jobs',
-            'worker': 'Worker',
-            'workers': 'Workers',
+            'employee': 'Employee',
+            'employees': 'Employees',
             'client': 'Customer',
             'clients': 'Customers',
             'service': 'Service',
@@ -51,8 +51,8 @@ INDUSTRY_PROFILES = {
             'urgency_options': ['scheduled', 'same-day', 'quote', 'emergency'],
         },
         'onboarding': {
-            'worker_icon': 'fa-hard-hat',
-            'worker_label': 'Add Workers',
+            'employee_icon': 'fa-hard-hat',
+            'employee_label': 'Add Employees',
             'show_materials_step': True,
             'company_context_placeholder': (
                 "Examples:\n"
@@ -70,15 +70,15 @@ INDUSTRY_PROFILES = {
         'terminology': {
             'job': 'Appointment',
             'jobs': 'Appointments',
-            'worker': 'Stylist',
-            'workers': 'Stylists',
+            'employee': 'Stylist',
+            'employees': 'Stylists',
             'client': 'Client',
             'clients': 'Clients',
             'service': 'Service',
             'booking': 'Appointment',
         },
         'features': {
-            'materials': False,
+            'materials': True,
             'callouts': False,
             'quotes': False,
             'emergency_jobs': False,
@@ -94,9 +94,9 @@ INDUSTRY_PROFILES = {
             'urgency_options': ['scheduled'],
         },
         'onboarding': {
-            'worker_icon': 'fa-user-tie',
-            'worker_label': 'Add Stylists',
-            'show_materials_step': False,
+            'employee_icon': 'fa-user-tie',
+            'employee_label': 'Add Stylists',
+            'show_materials_step': True,
             'company_context_placeholder': (
                 "Examples:\n"
                 "- Walk-ins welcome\n"
@@ -113,8 +113,8 @@ INDUSTRY_PROFILES = {
         'terminology': {
             'job': 'Job',
             'jobs': 'Jobs',
-            'worker': 'Cleaner',
-            'workers': 'Cleaners',
+            'employee': 'Cleaner',
+            'employees': 'Cleaners',
             'client': 'Customer',
             'clients': 'Customers',
             'service': 'Service',
@@ -137,8 +137,8 @@ INDUSTRY_PROFILES = {
             'urgency_options': ['scheduled', 'quote'],
         },
         'onboarding': {
-            'worker_icon': 'fa-broom',
-            'worker_label': 'Add Cleaners',
+            'employee_icon': 'fa-broom',
+            'employee_label': 'Add Cleaners',
             'show_materials_step': True,
             'company_context_placeholder': (
                 "Examples:\n"
@@ -156,15 +156,15 @@ INDUSTRY_PROFILES = {
         'terminology': {
             'job': 'Reservation',
             'jobs': 'Reservations',
-            'worker': 'Server',
-            'workers': 'Staff',
+            'employee': 'Server',
+            'employees': 'Staff',
             'client': 'Guest',
             'clients': 'Guests',
             'service': 'Service',
             'booking': 'Reservation',
         },
         'features': {
-            'materials': False,
+            'materials': True,
             'callouts': False,
             'quotes': False,
             'emergency_jobs': False,
@@ -180,9 +180,9 @@ INDUSTRY_PROFILES = {
             'urgency_options': ['scheduled'],
         },
         'onboarding': {
-            'worker_icon': 'fa-utensils',
-            'worker_label': 'Add Staff',
-            'show_materials_step': False,
+            'employee_icon': 'fa-utensils',
+            'employee_label': 'Add Staff',
+            'show_materials_step': True,
             'company_context_placeholder': (
                 "Examples:\n"
                 "- Outdoor seating available\n"

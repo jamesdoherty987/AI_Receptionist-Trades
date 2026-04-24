@@ -177,13 +177,13 @@ body {
   .materials-tab,
   .services-tab,
   .reviews-tab,
-  .workers-tab {
+  .employees-tab {
     gap: 0.65rem;
   }
 
   /* ── Consistent search bars ── */
   .jt-search,
-  .workers-search,
+  .employees-search,
   .mat-search,
   .svc-search,
   .acct-search,
@@ -194,7 +194,7 @@ body {
   }
 
   .jt-search input,
-  .workers-search input,
+  .employees-search input,
   .mat-search input,
   .svc-search input,
   .acct-search input,
@@ -216,7 +216,7 @@ body {
 
   /* ── Consistent card titles ── */
   .jt-card-top h4,
-  .worker-info h3,
+  .employee-info h3,
   .customer-info h3,
   .call-log-info h3,
   .mat-card-name,
@@ -228,14 +228,14 @@ body {
   /* ── Consistent card padding ── */
   .customer-card,
   .call-log-card,
-  .worker-card,
+  .employee-card,
   .service-card,
   .review-item {
     padding: 0.75rem;
   }
 
   /* ── Consistent header h2 sizes ── */
-  .workers-header h2,
+  .employees-header h2,
   .customers-header h2,
   .call-logs-header h2,
   .services-header h2,
@@ -247,7 +247,7 @@ body {
   .jt-header .btn,
   .customers-controls .btn,
   .services-controls .btn,
-  .workers-header-right .btn,
+  .employees-header-right .btn,
   .materials-header .btn {
     width: 100%;
     justify-content: center;
@@ -265,7 +265,7 @@ body {
   /* ── Consistent icon sizes in cards ── */
   .customer-avatar,
   .call-log-icon,
-  .worker-avatar,
+  .employee-avatar,
   .mat-card-icon {
     width: 36px;
     height: 36px;
@@ -284,12 +284,12 @@ body {
   .materials-tab,
   .services-tab,
   .reviews-tab,
-  .workers-tab {
+  .employees-tab {
     gap: 0.5rem;
   }
 
   /* Two-column card layouts in landscape */
-  .workers-list {
+  .employees-list {
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -667,8 +667,8 @@ input:focus, textarea:focus, select:focus {
     padding-top: env(safe-area-inset-top, 0px);
   }
 
-  /* Worker portal header also absorbs safe area */
-  .worker-header {
+  /* Employee portal header also absorbs safe area */
+  .employee-header {
     padding-top: env(safe-area-inset-top, 0px);
   }
 
@@ -678,7 +678,7 @@ input:focus, textarea:focus, select:focus {
   }
 
   /* Prevent text selection on UI elements (feels more app-like) */
-  button, .worker-tab, .worker-stat, .worker-header, nav {
+  button, .employee-tab, .employee-stat, .employee-header, nav {
     -webkit-user-select: none;
     user-select: none;
   }
@@ -700,9 +700,9 @@ input:focus, textarea:focus, select:focus {
   }
 
   /* Smoother touch scrolling */
-  .worker-tab-content,
-  .worker-jobs,
-  .worker-main,
+  .employee-tab-content,
+  .employee-jobs,
+  .employee-main,
   .dashboard-content,
   .tab-content {
     -webkit-overflow-scrolling: touch;
@@ -710,7 +710,7 @@ input:focus, textarea:focus, select:focus {
   }
 
   /* Bottom safe area padding for fixed elements */
-  .worker-tabs {
+  .employee-tabs {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 

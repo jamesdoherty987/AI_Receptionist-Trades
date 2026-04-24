@@ -1,5 +1,5 @@
 """
-Add gcal_invite_workers column to companies table.
+Add gcal_invite_employees column to companies table.
 Defaults to FALSE so existing users don't get surprise invitation emails.
 """
 import os
@@ -20,7 +20,7 @@ def migrate():
     conn = psycopg2.connect(database_url)
     cursor = conn.cursor()
 
-    col = 'gcal_invite_workers'
+    col = 'gcal_invite_employees'
     col_type = 'BOOLEAN DEFAULT FALSE'
 
     cursor.execute(

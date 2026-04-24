@@ -1,6 +1,6 @@
 """
-Create worker_time_off table for the worker portal HR features.
-Workers can request time off, owners can approve/deny.
+Create employee_time_off table for the employee portal HR features.
+Employees can request time off, owners can approve/deny.
 """
 import os
 import sys
@@ -23,18 +23,18 @@ def migrate():
     cursor.execute("""
         SELECT EXISTS (
             SELECT FROM information_schema.tables 
-            WHERE table_name = 'worker_time_off'
+            WHERE table_name = 'employee_time_off'
         )
     """)
     if cursor.fetchone()[0]:
-        print("Table worker_time_off already exists")
+        print("Table employee_time_off already exists")
         conn.close()
         return
 
     cursor.execute("""
-        CREATE TABLE worker_time_off (
+        CREATE TABLE employee_time_off (
             id SERIAL PRIMARY KEY,
-            worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+            employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
             company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
             start_date DATE NOT NULL,
             end_date DATE NOT NULL,
@@ -48,15 +48,15 @@ def migrate():
         )
     """)
 
-    cursor.execute("CREATE INDEX idx_worker_time_off_worker ON worker_time_off(worker_id)")
-    cursor.execute("CREATE INDEX idx_worker_time_off_company ON worker_time_off(company_id)")
-    cursor.execute("CREATE INDEX idx_worker_time_off_dates ON worker_time_off(start_date, end_date)")
+    cursor.execute("CREATE INDEX idx_employee_time_off_employee ON employee_time_off(employee_id)")
+    cursor.execute("CREATE INDEX idx_employee_time_off_company ON employee_time_off(company_id)")
+    cursor.execute("CREATE INDEX idx_employee_time_off_dates ON employee_time_off(start_date, end_date)")
 
     conn.commit()
     cursor.close()
     conn.close()
 
-    print("Created worker_time_off table successfully")
+    print("Created employee_time_off table successfully")
 
 
 if __name__ == '__main__':

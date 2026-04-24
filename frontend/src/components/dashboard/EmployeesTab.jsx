@@ -3,34 +3,34 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { useIndustry } from '../../context/IndustryContext';
 import { useToast } from '../Toast';
-import { getWorkerHoursThisWeek, getWorkersHoursThisWeek, getCompanyTimeOffRequests, reviewTimeOffRequest, getUnreadMessageCounts } from '../../services/api';
-import MessageWorkerModal from '../modals/MessageWorkerModal';
-import AddWorkerModal from '../modals/AddWorkerModal';
-import WorkerDetailModal from '../modals/WorkerDetailModal';
-import './WorkersTab.css';
+import { getEmployeeHoursThisWeek, getEmployeesHoursThisWeek, getCompanyTimeOffRequests, reviewTimeOffRequest, getUnreadMessageCounts } from '../../services/api';
+import MessageEmployeeModal from '../modals/MessageEmployeeModal';
+import AddEmployeeModal from '../modals/AddEmployeeModal';
+import EmployeeDetailModal from '../modals/EmployeeDetailModal';
+import './EmployeesTab.css';
 import './SharedDashboard.css';
 
 // Same color palette as CalendarTab for consistency
-const WORKER_COLORS = [
+const EMPLOYEE_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
   '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
 ];
 
-function WorkersTab({ workers, bookings }) {
+function EmployeesTab({ employees, bookings }) {
   const { hasActiveSubscription } = useAuth();
   const { terminology } = useIndustry();
   const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
   const queryClient = useQueryClient();
   const [showAddModal, setShowAddModal] = useState(false);
-  const [selectedWorkerId, setSelectedWorkerId] = useState(null);
-  const [workersHours, setWorkersHours] = useState({});
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
+  const [employeesHours, setEmployeesHours] = useState({});
   const [showTimeOff, setShowTimeOff] = useState(false);
   const [reviewNotes, setReviewNotes] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [messageWorkerId, setMessageWorkerId] = useState(null);
-  const [messageWorkerName, setMessageWorkerName] = useState('');
+  const [messageEmployeeId, setMessageEmployeeId] = useState(null);
+  const [messageEmployeeName, setMessageEmployeeName] = useState('');
 
   // Fetch time-off requests
   const { data: timeOffData } = useQuery({
@@ -41,7 +41,7 @@ function WorkersTab({ workers, bookings }) {
     },
   });
 
-  // Fetch unread message counts per worker
+  // Fetch unread message counts per employee
   const { data: unreadData } = useQuery({
     queryKey: ['unread-message-counts'],
     queryFn: async () => {
@@ -80,67 +80,67 @@ function WorkersTab({ workers, bookings }) {
 
   const handleAddClick = () => {
     if (!isSubscriptionActive) {
-      addToast(`Please upgrade your plan to add ${terminology.workers.toLowerCase()}`, 'warning');
+      addToast(`Please upgrade your plan to add ${terminology.employees.toLowerCase()}`, 'warning');
       return;
     }
     setShowAddModal(true);
   };
 
-  // Fetch hours for all workers (batch endpoint when available, falls back to parallel requests)
+  // Fetch hours for all employees (batch endpoint when available, falls back to parallel requests)
   useEffect(() => {
     let cancelled = false;
     const fetchHours = async () => {
       try {
-        // Try the batch endpoint first — returns { hours: { [worker_id]: hours } }
-        const batch = await getWorkersHoursThisWeek().catch(() => null);
+        // Try the batch endpoint first — returns { hours: { [employee_id]: hours } }
+        const batch = await getEmployeesHoursThisWeek().catch(() => null);
         if (!cancelled && batch?.data?.hours) {
-          // Normalize string keys (JSON) back to numeric worker ids
+          // Normalize string keys (JSON) back to numeric employee ids
           const normalized = {};
           for (const [k, v] of Object.entries(batch.data.hours)) {
             const n = Number(k);
             normalized[Number.isNaN(n) ? k : n] = v;
           }
-          setWorkersHours(normalized);
+          setEmployeesHours(normalized);
           return;
         }
         // Fallback: parallel fetches (still much faster than sequential)
         const results = await Promise.all(
-          workers.map(w =>
-            getWorkerHoursThisWeek(w.id)
+          employees.map(w =>
+            getEmployeeHoursThisWeek(w.id)
               .then(r => [w.id, r.data.hours_worked])
               .catch(() => [w.id, 0])
           )
         );
-        if (!cancelled) setWorkersHours(Object.fromEntries(results));
+        if (!cancelled) setEmployeesHours(Object.fromEntries(results));
       } catch (error) {
-        console.error('Error fetching worker hours:', error);
+        console.error('Error fetching employee hours:', error);
       }
     };
 
-    if (workers.length > 0) fetchHours();
+    if (employees.length > 0) fetchHours();
     return () => { cancelled = true; };
-  }, [workers]);
+  }, [employees]);
 
-  // Calculate worker status based on their jobs today
-  const workersWithStatus = useMemo(() => {
+  // Calculate employee status based on their jobs today
+  const employeesWithStatus = useMemo(() => {
     const now = new Date();
     const today = now.toDateString();
     
-    return workers.map(worker => {
-      // Find jobs assigned to this worker for today using assigned_worker_ids array
-      const workerJobsToday = (bookings || []).filter(job => {
+    return employees.map(employee => {
+      // Find jobs assigned to this employee for today using assigned_employee_ids array
+      const employeeJobsToday = (bookings || []).filter(job => {
         if (!job || !job.appointment_time) return false;
         const jobDate = new Date(job.appointment_time);
         const isToday = jobDate.toDateString() === today;
-        // Check if worker is in the assigned_worker_ids array (handle both number and string IDs)
-        const assignedIds = job.assigned_worker_ids || [];
-        const isAssigned = assignedIds.includes(worker.id) || assignedIds.includes(String(worker.id));
+        // Check if employee is in the assigned_employee_ids array (handle both number and string IDs)
+        const assignedIds = job.assigned_employee_ids || [];
+        const isAssigned = assignedIds.includes(employee.id) || assignedIds.includes(String(employee.id));
         const isActive = job.status !== 'completed' && job.status !== 'cancelled';
         return isToday && isAssigned && isActive;
       });
 
       // Check if currently on a job (within job time window)
-      const currentJob = workerJobsToday.find(job => {
+      const currentJob = employeeJobsToday.find(job => {
         const jobTime = new Date(job.appointment_time);
         const diffMinutes = (now - jobTime) / (1000 * 60);
         // Use job duration if available, otherwise default to 2 hours
@@ -150,29 +150,29 @@ function WorkersTab({ workers, bookings }) {
       });
 
       // Count jobs today
-      const jobsToday = workerJobsToday.length;
-      const nextJob = workerJobsToday
+      const jobsToday = employeeJobsToday.length;
+      const nextJob = employeeJobsToday
         .filter(job => new Date(job.appointment_time) > now)
         .sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time))[0];
 
       return {
-        ...worker,
+        ...employee,
         isBusy: !!currentJob,
         currentJob,
         jobsToday,
         nextJob,
-        hoursWorked: workersHours[worker.id] || 0,
-        weeklyHoursExpected: worker.weekly_hours_expected || 40,
+        hoursWorked: employeesHours[employee.id] || 0,
+        weeklyHoursExpected: employee.weekly_hours_expected || 40,
         isOnLeave: (timeOffData?.requests || []).some(r => {
-          if (r.status !== 'approved' || r.worker_id !== worker.id) return false;
+          if (r.status !== 'approved' || r.employee_id !== employee.id) return false;
           const todayStr = now.toISOString().split('T')[0]; // YYYY-MM-DD
           return r.start_date <= todayStr && r.end_date >= todayStr;
         })
       };
     });
-  }, [workers, bookings, workersHours, timeOffData]);
+  }, [employees, bookings, employeesHours, timeOffData]);
 
-  // Build unread counts map { workerId: count }
+  // Build unread counts map { employeeId: count }
   const unreadCounts = useMemo(() => {
     const map = {};
     const counts = unreadData?.counts;
@@ -182,9 +182,9 @@ function WorkersTab({ workers, bookings }) {
     return map;
   }, [unreadData]);
 
-  // Filter workers by search and status
-  const filteredWorkers = useMemo(() => {
-    return workersWithStatus.filter(w => {
+  // Filter employees by search and status
+  const filteredEmployees = useMemo(() => {
+    return employeesWithStatus.filter(w => {
       const matchesSearch = !searchQuery || 
         w.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         w.specialty?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -197,38 +197,38 @@ function WorkersTab({ workers, bookings }) {
       if (statusFilter === 'leave') return w.isOnLeave;
       return true;
     });
-  }, [workersWithStatus, searchQuery, statusFilter]);
+  }, [employeesWithStatus, searchQuery, statusFilter]);
 
   // Summary stats
   const stats = useMemo(() => ({
-    total: workersWithStatus.length,
-    available: workersWithStatus.filter(w => !w.isBusy && !w.isOnLeave).length,
-    busy: workersWithStatus.filter(w => w.isBusy).length,
-    onLeave: workersWithStatus.filter(w => w.isOnLeave).length,
-  }), [workersWithStatus]);
+    total: employeesWithStatus.length,
+    available: employeesWithStatus.filter(w => !w.isBusy && !w.isOnLeave).length,
+    busy: employeesWithStatus.filter(w => w.isBusy).length,
+    onLeave: employeesWithStatus.filter(w => w.isOnLeave).length,
+  }), [employeesWithStatus]);
 
-  // Worker color map — same order as calendar
-  const workerColorMap = useMemo(() => {
+  // Employee color map — same order as calendar
+  const employeeColorMap = useMemo(() => {
     const map = {};
-    (workers || []).forEach((worker, index) => {
-      map[worker.id] = WORKER_COLORS[index % WORKER_COLORS.length];
+    (employees || []).forEach((employee, index) => {
+      map[employee.id] = EMPLOYEE_COLORS[index % EMPLOYEE_COLORS.length];
     });
     return map;
-  }, [workers]);
+  }, [employees]);
 
-  const handleQuickMessage = (e, worker) => {
+  const handleQuickMessage = (e, employee) => {
     e.stopPropagation();
-    setMessageWorkerId(worker.id);
-    setMessageWorkerName(worker.name);
+    setMessageEmployeeId(employee.id);
+    setMessageEmployeeName(employee.name);
   };
 
   return (
-    <div className="workers-tab">
+    <div className="employees-tab">
       <div className="tab-page-header">
         <div>
-          <h2>{terminology.workers}</h2>
-          {workers.length > 0 && (
-            <div className="workers-stats-bar" style={{ marginTop: '0.35rem' }}>
+          <h2>{terminology.employees}</h2>
+          {employees.length > 0 && (
+            <div className="employees-stats-bar" style={{ marginTop: '0.35rem' }}>
               <span className="ws-stat">{stats.total} total</span>
               <span className="ws-stat available">{stats.available} available</span>
               {stats.busy > 0 && <span className="ws-stat busy">{stats.busy} on job</span>}
@@ -240,14 +240,14 @@ function WorkersTab({ workers, bookings }) {
           className="btn-add" 
           onClick={handleAddClick}
         >
-          <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add {terminology.worker}
+          <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add {terminology.employee}
         </button>
       </div>
 
       {/* Search & Filter Bar */}
-      {workers.length > 0 && (
-        <div className="workers-toolbar">
-          <div className="workers-search">
+      {employees.length > 0 && (
+        <div className="employees-toolbar">
+          <div className="employees-search">
             <i className="fas fa-search"></i>
             <input
               type="text"
@@ -261,7 +261,7 @@ function WorkersTab({ workers, bookings }) {
               </button>
             )}
           </div>
-          <div className="workers-filter-pills">
+          <div className="employees-filter-pills">
             {['all', 'available', 'busy', 'leave'].map(f => (
               <button
                 key={f}
@@ -292,14 +292,14 @@ function WorkersTab({ workers, bookings }) {
           {showTimeOff && (
             <div className="time-off-content">
               {pendingRequests.length > 0 && pendingRequests.map(req => {
-                const reqWorkerColor = workerColorMap[req.worker_id] || '#94a3b8';
+                const reqEmployeeColor = employeeColorMap[req.employee_id] || '#94a3b8';
                 return (
-                  <div key={req.id} className="time-off-card pending" style={{ borderLeftColor: reqWorkerColor }}>
+                  <div key={req.id} className="time-off-card pending" style={{ borderLeftColor: reqEmployeeColor }}>
                     <div className="time-off-card-top">
                       <div className="time-off-card-header">
-                        <span className="time-off-worker-name">
-                          <span className="time-off-color-dot" style={{ backgroundColor: reqWorkerColor }}></span>
-                          {req.worker_name}
+                        <span className="time-off-employee-name">
+                          <span className="time-off-color-dot" style={{ backgroundColor: reqEmployeeColor }}></span>
+                          {req.employee_name}
                         </span>
                         <span className="time-off-type-badge">{req.type}</span>
                       </div>
@@ -345,8 +345,8 @@ function WorkersTab({ workers, bookings }) {
                   <span className="time-off-past-label">Recent</span>
                   {pastRequests.slice(0, 5).map(req => (
                     <div key={req.id} className={`time-off-past-item ${req.status}`}>
-                      <span className="time-off-color-dot" style={{ backgroundColor: workerColorMap[req.worker_id] || '#94a3b8' }}></span>
-                      <span className="time-off-worker-name">{req.worker_name}</span>
+                      <span className="time-off-color-dot" style={{ backgroundColor: employeeColorMap[req.employee_id] || '#94a3b8' }}></span>
+                      <span className="time-off-employee-name">{req.employee_name}</span>
                       <span className="time-off-dates-inline">
                         {new Date(req.start_date).toLocaleDateString('en-IE', { month: 'short', day: 'numeric' })}
                         {' — '}
@@ -362,13 +362,13 @@ function WorkersTab({ workers, bookings }) {
         </div>
       )}
 
-      <div className="workers-list">
-        {filteredWorkers.length === 0 ? (
+      <div className="employees-list">
+        {filteredEmployees.length === 0 ? (
           <div className="empty-state">
             {searchQuery || statusFilter !== 'all' ? (
               <>
                 <div className="empty-state-icon">🔍</div>
-                <p>No {terminology.workers.toLowerCase()} match your filters</p>
+                <p>No {terminology.employees.toLowerCase()} match your filters</p>
                 <button className="btn btn-secondary btn-sm" onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}>
                   Clear Filters
                 </button>
@@ -376,48 +376,48 @@ function WorkersTab({ workers, bookings }) {
             ) : (
               <>
                 <div className="empty-state-icon">👷</div>
-                <p>No {terminology.workers.toLowerCase()} found</p>
+                <p>No {terminology.employees.toLowerCase()} found</p>
               </>
             )}
           </div>
         ) : (
-          filteredWorkers.map((worker) => {
-            const unread = unreadCounts[worker.id] || unreadCounts[String(worker.id)] || 0;
-            const workerColor = workerColorMap[worker.id] || '#94a3b8';
+          filteredEmployees.map((employee) => {
+            const unread = unreadCounts[employee.id] || unreadCounts[String(employee.id)] || 0;
+            const employeeColor = employeeColorMap[employee.id] || '#94a3b8';
             return (
               <div 
-                key={worker.id} 
-                className={`worker-card ${worker.isBusy ? 'is-busy' : ''} ${worker.isOnLeave ? 'is-leave' : ''}`}
-                onClick={() => setSelectedWorkerId(worker.id)}
-                style={{ '--worker-color': workerColor }}
+                key={employee.id} 
+                className={`employee-card ${employee.isBusy ? 'is-busy' : ''} ${employee.isOnLeave ? 'is-leave' : ''}`}
+                onClick={() => setSelectedEmployeeId(employee.id)}
+                style={{ '--employee-color': employeeColor }}
               >
-                <div className="worker-avatar">
-                  {worker.image_url ? (
-                    <img src={worker.image_url} alt={worker.name} className="worker-avatar-img" />
+                <div className="employee-avatar">
+                  {employee.image_url ? (
+                    <img src={employee.image_url} alt={employee.name} className="employee-avatar-img" />
                   ) : (
                     <i className="fas fa-hard-hat"></i>
                   )}
-                  <span className={`status-dot ${worker.isOnLeave ? 'leave' : worker.isBusy ? 'busy' : 'available'}`}></span>
+                  <span className={`status-dot ${employee.isOnLeave ? 'leave' : employee.isBusy ? 'busy' : 'available'}`}></span>
                 </div>
-                <div className="worker-info">
-                  <div className="worker-name-row">
-                    <h3>{worker.name}</h3>
-                    {worker.isOnLeave && <span className="leave-chip"><i className="fas fa-umbrella-beach"></i> Leave</span>}
+                <div className="employee-info">
+                  <div className="employee-name-row">
+                    <h3>{employee.name}</h3>
+                    {employee.isOnLeave && <span className="leave-chip"><i className="fas fa-umbrella-beach"></i> Leave</span>}
                   </div>
-                  {worker.specialty && (
-                    <span className="worker-specialty-tag">{worker.specialty}</span>
+                  {employee.specialty && (
+                    <span className="employee-specialty-tag">{employee.specialty}</span>
                   )}
-                  <div className="worker-meta-row">
-                    {worker.jobsToday > 0 && (
+                  <div className="employee-meta-row">
+                    {employee.jobsToday > 0 && (
                       <span className="meta-chip jobs">
                         <i className="fas fa-briefcase"></i>
-                        {worker.jobsToday} today
+                        {employee.jobsToday} today
                       </span>
                     )}
-                    {worker.nextJob && !worker.isBusy && (
+                    {employee.nextJob && !employee.isBusy && (
                       <span className="meta-chip next">
                         <i className="fas fa-arrow-right"></i>
-                        {new Date(worker.nextJob.appointment_time).toLocaleTimeString('en-US', { 
+                        {new Date(employee.nextJob.appointment_time).toLocaleTimeString('en-US', { 
                           hour: 'numeric', 
                           minute: '2-digit' 
                         })}
@@ -425,25 +425,25 @@ function WorkersTab({ workers, bookings }) {
                     )}
                     <span className="meta-chip hours">
                       <i className="fas fa-clock"></i>
-                      {worker.hoursWorked}h / {worker.weeklyHoursExpected}h
+                      {employee.hoursWorked}h / {employee.weeklyHoursExpected}h
                     </span>
                   </div>
                 </div>
-                <div className="worker-card-actions">
+                <div className="employee-card-actions">
                   <button 
                     className="card-action-btn message"
-                    onClick={(e) => handleQuickMessage(e, worker)}
-                    title={`Message ${worker.name}`}
+                    onClick={(e) => handleQuickMessage(e, employee)}
+                    title={`Message ${employee.name}`}
                   >
                     <i className="fas fa-comment-dots"></i>
                     {unread > 0 && <span className="unread-dot">{unread}</span>}
                   </button>
-                  {worker.phone && (
+                  {employee.phone && (
                     <a 
-                      href={`tel:${worker.phone}`} 
+                      href={`tel:${employee.phone}`} 
                       className="card-action-btn call"
                       onClick={(e) => e.stopPropagation()}
-                      title={`Call ${worker.name}`}
+                      title={`Call ${employee.name}`}
                     >
                       <i className="fas fa-phone"></i>
                     </a>
@@ -456,23 +456,23 @@ function WorkersTab({ workers, bookings }) {
       </div>
 
       {/* Modals */}
-      <AddWorkerModal 
+      <AddEmployeeModal 
         isOpen={showAddModal} 
         onClose={() => setShowAddModal(false)} 
       />
-      <WorkerDetailModal
-        isOpen={!!selectedWorkerId}
-        onClose={() => setSelectedWorkerId(null)}
-        workerId={selectedWorkerId}
+      <EmployeeDetailModal
+        isOpen={!!selectedEmployeeId}
+        onClose={() => setSelectedEmployeeId(null)}
+        employeeId={selectedEmployeeId}
       />
-      <MessageWorkerModal
-        isOpen={!!messageWorkerId}
-        onClose={() => { setMessageWorkerId(null); setMessageWorkerName(''); }}
-        workerId={messageWorkerId}
-        workerName={messageWorkerName}
+      <MessageEmployeeModal
+        isOpen={!!messageEmployeeId}
+        onClose={() => { setMessageEmployeeId(null); setMessageEmployeeName(''); }}
+        employeeId={messageEmployeeId}
+        employeeName={messageEmployeeName}
       />
     </div>
   );
 }
 
-export default WorkersTab;
+export default EmployeesTab;

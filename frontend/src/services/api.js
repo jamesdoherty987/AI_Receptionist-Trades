@@ -65,15 +65,15 @@ api.interceptors.response.use(
             window.location.pathname !== '/reset-password' &&
             window.location.pathname !== '/set-password' &&
             window.location.pathname !== '/bfy-ops' &&
-            !window.location.pathname.startsWith('/worker/')) {
+            !window.location.pathname.startsWith('/employee/')) {
           window.location.href = '/login';
         }
-        if (window.location.pathname.startsWith('/worker/') &&
-            window.location.pathname !== '/worker/login' &&
-            window.location.pathname !== '/worker/set-password' &&
-            window.location.pathname !== '/worker/forgot-password' &&
-            window.location.pathname !== '/worker/reset-password') {
-          window.location.href = '/worker/login';
+        if (window.location.pathname.startsWith('/employee/') &&
+            window.location.pathname !== '/employee/login' &&
+            window.location.pathname !== '/employee/set-password' &&
+            window.location.pathname !== '/employee/forgot-password' &&
+            window.location.pathname !== '/employee/reset-password') {
+          window.location.href = '/employee/login';
         }
       }
     }
@@ -133,8 +133,8 @@ export const createBooking = (data) => api.post('/api/bookings', data);
 export const updateBooking = (id, data) => api.put(`/api/bookings/${id}`, data);
 export const deleteBooking = (id) => api.delete(`/api/bookings/${id}`);
 export const rejectBooking = (id, reason = '') => api.post(`/api/bookings/${id}/reject`, { reason });
-export const checkAvailability = (date, serviceType, workerId = null, anyWorker = false, durationMinutes = null) => api.get('/api/bookings/availability', { params: { date, service_type: serviceType, worker_id: workerId, any_worker: anyWorker || undefined, duration_minutes: durationMinutes || undefined } });
-export const checkMonthlyAvailability = (year, month, serviceType, workerId = null, anyWorker = false, durationMinutes = null) => api.get('/api/bookings/availability/month', { params: { year, month, service_type: serviceType, worker_id: workerId, any_worker: anyWorker || undefined, duration_minutes: durationMinutes || undefined } });
+export const checkAvailability = (date, serviceType, employeeId = null, anyEmployee = false, durationMinutes = null) => api.get('/api/bookings/availability', { params: { date, service_type: serviceType, employee_id: employeeId, any_employee: anyEmployee || undefined, duration_minutes: durationMinutes || undefined } });
+export const checkMonthlyAvailability = (year, month, serviceType, employeeId = null, anyEmployee = false, durationMinutes = null) => api.get('/api/bookings/availability/month', { params: { year, month, service_type: serviceType, employee_id: employeeId, any_employee: anyEmployee || undefined, duration_minutes: durationMinutes || undefined } });
 
 // Dashboard - Batch endpoint for better performance
 export const getDashboardData = () => api.get('/api/dashboard');
@@ -183,6 +183,7 @@ export const getMaterials = () => api.get('/api/materials');
 export const createMaterial = (data) => api.post('/api/materials', data);
 export const updateMaterial = (id, data) => api.put(`/api/materials/${id}`, data);
 export const deleteMaterial = (id) => api.delete(`/api/materials/${id}`);
+export const adjustMaterialStock = (id, adjustment) => api.post(`/api/materials/${id}/adjust-stock`, { adjustment });
 
 // Job Materials
 export const getJobMaterials = (bookingId) => api.get(`/api/bookings/${bookingId}/materials`);
@@ -190,33 +191,33 @@ export const addJobMaterial = (bookingId, data) => api.post(`/api/bookings/${boo
 export const updateJobMaterial = (bookingId, itemId, data) => api.put(`/api/bookings/${bookingId}/materials/${itemId}`, data);
 export const deleteJobMaterial = (bookingId, itemId) => api.delete(`/api/bookings/${bookingId}/materials/${itemId}`);
 
-// Worker Job Materials
-export const getWorkerJobMaterials = (jobId) => api.get(`/api/worker/jobs/${jobId}/materials`);
-export const addWorkerJobMaterial = (jobId, data) => api.post(`/api/worker/jobs/${jobId}/materials`, data);
-export const deleteWorkerJobMaterial = (jobId, itemId) => api.delete(`/api/worker/jobs/${jobId}/materials/${itemId}`);
+// Employee Job Materials
+export const getEmployeeJobMaterials = (jobId) => api.get(`/api/employee/jobs/${jobId}/materials`);
+export const addEmployeeJobMaterial = (jobId, data) => api.post(`/api/employee/jobs/${jobId}/materials`, data);
+export const deleteEmployeeJobMaterial = (jobId, itemId) => api.delete(`/api/employee/jobs/${jobId}/materials/${itemId}`);
 
 export const getBusinessHours = () => api.get('/api/services/business-hours');
 export const updateBusinessHours = (data) => api.post('/api/services/business-hours', data);
 
-// Workers
-export const getWorkers = () => api.get('/api/workers');
-export const getWorker = (id) => api.get(`/api/workers/${id}`);
-export const createWorker = (data) => api.post('/api/workers', data);
-export const updateWorker = (id, data) => api.put(`/api/workers/${id}`, data);
-export const deleteWorker = (id) => api.delete(`/api/workers/${id}`);
-export const getWorkerJobs = (id) => api.get(`/api/workers/${id}/jobs`);
-export const getWorkerSchedule = (id) => api.get(`/api/workers/${id}/schedule`);
-export const getWorkerHoursThisWeek = (id) => api.get(`/api/workers/${id}/hours-this-week`);
-// Batch: fetches hours-this-week for all workers in the company in one request
-export const getWorkersHoursThisWeek = () => api.get('/api/workers/hours-this-week');
-export const checkWorkerAvailability = (id, appointmentTime, durationMinutes) => 
-  api.get(`/api/workers/${id}/availability`, { params: { appointment_time: appointmentTime, duration_minutes: durationMinutes } });
+// Employees
+export const getEmployees = () => api.get('/api/employees');
+export const getEmployee = (id) => api.get(`/api/employees/${id}`);
+export const createEmployee = (data) => api.post('/api/employees', data);
+export const updateEmployee = (id, data) => api.put(`/api/employees/${id}`, data);
+export const deleteEmployee = (id) => api.delete(`/api/employees/${id}`);
+export const getEmployeeJobs = (id) => api.get(`/api/employees/${id}/jobs`);
+export const getEmployeeSchedule = (id) => api.get(`/api/employees/${id}/schedule`);
+export const getEmployeeHoursThisWeek = (id) => api.get(`/api/employees/${id}/hours-this-week`);
+// Batch: fetches hours-this-week for all employees in the company in one request
+export const getEmployeesHoursThisWeek = () => api.get('/api/employees/hours-this-week');
+export const checkEmployeeAvailability = (id, appointmentTime, durationMinutes) => 
+  api.get(`/api/employees/${id}/availability`, { params: { appointment_time: appointmentTime, duration_minutes: durationMinutes } });
 
-// Job-Worker Assignment
-export const assignWorkerToJob = (jobId, data) => api.post(`/api/bookings/${jobId}/assign-worker`, data);
-export const removeWorkerFromJob = (jobId, data) => api.post(`/api/bookings/${jobId}/remove-worker`, data);
-export const getJobWorkers = (jobId) => api.get(`/api/bookings/${jobId}/workers`);
-export const getAvailableWorkersForJob = (jobId) => api.get(`/api/bookings/${jobId}/available-workers`);
+// Job-Employee Assignment
+export const assignEmployeeToJob = (jobId, data) => api.post(`/api/bookings/${jobId}/assign-employee`, data);
+export const removeEmployeeFromJob = (jobId, data) => api.post(`/api/bookings/${jobId}/remove-employee`, data);
+export const getJobEmployees = (jobId) => api.get(`/api/bookings/${jobId}/employees`);
+export const getAvailableEmployeesForJob = (jobId) => api.get(`/api/bookings/${jobId}/available-employees`);
 
 // Job Photos & Videos
 export const uploadJobMedia = (jobId, file) => {
@@ -346,39 +347,39 @@ export const getCustomerStatement = (clientId) => api.get(`/api/clients/${client
 export const getNotifications = (since = null) => 
   api.get('/api/notifications', { params: since ? { since } : {} });
 
-// Worker Portal
-export const workerLogin = (email, password) => api.post('/api/worker/auth/login', { email, password });
-export const workerLogout = () => api.post('/api/worker/auth/logout');
-export const getWorkerMe = () => api.get('/api/worker/auth/me');
-export const workerSetPassword = (token, password) => api.post('/api/worker/auth/set-password', { token, password });
+// Employee Portal
+export const employeeLogin = (email, password) => api.post('/api/employee/auth/login', { email, password });
+export const employeeLogout = () => api.post('/api/employee/auth/logout');
+export const getEmployeeMe = () => api.get('/api/employee/auth/me');
+export const employeeSetPassword = (token, password) => api.post('/api/employee/auth/set-password', { token, password });
 export const ownerSetPassword = (token, password) => api.post('/api/owner/set-password', { token, password });
-export const workerForgotPassword = (email) => api.post('/api/worker/auth/forgot-password', { email });
-export const workerResetPassword = (token, newPassword) => api.post('/api/worker/auth/reset-password', { token, new_password: newPassword });
-export const inviteWorker = (workerId) => api.post('/api/worker/invite', { worker_id: workerId });
-export const getWorkerDashboard = () => api.get('/api/worker/dashboard');
-export const updateWorkerProfile = (data) => api.put('/api/worker/profile', data);
-export const getWorkerJobDetail = (id) => api.get(`/api/worker/jobs/${id}`);
-export const workerUploadJobPhoto = (jobId, imageData) => api.post(`/api/worker/jobs/${jobId}/photos`, { image: imageData });
-export const workerUploadJobMedia = (jobId, file) => {
+export const employeeForgotPassword = (email) => api.post('/api/employee/auth/forgot-password', { email });
+export const employeeResetPassword = (token, newPassword) => api.post('/api/employee/auth/reset-password', { token, new_password: newPassword });
+export const inviteEmployee = (employeeId) => api.post('/api/employee/invite', { employee_id: employeeId });
+export const getEmployeeDashboard = () => api.get('/api/employee/dashboard');
+export const updateEmployeeProfile = (data) => api.put('/api/employee/profile', data);
+export const getEmployeeJobDetail = (id) => api.get(`/api/employee/jobs/${id}`);
+export const employeeUploadJobPhoto = (jobId, imageData) => api.post(`/api/employee/jobs/${jobId}/photos`, { image: imageData });
+export const employeeUploadJobMedia = (jobId, file) => {
   const formData = new FormData();
   formData.append('file', file);
-  return api.post(`/api/worker/jobs/${jobId}/photos`, formData, {
+  return api.post(`/api/employee/jobs/${jobId}/photos`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000,
   });
 };
-export const workerUpdateJobStatus = (jobId, data) => api.put(`/api/worker/jobs/${jobId}/status`, typeof data === 'string' ? { status: data } : data);
-export const workerBulkCompleteJobs = (filter) => api.post('/api/worker/jobs/bulk-complete', { filter });
-export const workerUpdateJobDetails = (jobId, data) => api.put(`/api/worker/jobs/${jobId}/details`, data);
-export const getWorkerJobNotes = (jobId) => api.get(`/api/worker/jobs/${jobId}/notes`);
-export const addWorkerJobNote = (jobId, note) => api.post(`/api/worker/jobs/${jobId}/notes`, { note });
-export const getWorkerTimeOff = () => api.get('/api/worker/time-off');
-export const createTimeOffRequest = (data) => api.post('/api/worker/time-off', data);
-export const deleteTimeOffRequest = (id) => api.delete(`/api/worker/time-off/${id}`);
-export const workerChangePassword = (currentPassword, newPassword) =>
-  api.post('/api/worker/change-password', { current_password: currentPassword, new_password: newPassword });
-export const getWorkerHoursSummary = () => api.get('/api/worker/hours-summary');
-export const getWorkerCustomers = () => api.get('/api/worker/customers');
+export const employeeUpdateJobStatus = (jobId, data) => api.put(`/api/employee/jobs/${jobId}/status`, typeof data === 'string' ? { status: data } : data);
+export const employeeBulkCompleteJobs = (filter) => api.post('/api/employee/jobs/bulk-complete', { filter });
+export const employeeUpdateJobDetails = (jobId, data) => api.put(`/api/employee/jobs/${jobId}/details`, data);
+export const getEmployeeJobNotes = (jobId) => api.get(`/api/employee/jobs/${jobId}/notes`);
+export const addEmployeeJobNote = (jobId, note) => api.post(`/api/employee/jobs/${jobId}/notes`, { note });
+export const getEmployeeTimeOff = () => api.get('/api/employee/time-off');
+export const createTimeOffRequest = (data) => api.post('/api/employee/time-off', data);
+export const deleteTimeOffRequest = (id) => api.delete(`/api/employee/time-off/${id}`);
+export const employeeChangePassword = (currentPassword, newPassword) =>
+  api.post('/api/employee/change-password', { current_password: currentPassword, new_password: newPassword });
+export const getEmployeeHoursSummary = () => api.get('/api/employee/hours-summary');
+export const getEmployeeCustomers = () => api.get('/api/employee/customers');
 
 // Owner: Time-off management
 export const getCompanyTimeOffRequests = (status = null) =>
@@ -386,36 +387,36 @@ export const getCompanyTimeOffRequests = (status = null) =>
 export const reviewTimeOffRequest = (id, status, note = '') =>
   api.put(`/api/time-off/requests/${id}`, { status, note });
 
-// Worker Notifications
-export const getWorkerNotifications = () => api.get('/api/worker/notifications');
-export const acceptEmergencyJob = (bookingId) => api.post(`/api/worker/emergency/${bookingId}/accept`);
+// Employee Notifications
+export const getEmployeeNotifications = () => api.get('/api/employee/notifications');
+export const acceptEmergencyJob = (bookingId) => api.post(`/api/employee/emergency/${bookingId}/accept`);
 
-// Owner-Worker Messaging
+// Owner-Employee Messaging
 export const getConversations = () => api.get('/api/messages/conversations');
-export const getMessages = (workerId, beforeId = null) => 
-  api.get(`/api/messages/${workerId}`, { params: beforeId ? { before_id: beforeId } : {} });
-export const sendMessageToWorker = (workerId, content) => 
-  api.post(`/api/messages/${workerId}`, { content });
+export const getMessages = (employeeId, beforeId = null) => 
+  api.get(`/api/messages/${employeeId}`, { params: beforeId ? { before_id: beforeId } : {} });
+export const sendMessageToEmployee = (employeeId, content) => 
+  api.post(`/api/messages/${employeeId}`, { content });
 export const getUnreadMessageCounts = () => api.get('/api/messages/unread-counts');
 
-// Worker Messaging
-export const getWorkerMessages = (beforeId = null) => 
-  api.get('/api/worker/messages', { params: beforeId ? { before_id: beforeId } : {} });
-export const workerSendMessage = (content) => 
-  api.post('/api/worker/messages', { content });
-export const getWorkerUnreadMessageCount = () => api.get('/api/worker/messages/unread-count');
+// Employee Messaging
+export const getEmployeeMessages = (beforeId = null) => 
+  api.get('/api/employee/messages', { params: beforeId ? { before_id: beforeId } : {} });
+export const employeeSendMessage = (content) => 
+  api.post('/api/employee/messages', { content });
+export const getEmployeeUnreadMessageCount = () => api.get('/api/employee/messages/unread-count');
 
-// Worker Job Creation
-export const workerGetServices = () => api.get('/api/worker/services');
-export const workerGetClients = () => api.get('/api/worker/clients');
-export const workerGetClient = (id) => api.get(`/api/worker/clients/${id}`);
-export const workerGetWorkers = () => api.get('/api/worker/workers');
-export const workerCheckAvailability = (date, serviceType, workerId = null, anyWorker = false, durationMinutes = null) => api.get('/api/worker/availability', { params: { date, service_type: serviceType, worker_id: workerId, any_worker: anyWorker || undefined, duration_minutes: durationMinutes || undefined } });
-export const workerCheckMonthlyAvailability = (year, month, serviceType, workerId = null, anyWorker = false, durationMinutes = null) => api.get('/api/worker/availability/month', { params: { year, month, service_type: serviceType, worker_id: workerId, any_worker: anyWorker || undefined, duration_minutes: durationMinutes || undefined } });
-export const workerCheckWorkerAvailability = (id, appointmentTime, durationMinutes) =>
-  api.get(`/api/worker/workers/${id}/availability`, { params: { appointment_time: appointmentTime, duration_minutes: durationMinutes } });
-export const workerCreateBooking = (data) => api.post('/api/worker/bookings', data);
-export const workerCreateClient = (data) => api.post('/api/worker/clients/create', data);
+// Employee Job Creation
+export const employeeGetServices = () => api.get('/api/employee/services');
+export const employeeGetClients = () => api.get('/api/employee/clients');
+export const employeeGetClient = (id) => api.get(`/api/employee/clients/${id}`);
+export const employeeGetEmployees = () => api.get('/api/employee/employees');
+export const employeeCheckAvailability = (date, serviceType, employeeId = null, anyEmployee = false, durationMinutes = null) => api.get('/api/employee/availability', { params: { date, service_type: serviceType, employee_id: employeeId, any_employee: anyEmployee || undefined, duration_minutes: durationMinutes || undefined } });
+export const employeeCheckMonthlyAvailability = (year, month, serviceType, employeeId = null, anyEmployee = false, durationMinutes = null) => api.get('/api/employee/availability/month', { params: { year, month, service_type: serviceType, employee_id: employeeId, any_employee: anyEmployee || undefined, duration_minutes: durationMinutes || undefined } });
+export const employeeCheckEmployeeAvailability = (id, appointmentTime, durationMinutes) =>
+  api.get(`/api/employee/employees/${id}/availability`, { params: { appointment_time: appointmentTime, duration_minutes: durationMinutes } });
+export const employeeCreateBooking = (data) => api.post('/api/employee/bookings', data);
+export const employeeCreateClient = (data) => api.post('/api/employee/clients/create', data);
 
 // Call Logs
 export const getCallLogs = (params = {}) => api.get('/api/call-logs', { params });

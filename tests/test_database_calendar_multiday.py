@@ -1,6 +1,6 @@
 """
 Tests for DatabaseCalendarService multi-day job handling.
-Covers the no-worker code path (database_calendar.py).
+Covers the no-employee code path (database_calendar.py).
 """
 import pytest
 from datetime import datetime, timedelta

@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createWorker } from '../../services/api';
+import { createEmployee } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import ImageUpload from '../ImageUpload';
 import HelpTooltip from '../HelpTooltip';
 
-function AddWorkerModal({ isOpen, onClose }) {
+function AddEmployeeModal({ isOpen, onClose }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const [formData, setFormData] = useState({
@@ -19,23 +19,23 @@ function AddWorkerModal({ isOpen, onClose }) {
   });
 
   const mutation = useMutation({
-    mutationFn: createWorker,
+    mutationFn: createEmployee,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['workers'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
       onClose();
       setFormData({ name: '', phone: '', email: '', specialty: '', image_url: '', weekly_hours_expected: 40.0 });
-      addToast('Worker added successfully!', 'success');
+      addToast('Employee added successfully!', 'success');
     },
     onError: (error) => {
-      addToast('Error adding worker: ' + (error.response?.data?.error || error.message), 'error');
+      addToast('Error adding employee: ' + (error.response?.data?.error || error.message), 'error');
     }
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      addToast('Please enter a worker name', 'warning');
+      addToast('Please enter an employee name', 'warning');
       return;
     }
     mutation.mutate(formData);
@@ -49,7 +49,7 @@ function AddWorkerModal({ isOpen, onClose }) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Add New Worker">
+    <Modal isOpen={isOpen} onClose={onClose} title="Add New Employee">
       <form onSubmit={handleSubmit} className="form">
         <div className="form-group">
           <label className="form-label">Name *</label>
@@ -87,7 +87,7 @@ function AddWorkerModal({ isOpen, onClose }) {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Trade Specialty <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, fontSize: '0.85rem' }}>(optional)</span> <HelpTooltip text="The worker's main skill or trade. Used to match them with relevant jobs." /></label>
+          <label className="form-label">Trade Specialty <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, fontSize: '0.85rem' }}>(optional)</span> <HelpTooltip text="The employee's main skill or trade. Used to match them with relevant jobs." /></label>
           <input
             type="text"
             name="specialty"
@@ -108,7 +108,7 @@ function AddWorkerModal({ isOpen, onClose }) {
         </div>
 
         <div className="form-group">
-          <label className="form-label">Expected Weekly Hours <HelpTooltip text="How many hours per week this worker is expected to work. Used for scheduling and workload tracking." /></label>
+          <label className="form-label">Expected Weekly Hours <HelpTooltip text="How many hours per week this employee is expected to work. Used for scheduling and workload tracking." /></label>
           <input
             type="number"
             name="weekly_hours_expected"
@@ -136,7 +136,7 @@ function AddWorkerModal({ isOpen, onClose }) {
             className="btn btn-primary"
             disabled={mutation.isPending}
           >
-            {mutation.isPending ? 'Adding...' : 'Add Worker'}
+            {mutation.isPending ? 'Adding...' : 'Add Employee'}
           </button>
         </div>
       </form>
@@ -144,4 +144,4 @@ function AddWorkerModal({ isOpen, onClose }) {
   );
 }
 
-export default AddWorkerModal;
+export default AddEmployeeModal;

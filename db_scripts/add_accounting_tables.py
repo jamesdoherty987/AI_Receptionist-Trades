@@ -151,7 +151,7 @@ def run():
                 description TEXT,
                 status VARCHAR(30) DEFAULT 'pending',
                 estimated_cost NUMERIC(10, 2) DEFAULT 0,
-                assigned_worker_id INTEGER REFERENCES workers(id) ON DELETE SET NULL,
+                assigned_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
                 sort_order INTEGER DEFAULT 0,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

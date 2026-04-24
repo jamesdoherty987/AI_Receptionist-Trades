@@ -1395,7 +1395,7 @@ async def media_handler(ws):
                         customer_name=_deferred_sms.get('customer_name', 'Customer'),
                         service_type=_deferred_sms.get('service_type', 'appointment'),
                         company_name=_deferred_sms.get('company_name'),
-                        worker_names=_deferred_sms.get('worker_names'),
+                        employee_names=_deferred_sms.get('employee_names'),
                         address=_deferred_sms.get('address'),
                         portal_link=_fallback_portal_link,
                     )
@@ -1428,7 +1428,7 @@ async def media_handler(ws):
                     customer_name=_deferred_sms.get('customer_name', 'Customer'),
                     service_type=_deferred_sms.get('service_type', 'appointment'),
                     company_name=_deferred_sms.get('company_name'),
-                    worker_names=_deferred_sms.get('worker_names'),
+                    employee_names=_deferred_sms.get('employee_names'),
                     address=_deferred_sms.get('address'),
                     portal_link=_fallback_portal_link2,
                 )

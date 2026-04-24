@@ -343,8 +343,8 @@
   font-size: 0.9rem;
 }
 
-/* ===== Workers Card ===== */
-.workers-card {
+/* ===== Employees Card ===== */
+.employees-card {
   height: auto;
 }
 
@@ -411,29 +411,29 @@
   justify-content: flex-end;
 }
 
-/* Workers List */
-.workers-list {
+/* Employees List */
+.employees-list {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 
-.empty-workers {
+.empty-employees {
   text-align: center;
   padding: 1.25rem;
   color: #9ca3af;
 }
-.empty-workers i {
+.empty-employees i {
   font-size: 1.5rem;
   margin-bottom: 0.4rem;
   opacity: 0.4;
 }
-.empty-workers p {
+.empty-employees p {
   margin: 0;
   font-size: 0.82rem;
 }
 
-.worker-item {
+.employee-item {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -443,11 +443,11 @@
   border: 1px solid #f0f0f0;
   transition: border-color 0.15s;
 }
-.worker-item:hover {
+.employee-item:hover {
   border-color: #e5e7eb;
 }
 
-.worker-item-avatar {
+.employee-item-avatar {
   width: 34px;
   height: 34px;
   border-radius: 50%;
@@ -460,25 +460,25 @@
   flex-shrink: 0;
   overflow: hidden;
 }
-.worker-item-avatar img {
+.employee-item-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.worker-item-info {
+.employee-item-info {
   flex: 1;
   min-width: 0;
 }
 
-.worker-name {
+.employee-name {
   display: block;
   font-weight: 600;
   color: #111827;
   font-size: 0.88rem;
 }
 
-.worker-specialty {
+.employee-specialty {
   display: block;
   font-size: 0.78rem;
   color: #9ca3af;
@@ -888,19 +888,19 @@
   .info-value.price {
     font-size: 0.9rem;
   }
-  .worker-item {
+  .employee-item {
     padding: 0.5rem;
     gap: 0.45rem;
   }
-  .worker-item-avatar {
+  .employee-item-avatar {
     width: 30px;
     height: 30px;
     font-size: 0.75rem;
   }
-  .worker-name {
+  .employee-name {
     font-size: 0.82rem;
   }
-  .worker-specialty {
+  .employee-specialty {
     font-size: 0.72rem;
   }
   .assign-box {

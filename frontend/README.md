@@ -60,7 +60,7 @@ src/
 │   └── dashboard/      # Dashboard-specific components
 │       ├── JobsTab.jsx
 │       ├── CustomersTab.jsx
-│       ├── WorkersTab.jsx
+│       ├── EmployeesTab.jsx
 │       ├── FinancesTab.jsx
 │       ├── CalendarTab.jsx
 │       └── ChatTab.jsx

@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatCurrency, formatDate } from '../../utils/helpers';
 import { formatDuration } from '../../utils/durationOptions';
-import { getQuotes, createQuote, updateQuote, deleteQuote, convertQuoteToJob, getClients, getTaxSettings, getServicesMenu, getWorkers, checkAvailability, checkMonthlyAvailability, checkWorkerAvailability, sendQuote, generateQuoteAcceptLink, sendQuoteFollowUp } from '../../services/api';
+import { getQuotes, createQuote, updateQuote, deleteQuote, convertQuoteToJob, getClients, getTaxSettings, getServicesMenu, getEmployees, checkAvailability, checkMonthlyAvailability, checkEmployeeAvailability, sendQuote, generateQuoteAcceptLink, sendQuoteFollowUp } from '../../services/api';
 import { useToast } from '../Toast';
 import DocumentPreview from './DocumentPreview';
 import LoadingSpinner from '../LoadingSpinner';
@@ -49,7 +49,7 @@ function MiniCalendar({ selectedDate, onSelectDate, monthData, isLoading, calMon
     cells.push(
       <button key={d} type="button" className={`mc-cell mc-day ${statusClass} ${isSelected ? 'mc-selected' : ''}`}
         disabled={isDisabled} onClick={() => !isDisabled && onSelectDate(iso)}
-        title={isPast ? 'Past date' : dayInfo?.status === 'closed' ? 'Closed' : dayInfo?.status === 'leave' ? 'Worker on leave' : dayInfo?.status === 'full' ? 'Fully booked' : dayInfo?.status === 'partial' ? `${dayInfo.free} slot${dayInfo.free !== 1 ? 's' : ''} free` : 'Available'}>
+        title={isPast ? 'Past date' : dayInfo?.status === 'closed' ? 'Closed' : dayInfo?.status === 'leave' ? 'Employee on leave' : dayInfo?.status === 'full' ? 'Fully booked' : dayInfo?.status === 'partial' ? `${dayInfo.free} slot${dayInfo.free !== 1 ? 's' : ''} free` : 'Available'}>
         {d}
       </button>
     );
@@ -81,9 +81,9 @@ function ConvertToJobModal({ isOpen, onClose, quote, onConverted }) {
   const { addToast } = useToast();
   const [selectedDate, setSelectedDate] = useState('');
   const [appointmentTime, setAppointmentTime] = useState('');
-  const [anyWorkerMode, setAnyWorkerMode] = useState(true);
-  const [assignedWorkers, setAssignedWorkers] = useState([]);
-  const assignedWorkersRef = useRef([]);
+  const [anyEmployeeMode, setAnyEmployeeMode] = useState(true);
+  const [assignedEmployees, setAssignedEmployees] = useState([]);
+  const assignedEmployeesRef = useRef([]);
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
@@ -92,7 +92,7 @@ function ConvertToJobModal({ isOpen, onClose, quote, onConverted }) {
   const [calMonth, setCalMonth] = useState(now.getMonth());
   const [calYear, setCalYear] = useState(now.getFullYear());
 
-  const { data: workers } = useQuery({ queryKey: ['workers'], queryFn: async () => (await getWorkers()).data, enabled: isOpen });
+  const { data: employees } = useQuery({ queryKey: ['employees'], queryFn: async () => (await getEmployees()).data, enabled: isOpen });
   const { data: servicesMenu } = useQuery({ queryKey: ['services-menu'], queryFn: async () => (await getServicesMenu()).data, enabled: isOpen });
 
   // Find matching service for the quote title
@@ -105,16 +105,16 @@ function ConvertToJobModal({ isOpen, onClose, quote, onConverted }) {
   const effectiveDuration = matchedService?.duration_minutes || durationMinutes;
   const serviceType = quote?.title || 'Service';
 
-  const effectiveWorkerList = useMemo(() => assignedWorkers, [assignedWorkers]);
-  const assignedWorkerIds = effectiveWorkerList.map(w => w.id).sort().join(',');
+  const effectiveEmployeeList = useMemo(() => assignedEmployees, [assignedEmployees]);
+  const assignedEmployeeIds = effectiveEmployeeList.map(w => w.id).sort().join(',');
 
   // Monthly availability
   const { data: monthlyData, isLoading: isLoadingMonthly } = useQuery({
-    queryKey: ['monthly-availability', calYear, calMonth + 1, serviceType, anyWorkerMode, effectiveDuration, assignedWorkerIds],
+    queryKey: ['monthly-availability', calYear, calMonth + 1, serviceType, anyEmployeeMode, effectiveDuration, assignedEmployeeIds],
     queryFn: async () => {
-      if (effectiveWorkerList.length > 0) {
+      if (effectiveEmployeeList.length > 0) {
         const results = await Promise.all(
-          effectiveWorkerList.map(w => checkMonthlyAvailability(calYear, calMonth + 1, serviceType, w.id, false, effectiveDuration).then(r => r.data))
+          effectiveEmployeeList.map(w => checkMonthlyAvailability(calYear, calMonth + 1, serviceType, w.id, false, effectiveDuration).then(r => r.data))
         );
         if (!results.length || !results[0]) return results[0];
         const merged = { ...results[0], days: { ...results[0].days } };
@@ -131,18 +131,18 @@ function ConvertToJobModal({ isOpen, onClose, quote, onConverted }) {
         }
         return merged;
       }
-      return (await checkMonthlyAvailability(calYear, calMonth + 1, serviceType, null, anyWorkerMode, effectiveDuration)).data;
+      return (await checkMonthlyAvailability(calYear, calMonth + 1, serviceType, null, anyEmployeeMode, effectiveDuration)).data;
     },
     enabled: isOpen,
   });
 
   // Daily slots
   const { data: availability, isLoading: isLoadingAvailability } = useQuery({
-    queryKey: ['availability', selectedDate, serviceType, anyWorkerMode, effectiveDuration, assignedWorkerIds],
+    queryKey: ['availability', selectedDate, serviceType, anyEmployeeMode, effectiveDuration, assignedEmployeeIds],
     queryFn: async () => {
-      if (effectiveWorkerList.length > 0) {
+      if (effectiveEmployeeList.length > 0) {
         const results = await Promise.all(
-          effectiveWorkerList.map(w => checkAvailability(selectedDate, serviceType, w.id, false, effectiveDuration).then(r => r.data))
+          effectiveEmployeeList.map(w => checkAvailability(selectedDate, serviceType, w.id, false, effectiveDuration).then(r => r.data))
         );
         if (!results.length || !results[0]) return results[0];
         const merged = { ...results[0] };
@@ -159,29 +159,29 @@ function ConvertToJobModal({ isOpen, onClose, quote, onConverted }) {
         }
         return merged;
       }
-      return (await checkAvailability(selectedDate, serviceType, null, anyWorkerMode, effectiveDuration)).data;
+      return (await checkAvailability(selectedDate, serviceType, null, anyEmployeeMode, effectiveDuration)).data;
     },
     enabled: !!selectedDate && isOpen,
   });
 
   const isFullDayJob = effectiveDuration >= 1440;
 
-  useEffect(() => { assignedWorkersRef.current = assignedWorkers; }, [assignedWorkers]);
+  useEffect(() => { assignedEmployeesRef.current = assignedEmployees; }, [assignedEmployees]);
 
-  const recheckAssignedWorkers = async (apptTime, duration) => {
-    const current = assignedWorkersRef.current;
+  const recheckAssignedEmployees = async (apptTime, duration) => {
+    const current = assignedEmployeesRef.current;
     if (!apptTime || current.length === 0) return;
     const updated = await Promise.all(current.map(async (w) => {
-      try { const res = await checkWorkerAvailability(w.id, apptTime, duration || 60); return { ...w, availability: res.data }; }
+      try { const res = await checkEmployeeAvailability(w.id, apptTime, duration || 60); return { ...w, availability: res.data }; }
       catch { return { ...w, availability: null }; }
     }));
-    setAssignedWorkers(updated);
+    setAssignedEmployees(updated);
   };
 
   // Reset when modal opens
   useEffect(() => {
     if (isOpen && quote) {
-      setSelectedDate(''); setAppointmentTime(''); setAnyWorkerMode(true); setAssignedWorkers([]);
+      setSelectedDate(''); setAppointmentTime(''); setAnyEmployeeMode(true); setAssignedEmployees([]);
       setAddress(''); setNotes(quote.notes || '');
       setDurationMinutes(matchedService?.duration_minutes || 60);
       const n = new Date(); setCalMonth(n.getMonth()); setCalYear(n.getFullYear());
@@ -193,7 +193,7 @@ function ConvertToJobModal({ isOpen, onClose, quote, onConverted }) {
     if (isFullDayJob) {
       const dateTime = `${iso}T${String(monthlyData?.business_hours?.start || 9).padStart(2, '0')}:00`;
       setAppointmentTime(dateTime);
-      recheckAssignedWorkers(dateTime, effectiveDuration);
+      recheckAssignedEmployees(dateTime, effectiveDuration);
     } else {
       setAppointmentTime('');
     }
@@ -203,27 +203,27 @@ function ConvertToJobModal({ isOpen, onClose, quote, onConverted }) {
     if (!slot.available) { addToast(`Slot booked${slot.booking?.client_name ? ` for ${slot.booking.client_name}` : ''}`, 'warning'); return; }
     const dateTime = `${selectedDate}T${slot.time}`;
     setAppointmentTime(dateTime);
-    recheckAssignedWorkers(dateTime, effectiveDuration);
+    recheckAssignedEmployees(dateTime, effectiveDuration);
   };
 
-  const addWorkerToJob = async (workerId) => {
-    if (!workerId) return;
-    const id = parseInt(workerId);
-    if (assignedWorkers.some(w => w.id === id)) { addToast('Worker already assigned', 'warning'); return; }
-    const worker = workers?.find(w => w.id === id);
-    if (!worker) return;
-    setAnyWorkerMode(false);
+  const addEmployeeToJob = async (employeeId) => {
+    if (!employeeId) return;
+    const id = parseInt(employeeId);
+    if (assignedEmployees.some(w => w.id === id)) { addToast('Employee already assigned', 'warning'); return; }
+    const employee = employees?.find(w => w.id === id);
+    if (!employee) return;
+    setAnyEmployeeMode(false);
     let avail = null;
     if (appointmentTime) {
-      try { const res = await checkWorkerAvailability(id, appointmentTime, effectiveDuration); avail = res.data; } catch { /* ignore */ }
+      try { const res = await checkEmployeeAvailability(id, appointmentTime, effectiveDuration); avail = res.data; } catch { /* ignore */ }
     }
-    setAssignedWorkers(prev => [...prev, { id: worker.id, name: worker.name, trade_specialty: worker.trade_specialty, availability: avail }]);
+    setAssignedEmployees(prev => [...prev, { id: employee.id, name: employee.name, trade_specialty: employee.trade_specialty, availability: avail }]);
   };
 
-  const removeWorkerFromJob = (workerId) => {
-    setAssignedWorkers(prev => {
-      const updated = prev.filter(w => w.id !== workerId);
-      if (updated.length === 0) setAnyWorkerMode(true);
+  const removeEmployeeFromJob = (employeeId) => {
+    setAssignedEmployees(prev => {
+      const updated = prev.filter(w => w.id !== employeeId);
+      if (updated.length === 0) setAnyEmployeeMode(true);
       return updated;
     });
   };
@@ -245,13 +245,13 @@ function ConvertToJobModal({ isOpen, onClose, quote, onConverted }) {
 
   const handleConvert = () => {
     if (!appointmentTime) { addToast('Please select a date and time', 'warning'); return; }
-    const unavailableWorker = assignedWorkers.find(w => w.availability && !w.availability.available);
-    if (unavailableWorker) { addToast(`${unavailableWorker.name} is not available at this time`, 'error'); return; }
-    const allWorkerIds = assignedWorkers.map(w => w.id);
-    const autoAssign = anyWorkerMode && allWorkerIds.length === 0;
+    const unavailableEmployee = assignedEmployees.find(w => w.availability && !w.availability.available);
+    if (unavailableEmployee) { addToast(`${unavailableEmployee.name} is not available at this time`, 'error'); return; }
+    const allEmployeeIds = assignedEmployees.map(w => w.id);
+    const autoAssign = anyEmployeeMode && allEmployeeIds.length === 0;
     convertMut.mutate({
       id: quote.id,
-      data: { appointment_time: appointmentTime, address, notes, worker_ids: allWorkerIds, auto_assign_worker: autoAssign, duration_minutes: effectiveDuration }
+      data: { appointment_time: appointmentTime, address, notes, employee_ids: allEmployeeIds, auto_assign_employee: autoAssign, duration_minutes: effectiveDuration }
     });
   };
 
@@ -272,49 +272,49 @@ function ConvertToJobModal({ isOpen, onClose, quote, onConverted }) {
           </div>
         </div>
 
-        {/* Worker Assignment */}
+        {/* Employee Assignment */}
         <div className="form-group">
-          <label className="form-label">Assign Workers</label>
-          {assignedWorkers.length > 0 && (
-            <div className="assigned-workers-list">
-              {assignedWorkers.map(w => (
-                <div key={w.id} className={`assigned-worker-chip ${w.availability && !w.availability.available ? 'conflict' : ''}`}>
+          <label className="form-label">Assign Employees</label>
+          {assignedEmployees.length > 0 && (
+            <div className="assigned-employees-list">
+              {assignedEmployees.map(w => (
+                <div key={w.id} className={`assigned-employee-chip ${w.availability && !w.availability.available ? 'conflict' : ''}`}>
                   <i className="fas fa-hard-hat"></i>
-                  <span className="assigned-worker-name">{w.name}</span>
-                  {w.trade_specialty && <span className="assigned-worker-specialty">({w.trade_specialty})</span>}
-                  {w.availability && !w.availability.available && <span className="assigned-worker-conflict" title={w.availability.message}><i className="fas fa-exclamation-triangle"></i></span>}
-                  {w.availability && w.availability.available && <span className="assigned-worker-ok"><i className="fas fa-check-circle"></i></span>}
-                  <button type="button" className="assigned-worker-remove" onClick={() => removeWorkerFromJob(w.id)} title="Remove worker"><i className="fas fa-times"></i></button>
+                  <span className="assigned-employee-name">{w.name}</span>
+                  {w.trade_specialty && <span className="assigned-employee-specialty">({w.trade_specialty})</span>}
+                  {w.availability && !w.availability.available && <span className="assigned-employee-conflict" title={w.availability.message}><i className="fas fa-exclamation-triangle"></i></span>}
+                  {w.availability && w.availability.available && <span className="assigned-employee-ok"><i className="fas fa-check-circle"></i></span>}
+                  <button type="button" className="assigned-employee-remove" onClick={() => removeEmployeeFromJob(w.id)} title="Remove employee"><i className="fas fa-times"></i></button>
                 </div>
               ))}
             </div>
           )}
-          {assignedWorkers.length > 0 && (
-            <div className="add-worker-row">
-              <select className="form-input add-worker-select" value="" onChange={(e) => { if (e.target.value) addWorkerToJob(e.target.value); }}>
-                <option value="">+ Add another worker...</option>
-                {(workers || []).filter(w => !assignedWorkers.some(aw => aw.id === w.id)).map(w => (
+          {assignedEmployees.length > 0 && (
+            <div className="add-employee-row">
+              <select className="form-input add-employee-select" value="" onChange={(e) => { if (e.target.value) addEmployeeToJob(e.target.value); }}>
+                <option value="">+ Add another employee...</option>
+                {(employees || []).filter(w => !assignedEmployees.some(aw => aw.id === w.id)).map(w => (
                   <option key={w.id} value={w.id}>{w.name} {w.trade_specialty && `(${w.trade_specialty})`}</option>
                 ))}
               </select>
             </div>
           )}
-          {assignedWorkers.length === 0 && (
-            <div className="add-worker-row">
-              <select className="form-input" value={anyWorkerMode ? 'any' : ''} onChange={(e) => {
+          {assignedEmployees.length === 0 && (
+            <div className="add-employee-row">
+              <select className="form-input" value={anyEmployeeMode ? 'any' : ''} onChange={(e) => {
                 const val = e.target.value;
-                if (val === 'any') { setAnyWorkerMode(true); setSelectedDate(''); setAppointmentTime(''); }
-                else if (val) addWorkerToJob(val);
+                if (val === 'any') { setAnyEmployeeMode(true); setSelectedDate(''); setAppointmentTime(''); }
+                else if (val) addEmployeeToJob(val);
               }}>
-                <option value="any">Any available worker</option>
-                {(workers || []).map(w => <option key={w.id} value={w.id}>{w.name} {w.trade_specialty && `(${w.trade_specialty})`}</option>)}
+                <option value="any">Any available employee</option>
+                {(employees || []).map(w => <option key={w.id} value={w.id}>{w.name} {w.trade_specialty && `(${w.trade_specialty})`}</option>)}
               </select>
             </div>
           )}
-          {anyWorkerMode && assignedWorkers.length === 0 && (
-            <div className="worker-selected-info any-worker-info"><i className="fas fa-users"></i> Showing combined availability — slot is open if <strong>any</strong> worker is free</div>
+          {anyEmployeeMode && assignedEmployees.length === 0 && (
+            <div className="employee-selected-info any-employee-info"><i className="fas fa-users"></i> Showing combined availability — slot is open if <strong>any</strong> employee is free</div>
           )}
-          {assignedWorkers.length > 0 && <div className="worker-selected-info"><i className="fas fa-users"></i> <strong>{assignedWorkers.length}</strong> worker{assignedWorkers.length !== 1 ? 's' : ''} assigned</div>}
+          {assignedEmployees.length > 0 && <div className="employee-selected-info"><i className="fas fa-users"></i> <strong>{assignedEmployees.length}</strong> employee{assignedEmployees.length !== 1 ? 's' : ''} assigned</div>}
         </div>
 
         {/* Duration */}
@@ -354,7 +354,7 @@ function ConvertToJobModal({ isOpen, onClose, quote, onConverted }) {
                 <h4>
                   <i className="fas fa-clock"></i>{' '}
                   {new Date(selectedDate + 'T00:00').toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' })}
-                  {assignedWorkers.length > 0 ? ` — ${assignedWorkers.length} worker${assignedWorkers.length !== 1 ? 's' : ''}` : anyWorkerMode ? ' — Any Worker' : ''}
+                  {assignedEmployees.length > 0 ? ` — ${assignedEmployees.length} employee${assignedEmployees.length !== 1 ? 's' : ''}` : anyEmployeeMode ? ' — Any Employee' : ''}
                 </h4>
               </div>
               {isLoadingAvailability ? (

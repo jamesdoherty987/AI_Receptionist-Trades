@@ -13,18 +13,18 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => {
   return `${i - 12}p`;
 });
 
-function InsightsTab({ bookings = [], clients = [], workers = [], reviews: reviewsData }) {
+function InsightsTab({ bookings = [], clients = [], employees = [], reviews: reviewsData }) {
   // Graph visibility toggles (persisted in localStorage)
   const [showSections, setShowSections] = useState(() => {
     try {
       const saved = localStorage.getItem('insights_visible_sections');
       return saved ? JSON.parse(saved) : {
         overviewCards: true, statsCards: true, bookingActivity: true,
-        clientGrowth: true, servicePopularity: true, workerLeaderboard: true, heatmap: true,
+        clientGrowth: true, servicePopularity: true, employeeLeaderboard: true, heatmap: true,
         revenueTrend: true, cancellationTrend: false, durationDistribution: false, reviewsSummary: true,
-        callAnalytics: true, leadFunnel: true, completionRate: true, workerUtilization: false
+        callAnalytics: true, leadFunnel: true, completionRate: true, employeeUtilization: false
       };
-    } catch { return { overviewCards: true, statsCards: true, bookingActivity: true, clientGrowth: true, servicePopularity: true, workerLeaderboard: true, heatmap: true, revenueTrend: true, cancellationTrend: false, durationDistribution: false, reviewsSummary: true, callAnalytics: true, leadFunnel: true, completionRate: true, workerUtilization: false }; }
+    } catch { return { overviewCards: true, statsCards: true, bookingActivity: true, clientGrowth: true, servicePopularity: true, employeeLeaderboard: true, heatmap: true, revenueTrend: true, cancellationTrend: false, durationDistribution: false, reviewsSummary: true, callAnalytics: true, leadFunnel: true, completionRate: true, employeeUtilization: false }; }
   });
   const [showSectionPicker, setShowSectionPicker] = useState(false);
 
@@ -43,7 +43,7 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
     { key: 'revenueTrend', label: 'Revenue Trend', icon: 'fa-chart-line' },
     { key: 'clientGrowth', label: 'Client Growth', icon: 'fa-user-plus' },
     { key: 'servicePopularity', label: 'Service Popularity', icon: 'fa-star' },
-    { key: 'workerLeaderboard', label: 'Worker Leaderboard', icon: 'fa-trophy' },
+    { key: 'employeeLeaderboard', label: 'Employee Leaderboard', icon: 'fa-trophy' },
     { key: 'heatmap', label: 'Busiest Hours', icon: 'fa-fire' },
     { key: 'cancellationTrend', label: 'Cancellation Trend', icon: 'fa-times-circle' },
     { key: 'durationDistribution', label: 'Job Duration', icon: 'fa-clock' },
@@ -51,7 +51,7 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
     { key: 'callAnalytics', label: 'Call Analytics', icon: 'fa-phone-alt' },
     { key: 'leadFunnel', label: 'Lead Funnel', icon: 'fa-filter' },
     { key: 'completionRate', label: 'Completion Rate', icon: 'fa-check-circle' },
-    { key: 'workerUtilization', label: 'Worker Utilization', icon: 'fa-hard-hat' },
+    { key: 'employeeUtilization', label: 'Employee Utilization', icon: 'fa-hard-hat' },
   ];
 
   const orderedWidgets = widgetOrder
@@ -136,21 +136,21 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
       return { month, label, count };
     });
 
-    // Worker leaderboard
-    const workerStats = {};
-    workers.forEach(w => {
-      workerStats[w.id] = { name: w.name, jobs: 0, revenue: 0 };
+    // Employee leaderboard
+    const employeeStats = {};
+    employees.forEach(w => {
+      employeeStats[w.id] = { name: w.name, jobs: 0, revenue: 0 };
     });
     nonCancelled.forEach(b => {
-      const ids = b.assigned_worker_ids || [];
+      const ids = b.assigned_employee_ids || [];
       ids.forEach(wid => {
-        if (workerStats[wid]) {
-          workerStats[wid].jobs++;
-          workerStats[wid].revenue += parseFloat(b.charge || b.estimated_charge || 0);
+        if (employeeStats[wid]) {
+          employeeStats[wid].jobs++;
+          employeeStats[wid].revenue += parseFloat(b.charge || b.estimated_charge || 0);
         }
       });
     });
-    const workerLeaderboard = Object.values(workerStats)
+    const employeeLeaderboard = Object.values(employeeStats)
       .filter(w => w.jobs > 0)
       .sort((a, b) => b.jobs - a.jobs)
       .slice(0, 6);
@@ -313,10 +313,10 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
     const completed = nonCancelled.filter(b => b.status === 'completed').length;
     const completionRate = nonCancelled.length > 0 ? (completed / nonCancelled.length) * 100 : 0;
 
-    // ===== Worker Utilization =====
-    const workerUtilization = workers.map(w => {
-      const workerJobs = nonCancelled.filter(b => (b.assigned_worker_ids || []).includes(w.id));
-      const totalMins = workerJobs.reduce((s, b) => s + (b.duration_minutes || 0), 0);
+    // ===== Employee Utilization =====
+    const employeeUtilization = employees.map(w => {
+      const employeeJobs = nonCancelled.filter(b => (b.assigned_employee_ids || []).includes(w.id));
+      const totalMins = employeeJobs.reduce((s, b) => s + (b.duration_minutes || 0), 0);
       // Assume 8h/day, 22 days/month = 176h available per month, show last month
       const availableHours = 176;
       const workedHours = totalMins / 60;
@@ -338,7 +338,7 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
       cancellationRate,
       busiestDay,
       activityData,
-      workerLeaderboard,
+      employeeLeaderboard,
       heatmap,
       heatmapMax,
       clientGrowthData,
@@ -354,10 +354,10 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
       clientsMoM,
       avgRevenuePerJob,
       completionRate,
-      workerUtilization,
+      employeeUtilization,
       avgCLV,
     };
-  }, [bookings, clients, workers]);
+  }, [bookings, clients, employees]);
 
   const maxActivity = Math.max(1, ...stats.activityData.map(d => d.count));
   const maxClientGrowth = Math.max(1, ...stats.clientGrowthData.map(d => d.count));
@@ -570,8 +570,8 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
       </div>
       )}
 
-      {/* Service Popularity + Worker Leaderboard */}
-      {(showSections.servicePopularity || showSections.workerLeaderboard) && (
+      {/* Service Popularity + Employee Leaderboard */}
+      {(showSections.servicePopularity || showSections.employeeLeaderboard) && (
       <div className="insights-charts-row">
         {/* Service Popularity */}
         {showSections.servicePopularity && (
@@ -602,18 +602,18 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
         </div>
         )}
 
-        {/* Worker Leaderboard */}
-        {showSections.workerLeaderboard && (
+        {/* Employee Leaderboard */}
+        {showSections.employeeLeaderboard && (
         <div className="insights-card">
-          <h3><i className="fas fa-trophy"></i> Worker Leaderboard</h3>
-          {stats.workerLeaderboard.length === 0 ? (
+          <h3><i className="fas fa-trophy"></i> Employee Leaderboard</h3>
+          {stats.employeeLeaderboard.length === 0 ? (
             <div className="insights-empty">
               <i className="fas fa-hard-hat"></i>
-              <p>Assign workers to jobs to see stats</p>
+              <p>Assign employees to jobs to see stats</p>
             </div>
           ) : (
             <div className="leaderboard">
-              {stats.workerLeaderboard.map((w, i) => (
+              {stats.employeeLeaderboard.map((w, i) => (
                 <div key={i} className="leaderboard-row">
                   <div className="leaderboard-rank" data-rank={i + 1}>{i + 1}</div>
                   <div className="leaderboard-info">
@@ -623,7 +623,7 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
                   <div className="leaderboard-bar-track">
                     <div
                       className="leaderboard-bar-fill"
-                      style={{ width: `${(w.jobs / stats.workerLeaderboard[0].jobs) * 100}%` }}
+                      style={{ width: `${(w.jobs / stats.employeeLeaderboard[0].jobs) * 100}%` }}
                     />
                   </div>
                 </div>
@@ -871,18 +871,18 @@ function InsightsTab({ bookings = [], clients = [], workers = [], reviews: revie
       </div>
       )}
 
-      {/* Worker Utilization Widget */}
-      {showSections.workerUtilization && (
+      {/* Employee Utilization Widget */}
+      {showSections.employeeUtilization && (
       <div className="insights-card">
-        <h3><i className="fas fa-hard-hat"></i> Worker Utilization</h3>
-        {stats.workerUtilization.length === 0 ? (
+        <h3><i className="fas fa-hard-hat"></i> Employee Utilization</h3>
+        {stats.employeeUtilization.length === 0 ? (
           <div className="insights-empty">
             <i className="fas fa-hard-hat"></i>
-            <p>No worker hours logged yet</p>
+            <p>No employee hours logged yet</p>
           </div>
         ) : (
           <div className="utilization-list">
-            {stats.workerUtilization.slice(0, 6).map((w, i) => (
+            {stats.employeeUtilization.slice(0, 6).map((w, i) => (
               <div key={i} className="utilization-row">
                 <div className="utilization-name">{w.name}</div>
                 <div className="utilization-bar-track">

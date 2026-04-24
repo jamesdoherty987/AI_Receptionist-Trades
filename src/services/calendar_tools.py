@@ -129,7 +129,7 @@ CALENDAR_TOOLS = [
                     "urgency_level": {
                         "type": "string",
                         "enum": ["same-day", "scheduled", "quote", "emergency"],
-                        "description": "Urgency level: 'emergency' for urgent jobs needing immediate worker dispatch, 'same-day' for jobs needed today, 'scheduled' for planned work on a future date, 'quote' for estimate visits"
+                        "description": "Urgency level: 'emergency' for urgent jobs needing immediate employee dispatch, 'same-day' for jobs needed today, 'scheduled' for planned work on a future date, 'quote' for estimate visits"
                     },
                     "property_type": {
                         "type": "string",
@@ -195,7 +195,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_reschedule_availability",
-            "description": "Search for alternative dates when rescheduling a job. Use this ONLY during a reschedule flow when the customer wants to see different/more availability options for the ASSIGNED WORKER. This checks the specific worker assigned to the booking — NOT general availability. Requires the booking_id from the earlier reschedule_job call. IMPORTANT: When the customer rejects suggested dates and asks for OTHER/DIFFERENT/LATER options, you MUST pass previously_suggested_dates so the tool skips those dates and returns NEW ones.",
+            "description": "Search for alternative dates when rescheduling a job. Use this ONLY during a reschedule flow when the customer wants to see different/more availability options for the ASSIGNED EMPLOYEE. This checks the specific employee assigned to the booking — NOT general availability. Requires the booking_id from the earlier reschedule_job call. IMPORTANT: When the customer rejects suggested dates and asks for OTHER/DIFFERENT/LATER options, you MUST pass previously_suggested_dates so the tool skips those dates and returns NEW ones.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -321,21 +321,21 @@ CALENDAR_TOOLS = [
 ]
 
 
-def _check_slot_against_bookings(slot_time, duration_minutes, worker_bookings_by_id, worker_ids, db, company_id=None):
+def _check_slot_against_bookings(slot_time, duration_minutes, employee_bookings_by_id, employee_ids, db, company_id=None):
     """
-    Check if a time slot is free for ALL workers by comparing against pre-fetched bookings.
+    Check if a time slot is free for ALL employees by comparing against pre-fetched bookings.
     Uses in-memory overlap checks instead of individual DB queries.
     
     Args:
         slot_time: datetime of the slot to check
         duration_minutes: duration of the job
-        worker_bookings_by_id: dict of {worker_id: [booking_rows]} pre-fetched from DB
-        worker_ids: list of worker IDs that must all be free
+        employee_bookings_by_id: dict of {employee_id: [booking_rows]} pre-fetched from DB
+        employee_ids: list of employee IDs that must all be free
         db: database instance (for _calculate_job_end_time)
         company_id: company ID for multi-tenant business hours
     
     Returns:
-        True if all workers are free at this slot
+        True if all employees are free at this slot
     """
     from src.utils.config import config
     try:
@@ -349,8 +349,8 @@ def _check_slot_against_bookings(slot_time, duration_minutes, worker_bookings_by
     buffer_minutes = 0
     slot_end = db._calculate_job_end_time(slot_time, duration_minutes, biz_start, biz_end, buffer_minutes, company_id=company_id)
     
-    for wid in worker_ids:
-        bookings = worker_bookings_by_id.get(wid, [])
+    for wid in employee_ids:
+        bookings = employee_bookings_by_id.get(wid, [])
         for bk in bookings:
             bk_start = bk['appointment_time']
             bk_dur = bk.get('duration_minutes') or 60
@@ -361,23 +361,23 @@ def _check_slot_against_bookings(slot_time, duration_minutes, worker_bookings_by
     return True
 
 
-def _find_available_workers_batch(slot_time, duration_minutes, worker_bookings_by_id, all_worker_ids, db, company_id=None, worker_restrictions=None, leave_records=None):
+def _find_available_employees_batch(slot_time, duration_minutes, employee_bookings_by_id, all_employee_ids, db, company_id=None, employee_restrictions=None, leave_records=None):
     """
-    Find which workers from the pool are free at a given slot using pre-fetched bookings.
-    Returns list of available worker IDs (in-memory, no DB calls).
+    Find which employees from the pool are free at a given slot using pre-fetched bookings.
+    Returns list of available employee IDs (in-memory, no DB calls).
     
     Args:
         slot_time: datetime of the slot to check
         duration_minutes: duration of the job
-        worker_bookings_by_id: dict of {worker_id: [booking_rows]} pre-fetched from DB
-        all_worker_ids: list of all active worker IDs in the pool
+        employee_bookings_by_id: dict of {employee_id: [booking_rows]} pre-fetched from DB
+        all_employee_ids: list of all active employee IDs in the pool
         db: database instance (for _calculate_job_end_time)
         company_id: company ID for business hours
-        worker_restrictions: optional dict with 'type' and 'worker_ids' for service restrictions
-        leave_records: optional list of dicts with worker_id, start_date, end_date (pre-fetched)
+        employee_restrictions: optional dict with 'type' and 'employee_ids' for service restrictions
+        leave_records: optional list of dicts with employee_id, start_date, end_date (pre-fetched)
     
     Returns:
-        List of worker IDs that are free at this slot (after applying restrictions)
+        List of employee IDs that are free at this slot (after applying restrictions)
     """
     from src.utils.config import config
     try:
@@ -394,8 +394,8 @@ def _find_available_workers_batch(slot_time, duration_minutes, worker_bookings_b
     available = []
     slot_date = slot_time.date() if hasattr(slot_time, 'date') else slot_time
     
-    # Build set of workers on leave for this specific slot date
-    workers_on_leave = set()
+    # Build set of employees on leave for this specific slot date
+    employees_on_leave = set()
     if leave_records:
         from datetime import date as _date, datetime as _dt
         for rec in leave_records:
@@ -411,13 +411,13 @@ def _find_available_workers_batch(slot_time, duration_minutes, worker_bookings_b
             elif isinstance(e, _dt):
                 e = e.date()
             if s <= slot_date <= e:
-                workers_on_leave.add(rec['worker_id'])
+                employees_on_leave.add(rec['employee_id'])
     
-    for wid in all_worker_ids:
-        # Skip workers on approved leave for this date
-        if wid in workers_on_leave:
+    for wid in all_employee_ids:
+        # Skip employees on approved leave for this date
+        if wid in employees_on_leave:
             continue
-        bookings = worker_bookings_by_id.get(wid, [])
+        bookings = employee_bookings_by_id.get(wid, [])
         is_free = True
         for bk in bookings:
             bk_start = bk['appointment_time']
@@ -429,10 +429,10 @@ def _find_available_workers_batch(slot_time, duration_minutes, worker_bookings_b
         if is_free:
             available.append(wid)
     
-    # Apply worker restrictions (service-level)
-    if worker_restrictions and available:
-        restriction_type = worker_restrictions.get('type', 'all')
-        restricted_ids = worker_restrictions.get('worker_ids', [])
+    # Apply employee restrictions (service-level)
+    if employee_restrictions and available:
+        restriction_type = employee_restrictions.get('type', 'all')
+        restricted_ids = employee_restrictions.get('employee_ids', [])
         if restriction_type == 'only' and restricted_ids:
             available = [w for w in available if w in restricted_ids]
         elif restriction_type == 'except' and restricted_ids:
@@ -441,17 +441,17 @@ def _find_available_workers_batch(slot_time, duration_minutes, worker_bookings_b
     return available
 
 
-def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exclude_booking_id: int = None, company_id: int = None, days_to_check: int = 28, exclude_date=None) -> list:
+def _find_employee_available_days(db, employee_ids: list, duration_minutes: int, exclude_booking_id: int = None, company_id: int = None, days_to_check: int = 28, exclude_date=None) -> list:
     """
-    Find available days for specific worker(s) in the next N days.
+    Find available days for specific employee(s) in the next N days.
     Used during rescheduling to suggest alternative days when the requested day isn't available.
     
     For multi-day jobs (> 1 day), checks that ALL consecutive business days
-    needed are free for all workers.
+    needed are free for all employees.
     
     Args:
         db: Database instance
-        worker_ids: List of worker IDs that must ALL be available
+        employee_ids: List of employee IDs that must ALL be available
         duration_minutes: Duration of the job in minutes
         exclude_booking_id: Booking ID to exclude (the one being rescheduled)
         company_id: Company ID for filtering
@@ -464,7 +464,7 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
     from datetime import datetime, timedelta
     from src.utils.config import config
     
-    if not db or not worker_ids:
+    if not db or not employee_ids:
         return [], []
     
     available_days = []
@@ -522,10 +522,10 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
                     continue
                 
                 span_time = span_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
-                for worker_id in worker_ids:
+                for employee_id in employee_ids:
                     # Check each spanned day with a full-day duration (480 mins = 1 business day)
-                    availability = db.check_worker_availability(
-                        worker_id=worker_id,
+                    availability = db.check_employee_availability(
+                        employee_id=employee_id,
                         appointment_time=span_time,
                         duration_minutes=480,  # Check one business day at a time
                         exclude_booking_id=exclude_booking_id,
@@ -543,11 +543,11 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
             if not all_days_free:
                 continue
         else:
-            # Single-day job: check if ALL assigned workers are available on this day
+            # Single-day job: check if ALL assigned employees are available on this day
             all_available = True
-            for worker_id in worker_ids:
-                availability = db.check_worker_availability(
-                    worker_id=worker_id,
+            for employee_id in employee_ids:
+                availability = db.check_employee_availability(
+                    employee_id=employee_id,
                     appointment_time=check_time,
                     duration_minutes=duration_minutes,
                     exclude_booking_id=exclude_booking_id,
@@ -571,7 +571,7 @@ def _find_worker_available_days(db, worker_ids: list, duration_minutes: int, exc
             available_days.append(f"{day_name} the {day_num}{suffix} of {month_name}")
         available_dates_iso.append(check_date.strftime('%Y-%m-%d'))
     
-    logger.info(f"[RESCHEDULE] Found {len(available_days)} available days for workers {worker_ids}: {available_days[:5]}")
+    logger.info(f"[RESCHEDULE] Found {len(available_days)} available days for employees {employee_ids}: {available_days[:5]}")
     return available_days, available_dates_iso
 
 
@@ -725,14 +725,14 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                     duration = booking.get('duration_minutes', 60)
                     is_full_day = duration >= 480  # 8+ hours
                     
-                    # Get worker names if assigned
-                    worker_names = []
-                    assigned_ids = booking.get('assigned_worker_ids', [])
+                    # Get employee names if assigned
+                    employee_names = []
+                    assigned_ids = booking.get('assigned_employee_ids', [])
                     if assigned_ids and db:
                         for wid in assigned_ids:
-                            worker = db.get_worker(wid, company_id=company_id)
-                            if worker:
-                                worker_names.append(worker.get('name', ''))
+                            employee = db.get_employee(wid, company_id=company_id)
+                            if employee:
+                                employee_names.append(employee.get('name', ''))
                     
                     jobs_on_day.append({
                         'name': booking.get('client_name') or booking.get('customer_name') or 'Unknown',
@@ -742,7 +742,7 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                         'booking_id': booking.get('id'),
                         'event_id': booking.get('calendar_event_id'),
                         'duration_minutes': duration,
-                        'assigned_workers': worker_names,
+                        'assigned_employees': employee_names,
                         'appointment_time': appt_time.strftime('%Y-%m-%d %H:%M:%S')  # Convert to string for JSON
                     })
                 elif appt_time < day_start:
@@ -782,13 +782,13 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                         job_end = _last_biz_day.replace(hour=_closing_hour, minute=0, second=0, microsecond=0)
                         if job_end > day_start:
                             # This multi-day job extends into the target day
-                            worker_names = []
-                            assigned_ids = booking.get('assigned_worker_ids', [])
+                            employee_names = []
+                            assigned_ids = booking.get('assigned_employee_ids', [])
                             if assigned_ids and db:
                                 for wid in assigned_ids:
-                                    worker = db.get_worker(wid, company_id=company_id)
-                                    if worker:
-                                        worker_names.append(worker.get('name', ''))
+                                    employee = db.get_employee(wid, company_id=company_id)
+                                    if employee:
+                                        employee_names.append(employee.get('name', ''))
                             
                             jobs_on_day.append({
                                 'name': booking.get('client_name') or booking.get('customer_name') or 'Unknown',
@@ -798,7 +798,7 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                                 'booking_id': booking.get('id'),
                                 'event_id': booking.get('calendar_event_id'),
                                 'duration_minutes': duration,
-                                'assigned_workers': worker_names,
+                                'assigned_employees': employee_names,
                                 'appointment_time': day_start.strftime('%Y-%m-%d %H:%M:%S'),  # Show as start of this day
                                 'is_continuation': True  # Flag that this is a continuation
                             })
@@ -858,7 +858,7 @@ def find_jobs_on_day(target_date, db, company_id: int, google_calendar=None) -> 
                             'booking_id': None,
                             'event_id': event_id,
                             'duration_minutes': duration,
-                            'assigned_workers': [],
+                            'assigned_employees': [],
                             'appointment_time': event_start.strftime('%Y-%m-%d %H:%M:%S')  # Convert to string for JSON
                         })
                     except Exception as e:
@@ -2374,21 +2374,21 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             logger.info(f"[CHECK_AVAIL] start_date={start_date_str}, end_date={end_date_str}, service_type={service_type}, job_description={job_description}")
             
-            # Get service duration and workers_required - prefer job_description over service_type for trades
+            # Get service duration and employees_required - prefer job_description over service_type for trades
             if job_description:
                 match_result = lookup_service_by_name(job_description, company_id=company_id)
                 matched_service = match_result['service']
                 service_duration = _resolve_quote_duration(matched_service, company_id=company_id) if matched_service.get("requires_quote") else _resolve_callout_duration(matched_service, company_id=company_id)
-                workers_required = matched_service.get('workers_required', 1) or 1
-                worker_restrictions = matched_service.get('worker_restrictions')
-                logger.info(f"[CHECK_AVAIL] Service from job_description '{job_description}': {service_duration} mins, {workers_required} worker(s)")
+                employees_required = matched_service.get('employees_required', 1) or 1
+                employee_restrictions = matched_service.get('employee_restrictions')
+                logger.info(f"[CHECK_AVAIL] Service from job_description '{job_description}': {service_duration} mins, {employees_required} employee(s)")
             else:
                 match_result = lookup_service_by_name(service_type, company_id=company_id)
                 matched_service = match_result['service']
                 service_duration = _resolve_quote_duration(matched_service, company_id=company_id) if matched_service.get("requires_quote") else _resolve_callout_duration(matched_service, company_id=company_id)
-                workers_required = matched_service.get('workers_required', 1) or 1
-                worker_restrictions = matched_service.get('worker_restrictions')
-                logger.info(f"[CHECK_AVAIL] Service from service_type: {service_duration} mins, {workers_required} worker(s)")
+                employees_required = matched_service.get('employees_required', 1) or 1
+                employee_restrictions = matched_service.get('employee_restrictions')
+                logger.info(f"[CHECK_AVAIL] Service from service_type: {service_duration} mins, {employees_required} employee(s)")
             
             # Special handling for "this week" - today through Friday
             if start_date_str and 'this week' in start_date_str.lower():
@@ -2463,10 +2463,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             logger.info(f"[CHECK_AVAIL] Business days: {business_days}")
             
-            # Check if company has workers - if so, we need to filter by worker availability
-            has_workers = db.has_workers(company_id) if db else False
-            if has_workers:
-                logger.info(f"[CHECK_AVAIL] Company has workers, will check WORKER availability (not calendar)")
+            # Check if company has employees - if so, we need to filter by employee availability
+            has_employees = db.has_employees(company_id) if db else False
+            if has_employees:
+                logger.info(f"[CHECK_AVAIL] Company has employees, will check EMPLOYEE availability (not calendar)")
             
             # Get business hours for slot generation
             try:
@@ -2483,8 +2483,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 if current_date.weekday() in business_days:
                     logger.info(f"[CHECK_AVAIL] Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
                     
-                    if has_workers and db:
-                        # WORKER-BASED AVAILABILITY
+                    if has_employees and db:
+                        # EMPLOYEE-BASED AVAILABILITY
                         day_slots = []
                         now = datetime.now()
                         
@@ -2494,19 +2494,19 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         if service_duration >= 480:
                             biz_open = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                             if biz_open > now:
-                                available_workers = db.find_available_workers_for_slot(
+                                available_employees = db.find_available_employees_for_slot(
                                     appointment_time=biz_open,
                                     duration_minutes=service_duration,
                                     company_id=company_id
                                 )
-                                if available_workers and worker_restrictions:
-                                    restriction_type = worker_restrictions.get('type', 'all')
-                                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                                if available_employees and employee_restrictions:
+                                    restriction_type = employee_restrictions.get('type', 'all')
+                                    restricted_ids = employee_restrictions.get('employee_ids', [])
                                     if restriction_type == 'only' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
                                     elif restriction_type == 'except' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                if available_workers is not None and len(available_workers) >= workers_required:
+                                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
+                                if available_employees is not None and len(available_employees) >= employees_required:
                                     day_slots = [biz_open]
                             logger.info(f"[CHECK_AVAIL] Full-day fast path: {'1 slot' if day_slots else 'no slots'}")
                         else:
@@ -2524,26 +2524,26 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                     slot_time += timedelta(minutes=30)
                                     continue
                                 
-                                available_workers = db.find_available_workers_for_slot(
+                                available_employees = db.find_available_employees_for_slot(
                                     appointment_time=slot_time,
                                     duration_minutes=service_duration,
                                     company_id=company_id
                                 )
-                                if available_workers and worker_restrictions:
-                                    restriction_type = worker_restrictions.get('type', 'all')
-                                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                                if available_employees and employee_restrictions:
+                                    restriction_type = employee_restrictions.get('type', 'all')
+                                    restricted_ids = employee_restrictions.get('employee_ids', [])
                                     if restriction_type == 'only' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
                                     elif restriction_type == 'except' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
                                 
-                                if available_workers is not None and len(available_workers) >= workers_required:
+                                if available_employees is not None and len(available_employees) >= employees_required:
                                     day_slots.append(slot_time)
                                 
                                 slot_time += timedelta(minutes=30)
-                            logger.info(f"[CHECK_AVAIL] Worker-based check found {len(day_slots)} slots")
+                            logger.info(f"[CHECK_AVAIL] Employee-based check found {len(day_slots)} slots")
                     else:
-                        # NO WORKERS: Use calendar-based availability (any booking blocks the slot)
+                        # NO EMPLOYEES: Use calendar-based availability (any booking blocks the slot)
                         try:
                             day_slots = google_calendar.get_available_slots_for_day(current_date, service_duration=service_duration)
                             logger.info(f"[CHECK_AVAIL] Calendar-based check found {len(day_slots) if day_slots else 0} slots")
@@ -2693,14 +2693,14 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             match_result = lookup_service_by_name(job_description, company_id=company_id)
             matched_service = match_result['service']
             service_duration = _resolve_quote_duration(matched_service, company_id=company_id) if matched_service.get("requires_quote") else _resolve_callout_duration(matched_service, company_id=company_id)
-            workers_required = matched_service.get('workers_required', 1) or 1
-            worker_restrictions = matched_service.get('worker_restrictions')
+            employees_required = matched_service.get('employees_required', 1) or 1
+            employee_restrictions = matched_service.get('employee_restrictions')
             is_full_day = service_duration >= 480
             
             logger.info(f"[GET_NEXT_AVAIL] Job: '{job_description}' -> matched='{match_result['matched_name']}', "
-                        f"duration={service_duration} mins, {workers_required} worker(s), full_day={is_full_day}, "
+                        f"duration={service_duration} mins, {employees_required} employee(s), full_day={is_full_day}, "
                         f"is_package={match_result.get('is_package', False)}, "
-                        f"worker_restrictions={worker_restrictions}, requires_callout={matched_service.get('requires_callout')}")
+                        f"employee_restrictions={employee_restrictions}, requires_callout={matched_service.get('requires_callout')}")
             
             # Search from today through N weeks
             from collections import defaultdict
@@ -2723,7 +2723,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 biz_start_hour = 9
                 biz_end_hour = 17
             
-            has_workers = db.has_workers(company_id) if db else False
+            has_employees = db.has_employees(company_id) if db else False
             available_days = []  # List of (date, slots) tuples
             
             # Search until we find at least 2-4 days or exhaust search range
@@ -2732,7 +2732,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     day_slots = []
                     now = datetime.now()
                     
-                    if has_workers and db:
+                    if has_employees and db:
                         # PERFORMANCE: For full-day/multi-day jobs (>= 480 min), only check ONE slot
                         # per day (start of business) instead of every 30-min slot.
                         # This reduces DB calls from ~18/day to 1/day — critical for multi-day jobs
@@ -2740,19 +2740,19 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         if is_full_day:
                             biz_open = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                             if biz_open > now:
-                                available_workers = db.find_available_workers_for_slot(
+                                available_employees = db.find_available_employees_for_slot(
                                     appointment_time=biz_open,
                                     duration_minutes=service_duration,
                                     company_id=company_id
                                 )
-                                if available_workers and worker_restrictions:
-                                    restriction_type = worker_restrictions.get('type', 'all')
-                                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                                if available_employees and employee_restrictions:
+                                    restriction_type = employee_restrictions.get('type', 'all')
+                                    restricted_ids = employee_restrictions.get('employee_ids', [])
                                     if restriction_type == 'only' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
                                     elif restriction_type == 'except' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                if available_workers is not None and len(available_workers) >= workers_required:
+                                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
+                                if available_employees is not None and len(available_employees) >= employees_required:
                                     day_slots = [biz_open]
                         else:
                             # Short jobs: check every 30-min slot
@@ -2770,21 +2770,21 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                     slot_time += timedelta(minutes=30)
                                     continue
                                 
-                                available_workers = db.find_available_workers_for_slot(
+                                available_employees = db.find_available_employees_for_slot(
                                     appointment_time=slot_time,
                                     duration_minutes=service_duration,
                                     company_id=company_id
                                 )
                                 
-                                if available_workers and worker_restrictions:
-                                    restriction_type = worker_restrictions.get('type', 'all')
-                                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                                if available_employees and employee_restrictions:
+                                    restriction_type = employee_restrictions.get('type', 'all')
+                                    restricted_ids = employee_restrictions.get('employee_ids', [])
                                     if restriction_type == 'only' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
                                     elif restriction_type == 'except' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
                                 
-                                if available_workers is not None and len(available_workers) >= workers_required:
+                                if available_employees is not None and len(available_employees) >= employees_required:
                                     day_slots.append(slot_time)
                                 
                                 slot_time += timedelta(minutes=30)
@@ -2886,7 +2886,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
         elif tool_name == "search_reschedule_availability":
             # ========== SEARCH_RESCHEDULE_AVAILABILITY ==========
             # Dedicated tool for finding alternative dates during a reschedule.
-            # Checks the ASSIGNED worker's availability — not general availability.
+            # Checks the ASSIGNED employee's availability — not general availability.
             logger.info(f"[RESCHED_AVAIL] ========== SEARCHING RESCHEDULE AVAILABILITY ==========")
             booking_id = arguments.get('booking_id')
             query = arguments.get('query', '')
@@ -2912,15 +2912,15 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             if not db:
                 return {"success": False, "error": "Database not available."}
             
-            # Look up the booking to get assigned workers and duration
-            assigned_worker_ids = []
+            # Look up the booking to get assigned employees and duration
+            assigned_employee_ids = []
             booking_duration = 60
             booking_date = None
             try:
                 bookings = db.get_all_bookings(company_id=company_id)
                 for booking in bookings:
                     if booking.get('id') == booking_id:
-                        assigned_worker_ids = booking.get('assigned_worker_ids', [])
+                        assigned_employee_ids = booking.get('assigned_employee_ids', [])
                         booking_duration = booking.get('duration_minutes', 60)
                         booking_date = booking.get('appointment_time')
                         break
@@ -2928,12 +2928,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 logger.error(f"[RESCHED_AVAIL] Could not look up booking {booking_id}: {e}")
                 return {"success": False, "error": "Could not look up that booking. Please try again."}
             
-            if not assigned_worker_ids:
-                logger.warning(f"[RESCHED_AVAIL] No assigned workers for booking {booking_id}, falling back to general search")
+            if not assigned_employee_ids:
+                logger.warning(f"[RESCHED_AVAIL] No assigned employees for booking {booking_id}, falling back to general search")
                 # Fall through to general search_availability
                 return execute_tool_call("search_availability", {"query": query, "job_description": "general service"}, services)
             
-            logger.info(f"[RESCHED_AVAIL] Workers: {assigned_worker_ids}, Duration: {booking_duration}min")
+            logger.info(f"[RESCHED_AVAIL] Employees: {assigned_employee_ids}, Duration: {booking_duration}min")
             
             # Parse the date range from the query using fast paths
             today = datetime.now()
@@ -3022,22 +3022,22 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 else:
                     exclude_date = booking_date.date() if hasattr(booking_date, 'date') else None
             
-            # Search each day, checking the ASSIGNED worker(s) specifically
-            # OPTIMIZATION: Fetch all worker bookings ONCE for the entire possible range
+            # Search each day, checking the ASSIGNED employee(s) specifically
+            # OPTIMIZATION: Fetch all employee bookings ONCE for the entire possible range
             # instead of hitting the DB per slot (saves hundreds of queries)
             max_search_end = end_date + timedelta(days=35)  # Cover potential auto-extend
-            worker_bookings_by_id = {}
-            if hasattr(db, 'get_worker_bookings_in_range'):
-                for wid in assigned_worker_ids:
-                    worker_bookings_by_id[wid] = db.get_worker_bookings_in_range(
-                        worker_id=wid,
+            employee_bookings_by_id = {}
+            if hasattr(db, 'get_employee_bookings_in_range'):
+                for wid in assigned_employee_ids:
+                    employee_bookings_by_id[wid] = db.get_employee_bookings_in_range(
+                        employee_id=wid,
                         range_start=start_date,
                         range_end=max_search_end,
                         exclude_booking_id=booking_id,
                         company_id=company_id
                     )
                 use_batch = True
-                logger.info(f"[RESCHED_AVAIL] Batch-fetched bookings for {len(assigned_worker_ids)} workers")
+                logger.info(f"[RESCHED_AVAIL] Batch-fetched bookings for {len(assigned_employee_ids)} employees")
             else:
                 use_batch = False
             
@@ -3069,12 +3069,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     check_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                     if check_time > now:
                         if use_batch:
-                            all_free = _check_slot_against_bookings(check_time, booking_duration, worker_bookings_by_id, assigned_worker_ids, db, company_id=company_id)
+                            all_free = _check_slot_against_bookings(check_time, booking_duration, employee_bookings_by_id, assigned_employee_ids, db, company_id=company_id)
                         else:
                             all_free = True
-                            for wid in assigned_worker_ids:
-                                avail = db.check_worker_availability(
-                                    worker_id=wid, appointment_time=check_time,
+                            for wid in assigned_employee_ids:
+                                avail = db.check_employee_availability(
+                                    employee_id=wid, appointment_time=check_time,
                                     duration_minutes=booking_duration,
                                     exclude_booking_id=booking_id, company_id=company_id
                                 )
@@ -3096,12 +3096,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                             slot_time += timedelta(minutes=30)
                             continue
                         if use_batch:
-                            all_free = _check_slot_against_bookings(slot_time, booking_duration, worker_bookings_by_id, assigned_worker_ids, db, company_id=company_id)
+                            all_free = _check_slot_against_bookings(slot_time, booking_duration, employee_bookings_by_id, assigned_employee_ids, db, company_id=company_id)
                         else:
                             all_free = True
-                            for wid in assigned_worker_ids:
-                                avail = db.check_worker_availability(
-                                    worker_id=wid, appointment_time=slot_time,
+                            for wid in assigned_employee_ids:
+                                avail = db.check_employee_availability(
+                                    employee_id=wid, appointment_time=slot_time,
                                     duration_minutes=booking_duration,
                                     exclude_booking_id=booking_id, company_id=company_id
                                 )
@@ -3164,12 +3164,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         check_time = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                         if check_time > now:
                             if use_batch:
-                                all_free = _check_slot_against_bookings(check_time, booking_duration, worker_bookings_by_id, assigned_worker_ids, db, company_id=company_id)
+                                all_free = _check_slot_against_bookings(check_time, booking_duration, employee_bookings_by_id, assigned_employee_ids, db, company_id=company_id)
                             else:
                                 all_free = True
-                                for wid in assigned_worker_ids:
-                                    avail = db.check_worker_availability(
-                                        worker_id=wid, appointment_time=check_time,
+                                for wid in assigned_employee_ids:
+                                    avail = db.check_employee_availability(
+                                        employee_id=wid, appointment_time=check_time,
                                         duration_minutes=booking_duration,
                                         exclude_booking_id=booking_id, company_id=company_id
                                     )
@@ -3196,12 +3196,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                                 slot_time += timedelta(minutes=30)
                                 continue
                             if use_batch:
-                                all_free = _check_slot_against_bookings(slot_time, booking_duration, worker_bookings_by_id, assigned_worker_ids, db, company_id=company_id)
+                                all_free = _check_slot_against_bookings(slot_time, booking_duration, employee_bookings_by_id, assigned_employee_ids, db, company_id=company_id)
                             else:
                                 all_free = True
-                                for wid in assigned_worker_ids:
-                                    avail = db.check_worker_availability(
-                                        worker_id=wid, appointment_time=slot_time,
+                                for wid in assigned_employee_ids:
+                                    avail = db.check_employee_availability(
+                                        employee_id=wid, appointment_time=slot_time,
                                         duration_minutes=booking_duration,
                                         exclude_booking_id=booking_id, company_id=company_id
                                     )
@@ -3234,7 +3234,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 return {
                     "success": True,
                     "available_slots": [],
-                    "message": "The assigned worker has no availability in the next few weeks. Would you like to speak with someone about this?",
+                    "message": "The assigned employee has no availability in the next few weeks. Would you like to speak with someone about this?",
                     "is_full_day_service": is_full_day
                 }
             
@@ -3284,8 +3284,8 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             match_result = lookup_service_by_name(job_description, company_id=company_id)
             matched_service = match_result['service']
             service_duration = _resolve_quote_duration(matched_service, company_id=company_id) if matched_service.get("requires_quote") else _resolve_callout_duration(matched_service, company_id=company_id)
-            workers_required = matched_service.get('workers_required', 1) or 1
-            worker_restrictions = matched_service.get('worker_restrictions')
+            employees_required = matched_service.get('employees_required', 1) or 1
+            employee_restrictions = matched_service.get('employee_restrictions')
             is_full_day = service_duration >= 480
             
             today = datetime.now()
@@ -3510,36 +3510,36 @@ Return ONLY valid JSON, no explanation."""
                 biz_start_hour = 9
                 biz_end_hour = 17
             
-            has_workers = db.has_workers(company_id) if db else False
+            has_employees = db.has_employees(company_id) if db else False
             
-            # BATCH OPTIMIZATION: Fetch all worker bookings upfront for in-memory checks
+            # BATCH OPTIMIZATION: Fetch all employee bookings upfront for in-memory checks
             # This avoids hundreds of per-slot DB queries when scanning multiple weeks
-            all_worker_ids = []
-            worker_bookings_by_id = {}
+            all_employee_ids = []
+            employee_bookings_by_id = {}
             _leave_records = []
             use_batch = False
-            if has_workers and db and hasattr(db, 'get_worker_bookings_in_range'):
+            if has_employees and db and hasattr(db, 'get_employee_bookings_in_range'):
                 try:
-                    all_workers_list = db.get_all_workers(company_id=company_id)
-                    all_worker_ids = [w['id'] for w in all_workers_list if w.get('status') != 'inactive']
-                    if all_worker_ids:
+                    all_employees_list = db.get_all_employees(company_id=company_id)
+                    all_employee_ids = [w['id'] for w in all_employees_list if w.get('status') != 'inactive']
+                    if all_employee_ids:
                         # Cover main search + potential auto-extend range
                         batch_end = end_date + timedelta(days=35)
-                        for wid in all_worker_ids:
-                            worker_bookings_by_id[wid] = db.get_worker_bookings_in_range(
-                                worker_id=wid,
+                        for wid in all_employee_ids:
+                            employee_bookings_by_id[wid] = db.get_employee_bookings_in_range(
+                                employee_id=wid,
                                 range_start=start_date,
                                 range_end=batch_end,
                                 company_id=company_id
                             )
                         use_batch = True
-                        logger.info(f"[SEARCH_AVAIL] Batch-fetched bookings for {len(all_worker_ids)} workers")
+                        logger.info(f"[SEARCH_AVAIL] Batch-fetched bookings for {len(all_employee_ids)} employees")
 
                         # Pre-fetch approved time-off records for the search range
                         _leave_records = []
-                        if hasattr(db, 'get_workers_on_leave'):
+                        if hasattr(db, 'get_employees_on_leave'):
                             try:
-                                _leave_records = db.get_workers_on_leave(company_id, start_date, batch_end)
+                                _leave_records = db.get_employees_on_leave(company_id, start_date, batch_end)
                             except Exception:
                                 _leave_records = []
                 except Exception as e:
@@ -3576,30 +3576,30 @@ Return ONLY valid JSON, no explanation."""
                 day_slots = []
                 now = datetime.now()
                 
-                if has_workers and db:
+                if has_employees and db:
                     # PERFORMANCE: For full-day/multi-day jobs (>= 480 min), only check ONE slot
                     # per day (start of business) instead of every 30-min slot.
                     if is_full_day:
                         biz_open = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                         if biz_open > now:
                             if use_batch:
-                                avail_ids = _find_available_workers_batch(biz_open, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions, leave_records=_leave_records)
-                                if len(avail_ids) >= workers_required:
+                                avail_ids = _find_available_employees_batch(biz_open, service_duration, employee_bookings_by_id, all_employee_ids, db, company_id=company_id, employee_restrictions=employee_restrictions, leave_records=_leave_records)
+                                if len(avail_ids) >= employees_required:
                                     day_slots = [biz_open]
                             else:
-                                available_workers = db.find_available_workers_for_slot(
+                                available_employees = db.find_available_employees_for_slot(
                                     appointment_time=biz_open,
                                     duration_minutes=service_duration,
                                     company_id=company_id
                                 )
-                                if available_workers and worker_restrictions:
-                                    restriction_type = worker_restrictions.get('type', 'all')
-                                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                                if available_employees and employee_restrictions:
+                                    restriction_type = employee_restrictions.get('type', 'all')
+                                    restricted_ids = employee_restrictions.get('employee_ids', [])
                                     if restriction_type == 'only' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
                                     elif restriction_type == 'except' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                if available_workers is not None and len(available_workers) >= workers_required:
+                                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
+                                if available_employees is not None and len(available_employees) >= employees_required:
                                     day_slots = [biz_open]
                     else:
                         # Short jobs: check every 30-min slot
@@ -3641,23 +3641,23 @@ Return ONLY valid JSON, no explanation."""
                                 continue
                             
                             if use_batch:
-                                avail_ids = _find_available_workers_batch(slot_time, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions, leave_records=_leave_records)
-                                if len(avail_ids) >= workers_required:
+                                avail_ids = _find_available_employees_batch(slot_time, service_duration, employee_bookings_by_id, all_employee_ids, db, company_id=company_id, employee_restrictions=employee_restrictions, leave_records=_leave_records)
+                                if len(avail_ids) >= employees_required:
                                     day_slots.append(slot_time)
                             else:
-                                available_workers = db.find_available_workers_for_slot(
+                                available_employees = db.find_available_employees_for_slot(
                                     appointment_time=slot_time,
                                     duration_minutes=service_duration,
                                     company_id=company_id
                                 )
-                                if available_workers and worker_restrictions:
-                                    restriction_type = worker_restrictions.get('type', 'all')
-                                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                                if available_employees and employee_restrictions:
+                                    restriction_type = employee_restrictions.get('type', 'all')
+                                    restricted_ids = employee_restrictions.get('employee_ids', [])
                                     if restriction_type == 'only' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
                                     elif restriction_type == 'except' and restricted_ids:
-                                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                if available_workers is not None and len(available_workers) >= workers_required:
+                                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
+                                if available_employees is not None and len(available_employees) >= employees_required:
                                     day_slots.append(slot_time)
                             
                             slot_time += timedelta(minutes=30)
@@ -3722,28 +3722,28 @@ Return ONLY valid JSON, no explanation."""
                         day_slots = []
                         now = datetime.now()
                         
-                        if has_workers and db:
+                        if has_employees and db:
                             if is_full_day:
                                 biz_open = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                                 if biz_open > now:
                                     if use_batch:
-                                        avail_ids = _find_available_workers_batch(biz_open, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions, leave_records=_leave_records)
-                                        if len(avail_ids) >= workers_required:
+                                        avail_ids = _find_available_employees_batch(biz_open, service_duration, employee_bookings_by_id, all_employee_ids, db, company_id=company_id, employee_restrictions=employee_restrictions, leave_records=_leave_records)
+                                        if len(avail_ids) >= employees_required:
                                             day_slots = [biz_open]
                                     else:
-                                        available_workers = db.find_available_workers_for_slot(
+                                        available_employees = db.find_available_employees_for_slot(
                                             appointment_time=biz_open,
                                             duration_minutes=service_duration,
                                             company_id=company_id
                                         )
-                                        if available_workers and worker_restrictions:
-                                            restriction_type = worker_restrictions.get('type', 'all')
-                                            restricted_ids = worker_restrictions.get('worker_ids', [])
+                                        if available_employees and employee_restrictions:
+                                            restriction_type = employee_restrictions.get('type', 'all')
+                                            restricted_ids = employee_restrictions.get('employee_ids', [])
                                             if restriction_type == 'only' and restricted_ids:
-                                                available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                                available_employees = [w for w in available_employees if w['id'] in restricted_ids]
                                             elif restriction_type == 'except' and restricted_ids:
-                                                available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                        if available_workers is not None and len(available_workers) >= workers_required:
+                                                available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
+                                        if available_employees is not None and len(available_employees) >= employees_required:
                                             day_slots = [biz_open]
                             else:
                                 slot_time = ext_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
@@ -3757,23 +3757,23 @@ Return ONLY valid JSON, no explanation."""
                                         slot_time += timedelta(minutes=30)
                                         continue
                                     if use_batch:
-                                        avail_ids = _find_available_workers_batch(slot_time, service_duration, worker_bookings_by_id, all_worker_ids, db, company_id=company_id, worker_restrictions=worker_restrictions, leave_records=_leave_records)
-                                        if len(avail_ids) >= workers_required:
+                                        avail_ids = _find_available_employees_batch(slot_time, service_duration, employee_bookings_by_id, all_employee_ids, db, company_id=company_id, employee_restrictions=employee_restrictions, leave_records=_leave_records)
+                                        if len(avail_ids) >= employees_required:
                                             day_slots.append(slot_time)
                                     else:
-                                        available_workers = db.find_available_workers_for_slot(
+                                        available_employees = db.find_available_employees_for_slot(
                                             appointment_time=slot_time,
                                             duration_minutes=service_duration,
                                             company_id=company_id
                                         )
-                                        if available_workers and worker_restrictions:
-                                            restriction_type = worker_restrictions.get('type', 'all')
-                                            restricted_ids = worker_restrictions.get('worker_ids', [])
+                                        if available_employees and employee_restrictions:
+                                            restriction_type = employee_restrictions.get('type', 'all')
+                                            restricted_ids = employee_restrictions.get('employee_ids', [])
                                             if restriction_type == 'only' and restricted_ids:
-                                                available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                                                available_employees = [w for w in available_employees if w['id'] in restricted_ids]
                                             elif restriction_type == 'except' and restricted_ids:
-                                                available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                                        if available_workers is not None and len(available_workers) >= workers_required:
+                                                available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
+                                        if available_employees is not None and len(available_employees) >= employees_required:
                                             day_slots.append(slot_time)
                                     slot_time += timedelta(minutes=30)
                         
@@ -4119,49 +4119,49 @@ Return ONLY valid JSON, no explanation."""
             match_result = lookup_service_by_name(reason, company_id=company_id)
             matched_service_name = match_result['matched_name']
             appointment_duration = match_result['service'].get('duration_minutes', 60)
-            workers_required = match_result['service'].get('workers_required', 1) or 1
-            worker_restrictions = match_result['service'].get('worker_restrictions')
-            logger.info(f"[BOOK_APPT] Matched service: {matched_service_name}, Duration: {appointment_duration} mins, Workers: {workers_required}")
+            employees_required = match_result['service'].get('employees_required', 1) or 1
+            employee_restrictions = match_result['service'].get('employee_restrictions')
+            logger.info(f"[BOOK_APPT] Matched service: {matched_service_name}, Duration: {appointment_duration} mins, Employees: {employees_required}")
             
-            # Check if company has workers configured
-            has_workers = db.has_workers(company_id) if db else False
-            assigned_workers = []
+            # Check if company has employees configured
+            has_employees = db.has_employees(company_id) if db else False
+            assigned_employees = []
             
-            # AVAILABILITY CHECK: Different logic depending on whether company has workers
-            if has_workers:
-                # Worker-based availability: check if any qualified worker is free
-                logger.info(f"[BOOK_APPT] Checking WORKER availability at {parsed_time} for {appointment_duration} mins")
-                available_workers = db.find_available_workers_for_slot(
+            # AVAILABILITY CHECK: Different logic depending on whether company has employees
+            if has_employees:
+                # Employee-based availability: check if any qualified employee is free
+                logger.info(f"[BOOK_APPT] Checking EMPLOYEE availability at {parsed_time} for {appointment_duration} mins")
+                available_employees = db.find_available_employees_for_slot(
                     appointment_time=parsed_time,
                     duration_minutes=appointment_duration,
                     company_id=company_id
                 )
                 
-                # Apply worker restrictions if any
-                if available_workers and worker_restrictions:
-                    restriction_type = worker_restrictions.get('type', 'all')
-                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                # Apply employee restrictions if any
+                if available_employees and employee_restrictions:
+                    restriction_type = employee_restrictions.get('type', 'all')
+                    restricted_ids = employee_restrictions.get('employee_ids', [])
                     
                     if restriction_type == 'only' and restricted_ids:
-                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
+                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
                     elif restriction_type == 'except' and restricted_ids:
-                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
+                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
                 
-                logger.info(f"[BOOK_APPT] Available workers: {available_workers}")
+                logger.info(f"[BOOK_APPT] Available employees: {available_employees}")
                 
-                if available_workers is None:
-                    logger.warning(f"[BOOK_APPT] Worker lookup failed - proceeding without worker assignment")
-                elif len(available_workers) < workers_required:
-                    logger.warning(f"[BOOK_APPT] Not enough workers: need {workers_required}, have {len(available_workers)}")
+                if available_employees is None:
+                    logger.warning(f"[BOOK_APPT] Employee lookup failed - proceeding without employee assignment")
+                elif len(available_employees) < employees_required:
+                    logger.warning(f"[BOOK_APPT] Not enough employees: need {employees_required}, have {len(available_employees)}")
                     return {
                         "success": False,
-                        "error": f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time."
+                        "error": f"No employees are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time."
                     }
                 else:
-                    assigned_workers = available_workers[:workers_required]
-                    logger.info(f"[BOOK_APPT] Auto-assigning worker(s): {[w['name'] for w in assigned_workers]}")
+                    assigned_employees = available_employees[:employees_required]
+                    logger.info(f"[BOOK_APPT] Auto-assigning employee(s): {[w['name'] for w in assigned_employees]}")
             else:
-                # No workers - use simple calendar availability check
+                # No employees - use simple calendar availability check
                 logger.info(f"[BOOK_APPT] Checking CALENDAR availability at {parsed_time} for {appointment_duration} mins")
                 is_available = google_calendar.check_availability(parsed_time, duration_minutes=appointment_duration)
                 logger.info(f"[BOOK_APPT] Availability check result: {is_available}")
@@ -4296,18 +4296,18 @@ Return ONLY valid JSON, no explanation."""
                     except Exception as _e:
                         logger.warning(f"[BOOK_APPT] ⚠️ Default materials lookup failed: {_e}")
                     
-                    # Auto-assign workers if any were selected
-                    if assigned_workers:
-                        for worker in assigned_workers:
+                    # Auto-assign employees if any were selected
+                    if assigned_employees:
+                        for employee in assigned_employees:
                             try:
-                                logger.info(f"[BOOK_APPT] Assigning worker {worker['name']} to booking {booking_id}")
-                                assignment_result = db.assign_worker_to_job(booking_id, worker['id'])
+                                logger.info(f"[BOOK_APPT] Assigning employee {employee['name']} to booking {booking_id}")
+                                assignment_result = db.assign_employee_to_job(booking_id, employee['id'])
                                 if assignment_result.get('success'):
-                                    logger.info(f"[BOOK_APPT] ✅ Worker {worker['name']} assigned successfully")
+                                    logger.info(f"[BOOK_APPT] ✅ Employee {employee['name']} assigned successfully")
                                 else:
-                                    logger.warning(f"[BOOK_APPT] ⚠️ Failed to assign worker {worker['name']}: {assignment_result.get('error')}")
-                            except Exception as worker_err:
-                                logger.warning(f"[BOOK_APPT] ⚠️ Could not assign worker {worker['name']}: {worker_err}")
+                                    logger.warning(f"[BOOK_APPT] ⚠️ Failed to assign employee {employee['name']}: {assignment_result.get('error')}")
+                            except Exception as employee_err:
+                                logger.warning(f"[BOOK_APPT] ⚠️ Could not assign employee {employee['name']}: {employee_err}")
                     
                     # Update client description
                     try:
@@ -4337,7 +4337,7 @@ Return ONLY valid JSON, no explanation."""
                     except Exception:
                         pass
                 if _send_confirmation and phone:
-                    _worker_name_list = [w['name'] for w in assigned_workers] if assigned_workers else None
+                    _employee_name_list = [w['name'] for w in assigned_employees] if assigned_employees else None
                     # Look up customer email
                     _customer_email = email
                     if not _customer_email and client_id and db:
@@ -4364,7 +4364,7 @@ Return ONLY valid JSON, no explanation."""
                         customer_name=customer_name,
                         service_type=matched_service_name,
                         company_name=_company_name,
-                        worker_names=_worker_name_list,
+                        employee_names=_employee_name_list,
                         portal_link=_portal_link,
                     )
                 else:
@@ -4635,30 +4635,30 @@ Return ONLY valid JSON, no explanation."""
             matched_job = jobs_on_day[matched_idx]
             logger.info(f"[RESCHEDULE] Fuzzy matched '{customer_name}' to '{matched_name}' with {confidence}% confidence")
             
-            # Customer name confirmed but no new time yet - find available days for the assigned worker
+            # Customer name confirmed but no new time yet - find available days for the assigned employee
             if not new_datetime:
-                # Get booking details to find assigned workers
+                # Get booking details to find assigned employees
                 booking_id = matched_job.get('booking_id')
                 booking_duration = matched_job.get('duration_minutes', 60)
-                assigned_worker_ids = []
+                assigned_employee_ids = []
                 
                 if booking_id and db:
                     try:
                         bookings = db.get_all_bookings(company_id=company_id)
                         for booking in bookings:
                             if booking.get('id') == booking_id:
-                                assigned_worker_ids = booking.get('assigned_worker_ids', [])
+                                assigned_employee_ids = booking.get('assigned_employee_ids', [])
                                 break
                     except Exception as e:
-                        logger.warning(f"[RESCHEDULE] Could not get assigned workers: {e}")
+                        logger.warning(f"[RESCHEDULE] Could not get assigned employees: {e}")
                 
-                # Find available days for the assigned worker(s)
+                # Find available days for the assigned employee(s)
                 available_days = []
                 available_dates_iso = []
-                if assigned_worker_ids and db:
-                    available_days, available_dates_iso = _find_worker_available_days(
+                if assigned_employee_ids and db:
+                    available_days, available_dates_iso = _find_employee_available_days(
                         db=db,
-                        worker_ids=assigned_worker_ids,
+                        employee_ids=assigned_employee_ids,
                         duration_minutes=booking_duration,
                         exclude_booking_id=booking_id,
                         company_id=company_id,
@@ -4731,45 +4731,45 @@ Return ONLY valid JSON, no explanation."""
                 logger.info(f"[RESCHEDULE] Full-day job - setting time to {start_hour}:00")
             
             # Check if new time is available
-            # Get assigned workers from the job
-            assigned_worker_ids = []
+            # Get assigned employees from the job
+            assigned_employee_ids = []
             if booking_id and db:
                 try:
                     bookings = db.get_all_bookings(company_id=company_id)
                     for booking in bookings:
                         if booking.get('id') == booking_id:
-                            assigned_worker_ids = booking.get('assigned_worker_ids', [])
+                            assigned_employee_ids = booking.get('assigned_employee_ids', [])
                             break
                 except Exception as e:
-                    logger.warning(f"[RESCHEDULE] Could not get assigned workers: {e}")
+                    logger.warning(f"[RESCHEDULE] Could not get assigned employees: {e}")
             
-            has_workers = db.has_workers(company_id) if db else False
+            has_employees = db.has_employees(company_id) if db else False
             
-            if has_workers and assigned_worker_ids:
-                # Check if the assigned workers are available at the new time
-                logger.info(f"[RESCHEDULE] Checking if assigned workers {assigned_worker_ids} are available at {new_time}")
-                all_workers_available = True
-                unavailable_workers = []
+            if has_employees and assigned_employee_ids:
+                # Check if the assigned employees are available at the new time
+                logger.info(f"[RESCHEDULE] Checking if assigned employees {assigned_employee_ids} are available at {new_time}")
+                all_employees_available = True
+                unavailable_employees = []
                 
-                for worker_id in assigned_worker_ids:
-                    availability = db.check_worker_availability(
-                        worker_id=worker_id,
+                for employee_id in assigned_employee_ids:
+                    availability = db.check_employee_availability(
+                        employee_id=employee_id,
                         appointment_time=new_time,
                         duration_minutes=booking_duration,
                         exclude_booking_id=booking_id,
                         company_id=company_id
                     )
                     if not availability.get('available', False):
-                        all_workers_available = False
-                        worker = db.get_worker(worker_id, company_id=company_id)
-                        worker_name = worker.get('name', f'Worker {worker_id}') if worker else f'Worker {worker_id}'
-                        unavailable_workers.append(worker_name)
+                        all_employees_available = False
+                        employee = db.get_employee(employee_id, company_id=company_id)
+                        employee_name = employee.get('name', f'Employee {employee_id}') if employee else f'Employee {employee_id}'
+                        unavailable_employees.append(employee_name)
                 
-                if not all_workers_available:
-                    # Find available days for the assigned worker(s) to suggest alternatives
-                    available_days, available_dates_iso = _find_worker_available_days(
+                if not all_employees_available:
+                    # Find available days for the assigned employee(s) to suggest alternatives
+                    available_days, available_dates_iso = _find_employee_available_days(
                         db=db,
-                        worker_ids=assigned_worker_ids,
+                        employee_ids=assigned_employee_ids,
                         duration_minutes=booking_duration,
                         exclude_booking_id=booking_id,
                         company_id=company_id,
@@ -4780,7 +4780,7 @@ Return ONLY valid JSON, no explanation."""
                         days_str = ", ".join(available_days[:5])  # Limit to 5 days
                         return {
                             "success": False,
-                            "error": f"The assigned worker ({', '.join(unavailable_workers)}) is not available on {new_time.strftime('%A, %B %d')}. They are available on: {days_str}. Which day works for you?",
+                            "error": f"The assigned employee ({', '.join(unavailable_employees)}) is not available on {new_time.strftime('%A, %B %d')}. They are available on: {days_str}. Which day works for you?",
                             "new_time_unavailable": True,
                             "available_days": available_days,
                             "suggested_dates": available_dates_iso[:5]
@@ -4788,11 +4788,11 @@ Return ONLY valid JSON, no explanation."""
                     else:
                         return {
                             "success": False,
-                            "error": f"The assigned worker ({', '.join(unavailable_workers)}) is not available on {new_time.strftime('%A, %B %d')} and has no availability in the next 4 weeks. Would you like to speak with someone about this?",
+                            "error": f"The assigned employee ({', '.join(unavailable_employees)}) is not available on {new_time.strftime('%A, %B %d')} and has no availability in the next 4 weeks. Would you like to speak with someone about this?",
                             "new_time_unavailable": True
                         }
             elif google_calendar:
-                # No workers or no assigned workers - use simple calendar check
+                # No employees or no assigned employees - use simple calendar check
                 is_available = google_calendar.check_availability(new_time, duration_minutes=booking_duration)
                 if not is_available:
                     return {
@@ -5138,8 +5138,8 @@ Return ONLY valid JSON, no explanation."""
             service_duration = matched_service.get('duration_minutes', 60)
             logger.info(f"[BOOK_JOB] Matched service: {matched_service_name}, Duration: {service_duration} mins, "
                         f"is_package={match_result.get('is_package', False)}, score={match_result.get('score', 0)}, "
-                        f"workers_required={matched_service.get('workers_required')}, "
-                        f"worker_restrictions={matched_service.get('worker_restrictions')}, "
+                        f"employees_required={matched_service.get('employees_required')}, "
+                        f"employee_restrictions={matched_service.get('employee_restrictions')}, "
                         f"requires_callout={matched_service.get('requires_callout')}, "
                         f"requires_quote={matched_service.get('requires_quote')}")
             
@@ -5256,50 +5256,50 @@ Return ONLY valid JSON, no explanation."""
                     "latest_start_time": f"{latest_hour_12}:{latest_start_minute:02d} {latest_period}"
                 }
             
-            # Get workers_required from matched service (default 1)
-            workers_required = matched_service.get('workers_required', 1) or 1
-            worker_restrictions = matched_service.get('worker_restrictions')
-            logger.info(f"[BOOK_JOB] Service requires {workers_required} worker(s), restrictions: {worker_restrictions}")
+            # Get employees_required from matched service (default 1)
+            employees_required = matched_service.get('employees_required', 1) or 1
+            employee_restrictions = matched_service.get('employee_restrictions')
+            logger.info(f"[BOOK_JOB] Service requires {employees_required} employee(s), restrictions: {employee_restrictions}")
             
-            # Check if company has workers configured
-            has_workers = db.has_workers(company_id) if db else False
-            assigned_workers = []
-            logger.info(f"[BOOK_JOB] Company has workers: {has_workers}")
+            # Check if company has employees configured
+            has_employees = db.has_employees(company_id) if db else False
+            assigned_employees = []
+            logger.info(f"[BOOK_JOB] Company has employees: {has_employees}")
             
-            # AVAILABILITY CHECK: Different logic depending on whether company has workers
-            # If company has workers, we check WORKER availability (a slot is available if a qualified worker is free)
-            # If no workers, we check CALENDAR availability (any booking blocks the slot)
-            if has_workers:
-                # Worker-based availability: check if any qualified worker is free
-                logger.info(f"[BOOK_JOB] Checking WORKER availability at {parsed_time} for {service_duration} mins")
-                available_workers = db.find_available_workers_for_slot(
+            # AVAILABILITY CHECK: Different logic depending on whether company has employees
+            # If company has employees, we check EMPLOYEE availability (a slot is available if a qualified employee is free)
+            # If no employees, we check CALENDAR availability (any booking blocks the slot)
+            if has_employees:
+                # Employee-based availability: check if any qualified employee is free
+                logger.info(f"[BOOK_JOB] Checking EMPLOYEE availability at {parsed_time} for {service_duration} mins")
+                available_employees = db.find_available_employees_for_slot(
                     appointment_time=parsed_time,
                     duration_minutes=service_duration,
                     company_id=company_id
                 )
                 
-                # Apply worker restrictions if any
-                if available_workers and worker_restrictions:
-                    restriction_type = worker_restrictions.get('type', 'all')
-                    restricted_ids = worker_restrictions.get('worker_ids', [])
+                # Apply employee restrictions if any
+                if available_employees and employee_restrictions:
+                    restriction_type = employee_restrictions.get('type', 'all')
+                    restricted_ids = employee_restrictions.get('employee_ids', [])
                     
                     if restriction_type == 'only' and restricted_ids:
-                        # Only these workers can do this job
-                        available_workers = [w for w in available_workers if w['id'] in restricted_ids]
-                        logger.info(f"[BOOK_JOB] After 'only' restriction: {len(available_workers)} workers")
+                        # Only these employees can do this job
+                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
+                        logger.info(f"[BOOK_JOB] After 'only' restriction: {len(available_employees)} employees")
                     elif restriction_type == 'except' and restricted_ids:
-                        # All workers except these can do this job
-                        available_workers = [w for w in available_workers if w['id'] not in restricted_ids]
-                        logger.info(f"[BOOK_JOB] After 'except' restriction: {len(available_workers)} workers")
+                        # All employees except these can do this job
+                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
+                        logger.info(f"[BOOK_JOB] After 'except' restriction: {len(available_employees)} employees")
                 
-                logger.info(f"[BOOK_JOB] Available workers: {available_workers}")
+                logger.info(f"[BOOK_JOB] Available employees: {available_employees}")
                 
-                if available_workers is None:
-                    # Database error - log warning but proceed without worker assignment
-                    logger.warning(f"[BOOK_JOB] Worker lookup failed due to database error - proceeding without worker assignment")
-                elif len(available_workers) < workers_required:
-                    # Not enough workers available at this time
-                    logger.warning(f"[BOOK_JOB] Not enough workers available: need {workers_required}, have {len(available_workers)}")
+                if available_employees is None:
+                    # Database error - log warning but proceed without employee assignment
+                    logger.warning(f"[BOOK_JOB] Employee lookup failed due to database error - proceeding without employee assignment")
+                elif len(available_employees) < employees_required:
+                    # Not enough employees available at this time
+                    logger.warning(f"[BOOK_JOB] Not enough employees available: need {employees_required}, have {len(available_employees)}")
                     day_name = parsed_time.strftime('%A')
                     
                     # Find the next available slot on the SAME day to suggest
@@ -5308,19 +5308,19 @@ Return ONLY valid JSON, no explanation."""
                         check_time = parsed_time + timedelta(minutes=30)
                         day_end = parsed_time.replace(hour=end_hour, minute=0, second=0, microsecond=0)
                         while check_time + timedelta(minutes=service_duration) <= day_end:
-                            alt_workers = db.find_available_workers_for_slot(
+                            alt_employees = db.find_available_employees_for_slot(
                                 appointment_time=check_time,
                                 duration_minutes=service_duration,
                                 company_id=company_id
                             )
-                            if alt_workers and worker_restrictions:
-                                rt = worker_restrictions.get('type', 'all')
-                                rids = worker_restrictions.get('worker_ids', [])
+                            if alt_employees and employee_restrictions:
+                                rt = employee_restrictions.get('type', 'all')
+                                rids = employee_restrictions.get('employee_ids', [])
                                 if rt == 'only' and rids:
-                                    alt_workers = [w for w in alt_workers if w['id'] in rids]
+                                    alt_employees = [w for w in alt_employees if w['id'] in rids]
                                 elif rt == 'except' and rids:
-                                    alt_workers = [w for w in alt_workers if w['id'] not in rids]
-                            if alt_workers and len(alt_workers) >= workers_required:
+                                    alt_employees = [w for w in alt_employees if w['id'] not in rids]
+                            if alt_employees and len(alt_employees) >= employees_required:
                                 next_slot_msg = f" The next available time on {day_name} is {check_time.strftime('%I:%M %p').lstrip('0')}."
                                 logger.info(f"[BOOK_JOB] Found alternative slot on same day: {check_time.strftime('%I:%M %p')}")
                                 break
@@ -5329,13 +5329,13 @@ Return ONLY valid JSON, no explanation."""
                         logger.warning(f"[BOOK_JOB] Could not find alternative slot: {e}")
                     
                     # Provide more helpful error message based on whether restrictions are in play
-                    has_restrictions = worker_restrictions and worker_restrictions.get('type') in ['only', 'except']
+                    has_restrictions = employee_restrictions and employee_restrictions.get('type') in ['only', 'except']
                     
-                    if len(available_workers) == 0:
+                    if len(available_employees) == 0:
                         if has_restrictions:
                             return {
                                 "success": False,
-                                "error": f"No qualified workers are available for this type of job at {parsed_time.strftime('%I:%M %p on %A, %B %d')}.{next_slot_msg}" if next_slot_msg else f"No qualified workers are available for this type of job at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
+                                "error": f"No qualified employees are available for this type of job at {parsed_time.strftime('%I:%M %p on %A, %B %d')}.{next_slot_msg}" if next_slot_msg else f"No qualified employees are available for this type of job at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
                                 "failed_day": day_name,
                                 "failed_time": parsed_time.strftime('%I:%M %p'),
                                 "service_duration": service_duration
@@ -5343,7 +5343,7 @@ Return ONLY valid JSON, no explanation."""
                         else:
                             return {
                                 "success": False,
-                                "error": f"That time isn't available.{next_slot_msg}" if next_slot_msg else f"No workers are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
+                                "error": f"That time isn't available.{next_slot_msg}" if next_slot_msg else f"No employees are available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
                                 "failed_day": day_name,
                                 "failed_time": parsed_time.strftime('%I:%M %p'),
                                 "service_duration": service_duration
@@ -5351,18 +5351,18 @@ Return ONLY valid JSON, no explanation."""
                     else:
                         return {
                             "success": False,
-                            "error": f"This job requires {workers_required} workers but only {len(available_workers)} {'is' if len(available_workers) == 1 else 'are'} available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}.{next_slot_msg}" if next_slot_msg else f"This job requires {workers_required} workers but only {len(available_workers)} {'is' if len(available_workers) == 1 else 'are'} available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
+                            "error": f"This job requires {employees_required} employees but only {len(available_employees)} {'is' if len(available_employees) == 1 else 'are'} available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}.{next_slot_msg}" if next_slot_msg else f"This job requires {employees_required} employees but only {len(available_employees)} {'is' if len(available_employees) == 1 else 'are'} available at {parsed_time.strftime('%I:%M %p on %A, %B %d')}. Please check availability and suggest another time.",
                             "failed_day": day_name,
                             "failed_time": parsed_time.strftime('%I:%M %p'),
                             "service_duration": service_duration
                         }
                 else:
-                    # Select the required number of workers
-                    assigned_workers = available_workers[:workers_required]
-                    worker_names = ', '.join([w['name'] for w in assigned_workers])
-                    logger.info(f"[BOOK_JOB] Auto-assigning {len(assigned_workers)} worker(s): {worker_names}")
+                    # Select the required number of employees
+                    assigned_employees = available_employees[:employees_required]
+                    employee_names = ', '.join([w['name'] for w in assigned_employees])
+                    logger.info(f"[BOOK_JOB] Auto-assigning {len(assigned_employees)} employee(s): {employee_names}")
             else:
-                # No workers configured - use simple calendar availability check
+                # No employees configured - use simple calendar availability check
                 logger.info(f"[BOOK_JOB] Checking CALENDAR availability at {parsed_time} for {service_duration} mins")
                 is_available = google_calendar.check_availability(parsed_time, duration_minutes=service_duration)
                 logger.info(f"[BOOK_JOB] Availability check result: {is_available}")
@@ -5568,18 +5568,18 @@ Return ONLY valid JSON, no explanation."""
                     except Exception as _e:
                         logger.warning(f"[BOOK_JOB] ⚠️ Default materials lookup failed: {_e}")
                     
-                    # Auto-assign workers if any were selected
-                    if assigned_workers:
-                        for worker in assigned_workers:
+                    # Auto-assign employees if any were selected
+                    if assigned_employees:
+                        for employee in assigned_employees:
                             try:
-                                logger.info(f"[BOOK_JOB] Assigning worker {worker['name']} to booking {booking_id}")
-                                assignment_result = db.assign_worker_to_job(booking_id, worker['id'])
+                                logger.info(f"[BOOK_JOB] Assigning employee {employee['name']} to booking {booking_id}")
+                                assignment_result = db.assign_employee_to_job(booking_id, employee['id'])
                                 if assignment_result.get('success'):
-                                    logger.info(f"[BOOK_JOB] ✅ Worker {worker['name']} assigned successfully")
+                                    logger.info(f"[BOOK_JOB] ✅ Employee {employee['name']} assigned successfully")
                                 else:
-                                    logger.warning(f"[BOOK_JOB] ⚠️ Failed to assign worker {worker['name']}: {assignment_result.get('error')}")
-                            except Exception as worker_err:
-                                logger.warning(f"[BOOK_JOB] ⚠️ Could not assign worker {worker['name']}: {worker_err}")
+                                    logger.warning(f"[BOOK_JOB] ⚠️ Failed to assign employee {employee['name']}: {assignment_result.get('error')}")
+                            except Exception as employee_err:
+                                logger.warning(f"[BOOK_JOB] ⚠️ Could not assign employee {employee['name']}: {employee_err}")
                     
                     # Update client description
                     try:
@@ -5589,30 +5589,30 @@ Return ONLY valid JSON, no explanation."""
                         pass
                     
                     # EMERGENCY JOB DISPATCH: If urgency is 'emergency', set emergency_status
-                    # and notify all available workers via dashboard notification + email
+                    # and notify all available employees via dashboard notification + email
                     if urgency_level == 'emergency' and booking_id:
                         try:
                             db.update_booking(booking_id, emergency_status='pending_acceptance')
                             logger.info(f"[BOOK_JOB] 🚨 Emergency job — set status to pending_acceptance")
                             
-                            # Get all workers for this company to notify
-                            all_workers_emg = db.get_all_workers(company_id=company_id) or []
-                            notify_workers = all_workers_emg
-                            if worker_restrictions:
-                                rt = worker_restrictions.get('type', 'all')
-                                rids = worker_restrictions.get('worker_ids', [])
+                            # Get all employees for this company to notify
+                            all_employees_emg = db.get_all_employees(company_id=company_id) or []
+                            notify_employees = all_employees_emg
+                            if employee_restrictions:
+                                rt = employee_restrictions.get('type', 'all')
+                                rids = employee_restrictions.get('employee_ids', [])
                                 if rt == 'only' and rids:
-                                    notify_workers = [w for w in all_workers_emg if w['id'] in rids]
+                                    notify_employees = [w for w in all_employees_emg if w['id'] in rids]
                                 elif rt == 'except' and rids:
-                                    notify_workers = [w for w in all_workers_emg if w['id'] not in rids]
+                                    notify_employees = [w for w in all_employees_emg if w['id'] not in rids]
                             
                             _company_info_emg = db.get_company(company_id)
                             _company_name_emg = _company_info_emg.get('company_name', 'Your employer') if _company_info_emg else 'Your employer'
                             
-                            for _ew in notify_workers:
+                            for _ew in notify_employees:
                                 db.create_notification(
                                     company_id=company_id,
-                                    recipient_type='worker',
+                                    recipient_type='employee',
                                     recipient_id=_ew['id'],
                                     notif_type='emergency_job',
                                     message=f"EMERGENCY: {job_description} at {validated_address or extracted_eircode or 'TBD'} for {customer_name}. Accept to dispatch.",
@@ -5654,22 +5654,22 @@ Return ONLY valid JSON, no explanation."""
             <p style="margin:5px 0;"><strong>When:</strong> {_time_str}</p>
             <p style="margin:5px 0;"><strong>Phone:</strong> {phone}</p>
         </div>
-        <p>Log in to your worker dashboard to accept this emergency job.</p>
+        <p>Log in to your employee dashboard to accept this emergency job.</p>
         <p style="margin-top:25px;">— {_company_name_emg}</p>
     </div>
 </div></body></html>'''
                                             _esvc._send_email(_ew_email, _subj, _html, _txt, _company_name_emg)
                                             logger.info(f"[BOOK_JOB] 🚨 Emergency email sent to {_ew.get('name')} ({_ew_email})")
                                     except Exception as _ee:
-                                        logger.warning(f"[BOOK_JOB] ⚠️ Could not email worker {_ew.get('name')}: {_ee}")
+                                        logger.warning(f"[BOOK_JOB] ⚠️ Could not email employee {_ew.get('name')}: {_ee}")
                             
                             db.create_notification(
                                 company_id=company_id, recipient_type='owner', recipient_id=0,
                                 notif_type='emergency_job',
-                                message=f"EMERGENCY JOB booked: {job_description} for {customer_name} — awaiting worker acceptance",
+                                message=f"EMERGENCY JOB booked: {job_description} for {customer_name} — awaiting employee acceptance",
                                 metadata={'booking_id': booking_id}
                             )
-                            logger.info(f"[BOOK_JOB] 🚨 Emergency notifications sent to {len(notify_workers)} worker(s)")
+                            logger.info(f"[BOOK_JOB] 🚨 Emergency notifications sent to {len(notify_employees)} employee(s)")
                         except Exception as emg_err:
                             logger.warning(f"[BOOK_JOB] ⚠️ Emergency dispatch failed: {emg_err}")
                     
@@ -5732,14 +5732,14 @@ Return ONLY valid JSON, no explanation."""
                 logger.warning(f"[BOOK_JOB] No database available - booking not saved to DB")
             
             # Build response message
-            if assigned_workers:
-                if len(assigned_workers) == 1:
-                    worker_msg = f" Assigned to {assigned_workers[0]['name']}."
+            if assigned_employees:
+                if len(assigned_employees) == 1:
+                    employee_msg = f" Assigned to {assigned_employees[0]['name']}."
                 else:
-                    worker_names = ', '.join([w['name'] for w in assigned_workers])
-                    worker_msg = f" Assigned to {worker_names}."
+                    employee_names = ', '.join([w['name'] for w in assigned_employees])
+                    employee_msg = f" Assigned to {employee_names}."
             else:
-                worker_msg = ""
+                employee_msg = ""
             
             # Send booking confirmation (email-first, SMS fallback)
             # If address audio was captured, DEFER — the post-call
@@ -5762,7 +5762,7 @@ Return ONLY valid JSON, no explanation."""
                     _cs._deferred_sms_client_id = client_id
                 
                 if _send_confirmation:
-                    _worker_name_list = [w['name'] for w in assigned_workers] if assigned_workers else None
+                    _employee_name_list = [w['name'] for w in assigned_employees] if assigned_employees else None
                     # Look up customer email from DB if not provided in arguments
                     _customer_email = email
                     if not _customer_email and client_id and db:
@@ -5778,7 +5778,7 @@ Return ONLY valid JSON, no explanation."""
                         customer_name=customer_name,
                         service_type=matched_service_name,
                         company_name=_company_name,
-                        worker_names=_worker_name_list,
+                        employee_names=_employee_name_list,
                         address=validated_address,
                     )
                     
@@ -5836,11 +5836,11 @@ Return ONLY valid JSON, no explanation."""
                     logger.warning(f"[BOOK_JOB] ⚠️ Google Calendar sync failed (booking still saved): {gcal_err}")
             
             _is_emergency = urgency_level == 'emergency'
-            _emergency_msg = " Workers have been notified and someone will be in touch shortly." if _is_emergency else ""
+            _emergency_msg = " Employees have been notified and someone will be in touch shortly." if _is_emergency else ""
             
             return {
                 "success": True,
-                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({format_duration(service_duration)}). {urgency_level.title()} job at {validated_address}.{worker_msg}{_emergency_msg}",
+                "message": f"Job booked for {customer_name} on {parsed_time.strftime('%A, %B %d at %I:%M %p')} ({format_duration(service_duration)}). {urgency_level.title()} job at {validated_address}.{employee_msg}{_emergency_msg}",
                 "is_callout_booking": is_callout_booking,
                 "is_quote_booking": is_quote_booking,
                 "is_emergency": _is_emergency,
@@ -5858,8 +5858,8 @@ Return ONLY valid JSON, no explanation."""
                     "email": email,
                     "property_type": property_type,
                     "eircode": extracted_eircode,
-                    "assigned_workers": [{'name': w['name'], 'id': w['id']} for w in assigned_workers] if assigned_workers else [],
-                    "workers_required": workers_required
+                    "assigned_employees": [{'name': w['name'], 'id': w['id']} for w in assigned_employees] if assigned_employees else [],
+                    "employees_required": employees_required
                 }
             }
         

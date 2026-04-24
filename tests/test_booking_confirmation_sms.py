@@ -37,7 +37,7 @@ class TestSendBookingConfirmation:
             customer_name="John Smith",
             service_type="Plumbing Repair",
             company_name="JP Plumbing",
-            worker_names=["Mike", "Dave"],
+            employee_names=["Mike", "Dave"],
             address="123 Main St, Dublin",
         )
 
@@ -53,7 +53,7 @@ class TestSendBookingConfirmation:
         assert "confirmed" in call_kwargs["body"].lower()
 
     def test_sends_sms_minimal_fields(self):
-        """New customer scenario — no workers, no address, no company name."""
+        """New customer scenario — no employees, no address, no company name."""
         mock_client = MagicMock()
         mock_client.messages.create.return_value = MagicMock(sid="SM456")
         svc = self._make_service(client=mock_client)
@@ -115,21 +115,21 @@ class TestSendBookingConfirmation:
 class TestBookJobSendsConfirmation:
     """Verify book_job calls send_booking_confirmation for new & returning customers."""
 
-    def _make_services(self, has_workers=False, company_name="Test Co"):
+    def _make_services(self, has_employees=False, company_name="Test Co"):
         mock_cal = MagicMock()
         mock_cal.check_availability.return_value = True
         mock_cal.book_appointment.return_value = {"id": "evt_1"}
 
         mock_db = MagicMock()
-        mock_db.has_workers.return_value = has_workers
+        mock_db.has_employees.return_value = has_employees
         mock_db.find_or_create_client.return_value = 42
         mock_db.add_booking.return_value = 100
         mock_db.get_company.return_value = {"company_name": company_name}
         mock_db.get_client.return_value = {"name": "Test", "email": None}
 
-        if has_workers:
-            mock_db.find_available_workers_for_slot.return_value = [
-                {"id": 1, "name": "Worker A"}
+        if has_employees:
+            mock_db.find_available_employees_for_slot.return_value = [
+                {"id": 1, "name": "Employee A"}
             ]
 
         return {
@@ -147,14 +147,14 @@ class TestBookJobSendsConfirmation:
         mock_parse.return_value = datetime(2026, 3, 25, 10, 0)
         mock_match.return_value = {
             "matched_name": "Plumbing",
-            "service": {"duration_minutes": 60, "workers_required": 1, "price": 100, "worker_restrictions": None},
+            "service": {"duration_minutes": 60, "employees_required": 1, "price": 100, "employee_restrictions": None},
         }
 
         mock_sms = MagicMock()
         mock_sms.client = True
         mock_get_sms.return_value = mock_sms
 
-        services = self._make_services(has_workers=False, company_name="JP Plumbing")
+        services = self._make_services(has_employees=False, company_name="JP Plumbing")
         result = execute_tool_call("book_job", {
             "customer_name": "New Customer",
             "phone": "0852635954",
@@ -180,14 +180,14 @@ class TestBookJobSendsConfirmation:
         mock_parse.return_value = datetime(2026, 3, 25, 14, 0)
         mock_match.return_value = {
             "matched_name": "Electrical",
-            "service": {"duration_minutes": 120, "workers_required": 1, "price": 200, "worker_restrictions": None},
+            "service": {"duration_minutes": 120, "employees_required": 1, "price": 200, "employee_restrictions": None},
         }
 
         mock_sms = MagicMock()
         mock_sms.client = True
         mock_get_sms.return_value = mock_sms
 
-        services = self._make_services(has_workers=True, company_name="Sparks Electric")
+        services = self._make_services(has_employees=True, company_name="Sparks Electric")
         # Returning customer — find_or_create_client returns existing ID
         services["db"].find_or_create_client.return_value = 7
 
@@ -205,7 +205,7 @@ class TestBookJobSendsConfirmation:
         call_kwargs = mock_sms.send_booking_confirmation.call_args[1]
         assert call_kwargs["customer_name"] == "Returning Customer"
         assert call_kwargs["company_name"] == "Sparks Electric"
-        assert call_kwargs["worker_names"] == ["Worker A"]
+        assert call_kwargs["employee_names"] == ["Employee A"]
 
     @patch("src.services.calendar_tools.match_service")
     @patch("src.utils.date_parser.parse_datetime")
@@ -217,7 +217,7 @@ class TestBookJobSendsConfirmation:
         mock_parse.return_value = datetime(2026, 3, 25, 10, 0)
         mock_match.return_value = {
             "matched_name": "General",
-            "service": {"duration_minutes": 60, "workers_required": 1, "price": 50, "worker_restrictions": None},
+            "service": {"duration_minutes": 60, "employees_required": 1, "price": 50, "employee_restrictions": None},
         }
 
         mock_sms = MagicMock()
@@ -247,7 +247,7 @@ class TestBookJobSendsConfirmation:
         mock_parse.return_value = datetime(2026, 3, 25, 10, 0)
         mock_match.return_value = {
             "matched_name": "General",
-            "service": {"duration_minutes": 60, "workers_required": 1, "price": 50, "worker_restrictions": None},
+            "service": {"duration_minutes": 60, "employees_required": 1, "price": 50, "employee_restrictions": None},
         }
 
         mock_sms = MagicMock()
@@ -282,7 +282,7 @@ class TestBookAppointmentSendsConfirmation:
         mock_cal.book_appointment.return_value = {"id": "evt_2"}
 
         mock_db = MagicMock()
-        mock_db.has_workers.return_value = False
+        mock_db.has_employees.return_value = False
         mock_db.find_or_create_client.return_value = 55
         mock_db.add_booking.return_value = 200
         mock_db.get_company.return_value = {"company_name": company_name}
@@ -302,7 +302,7 @@ class TestBookAppointmentSendsConfirmation:
         mock_parse.return_value = datetime(2026, 3, 26, 11, 0)
         mock_match.return_value = {
             "matched_name": "Haircut",
-            "service": {"duration_minutes": 30, "workers_required": 1, "worker_restrictions": None},
+            "service": {"duration_minutes": 30, "employees_required": 1, "employee_restrictions": None},
         }
 
         mock_sms = MagicMock()
@@ -332,7 +332,7 @@ class TestBookAppointmentSendsConfirmation:
         mock_parse.return_value = datetime(2026, 3, 26, 15, 0)
         mock_match.return_value = {
             "matched_name": "Colour",
-            "service": {"duration_minutes": 90, "workers_required": 1, "worker_restrictions": None},
+            "service": {"duration_minutes": 90, "employees_required": 1, "employee_restrictions": None},
         }
 
         mock_sms = MagicMock()

@@ -39,13 +39,13 @@ def main():
         customer_name="New Customer Test",
         service_type="Plumbing Repair",
         company_name="JP Enterprises",
-        worker_names=None,
+        employee_names=None,
         address="123 Test Street, Dublin",
     )
     print(f"Result: {'SENT' if result1 else 'FAILED'}")
     print()
 
-    # --- Test 2: Returning customer booking confirmation (with workers) ---
+    # --- Test 2: Returning customer booking confirmation (with employees) ---
     print("=== Test 2: Returning Customer Booking Confirmation ===")
     appt_time_2 = datetime.now() + timedelta(days=5)
     appt_time_2 = appt_time_2.replace(hour=14, minute=30, second=0, microsecond=0)
@@ -56,7 +56,7 @@ def main():
         customer_name="Returning Customer Test",
         service_type="Electrical Rewire",
         company_name="JP Enterprises",
-        worker_names=["Mike", "Dave"],
+        employee_names=["Mike", "Dave"],
         address="456 Oak Avenue, Cork",
     )
     print(f"Result: {'SENT' if result2 else 'FAILED'}")

@@ -55,8 +55,8 @@ def migrate_sqlite_to_postgres():
         'notes',
         'appointment_notes',
         'call_logs',
-        'workers',
-        'worker_assignments',
+        'employees',
+        'employee_assignments',
         'companies'
     ]
     

@@ -2,12 +2,12 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   getBooking, 
-  getWorkers, 
+  getEmployees, 
   updateBooking,
-  assignWorkerToJob,
-  removeWorkerFromJob,
-  getJobWorkers,
-  getAvailableWorkersForJob,
+  assignEmployeeToJob,
+  removeEmployeeFromJob,
+  getJobEmployees,
+  getAvailableEmployeesForJob,
   sendInvoice,
   getInvoiceConfig,
   getBusinessSettings,
@@ -48,9 +48,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const { hasActiveSubscription } = useAuth();
   const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
-  const [showAssignWorker, setShowAssignWorker] = useState(false);
+  const [showAssignEmployee, setShowAssignEmployee] = useState(false);
   const [forceAssign, setForceAssign] = useState(false);
-  const [selectedWorkerId, setSelectedWorkerId] = useState('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editFormData, setEditFormData] = useState({});
   const [showInvoiceConfirm, setShowInvoiceConfirm] = useState(false);
@@ -104,31 +104,31 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     enabled: isOpen,
   });
 
-  const { data: assignedWorkers } = useQuery({
-    queryKey: ['job-workers', jobId],
+  const { data: assignedEmployees } = useQuery({
+    queryKey: ['job-employees', jobId],
     queryFn: async () => {
-      const response = await getJobWorkers(jobId);
+      const response = await getJobEmployees(jobId);
       return response.data;
     },
     enabled: isOpen && !!jobId,
   });
 
-  const { data: workersAvailability } = useQuery({
-    queryKey: ['available-workers', jobId],
+  const { data: employeesAvailability } = useQuery({
+    queryKey: ['available-employees', jobId],
     queryFn: async () => {
-      const response = await getAvailableWorkersForJob(jobId);
+      const response = await getAvailableEmployeesForJob(jobId);
       return response.data;
     },
-    enabled: showAssignWorker && !!jobId,
+    enabled: showAssignEmployee && !!jobId,
   });
 
-  const { data: allWorkers } = useQuery({
-    queryKey: ['workers'],
+  const { data: allEmployees } = useQuery({
+    queryKey: ['employees'],
     queryFn: async () => {
-      const response = await getWorkers();
+      const response = await getEmployees();
       return response.data;
     },
-    enabled: showAssignWorker && !workersAvailability,
+    enabled: showAssignEmployee && !employeesAvailability,
   });
 
   const { data: jobMaterialsData } = useQuery({
@@ -386,68 +386,68 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   });
 
   const assignMutation = useMutation({
-    mutationFn: ({ jobId, workerId, force }) => assignWorkerToJob(jobId, { worker_id: workerId, force }),
-    onMutate: async ({ workerId }) => {
-      await queryClient.cancelQueries({ queryKey: ['job-workers', jobId] });
-      const previousWorkers = queryClient.getQueryData(['job-workers', jobId]);
-      const availabilityData = queryClient.getQueryData(['available-workers', jobId]);
-      const allWorkersData = queryClient.getQueryData(['workers']);
-      const workerToAdd = availabilityData?.available?.find(w => w.id === workerId) 
-        || availabilityData?.busy?.find(w => w.id === workerId)
-        || allWorkersData?.find(w => w.id === workerId);
-      if (workerToAdd) {
-        queryClient.setQueryData(['job-workers', jobId], (old = []) => [...old, workerToAdd]);
+    mutationFn: ({ jobId, employeeId, force }) => assignEmployeeToJob(jobId, { employee_id: employeeId, force }),
+    onMutate: async ({ employeeId }) => {
+      await queryClient.cancelQueries({ queryKey: ['job-employees', jobId] });
+      const previousEmployees = queryClient.getQueryData(['job-employees', jobId]);
+      const availabilityData = queryClient.getQueryData(['available-employees', jobId]);
+      const allEmployeesData = queryClient.getQueryData(['employees']);
+      const employeeToAdd = availabilityData?.available?.find(w => w.id === employeeId) 
+        || availabilityData?.busy?.find(w => w.id === employeeId)
+        || allEmployeesData?.find(w => w.id === employeeId);
+      if (employeeToAdd) {
+        queryClient.setQueryData(['job-employees', jobId], (old = []) => [...old, employeeToAdd]);
       }
-      return { previousWorkers };
+      return { previousEmployees };
     },
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['job-workers', jobId] });
-      queryClient.invalidateQueries({ queryKey: ['available-workers', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['job-employees', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['available-employees', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      setShowAssignWorker(false);
-      setSelectedWorkerId('');
+      setShowAssignEmployee(false);
+      setSelectedEmployeeId('');
       setForceAssign(false);
       if (response.data?.warning) {
         addToast(response.data.warning, 'warning');
       } else {
-        addToast('Worker assigned successfully!', 'success');
+        addToast('Employee assigned successfully!', 'success');
       }
     },
     onError: (error, variables, context) => {
-      if (context?.previousWorkers) {
-        queryClient.setQueryData(['job-workers', jobId], context.previousWorkers);
+      if (context?.previousEmployees) {
+        queryClient.setQueryData(['job-employees', jobId], context.previousEmployees);
       }
       const errorData = error.response?.data;
       if (error.response?.status === 409 && errorData?.can_force) {
         const conflictMsg = errorData.conflicts?.map(c => `${c.time} - ${c.service}`).join(', ');
-        addToast(`Worker has conflicts: ${conflictMsg}. Check "Force assign" to override.`, 'warning');
+        addToast(`Employee has conflicts: ${conflictMsg}. Check "Force assign" to override.`, 'warning');
         setForceAssign(false);
       } else {
-        addToast(errorData?.error || 'Failed to assign worker', 'error');
+        addToast(errorData?.error || 'Failed to assign employee', 'error');
       }
     }
   });
 
   const removeMutation = useMutation({
-    mutationFn: ({ jobId, workerId }) => removeWorkerFromJob(jobId, { worker_id: workerId }),
-    onMutate: async ({ workerId }) => {
-      await queryClient.cancelQueries({ queryKey: ['job-workers', jobId] });
-      const previousWorkers = queryClient.getQueryData(['job-workers', jobId]);
-      queryClient.setQueryData(['job-workers', jobId], (old = []) => old.filter(w => w.id !== workerId));
-      return { previousWorkers };
+    mutationFn: ({ jobId, employeeId }) => removeEmployeeFromJob(jobId, { employee_id: employeeId }),
+    onMutate: async ({ employeeId }) => {
+      await queryClient.cancelQueries({ queryKey: ['job-employees', jobId] });
+      const previousEmployees = queryClient.getQueryData(['job-employees', jobId]);
+      queryClient.setQueryData(['job-employees', jobId], (old = []) => old.filter(w => w.id !== employeeId));
+      return { previousEmployees };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['job-workers', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['job-employees', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      addToast('Worker removed', 'success');
+      addToast('Employee removed', 'success');
     },
     onError: (error, variables, context) => {
-      if (context?.previousWorkers) {
-        queryClient.setQueryData(['job-workers', jobId], context.previousWorkers);
+      if (context?.previousEmployees) {
+        queryClient.setQueryData(['job-employees', jobId], context.previousEmployees);
       }
-      addToast('Failed to remove worker', 'error');
+      addToast('Failed to remove employee', 'error');
     }
   });
 
@@ -608,9 +608,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     document.querySelectorAll('.status-dropdown-menu.show, .status-dropdown-backdrop.show').forEach(el => el.classList.remove('show'));
   };
 
-  const handleAssignWorker = () => {
-    if (!selectedWorkerId) { addToast('Please select a worker', 'warning'); return; }
-    assignMutation.mutate({ jobId, workerId: selectedWorkerId, force: forceAssign });
+  const handleAssignEmployee = () => {
+    if (!selectedEmployeeId) { addToast('Please select an employee', 'warning'); return; }
+    assignMutation.mutate({ jobId, employeeId: selectedEmployeeId, force: forceAssign });
   };
 
   const handleEditChange = (e) => {
@@ -673,16 +673,16 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
 
   if (!job) return null;
 
-  const getUnassignedWorkers = () => {
-    const assignedIds = new Set(assignedWorkers?.map(w => w.id) || []);
-    if (workersAvailability) {
-      const available = (workersAvailability.available || []).filter(w => !assignedIds.has(w.id)).map(w => ({ ...w, isAvailable: true }));
-      const busy = (workersAvailability.busy || []).filter(w => !assignedIds.has(w.id)).map(w => ({ ...w, isAvailable: false }));
+  const getUnassignedEmployees = () => {
+    const assignedIds = new Set(assignedEmployees?.map(w => w.id) || []);
+    if (employeesAvailability) {
+      const available = (employeesAvailability.available || []).filter(w => !assignedIds.has(w.id)).map(w => ({ ...w, isAvailable: true }));
+      const busy = (employeesAvailability.busy || []).filter(w => !assignedIds.has(w.id)).map(w => ({ ...w, isAvailable: false }));
       return [...available, ...busy];
     }
-    return (allWorkers || []).filter(w => !assignedIds.has(w.id)).map(w => ({ ...w, isAvailable: true }));
+    return (allEmployees || []).filter(w => !assignedIds.has(w.id)).map(w => ({ ...w, isAvailable: true }));
   };
-  const unassignedWorkers = getUnassignedWorkers();
+  const unassignedEmployees = getUnassignedEmployees();
 
   const getDirectionsUrl = () => {
     const address = job.job_address || job.address;
@@ -908,10 +908,10 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                                 <span className="jdm-sd-value">{formatDuration(matchedServiceOrPackage.data.duration_minutes)}</span>
                               </div>
                             )}
-                            {matchedServiceOrPackage.data.workers_required > 1 && (
+                            {matchedServiceOrPackage.data.employees_required > 1 && (
                               <div className="jdm-sd-item">
-                                <span className="jdm-sd-label">Workers needed</span>
-                                <span className="jdm-sd-value">{matchedServiceOrPackage.data.workers_required}</span>
+                                <span className="jdm-sd-label">Employees needed</span>
+                                <span className="jdm-sd-value">{matchedServiceOrPackage.data.employees_required}</span>
                               </div>
                             )}
                             {matchedServiceOrPackage.data.requires_callout && (
@@ -1237,55 +1237,55 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
 
           {/* Right Column */}
           <div className="job-modal-column">
-            {/* Workers */}
-            <div className="info-card workers-card">
+            {/* Employees */}
+            <div className="info-card employees-card">
               <div className="card-header-row">
-                <h3><i className="fas fa-hard-hat"></i> Workers</h3>
-                <button className="btn btn-sm btn-primary" onClick={() => setShowAssignWorker(!showAssignWorker)}>
+                <h3><i className="fas fa-hard-hat"></i> Employees</h3>
+                <button className="btn btn-sm btn-primary" onClick={() => setShowAssignEmployee(!showAssignEmployee)}>
                   <i className="fas fa-plus"></i> Assign
                 </button>
               </div>
-              {showAssignWorker && (
+              {showAssignEmployee && (
                 <div className="assign-box">
-                  <select className="form-select" value={selectedWorkerId} onChange={(e) => { setSelectedWorkerId(e.target.value); setForceAssign(false); }}>
-                    <option value="">Select a worker...</option>
-                    {unassignedWorkers.map(worker => (
-                      <option key={worker.id} value={worker.id} style={{ color: worker.isAvailable ? 'inherit' : '#dc3545' }}>
-                        {worker.name} {worker.trade_specialty && `(${worker.trade_specialty})`}{!worker.isAvailable && ' ⚠️ Busy'}
+                  <select className="form-select" value={selectedEmployeeId} onChange={(e) => { setSelectedEmployeeId(e.target.value); setForceAssign(false); }}>
+                    <option value="">Select an employee...</option>
+                    {unassignedEmployees.map(employee => (
+                      <option key={employee.id} value={employee.id} style={{ color: employee.isAvailable ? 'inherit' : '#dc3545' }}>
+                        {employee.name} {employee.trade_specialty && `(${employee.trade_specialty})`}{!employee.isAvailable && ' ⚠️ Busy'}
                       </option>
                     ))}
                   </select>
-                  {selectedWorkerId && !unassignedWorkers.find(w => w.id == selectedWorkerId)?.isAvailable && (
+                  {selectedEmployeeId && !unassignedEmployees.find(w => w.id == selectedEmployeeId)?.isAvailable && (
                     <label className="force-assign-label">
                       <input type="checkbox" checked={forceAssign} onChange={(e) => setForceAssign(e.target.checked)} />
-                      <span>Force assign (worker has conflicting jobs)</span>
+                      <span>Force assign (employee has conflicting jobs)</span>
                     </label>
                   )}
                   <div className="assign-buttons">
-                    <button className="btn btn-sm btn-secondary" onClick={() => { setShowAssignWorker(false); setForceAssign(false); }}>Cancel</button>
-                    <button className="btn btn-sm btn-primary" onClick={handleAssignWorker} disabled={!selectedWorkerId || assignMutation.isPending}>
+                    <button className="btn btn-sm btn-secondary" onClick={() => { setShowAssignEmployee(false); setForceAssign(false); }}>Cancel</button>
+                    <button className="btn btn-sm btn-primary" onClick={handleAssignEmployee} disabled={!selectedEmployeeId || assignMutation.isPending}>
                       {assignMutation.isPending ? 'Assigning...' : 'Assign'}
                     </button>
                   </div>
                 </div>
               )}
-              <div className="workers-list">
-                {!assignedWorkers || assignedWorkers.length === 0 ? (
-                  <div className="empty-workers">
+              <div className="employees-list">
+                {!assignedEmployees || assignedEmployees.length === 0 ? (
+                  <div className="empty-employees">
                     <i className="fas fa-user-plus"></i>
-                    <p>No workers assigned</p>
+                    <p>No employees assigned</p>
                   </div>
                 ) : (
-                  assignedWorkers.map(worker => (
-                    <div key={worker.id} className="worker-item">
-                      <div className="worker-item-avatar">
-                        {worker.image_url ? <img src={worker.image_url} alt={worker.name} /> : <i className="fas fa-user"></i>}
+                  assignedEmployees.map(employee => (
+                    <div key={employee.id} className="employee-item">
+                      <div className="employee-item-avatar">
+                        {employee.image_url ? <img src={employee.image_url} alt={employee.name} /> : <i className="fas fa-user"></i>}
                       </div>
-                      <div className="worker-item-info">
-                        <span className="worker-name">{worker.name}</span>
-                        {worker.trade_specialty && <span className="worker-specialty">{worker.trade_specialty}</span>}
+                      <div className="employee-item-info">
+                        <span className="employee-name">{employee.name}</span>
+                        {employee.trade_specialty && <span className="employee-specialty">{employee.trade_specialty}</span>}
                       </div>
-                      <button className="btn-remove" onClick={() => removeMutation.mutate({ jobId, workerId: worker.id })} disabled={removeMutation.isPending} title="Remove worker">
+                      <button className="btn-remove" onClick={() => removeMutation.mutate({ jobId, employeeId: employee.id })} disabled={removeMutation.isPending} title="Remove employee">
                         <i className="fas fa-times"></i>
                       </button>
                     </div>
@@ -1358,7 +1358,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   </button>
                 </div>
               ) : (
-                <div className="empty-workers"><i className="fas fa-cubes"></i><p>No materials logged</p></div>
+                <div className="empty-employees"><i className="fas fa-cubes"></i><p>No materials logged</p></div>
               )}
             </div>
 
@@ -1421,7 +1421,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   </div>
                 </div>
               ) : (
-                <div className="empty-workers"><i className="fas fa-tasks"></i><p>No tasks yet. Break this job into smaller tasks.</p></div>
+                <div className="empty-employees"><i className="fas fa-tasks"></i><p>No tasks yet. Break this job into smaller tasks.</p></div>
               )}
             </div>
 
@@ -1452,7 +1452,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   ))}
                 </div>
               ) : (
-                <div className="empty-workers"><i className="fas fa-image"></i><p>No media yet</p></div>
+                <div className="empty-employees"><i className="fas fa-image"></i><p>No media yet</p></div>
               )}
             </div>
 

@@ -28,7 +28,7 @@ This solves the #1 problem for tradespeople: missing calls while they're on a jo
 - Prevents double bookings and scheduling conflicts
 - Supports multi-day jobs and different service durations
 - Syncs bidirectionally with Google Calendar
-- Respects worker time off and business hours
+- Respects employee time off and business hours
 
 ### Customer Management
 - Stores all customer details and contact information
@@ -36,12 +36,12 @@ This solves the #1 problem for tradespeople: missing calls while they're on a jo
 - Records customer preferences and notes
 - Searchable customer database
 
-### Worker Management
+### Employee Management
 - Add team members with individual schedules
-- Assign jobs to specific workers based on skills and availability
-- Workers get their own portal to view their schedule
+- Assign jobs to specific employees based on skills and availability
+- Employees get their own portal to view their schedule
 - Prevents scheduling conflicts across the team
-- Supports worker time off management
+- Supports employee time off management
 
 ### Materials & Invoicing
 - Track materials used per job with costs

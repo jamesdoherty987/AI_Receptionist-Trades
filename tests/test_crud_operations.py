@@ -81,17 +81,17 @@ class TestClientValidationCodeInspection:
         assert "phone if phone else None" in content
 
 
-class TestWorkerValidationCodeInspection:
-    """Test worker validation by inspecting code"""
+class TestEmployeeValidationCodeInspection:
+    """Test employee validation by inspecting code"""
     
-    def test_worker_creation_requires_name(self):
-        """Worker creation should fail without name"""
+    def test_employee_creation_requires_name(self):
+        """Employee creation should fail without name"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
-        assert "Worker name is required" in content
+        assert "Employee name is required" in content
     
-    def test_worker_weekly_hours_validation(self):
+    def test_employee_weekly_hours_validation(self):
         """Weekly hours should be validated"""
         with open('src/app.py', 'r') as f:
             content = f.read()
@@ -156,32 +156,32 @@ class TestServiceValidationCodeInspection:
         assert "duration < 1" in content or "duration > 0" in content
 
 
-class TestWorkerAssignmentCodeInspection:
-    """Test worker assignment by inspecting code"""
+class TestEmployeeAssignmentCodeInspection:
+    """Test employee assignment by inspecting code"""
     
-    def test_assign_worker_requires_worker_id(self):
-        """Assign worker should require worker_id"""
+    def test_assign_employee_requires_employee_id(self):
+        """Assign employee should require employee_id"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
-        assert "worker_id is required" in content
+        assert "employee_id is required" in content
     
-    def test_assign_worker_validates_worker_id(self):
-        """Assign worker should validate worker_id"""
+    def test_assign_employee_validates_employee_id(self):
+        """Assign employee should validate employee_id"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
-        assert "Invalid worker_id" in content
+        assert "Invalid employee_id" in content
     
-    def test_assign_worker_checks_availability(self):
-        """Assign worker should check availability"""
+    def test_assign_employee_checks_availability(self):
+        """Assign employee should check availability"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
-        assert "check_worker_availability" in content
+        assert "check_employee_availability" in content
     
-    def test_assign_worker_supports_force(self):
-        """Assign worker should support force option"""
+    def test_assign_employee_supports_force(self):
+        """Assign employee should support force option"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
@@ -209,19 +209,19 @@ class TestErrorHandlingCodeInspection:
 class TestDatabaseMethodsCodeInspection:
     """Test database methods by inspecting code"""
     
-    def test_check_worker_availability_exists(self):
-        """check_worker_availability should exist"""
+    def test_check_employee_availability_exists(self):
+        """check_employee_availability should exist"""
         with open('src/services/db_postgres_wrapper.py', 'r') as f:
             content = f.read()
         
-        assert "def check_worker_availability" in content
+        assert "def check_employee_availability" in content
     
-    def test_assigned_worker_ids_in_bookings(self):
-        """get_all_bookings should return assigned_worker_ids"""
+    def test_assigned_employee_ids_in_bookings(self):
+        """get_all_bookings should return assigned_employee_ids"""
         with open('src/services/db_postgres_wrapper.py', 'r') as f:
             content = f.read()
         
-        assert "assigned_worker_ids" in content
+        assert "assigned_employee_ids" in content
         assert "ARRAY_AGG" in content
     
     def test_general_service_created(self):
@@ -260,31 +260,31 @@ class TestFrontendValidationCodeInspection:
         
         assert "editData.name" in content
     
-    def test_add_job_modal_has_worker_selection(self):
-        """AddJobModal should have worker selection"""
+    def test_add_job_modal_has_employee_selection(self):
+        """AddJobModal should have employee selection"""
         with open('frontend/src/components/modals/AddJobModal.jsx', 'r') as f:
             content = f.read()
         
-        assert "worker_id" in content
-        assert "handleWorkerSelect" in content
+        assert "employee_id" in content
+        assert "handleEmployeeSelect" in content
     
-    def test_add_job_modal_checks_worker_availability(self):
-        """AddJobModal should check worker availability"""
+    def test_add_job_modal_checks_employee_availability(self):
+        """AddJobModal should check employee availability"""
         with open('frontend/src/components/modals/AddJobModal.jsx', 'r') as f:
             content = f.read()
         
-        assert "checkWorkerAvailability" in content
+        assert "checkEmployeeAvailability" in content
     
-    def test_workers_tab_uses_assigned_worker_ids(self):
-        """WorkersTab should use assigned_worker_ids"""
-        with open('frontend/src/components/dashboard/WorkersTab.jsx', 'r') as f:
+    def test_employees_tab_uses_assigned_employee_ids(self):
+        """EmployeesTab should use assigned_employee_ids"""
+        with open('frontend/src/components/dashboard/EmployeesTab.jsx', 'r') as f:
             content = f.read()
         
-        assert "assigned_worker_ids" in content
+        assert "assigned_employee_ids" in content
     
-    def test_workers_tab_shows_busy_status(self):
-        """WorkersTab should show busy status"""
-        with open('frontend/src/components/dashboard/WorkersTab.jsx', 'r') as f:
+    def test_employees_tab_shows_busy_status(self):
+        """EmployeesTab should show busy status"""
+        with open('frontend/src/components/dashboard/EmployeesTab.jsx', 'r') as f:
             content = f.read()
         
         assert "isBusy" in content

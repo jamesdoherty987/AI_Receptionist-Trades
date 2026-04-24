@@ -516,7 +516,7 @@ const L7_WarRoom: React.FC = () => {
         </Pop>
         <Pop delay={30}>
           <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: "18px" }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: C.white, marginBottom: 12 }}>Worker Status</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: C.white, marginBottom: 12 }}>Employee Status</div>
             {[
               { name: "Mike O'Brien", status: "On Job", color: C.orange, icon: "🔧" },
               { name: "Dave Walsh", status: "Available", color: C.cyan, icon: "✅" },

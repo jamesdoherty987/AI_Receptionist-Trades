@@ -150,7 +150,7 @@ class PostgreSQLDatabaseWrapper:
                     send_reminder_sms BOOLEAN DEFAULT false,
                     send_review_emails BOOLEAN DEFAULT true,
                     show_reviews_tab BOOLEAN DEFAULT true,
-                    gcal_invite_workers BOOLEAN DEFAULT false,
+                    gcal_invite_employees BOOLEAN DEFAULT false,
                     admin_tab_visibility JSONB DEFAULT '{}'::jsonb,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -257,9 +257,9 @@ class PostgreSQLDatabaseWrapper:
                 )
             """)
             
-            # Workers table
+            # Employees table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS workers (
+                CREATE TABLE IF NOT EXISTS employees (
                     id BIGSERIAL PRIMARY KEY,
                     company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE,
                     name TEXT NOT NULL,
@@ -298,16 +298,16 @@ class PostgreSQLDatabaseWrapper:
                 ON twilio_phone_numbers(assigned_to_company_id)
             """)
             
-            # Worker assignments table
+            # Employee assignments table
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS worker_assignments (
+                CREATE TABLE IF NOT EXISTS employee_assignments (
                     id BIGSERIAL PRIMARY KEY,
                     booking_id BIGINT NOT NULL,
-                    worker_id BIGINT NOT NULL,
+                    employee_id BIGINT NOT NULL,
                     assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (booking_id) REFERENCES bookings (id) ON DELETE CASCADE,
-                    FOREIGN KEY (worker_id) REFERENCES workers (id) ON DELETE CASCADE,
-                    UNIQUE(booking_id, worker_id)
+                    FOREIGN KEY (employee_id) REFERENCES employees (id) ON DELETE CASCADE,
+                    UNIQUE(booking_id, employee_id)
                 )
             """)
             
@@ -326,8 +326,8 @@ class PostgreSQLDatabaseWrapper:
                     active INTEGER DEFAULT 1,
                     image_url TEXT,
                     sort_order INTEGER DEFAULT 0,
-                    workers_required INTEGER DEFAULT 1,
-                    worker_restrictions JSONB DEFAULT NULL,
+                    employees_required INTEGER DEFAULT 1,
+                    employee_restrictions JSONB DEFAULT NULL,
                     requires_callout BOOLEAN DEFAULT FALSE,
                     requires_quote BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -335,13 +335,13 @@ class PostgreSQLDatabaseWrapper:
                 )
             """)
             
-            # Add worker_restrictions column if it doesn't exist (migration)
+            # Add employee_restrictions column if it doesn't exist (migration)
             cursor.execute("""
                 DO $$ 
                 BEGIN 
                     IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                                   WHERE table_name='services' AND column_name='worker_restrictions') THEN
-                        ALTER TABLE services ADD COLUMN worker_restrictions JSONB DEFAULT NULL;
+                                   WHERE table_name='services' AND column_name='employee_restrictions') THEN
+                        ALTER TABLE services ADD COLUMN employee_restrictions JSONB DEFAULT NULL;
                     END IF;
                 END $$;
             """)
@@ -458,9 +458,9 @@ class PostgreSQLDatabaseWrapper:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_calendar_event_id ON bookings(calendar_event_id)")
 
             # Performance indexes for hot paths (N+1 fixes, dashboard loads, availability checks)
-            # worker_assignments: every availability / worker-jobs query filters on these
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_worker_assignments_worker_id ON worker_assignments(worker_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_worker_assignments_booking_id ON worker_assignments(booking_id)")
+            # employee_assignments: every availability / employee-jobs query filters on these
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_employee_assignments_employee_id ON employee_assignments(employee_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_employee_assignments_booking_id ON employee_assignments(booking_id)")
             # Composite index: get_all_bookings + filters typically use (company_id, status, appointment_time)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_company_status ON bookings(company_id, status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_bookings_company_appt_time ON bookings(company_id, appointment_time DESC)")
@@ -527,18 +527,18 @@ class PostgreSQLDatabaseWrapper:
             except Exception as e:
                 print(f"[WARNING] Could not add duration_minutes to bookings: {e}")
         
-        # Add company_id to workers table
+        # Add company_id to employees table
         cursor.execute("""
             SELECT column_name FROM information_schema.columns 
-            WHERE table_name = 'workers' AND column_name = 'company_id'
+            WHERE table_name = 'employees' AND column_name = 'company_id'
         """)
         if not cursor.fetchone():
             try:
-                cursor.execute("ALTER TABLE workers ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_workers_company_id ON workers(company_id)")
-                print("[SUCCESS] Added company_id column to workers table")
+                cursor.execute("ALTER TABLE employees ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_employees_company_id ON employees(company_id)")
+                print("[SUCCESS] Added company_id column to employees table")
             except Exception as e:
-                print(f"[WARNING] Could not add company_id to workers: {e}")
+                print(f"[WARNING] Could not add company_id to employees: {e}")
         
         # Add company_id to notes table
         cursor.execute("""
@@ -666,7 +666,7 @@ class PostgreSQLDatabaseWrapper:
             'send_review_emails': 'BOOLEAN DEFAULT true',
             'show_reviews_tab': 'BOOLEAN DEFAULT true',
             # Google Calendar
-            'gcal_invite_workers': 'BOOLEAN DEFAULT false',
+            'gcal_invite_employees': 'BOOLEAN DEFAULT false',
             # Admin tab visibility
             'admin_tab_visibility': "JSONB DEFAULT '{}'::jsonb",
             # Business settings (may have been missed in original schema)
@@ -750,18 +750,18 @@ class PostgreSQLDatabaseWrapper:
                     print(f"[WARNING] Could not add {column_name} column: {e}")
         
         # ============================================
-        # Add workers_required column to services table
+        # Add employees_required column to services table
         # ============================================
         cursor.execute("""
             SELECT column_name FROM information_schema.columns 
-            WHERE table_name = 'services' AND column_name = 'workers_required'
+            WHERE table_name = 'services' AND column_name = 'employees_required'
         """)
         if not cursor.fetchone():
             try:
-                cursor.execute("ALTER TABLE services ADD COLUMN workers_required INTEGER DEFAULT 1")
-                print("[SUCCESS] Added workers_required column to services table")
+                cursor.execute("ALTER TABLE services ADD COLUMN employees_required INTEGER DEFAULT 1")
+                print("[SUCCESS] Added employees_required column to services table")
             except Exception as e:
-                print(f"[WARNING] Could not add workers_required to services: {e}")
+                print(f"[WARNING] Could not add employees_required to services: {e}")
         
         # ============================================
         # Ensure all companies have a General Service
@@ -1029,7 +1029,7 @@ class PostgreSQLDatabaseWrapper:
                 description TEXT,
                 status VARCHAR(30) DEFAULT 'pending',
                 estimated_cost NUMERIC(10, 2) DEFAULT 0,
-                assigned_worker_id BIGINT REFERENCES workers(id) ON DELETE SET NULL,
+                assigned_employee_id BIGINT REFERENCES employees(id) ON DELETE SET NULL,
                 sort_order INTEGER DEFAULT 0,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -1314,7 +1314,7 @@ class PostgreSQLDatabaseWrapper:
                               'show_insights_tab',
                               'send_confirmation_sms', 'send_reminder_sms',
                               'send_review_emails', 'show_reviews_tab',
-                              'gcal_invite_workers',
+                              'gcal_invite_employees',
                               'admin_tab_visibility',
                               'bypass_numbers',
                               'setup_wizard_complete',
@@ -1441,15 +1441,15 @@ class PostgreSQLDatabaseWrapper:
             booking_subq = "SELECT id FROM bookings WHERE company_id = %s"
             client_subq = "SELECT id FROM clients WHERE company_id = %s"
             
-            # All tables that may reference bookings/workers/clients/services
+            # All tables that may reference bookings/employees/clients/services
             # and need to be deleted before the core tables.
             # Uses savepoints so missing tables (un-migrated) don't abort the txn.
             optional_deletes = [
                 # Tables referencing bookings(id)
                 ("job_materials", f"booking_id IN ({booking_subq})"),
                 ("job_tasks", f"booking_id IN ({booking_subq})"),
-                ("job_workers", f"booking_id IN ({booking_subq})"),
-                ("worker_assignments", f"booking_id IN ({booking_subq})"),
+                ("job_employees", f"booking_id IN ({booking_subq})"),
+                ("employee_assignments", f"booking_id IN ({booking_subq})"),
                 ("appointment_notes", f"booking_id IN ({booking_subq})"),
                 # Tables referencing clients(id)
                 ("notes", f"client_id IN ({client_subq})"),
@@ -1461,8 +1461,8 @@ class PostgreSQLDatabaseWrapper:
                 ("expenses", "company_id = %s"),
                 ("materials", "company_id = %s"),
                 ("messages", "company_id = %s"),
-                ("worker_accounts", "company_id = %s"),
-                ("worker_time_off", "company_id = %s"),
+                ("employee_accounts", "company_id = %s"),
+                ("employee_time_off", "company_id = %s"),
                 ("notifications", "company_id = %s"),
                 ("packages", "company_id = %s"),
             ]
@@ -1478,7 +1478,7 @@ class PostgreSQLDatabaseWrapper:
             
             # --- Core tables (these always exist) ---
             cursor.execute("DELETE FROM bookings WHERE company_id = %s", (company_id,))
-            cursor.execute("DELETE FROM workers WHERE company_id = %s", (company_id,))
+            cursor.execute("DELETE FROM employees WHERE company_id = %s", (company_id,))
             cursor.execute("DELETE FROM clients WHERE company_id = %s", (company_id,))
             cursor.execute("DELETE FROM services WHERE company_id = %s", (company_id,))
             
@@ -1718,7 +1718,7 @@ class PostgreSQLDatabaseWrapper:
     
     def get_all_bookings(self, company_id: int = None, limit: int = None,
                           offset: int = 0, since_days: int = None) -> List[Dict]:
-        """Get bookings for a company, including assigned worker IDs.
+        """Get bookings for a company, including assigned employee IDs.
 
         Args:
             company_id: Filter by company (recommended — avoids full-table scan).
@@ -1729,7 +1729,7 @@ class PostgreSQLDatabaseWrapper:
 
         Query optimized: replaces ARRAY_AGG + 25-col GROUP BY with a correlated
         subquery. Lets PostgreSQL pick the best plan and avoids the join explosion
-        when a booking has multiple workers.
+        when a booking has multiple employees.
         """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
@@ -1765,11 +1765,11 @@ class PostgreSQLDatabaseWrapper:
                     b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
                     c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
                     COALESCE(
-                        (SELECT ARRAY_AGG(wa.worker_id)
-                         FROM worker_assignments wa
+                        (SELECT ARRAY_AGG(wa.employee_id)
+                         FROM employee_assignments wa
                          WHERE wa.booking_id = b.id),
                         ARRAY[]::BIGINT[]
-                    ) AS assigned_worker_ids
+                    ) AS assigned_employee_ids
                 FROM bookings b
                 LEFT JOIN clients c ON b.client_id = c.id
                 {where_sql}
@@ -1805,7 +1805,7 @@ class PostgreSQLDatabaseWrapper:
                 'client_name': row['client_name'],  # Alias for compatibility
                 'notes': '',  # Will be fetched separately if needed
                 'duration_minutes': row['duration_minutes'],
-                'assigned_worker_ids': row['assigned_worker_ids'] or [],  # List of assigned worker IDs
+                'assigned_employee_ids': row['assigned_employee_ids'] or [],  # List of assigned employee IDs
                 'address_audio_url': row.get('address_audio_url'),
                 'requires_callout': row.get('requires_callout', False),
                 'requires_quote': row.get('requires_quote', False),
@@ -1821,15 +1821,15 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_all_workers(self, company_id: int = None) -> List[Dict]:
-        """Get all workers for a specific company"""
+    def get_all_employees(self, company_id: int = None) -> List[Dict]:
+        """Get all employees for a specific company"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             if company_id:
-                cursor.execute("SELECT * FROM workers WHERE company_id = %s ORDER BY name ASC", (company_id,))
+                cursor.execute("SELECT * FROM employees WHERE company_id = %s ORDER BY name ASC", (company_id,))
             else:
-                cursor.execute("SELECT * FROM workers ORDER BY name ASC")
+                cursor.execute("SELECT * FROM employees ORDER BY name ASC")
             rows = cursor.fetchall()
             
             return [{
@@ -2291,17 +2291,17 @@ class PostgreSQLDatabaseWrapper:
             result = cursor.fetchone()
             bookings_count = result['count'] if result else 0
             
-            # Delete worker assignments for those bookings first
+            # Delete employee assignments for those bookings first
             if company_id:
                 cursor.execute("""
-                    DELETE FROM worker_assignments 
+                    DELETE FROM employee_assignments 
                     WHERE booking_id IN (
                         SELECT id FROM bookings WHERE client_id = %s AND company_id = %s
                     )
                 """, (client_id, company_id))
             else:
                 cursor.execute("""
-                    DELETE FROM worker_assignments 
+                    DELETE FROM employee_assignments 
                     WHERE booking_id IN (
                         SELECT id FROM bookings WHERE client_id = %s
                     )
@@ -2849,39 +2849,39 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def add_worker(self, name: str, phone: str = None, email: str = None, 
+    def add_employee(self, name: str, phone: str = None, email: str = None, 
                    trade_specialty: str = None, image_url: str = None, weekly_hours_expected: float = 40.0,
                    company_id: int = None) -> int:
-        """Add a new worker"""
+        """Add a new employee"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                INSERT INTO workers (name, phone, email, trade_specialty, image_url, weekly_hours_expected, company_id)
+                INSERT INTO employees (name, phone, email, trade_specialty, image_url, weekly_hours_expected, company_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, (name, phone, email, trade_specialty, image_url, weekly_hours_expected, company_id))
             
             result = cursor.fetchone()
-            worker_id = result['id'] if result else None
+            employee_id = result['id'] if result else None
             conn.commit()
-            return worker_id
+            return employee_id
         except Exception as e:
             conn.rollback()
-            print(f"Error adding worker: {e}")
+            print(f"Error adding employee: {e}")
             return None
         finally:
             self.return_connection(conn)
     
-    def get_worker(self, worker_id: int, company_id: int = None) -> Optional[Dict]:
-        """Get worker by ID, optionally filtered by company_id for security"""
+    def get_employee(self, employee_id: int, company_id: int = None) -> Optional[Dict]:
+        """Get employee by ID, optionally filtered by company_id for security"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             if company_id:
-                cursor.execute("SELECT * FROM workers WHERE id = %s AND company_id = %s", (worker_id, company_id))
+                cursor.execute("SELECT * FROM employees WHERE id = %s AND company_id = %s", (employee_id, company_id))
             else:
-                cursor.execute("SELECT * FROM workers WHERE id = %s", (worker_id,))
+                cursor.execute("SELECT * FROM employees WHERE id = %s", (employee_id,))
             row = cursor.fetchone()
             if row:
                 result = dict(row)
@@ -2891,8 +2891,8 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def update_worker(self, worker_id: int, **kwargs):
-        """Update worker information"""
+    def update_employee(self, employee_id: int, **kwargs):
+        """Update employee information"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
@@ -2910,58 +2910,58 @@ class PostgreSQLDatabaseWrapper:
             
             if fields:
                 values.append(datetime.now())
-                values.append(worker_id)
-                query = f"UPDATE workers SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
+                values.append(employee_id)
+                query = f"UPDATE employees SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
                 cursor.execute(query, values)
                 conn.commit()
         except Exception as e:
             conn.rollback()
-            print(f"Error updating worker: {e}")
+            print(f"Error updating employee: {e}")
         finally:
             self.return_connection(conn)
     
-    def delete_worker(self, worker_id: int, company_id: int = None) -> dict:
+    def delete_employee(self, employee_id: int, company_id: int = None) -> dict:
         """
-        Delete a worker and remove from all job assignments (cascade delete).
+        Delete an employee and remove from all job assignments (cascade delete).
         Returns dict with success status and count of removed assignments.
         """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            # First, count worker assignments
+            # First, count employee assignments
             cursor.execute("""
-                SELECT COUNT(*) as count FROM worker_assignments 
-                WHERE worker_id = %s
-            """, (worker_id,))
+                SELECT COUNT(*) as count FROM employee_assignments 
+                WHERE employee_id = %s
+            """, (employee_id,))
             result = cursor.fetchone()
             assignments_count = result['count'] if result else 0
             
-            # Delete worker assignments
-            cursor.execute("DELETE FROM worker_assignments WHERE worker_id = %s", (worker_id,))
+            # Delete employee assignments
+            cursor.execute("DELETE FROM employee_assignments WHERE employee_id = %s", (employee_id,))
             
-            # Update bookings to remove this worker from assigned_worker_ids array
+            # Update bookings to remove this employee from assigned_employee_ids array
             cursor.execute("""
                 UPDATE bookings 
-                SET assigned_worker_ids = array_remove(assigned_worker_ids, %s)
-                WHERE %s = ANY(assigned_worker_ids)
-            """, (worker_id, worker_id))
+                SET assigned_employee_ids = array_remove(assigned_employee_ids, %s)
+                WHERE %s = ANY(assigned_employee_ids)
+            """, (employee_id, employee_id))
             
-            # Delete the worker
+            # Delete the employee
             if company_id:
-                cursor.execute("DELETE FROM workers WHERE id = %s AND company_id = %s", (worker_id, company_id))
+                cursor.execute("DELETE FROM employees WHERE id = %s AND company_id = %s", (employee_id, company_id))
             else:
-                cursor.execute("DELETE FROM workers WHERE id = %s", (worker_id,))
+                cursor.execute("DELETE FROM employees WHERE id = %s", (employee_id,))
             
-            worker_deleted = cursor.rowcount > 0
+            employee_deleted = cursor.rowcount > 0
             conn.commit()
             
             return {
-                "success": worker_deleted,
+                "success": employee_deleted,
                 "assignments_removed": assignments_count
             }
         except Exception as e:
             conn.rollback()
-            print(f"Error deleting worker: {e}")
+            print(f"Error deleting employee: {e}")
             return {
                 "success": False,
                 "error": str(e),
@@ -2970,16 +2970,16 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def assign_worker_to_job(self, booking_id: int, worker_id: int) -> Dict:
-        """Assign a worker to a job"""
+    def assign_employee_to_job(self, booking_id: int, employee_id: int) -> Dict:
+        """Assign an employee to a job"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                INSERT INTO worker_assignments (booking_id, worker_id)
+                INSERT INTO employee_assignments (booking_id, employee_id)
                 VALUES (%s, %s)
                 RETURNING id
-            """, (booking_id, worker_id))
+            """, (booking_id, employee_id))
             
             result = cursor.fetchone()
             assignment_id = result['id'] if result else None
@@ -2988,7 +2988,7 @@ class PostgreSQLDatabaseWrapper:
             return {
                 "success": True,
                 "assignment_id": assignment_id,
-                "message": "Worker assigned successfully"
+                "message": "Employee assigned successfully"
             }
         except Exception as e:
             conn.rollback()
@@ -2999,44 +2999,44 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def remove_worker_from_job(self, booking_id: int, worker_id: int) -> bool:
-        """Remove a worker assignment from a job"""
+    def remove_employee_from_job(self, booking_id: int, employee_id: int) -> bool:
+        """Remove an employee assignment from a job"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                DELETE FROM worker_assignments
-                WHERE booking_id = %s AND worker_id = %s
-            """, (booking_id, worker_id))
+                DELETE FROM employee_assignments
+                WHERE booking_id = %s AND employee_id = %s
+            """, (booking_id, employee_id))
             
             rows_affected = cursor.rowcount
             conn.commit()
             return rows_affected > 0
         except Exception as e:
             conn.rollback()
-            print(f"Error removing worker from job: {e}")
+            print(f"Error removing employee from job: {e}")
             return False
         finally:
             self.return_connection(conn)
     
-    def get_job_workers(self, booking_id: int, company_id: int = None) -> List[Dict]:
-        """Get all workers assigned to a specific job, optionally filtered by company_id for security"""
+    def get_job_employees(self, booking_id: int, company_id: int = None) -> List[Dict]:
+        """Get all employees assigned to a specific job, optionally filtered by company_id for security"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             if company_id:
                 cursor.execute("""
                     SELECT w.id, w.name, w.phone, w.email, w.trade_specialty, wa.assigned_at
-                    FROM worker_assignments wa
-                    JOIN workers w ON wa.worker_id = w.id
+                    FROM employee_assignments wa
+                    JOIN employees w ON wa.employee_id = w.id
                     JOIN bookings b ON wa.booking_id = b.id
                     WHERE wa.booking_id = %s AND b.company_id = %s
                 """, (booking_id, company_id))
             else:
                 cursor.execute("""
                     SELECT w.id, w.name, w.phone, w.email, w.trade_specialty, wa.assigned_at
-                    FROM worker_assignments wa
-                    JOIN workers w ON wa.worker_id = w.id
+                    FROM employee_assignments wa
+                    JOIN employees w ON wa.employee_id = w.id
                     WHERE wa.booking_id = %s
                 """, (booking_id,))
             
@@ -3045,8 +3045,8 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_worker_jobs(self, worker_id: int, include_completed: bool = False, company_id: int = None) -> List[Dict]:
-        """Get all jobs assigned to a specific worker, optionally filtered by company_id for security"""
+    def get_employee_jobs(self, employee_id: int, include_completed: bool = False, company_id: int = None) -> List[Dict]:
+        """Get all jobs assigned to a specific employee, optionally filtered by company_id for security"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
@@ -3056,13 +3056,13 @@ class PostgreSQLDatabaseWrapper:
                        b.job_started_at, b.job_completed_at, b.actual_duration_minutes,
                        b.status_label, b.recurrence_pattern, b.charge, b.duration_minutes, b.eircode,
                        b.urgency, b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at
-                FROM worker_assignments wa
+                FROM employee_assignments wa
                 JOIN bookings b ON wa.booking_id = b.id
                 LEFT JOIN clients c ON b.client_id = c.id
-                WHERE wa.worker_id = %s
+                WHERE wa.employee_id = %s
             """
             
-            params = [worker_id]
+            params = [employee_id]
             
             if company_id:
                 query += " AND b.company_id = %s"
@@ -3079,22 +3079,22 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_worker_schedule(self, worker_id: int, start_date: str = None, end_date: str = None) -> List[Dict]:
-        """Get worker's schedule within a date range"""
+    def get_employee_schedule(self, employee_id: int, start_date: str = None, end_date: str = None) -> List[Dict]:
+        """Get employee's schedule within a date range"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             query = """
                 SELECT b.id, b.appointment_time, c.name as client_name, b.service_type, 
                        b.status, b.address
-                FROM worker_assignments wa
+                FROM employee_assignments wa
                 JOIN bookings b ON wa.booking_id = b.id
                 LEFT JOIN clients c ON b.client_id = c.id
-                WHERE wa.worker_id = %s
+                WHERE wa.employee_id = %s
                 AND b.status != 'cancelled'
             """
             
-            params = [worker_id]
+            params = [employee_id]
             
             if start_date:
                 query += " AND b.appointment_time >= %s"
@@ -3112,8 +3112,8 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def get_worker_hours_this_week(self, worker_id: int) -> float:
-        """Calculate hours worked by a worker this week"""
+    def get_employee_hours_this_week(self, employee_id: int) -> float:
+        """Calculate hours worked by an employee this week"""
         from datetime import timedelta
         
         conn = self.get_connection()
@@ -3126,15 +3126,15 @@ class PostgreSQLDatabaseWrapper:
             
             query = """
                 SELECT COUNT(*) as job_count
-                FROM worker_assignments wa
+                FROM employee_assignments wa
                 JOIN bookings b ON wa.booking_id = b.id
-                WHERE wa.worker_id = %s
+                WHERE wa.employee_id = %s
                 AND b.appointment_time >= %s
                 AND b.appointment_time < %s
                 AND b.status = 'completed'
             """
             
-            cursor.execute(query, (worker_id, start_of_week.isoformat(), end_of_week.isoformat()))
+            cursor.execute(query, (employee_id, start_of_week.isoformat(), end_of_week.isoformat()))
             result = cursor.fetchone()
             
             job_count = result['job_count'] if result else 0
@@ -3144,10 +3144,10 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
 
-    def get_workers_hours_this_week(self, company_id: int) -> Dict[int, float]:
-        """Batch: calculate hours worked this week for all workers in a company.
+    def get_employees_hours_this_week(self, company_id: int) -> Dict[int, float]:
+        """Batch: calculate hours worked this week for all employees in a company.
 
-        Returns {worker_id: hours_worked}. Single round-trip instead of N queries.
+        Returns {employee_id: hours_worked}. Single round-trip instead of N queries.
         """
         from datetime import timedelta
 
@@ -3159,29 +3159,29 @@ class PostgreSQLDatabaseWrapper:
             start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
             end_of_week = start_of_week + timedelta(days=7)
 
-            # Seed zero hours for every worker so frontend always gets an entry
+            # Seed zero hours for every employee so frontend always gets an entry
             cursor.execute(
-                "SELECT id FROM workers WHERE company_id = %s",
+                "SELECT id FROM employees WHERE company_id = %s",
                 (company_id,)
             )
             hours_map: Dict[int, float] = {row['id']: 0.0 for row in cursor.fetchall()}
 
             cursor.execute(
                 """
-                SELECT wa.worker_id, COUNT(*) AS job_count
-                FROM worker_assignments wa
+                SELECT wa.employee_id, COUNT(*) AS job_count
+                FROM employee_assignments wa
                 JOIN bookings b ON wa.booking_id = b.id
-                JOIN workers w ON wa.worker_id = w.id
+                JOIN employees w ON wa.employee_id = w.id
                 WHERE w.company_id = %s
                   AND b.appointment_time >= %s
                   AND b.appointment_time < %s
                   AND b.status = 'completed'
-                GROUP BY wa.worker_id
+                GROUP BY wa.employee_id
                 """,
                 (company_id, start_of_week.isoformat(), end_of_week.isoformat())
             )
             for row in cursor.fetchall():
-                hours_map[row['worker_id']] = float(row['job_count']) * 2.0
+                hours_map[row['employee_id']] = float(row['job_count']) * 2.0
 
             return hours_map
         finally:
@@ -3245,10 +3245,10 @@ class PostgreSQLDatabaseWrapper:
         end = current_day.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
         return end + timedelta(minutes=buffer_minutes)
     
-    def get_worker_bookings_in_range(self, worker_id: int, range_start, range_end,
+    def get_employee_bookings_in_range(self, employee_id: int, range_start, range_end,
                                       exclude_booking_id: int = None, company_id: int = None) -> list:
         """
-        Fetch all active bookings for a worker that could overlap with a date range.
+        Fetch all active bookings for an employee that could overlap with a date range.
         Returns raw booking rows with appointment_time and duration_minutes.
         Used for batch availability checking to avoid N individual DB queries.
         """
@@ -3269,13 +3269,13 @@ class PostgreSQLDatabaseWrapper:
             # We fetch broadly and filter in Python for multi-day job accuracy
             query = """
                 SELECT b.id, b.appointment_time, b.duration_minutes
-                FROM worker_assignments wa
+                FROM employee_assignments wa
                 JOIN bookings b ON wa.booking_id = b.id
-                WHERE wa.worker_id = %s
+                WHERE wa.employee_id = %s
                 AND b.status NOT IN ('completed', 'cancelled')
                 AND b.appointment_time < %s
             """
-            params = [worker_id, range_end]
+            params = [employee_id, range_end]
 
             if company_id:
                 query += " AND b.company_id = %s"
@@ -3305,22 +3305,22 @@ class PostgreSQLDatabaseWrapper:
                 })
             return result
         except Exception as e:
-            print(f"Error fetching worker bookings in range: {e}")
+            print(f"Error fetching employee bookings in range: {e}")
             return []
         finally:
             self.return_connection(conn)
 
-    def check_worker_availability(self, worker_id: int, appointment_time, duration_minutes: int = 1440, 
+    def check_employee_availability(self, employee_id: int, appointment_time, duration_minutes: int = 1440, 
                                    exclude_booking_id: int = None, company_id: int = None) -> Dict:
         """
-        Check if a worker is available at a specific time.
+        Check if an employee is available at a specific time.
         
         Handles all durations from 1 hour to 1 month. Multi-day jobs block
         business hours on each spanned day. Single-day jobs use exact times.
         Also checks approved time-off requests.
         
         Args:
-            worker_id: The worker to check
+            employee_id: The employee to check
             appointment_time: The appointment start time (datetime or string)
             duration_minutes: Duration of the appointment in minutes (default 1 day for trades)
             exclude_booking_id: Booking ID to exclude from conflict check (for reassignments)
@@ -3350,16 +3350,16 @@ class PostgreSQLDatabaseWrapper:
             try:
                 appt_date = appointment_time.date()
                 cursor.execute("""
-                    SELECT id, start_date, end_date, type FROM worker_time_off
-                    WHERE worker_id = %s AND status = 'approved'
+                    SELECT id, start_date, end_date, type FROM employee_time_off
+                    WHERE employee_id = %s AND status = 'approved'
                     AND start_date <= %s AND end_date >= %s
-                """, (worker_id, appt_date, appt_date))
+                """, (employee_id, appt_date, appt_date))
                 time_off = cursor.fetchone()
                 if time_off and isinstance(time_off, dict) and time_off.get('id'):
                     return {
                         'available': False,
                         'conflicts': [],
-                        'message': f"Worker is on approved {time_off['type']} leave ({time_off['start_date']} to {time_off['end_date']})",
+                        'message': f"Employee is on approved {time_off['type']} leave ({time_off['start_date']} to {time_off['end_date']})",
                         'on_leave': True
                     }
             except Exception:
@@ -3383,17 +3383,17 @@ class PostgreSQLDatabaseWrapper:
                 appointment_time, duration_minutes, start_hour, end_hour, buffer_minutes=0, company_id=company_id
             )
             
-            # Get all active jobs assigned to this worker
+            # Get all active jobs assigned to this employee
             query = """
                 SELECT b.id, b.appointment_time, b.duration_minutes, b.service_type,
                        c.name as client_name, b.address
-                FROM worker_assignments wa
+                FROM employee_assignments wa
                 JOIN bookings b ON wa.booking_id = b.id
                 LEFT JOIN clients c ON b.client_id = c.id
-                WHERE wa.worker_id = %s
+                WHERE wa.employee_id = %s
                 AND b.status NOT IN ('completed', 'cancelled')
             """
-            params = [worker_id]
+            params = [employee_id]
             
             if company_id:
                 query += " AND b.company_id = %s"
@@ -3440,17 +3440,17 @@ class PostgreSQLDatabaseWrapper:
                 return {
                     'available': False,
                     'conflicts': conflicts,
-                    'message': f"Worker has conflicting job(s) at: {conflict_times}"
+                    'message': f"Employee has conflicting job(s) at: {conflict_times}"
                 }
             
             return {
                 'available': True,
                 'conflicts': [],
-                'message': "Worker is available"
+                'message': "Employee is available"
             }
             
         except Exception as e:
-            print(f"Error checking worker availability: {e}")
+            print(f"Error checking employee availability: {e}")
             # Return unavailable on error to prevent accidental double-booking
             return {
                 'available': False,
@@ -3460,102 +3460,102 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
-    def find_available_workers_for_slot(self, appointment_time, duration_minutes: int = 1440,
+    def find_available_employees_for_slot(self, appointment_time, duration_minutes: int = 1440,
                                         company_id: int = None, trade_specialty: str = None) -> Optional[List[Dict]]:
         """
-        Find all workers who are available at a specific time slot.
+        Find all employees who are available at a specific time slot.
         """
         if not company_id:
             return []
         
         try:
-            # Get all workers for this company
-            all_workers = self.get_all_workers(company_id=company_id)
+            # Get all employees for this company
+            all_employees = self.get_all_employees(company_id=company_id)
             
-            if not all_workers:
-                print(f"[WORKER_AVAIL] No workers found for company {company_id}")
+            if not all_employees:
+                print(f"[EMPLOYEE_AVAIL] No employees found for company {company_id}")
                 return []
             
-            available_workers = []
+            available_employees = []
             
-            for worker in all_workers:
-                worker_name = worker.get('name', 'Unknown')
-                worker_status = worker.get('status', 'unknown')
+            for employee in all_employees:
+                employee_name = employee.get('name', 'Unknown')
+                employee_status = employee.get('status', 'unknown')
                 
-                # Skip inactive workers
-                if worker_status == 'inactive':
+                # Skip inactive employees
+                if employee_status == 'inactive':
                     continue
                 
                 # Filter by trade specialty if specified
                 if trade_specialty:
-                    worker_specialty = (worker.get('trade_specialty') or '').lower()
-                    if trade_specialty.lower() not in worker_specialty and worker_specialty not in trade_specialty.lower():
+                    employee_specialty = (employee.get('trade_specialty') or '').lower()
+                    if trade_specialty.lower() not in employee_specialty and employee_specialty not in trade_specialty.lower():
                         continue
                 
                 # Check availability
-                availability = self.check_worker_availability(
-                    worker_id=worker['id'],
+                availability = self.check_employee_availability(
+                    employee_id=employee['id'],
                     appointment_time=appointment_time,
                     duration_minutes=duration_minutes,
                     company_id=company_id
                 )
                 
                 if availability['available']:
-                    available_workers.append({
-                        'id': worker['id'],
-                        'name': worker['name'],
-                        'phone': worker.get('phone'),
-                        'email': worker.get('email'),
-                        'trade_specialty': worker.get('trade_specialty')
+                    available_employees.append({
+                        'id': employee['id'],
+                        'name': employee['name'],
+                        'phone': employee.get('phone'),
+                        'email': employee.get('email'),
+                        'trade_specialty': employee.get('trade_specialty')
                     })
                 else:
-                    # Log why this worker is unavailable (helps debug availability mismatches)
-                    print(f"[WORKER_AVAIL] {worker_name} (id={worker['id']}) NOT available at {appointment_time} for {duration_minutes}min: {availability.get('message', 'unknown')}")
+                    # Log why this employee is unavailable (helps debug availability mismatches)
+                    print(f"[EMPLOYEE_AVAIL] {employee_name} (id={employee['id']}) NOT available at {appointment_time} for {duration_minutes}min: {availability.get('message', 'unknown')}")
             
             # Sort by least busy (fewest upcoming bookings first) to balance workload
-            if len(available_workers) > 1:
+            if len(available_employees) > 1:
                 conn = None
                 try:
-                    worker_ids = [w['id'] for w in available_workers]
+                    employee_ids = [w['id'] for w in available_employees]
                     conn = self.get_connection()
                     cursor = conn.cursor(cursor_factory=RealDictCursor)
                     cursor.execute("""
-                        SELECT wa.worker_id, COUNT(*) as upcoming_count
-                        FROM worker_assignments wa
+                        SELECT wa.employee_id, COUNT(*) as upcoming_count
+                        FROM employee_assignments wa
                         JOIN bookings b ON b.id = wa.booking_id
-                        WHERE wa.worker_id = ANY(%s)
+                        WHERE wa.employee_id = ANY(%s)
                           AND b.company_id = %s
                           AND b.appointment_time >= NOW()
                           AND b.status NOT IN ('cancelled', 'deleted')
-                        GROUP BY wa.worker_id
-                    """, (worker_ids, company_id))
-                    counts = {row['worker_id']: row['upcoming_count'] for row in cursor.fetchall()}
-                    # Workers with no upcoming bookings get count 0
-                    available_workers.sort(key=lambda w: counts.get(w['id'], 0))
-                    print(f"[WORKER_AVAIL] Sorted by least busy: {[(w['name'], counts.get(w['id'], 0)) for w in available_workers]}")
+                        GROUP BY wa.employee_id
+                    """, (employee_ids, company_id))
+                    counts = {row['employee_id']: row['upcoming_count'] for row in cursor.fetchall()}
+                    # Employees with no upcoming bookings get count 0
+                    available_employees.sort(key=lambda w: counts.get(w['id'], 0))
+                    print(f"[EMPLOYEE_AVAIL] Sorted by least busy: {[(w['name'], counts.get(w['id'], 0)) for w in available_employees]}")
                 except Exception as sort_err:
-                    print(f"[WORKER_AVAIL] ⚠️ Could not sort by workload (falling back to default order): {sort_err}")
+                    print(f"[EMPLOYEE_AVAIL] ⚠️ Could not sort by workload (falling back to default order): {sort_err}")
                 finally:
                     if conn:
                         self.return_connection(conn)
             
-            return available_workers
+            return available_employees
         except Exception as e:
-            print(f"[WORKER_AVAIL] ❌ Error: {e}")
+            print(f"[EMPLOYEE_AVAIL] ❌ Error: {e}")
             import traceback
             traceback.print_exc()
-            # Return None on error to distinguish from "no workers available" (empty list)
+            # Return None on error to distinguish from "no employees available" (empty list)
             return None
     
-    def has_workers(self, company_id: int) -> bool:
+    def has_employees(self, company_id: int) -> bool:
         """
-        Check if a company has any workers configured.
+        Check if a company has any employees configured.
         
         Args:
             company_id: Company ID to check
             
         Returns:
-            True if company has at least one worker, False otherwise
+            True if company has at least one employee, False otherwise
         """
         if not company_id:
             return False
@@ -3564,13 +3564,13 @@ class PostgreSQLDatabaseWrapper:
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "SELECT COUNT(*) FROM workers WHERE company_id = %s AND status != 'inactive'",
+                "SELECT COUNT(*) FROM employees WHERE company_id = %s AND status != 'inactive'",
                 (company_id,)
             )
             result = cursor.fetchone()
             return result[0] > 0 if result else False
         except Exception as e:
-            print(f"Error checking if company has workers: {e}")
+            print(f"Error checking if company has employees: {e}")
             return False
         finally:
             self.return_connection(conn)
@@ -3581,7 +3581,7 @@ class PostgreSQLDatabaseWrapper:
                    price: float = 0, price_max: float = None, emergency_price: float = None,
                    currency: str = 'EUR', active: bool = True,
                    image_url: str = None, sort_order: int = 0,
-                   workers_required: int = 1, worker_restrictions: dict = None,
+                   employees_required: int = 1, employee_restrictions: dict = None,
                    requires_callout: bool = False, package_only: bool = False,
                    requires_quote: bool = False,
                    company_id: int = None, default_materials: list = None) -> bool:
@@ -3590,20 +3590,20 @@ class PostgreSQLDatabaseWrapper:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Ensure workers_required is at least 1
-        workers_required = max(1, workers_required or 1)
+        # Ensure employees_required is at least 1
+        employees_required = max(1, employees_required or 1)
         
-        # Convert worker_restrictions to JSON string if provided
-        restrictions_json = json.dumps(worker_restrictions) if worker_restrictions else None
+        # Convert employee_restrictions to JSON string if provided
+        restrictions_json = json.dumps(employee_restrictions) if employee_restrictions else None
         materials_json = json.dumps(default_materials) if default_materials else '[]'
         
         try:
             cursor.execute("""
                 INSERT INTO services (id, category, name, description, duration_minutes,
-                                    price, price_max, emergency_price, currency, active, image_url, sort_order, workers_required, worker_restrictions, requires_callout, package_only, requires_quote, company_id, default_materials)
+                                    price, price_max, emergency_price, currency, active, image_url, sort_order, employees_required, employee_restrictions, requires_callout, package_only, requires_quote, company_id, default_materials)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (service_id, category, name, description, duration_minutes,
-                  price, price_max, emergency_price, currency, 1 if active else 0, image_url, sort_order, workers_required, restrictions_json, requires_callout, package_only, requires_quote, company_id, materials_json))
+                  price, price_max, emergency_price, currency, 1 if active else 0, image_url, sort_order, employees_required, restrictions_json, requires_callout, package_only, requires_quote, company_id, materials_json))
             
             conn.commit()
             return True
@@ -3664,7 +3664,7 @@ class PostgreSQLDatabaseWrapper:
         try:
             allowed_fields = ['category', 'name', 'description', 'duration_minutes',
                              'price', 'price_max', 'emergency_price', 'currency', 'active',
-                             'image_url', 'sort_order', 'workers_required', 'worker_restrictions',
+                             'image_url', 'sort_order', 'employees_required', 'employee_restrictions',
                              'requires_callout', 'package_only', 'requires_quote', 'default_materials']
             
             fields = []
@@ -3673,8 +3673,8 @@ class PostgreSQLDatabaseWrapper:
                 if key in allowed_fields:
                     if key == 'active' and isinstance(value, bool):
                         value = 1 if value else 0
-                    # Convert worker_restrictions dict to JSON
-                    if key == 'worker_restrictions' and isinstance(value, dict):
+                    # Convert employee_restrictions dict to JSON
+                    if key == 'employee_restrictions' and isinstance(value, dict):
                         value = json.dumps(value)
                     # Convert default_materials list to JSON
                     if key == 'default_materials' and isinstance(value, list):
@@ -3933,70 +3933,70 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
 
     # ==========================================
-    # Worker Account Methods (Worker Portal)
+    # Employee Account Methods (Employee Portal)
     # ==========================================
 
-    def create_worker_account(self, worker_id: int, company_id: int, email: str,
+    def create_employee_account(self, employee_id: int, company_id: int, email: str,
                               invite_token: str, invite_expires_at) -> Optional[int]:
-        """Create a worker account for portal access"""
+        """Create an employee account for portal access"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                INSERT INTO worker_accounts (worker_id, company_id, email, invite_token, invite_expires_at)
+                INSERT INTO employee_accounts (employee_id, company_id, email, invite_token, invite_expires_at)
                 VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
-            """, (worker_id, company_id, email, invite_token, invite_expires_at))
+            """, (employee_id, company_id, email, invite_token, invite_expires_at))
             result = cursor.fetchone()
             conn.commit()
             return result['id'] if result else None
         except Exception as e:
             conn.rollback()
-            print(f"Error creating worker account: {e}")
+            print(f"Error creating employee account: {e}")
             return None
         finally:
             self.return_connection(conn)
 
-    def get_worker_account_by_email(self, email: str) -> Optional[Dict]:
-        """Get worker account by email"""
+    def get_employee_account_by_email(self, email: str) -> Optional[Dict]:
+        """Get employee account by email"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("SELECT * FROM worker_accounts WHERE email = %s", (email,))
+            cursor.execute("SELECT * FROM employee_accounts WHERE email = %s", (email,))
             row = cursor.fetchone()
             return dict(row) if row else None
         finally:
             self.return_connection(conn)
 
-    def get_worker_account_by_invite_token(self, token: str) -> Optional[Dict]:
-        """Get worker account by invite token"""
+    def get_employee_account_by_invite_token(self, token: str) -> Optional[Dict]:
+        """Get employee account by invite token"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("SELECT * FROM worker_accounts WHERE invite_token = %s", (token,))
+            cursor.execute("SELECT * FROM employee_accounts WHERE invite_token = %s", (token,))
             row = cursor.fetchone()
             return dict(row) if row else None
         finally:
             self.return_connection(conn)
 
-    def get_worker_account_by_worker_id(self, worker_id: int) -> Optional[Dict]:
-        """Get worker account by worker_id"""
+    def get_employee_account_by_employee_id(self, employee_id: int) -> Optional[Dict]:
+        """Get employee account by employee_id"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("SELECT * FROM worker_accounts WHERE worker_id = %s", (worker_id,))
+            cursor.execute("SELECT * FROM employee_accounts WHERE employee_id = %s", (employee_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
         finally:
             self.return_connection(conn)
 
-    def set_worker_account_password(self, account_id: int, password_hash: str) -> bool:
-        """Set password for a worker account (first-time setup)"""
+    def set_employee_account_password(self, account_id: int, password_hash: str) -> bool:
+        """Set password for an employee account (first-time setup)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                UPDATE worker_accounts 
+                UPDATE employee_accounts 
                 SET password_hash = %s, password_set = TRUE, 
                     invite_token = NULL, invite_expires_at = NULL,
                     updated_at = NOW()
@@ -4006,64 +4006,64 @@ class PostgreSQLDatabaseWrapper:
             return cursor.rowcount > 0
         except Exception as e:
             conn.rollback()
-            print(f"Error setting worker account password: {e}")
+            print(f"Error setting employee account password: {e}")
             return False
         finally:
             self.return_connection(conn)
 
-    def update_worker_account_last_login(self, account_id: int):
-        """Update last login timestamp for worker account"""
+    def update_employee_account_last_login(self, account_id: int):
+        """Update last login timestamp for employee account"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "UPDATE worker_accounts SET last_login = NOW() WHERE id = %s",
+                "UPDATE employee_accounts SET last_login = NOW() WHERE id = %s",
                 (account_id,)
             )
             conn.commit()
         except Exception as e:
             conn.rollback()
-            print(f"Error updating worker last login: {e}")
+            print(f"Error updating employee last login: {e}")
         finally:
             self.return_connection(conn)
 
-    def get_worker_account_by_reset_token(self, token: str) -> Optional[Dict]:
-        """Get worker account by password reset token"""
+    def get_employee_account_by_reset_token(self, token: str) -> Optional[Dict]:
+        """Get employee account by password reset token"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
-            cursor.execute("SELECT * FROM worker_accounts WHERE reset_token = %s", (token,))
+            cursor.execute("SELECT * FROM employee_accounts WHERE reset_token = %s", (token,))
             row = cursor.fetchone()
             return dict(row) if row else None
         finally:
             cursor.close()
             self.return_connection(conn)
 
-    def update_worker_account_reset_token(self, account_id: int, reset_token, reset_token_expires) -> bool:
-        """Set or clear the password reset token for a worker account"""
+    def update_employee_account_reset_token(self, account_id: int, reset_token, reset_token_expires) -> bool:
+        """Set or clear the password reset token for an employee account"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "UPDATE worker_accounts SET reset_token = %s, reset_token_expires = %s WHERE id = %s",
+                "UPDATE employee_accounts SET reset_token = %s, reset_token_expires = %s WHERE id = %s",
                 (reset_token, reset_token_expires, account_id)
             )
             conn.commit()
             return cursor.rowcount > 0
         except Exception as e:
             conn.rollback()
-            print(f"Error updating worker reset token: {e}")
+            print(f"Error updating employee reset token: {e}")
             return False
         finally:
             self.return_connection(conn)
 
-    def reset_worker_account_password(self, account_id: int, password_hash: str) -> bool:
-        """Reset password for a worker account (forgot password flow)"""
+    def reset_employee_account_password(self, account_id: int, password_hash: str) -> bool:
+        """Reset password for an employee account (forgot password flow)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                UPDATE worker_accounts
+                UPDATE employee_accounts
                 SET password_hash = %s, password_set = TRUE,
                     reset_token = NULL, reset_token_expires = NULL,
                     updated_at = NOW()
@@ -4073,32 +4073,32 @@ class PostgreSQLDatabaseWrapper:
             return cursor.rowcount > 0
         except Exception as e:
             conn.rollback()
-            print(f"Error resetting worker password: {e}")
+            print(f"Error resetting employee password: {e}")
             return False
         finally:
             self.return_connection(conn)
 
-    def delete_worker_account(self, worker_id: int) -> bool:
-        """Delete worker account when worker is deleted"""
+    def delete_employee_account(self, employee_id: int) -> bool:
+        """Delete employee account when employee is deleted"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("DELETE FROM worker_accounts WHERE worker_id = %s", (worker_id,))
+            cursor.execute("DELETE FROM employee_accounts WHERE employee_id = %s", (employee_id,))
             conn.commit()
             return cursor.rowcount > 0
         except Exception as e:
             conn.rollback()
-            print(f"Error deleting worker account: {e}")
+            print(f"Error deleting employee account: {e}")
             return False
         finally:
             self.return_connection(conn)
 
 
     # ==========================================
-    # Worker Time Off Methods
+    # Employee Time Off Methods
     # ==========================================
 
-    def create_time_off_request(self, worker_id: int, company_id: int,
+    def create_time_off_request(self, employee_id: int, company_id: int,
                                 start_date: str, end_date: str,
                                 reason: str = None, leave_type: str = 'vacation') -> Optional[int]:
         """Create a time-off request"""
@@ -4106,10 +4106,10 @@ class PostgreSQLDatabaseWrapper:
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                INSERT INTO worker_time_off (worker_id, company_id, start_date, end_date, reason, type)
+                INSERT INTO employee_time_off (employee_id, company_id, start_date, end_date, reason, type)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING id
-            """, (worker_id, company_id, start_date, end_date, reason, leave_type))
+            """, (employee_id, company_id, start_date, end_date, reason, leave_type))
             result = cursor.fetchone()
             conn.commit()
             return result['id'] if result else None
@@ -4120,16 +4120,16 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
 
-    def get_worker_time_off(self, worker_id: int) -> List[Dict]:
-        """Get all time-off requests for a worker"""
+    def get_employee_time_off(self, employee_id: int) -> List[Dict]:
+        """Get all time-off requests for an employee"""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                SELECT * FROM worker_time_off 
-                WHERE worker_id = %s 
+                SELECT * FROM employee_time_off 
+                WHERE employee_id = %s 
                 ORDER BY start_date DESC
-            """, (worker_id,))
+            """, (employee_id,))
             rows = [dict(row) for row in cursor.fetchall()]
             # Normalize date fields to ISO strings for JSON serialization
             for row in rows:
@@ -4149,9 +4149,9 @@ class PostgreSQLDatabaseWrapper:
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             query = """
-                SELECT t.*, w.name as worker_name
-                FROM worker_time_off t
-                JOIN workers w ON t.worker_id = w.id
+                SELECT t.*, w.name as employee_name
+                FROM employee_time_off t
+                JOIN employees w ON t.employee_id = w.id
                 WHERE t.company_id = %s
             """
             params = [company_id]
@@ -4180,7 +4180,7 @@ class PostgreSQLDatabaseWrapper:
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                UPDATE worker_time_off 
+                UPDATE employee_time_off 
                 SET status = %s, reviewer_note = %s, reviewed_at = NOW(), updated_at = NOW()
                 WHERE id = %s AND company_id = %s
             """, (status, reviewer_note, request_id, company_id))
@@ -4193,15 +4193,15 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
 
-    def delete_time_off_request(self, request_id: int, worker_id: int) -> bool:
-        """Delete a pending time-off request (worker can only delete their own pending requests)"""
+    def delete_time_off_request(self, request_id: int, employee_id: int) -> bool:
+        """Delete a pending time-off request (employee can only delete their own pending requests)"""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                DELETE FROM worker_time_off 
-                WHERE id = %s AND worker_id = %s AND status = 'pending'
-            """, (request_id, worker_id))
+                DELETE FROM employee_time_off 
+                WHERE id = %s AND employee_id = %s AND status = 'pending'
+            """, (request_id, employee_id))
             conn.commit()
             return cursor.rowcount > 0
         except Exception as e:
@@ -4212,15 +4212,15 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
 
 
-    def get_workers_on_leave(self, company_id: int, start_date, end_date) -> list:
+    def get_employees_on_leave(self, company_id: int, start_date, end_date) -> list:
         """Get approved time-off records overlapping the given date range.
-        Returns list of dicts with worker_id, start_date, end_date.
+        Returns list of dicts with employee_id, start_date, end_date.
         Returns empty list if table doesn't exist yet."""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                SELECT worker_id, start_date, end_date FROM worker_time_off
+                SELECT employee_id, start_date, end_date FROM employee_time_off
                 WHERE company_id = %s AND status = 'approved'
                 AND start_date <= %s AND end_date >= %s
             """, (company_id, end_date, start_date))
@@ -4239,7 +4239,7 @@ class PostgreSQLDatabaseWrapper:
     def create_notification(self, company_id: int, recipient_type: str,
                            recipient_id: int, notif_type: str, message: str,
                            metadata: dict = None) -> Optional[int]:
-        """Create a notification. recipient_type is 'owner' or 'worker'."""
+        """Create a notification. recipient_type is 'owner' or 'employee'."""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
@@ -4278,18 +4278,18 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
 
-    def get_worker_notifications(self, worker_id: int, company_id: int, limit: int = 30) -> List[Dict]:
-        """Get notifications for a specific worker (last 48 hours)."""
+    def get_employee_notifications(self, employee_id: int, company_id: int, limit: int = 30) -> List[Dict]:
+        """Get notifications for a specific employee (last 48 hours)."""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
                 SELECT * FROM notifications
-                WHERE company_id = %s AND recipient_type = 'worker' AND recipient_id = %s
+                WHERE company_id = %s AND recipient_type = 'employee' AND recipient_id = %s
                 AND created_at > NOW() - INTERVAL '48 hours'
                 ORDER BY created_at DESC
                 LIMIT %s
-            """, (company_id, worker_id, limit))
+            """, (company_id, employee_id, limit))
             return [dict(row) for row in cursor.fetchall()]
         except Exception:
             conn.rollback()
@@ -4299,16 +4299,16 @@ class PostgreSQLDatabaseWrapper:
 
     # ── Messaging ──────────────────────────────────────────────────────
 
-    def send_message(self, company_id: int, worker_id: int, sender_type: str, content: str) -> Optional[Dict]:
-        """Send a message between owner and worker. sender_type is 'owner' or 'worker'."""
+    def send_message(self, company_id: int, employee_id: int, sender_type: str, content: str) -> Optional[Dict]:
+        """Send a message between owner and employee. sender_type is 'owner' or 'employee'."""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                INSERT INTO messages (company_id, worker_id, sender_type, content)
+                INSERT INTO messages (company_id, employee_id, sender_type, content)
                 VALUES (%s, %s, %s, %s)
                 RETURNING *
-            """, (company_id, worker_id, sender_type, content))
+            """, (company_id, employee_id, sender_type, content))
             result = cursor.fetchone()
             conn.commit()
             return dict(result) if result else None
@@ -4319,25 +4319,25 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
 
-    def get_conversation(self, company_id: int, worker_id: int, limit: int = 50, before_id: int = None) -> List[Dict]:
-        """Get messages between owner and a specific worker."""
+    def get_conversation(self, company_id: int, employee_id: int, limit: int = 50, before_id: int = None) -> List[Dict]:
+        """Get messages between owner and a specific employee."""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             if before_id:
                 cursor.execute("""
                     SELECT * FROM messages
-                    WHERE company_id = %s AND worker_id = %s AND id < %s
+                    WHERE company_id = %s AND employee_id = %s AND id < %s
                     ORDER BY created_at DESC
                     LIMIT %s
-                """, (company_id, worker_id, before_id, limit))
+                """, (company_id, employee_id, before_id, limit))
             else:
                 cursor.execute("""
                     SELECT * FROM messages
-                    WHERE company_id = %s AND worker_id = %s
+                    WHERE company_id = %s AND employee_id = %s
                     ORDER BY created_at DESC
                     LIMIT %s
-                """, (company_id, worker_id, limit))
+                """, (company_id, employee_id, limit))
             rows = cursor.fetchall()
             return [dict(r) for r in reversed(rows)]  # Return in chronological order
         except Exception as e:
@@ -4347,16 +4347,16 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
 
-    def mark_messages_read(self, company_id: int, worker_id: int, reader_type: str) -> int:
-        """Mark messages as read. reader_type='owner' marks worker messages as read, and vice versa."""
-        sender_type = 'worker' if reader_type == 'owner' else 'owner'
+    def mark_messages_read(self, company_id: int, employee_id: int, reader_type: str) -> int:
+        """Mark messages as read. reader_type='owner' marks employee messages as read, and vice versa."""
+        sender_type = 'employee' if reader_type == 'owner' else 'owner'
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
                 UPDATE messages SET read = TRUE
-                WHERE company_id = %s AND worker_id = %s AND sender_type = %s AND read = FALSE
-            """, (company_id, worker_id, sender_type))
+                WHERE company_id = %s AND employee_id = %s AND sender_type = %s AND read = FALSE
+            """, (company_id, employee_id, sender_type))
             count = cursor.rowcount
             conn.commit()
             return count
@@ -4368,32 +4368,32 @@ class PostgreSQLDatabaseWrapper:
             self.return_connection(conn)
 
     def get_unread_message_counts(self, company_id: int) -> Dict[int, int]:
-        """Get unread message counts per worker for the owner."""
+        """Get unread message counts per employee for the owner."""
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
-                SELECT worker_id, COUNT(*) as unread
+                SELECT employee_id, COUNT(*) as unread
                 FROM messages
-                WHERE company_id = %s AND sender_type = 'worker' AND read = FALSE
-                GROUP BY worker_id
+                WHERE company_id = %s AND sender_type = 'employee' AND read = FALSE
+                GROUP BY employee_id
             """, (company_id,))
-            return {row['worker_id']: row['unread'] for row in cursor.fetchall()}
+            return {row['employee_id']: row['unread'] for row in cursor.fetchall()}
         except Exception:
             conn.rollback()
             return {}
         finally:
             self.return_connection(conn)
 
-    def get_worker_unread_count(self, company_id: int, worker_id: int) -> int:
-        """Get unread message count for a specific worker."""
+    def get_employee_unread_count(self, company_id: int, employee_id: int) -> int:
+        """Get unread message count for a specific employee."""
         conn = self.get_connection()
         cursor = conn.cursor()
         try:
             cursor.execute("""
                 SELECT COUNT(*) FROM messages
-                WHERE company_id = %s AND worker_id = %s AND sender_type = 'owner' AND read = FALSE
-            """, (company_id, worker_id))
+                WHERE company_id = %s AND employee_id = %s AND sender_type = 'owner' AND read = FALSE
+            """, (company_id, employee_id))
             return cursor.fetchone()[0]
         except Exception:
             conn.rollback()
@@ -4405,36 +4405,36 @@ class PostgreSQLDatabaseWrapper:
         """Get a summary of all conversations for the owner with last message and unread count.
         
         Uses a single query with DISTINCT ON + a pre-aggregated unread CTE to avoid
-        correlated subqueries (N+1). Much faster for companies with many workers.
+        correlated subqueries (N+1). Much faster for companies with many employees.
         """
         conn = self.get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
                 WITH unread AS (
-                    SELECT worker_id, COUNT(*) as unread_count
+                    SELECT employee_id, COUNT(*) as unread_count
                     FROM messages
-                    WHERE company_id = %s AND sender_type = 'worker' AND read = FALSE
-                    GROUP BY worker_id
+                    WHERE company_id = %s AND sender_type = 'employee' AND read = FALSE
+                    GROUP BY employee_id
                 ),
                 last_msg AS (
-                    SELECT DISTINCT ON (worker_id)
-                        worker_id, content, sender_type, created_at
+                    SELECT DISTINCT ON (employee_id)
+                        employee_id, content, sender_type, created_at
                     FROM messages
                     WHERE company_id = %s
-                    ORDER BY worker_id, created_at DESC
+                    ORDER BY employee_id, created_at DESC
                 )
                 SELECT
-                    lm.worker_id,
-                    w.name as worker_name,
-                    w.image_url as worker_image,
+                    lm.employee_id,
+                    w.name as employee_name,
+                    w.image_url as employee_image,
                     lm.content as last_message,
                     lm.sender_type as last_sender,
                     lm.created_at as last_message_at,
                     COALESCE(u.unread_count, 0) as unread_count
                 FROM last_msg lm
-                JOIN workers w ON w.id = lm.worker_id
-                LEFT JOIN unread u ON u.worker_id = lm.worker_id
+                JOIN employees w ON w.id = lm.employee_id
+                LEFT JOIN unread u ON u.employee_id = lm.employee_id
                 ORDER BY lm.created_at DESC
             """, (company_id, company_id))
             return [dict(r) for r in cursor.fetchall()]

@@ -51,7 +51,7 @@ def run_migration():
     except Exception as e:
         print(f"[INFO] customer_photo_urls: {e}")
 
-    # 3. photo_urls column on bookings (worker/owner photos)
+    # 3. photo_urls column on bookings (employee/owner photos)
     try:
         cursor.execute("""
             ALTER TABLE bookings

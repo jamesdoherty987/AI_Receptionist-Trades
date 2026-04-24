@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createClient, workerCreateClient } from '../../services/api';
+import { createClient, employeeCreateClient } from '../../services/api';
 import Modal from './Modal';
 import { useToast } from '../Toast';
 import HelpTooltip from '../HelpTooltip';
 import './AddClientModal.css';
 
-function AddClientModal({ isOpen, onClose, workerMode = false }) {
+function AddClientModal({ isOpen, onClose, employeeMode = false }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const [formData, setFormData] = useState({
@@ -19,7 +19,7 @@ function AddClientModal({ isOpen, onClose, workerMode = false }) {
   });
 
   const mutation = useMutation({
-    mutationFn: workerMode ? workerCreateClient : createClient,
+    mutationFn: employeeMode ? employeeCreateClient : createClient,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       onClose();

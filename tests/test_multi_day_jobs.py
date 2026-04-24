@@ -2,11 +2,11 @@
 Tests for multi-day job handling across the system.
 
 Ensures that jobs of any duration (1 hour to 1 month) work correctly for:
-1. Worker availability checking (clash detection across multiple days)
+1. Employee availability checking (clash detection across multiple days)
 2. Job end time calculation (_calculate_job_end_time)
 3. Conflict detection (get_conflicting_bookings)
 4. Calendar display (find_jobs_on_day shows multi-day jobs on all spanned days)
-5. Multi-worker multi-day availability (_find_worker_available_days)
+5. Multi-employee multi-day availability (_find_employee_available_days)
 """
 import pytest
 from datetime import datetime, timedelta
@@ -94,11 +94,11 @@ class TestCalculateJobEndTime:
         assert end == datetime(2026, 3, 23, 11, 0)
 
 
-class TestWorkerAvailabilityMultiDay:
-    """Test that worker availability correctly detects conflicts with multi-day jobs."""
+class TestEmployeeAvailabilityMultiDay:
+    """Test that employee availability correctly detects conflicts with multi-day jobs."""
 
     def _make_db_with_jobs(self, existing_jobs):
-        """Create a mock DB that returns the given existing jobs for a worker."""
+        """Create a mock DB that returns the given existing jobs for an employee."""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
 
         mock_conn = MagicMock()
@@ -125,8 +125,8 @@ class TestWorkerAvailabilityMultiDay:
         db = self._make_db_with_jobs(existing_jobs)
 
         # Try to book Tuesday 9am — should conflict
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time='2026-03-24T09:00:00',  # Tuesday
             duration_minutes=60,
             company_id=1
@@ -147,8 +147,8 @@ class TestWorkerAvailabilityMultiDay:
         db = self._make_db_with_jobs(existing_jobs)
 
         # Try to book next Monday — should be fine
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time='2026-03-30T09:00:00',  # Next Monday
             duration_minutes=60,
             company_id=1
@@ -168,8 +168,8 @@ class TestWorkerAvailabilityMultiDay:
         db = self._make_db_with_jobs(existing_jobs)
 
         # Wednesday of the same week should conflict
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time='2026-03-25T09:00:00',  # Wednesday
             duration_minutes=60,
             company_id=1
@@ -189,8 +189,8 @@ class TestWorkerAvailabilityMultiDay:
         db = self._make_db_with_jobs(existing_jobs)
 
         # Tuesday should be free
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time='2026-03-24T10:00:00',  # Tuesday
             duration_minutes=60,
             company_id=1
@@ -210,8 +210,8 @@ class TestWorkerAvailabilityMultiDay:
         db = self._make_db_with_jobs(existing_jobs)
 
         # Same day afternoon should conflict
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time='2026-03-23T14:00:00',  # Monday 2pm
             duration_minutes=60,
             company_id=1
@@ -219,8 +219,8 @@ class TestWorkerAvailabilityMultiDay:
         assert result['available'] is False
 
         # Next day should be free
-        result = db.check_worker_availability(
-            worker_id=1,
+        result = db.check_employee_availability(
+            employee_id=1,
             appointment_time='2026-03-24T09:00:00',  # Tuesday
             duration_minutes=60,
             company_id=1
@@ -304,7 +304,7 @@ class TestFindJobsOnDayMultiDay:
             'duration_minutes': 4320,  # 3 days
             'service_type': 'Renovation',
             'status': 'confirmed',
-            'assigned_worker_ids': [],
+            'assigned_employee_ids': [],
             'calendar_event_id': None
         }]
 
@@ -329,7 +329,7 @@ class TestFindJobsOnDayMultiDay:
             'duration_minutes': 2880,  # 2 days
             'service_type': 'Renovation',
             'status': 'confirmed',
-            'assigned_worker_ids': [],
+            'assigned_employee_ids': [],
             'calendar_event_id': None
         }]
 
@@ -350,7 +350,7 @@ class TestFindJobsOnDayMultiDay:
             'duration_minutes': 60,
             'service_type': 'Quick Fix',
             'status': 'confirmed',
-            'assigned_worker_ids': [],
+            'assigned_employee_ids': [],
             'calendar_event_id': None
         }]
 
@@ -376,7 +376,7 @@ class TestFindJobsOnDayMultiDay:
             'duration_minutes': 10080,  # 1 week
             'service_type': 'Major Renovation',
             'status': 'confirmed',
-            'assigned_worker_ids': [],
+            'assigned_employee_ids': [],
             'calendar_event_id': None
         }]
 

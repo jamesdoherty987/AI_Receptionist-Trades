@@ -13,8 +13,8 @@ Allow: /llms-full.txt
 # Block authenticated/private areas
 Disallow: /dashboard
 Disallow: /settings
-Disallow: /worker-dashboard
-Disallow: /worker/
+Disallow: /employee/dashboard
+Disallow: /employee/
 Disallow: /forgot-password
 Disallow: /reset-password
 Disallow: /assets/
@@ -40,7 +40,7 @@ Allow: /llms.txt
 Allow: /llms-full.txt
 Disallow: /dashboard
 Disallow: /settings
-Disallow: /worker/
+Disallow: /employee/
 
 User-agent: ChatGPT-User
 Allow: /
@@ -48,7 +48,7 @@ Allow: /llms.txt
 Allow: /llms-full.txt
 Disallow: /dashboard
 Disallow: /settings
-Disallow: /worker/
+Disallow: /employee/
 
 User-agent: Google-Extended
 Allow: /

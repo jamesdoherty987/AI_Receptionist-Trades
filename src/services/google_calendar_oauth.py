@@ -355,7 +355,7 @@ class CompanyGoogleCalendar:
 
     def create_all_day_event(self, summary: str, start_date, end_date,
                              description: str = '') -> Optional[dict]:
-        """Create an all-day calendar event (e.g. worker time-off).
+        """Create an all-day calendar event (e.g. employee time-off).
         
         Args:
             summary: Event title (e.g. "🏖️ John - Vacation")

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { workerSetPassword } from '../services/api';
+import { employeeSetPassword } from '../services/api';
 import './Auth.css';
 
-function WorkerSetPassword() {
+function EmployeeSetPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('token');
@@ -41,7 +41,7 @@ function WorkerSetPassword() {
     setError('');
 
     try {
-      const response = await workerSetPassword(token, formData.password);
+      const response = await employeeSetPassword(token, formData.password);
       if (response.data.success) {
         setSuccess(true);
       } else {
@@ -94,7 +94,7 @@ function WorkerSetPassword() {
         <div className="auth-card">
           <div className="auth-header">
             <h1>{success ? 'You\'re all set!' : 'Set your password'}</h1>
-            <p>{success ? 'You can now log in to the worker portal.' : 'Create a password to access your jobs and schedule.'}</p>
+            <p>{success ? 'You can now log in to the employee portal.' : 'Create a password to access your jobs and schedule.'}</p>
           </div>
 
           {error && (
@@ -112,11 +112,11 @@ function WorkerSetPassword() {
               <p className="reset-success-text">Your password has been set.</p>
               <button
                 className="auth-submit"
-                onClick={() => navigate('/worker/login')}
+                onClick={() => navigate('/employee/login')}
                 style={{ marginTop: '1rem' }}
               >
                 <i className="fas fa-sign-in-alt"></i>
-                Go to Worker Login
+                Go to Employee Login
               </button>
             </div>
           ) : (
@@ -190,4 +190,4 @@ function WorkerSetPassword() {
   );
 }
 
-export default WorkerSetPassword;
+export default EmployeeSetPassword;

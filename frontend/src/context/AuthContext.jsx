@@ -33,28 +33,28 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem('authToken');
     console.log('[AUTH] checkAuth called, token exists:', !!token);
     
-    // Determine if this is a worker session from cached user
-    let isWorkerSession = false;
+    // Determine if this is an employee session from cached user
+    let isEmployeeSession = false;
     try {
       const cachedUser = localStorage.getItem('authUser');
-      isWorkerSession = cachedUser ? JSON.parse(cachedUser)?.role === 'worker' : false;
+      isEmployeeSession = cachedUser ? JSON.parse(cachedUser)?.role === 'employee' : false;
     } catch {
-      isWorkerSession = false;
+      isEmployeeSession = false;
     }
-    const authEndpoint = isWorkerSession ? '/api/worker/auth/me' : '/api/auth/me';
+    const authEndpoint = isEmployeeSession ? '/api/employee/auth/me' : '/api/auth/me';
     
     try {
       const response = await api.get(authEndpoint);
       console.log(`[AUTH] ${authEndpoint} response:`, response.data.authenticated);
       
       if (response.data.authenticated) {
-        const userData = isWorkerSession 
-          ? { ...response.data.user, role: 'worker' }
+        const userData = isEmployeeSession 
+          ? { ...response.data.user, role: 'employee' }
           : response.data.user;
         setUser(userData);
-        setSubscription(isWorkerSession ? null : (response.data.subscription || null));
+        setSubscription(isEmployeeSession ? null : (response.data.subscription || null));
         localStorage.setItem('authUser', JSON.stringify(userData));
-        if (!isWorkerSession && response.data.subscription) {
+        if (!isEmployeeSession && response.data.subscription) {
           localStorage.setItem('authSubscription', JSON.stringify(response.data.subscription));
         }
       } else {
@@ -171,9 +171,9 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    // Determine if this is a worker session to call the right endpoint
-    const isWorkerSession = user?.role === 'worker';
-    const logoutEndpoint = isWorkerSession ? '/api/worker/auth/logout' : '/api/auth/logout';
+    // Determine if this is an employee session to call the right endpoint
+    const isEmployeeSession = user?.role === 'employee';
+    const logoutEndpoint = isEmployeeSession ? '/api/employee/auth/logout' : '/api/auth/logout';
     try {
       await api.post(logoutEndpoint);
     } catch (error) {
@@ -248,19 +248,19 @@ export function AuthProvider({ children }) {
     return 0;
   };
 
-  // --- Worker auth ---
-  const workerLogin = async (email, password) => {
+  // --- Employee auth ---
+  const employeeLogin = async (email, password) => {
     try {
-      const response = await api.post('/api/worker/auth/login', { email, password });
+      const response = await api.post('/api/employee/auth/login', { email, password });
       if (response.data.success) {
         queryClient.clear();
-        const userData = { ...response.data.user, role: 'worker' };
+        const userData = { ...response.data.user, role: 'employee' };
         setUser(userData);
         localStorage.setItem('authUser', JSON.stringify(userData));
         if (response.data.auth_token) {
           localStorage.setItem('authToken', response.data.auth_token);
         }
-        // Workers don't have subscriptions
+        // Employees don't have subscriptions
         setSubscription(null);
         localStorage.removeItem('authSubscription');
         return { success: true };
@@ -272,7 +272,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const isWorker = !!user && user.role === 'worker';
+  const isEmployee = !!user && user.role === 'employee';
 
   const value = {
     user,
@@ -280,7 +280,7 @@ export function AuthProvider({ children }) {
     loading,
     initialized,
     isAuthenticated: !!user,
-    isWorker,
+    isEmployee,
     hasActiveSubscription,
     getSubscriptionTier,
     getSubscriptionPlan,
@@ -291,7 +291,7 @@ export function AuthProvider({ children }) {
     updateProfile,
     changePassword,
     checkAuth,
-    workerLogin
+    employeeLogin
   };
 
   return (

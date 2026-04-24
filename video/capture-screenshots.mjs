@@ -53,12 +53,12 @@ async function main() {
   console.log('✅ Dashboard detected! Starting screenshot capture...\n');
 
   // Tab indices based on Dashboard.jsx tab order:
-  // 0=Jobs, 1=Calls, 2=Calendar, 3=Workers, 4=Customers, 5=Services, 6=Materials, 7=Finances, 8=Insights
+  // 0=Jobs, 1=Calls, 2=Calendar, 3=Employees, 4=Customers, 5=Services, 6=Materials, 7=Finances, 8=Insights
   const tabs = [
     { index: 0, name: 'jobs', label: 'Jobs' },
     { index: 1, name: 'calls', label: 'Calls' },
     { index: 2, name: 'calendar', label: 'Calendar' },
-    { index: 3, name: 'workers', label: 'Workers' },
+    { index: 3, name: 'employees', label: 'Employees' },
     { index: 4, name: 'customers', label: 'Customers' },
     { index: 5, name: 'services', label: 'Services' },
     { index: 6, name: 'materials', label: 'Materials' },

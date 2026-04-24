@@ -668,7 +668,7 @@ ALLOWED_COMPANY_FIELDS = frozenset([
     'logo_url', 'business_hours', 'ai_enabled', 'ai_schedule', 'ai_schedule_override'
 ])
 
-ALLOWED_WORKER_FIELDS = frozenset([
+ALLOWED_EMPLOYEE_FIELDS = frozenset([
     'name', 'phone', 'email', 'trade_specialty', 'status', 'image_url',
     'weekly_hours_expected'
 ])

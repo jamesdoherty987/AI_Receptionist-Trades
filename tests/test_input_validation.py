@@ -60,27 +60,27 @@ class TestClientValidation:
             "Client update should validate name is not empty"
 
 
-class TestWorkerValidation:
-    """Test worker creation and update validation"""
+class TestEmployeeValidation:
+    """Test employee creation and update validation"""
     
-    def test_worker_creation_requires_name(self):
-        """Worker creation should fail without name"""
+    def test_employee_creation_requires_name(self):
+        """Employee creation should fail without name"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
-        assert "Worker name is required" in content, \
-            "Worker creation should validate name is required"
+        assert "Employee name is required" in content, \
+            "Employee creation should validate name is required"
     
-    def test_worker_optional_fields_sanitized(self):
+    def test_employee_optional_fields_sanitized(self):
         """Phone, email, trade_specialty should be sanitized"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
         # Check that optional fields are handled
         assert "trade_specialty" in content, \
-            "Worker should have trade_specialty field"
+            "Employee should have trade_specialty field"
     
-    def test_worker_weekly_hours_validation(self):
+    def test_employee_weekly_hours_validation(self):
         """Weekly hours should be validated (0-168 range)"""
         with open('src/app.py', 'r') as f:
             content = f.read()
@@ -90,7 +90,7 @@ class TestWorkerValidation:
                "hours < 0 or hours > 168" in content, \
             "Weekly hours should be validated in 0-168 range"
     
-    def test_worker_weekly_hours_default(self):
+    def test_employee_weekly_hours_default(self):
         """Weekly hours should default to 40 if invalid"""
         with open('src/app.py', 'r') as f:
             content = f.read()
@@ -98,14 +98,14 @@ class TestWorkerValidation:
         assert "40.0" in content or "40" in content, \
             "Weekly hours should default to 40"
     
-    def test_worker_update_validates_name(self):
-        """Worker update should validate name if provided"""
+    def test_employee_update_validates_name(self):
+        """Employee update should validate name if provided"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
         # Check that PUT endpoint validates name
-        assert "Worker name is required" in content, \
-            "Worker update should validate name is not empty"
+        assert "Employee name is required" in content, \
+            "Employee update should validate name is not empty"
 
 
 class TestServiceValidation:
@@ -203,50 +203,50 @@ class TestBookingValidation:
             "Job address should be sanitized"
 
 
-class TestWorkerAvailabilityChecking:
-    """Test worker availability checking logic"""
+class TestEmployeeAvailabilityChecking:
+    """Test employee availability checking logic"""
     
-    def test_check_worker_availability_function_exists(self):
-        """check_worker_availability should exist in database wrapper"""
+    def test_check_employee_availability_function_exists(self):
+        """check_employee_availability should exist in database wrapper"""
         with open('src/services/db_postgres_wrapper.py', 'r') as f:
             content = f.read()
         
-        assert "def check_worker_availability" in content, \
-            "check_worker_availability function should exist"
+        assert "def check_employee_availability" in content, \
+            "check_employee_availability function should exist"
     
-    def test_worker_availability_uses_buffer(self):
-        """Worker availability should use buffer time"""
+    def test_employee_availability_uses_buffer(self):
+        """Employee availability should use buffer time"""
         with open('src/services/db_postgres_wrapper.py', 'r') as f:
             content = f.read()
         
         # Check for buffer time in availability check
         assert "buffer" in content.lower() or "15" in content, \
-            "Worker availability should consider buffer time"
+            "Employee availability should consider buffer time"
     
-    def test_worker_availability_returns_safe_default_on_error(self):
+    def test_employee_availability_returns_safe_default_on_error(self):
         """On error, availability should return False (safe default)"""
         with open('src/services/db_postgres_wrapper.py', 'r') as f:
             content = f.read()
         
         # Check for error handling that returns False
         assert "'available': False" in content or '"available": False' in content, \
-            "Worker availability should return False on error"
+            "Employee availability should return False on error"
     
-    def test_assign_worker_endpoint_checks_availability(self):
-        """Assign worker endpoint should check availability"""
+    def test_assign_employee_endpoint_checks_availability(self):
+        """Assign employee endpoint should check availability"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
-        assert "check_worker_availability" in content, \
-            "Assign worker endpoint should check availability"
+        assert "check_employee_availability" in content, \
+            "Assign employee endpoint should check availability"
     
-    def test_assign_worker_supports_force_option(self):
-        """Assign worker should support force option to bypass availability"""
+    def test_assign_employee_supports_force_option(self):
+        """Assign employee should support force option to bypass availability"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
         assert "force" in content and "force_assign" in content, \
-            "Assign worker should support force option"
+            "Assign employee should support force option"
 
 
 class TestServiceDurationAndBuffer:
@@ -366,13 +366,13 @@ class TestEdgeCases:
         assert "duration < 1" in content or "duration > 0" in content, \
             "Negative durations should be handled"
     
-    def test_invalid_worker_id_handled(self):
-        """Invalid worker_id should be handled gracefully"""
+    def test_invalid_employee_id_handled(self):
+        """Invalid employee_id should be handled gracefully"""
         with open('src/app.py', 'r') as f:
             content = f.read()
         
-        assert "Invalid worker_id" in content, \
-            "Invalid worker_id should return error"
+        assert "Invalid employee_id" in content, \
+            "Invalid employee_id should return error"
     
     def test_none_values_dont_crash(self):
         """None values should not cause crashes"""
@@ -412,61 +412,61 @@ class TestFrontendValidation:
         assert "required fields" in content.lower() or "client_id" in content, \
             "AddJobModal should validate required fields"
     
-    def test_add_job_modal_has_worker_selection(self):
-        """AddJobModal should have worker selection"""
+    def test_add_job_modal_has_employee_selection(self):
+        """AddJobModal should have employee selection"""
         with open('frontend/src/components/modals/AddJobModal.jsx', 'r') as f:
             content = f.read()
         
-        assert "worker_id" in content and "handleWorkerSelect" in content, \
-            "AddJobModal should have worker selection"
+        assert "employee_id" in content and "handleEmployeeSelect" in content, \
+            "AddJobModal should have employee selection"
     
-    def test_add_job_modal_checks_worker_availability(self):
-        """AddJobModal should check worker availability"""
+    def test_add_job_modal_checks_employee_availability(self):
+        """AddJobModal should check employee availability"""
         with open('frontend/src/components/modals/AddJobModal.jsx', 'r') as f:
             content = f.read()
         
-        assert "checkWorkerAvailability" in content or "workerAvailability" in content, \
-            "AddJobModal should check worker availability"
+        assert "checkEmployeeAvailability" in content or "employeeAvailability" in content, \
+            "AddJobModal should check employee availability"
 
 
-class TestWorkersTabStatus:
-    """Test workers tab status display"""
+class TestEmployeesTabStatus:
+    """Test employees tab status display"""
     
-    def test_workers_tab_uses_assigned_worker_ids(self):
-        """WorkersTab should use assigned_worker_ids array"""
-        with open('frontend/src/components/dashboard/WorkersTab.jsx', 'r') as f:
+    def test_employees_tab_uses_assigned_employee_ids(self):
+        """EmployeesTab should use assigned_employee_ids array"""
+        with open('frontend/src/components/dashboard/EmployeesTab.jsx', 'r') as f:
             content = f.read()
         
-        assert "assigned_worker_ids" in content, \
-            "WorkersTab should use assigned_worker_ids array"
+        assert "assigned_employee_ids" in content, \
+            "EmployeesTab should use assigned_employee_ids array"
     
-    def test_workers_tab_shows_busy_status(self):
-        """WorkersTab should show busy/available status"""
-        with open('frontend/src/components/dashboard/WorkersTab.jsx', 'r') as f:
+    def test_employees_tab_shows_busy_status(self):
+        """EmployeesTab should show busy/available status"""
+        with open('frontend/src/components/dashboard/EmployeesTab.jsx', 'r') as f:
             content = f.read()
         
         assert "isBusy" in content and "available" in content.lower(), \
-            "WorkersTab should show busy/available status"
+            "EmployeesTab should show busy/available status"
     
-    def test_workers_tab_shows_jobs_today(self):
-        """WorkersTab should show jobs today count"""
-        with open('frontend/src/components/dashboard/WorkersTab.jsx', 'r') as f:
+    def test_employees_tab_shows_jobs_today(self):
+        """EmployeesTab should show jobs today count"""
+        with open('frontend/src/components/dashboard/EmployeesTab.jsx', 'r') as f:
             content = f.read()
         
         assert "jobsToday" in content, \
-            "WorkersTab should show jobs today count"
+            "EmployeesTab should show jobs today count"
 
 
-class TestDatabaseAssignedWorkerIds:
-    """Test that database returns assigned_worker_ids array"""
+class TestDatabaseAssignedEmployeeIds:
+    """Test that database returns assigned_employee_ids array"""
     
-    def test_get_all_bookings_returns_assigned_worker_ids(self):
-        """get_all_bookings should return assigned_worker_ids array"""
+    def test_get_all_bookings_returns_assigned_employee_ids(self):
+        """get_all_bookings should return assigned_employee_ids array"""
         with open('src/services/db_postgres_wrapper.py', 'r') as f:
             content = f.read()
         
-        assert "assigned_worker_ids" in content and "ARRAY_AGG" in content, \
-            "get_all_bookings should return assigned_worker_ids using ARRAY_AGG"
+        assert "assigned_employee_ids" in content and "ARRAY_AGG" in content, \
+            "get_all_bookings should return assigned_employee_ids using ARRAY_AGG"
 
 
 if __name__ == "__main__":

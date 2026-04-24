@@ -35,7 +35,7 @@ function TermsOfService() {
           <ul>
             <li>AI phone receptionist that answers calls on your behalf</li>
             <li>Appointment booking and scheduling</li>
-            <li>Customer and worker management</li>
+            <li>Customer and employee management</li>
             <li>Google Calendar integration</li>
             <li>Invoicing and financial tracking</li>
             <li>SMS and email notifications</li>

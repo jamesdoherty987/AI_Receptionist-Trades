@@ -1573,7 +1573,7 @@ TOOL RULES:
         
         # Prepare services for tool execution
         # ARCHITECTURE: Database calendar is ALWAYS the primary scheduling engine.
-        # It handles workers, availability, overlapping jobs, etc.
+        # It handles employees, availability, overlapping jobs, etc.
         # Google Calendar is a SYNC TARGET — events are pushed there after booking
         # for visibility and third-party integrations (e.g., Tradify).
         calendar = None
@@ -2157,13 +2157,13 @@ TOOL RULES:
                             elif days_found == 1:
                                 direct_response = f"{natural_summary}. Does that day work?"
                             else:
-                                direct_response = message or "The assigned worker has no availability then. Would you like to speak with someone?"
+                                direct_response = message or "The assigned employee has no availability then. Would you like to speak with someone?"
                         elif message:
                             direct_response = message
                         else:
-                            direct_response = "The assigned worker has no availability in that period. Would you like to try different dates?"
+                            direct_response = "The assigned employee has no availability in that period. Would you like to try different dates?"
                     else:
-                        direct_response = result_content.get("error", "I couldn't check the worker's availability. What dates would you like to try?")
+                        direct_response = result_content.get("error", "I couldn't check the employee's availability. What dates would you like to try?")
                     
                     print(f"   ⚡ [DIRECT] search_reschedule_availability -> '{direct_response[:50]}...'")
                 

@@ -66,7 +66,7 @@ function AdminPanel() {
     custom_pro_price: '', custom_pro_stripe_price_id: '',
     included_minutes: '', overage_rate_cents: '',
   });
-  const [newWorkers, setNewWorkers] = useState([]);
+  const [newEmployees, setNewEmployees] = useState([]);
   const [newServices, setNewServices] = useState([]);
   const [availablePhones, setAvailablePhones] = useState([]);
   const [phonesLoading, setPhonesLoading] = useState(false);
@@ -273,7 +273,7 @@ function AdminPanel() {
     try {
       const payload = {
         ...createForm, frontend_url: window.location.origin,
-        workers: newWorkers.filter(w => w.name), services: newServices.filter(s => s.name),
+        employees: newEmployees.filter(w => w.name), services: newServices.filter(s => s.name),
       };
       const res = await adminFetch('/api/admin/create-account', { method: 'POST', body: JSON.stringify(payload) });
       let data;
@@ -292,7 +292,7 @@ function AdminPanel() {
           custom_pro_price: '', custom_pro_stripe_price_id: '',
           included_minutes: '', overage_rate_cents: '',
         });
-        setNewWorkers([]); setNewServices([]);
+        setNewEmployees([]); setNewServices([]);
         loadAccounts(); loadPhones(); loadOverview();
       } else { showToast(data.error || `Failed (${res.status})`); }
     } catch (err) { showToast('Failed to create account: ' + (err.message || 'network error')); }
@@ -697,7 +697,7 @@ function AdminPanel() {
                   <StatCard icon="credit-card" label="Stripe Payments" value={companyInsights.insights.booking_stats.stripe_payments} sub={`of ${companyInsights.insights.booking_stats.paid_count} paid jobs`} color="#f472b6" />
                   <StatCard icon="phone-alt" label="AI Calls" value={companyInsights.insights.call_stats.total} sub={`${companyInsights.insights.call_stats.booked} → bookings`} color="#fbbf24" />
                   <StatCard icon="users" label="Clients" value={companyInsights.insights.client_count} color="#06b6d4" />
-                  <StatCard icon="hard-hat" label="Workers" value={companyInsights.insights.worker_count} color="#a78bfa" />
+                  <StatCard icon="hard-hat" label="Employees" value={companyInsights.insights.employee_count} color="#a78bfa" />
                   <StatCard icon="concierge-bell" label="Services" value={companyInsights.insights.service_count} color="#fb923c" />
                   <StatCard icon="phone-slash" label="Lost Jobs" value={companyInsights.insights.call_stats.lost_jobs} color="#f87171" />
                 </div>
@@ -841,22 +841,22 @@ function AdminPanel() {
                   <div className="ap-toggles-grid">
                     {(() => {
                       const industryType = companyInsights.company.industry_type || 'trades';
-                      // Industry-aware defaults: hide materials for non-trades industries
+                      // Industry-aware defaults: inventory enabled for all industries
                       const industryDefaults = {
-                        trades: { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: true, finances: true, insights: true, reviews: true },
-                        salon: { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: false, finances: true, insights: true, reviews: true },
-                        cleaning: { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: true, finances: true, insights: true, reviews: true },
-                        restaurant: { jobs: true, calls: true, calendar: true, workers: true, crm: true, services: true, materials: false, finances: true, insights: true, reviews: true },
+                        trades: { jobs: true, calls: true, calendar: true, employees: true, crm: true, services: true, inventory: true, finances: true, insights: true, reviews: true },
+                        salon: { jobs: true, calls: true, calendar: true, employees: true, crm: true, services: true, inventory: true, finances: true, insights: true, reviews: true },
+                        cleaning: { jobs: true, calls: true, calendar: true, employees: true, crm: true, services: true, inventory: true, finances: true, insights: true, reviews: true },
+                        restaurant: { jobs: true, calls: true, calendar: true, employees: true, crm: true, services: true, inventory: true, finances: true, insights: true, reviews: true },
                       };
                       const defaultVis = industryDefaults[industryType] || industryDefaults.trades;
                       const vis = { ...defaultVis, ...(companyInsights.company.admin_tab_visibility || {}) };
                       
                       // Industry-aware tab labels
                       const industryLabels = {
-                        trades: { jobs: 'Jobs', workers: 'Workers' },
-                        salon: { jobs: 'Appointments', workers: 'Stylists' },
-                        cleaning: { jobs: 'Jobs', workers: 'Cleaners' },
-                        restaurant: { jobs: 'Reservations', workers: 'Staff' },
+                        trades: { jobs: 'Jobs', employees: 'Employees' },
+                        salon: { jobs: 'Appointments', employees: 'Stylists' },
+                        cleaning: { jobs: 'Jobs', employees: 'Cleaners' },
+                        restaurant: { jobs: 'Reservations', employees: 'Staff' },
                       };
                       const labels = industryLabels[industryType] || industryLabels.trades;
                       
@@ -864,10 +864,10 @@ function AdminPanel() {
                         ['jobs', labels.jobs, 'fas fa-briefcase'],
                         ['calls', 'Calls', 'fas fa-phone-alt'],
                         ['calendar', 'Calendar', 'fas fa-calendar'],
-                        ['workers', labels.workers, 'fas fa-hard-hat'],
+                        ['employees', labels.employees, 'fas fa-hard-hat'],
                         ['crm', 'CRM', 'fas fa-address-book'],
                         ['services', 'Services', 'fas fa-concierge-bell'],
-                        ['materials', 'Materials', 'fas fa-cubes'],
+                        ['inventory', 'Inventory', 'fas fa-boxes-stacked'],
                         ['finances', 'Finances', 'fas fa-dollar-sign'],
                         ['insights', 'Insights', 'fas fa-chart-pie'],
                         ['reviews', 'Reviews', 'fas fa-star'],
@@ -992,7 +992,7 @@ function AdminPanel() {
                       ['show_invoice_buttons', 'Invoice Buttons', companyInsights.company.show_invoice_buttons],
                       ['send_confirmation_sms', 'Confirmation SMS', companyInsights.company.send_confirmation_sms],
                       ['send_reminder_sms', 'Reminder SMS', companyInsights.company.send_reminder_sms],
-                      ['gcal_invite_workers', 'GCal Worker Invites', companyInsights.company.gcal_invite_workers],
+                      ['gcal_invite_employees', 'GCal Employee Invites', companyInsights.company.gcal_invite_employees],
                     ].map(([key, label, val]) => (
                       <div key={key} className="ap-toggle-item clickable" onClick={() => handleAdminToggle(selectedCompanyId, key, val === false)} style={{ cursor: 'pointer' }}>
                         <span className={`ap-toggle-dot ${val !== false ? 'on' : 'off'}`}></span>
@@ -1276,18 +1276,18 @@ function AdminPanel() {
               </div>
 
               <div className="ap-card">
-                <h3><i className="fas fa-hard-hat"></i> Workers ({newWorkers.length})</h3>
-                {newWorkers.map((w, i) => (
+                <h3><i className="fas fa-hard-hat"></i> Employees ({newEmployees.length})</h3>
+                {newEmployees.map((w, i) => (
                   <div key={i} className="ap-inline-row">
-                    <input placeholder="Name *" value={w.name} onChange={e => { const u = [...newWorkers]; u[i] = {...u[i], name: e.target.value}; setNewWorkers(u); }} />
-                    <input placeholder="Phone" value={w.phone} onChange={e => { const u = [...newWorkers]; u[i] = {...u[i], phone: e.target.value}; setNewWorkers(u); }} />
-                    <input placeholder="Email" value={w.email || ''} onChange={e => { const u = [...newWorkers]; u[i] = {...u[i], email: e.target.value}; setNewWorkers(u); }} />
-                    <input placeholder="Specialty" value={w.trade_specialty} onChange={e => { const u = [...newWorkers]; u[i] = {...u[i], trade_specialty: e.target.value}; setNewWorkers(u); }} />
-                    <button type="button" className="ap-btn danger small" onClick={() => setNewWorkers(newWorkers.filter((_, j) => j !== i))}><i className="fas fa-trash"></i></button>
+                    <input placeholder="Name *" value={w.name} onChange={e => { const u = [...newEmployees]; u[i] = {...u[i], name: e.target.value}; setNewEmployees(u); }} />
+                    <input placeholder="Phone" value={w.phone} onChange={e => { const u = [...newEmployees]; u[i] = {...u[i], phone: e.target.value}; setNewEmployees(u); }} />
+                    <input placeholder="Email" value={w.email || ''} onChange={e => { const u = [...newEmployees]; u[i] = {...u[i], email: e.target.value}; setNewEmployees(u); }} />
+                    <input placeholder="Specialty" value={w.trade_specialty} onChange={e => { const u = [...newEmployees]; u[i] = {...u[i], trade_specialty: e.target.value}; setNewEmployees(u); }} />
+                    <button type="button" className="ap-btn danger small" onClick={() => setNewEmployees(newEmployees.filter((_, j) => j !== i))}><i className="fas fa-trash"></i></button>
                   </div>
                 ))}
-                <button type="button" className="ap-btn secondary small" onClick={() => setNewWorkers([...newWorkers, { name: '', phone: '', email: '', trade_specialty: '' }])}>
-                  <i className="fas fa-plus"></i> Add Worker
+                <button type="button" className="ap-btn secondary small" onClick={() => setNewEmployees([...newEmployees, { name: '', phone: '', email: '', trade_specialty: '' }])}>
+                  <i className="fas fa-plus"></i> Add Employee
                 </button>
               </div>
 

@@ -123,20 +123,20 @@ def seed_database():
             except Exception as e:
                 print(f"   ⚠️  Failed to create booking: {e}")
     
-    print(f"\n👷 Creating sample workers...")
+    print(f"\n👷 Creating sample employees...")
     
-    # Sample workers
-    workers = [
+    # Sample employees
+    employees = [
         {"name": "Tom Anderson", "phone": "+353871111111", "email": "tom@company.com", "trade_specialty": "Plumbing"},
         {"name": "Lisa Brown", "phone": "+353872222222", "email": "lisa@company.com", "trade_specialty": "Electrical"},
     ]
     
-    for worker in workers:
+    for employee in employees:
         try:
-            db.add_worker(**worker)
-            print(f"   ✅ Created: {worker['name']} ({worker['trade_specialty']})")
+            db.add_employee(**employee)
+            print(f"   ✅ Created: {employee['name']} ({employee['trade_specialty']})")
         except Exception as e:
-            print(f"   ⚠️  Failed to create worker: {e}")
+            print(f"   ⚠️  Failed to create employee: {e}")
     
     # Final stats
     print("\n" + "="*60)
@@ -144,11 +144,11 @@ def seed_database():
     print("="*60)
     final_clients = db.get_all_clients()
     final_bookings = db.get_all_bookings()
-    final_workers = db.get_all_workers()
+    final_employees = db.get_all_employees()
     
     print(f"   Clients: {len(final_clients)}")
     print(f"   Bookings: {len(final_bookings)}")
-    print(f"   Workers: {len(final_workers)}")
+    print(f"   Employees: {len(final_employees)}")
     print("\n✅ Database seeding complete!")
     print("="*60 + "\n")
 

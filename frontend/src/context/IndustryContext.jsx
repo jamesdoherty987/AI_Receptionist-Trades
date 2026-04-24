@@ -2,7 +2,7 @@
  * IndustryContext — Provides industry profile (terminology, features, tabs, icons)
  * to the entire app via React context.
  *
- * Auth-aware: works for admins, workers, and unauthenticated users (falls back safely).
+ * Auth-aware: works for admins, employees, and unauthenticated users (falls back safely).
  *
  * Usage in any component:
  *   import { useIndustry } from '../context/IndustryContext';
@@ -10,7 +10,7 @@
  *   <h2>{terminology.jobs}</h2>  // "Jobs" or "Appointments" depending on industry
  *
  * Data sources (in priority order):
- *   1. Worker login    → uses industry_profile from AuthContext user object
+ *   1. Employee login    → uses industry_profile from AuthContext user object
  *   2. Admin login     → fetches /api/settings/business (cached)
  *   3. Not logged in   → uses default 'trades' profile
  *
@@ -42,11 +42,11 @@ function normaliseBackendProfile(backendProfile, localProfile, availableIndustri
       jobPhotos: features.job_photos ?? localProfile.features.jobPhotos,
       multiDayJobs: features.multi_day_jobs ?? localProfile.features.multiDayJobs,
     },
-    tabs: localProfile.tabs,   // Tab visibility is frontend-only config
+    tabs: localProfile.tabs,   // Tab visibility is frontend-only config (uses 'inventory' key)
     icons: localProfile.icons,
     onboarding: {
-      workerIcon: backendProfile.onboarding?.worker_icon || localProfile.onboarding.workerIcon,
-      workerLabel: backendProfile.onboarding?.worker_label || localProfile.onboarding.workerLabel,
+      employeeIcon: backendProfile.onboarding?.employee_icon || localProfile.onboarding.employeeIcon,
+      employeeLabel: backendProfile.onboarding?.employee_label || localProfile.onboarding.employeeLabel,
       showMaterialsStep: backendProfile.onboarding?.show_materials_step ?? localProfile.onboarding.showMaterialsStep,
       companyContextPlaceholder: backendProfile.onboarding?.company_context_placeholder || localProfile.onboarding.companyContextPlaceholder,
     },
@@ -55,12 +55,12 @@ function normaliseBackendProfile(backendProfile, localProfile, availableIndustri
 }
 
 // Resolve the active profile based on available data
-function resolveProfile({ settings, workerUser }) {
-  // Priority 1: Worker session — use their company's industry from auth endpoint
-  if (workerUser?.role === 'worker' && workerUser?.industry_profile) {
-    const industryType = workerUser.industry_type || 'trades';
+function resolveProfile({ settings, employeeUser }) {
+  // Priority 1: Employee session — use their company's industry from auth endpoint
+  if (employeeUser?.role === 'employee' && employeeUser?.industry_profile) {
+    const industryType = employeeUser.industry_type || 'trades';
     const localProfile = industryProfiles[industryType] || industryProfiles.trades;
-    const normalized = normaliseBackendProfile(workerUser.industry_profile, localProfile, []);
+    const normalized = normaliseBackendProfile(employeeUser.industry_profile, localProfile, []);
     return { industryType, ...normalized };
   }
 
@@ -87,11 +87,11 @@ function resolveProfile({ settings, workerUser }) {
 }
 
 export function IndustryProvider({ children }) {
-  const { user, isAuthenticated, isWorker } = useAuth();
+  const { user, isAuthenticated, isEmployee } = useAuth();
 
   // Only fetch admin settings when the user is a logged-in admin.
-  // Workers get their industry from the auth response, not from settings.
-  const shouldFetchAdminSettings = isAuthenticated && !isWorker;
+  // Employees get their industry from the auth response, not from settings.
+  const shouldFetchAdminSettings = isAuthenticated && !isEmployee;
 
   const { data: settings } = useQuery({
     queryKey: ['business-settings'],
@@ -104,8 +104,8 @@ export function IndustryProvider({ children }) {
   });
 
   const profile = useMemo(
-    () => resolveProfile({ settings, workerUser: isWorker ? user : null }),
-    [settings, user, isWorker]
+    () => resolveProfile({ settings, employeeUser: isEmployee ? user : null }),
+    [settings, user, isEmployee]
   );
 
   return (
@@ -119,7 +119,7 @@ export function useIndustry() {
   const ctx = useContext(IndustryContext);
   if (!ctx) {
     // Safety fallback — shouldn't happen if provider is mounted above
-    return resolveProfile({ settings: null, workerUser: null });
+    return resolveProfile({ settings: null, employeeUser: null });
   }
   return ctx;
 }

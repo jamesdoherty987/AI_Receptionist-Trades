@@ -18,7 +18,7 @@ DEFAULT_TAB_VISIBILITY = {
     'jobs': True,
     'calls': True,
     'calendar': True,
-    'workers': True,
+    'employees': True,
     'crm': True,
     'services': True,
     'materials': True,

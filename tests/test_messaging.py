@@ -1,5 +1,5 @@
 """
-Tests for the owner-worker messaging feature.
+Tests for the owner-employee messaging feature.
 Covers: API endpoints, DB methods, security, edge cases.
 """
 import pytest
@@ -17,7 +17,7 @@ class FakeDB:
         self.messages = []
         self.notifications = []
         self._next_id = 1
-        self.workers = {
+        self.employees = {
             1: {'id': 1, 'name': 'Alice', 'company_id': 100},
             2: {'id': 2, 'name': 'Bob', 'company_id': 100},
             3: {'id': 3, 'name': 'Charlie', 'company_id': 200},  # different company
@@ -27,12 +27,12 @@ class FakeDB:
             200: {'id': 200, 'business_name': 'Other Co'},
         }
 
-    def send_message(self, company_id, worker_id, sender_type, content):
+    def send_message(self, company_id, employee_id, sender_type, content):
         from datetime import datetime
         msg = {
             'id': self._next_id,
             'company_id': company_id,
-            'worker_id': worker_id,
+            'employee_id': employee_id,
             'sender_type': sender_type,
             'content': content,
             'read': False,
@@ -42,19 +42,19 @@ class FakeDB:
         self.messages.append(msg)
         return msg
 
-    def get_conversation(self, company_id, worker_id, limit=50, before_id=None):
+    def get_conversation(self, company_id, employee_id, limit=50, before_id=None):
         msgs = [m for m in self.messages
-                if m['company_id'] == company_id and m['worker_id'] == worker_id]
+                if m['company_id'] == company_id and m['employee_id'] == employee_id]
         if before_id:
             msgs = [m for m in msgs if m['id'] < before_id]
         msgs.sort(key=lambda x: x['created_at'])
         return msgs[-limit:]
 
-    def mark_messages_read(self, company_id, worker_id, reader_type):
-        sender_type = 'worker' if reader_type == 'owner' else 'owner'
+    def mark_messages_read(self, company_id, employee_id, reader_type):
+        sender_type = 'employee' if reader_type == 'owner' else 'owner'
         count = 0
         for m in self.messages:
-            if (m['company_id'] == company_id and m['worker_id'] == worker_id
+            if (m['company_id'] == company_id and m['employee_id'] == employee_id
                     and m['sender_type'] == sender_type and not m['read']):
                 m['read'] = True
                 count += 1
@@ -63,17 +63,17 @@ class FakeDB:
     def get_unread_message_counts(self, company_id):
         counts = {}
         for m in self.messages:
-            if m['company_id'] == company_id and m['sender_type'] == 'worker' and not m['read']:
-                counts[m['worker_id']] = counts.get(m['worker_id'], 0) + 1
+            if m['company_id'] == company_id and m['sender_type'] == 'employee' and not m['read']:
+                counts[m['employee_id']] = counts.get(m['employee_id'], 0) + 1
         return counts
 
-    def get_worker_unread_count(self, company_id, worker_id):
+    def get_employee_unread_count(self, company_id, employee_id):
         return sum(1 for m in self.messages
-                   if m['company_id'] == company_id and m['worker_id'] == worker_id
+                   if m['company_id'] == company_id and m['employee_id'] == employee_id
                    and m['sender_type'] == 'owner' and not m['read'])
 
-    def get_worker(self, worker_id, company_id=None):
-        w = self.workers.get(worker_id)
+    def get_employee(self, employee_id, company_id=None):
+        w = self.employees.get(employee_id)
         if w and company_id and w['company_id'] != company_id:
             return None
         return w
@@ -107,19 +107,19 @@ class TestSendMessage:
         assert msg is not None
         assert msg['content'] == 'Hello Alice'
         assert msg['sender_type'] == 'owner'
-        assert msg['worker_id'] == 1
+        assert msg['employee_id'] == 1
         assert msg['company_id'] == 100
         assert msg['read'] is False
 
-    def test_send_message_worker_reply(self):
+    def test_send_message_employee_reply(self):
         self.db.send_message(100, 1, 'owner', 'Hello')
-        msg = self.db.send_message(100, 1, 'worker', 'Hi boss')
-        assert msg['sender_type'] == 'worker'
+        msg = self.db.send_message(100, 1, 'employee', 'Hi boss')
+        assert msg['sender_type'] == 'employee'
         assert msg['content'] == 'Hi boss'
 
     def test_send_message_increments_id(self):
         m1 = self.db.send_message(100, 1, 'owner', 'First')
-        m2 = self.db.send_message(100, 1, 'worker', 'Second')
+        m2 = self.db.send_message(100, 1, 'employee', 'Second')
         assert m2['id'] > m1['id']
 
 
@@ -133,7 +133,7 @@ class TestGetConversation:
 
     def test_conversation_returns_chronological(self):
         self.db.send_message(100, 1, 'owner', 'First')
-        self.db.send_message(100, 1, 'worker', 'Second')
+        self.db.send_message(100, 1, 'employee', 'Second')
         self.db.send_message(100, 1, 'owner', 'Third')
         msgs = self.db.get_conversation(100, 1)
         assert len(msgs) == 3
@@ -141,7 +141,7 @@ class TestGetConversation:
         assert msgs[1]['content'] == 'Second'
         assert msgs[2]['content'] == 'Third'
 
-    def test_conversation_isolation_by_worker(self):
+    def test_conversation_isolation_by_employee(self):
         self.db.send_message(100, 1, 'owner', 'For Alice')
         self.db.send_message(100, 2, 'owner', 'For Bob')
         alice_msgs = self.db.get_conversation(100, 1)
@@ -179,36 +179,36 @@ class TestMarkMessagesRead:
     def setup_method(self):
         self.db = FakeDB()
 
-    def test_mark_read_owner_reads_worker_messages(self):
-        self.db.send_message(100, 1, 'worker', 'Hello boss')
-        self.db.send_message(100, 1, 'worker', 'Are you there?')
+    def test_mark_read_owner_reads_employee_messages(self):
+        self.db.send_message(100, 1, 'employee', 'Hello boss')
+        self.db.send_message(100, 1, 'employee', 'Are you there?')
         self.db.send_message(100, 1, 'owner', 'My own message')  # should not be affected
         count = self.db.mark_messages_read(100, 1, 'owner')
         assert count == 2
-        # Verify worker messages are read
+        # Verify employee messages are read
         msgs = self.db.get_conversation(100, 1)
-        worker_msgs = [m for m in msgs if m['sender_type'] == 'worker']
-        assert all(m['read'] for m in worker_msgs)
+        employee_msgs = [m for m in msgs if m['sender_type'] == 'employee']
+        assert all(m['read'] for m in employee_msgs)
         # Owner message should still be unread
         owner_msgs = [m for m in msgs if m['sender_type'] == 'owner']
         assert not owner_msgs[0]['read']
 
-    def test_mark_read_worker_reads_owner_messages(self):
+    def test_mark_read_employee_reads_owner_messages(self):
         self.db.send_message(100, 1, 'owner', 'Task for you')
-        count = self.db.mark_messages_read(100, 1, 'worker')
+        count = self.db.mark_messages_read(100, 1, 'employee')
         assert count == 1
         msgs = self.db.get_conversation(100, 1)
         assert msgs[0]['read'] is True
 
     def test_mark_read_idempotent(self):
-        self.db.send_message(100, 1, 'worker', 'Hello')
+        self.db.send_message(100, 1, 'employee', 'Hello')
         self.db.mark_messages_read(100, 1, 'owner')
         count = self.db.mark_messages_read(100, 1, 'owner')
         assert count == 0  # Already read
 
     def test_mark_read_isolation(self):
-        self.db.send_message(100, 1, 'worker', 'From Alice')
-        self.db.send_message(100, 2, 'worker', 'From Bob')
+        self.db.send_message(100, 1, 'employee', 'From Alice')
+        self.db.send_message(100, 2, 'employee', 'From Bob')
         self.db.mark_messages_read(100, 1, 'owner')
         # Bob's message should still be unread
         bob_msgs = self.db.get_conversation(100, 2)
@@ -223,10 +223,10 @@ class TestUnreadCounts:
         counts = self.db.get_unread_message_counts(100)
         assert counts == {}
 
-    def test_unread_counts_per_worker(self):
-        self.db.send_message(100, 1, 'worker', 'From Alice 1')
-        self.db.send_message(100, 1, 'worker', 'From Alice 2')
-        self.db.send_message(100, 2, 'worker', 'From Bob')
+    def test_unread_counts_per_employee(self):
+        self.db.send_message(100, 1, 'employee', 'From Alice 1')
+        self.db.send_message(100, 1, 'employee', 'From Alice 2')
+        self.db.send_message(100, 2, 'employee', 'From Bob')
         counts = self.db.get_unread_message_counts(100)
         assert counts[1] == 2
         assert counts[2] == 1
@@ -237,22 +237,22 @@ class TestUnreadCounts:
         assert counts == {}
 
     def test_unread_counts_after_read(self):
-        self.db.send_message(100, 1, 'worker', 'Hello')
+        self.db.send_message(100, 1, 'employee', 'Hello')
         self.db.mark_messages_read(100, 1, 'owner')
         counts = self.db.get_unread_message_counts(100)
         assert counts == {}
 
-    def test_worker_unread_count(self):
+    def test_employee_unread_count(self):
         self.db.send_message(100, 1, 'owner', 'Task 1')
         self.db.send_message(100, 1, 'owner', 'Task 2')
-        self.db.send_message(100, 1, 'worker', 'My reply')  # should not count
-        count = self.db.get_worker_unread_count(100, 1)
+        self.db.send_message(100, 1, 'employee', 'My reply')  # should not count
+        count = self.db.get_employee_unread_count(100, 1)
         assert count == 2
 
-    def test_worker_unread_count_after_read(self):
+    def test_employee_unread_count_after_read(self):
         self.db.send_message(100, 1, 'owner', 'Task')
-        self.db.mark_messages_read(100, 1, 'worker')
-        count = self.db.get_worker_unread_count(100, 1)
+        self.db.mark_messages_read(100, 1, 'employee')
+        count = self.db.get_employee_unread_count(100, 1)
         assert count == 0
 
 
@@ -262,15 +262,15 @@ class TestSecurityIsolation:
     def setup_method(self):
         self.db = FakeDB()
 
-    def test_get_worker_with_wrong_company(self):
-        """Worker 3 belongs to company 200, should not be accessible from company 100."""
-        worker = self.db.get_worker(3, company_id=100)
-        assert worker is None
+    def test_get_employee_with_wrong_company(self):
+        """Employee 3 belongs to company 200, should not be accessible from company 100."""
+        employee = self.db.get_employee(3, company_id=100)
+        assert employee is None
 
-    def test_get_worker_with_correct_company(self):
-        worker = self.db.get_worker(1, company_id=100)
-        assert worker is not None
-        assert worker['name'] == 'Alice'
+    def test_get_employee_with_correct_company(self):
+        employee = self.db.get_employee(1, company_id=100)
+        assert employee is not None
+        assert employee['name'] == 'Alice'
 
     def test_cross_company_conversation_isolation(self):
         self.db.send_message(100, 1, 'owner', 'Company 100 msg')
@@ -283,8 +283,8 @@ class TestSecurityIsolation:
         assert msgs_200[0]['content'] == 'Company 200 msg'
 
     def test_cross_company_unread_isolation(self):
-        self.db.send_message(100, 1, 'worker', 'From company 100')
-        self.db.send_message(200, 1, 'worker', 'From company 200')
+        self.db.send_message(100, 1, 'employee', 'From company 100')
+        self.db.send_message(200, 1, 'employee', 'From company 200')
         counts_100 = self.db.get_unread_message_counts(100)
         counts_200 = self.db.get_unread_message_counts(200)
         assert counts_100.get(1) == 1
@@ -325,18 +325,18 @@ class TestEdgeCases:
         """Verify notification is created when owner sends a message."""
         self.db.send_message(100, 1, 'owner', 'Hello')
         # Simulate what the API endpoint does
-        worker = self.db.get_worker(1)
+        employee = self.db.get_employee(1)
         company = self.db.get_company(100)
         content = 'Hello'
         preview = content[:80] + ('...' if len(content) > 80 else '')
         self.db.create_notification(
-            100, 'worker', 1, 'new_message',
+            100, 'employee', 1, 'new_message',
             f"New message from {company['business_name']}: {preview}",
             {'sender': 'owner'}
         )
         assert len(self.db.notifications) == 1
         assert self.db.notifications[0]['type'] == 'new_message'
-        assert self.db.notifications[0]['recipient_type'] == 'worker'
+        assert self.db.notifications[0]['recipient_type'] == 'employee'
 
     def test_notification_preview_truncation(self):
         """Verify long messages are truncated in notification preview."""
@@ -348,7 +348,7 @@ class TestEdgeCases:
     def test_rapid_messages(self):
         """Simulate rapid message sending."""
         for i in range(100):
-            self.db.send_message(100, 1, 'owner' if i % 2 == 0 else 'worker', f'Msg {i}')
+            self.db.send_message(100, 1, 'owner' if i % 2 == 0 else 'employee', f'Msg {i}')
         msgs = self.db.get_conversation(100, 1, limit=50)
         assert len(msgs) == 50
         # Should be the last 50 messages

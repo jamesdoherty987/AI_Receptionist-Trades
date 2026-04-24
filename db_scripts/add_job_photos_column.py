@@ -1,6 +1,6 @@
 """
 Migration: Add photo_urls column to bookings table.
-Stores JSON array of R2 URLs for job photos uploaded by workers.
+Stores JSON array of R2 URLs for job photos uploaded by employees.
 """
 import os
 import sys

@@ -260,7 +260,7 @@ const FeaturesScene: React.FC = () => {
     { icon: "📅", title: "Smart Scheduling", desc: "Auto-books with calendar sync" },
     { icon: "👥", title: "Customer Management", desc: "Track clients & job history" },
     { icon: "💰", title: "Invoicing & Payments", desc: "Send invoices, track revenue" },
-    { icon: "👷", title: "Worker Management", desc: "Assign jobs, prevent conflicts" },
+    { icon: "👷", title: "Employee Management", desc: "Assign jobs, prevent conflicts" },
     { icon: "💬", title: "SMS Reminders", desc: "Automatic 24hr reminders" },
   ];
   return (

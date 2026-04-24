@@ -37,7 +37,7 @@ function PrivacyPolicy() {
           <h3>2.1 Information You Provide</h3>
           <ul>
             <li>Account information: name, email address, password, business name</li>
-            <li>Business details: services offered, business hours, worker information</li>
+            <li>Business details: services offered, business hours, employee information</li>
             <li>Customer data: names, phone numbers, addresses, and appointment details you enter into the system</li>
             <li>Payment information: processed securely through our payment provider (Stripe). We do not store your full card details.</li>
             <li>Communications: messages you send to us for support or feedback</li>

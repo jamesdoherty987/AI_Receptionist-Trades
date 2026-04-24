@@ -13,7 +13,7 @@ Tests both:
 1. check_availability / get_next_available — does it correctly show slots?
 2. book_job / book_appointment — does it correctly book and block time?
 3. Clash detection — does a second booking on a blocked day get rejected?
-4. Multi-worker scenarios — do all workers get checked across all days?
+4. Multi-employee scenarios — do all employees get checked across all days?
 """
 import pytest
 from datetime import datetime, timedelta
@@ -24,48 +24,48 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 
-def make_mock_db(existing_bookings=None, workers=None, company_id=1):
+def make_mock_db(existing_bookings=None, employees=None, company_id=1):
     """Create a comprehensive mock DB for integration testing."""
     db = MagicMock()
-    db.has_workers.return_value = bool(workers)
-    db.get_all_workers.return_value = workers or []
+    db.has_employees.return_value = bool(employees)
+    db.get_all_employees.return_value = employees or []
     db.get_all_bookings.return_value = existing_bookings or []
     db.get_all_clients.return_value = []
     db.get_clients_by_name.return_value = []
     db.find_or_create_client.return_value = 1
     db.add_booking.return_value = 100
     db.add_appointment_note.return_value = True
-    db.assign_worker_to_job.return_value = {'success': True}
+    db.assign_employee_to_job.return_value = {'success': True}
     db.get_client.return_value = {'id': 1, 'name': 'Test Client', 'phone': '0851234567'}
     db.get_company.return_value = {'id': company_id, 'company_name': 'Test Co', 'business_hours': '8 AM - 5 PM Mon-Fri'}
     db.update_booking.return_value = True
     db.update_client.return_value = True
     
-    # Wire up check_worker_availability using the REAL implementation
+    # Wire up check_employee_availability using the REAL implementation
     from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
     real_db = PostgreSQLDatabaseWrapper.__new__(PostgreSQLDatabaseWrapper)
     
-    # Mock the connection to return existing bookings as worker assignments
+    # Mock the connection to return existing bookings as employee assignments
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
     mock_conn.cursor.return_value = mock_cursor
     
-    # Convert existing bookings to worker assignment format, keyed by worker_id
-    worker_jobs_by_id = {}
+    # Convert existing bookings to employee assignment format, keyed by employee_id
+    employee_jobs_by_id = {}
     for b in (existing_bookings or []):
-        if b.get('assigned_worker_ids'):
-            for wid in b['assigned_worker_ids']:
-                worker_jobs_by_id.setdefault(wid, []).append({
+        if b.get('assigned_employee_ids'):
+            for wid in b['assigned_employee_ids']:
+                employee_jobs_by_id.setdefault(wid, []).append({
                     'id': b['id'],
                     'appointment_time': b['appointment_time'],
                     'duration_minutes': b.get('duration_minutes', 60),
                     'service_type': b.get('service_type', 'Service'),
                     'client_name': b.get('client_name', 'Client'),
                     'address': b.get('address', ''),
-                    'worker_id': wid
+                    'employee_id': wid
                 })
     
-    # Track the last execute call to know which worker_id was queried
+    # Track the last execute call to know which employee_id was queried
     _last_execute_params = [None]
     _original_execute = mock_cursor.execute
     def _tracking_execute(query, params=None):
@@ -74,30 +74,30 @@ def make_mock_db(existing_bookings=None, workers=None, company_id=1):
     mock_cursor.execute = _tracking_execute
     
     def cursor_fetchall_side_effect():
-        # Return only jobs for the queried worker_id (first param in the SQL)
+        # Return only jobs for the queried employee_id (first param in the SQL)
         params = _last_execute_params[0]
         if params and len(params) >= 1:
-            queried_worker_id = params[0]
-            return worker_jobs_by_id.get(queried_worker_id, [])
+            queried_employee_id = params[0]
+            return employee_jobs_by_id.get(queried_employee_id, [])
         return []
     
     mock_cursor.fetchall.side_effect = cursor_fetchall_side_effect
     real_db.get_connection = MagicMock(return_value=mock_conn)
     real_db.return_connection = MagicMock()
     
-    # Patch the mock db's check_worker_availability to use the real implementation
-    db.check_worker_availability = real_db.check_worker_availability
+    # Patch the mock db's check_employee_availability to use the real implementation
+    db.check_employee_availability = real_db.check_employee_availability
     
-    # find_available_workers_for_slot: check each worker
-    def find_available_workers(appointment_time, duration_minutes=1440, company_id=None, trade_specialty=None):
-        if not workers:
+    # find_available_employees_for_slot: check each employee
+    def find_available_employees(appointment_time, duration_minutes=1440, company_id=None, trade_specialty=None):
+        if not employees:
             return []
         available = []
-        for w in workers:
+        for w in employees:
             if w.get('status') == 'inactive':
                 continue
-            avail = db.check_worker_availability(
-                worker_id=w['id'],
+            avail = db.check_employee_availability(
+                employee_id=w['id'],
                 appointment_time=appointment_time,
                 duration_minutes=duration_minutes,
                 company_id=company_id
@@ -112,7 +112,7 @@ def make_mock_db(existing_bookings=None, workers=None, company_id=1):
                 })
         return available
     
-    db.find_available_workers_for_slot = find_available_workers
+    db.find_available_employees_for_slot = find_available_employees
     
     return db
 
@@ -126,10 +126,10 @@ def make_mock_calendar():
     return cal
 
 
-def make_services(db=None, workers=None, existing_bookings=None, company_id=1):
+def make_services(db=None, employees=None, existing_bookings=None, company_id=1):
     """Create the services dict used by execute_tool_call."""
     if db is None:
-        db = make_mock_db(existing_bookings=existing_bookings, workers=workers, company_id=company_id)
+        db = make_mock_db(existing_bookings=existing_bookings, employees=employees, company_id=company_id)
     cal = make_mock_calendar()
     return {
         'google_calendar': cal,
@@ -141,15 +141,15 @@ def make_services(db=None, workers=None, existing_bookings=None, company_id=1):
     }
 
 
-def make_service_config(name, duration_minutes, price=100, workers_required=1):
+def make_service_config(name, duration_minutes, price=100, employees_required=1):
     """Create a mock service config for service matching."""
     return {
         'service': {
             'name': name,
             'duration_minutes': duration_minutes,
             'price': price,
-            'workers_required': workers_required,
-            'worker_restrictions': None,
+            'employees_required': employees_required,
+            'employee_restrictions': None,
             'emergency_price': None,
         },
         'matched_name': name,
@@ -169,8 +169,8 @@ class TestShortJobBooking:
         """A 1-hour plumbing job should book at the requested time."""
         mock_match.return_value = make_service_config('Plumbing Repair', 60)
         
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees)
         
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -189,8 +189,8 @@ class TestShortJobBooking:
         """A 4-hour job should book and not extend past closing."""
         mock_match.return_value = make_service_config('Bathroom Renovation', 240)
         
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees)
         
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -208,8 +208,8 @@ class TestShortJobBooking:
         """A 4-hour job at 3pm should be rejected (would end at 7pm, past 5pm closing)."""
         mock_match.return_value = make_service_config('Bathroom Renovation', 240)
         
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees)
         
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -236,8 +236,8 @@ class TestFullDayJobBooking:
         """A full-day job requested at 2pm should auto-adjust to business start."""
         mock_match.return_value = make_service_config('General Service', 1440)
         
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees)
         
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -254,11 +254,11 @@ class TestFullDayJobBooking:
         assert details.get('duration_minutes') == 1440
 
     @patch('src.services.calendar_tools.match_service')
-    def test_full_day_job_blocks_worker_all_day(self, mock_match):
-        """After booking a full-day job, the worker should be blocked all day."""
+    def test_full_day_job_blocks_employee_all_day(self, mock_match):
+        """After booking a full-day job, the employee should be blocked all day."""
         mock_match.return_value = make_service_config('General Service', 1440)
         
-        # Worker has an existing full-day job on Monday
+        # Employee has an existing full-day job on Monday
         existing = [{
             'id': 1,
             'appointment_time': datetime(2026, 3, 23, 8, 0),
@@ -267,10 +267,10 @@ class TestFullDayJobBooking:
             'client_name': 'Existing Client',
             'address': '111 First St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
         }]
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers, existing_bookings=existing)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees, existing_bookings=existing)
         
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -281,9 +281,9 @@ class TestFullDayJobBooking:
             'job_address': '222 Second St',
         }, services)
         
-        # Should fail — worker is busy all day Monday
+        # Should fail — employee is busy all day Monday
         assert result['success'] is False
-        assert 'available' in result['error'].lower() or 'worker' in result['error'].lower()
+        assert 'available' in result['error'].lower() or 'employee' in result['error'].lower()
 
 
 # ============================================================================
@@ -295,11 +295,11 @@ class TestMultiDayJobBooking:
 
     @patch('src.services.calendar_tools.match_service')
     def test_2_day_job_books_successfully(self, mock_match):
-        """A 2-day job should book successfully when worker is free."""
+        """A 2-day job should book successfully when employee is free."""
         mock_match.return_value = make_service_config('Kitchen Renovation', 2880)
         
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees)
         
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -328,10 +328,10 @@ class TestMultiDayJobBooking:
             'client_name': 'Alice',
             'address': '333 Third St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
         }]
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers, existing_bookings=existing)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees, existing_bookings=existing)
         
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -358,10 +358,10 @@ class TestMultiDayJobBooking:
             'client_name': 'Alice',
             'address': '333 Third St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
         }]
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers, existing_bookings=existing)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees, existing_bookings=existing)
         
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -388,10 +388,10 @@ class TestMultiDayJobBooking:
             'client_name': 'Big Client',
             'address': '999 Big St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
         }]
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers, existing_bookings=existing)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees, existing_bookings=existing)
         
         from src.services.calendar_tools import execute_tool_call
         
@@ -406,11 +406,11 @@ class TestMultiDayJobBooking:
         assert result['success'] is False, "Friday should be blocked by the 1-week job"
 
     @patch('src.services.calendar_tools.match_service')
-    def test_1_week_job_with_second_worker_succeeds(self, mock_match):
-        """With 2 workers, a second job during a 1-week job should succeed if assigned to worker 2."""
+    def test_1_week_job_with_second_employee_succeeds(self, mock_match):
+        """With 2 employees, a second job during a 1-week job should succeed if assigned to employee 2."""
         mock_match.return_value = make_service_config('Plumbing', 60)
         
-        # Worker 1 has a 1-week job
+        # Employee 1 has a 1-week job
         existing = [{
             'id': 1,
             'appointment_time': datetime(2026, 3, 23, 8, 0),
@@ -419,13 +419,13 @@ class TestMultiDayJobBooking:
             'client_name': 'Big Client',
             'address': '999 Big St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],  # Only worker 1
+            'assigned_employee_ids': [1],  # Only employee 1
         }]
-        workers = [
+        employees = [
             {'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''},
             {'id': 2, 'name': 'Dave', 'status': 'active', 'phone': '456', 'email': '', 'trade_specialty': ''},
         ]
-        services = make_services(workers=workers, existing_bookings=existing)
+        services = make_services(employees=employees, existing_bookings=existing)
         
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -436,9 +436,9 @@ class TestMultiDayJobBooking:
             'job_address': '777 Seventh St',
         }, services)
         
-        # Should succeed — Dave (worker 2) is free
+        # Should succeed — Dave (employee 2) is free
         assert result['success'] is True
-        assigned = result.get('appointment_details', {}).get('assigned_workers', [])
+        assigned = result.get('appointment_details', {}).get('assigned_employees', [])
         assert len(assigned) >= 1
         assert assigned[0]['name'] == 'Dave'
 
@@ -463,10 +463,10 @@ class TestShortJobDoesntOverblock:
             'client_name': 'Monday Client',
             'address': '111 St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
         }]
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers, existing_bookings=existing)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees, existing_bookings=existing)
         
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -492,10 +492,10 @@ class TestShortJobDoesntOverblock:
             'client_name': 'Monday Client',
             'address': '111 St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
         }]
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers, existing_bookings=existing)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees, existing_bookings=existing)
         
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -590,7 +590,7 @@ class TestCalendarDisplayMultiDay:
             'duration_minutes': 4320,  # 3 days
             'service_type': 'Renovation',
             'status': 'confirmed',
-            'assigned_worker_ids': [],
+            'assigned_employee_ids': [],
             'calendar_event_id': None
         }
         mock_db.get_all_bookings.return_value = [booking]
@@ -626,7 +626,7 @@ class TestCalendarDisplayMultiDay:
             'duration_minutes': 60,
             'service_type': 'Quick Fix',
             'status': 'confirmed',
-            'assigned_worker_ids': [],
+            'assigned_employee_ids': [],
             'calendar_event_id': None
         }]
         
@@ -658,10 +658,10 @@ class TestEdgeCaseWeekendSpanning:
             'client_name': 'Client',
             'address': '1 St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
         }]
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers, existing_bookings=existing)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees, existing_bookings=existing)
 
         from src.services.calendar_tools import execute_tool_call
 
@@ -708,10 +708,10 @@ class TestEdgeCaseWeekendSpanning:
             'client_name': 'Client',
             'address': '1 St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
         }]
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers, existing_bookings=existing)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees, existing_bookings=existing)
 
         from src.services.calendar_tools import execute_tool_call
 
@@ -734,8 +734,8 @@ class TestEdgeCaseBoundaryDurations:
         """480-min (8-hour) job should be treated as full-day and auto-adjust to morning."""
         mock_match.return_value = make_service_config('Full Day Service', 480)
 
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees)
 
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -756,8 +756,8 @@ class TestEdgeCaseBoundaryDurations:
         """30-min job (smallest duration) should book correctly."""
         mock_match.return_value = make_service_config('Quick Check', 30)
 
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees)
 
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -783,10 +783,10 @@ class TestEdgeCaseBoundaryDurations:
             'client_name': 'First Client',
             'address': '1 St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
         }]
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers, existing_bookings=existing)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees, existing_bookings=existing)
 
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -809,8 +809,8 @@ class TestEdgeCaseFourWeekJob:
         """A 4-week job should book successfully."""
         mock_match.return_value = make_service_config('Major Build', 40320)
 
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees)
 
         from src.services.calendar_tools import execute_tool_call
         result = execute_tool_call('book_job', {
@@ -838,10 +838,10 @@ class TestEdgeCaseFourWeekJob:
             'client_name': 'Big Client',
             'address': '9 St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
         }]
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers, existing_bookings=existing)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees, existing_bookings=existing)
 
         from src.services.calendar_tools import execute_tool_call
 
@@ -868,10 +868,10 @@ class TestEdgeCaseFourWeekJob:
             'client_name': 'Big Client',
             'address': '9 St',
             'status': 'confirmed',
-            'assigned_worker_ids': [1],
+            'assigned_employee_ids': [1],
         }]
-        workers = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
-        services = make_services(workers=workers, existing_bookings=existing)
+        employees = [{'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''}]
+        services = make_services(employees=employees, existing_bookings=existing)
 
         from src.services.calendar_tools import execute_tool_call
 
@@ -890,8 +890,8 @@ class TestEdgeCaseMultipleOverlappingJobs:
     """Test scenarios with multiple jobs overlapping on the same days."""
 
     @patch('src.services.calendar_tools.match_service')
-    def test_two_workers_both_busy_different_durations(self, mock_match):
-        """If both workers are busy (one short, one multi-day), booking should fail."""
+    def test_two_employees_both_busy_different_durations(self, mock_match):
+        """If both employees are busy (one short, one multi-day), booking should fail."""
         mock_match.return_value = make_service_config('Plumbing', 60)
 
         existing = [
@@ -903,7 +903,7 @@ class TestEdgeCaseMultipleOverlappingJobs:
                 'client_name': 'Client A',
                 'address': '1 St',
                 'status': 'confirmed',
-                'assigned_worker_ids': [1],
+                'assigned_employee_ids': [1],
             },
             {
                 'id': 2,
@@ -913,14 +913,14 @@ class TestEdgeCaseMultipleOverlappingJobs:
                 'client_name': 'Client B',
                 'address': '2 St',
                 'status': 'confirmed',
-                'assigned_worker_ids': [2],
+                'assigned_employee_ids': [2],
             },
         ]
-        workers = [
+        employees = [
             {'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''},
             {'id': 2, 'name': 'Dave', 'status': 'active', 'phone': '456', 'email': '', 'trade_specialty': ''},
         ]
-        services = make_services(workers=workers, existing_bookings=existing)
+        services = make_services(employees=employees, existing_bookings=existing)
 
         from src.services.calendar_tools import execute_tool_call
 
@@ -935,8 +935,8 @@ class TestEdgeCaseMultipleOverlappingJobs:
         assert result['success'] is False
 
     @patch('src.services.calendar_tools.match_service')
-    def test_two_workers_one_free_different_durations(self, mock_match):
-        """If one worker is busy with multi-day and other is free, booking should succeed."""
+    def test_two_employees_one_free_different_durations(self, mock_match):
+        """If one employee is busy with multi-day and other is free, booking should succeed."""
         mock_match.return_value = make_service_config('Plumbing', 60)
 
         existing = [
@@ -948,14 +948,14 @@ class TestEdgeCaseMultipleOverlappingJobs:
                 'client_name': 'Client B',
                 'address': '2 St',
                 'status': 'confirmed',
-                'assigned_worker_ids': [2],
+                'assigned_employee_ids': [2],
             },
         ]
-        workers = [
+        employees = [
             {'id': 1, 'name': 'Mike', 'status': 'active', 'phone': '123', 'email': '', 'trade_specialty': ''},
             {'id': 2, 'name': 'Dave', 'status': 'active', 'phone': '456', 'email': '', 'trade_specialty': ''},
         ]
-        services = make_services(workers=workers, existing_bookings=existing)
+        services = make_services(employees=employees, existing_bookings=existing)
 
         from src.services.calendar_tools import execute_tool_call
 
@@ -968,7 +968,7 @@ class TestEdgeCaseMultipleOverlappingJobs:
             'job_address': '40 Pine Lane Galway',
         }, services)
         assert result['success'] is True
-        assigned = result.get('appointment_details', {}).get('assigned_workers', [])
+        assigned = result.get('appointment_details', {}).get('assigned_employees', [])
         assert assigned[0]['name'] == 'Mike'
 
 
@@ -987,7 +987,7 @@ class TestEdgeCaseCalendarDisplay:
             'duration_minutes': 10080,  # 1 week = 7 biz days
             'service_type': 'Big Job',
             'status': 'confirmed',
-            'assigned_worker_ids': [],
+            'assigned_employee_ids': [],
             'calendar_event_id': None
         }]
 
@@ -1012,7 +1012,7 @@ class TestEdgeCaseCalendarDisplay:
             'duration_minutes': 2880,  # 2 days
             'service_type': 'Job',
             'status': 'confirmed',
-            'assigned_worker_ids': [],
+            'assigned_employee_ids': [],
             'calendar_event_id': None
         }]
 
@@ -1033,7 +1033,7 @@ class TestEdgeCaseCalendarDisplay:
             'duration_minutes': 4320,
             'service_type': 'Job',
             'status': 'cancelled',
-            'assigned_worker_ids': [],
+            'assigned_employee_ids': [],
             'calendar_event_id': None
         }]
 
@@ -1101,8 +1101,8 @@ class TestEdgeCaseConflictDetection:
             assert len(conflicts) == 0, "Day after 4-week job ends should have no conflict"
 
 
-class TestEdgeCaseWorkerAvailability:
-    """Edge cases for check_worker_availability with multi-day jobs."""
+class TestEdgeCaseEmployeeAvailability:
+    """Edge cases for check_employee_availability with multi-day jobs."""
 
     def test_same_time_overlap_short_jobs(self):
         """Two 1-hour jobs at the exact same time should conflict."""
@@ -1125,8 +1125,8 @@ class TestEdgeCaseWorkerAvailability:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
 
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2026-03-23T10:00:00',
                 duration_minutes=60,
                 company_id=1
@@ -1155,8 +1155,8 @@ class TestEdgeCaseWorkerAvailability:
             db.return_connection = MagicMock()
 
             # 11:00 should conflict (within buffer)
-            result_11 = db.check_worker_availability(
-                worker_id=1,
+            result_11 = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2026-03-23T11:00:00',
                 duration_minutes=60,
                 company_id=1
@@ -1164,8 +1164,8 @@ class TestEdgeCaseWorkerAvailability:
             assert result_11['available'] is False, "11:00 should conflict with 10:00-11:15 job"
 
             # 11:30 should be free (after buffer)
-            result_1130 = db.check_worker_availability(
-                worker_id=1,
+            result_1130 = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2026-03-23T11:30:00',
                 duration_minutes=60,
                 company_id=1
@@ -1194,8 +1194,8 @@ class TestEdgeCaseWorkerAvailability:
             db.return_connection = MagicMock()
 
             # Try to book a 2-day job starting Wednesday — should conflict
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2026-03-25T09:00:00',  # Wednesday
                 duration_minutes=2880,  # 2 days
                 company_id=1

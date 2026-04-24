@@ -592,12 +592,12 @@
   -webkit-text-fill-color: transparent;
 }
 
-/* Workers step icon */
-.onboarding-step-card .step-icon.workers-icon {
+/* Employees step icon */
+.onboarding-step-card .step-icon.employees-icon {
   background: linear-gradient(135deg, #fce7f3 0%, #fdf2f8 100%);
 }
 
-.onboarding-step-card .step-icon.workers-icon i {
+.onboarding-step-card .step-icon.employees-icon i {
   background: linear-gradient(135deg, #ec4899 0%, #db2777 100%);
   background-clip: text;
   -webkit-background-clip: text;

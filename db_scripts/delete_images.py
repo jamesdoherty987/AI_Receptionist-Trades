@@ -28,16 +28,16 @@ def delete_base64_images():
             db.update_service(service_id, image_url='')
             deleted_count += 1
     
-    # Delete from workers
-    print("\n2️⃣ Checking Workers...")
-    workers = db.get_all_workers()
+    # Delete from employees
+    print("\n2️⃣ Checking Employees...")
+    employees = db.get_all_employees()
     
-    for worker in workers:
-        if worker.get('image_url') and worker['image_url'].startswith('data:image/'):
-            worker_id = worker['id']
-            worker_name = worker['name']
-            print(f"   Deleting image from: {worker_name}")
-            db.update_worker(worker_id, image_url='')
+    for employee in employees:
+        if employee.get('image_url') and employee['image_url'].startswith('data:image/'):
+            employee_id = employee['id']
+            employee_name = employee['name']
+            print(f"   Deleting image from: {employee_name}")
+            db.update_employee(employee_id, image_url='')
             deleted_count += 1
     
     # Delete from companies

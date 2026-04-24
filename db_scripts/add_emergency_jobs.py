@@ -2,7 +2,7 @@
 Add emergency jobs support.
 - Adds 'emergency' to urgency values
 - Adds emergency_status column to bookings (pending_acceptance, accepted, expired)
-- Adds emergency_accepted_by column to bookings (worker_id who accepted)
+- Adds emergency_accepted_by column to bookings (employee_id who accepted)
 - Adds emergency_accepted_at column to bookings
 - Creates default 'Emergency Callout' service for companies that don't have one
 """

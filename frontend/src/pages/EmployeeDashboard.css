@@ -1,144 +1,144 @@
-/* Worker Portal */
-.worker-portal { min-height: 100vh; background: #f8fafc; font-family: 'Outfit', sans-serif; }
+/* Employee Portal */
+.employee-portal { min-height: 100vh; background: #f8fafc; font-family: 'Outfit', sans-serif; }
 
-.worker-header {
+.employee-header {
   background: #ffffff; border-bottom: 1px solid var(--border-color, #e2e8f0);
   padding: 0 1.5rem; height: 64px; display: flex; align-items: center;
   position: sticky; top: 0; z-index: 100;
 }
 
-/* Hide worker header when modal is open on mobile */
+/* Hide employee header when modal is open on mobile */
 @media (max-width: 768px) {
-  body.modal-open .worker-header {
+  body.modal-open .employee-header {
     display: none !important;
   }
 }
-.worker-header-content {
+.employee-header-content {
   display: flex; align-items: center; justify-content: space-between;
   width: 100%; max-width: 1200px; margin: 0 auto;
 }
-.worker-logo {
+.employee-logo {
   display: flex; align-items: center; gap: 0.5rem; font-size: 1.25rem;
   font-weight: 700; color: var(--text-primary, #1e293b); text-decoration: none;
   flex-shrink: 0;
 }
-.worker-header-right { display: flex; align-items: center; gap: 1rem; }
-.worker-greeting { color: var(--text-secondary, #64748b); font-size: 0.9rem; }
-.worker-logout-btn {
+.employee-header-right { display: flex; align-items: center; gap: 1rem; }
+.employee-greeting { color: var(--text-secondary, #64748b); font-size: 0.9rem; }
+.employee-logout-btn {
   display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem;
   background: none; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px;
   color: var(--text-secondary, #64748b); cursor: pointer; font-size: 0.85rem;
   font-family: inherit; transition: all 0.2s;
 }
-.worker-logout-btn:hover { border-color: #ef4444; color: #ef4444; }
-.worker-back-btn {
+.employee-logout-btn:hover { border-color: #ef4444; color: #ef4444; }
+.employee-back-btn {
   display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem;
   background: none; border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px;
   color: var(--text-primary, #1e293b); cursor: pointer; font-size: 0.9rem;
   font-family: inherit; font-weight: 600; transition: all 0.2s;
 }
-.worker-back-btn:hover { border-color: var(--accent-blue, #0ea5e9); color: var(--accent-blue, #0ea5e9); }
+.employee-back-btn:hover { border-color: var(--accent-blue, #0ea5e9); color: var(--accent-blue, #0ea5e9); }
 
-.worker-main { padding: 1.5rem; }
-.worker-container { max-width: 960px; margin: 0 auto; }
+.employee-main { padding: 1.5rem; }
+.employee-container { max-width: 960px; margin: 0 auto; }
 
 /* Stats Bar */
-.worker-stats-bar {
+.employee-stats-bar {
   display: flex; gap: 1rem; margin-bottom: 1.5rem;
 }
-.worker-stat {
+.employee-stat {
   flex: 1; display: flex; align-items: center; gap: 0.75rem;
   background: #fff; border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 12px; padding: 1rem 1.25rem;
 }
-.worker-stat > i { font-size: 1.5rem; color: var(--accent-blue, #0ea5e9); }
+.employee-stat > i { font-size: 1.5rem; color: var(--accent-blue, #0ea5e9); }
 .stat-number { display: block; font-size: 1.5rem; font-weight: 700; color: var(--text-primary, #1e293b); line-height: 1.2; }
 .stat-label { font-size: 0.8rem; color: var(--text-tertiary, #94a3b8); }
 
 /* Tabs */
-.worker-tabs {
+.employee-tabs {
   display: flex; gap: 0.5rem; margin-bottom: 1.5rem; background: #fff;
   border-radius: 12px; padding: 0.375rem; border: 1px solid var(--border-color, #e2e8f0);
 }
-.worker-tab {
+.employee-tab {
   flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
   padding: 0.75rem 1rem; border: none; background: none; border-radius: 8px;
   font-size: 0.9rem; font-weight: 500; color: var(--text-secondary, #64748b);
   cursor: pointer; font-family: inherit; transition: all 0.2s;
 }
-.worker-tab.active {
+.employee-tab.active {
   background: var(--gradient-primary, linear-gradient(135deg, #0ea5e9, #ec4899));
   color: #fff; box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
 }
-.worker-tab:not(.active):hover { background: var(--bg-secondary, #f1f5f9); }
+.employee-tab:not(.active):hover { background: var(--bg-secondary, #f1f5f9); }
 
 /* Jobs */
-.worker-jobs h2, .worker-schedule h2, .worker-profile h2, .worker-hr h2 {
+.employee-jobs h2, .employee-schedule h2, .employee-profile h2, .employee-hr h2 {
   font-size: 1.1rem; font-weight: 600; color: var(--text-primary, #1e293b); margin-bottom: 1rem;
 }
-.worker-empty { text-align: center; padding: 3rem 1rem; color: var(--text-tertiary, #94a3b8); }
-.worker-empty i { font-size: 2.5rem; margin-bottom: 1rem; display: block; }
+.employee-empty { text-align: center; padding: 3rem 1rem; color: var(--text-tertiary, #94a3b8); }
+.employee-empty i { font-size: 2.5rem; margin-bottom: 1rem; display: block; }
 
-.worker-job-list { display: flex; flex-direction: column; gap: 0.75rem; }
-.worker-job-card {
+.employee-job-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.employee-job-card {
   background: #fff; border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 12px; padding: 1rem 1.25rem; transition: box-shadow 0.2s; cursor: pointer;
 }
-.worker-job-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-.worker-job-card.completed { opacity: 0.7; }
-.worker-job-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
-.worker-job-status {
+.employee-job-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+.employee-job-card.completed { opacity: 0.7; }
+.employee-job-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+.employee-job-status {
   display: inline-block; padding: 0.2rem 0.6rem; border-radius: 6px;
   font-size: 0.75rem; font-weight: 600; text-transform: capitalize;
 }
-.worker-job-date { font-size: 0.85rem; color: var(--text-secondary, #64748b); }
-.worker-job-body h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-primary, #1e293b); }
-.worker-job-body p {
+.employee-job-date { font-size: 0.85rem; color: var(--text-secondary, #64748b); }
+.employee-job-body h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--text-primary, #1e293b); }
+.employee-job-body p {
   display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;
   color: var(--text-secondary, #64748b); margin: 0.25rem 0;
 }
-.worker-job-body p i { width: 14px; text-align: center; color: var(--text-tertiary, #94a3b8); }
-.worker-job-footer {
+.employee-job-body p i { width: 14px; text-align: center; color: var(--text-tertiary, #94a3b8); }
+.employee-job-footer {
   display: flex; gap: 0.5rem; margin-top: 0.75rem; padding-top: 0.75rem;
   border-top: 1px solid var(--border-color, #e2e8f0);
 }
 
 /* Schedule */
-.worker-schedule-list { display: flex; flex-direction: column; gap: 0.75rem; }
-.worker-schedule-item {
+.employee-schedule-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.employee-schedule-item {
   display: flex; align-items: center; gap: 1rem; background: #fff;
   border: 1px solid var(--border-color, #e2e8f0); border-radius: 12px;
   padding: 1rem 1.25rem; cursor: pointer; transition: box-shadow 0.2s;
 }
-.worker-schedule-item:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-.worker-schedule-date {
+.employee-schedule-item:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+.employee-schedule-date {
   display: flex; flex-direction: column; align-items: center; min-width: 50px;
   padding: 0.5rem; background: var(--bg-secondary, #f1f5f9); border-radius: 8px;
 }
 .schedule-day { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--text-tertiary, #94a3b8); }
 .schedule-date-num { font-size: 1.25rem; font-weight: 700; color: var(--text-primary, #1e293b); line-height: 1.2; }
 .schedule-month { font-size: 0.7rem; color: var(--text-secondary, #64748b); }
-.worker-schedule-details { flex: 1; }
-.worker-schedule-details h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.25rem; }
-.worker-schedule-details p { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-secondary, #64748b); margin: 0.15rem 0; }
-.worker-schedule-details p i { width: 14px; text-align: center; color: var(--text-tertiary, #94a3b8); font-size: 0.75rem; }
+.employee-schedule-details { flex: 1; }
+.employee-schedule-details h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.25rem; }
+.employee-schedule-details p { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--text-secondary, #64748b); margin: 0.15rem 0; }
+.employee-schedule-details p i { width: 14px; text-align: center; color: var(--text-tertiary, #94a3b8); font-size: 0.75rem; }
 
 /* Profile */
-.worker-profile-card {
+.employee-profile-card {
   background: #fff; border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 16px; padding: 2rem; display: flex; gap: 2rem; align-items: flex-start;
 }
-.worker-profile-avatar img { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; }
-.worker-avatar-placeholder {
+.employee-profile-avatar img { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; }
+.employee-avatar-placeholder {
   width: 80px; height: 80px; border-radius: 50%;
   background: var(--gradient-primary, linear-gradient(135deg, #0ea5e9, #ec4899));
   display: flex; align-items: center; justify-content: center;
   font-size: 2rem; font-weight: 700; color: #fff;
 }
-.worker-profile-info { flex: 1; display: flex; flex-direction: column; gap: 0.75rem; }
-.worker-profile-row { display: flex; align-items: center; gap: 1rem; }
-.worker-profile-row label { min-width: 80px; font-size: 0.85rem; font-weight: 500; color: var(--text-tertiary, #94a3b8); }
-.worker-profile-row span { font-size: 0.95rem; color: var(--text-primary, #1e293b); }
+.employee-profile-info { flex: 1; display: flex; flex-direction: column; gap: 0.75rem; }
+.employee-profile-row { display: flex; align-items: center; gap: 1rem; }
+.employee-profile-row label { min-width: 80px; font-size: 0.85rem; font-weight: 500; color: var(--text-tertiary, #94a3b8); }
+.employee-profile-row span { font-size: 0.95rem; color: var(--text-primary, #1e293b); }
 
 /* Status badges */
 .badge-confirmed, .badge-active { background: rgba(16, 185, 129, 0.1); color: #059669; }
@@ -189,7 +189,7 @@
   50% { box-shadow: 0 0 0 6px rgba(139, 92, 246, 0); }
 }
 
-/* Worker Status Dropdown */
+/* Employee Status Dropdown */
 .wjd-dropdown-backdrop {
   position: fixed; inset: 0; z-index: 99; background: transparent;
 }
@@ -251,17 +251,17 @@
 .wjd-link:hover { text-decoration: underline; }
 .wjd-empty-text { color: var(--text-tertiary, #94a3b8); font-size: 0.85rem; text-align: center; padding: 1rem 0; }
 
-/* Workers list in job detail */
-.wjd-workers-list { display: flex; flex-direction: column; gap: 0.5rem; }
-.wjd-worker-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; }
-.wjd-worker-avatar {
+/* Employees list in job detail */
+.wjd-employees-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.wjd-employee-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; }
+.wjd-employee-avatar {
   width: 36px; height: 36px; border-radius: 50%;
   background: var(--gradient-primary, linear-gradient(135deg, #0ea5e9, #ec4899));
   display: flex; align-items: center; justify-content: center;
   font-size: 0.85rem; font-weight: 700; color: #fff;
 }
-.wjd-worker-name { display: block; font-size: 0.9rem; font-weight: 500; }
-.wjd-worker-spec { display: block; font-size: 0.75rem; color: var(--text-tertiary, #94a3b8); }
+.wjd-employee-name { display: block; font-size: 0.9rem; font-weight: 500; }
+.wjd-employee-spec { display: block; font-size: 0.75rem; color: var(--text-tertiary, #94a3b8); }
 
 /* Photos grid */
 .wjd-photos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 0.5rem; }
@@ -284,7 +284,7 @@
 }
 
 /* ---- HR Section ---- */
-.worker-hr { display: flex; flex-direction: column; gap: 1.5rem; }
+.employee-hr { display: flex; flex-direction: column; gap: 1.5rem; }
 .whr-section {
   background: #fff; border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 12px; padding: 1.25rem;
@@ -383,58 +383,58 @@
   .wjd-actions { width: 100%; }
   .whr-form-row { flex-direction: column; }
   .whr-hours-grid { flex-direction: column; }
-  .worker-stats-bar { flex-direction: column; }
-  .worker-main { padding: 1rem; }
+  .employee-stats-bar { flex-direction: column; }
+  .employee-main { padding: 1rem; }
 }
 @media (max-width: 640px) {
-  .worker-greeting { display: none; }
-  .worker-header { padding: 0 0.75rem; height: 56px; }
-  .worker-logo { font-size: 1.1rem; overflow: hidden; }
-  .worker-logo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
-  .worker-logout-btn { padding: 0.4rem 0.6rem; font-size: 0.8rem; }
-  .worker-logout-btn span { display: none; }
-  .worker-back-btn { padding: 0.4rem 0.6rem; font-size: 0.85rem; }
-  .worker-main { padding: 0.75rem; }
-  .worker-container { max-width: 100%; }
+  .employee-greeting { display: none; }
+  .employee-header { padding: 0 0.75rem; height: 56px; }
+  .employee-logo { font-size: 1.1rem; overflow: hidden; }
+  .employee-logo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+  .employee-logout-btn { padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+  .employee-logout-btn span { display: none; }
+  .employee-back-btn { padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+  .employee-main { padding: 0.75rem; }
+  .employee-container { max-width: 100%; }
 
   /* Tabs: horizontal scroll with no wrapping */
-  .worker-tabs {
+  .employee-tabs {
     overflow-x: auto; -webkit-overflow-scrolling: touch;
     scrollbar-width: none; gap: 0.25rem; padding: 0.25rem;
     margin-bottom: 1rem;
   }
-  .worker-tabs::-webkit-scrollbar { display: none; }
-  .worker-tab {
+  .employee-tabs::-webkit-scrollbar { display: none; }
+  .employee-tab {
     font-size: 0.75rem; padding: 0.6rem 0.6rem; white-space: nowrap;
     min-height: 44px; gap: 0.35rem; flex: 0 0 auto;
   }
-  .worker-tab i { font-size: 0.85rem; }
+  .employee-tab i { font-size: 0.85rem; }
 
   /* Stats bar compact */
-  .worker-stats-bar { flex-direction: row; gap: 0.4rem; margin-bottom: 0.75rem; }
-  .worker-stat { padding: 0.5rem 0.6rem; gap: 0.4rem; border-radius: 10px; }
-  .worker-stat > i { font-size: 1rem; }
+  .employee-stats-bar { flex-direction: row; gap: 0.4rem; margin-bottom: 0.75rem; }
+  .employee-stat { padding: 0.5rem 0.6rem; gap: 0.4rem; border-radius: 10px; }
+  .employee-stat > i { font-size: 1rem; }
   .stat-number { font-size: 1.05rem; }
   .stat-label { font-size: 0.65rem; }
 
   /* Job cards touch-friendly */
-  .worker-job-card { padding: 0.65rem 0.85rem; border-radius: 10px; }
-  .worker-job-header { margin-bottom: 0.35rem; }
-  .worker-job-body h3 { font-size: 0.9rem; margin-bottom: 0.25rem; }
-  .worker-job-body p { font-size: 0.78rem; margin: 0.15rem 0; }
-  .worker-job-footer { flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; padding-top: 0.5rem; }
-  .worker-job-footer .wjd-btn { min-height: 38px; font-size: 0.78rem; padding: 0.4rem 0.7rem; }
+  .employee-job-card { padding: 0.65rem 0.85rem; border-radius: 10px; }
+  .employee-job-header { margin-bottom: 0.35rem; }
+  .employee-job-body h3 { font-size: 0.9rem; margin-bottom: 0.25rem; }
+  .employee-job-body p { font-size: 0.78rem; margin: 0.15rem 0; }
+  .employee-job-footer { flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; padding-top: 0.5rem; }
+  .employee-job-footer .wjd-btn { min-height: 38px; font-size: 0.78rem; padding: 0.4rem 0.7rem; }
 
   /* Profile */
-  .worker-profile-card { flex-direction: column; align-items: center; text-align: center; padding: 1rem; }
-  .worker-profile-row { flex-direction: column; gap: 0.25rem; }
+  .employee-profile-card { flex-direction: column; align-items: center; text-align: center; padding: 1rem; }
+  .employee-profile-row { flex-direction: column; gap: 0.25rem; }
 
   /* Schedule items */
-  .worker-schedule-item { flex-wrap: wrap; padding: 0.65rem 0.85rem; gap: 0.6rem; }
-  .worker-schedule-date { padding: 0.35rem; }
+  .employee-schedule-item { flex-wrap: wrap; padding: 0.65rem 0.85rem; gap: 0.6rem; }
+  .employee-schedule-date { padding: 0.35rem; }
   .schedule-date-num { font-size: 1.1rem; }
-  .worker-schedule-details h3 { font-size: 0.88rem; }
-  .worker-schedule-details p { font-size: 0.75rem; }
+  .employee-schedule-details h3 { font-size: 0.88rem; }
+  .employee-schedule-details p { font-size: 0.75rem; }
 
   /* HR section */
   .whr-section { padding: 0.85rem; }
@@ -488,11 +488,11 @@
 }
 
 /* Today highlight */
-.worker-job-card.today {
+.employee-job-card.today {
   border-left: 3px solid var(--accent-blue, #0ea5e9);
   background: rgba(14, 165, 233, 0.02);
 }
-.worker-job-card.today .worker-job-date {
+.employee-job-card.today .employee-job-date {
   color: var(--accent-blue, #0ea5e9);
   font-weight: 600;
 }
@@ -553,7 +553,7 @@
 }
 
 /* Profile avatar in edit mode */
-.worker-profile-card .worker-profile-avatar .image-upload-container {
+.employee-profile-card .employee-profile-avatar .image-upload-container {
   width: 80px;
   height: 80px;
 }
@@ -856,7 +856,7 @@
   .ws-event-card { padding: 0.6rem; }
 }
 
-/* ---- Time-Off on Worker Calendar ---- */
+/* ---- Time-Off on Employee Calendar ---- */
 .ws-cal-cell.on-leave {
   background: rgba(245, 158, 11, 0.06);
   position: relative;
@@ -896,7 +896,7 @@
 }
 
 /* ---- CUSTOMERS TAB ---- */
-.worker-customers { padding: 0; }
+.employee-customers { padding: 0; }
 .wc-header {
   display: flex; align-items: center; justify-content: space-between;
   gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap;
@@ -1022,11 +1022,11 @@
 /* In-progress section */
 .wj-in-progress h2 { color: #7c3aed; }
 .wj-in-progress h2 i { color: #8b5cf6; }
-.worker-job-card.in-progress {
+.employee-job-card.in-progress {
   border-left: 3px solid #8b5cf6;
   background: rgba(139, 92, 246, 0.03);
 }
-.worker-job-card.in-progress .worker-job-header {
+.employee-job-card.in-progress .employee-job-header {
   display: flex; align-items: center; justify-content: space-between;
 }
 .badge-in-progress {
@@ -1037,7 +1037,7 @@
 /* Overdue section */
 .wj-overdue h2 { color: #dc2626; }
 .wj-overdue h2 i { color: #ef4444; }
-.worker-job-card.overdue {
+.employee-job-card.overdue {
   border-left: 3px solid #ef4444;
   background: rgba(239, 68, 68, 0.02);
 }
@@ -1050,13 +1050,13 @@
 .wj-today h2 { color: var(--accent-blue, #0ea5e9); }
 
 /* Just-completed card — subtle green to indicate done without disappearing */
-.worker-job-card.just-completed {
+.employee-job-card.just-completed {
   border-left: 3px solid #22c55e;
   background: rgba(34, 197, 94, 0.05);
   opacity: 0.85;
   transition: background 0.4s ease, border-color 0.4s ease, opacity 0.4s ease;
 }
-.worker-job-card.just-completed:hover {
+.employee-job-card.just-completed:hover {
   opacity: 0.95;
 }
 .badge-completed {
@@ -1095,7 +1095,7 @@
 }
 
 /* Quick action buttons on job cards */
-.worker-job-footer {
+.employee-job-footer {
   display: flex; align-items: center; gap: 0.5rem;
   margin-top: 0.75rem; padding-top: 0.75rem;
   border-top: 1px solid var(--border-color, #e2e8f0);
@@ -1109,8 +1109,8 @@
   .wj-bulk-confirm { padding: 0.75rem; }
 }
 
-/* ── Worker Messages Tab ─────────────────────────────────────── */
-.worker-messages-tab { display: flex; flex-direction: column; gap: 1rem; }
+/* ── Employee Messages Tab ─────────────────────────────────────── */
+.employee-messages-tab { display: flex; flex-direction: column; gap: 1rem; }
 .wm-header h2 { font-size: 1.25rem; font-weight: 600; color: var(--text-primary, #1e293b); display: flex; align-items: center; gap: 0.5rem; }
 .wm-header h2 i { color: var(--accent-blue, #3b82f6); }
 .wm-subtitle { color: var(--text-secondary, #64748b); font-size: 0.9rem; margin-top: 0.25rem; }
@@ -1234,7 +1234,7 @@
 }
 
 /* Custom status label badge */
-.worker-job-label {
+.employee-job-label {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -1248,7 +1248,7 @@
   white-space: nowrap;
 }
 
-.worker-job-label i { font-size: 0.6rem; }
+.employee-job-label i { font-size: 0.6rem; }
 
 /* ── Emergency Job Banner ────────────────────────────────── */
 

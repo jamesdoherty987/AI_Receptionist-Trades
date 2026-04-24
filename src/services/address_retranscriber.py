@@ -379,7 +379,7 @@ async def retranscribe_and_update(
                 customer_name=sms_kwargs.get('customer_name', 'Customer'),
                 service_type=sms_kwargs.get('service_type', 'appointment'),
                 company_name=sms_kwargs.get('company_name'),
-                worker_names=sms_kwargs.get('worker_names'),
+                employee_names=sms_kwargs.get('employee_names'),
                 address=refined_address,
                 portal_link=_portal_link,
             )

@@ -211,7 +211,7 @@ function AIvsHiringArticle() {
       />
 
       <h2>The Hybrid Approach</h2>
-      <p>Some trade businesses use an AI receptionist as the first line of defence and only bring in human help when they've grown to 10+ workers. The AI handles the volume; you handle the relationships.</p>
+      <p>Some trade businesses use an AI receptionist as the first line of defence and only bring in human help when they've grown to 10+ employees. The AI handles the volume; you handle the relationships.</p>
 
       <InfoBox icon="fas fa-calculator" title="Quick Maths">
         <p>If an AI receptionist costs €150/month and captures just 2 extra jobs per month at €200 each, it's already paying for itself 2.5x over. Everything beyond that is pure profit.</p>
@@ -370,7 +370,7 @@ function CalendarSyncArticle() {
         <li>A customer books through your AI receptionist → it appears in your Google Calendar instantly</li>
         <li>You block out time for a personal errand → your booking system knows you're unavailable</li>
         <li>A job gets cancelled → your calendar updates and that slot opens up for new bookings</li>
-        <li>Your workers each have their own calendar → no scheduling conflicts across the team</li>
+        <li>Your employees each have their own calendar → no scheduling conflicts across the team</li>
       </ul>
 
       <InfoBox icon="fas fa-sync-alt" title="Bidirectional Sync">
@@ -378,7 +378,7 @@ function CalendarSyncArticle() {
       </InfoBox>
 
       <h2>Real-World Example</h2>
-      <p>Say you're an electrician with two workers. On Monday morning, a customer calls at 7:30am wanting an urgent job. Your AI receptionist checks both workers' Google Calendars, finds that Dave is free from 9-11am, and books the job. Dave gets a notification on his phone. The customer gets a confirmation text. You didn't even have to wake up.</p>
+      <p>Say you're an electrician with two employees. On Monday morning, a customer calls at 7:30am wanting an urgent job. Your AI receptionist checks both employees' Google Calendars, finds that Dave is free from 9-11am, and books the job. Dave gets a notification on his phone. The customer gets a confirmation text. You didn't even have to wake up.</p>
 
       <StatCallout number="2.5 hrs" label="saved per week by tradespeople who use automated calendar sync" color="#8b5cf6" />
 

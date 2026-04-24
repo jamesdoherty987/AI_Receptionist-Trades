@@ -196,11 +196,11 @@ const DemoIntroScene: React.FC = () => {
 const JobsTabScene: React.FC = () => {
   const frame = useCurrentFrame();
   const jobs = [
-    { client: "John Murphy", service: "Pipe Repair", time: "10:00 AM", worker: "Mike O'Brien", status: "confirmed", color: C.blue },
-    { client: "Sarah O'Connor", service: "Boiler Install", time: "1:00 PM", worker: "Dave Walsh", status: "in_progress", color: C.orange },
-    { client: "Emma Wilson", service: "Radiator Flush", time: "3:30 PM", worker: "Mike O'Brien", status: "pending", color: C.accent },
-    { client: "Tom Kelly", service: "Emergency Leak", time: "5:00 PM", worker: "Dave Walsh", status: "completed", color: C.green },
-    { client: "Lisa Brady", service: "Kitchen Plumbing", time: "Tomorrow 9AM", worker: "Mike O'Brien", status: "confirmed", color: C.blue },
+    { client: "John Murphy", service: "Pipe Repair", time: "10:00 AM", employee: "Mike O'Brien", status: "confirmed", color: C.blue },
+    { client: "Sarah O'Connor", service: "Boiler Install", time: "1:00 PM", employee: "Dave Walsh", status: "in_progress", color: C.orange },
+    { client: "Emma Wilson", service: "Radiator Flush", time: "3:30 PM", employee: "Mike O'Brien", status: "pending", color: C.accent },
+    { client: "Tom Kelly", service: "Emergency Leak", time: "5:00 PM", employee: "Dave Walsh", status: "completed", color: C.green },
+    { client: "Lisa Brady", service: "Kitchen Plumbing", time: "Tomorrow 9AM", employee: "Mike O'Brien", status: "confirmed", color: C.blue },
   ];
   const statusLabels: Record<string, { label: string; bg: string; color: string }> = {
     confirmed: { label: "Confirmed", bg: `${C.blue}20`, color: C.blue },
@@ -243,7 +243,7 @@ const JobsTabScene: React.FC = () => {
             </div>
             {/* Tab bar */}
             <div style={{ display: "flex", gap: 0, padding: "0 20px", borderBottom: `1px solid ${C.cardBorder}`, position: "relative" }}>
-              {["Jobs", "Calls", "Calendar", "Workers", "Customers", "Services"].map((tab, i) => (
+              {["Jobs", "Calls", "Calendar", "Employees", "Customers", "Services"].map((tab, i) => (
                 <div key={i} style={{
                   padding: "14px 20px", fontSize: 14, fontWeight: i === 0 ? 700 : 500,
                   color: i === 0 ? C.accent : C.gray,
@@ -264,7 +264,7 @@ const JobsTabScene: React.FC = () => {
             <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
               {/* Header row */}
               <div style={{ display: "grid", gridTemplateColumns: "2fr 2fr 1fr 1.5fr 1fr", padding: "8px 16px", fontSize: 12, fontWeight: 700, color: C.gray, textTransform: "uppercase", letterSpacing: 1 }}>
-                <span>Client</span><span>Service</span><span>Time</span><span>Worker</span><span>Status</span>
+                <span>Client</span><span>Service</span><span>Time</span><span>Employee</span><span>Status</span>
               </div>
               {jobs.map((job, i) => {
                 const delay = 12 + i * 10;
@@ -287,7 +287,7 @@ const JobsTabScene: React.FC = () => {
                     </div>
                     <span style={{ fontSize: 14, color: C.lightGray }}>{job.service}</span>
                     <span style={{ fontSize: 14, color: C.gray }}>{job.time}</span>
-                    <span style={{ fontSize: 14, color: C.lightGray }}>{job.worker}</span>
+                    <span style={{ fontSize: 14, color: C.lightGray }}>{job.employee}</span>
                     <div style={{ display: "inline-flex", padding: "4px 12px", borderRadius: 8, background: s.bg, fontSize: 12, fontWeight: 700, color: s.color }}>
                       {s.label}
                     </div>
@@ -671,11 +671,11 @@ const FinancesTabScene: React.FC = () => {
 
 
 // ═══════════════════════════════════════════════════════════
-// SCENE 6: WORKERS TAB — Team management
+// SCENE 6: EMPLOYEES TAB — Team management
 // ═══════════════════════════════════════════════════════════
-const WorkersTabScene: React.FC = () => {
+const EmployeesTabScene: React.FC = () => {
   const frame = useCurrentFrame();
-  const workers = [
+  const employees = [
     {
       name: "Mike O'Brien", role: "Lead Plumber", avatar: "MO", color: C.blue,
       schedule: [
@@ -709,20 +709,20 @@ const WorkersTabScene: React.FC = () => {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
             <span style={{ fontSize: 32 }}>👷</span>
             <h2 style={{ fontSize: 46, fontWeight: 900, color: C.white, margin: 0 }}>
-              <Grad from={C.accent} to={C.blue}>Worker Management</Grad>
+              <Grad from={C.accent} to={C.blue}>Employee Management</Grad>
             </h2>
           </div>
           <p style={{ fontSize: 20, color: C.gray, marginTop: 8 }}>Assign jobs, track hours, prevent scheduling conflicts.</p>
         </Pop>
         <div style={{ display: "flex", gap: 24, maxWidth: 1100, margin: "0 auto" }}>
-          {workers.map((w, wi) => (
+          {employees.map((w, wi) => (
             <Pop key={wi} delay={8 + wi * 15} direction={wi === 0 ? "left" : "right"} style={{ flex: 1 }}>
               <div style={{
                 background: C.bgCard, borderRadius: 20, padding: 24,
                 border: `1px solid ${C.cardBorder}`,
                 boxShadow: `0 20px 60px rgba(0,0,0,0.4)`,
               }}>
-                {/* Worker header */}
+                {/* Employee header */}
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
                   <div style={{
                     width: 52, height: 52, borderRadius: "50%",
@@ -971,7 +971,7 @@ const DemoFinaleScene: React.FC = () => {
   const btnScale = spring({ frame: frame - 35, fps, config: { damping: 8, mass: 0.4, stiffness: 200 } });
   const glow = interpolate(Math.sin(frame * 0.1), [-1, 1], [0.4, 1]);
   // Feature badges floating
-  const badges = ["📅 Calendar", "👥 CRM", "💰 Invoicing", "👷 Workers", "📞 AI Calls", "🔧 Services"];
+  const badges = ["📅 Calendar", "👥 CRM", "💰 Invoicing", "👷 Employees", "📞 AI Calls", "🔧 Services"];
   return (
     <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
       <OrbBlobs colors={[C.accentGlow, C.greenGlow, "rgba(255, 107, 157, 0.15)"]} />
@@ -1043,7 +1043,7 @@ export const AppDemoShowcase: React.FC = () => {
     { component: CalendarTabScene, duration: 165 },
     { component: CustomersTabScene, duration: 165 },
     { component: FinancesTabScene, duration: 150 },
-    { component: WorkersTabScene, duration: 150 },
+    { component: EmployeesTabScene, duration: 150 },
     { component: ServicesTabScene, duration: 135 },
     { component: CallLogsScene, duration: 150 },
     { component: DemoFinaleScene, duration: 120 },

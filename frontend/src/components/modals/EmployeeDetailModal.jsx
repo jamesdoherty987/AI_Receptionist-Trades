@@ -1,15 +1,15 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getWorker, updateWorker, deleteWorker, getWorkerJobs, getWorkerHoursThisWeek, inviteWorker } from '../../services/api';
+import { getEmployee, updateEmployee, deleteEmployee, getEmployeeJobs, getEmployeeHoursThisWeek, inviteEmployee } from '../../services/api';
 import Modal from './Modal';
-import MessageWorkerModal from './MessageWorkerModal';
+import MessageEmployeeModal from './MessageEmployeeModal';
 import { useToast } from '../Toast';
 import ImageUpload from '../ImageUpload';
 import JobDetailModal from './JobDetailModal';
 import { formatPhone, getStatusBadgeClass } from '../../utils/helpers';
-import './WorkerDetailModal.css';
+import './EmployeeDetailModal.css';
 
-function WorkerDetailModal({ isOpen, onClose, workerId }) {
+function EmployeeDetailModal({ isOpen, onClose, employeeId }) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
@@ -20,11 +20,11 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
   const [portalStatus, setPortalStatus] = useState(null); // null | 'invited' | 'active'
   const [showMessageModal, setShowMessageModal] = useState(false);
 
-  // Reset invite state when switching workers
+  // Reset invite state when switching employees
   useEffect(() => {
     setInviteLink(null);
     setPortalStatus(null);
-  }, [workerId]);
+  }, [employeeId]);
 
   // Handle escape key to close delete confirmation
   useEffect(() => {
@@ -39,116 +39,116 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     return () => document.removeEventListener('keydown', handleEscape);
   }, [showDeleteConfirm]);
 
-  const { data: worker, isLoading: loadingWorker } = useQuery({
-    queryKey: ['worker', workerId],
+  const { data: employee, isLoading: loadingEmployee } = useQuery({
+    queryKey: ['employee', employeeId],
     queryFn: async () => {
-      const response = await getWorker(workerId);
+      const response = await getEmployee(employeeId);
       return response.data;
     },
-    enabled: isOpen && !!workerId,
+    enabled: isOpen && !!employeeId,
     gcTime: 5 * 60 * 1000 // 5 minutes
   });
 
-  // Sync portal status from worker data (must be after worker useQuery)
+  // Sync portal status from employee data (must be after employee useQuery)
   useEffect(() => {
-    if (worker?.portal_status) {
-      setPortalStatus(worker.portal_status);
+    if (employee?.portal_status) {
+      setPortalStatus(employee.portal_status);
     }
-  }, [worker]);
+  }, [employee]);
 
-  const { data: workerJobs } = useQuery({
-    queryKey: ['worker-jobs', workerId],
+  const { data: employeeJobs } = useQuery({
+    queryKey: ['employee-jobs', employeeId],
     queryFn: async () => {
-      const response = await getWorkerJobs(workerId);
+      const response = await getEmployeeJobs(employeeId);
       return response.data;
     },
-    enabled: isOpen && !!workerId,
+    enabled: isOpen && !!employeeId,
     gcTime: 5 * 60 * 1000 // 5 minutes
   });
 
   const { data: hoursData } = useQuery({
-    queryKey: ['worker-hours', workerId],
+    queryKey: ['employee-hours', employeeId],
     queryFn: async () => {
-      const response = await getWorkerHoursThisWeek(workerId);
+      const response = await getEmployeeHoursThisWeek(employeeId);
       return response.data;
     },
-    enabled: isOpen && !!workerId,
+    enabled: isOpen && !!employeeId,
     gcTime: 10 * 60 * 1000 // 10 minutes
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data) => updateWorker(workerId, data),
+    mutationFn: (data) => updateEmployee(employeeId, data),
     onMutate: async (updatedData) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['worker', workerId] });
+      await queryClient.cancelQueries({ queryKey: ['employee', employeeId] });
       
       // Snapshot previous value
-      const previousWorker = queryClient.getQueryData(['worker', workerId]);
+      const previousEmployee = queryClient.getQueryData(['employee', employeeId]);
       
       // Optimistically update
-      queryClient.setQueryData(['worker', workerId], (old) => ({
+      queryClient.setQueryData(['employee', employeeId], (old) => ({
         ...old,
         ...updatedData
       }));
       
-      return { previousWorker };
+      return { previousEmployee };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['worker', workerId] });
+      queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setIsEditing(false);
-      addToast('Worker updated successfully!', 'success');
+      addToast('Employee updated successfully!', 'success');
     },
     onError: (error, variables, context) => {
       // Rollback on error
-      if (context?.previousWorker) {
-        queryClient.setQueryData(['worker', workerId], context.previousWorker);
+      if (context?.previousEmployee) {
+        queryClient.setQueryData(['employee', employeeId], context.previousEmployee);
       }
-      addToast('Error updating worker: ' + (error.response?.data?.error || error.message), 'error');
+      addToast('Error updating employee: ' + (error.response?.data?.error || error.message), 'error');
     }
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteWorker(workerId),
+    mutationFn: () => deleteEmployee(employeeId),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['workers'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
       setShowDeleteConfirm(false);
       onClose();
       const assignmentsRemoved = response.data?.assignments_removed || 0;
-      addToast(`Worker deleted${assignmentsRemoved > 0 ? ` (removed from ${assignmentsRemoved} job${assignmentsRemoved !== 1 ? 's' : ''})` : ''}`, 'success');
+      addToast(`Employee deleted${assignmentsRemoved > 0 ? ` (removed from ${assignmentsRemoved} job${assignmentsRemoved !== 1 ? 's' : ''})` : ''}`, 'success');
     },
     onError: (error) => {
       setShowDeleteConfirm(false);
-      addToast('Error deleting worker: ' + (error.response?.data?.error || error.message), 'error');
+      addToast('Error deleting employee: ' + (error.response?.data?.error || error.message), 'error');
     }
   });
 
   const inviteMutation = useMutation({
-    mutationFn: () => inviteWorker(workerId),
+    mutationFn: () => inviteEmployee(employeeId),
     onSuccess: (response) => {
       const data = response.data;
       setInviteLink(data.invite_link);
       setPortalStatus('invited');
       if (data.email_sent) {
-        addToast('Invite email sent to worker!', 'success');
+        addToast('Invite email sent to employee!', 'success');
       } else {
-        addToast('Invite link generated. Share it with the worker.', 'info');
+        addToast('Invite link generated. Share it with the employee.', 'info');
       }
     },
     onError: (error) => {
       if (error.response?.status === 409) {
         setPortalStatus('active');
-        addToast('This worker already has an active portal account.', 'info');
+        addToast('This employee already has an active portal account.', 'info');
       } else {
-        addToast('Error inviting worker: ' + (error.response?.data?.error || error.message), 'error');
+        addToast('Error inviting employee: ' + (error.response?.data?.error || error.message), 'error');
       }
     }
   });
 
   // Group jobs by time period
   const jobsByPeriod = useMemo(() => {
-    const jobs = workerJobs || [];
+    const jobs = employeeJobs || [];
     const now = new Date();
     const today = now.toDateString();
     const weekFromNow = new Date();
@@ -170,16 +170,16 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     const total = jobs.length;
 
     return { todayJobs, next7Days, completed, total };
-  }, [workerJobs]);
+  }, [employeeJobs]);
 
   const handleEditStart = () => {
     setEditData({
-      name: worker.name || '',
-      phone: worker.phone || '',
-      email: worker.email || '',
-      specialty: worker.specialty || worker.trade_specialty || '',
-      image_url: worker.image_url || '',
-      weekly_hours_expected: worker.weekly_hours_expected || 40.0
+      name: employee.name || '',
+      phone: employee.phone || '',
+      email: employee.email || '',
+      specialty: employee.specialty || employee.trade_specialty || '',
+      image_url: employee.image_url || '',
+      weekly_hours_expected: employee.weekly_hours_expected || 40.0
     });
     setIsEditing(true);
   };
@@ -192,7 +192,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     };
     
     if (!dataToSave.name || dataToSave.name.trim() === '') {
-      addToast('Worker name is required', 'warning');
+      addToast('Employee name is required', 'warning');
       return;
     }
     
@@ -207,18 +207,18 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
     deleteMutation.mutate();
   };
 
-  if (loadingWorker) {
+  if (loadingEmployee) {
     return (
-      <Modal isOpen={isOpen} onClose={onClose} title="Worker Details" size="xlarge">
+      <Modal isOpen={isOpen} onClose={onClose} title="Employee Details" size="xlarge">
         <div className="modal-loading">
           <div className="loading-spinner"></div>
-          <p>Loading worker details...</p>
+          <p>Loading employee details...</p>
         </div>
       </Modal>
     );
   }
 
-  if (!worker) return null;
+  if (!employee) return null;
 
   const isBusy = jobsByPeriod.todayJobs.some(job => {
     const now = new Date();
@@ -228,18 +228,18 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
   });
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Worker Details" size="xlarge">
-      <div className="worker-detail-modal">
+    <Modal isOpen={isOpen} onClose={onClose} title="Employee Details" size="xlarge">
+      <div className="employee-detail-modal">
         {/* Header */}
-        <div className="worker-modal-header">
-          <div className="worker-modal-avatar">
-            {worker.image_url ? (
-              <img src={worker.image_url} alt={worker.name} />
+        <div className="employee-modal-header">
+          <div className="employee-modal-avatar">
+            {employee.image_url ? (
+              <img src={employee.image_url} alt={employee.name} />
             ) : (
               <i className="fas fa-hard-hat"></i>
             )}
           </div>
-          <div className="worker-modal-info">
+          <div className="employee-modal-info">
             {isEditing ? (
               <div className="edit-header-fields">
                 <input
@@ -247,7 +247,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                   className="form-input name-input"
                   value={editData.name}
                   onChange={(e) => setEditData({...editData, name: e.target.value})}
-                  placeholder="Worker Name"
+                  placeholder="Employee Name"
                 />
                 <input
                   type="text"
@@ -259,10 +259,10 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
               </div>
             ) : (
               <>
-                <h2>{worker.name}</h2>
-                {worker.specialty && (
+                <h2>{employee.name}</h2>
+                {employee.specialty && (
                   <span className="specialty-badge">
-                    <i className="fas fa-wrench"></i> {worker.specialty}
+                    <i className="fas fa-wrench"></i> {employee.specialty}
                   </span>
                 )}
               </>
@@ -283,12 +283,12 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
               <div className="stat-badge hours">
                 <i className="fas fa-clock"></i>
                 <span>
-                  {hoursData?.hours_worked || 0}h / {worker.weekly_hours_expected || 40}h this week
+                  {hoursData?.hours_worked || 0}h / {employee.weekly_hours_expected || 40}h this week
                 </span>
               </div>
             </div>
           </div>
-          <div className="worker-modal-actions">
+          <div className="employee-modal-actions">
             {isEditing ? (
               <>
                 <button className="btn btn-secondary" onClick={() => setIsEditing(false)}>Cancel</button>
@@ -308,19 +308,19 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                 <button className="btn btn-secondary" onClick={handleEditStart}>
                   <i className="fas fa-edit"></i> Edit
                 </button>
-                {worker.email && portalStatus !== 'active' && (
+                {employee.email && portalStatus !== 'active' && (
                   <button 
                     className="btn btn-secondary"
                     onClick={() => inviteMutation.mutate()}
                     disabled={inviteMutation.isPending}
-                    title={portalStatus === 'invited' ? 'Resend invite email' : 'Invite worker to their own portal'}
+                    title={portalStatus === 'invited' ? 'Resend invite email' : 'Invite employee to their own portal'}
                   >
                     <i className={`fas ${inviteMutation.isPending ? 'fa-spinner fa-spin' : 'fa-envelope'}`}></i>
                     {inviteMutation.isPending ? 'Sending...' : portalStatus === 'invited' ? 'Resend Invite' : 'Invite to Portal'}
                   </button>
                 )}
                 {portalStatus === 'active' && (
-                  <span className="portal-active-badge" title="Worker has an active portal account">
+                  <span className="portal-active-badge" title="Employee has an active portal account">
                     <i className="fas fa-check-circle"></i> Portal Active
                   </span>
                 )}
@@ -328,7 +328,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                   className="btn-icon-danger"
                   onClick={handleDelete}
                   disabled={deleteMutation.isPending}
-                  title="Delete worker"
+                  title="Delete employee"
                 >
                   <i className="fas fa-trash"></i>
                 </button>
@@ -342,7 +342,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
           <div className="invite-link-banner">
             <i className="fas fa-link"></i>
             <div className="invite-link-content">
-              <span className="invite-link-label">Worker invite link:</span>
+              <span className="invite-link-label">Employee invite link:</span>
               <code className="invite-link-url">{inviteLink}</code>
             </div>
             <button 
@@ -358,9 +358,9 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
         )}
 
         {/* Content Grid */}
-        <div className="worker-modal-grid">
+        <div className="employee-modal-grid">
           {/* Left Column - Contact & Today */}
-          <div className="worker-modal-column">
+          <div className="employee-modal-column">
             {/* Contact Info */}
             <div className="info-card">
               <h3><i className="fas fa-address-card"></i> Contact Information</h3>
@@ -431,16 +431,16 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                   <div className="info-cell">
                     <span className="info-label">Phone</span>
                     <span className="info-value">
-                      {worker.phone ? (
-                        <a href={`tel:${worker.phone}`} className="link">{formatPhone(worker.phone)}</a>
+                      {employee.phone ? (
+                        <a href={`tel:${employee.phone}`} className="link">{formatPhone(employee.phone)}</a>
                       ) : <span className="not-provided">Not provided</span>}
                     </span>
                   </div>
                   <div className="info-cell">
                     <span className="info-label">Email</span>
                     <span className="info-value">
-                      {worker.email ? (
-                        <a href={`mailto:${worker.email}`} className="link">{worker.email}</a>
+                      {employee.email ? (
+                        <a href={`mailto:${employee.email}`} className="link">{employee.email}</a>
                       ) : <span className="not-provided">Not provided</span>}
                     </span>
                   </div>
@@ -496,7 +496,7 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
           </div>
 
           {/* Right Column - Next 7 Days */}
-          <div className="worker-modal-column">
+          <div className="employee-modal-column">
             <div className="info-card schedule-card">
               <div className="schedule-header week">
                 <h3>Next 7 Days</h3>
@@ -562,14 +562,14 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
             <div className="delete-confirm-icon">
               <i className="fas fa-exclamation-triangle"></i>
             </div>
-            <h3>Delete Worker?</h3>
+            <h3>Delete Employee?</h3>
             <p className="delete-warning">
-              This will permanently delete <strong>{worker.name}</strong>.
+              This will permanently delete <strong>{employee.name}</strong>.
             </p>
             {jobsByPeriod.total > 0 && (
               <p className="delete-cascade-warning">
                 <i className="fas fa-exclamation-circle"></i>
-                Worker will be removed from <strong>{jobsByPeriod.total} job assignment{jobsByPeriod.total !== 1 ? 's' : ''}</strong>.
+                Employee will be removed from <strong>{jobsByPeriod.total} job assignment{jobsByPeriod.total !== 1 ? 's' : ''}</strong>.
               </p>
             )}
             <div className="delete-confirm-actions">
@@ -581,21 +581,21 @@ function WorkerDetailModal({ isOpen, onClose, workerId }) {
                 onClick={confirmDelete}
                 disabled={deleteMutation.isPending}
               >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete Worker'}
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete Employee'}
               </button>
             </div>
           </div>
         </div>
       )}
-      {/* Message Worker Modal */}
-      <MessageWorkerModal
+      {/* Message Employee Modal */}
+      <MessageEmployeeModal
         isOpen={showMessageModal}
         onClose={() => setShowMessageModal(false)}
-        workerId={workerId}
-        workerName={worker?.name}
+        employeeId={employeeId}
+        employeeName={employee?.name}
       />
     </Modal>
   );
 }
 
-export default WorkerDetailModal;
+export default EmployeeDetailModal;

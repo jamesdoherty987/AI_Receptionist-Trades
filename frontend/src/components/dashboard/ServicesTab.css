@@ -235,8 +235,8 @@
   transition: border-color 0.2s;
 }
 
-/* Workers Input */
-.workers-input-wrapper {
+/* Employees Input */
+.employees-input-wrapper {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -246,11 +246,11 @@
   padding: 0.35rem 0.5rem;
 }
 
-.workers-input-wrapper.compact {
+.employees-input-wrapper.compact {
   padding: 0.25rem 0.4rem;
 }
 
-.workers-btn {
+.employees-btn {
   width: 28px;
   height: 28px;
   border: none;
@@ -265,17 +265,17 @@
   font-size: 0.75rem;
 }
 
-.workers-btn:hover:not(:disabled) {
+.employees-btn:hover:not(:disabled) {
   background: var(--accent-blue);
   color: white;
 }
 
-.workers-btn:disabled {
+.employees-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.workers-value {
+.employees-value {
   min-width: 24px;
   text-align: center;
   font-weight: 600;
@@ -283,15 +283,15 @@
   color: var(--text-primary);
 }
 
-/* Worker Restrictions */
-.worker-restrictions {
+/* Employee Restrictions */
+.employee-restrictions {
   margin: 1rem 0;
   padding: 1rem;
   background: var(--bg-gray);
   border-radius: 10px;
 }
 
-.worker-restrictions > label {
+.employee-restrictions > label {
   display: block;
   font-weight: 600;
   font-size: 0.9rem;
@@ -337,7 +337,7 @@
   font-size: 0.85rem;
 }
 
-.worker-selection {
+.employee-selection {
   margin-top: 0.75rem;
 }
 
@@ -348,13 +348,13 @@
   margin-bottom: 0.5rem;
 }
 
-.worker-chips {
+.employee-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.worker-chip {
+.employee-chip {
   padding: 0.4rem 0.75rem;
   border: 1px solid var(--border-color);
   background: white;
@@ -368,18 +368,18 @@
   transition: all 0.2s;
 }
 
-.worker-chip:hover {
+.employee-chip:hover {
   border-color: var(--accent-blue);
   color: var(--accent-blue);
 }
 
-.worker-chip.selected {
+.employee-chip.selected {
   background: var(--accent-blue);
   border-color: var(--accent-blue);
   color: white;
 }
 
-.worker-chip i {
+.employee-chip i {
   font-size: 0.7rem;
 }
 
@@ -396,7 +396,7 @@
   font-size: 0.85rem;
 }
 
-.no-workers-message {
+.no-employees-message {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -407,7 +407,7 @@
   font-size: 0.85rem;
 }
 
-.no-workers-message i {
+.no-employees-message i {
   color: var(--accent-blue);
 }
 
@@ -594,7 +594,7 @@
   color: var(--accent-blue);
 }
 
-.meta-item.workers {
+.meta-item.employees {
   background: rgba(59, 130, 246, 0.1);
   padding: 0.15rem 0.5rem;
   border-radius: 12px;

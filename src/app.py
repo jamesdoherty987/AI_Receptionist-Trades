@@ -258,7 +258,7 @@ def upload_base64_image_to_r2(base64_data: str, company_id: int, file_type: str 
     Args:
         base64_data: Base64 encoded image data (e.g., 'data:image/png;base64,...')
         company_id: Company ID for folder separation
-        file_type: Type of file (logos, workers, services, etc.)
+        file_type: Type of file (logos, employees, services, etc.)
     
     Returns:
         R2 public URL if successful, or original base64 if R2 fails/not configured
@@ -315,20 +315,20 @@ def upload_base64_image_to_r2(base64_data: str, company_id: int, file_type: str 
         return base64_data
 
 
-# Flag to track if scheduler has been started (for worker-based initialization)
+# Flag to track if scheduler has been started (for employee-based initialization)
 _scheduler_started = False
 
 def start_scheduler_once():
-    """Start the auto-complete scheduler only once across all workers.
-    Uses a simple file lock to ensure only one worker starts the scheduler.
+    """Start the auto-complete scheduler only once across all employees.
+    Uses a simple file lock to ensure only one employee starts the scheduler.
     """
     global _scheduler_started
     if _scheduler_started:
         return
     _scheduler_started = True
     
-    # Use file-based locking to ensure only one worker starts the scheduler
-    # This works with uvicorn, gunicorn, and any multi-worker setup
+    # Use file-based locking to ensure only one employee starts the scheduler
+    # This works with uvicorn, gunicorn, and any multi-employee setup
     import tempfile
     import fcntl
     
@@ -339,8 +339,8 @@ def start_scheduler_once():
         lock_fd = open(lock_file, 'w')
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         
-        # We got the lock - this worker starts the scheduler
-        # NOTE: Auto-complete scheduler removed — workers now manually mark jobs complete
+        # We got the lock - this employee starts the scheduler
+        # NOTE: Auto-complete scheduler removed — employees now manually mark jobs complete
         
         # Start SMS day-before reminder scheduler (sends at 5 PM daily)
         try:
@@ -351,10 +351,10 @@ def start_scheduler_once():
             print(f"[WARNING] Could not start SMS reminder scheduler: {e}\\n")
         
         # Keep lock file open to maintain the lock
-        # Don't close lock_fd - we want to keep the lock for the lifetime of this worker
+        # Don't close lock_fd - we want to keep the lock for the lifetime of this employee
         
     except (IOError, OSError):
-        # Another worker already has the lock - that's fine
+        # Another employee already has the lock - that's fine
         print("[INFO] Scheduler already running in another worker\\n")
         try:
             lock_fd.close()
@@ -1336,8 +1336,8 @@ def export_user_data():
             "bookings": fetch_all(
                 "SELECT appointment_time, duration_minutes, service_type, status, urgency, address, eircode, phone_number, email, charge, charge_max, payment_status, payment_method, created_at FROM bookings WHERE company_id = %s ORDER BY id"
             ),
-            "workers": fetch_all(
-                "SELECT name, phone, email, trade_specialty, status, weekly_hours_expected, created_at FROM workers WHERE company_id = %s ORDER BY id"
+            "employees": fetch_all(
+                "SELECT name, phone, email, trade_specialty, status, weekly_hours_expected, created_at FROM employees WHERE company_id = %s ORDER BY id"
             ),
             "services": fetch_all(
                 "SELECT name, description, price, duration_minutes, created_at FROM services WHERE company_id = %s ORDER BY id"
@@ -1474,7 +1474,7 @@ def get_dashboard_data():
             company_id=company_id, since_days=since_days, limit=limit
         )
         clients = db.get_all_clients(company_id=company_id)
-        workers = db.get_all_workers(company_id=company_id)
+        employees = db.get_all_employees(company_id=company_id)
 
         # Finances use the already-loaded bookings (window-limited). If you need
         # lifetime revenue, use /api/finances instead.
@@ -1493,7 +1493,7 @@ def get_dashboard_data():
             'data': {
                 'bookings': bookings,
                 'clients': clients,
-                'workers': workers,
+                'employees': employees,
                 'finances': finances,
                 'window_days': since_days,
             }
@@ -1732,57 +1732,57 @@ def reset_password():
 
 
 # ============================================
-# WORKER PORTAL AUTH ENDPOINTS
+# EMPLOYEE PORTAL AUTH ENDPOINTS
 # ============================================
 
-_worker_token_serializer = URLSafeTimedSerializer(
-    app.secret_key, salt='worker-auth-token'
+_employee_token_serializer = URLSafeTimedSerializer(
+    app.secret_key, salt='employee-auth-token'
 )
 
 
-def generate_worker_auth_token(worker_id: int, company_id: int, email: str) -> str:
-    """Generate a signed auth token for a worker."""
-    return _worker_token_serializer.dumps({
-        'wid': worker_id, 'cid': company_id, 'email': email, 'role': 'worker'
+def generate_employee_auth_token(employee_id: int, company_id: int, email: str) -> str:
+    """Generate a signed auth token for an employee."""
+    return _employee_token_serializer.dumps({
+        'wid': employee_id, 'cid': company_id, 'email': email, 'role': 'employee'
     })
 
 
-def verify_worker_auth_token(token: str, max_age: int = 432000) -> dict | None:
-    """Verify and decode a worker auth token. Returns payload or None.
+def verify_employee_auth_token(token: str, max_age: int = 432000) -> dict | None:
+    """Verify and decode an employee auth token. Returns payload or None.
     max_age=432000 = 5 days, matching PERMANENT_SESSION_LIFETIME."""
     try:
-        return _worker_token_serializer.loads(token, max_age=max_age)
+        return _employee_token_serializer.loads(token, max_age=max_age)
     except (BadSignature, SignatureExpired):
         return None
 
 
-def worker_login_required(f):
-    """Decorator to require worker login for API endpoints."""
+def employee_login_required(f):
+    """Decorator to require employee login for API endpoints."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # Check session first
-        worker_id = session.get('worker_id')
-        if worker_id and isinstance(worker_id, int):
+        employee_id = session.get('employee_id')
+        if employee_id and isinstance(employee_id, int):
             return f(*args, **kwargs)
 
         # Fallback: signed auth token header
         token = request.headers.get('X-Auth-Token')
         if token:
-            payload = verify_worker_auth_token(token)
-            if payload and payload.get('wid') and payload.get('role') == 'worker':
-                session['worker_id'] = payload['wid']
-                session['worker_company_id'] = payload['cid']
-                session['worker_email'] = payload['email']
+            payload = verify_employee_auth_token(token)
+            if payload and payload.get('wid') and payload.get('role') == 'employee':
+                session['employee_id'] = payload['wid']
+                session['employee_company_id'] = payload['cid']
+                session['employee_email'] = payload['email']
                 return f(*args, **kwargs)
 
         return jsonify({"error": "Authentication required"}), 401
     return decorated_function
 
 
-@app.route("/api/worker/auth/login", methods=["POST"])
+@app.route("/api/employee/auth/login", methods=["POST"])
 @rate_limit(max_requests=10, window_seconds=60)
-def worker_login():
-    """Log in as a worker"""
+def employee_login():
+    """Log in as an employee"""
     data = request.json
     email = data.get('email', '').lower().strip()
     password = data.get('password', '')
@@ -1791,7 +1791,7 @@ def worker_login():
         return jsonify({"error": "Email and password are required"}), 400
 
     db = get_database()
-    account = db.get_worker_account_by_email(email)
+    account = db.get_employee_account_by_email(email)
 
     if not account:
         return jsonify({"error": "Invalid email or password"}), 401
@@ -1804,77 +1804,77 @@ def worker_login():
     if not verify_password(password, account['password_hash']):
         return jsonify({"error": "Invalid email or password"}), 401
 
-    # Get the worker record for profile info
-    worker = db.get_worker(account['worker_id'])
-    if not worker:
-        return jsonify({"error": "Worker profile not found"}), 500
+    # Get the employee record for profile info
+    employee = db.get_employee(account['employee_id'])
+    if not employee:
+        return jsonify({"error": "Employee profile not found"}), 500
 
     # Get company name
     company = db.get_company(account['company_id'])
     company_name = company['company_name'] if company else ''
 
     # Update last login
-    db.update_worker_account_last_login(account['id'])
+    db.update_employee_account_last_login(account['id'])
 
     # Create session
-    session['worker_id'] = account['worker_id']
-    session['worker_company_id'] = account['company_id']
-    session['worker_email'] = account['email']
+    session['employee_id'] = account['employee_id']
+    session['employee_company_id'] = account['company_id']
+    session['employee_email'] = account['email']
     session.permanent = True
 
     # Generate auth token
-    auth_token = generate_worker_auth_token(
-        account['worker_id'], account['company_id'], account['email']
+    auth_token = generate_employee_auth_token(
+        account['employee_id'], account['company_id'], account['email']
     )
 
     return jsonify({
         "success": True,
         "auth_token": auth_token,
         "user": {
-            "id": account['worker_id'],
-            "name": worker['name'],
+            "id": account['employee_id'],
+            "name": employee['name'],
             "email": account['email'],
-            "phone": worker.get('phone', ''),
-            "trade_specialty": worker.get('trade_specialty', ''),
-            "image_url": worker.get('image_url', ''),
+            "phone": employee.get('phone', ''),
+            "trade_specialty": employee.get('trade_specialty', ''),
+            "image_url": employee.get('image_url', ''),
             "company_name": company_name,
-            "role": "worker"
+            "role": "employee"
         }
     })
 
 
-@app.route("/api/worker/auth/me", methods=["GET"])
-def get_current_worker():
-    """Get the currently logged in worker"""
-    worker_id = session.get('worker_id')
+@app.route("/api/employee/auth/me", methods=["GET"])
+def get_current_employee():
+    """Get the currently logged in employee"""
+    employee_id = session.get('employee_id')
 
-    if not worker_id:
+    if not employee_id:
         token = request.headers.get('X-Auth-Token')
         if token:
-            payload = verify_worker_auth_token(token)
-            if payload and payload.get('wid') and payload.get('role') == 'worker':
-                worker_id = payload['wid']
-                session['worker_id'] = payload['wid']
-                session['worker_company_id'] = payload['cid']
-                session['worker_email'] = payload['email']
+            payload = verify_employee_auth_token(token)
+            if payload and payload.get('wid') and payload.get('role') == 'employee':
+                employee_id = payload['wid']
+                session['employee_id'] = payload['wid']
+                session['employee_company_id'] = payload['cid']
+                session['employee_email'] = payload['email']
 
-    if not worker_id:
+    if not employee_id:
         return jsonify({"authenticated": False}), 200
 
     db = get_database()
-    worker = db.get_worker(worker_id)
-    account = db.get_worker_account_by_worker_id(worker_id)
+    employee = db.get_employee(employee_id)
+    account = db.get_employee_account_by_employee_id(employee_id)
 
-    if not worker or not account:
-        session.pop('worker_id', None)
-        session.pop('worker_company_id', None)
-        session.pop('worker_email', None)
+    if not employee or not account:
+        session.pop('employee_id', None)
+        session.pop('employee_company_id', None)
+        session.pop('employee_email', None)
         return jsonify({"authenticated": False}), 200
 
     company = db.get_company(account['company_id'])
     company_name = company['company_name'] if company else ''
     
-    # Include industry profile so worker portal shows correct terminology
+    # Include industry profile so employee portal shows correct terminology
     from src.utils.industry_config import get_industry_profile
     industry_type = (company or {}).get('industry_type') or 'trades'
     industry_profile = get_industry_profile(industry_type)
@@ -1882,33 +1882,33 @@ def get_current_worker():
     return jsonify({
         "authenticated": True,
         "user": {
-            "id": worker['id'],
-            "name": worker['name'],
+            "id": employee['id'],
+            "name": employee['name'],
             "email": account['email'],
-            "phone": worker.get('phone', ''),
-            "trade_specialty": worker.get('trade_specialty', ''),
-            "image_url": worker.get('image_url', ''),
+            "phone": employee.get('phone', ''),
+            "trade_specialty": employee.get('trade_specialty', ''),
+            "image_url": employee.get('image_url', ''),
             "company_name": company_name,
-            "role": "worker",
+            "role": "employee",
             "industry_type": industry_type,
             "industry_profile": industry_profile,
         }
     })
 
 
-@app.route("/api/worker/auth/logout", methods=["POST"])
-def worker_logout():
-    """Log out worker"""
-    session.pop('worker_id', None)
-    session.pop('worker_company_id', None)
-    session.pop('worker_email', None)
+@app.route("/api/employee/auth/logout", methods=["POST"])
+def employee_logout():
+    """Log out employee"""
+    session.pop('employee_id', None)
+    session.pop('employee_company_id', None)
+    session.pop('employee_email', None)
     return jsonify({"success": True, "message": "Logged out"})
 
 
-@app.route("/api/worker/auth/set-password", methods=["POST"])
+@app.route("/api/employee/auth/set-password", methods=["POST"])
 @rate_limit(max_requests=5, window_seconds=60)
-def worker_set_password():
-    """Set password for a worker account using invite token"""
+def employee_set_password():
+    """Set password for an employee account using invite token"""
     data = request.json
     token = data.get('token', '').strip()
     new_password = data.get('password', '')
@@ -1924,7 +1924,7 @@ def worker_set_password():
         return jsonify({"error": password_error}), 400
 
     db = get_database()
-    account = db.get_worker_account_by_invite_token(token)
+    account = db.get_employee_account_by_invite_token(token)
 
     if not account:
         return jsonify({"error": "Invalid or expired invite link."}), 400
@@ -1943,7 +1943,7 @@ def worker_set_password():
 
     # Set the password
     password_hash = hash_password(new_password)
-    success = db.set_worker_account_password(account['id'], password_hash)
+    success = db.set_employee_account_password(account['id'], password_hash)
 
     if success:
         return jsonify({
@@ -1954,10 +1954,10 @@ def worker_set_password():
     return jsonify({"error": "Failed to set password. Please try again."}), 500
 
 
-@app.route("/api/worker/auth/forgot-password", methods=["POST"])
+@app.route("/api/employee/auth/forgot-password", methods=["POST"])
 @rate_limit(max_requests=5, window_seconds=300)
-def worker_forgot_password():
-    """Send password reset email for a worker account"""
+def employee_forgot_password():
+    """Send password reset email for an employee account"""
     import secrets
     from datetime import datetime, timedelta
 
@@ -1969,33 +1969,33 @@ def worker_forgot_password():
 
     success_msg = {
         "success": True,
-        "message": "If a worker account with that email exists, we've sent a password reset link."
+        "message": "If an employee account with that email exists, we've sent a password reset link."
     }
 
     db = get_database()
-    account = db.get_worker_account_by_email(email)
+    account = db.get_employee_account_by_email(email)
 
     if not account:
-        print(f"[WORKER-FORGOT-PW] No worker account found for {email}", flush=True)
+        print(f"[EMPLOYEE-FORGOT-PW] No employee account found for {email}", flush=True)
         return jsonify(success_msg)
 
     if not account.get('password_set'):
-        print(f"[WORKER-FORGOT-PW] Worker {email} hasn't set password yet - they should use invite link", flush=True)
+        print(f"[EMPLOYEE-FORGOT-PW] Employee {email} hasn't set password yet - they should use invite link", flush=True)
         return jsonify(success_msg)
 
-    print(f"[WORKER-FORGOT-PW] Account found for {email} (ID: {account['id']})", flush=True)
+    print(f"[EMPLOYEE-FORGOT-PW] Account found for {email} (ID: {account['id']})", flush=True)
 
     reset_token = secrets.token_urlsafe(32)
     reset_expires = datetime.now() + timedelta(hours=1)
 
-    db.update_worker_account_reset_token(account['id'], reset_token, reset_expires.isoformat())
+    db.update_employee_account_reset_token(account['id'], reset_token, reset_expires.isoformat())
 
     origin = request.headers.get('Origin', '')
     if not origin:
         origin = os.getenv('PUBLIC_URL', request.host_url.rstrip('/'))
-    reset_link = f"{origin}/worker/reset-password?token={reset_token}"
+    reset_link = f"{origin}/employee/reset-password?token={reset_token}"
 
-    print(f"[WORKER-FORGOT-PW] Reset link: {reset_link}", flush=True)
+    print(f"[EMPLOYEE-FORGOT-PW] Reset link: {reset_link}", flush=True)
 
     try:
         from src.services.email_reminder import get_email_service
@@ -2006,19 +2006,19 @@ def worker_forgot_password():
 
         email_sent = email_service.send_password_reset(email, reset_link, business_name)
         if email_sent:
-            print(f"[WORKER-FORGOT-PW] Reset email sent to {email}", flush=True)
+            print(f"[EMPLOYEE-FORGOT-PW] Reset email sent to {email}", flush=True)
         else:
-            print(f"[WORKER-FORGOT-PW] Email service not configured - link logged above", flush=True)
+            print(f"[EMPLOYEE-FORGOT-PW] Email service not configured - link logged above", flush=True)
     except Exception as e:
-        print(f"[WORKER-FORGOT-PW] Email send error: {e}", flush=True)
+        print(f"[EMPLOYEE-FORGOT-PW] Email send error: {e}", flush=True)
 
     return jsonify(success_msg)
 
 
-@app.route("/api/worker/auth/reset-password", methods=["POST"])
+@app.route("/api/employee/auth/reset-password", methods=["POST"])
 @rate_limit(max_requests=10, window_seconds=300)
-def worker_reset_password():
-    """Reset password for a worker account using token"""
+def employee_reset_password():
+    """Reset password for an employee account using token"""
     from datetime import datetime
 
     data = request.json
@@ -2036,13 +2036,13 @@ def worker_reset_password():
         return jsonify({"error": password_error}), 400
 
     db = get_database()
-    account = db.get_worker_account_by_reset_token(token)
+    account = db.get_employee_account_by_reset_token(token)
 
     if not account:
         get_security_logger().log_failed_auth(
-            '/api/worker/auth/reset-password',
+            '/api/employee/auth/reset-password',
             get_client_ip(),
-            'Invalid worker reset token'
+            'Invalid employee reset token'
         )
         return jsonify({"error": "Invalid or expired reset link. Please request a new one."}), 400
 
@@ -2054,15 +2054,15 @@ def worker_reset_password():
             except ValueError:
                 token_expires = None
         if token_expires and datetime.now() > token_expires:
-            db.update_worker_account_reset_token(account['id'], None, None)
+            db.update_employee_account_reset_token(account['id'], None, None)
             return jsonify({"error": "Reset link has expired. Please request a new one."}), 400
 
     new_hash = hash_password(new_password)
-    success = db.reset_worker_account_password(account['id'], new_hash)
+    success = db.reset_employee_account_password(account['id'], new_hash)
 
     if success:
         get_security_logger().log_password_change(
-            f"worker:{account['id']}",
+            f"employee:{account['id']}",
             get_client_ip()
         )
         return jsonify({
@@ -2073,39 +2073,39 @@ def worker_reset_password():
     return jsonify({"error": "Failed to reset password. Please try again."}), 500
 
 
-@app.route("/api/worker/invite", methods=["POST"])
+@app.route("/api/employee/invite", methods=["POST"])
 @login_required
 @subscription_required
-def invite_worker():
-    """Create a worker account and generate invite link (owner only)"""
+def invite_employee():
+    """Create an employee account and generate invite link (owner only)"""
     company_id = session.get('company_id')
     data = request.json
-    worker_id = data.get('worker_id')
+    employee_id = data.get('employee_id')
 
-    if not worker_id:
-        return jsonify({"error": "Worker ID is required"}), 400
+    if not employee_id:
+        return jsonify({"error": "Employee ID is required"}), 400
 
     db = get_database()
 
-    # Verify the worker belongs to this company
-    worker = db.get_worker(worker_id, company_id=company_id)
-    if not worker:
-        return jsonify({"error": "Worker not found"}), 404
+    # Verify the employee belongs to this company
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
 
-    if not worker.get('email'):
-        return jsonify({"error": "Worker must have an email address to be invited"}), 400
+    if not employee.get('email'):
+        return jsonify({"error": "Employee must have an email address to be invited"}), 400
 
     # Check if account already exists
-    existing = db.get_worker_account_by_worker_id(worker_id)
+    existing = db.get_employee_account_by_employee_id(employee_id)
     if existing and existing.get('password_set'):
-        return jsonify({"error": "This worker already has an active account"}), 409
+        return jsonify({"error": "This employee already has an active account"}), 409
 
     # Generate invite token
     from datetime import datetime, timedelta
     invite_token = secrets.token_urlsafe(32)
     invite_expires = datetime.now() + timedelta(days=7)
 
-    email = worker['email'].lower().strip()
+    email = employee['email'].lower().strip()
 
     if existing:
         # Re-send invite: update the existing account's token
@@ -2113,33 +2113,33 @@ def invite_worker():
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                UPDATE worker_accounts 
+                UPDATE employee_accounts 
                 SET invite_token = %s, invite_expires_at = %s, email = %s, updated_at = NOW()
                 WHERE id = %s
             """, (invite_token, invite_expires, email, existing['id']))
             conn.commit()
         except Exception as e:
             conn.rollback()
-            print(f"[WORKER-INVITE] Failed to update invite: {e}")
+            print(f"[EMPLOYEE-INVITE] Failed to update invite: {e}")
             return jsonify({"error": "Failed to update invite. Please try again."}), 500
         finally:
             db.return_connection(conn)
     else:
-        account_id = db.create_worker_account(
-            worker_id=worker_id,
+        account_id = db.create_employee_account(
+            employee_id=employee_id,
             company_id=company_id,
             email=email,
             invite_token=invite_token,
             invite_expires_at=invite_expires
         )
         if not account_id:
-            return jsonify({"error": "This email is already registered as a worker on another account. A worker can currently only be linked to one company. Please use a different email address."}), 409
+            return jsonify({"error": "This email is already registered as an employee on another account. An employee can currently only be linked to one company. Please use a different email address."}), 409
 
     # Build invite link
     origin = request.headers.get('Origin', '')
     if not origin:
         origin = os.getenv('PUBLIC_URL', request.host_url.rstrip('/'))
-    invite_link = f"{origin}/worker/set-password?token={invite_token}"
+    invite_link = f"{origin}/employee/set-password?token={invite_token}"
 
     # Try to send email
     email_sent = False
@@ -2156,57 +2156,57 @@ def invite_worker():
             business_name=business_name
         )
     except Exception as e:
-        print(f"[WORKER-INVITE] Email send error: {e}")
+        print(f"[EMPLOYEE-INVITE] Email send error: {e}")
 
     return jsonify({
         "success": True,
         "invite_link": invite_link,
         "email_sent": email_sent,
-        "message": f"Invite {'sent to ' + email if email_sent else 'link generated. Share it with the worker manually.'}"
+        "message": f"Invite {'sent to ' + email if email_sent else 'link generated. Share it with the employee manually.'}"
     })
 
 
-@app.route("/api/worker/dashboard", methods=["GET"])
-@worker_login_required
-def worker_dashboard():
-    """Get worker's dashboard data (their jobs and schedule)"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/dashboard", methods=["GET"])
+@employee_login_required
+def employee_dashboard():
+    """Get employee's dashboard data (their jobs and schedule)"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
 
     db = get_database()
-    worker = db.get_worker(worker_id, company_id=company_id)
-    if not worker:
-        return jsonify({"error": "Worker not found"}), 404
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
 
-    jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
-    schedule = db.get_worker_schedule(worker_id)
+    jobs = db.get_employee_jobs(employee_id, include_completed=True, company_id=company_id)
+    schedule = db.get_employee_schedule(employee_id)
 
     return jsonify({
         "success": True,
-        "worker": {
-            "id": worker['id'],
-            "name": worker['name'],
-            "phone": worker.get('phone', ''),
-            "email": worker.get('email', ''),
-            "trade_specialty": worker.get('trade_specialty', ''),
-            "image_url": worker.get('image_url', ''),
-            "status": worker.get('status', 'active'),
-            "weekly_hours_expected": worker.get('weekly_hours_expected', 40.0)
+        "employee": {
+            "id": employee['id'],
+            "name": employee['name'],
+            "phone": employee.get('phone', ''),
+            "email": employee.get('email', ''),
+            "trade_specialty": employee.get('trade_specialty', ''),
+            "image_url": employee.get('image_url', ''),
+            "status": employee.get('status', 'active'),
+            "weekly_hours_expected": employee.get('weekly_hours_expected', 40.0)
         },
         "jobs": jobs,
         "schedule": schedule
     })
 
 
-@app.route("/api/worker/profile", methods=["PUT"])
-@worker_login_required
-def update_worker_profile():
-    """Allow worker to update their own profile (limited fields)"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/profile", methods=["PUT"])
+@employee_login_required
+def update_employee_profile():
+    """Allow employee to update their own profile (limited fields)"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
     data = request.json
 
-    # Workers can update phone and image
+    # Employees can update phone and image
     allowed_fields = {}
     if 'phone' in data:
         allowed_fields['phone'] = sanitize_string(data['phone'], max_length=20)
@@ -2214,41 +2214,41 @@ def update_worker_profile():
         image_url = data['image_url']
         # Handle base64 image upload to R2
         if image_url and image_url.startswith('data:image/') and company_id:
-            image_url = upload_base64_image_to_r2(image_url, company_id, 'workers')
+            image_url = upload_base64_image_to_r2(image_url, company_id, 'employees')
         allowed_fields['image_url'] = image_url
 
     if not allowed_fields:
         return jsonify({"error": "No valid fields to update"}), 400
 
     db = get_database()
-    db.update_worker(worker_id, **allowed_fields)
+    db.update_employee(employee_id, **allowed_fields)
 
-    worker = db.get_worker(worker_id)
+    employee = db.get_employee(employee_id)
     return jsonify({
         "success": True,
-        "worker": {
-            "id": worker['id'],
-            "name": worker['name'],
-            "phone": worker.get('phone', ''),
-            "email": worker.get('email', ''),
-            "trade_specialty": worker.get('trade_specialty', ''),
-            "image_url": worker.get('image_url', ''),
+        "employee": {
+            "id": employee['id'],
+            "name": employee['name'],
+            "phone": employee.get('phone', ''),
+            "email": employee.get('email', ''),
+            "trade_specialty": employee.get('trade_specialty', ''),
+            "image_url": employee.get('image_url', ''),
         }
     })
 
 
-@app.route("/api/worker/jobs/<int:job_id>", methods=["GET"])
-@worker_login_required
-def worker_job_detail(job_id):
-    """Get full job details for a worker (only if assigned to them)"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/jobs/<int:job_id>", methods=["GET"])
+@employee_login_required
+def employee_job_detail(job_id):
+    """Get full job details for an employee (only if assigned to them)"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
 
     db = get_database()
 
-    # Verify worker is assigned to this job
-    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
-    job_ids = [j['id'] for j in worker_jobs]
+    # Verify employee is assigned to this job
+    employee_jobs = db.get_employee_jobs(employee_id, include_completed=True, company_id=company_id)
+    job_ids = [j['id'] for j in employee_jobs]
     if job_id not in job_ids:
         return jsonify({"error": "Job not found or not assigned to you"}), 404
 
@@ -2257,8 +2257,8 @@ def worker_job_detail(job_id):
     if not booking:
         return jsonify({"error": "Job not found"}), 404
 
-    # Get assigned workers for this job
-    assigned_workers = db.get_job_workers(job_id, company_id=company_id)
+    # Get assigned employees for this job
+    assigned_employees = db.get_job_employees(job_id, company_id=company_id)
 
     # Get appointment notes
     notes = db.get_appointment_notes(job_id)
@@ -2266,27 +2266,27 @@ def worker_job_detail(job_id):
     return jsonify({
         "success": True,
         "job": booking,
-        "assigned_workers": assigned_workers,
+        "assigned_employees": assigned_employees,
         "notes": notes
     })
 
 
-@app.route("/api/worker/jobs/<int:job_id>/photos", methods=["POST"])
-@worker_login_required
-def worker_upload_job_photo(job_id):
-    """Allow worker to upload photos and videos to their assigned jobs.
+@app.route("/api/employee/jobs/<int:job_id>/photos", methods=["POST"])
+@employee_login_required
+def employee_upload_job_photo(job_id):
+    """Allow employee to upload photos and videos to their assigned jobs.
     Accepts either:
       - JSON with base64 image: {"image": "data:image/..."}
       - Multipart form with file: file field named 'file' (for videos)
     """
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
 
     db = get_database()
 
-    # Verify worker is assigned to this job
-    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
-    job_ids = [j['id'] for j in worker_jobs]
+    # Verify employee is assigned to this job
+    employee_jobs = db.get_employee_jobs(employee_id, include_completed=True, company_id=company_id)
+    job_ids = [j['id'] for j in employee_jobs]
     if job_id not in job_ids:
         return jsonify({"error": "Job not found or not assigned to you"}), 404
 
@@ -2341,7 +2341,7 @@ def worker_upload_job_photo(job_id):
                 content_type=content_type
             )
         except Exception as e:
-            print(f"[ERROR] Worker media upload failed: {e}")
+            print(f"[ERROR] Employee media upload failed: {e}")
             return jsonify({"error": "Failed to upload file"}), 500
     else:
         # Base64 image upload
@@ -2386,18 +2386,18 @@ def worker_upload_job_photo(job_id):
     return jsonify({"success": True, "photo_url": media_url, "photo_urls": updated_photos})
 
 
-@app.route("/api/worker/jobs/<int:job_id>/notes", methods=["GET", "POST"])
-@worker_login_required
-def worker_job_notes(job_id):
-    """Get or add notes to a job (worker can log what they did, materials used, etc.)"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/jobs/<int:job_id>/notes", methods=["GET", "POST"])
+@employee_login_required
+def employee_job_notes(job_id):
+    """Get or add notes to a job (employee can log what they did, materials used, etc.)"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
 
     db = get_database()
 
-    # Verify worker is assigned to this job
-    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
-    job_ids = [j['id'] for j in worker_jobs]
+    # Verify employee is assigned to this job
+    employee_jobs = db.get_employee_jobs(employee_id, include_completed=True, company_id=company_id)
+    job_ids = [j['id'] for j in employee_jobs]
     if job_id not in job_ids:
         return jsonify({"error": "Job not found or not assigned to you"}), 404
 
@@ -2411,9 +2411,9 @@ def worker_job_notes(job_id):
     if not note_text:
         return jsonify({"error": "Note text is required"}), 400
 
-    # Get worker name for the created_by field
-    worker = db.get_worker(worker_id, company_id=company_id)
-    created_by = f"worker:{worker['name']}" if worker else "worker"
+    # Get employee name for the created_by field
+    employee = db.get_employee(employee_id, company_id=company_id)
+    created_by = f"employee:{employee['name']}" if employee else "employee"
 
     note_id = db.add_appointment_note(
         booking_id=job_id,
@@ -2426,17 +2426,17 @@ def worker_job_notes(job_id):
     return jsonify({"error": "Failed to add note"}), 500
 
 
-@app.route("/api/worker/jobs/<int:job_id>/status", methods=["PUT"])
-@worker_login_required
-def worker_update_job_status(job_id):
-    """Allow worker to update job status"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/jobs/<int:job_id>/status", methods=["PUT"])
+@employee_login_required
+def employee_update_job_status(job_id):
+    """Allow employee to update job status"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
 
     db = get_database()
 
-    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
-    job_ids = [j['id'] for j in worker_jobs]
+    employee_jobs = db.get_employee_jobs(employee_id, include_completed=True, company_id=company_id)
+    job_ids = [j['id'] for j in employee_jobs]
     if job_id not in job_ids:
         return jsonify({"error": "Job not found or not assigned to you"}), 404
 
@@ -2555,10 +2555,10 @@ def worker_update_job_status(job_id):
                         new_booking = cur.fetchone()
                         new_id = new_booking['id']
 
-                        # Copy worker assignments
+                        # Copy employee assignments
                         cur.execute("""
-                            INSERT INTO worker_assignments (booking_id, worker_id)
-                            SELECT %s, worker_id FROM worker_assignments WHERE booking_id = %s
+                            INSERT INTO employee_assignments (booking_id, employee_id)
+                            SELECT %s, employee_id FROM employee_assignments WHERE booking_id = %s
                         """, (new_id, job_id))
                         conn.commit()
                         cur.close()
@@ -2574,18 +2574,18 @@ def worker_update_job_status(job_id):
     return jsonify({"success": True, "status": new_status})
 
 
-@app.route("/api/worker/jobs/bulk-complete", methods=["POST"])
-@worker_login_required
-def worker_bulk_complete_jobs():
-    """Allow worker to mark multiple past jobs as completed at once"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/jobs/bulk-complete", methods=["POST"])
+@employee_login_required
+def employee_bulk_complete_jobs():
+    """Allow employee to mark multiple past jobs as completed at once"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
 
     db = get_database()
     data = request.json or {}
     filter_type = data.get('filter', 'all')  # 'today', 'week', 'all'
 
-    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+    employee_jobs = db.get_employee_jobs(employee_id, include_completed=True, company_id=company_id)
 
     from datetime import datetime, timedelta
     now = datetime.now()
@@ -2595,7 +2595,7 @@ def worker_bulk_complete_jobs():
     completed_ids = []
     skipped_statuses = {'completed', 'cancelled'}
 
-    for job in worker_jobs:
+    for job in employee_jobs:
         if job['status'] in skipped_statuses:
             continue
 
@@ -2625,24 +2625,24 @@ def worker_bulk_complete_jobs():
     })
 
 
-@app.route("/api/worker/jobs/<int:job_id>/details", methods=["PUT"])
-@worker_login_required
-def worker_update_job_details(job_id):
-    """Allow worker to edit job details like actual charge and actual duration after completion"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/jobs/<int:job_id>/details", methods=["PUT"])
+@employee_login_required
+def employee_update_job_details(job_id):
+    """Allow employee to edit job details like actual charge and actual duration after completion"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
 
     db = get_database()
 
-    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
-    job_ids = [j['id'] for j in worker_jobs]
+    employee_jobs = db.get_employee_jobs(employee_id, include_completed=True, company_id=company_id)
+    job_ids = [j['id'] for j in employee_jobs]
     if job_id not in job_ids:
         return jsonify({"error": "Job not found or not assigned to you"}), 404
 
     data = request.json
     update_kwargs = {}
 
-    # Workers can update actual charge
+    # Employees can update actual charge
     if 'actual_charge' in data:
         try:
             val = float(data['actual_charge']) if data['actual_charge'] not in (None, '') else None
@@ -2652,7 +2652,7 @@ def worker_update_job_details(job_id):
         except (ValueError, TypeError):
             pass
 
-    # Workers can update actual duration
+    # Employees can update actual duration
     if 'actual_duration_minutes' in data:
         try:
             val = int(data['actual_duration_minutes'])
@@ -2661,7 +2661,7 @@ def worker_update_job_details(job_id):
         except (ValueError, TypeError):
             pass
 
-    # Workers can update job_started_at and job_completed_at
+    # Employees can update job_started_at and job_completed_at
     if 'job_started_at' in data:
         update_kwargs['job_started_at'] = data['job_started_at']
     if 'job_completed_at' in data:
@@ -2674,16 +2674,16 @@ def worker_update_job_details(job_id):
     return jsonify({"success": True})
 
 
-@app.route("/api/worker/time-off", methods=["GET", "POST"])
-@worker_login_required
-def worker_time_off():
+@app.route("/api/employee/time-off", methods=["GET", "POST"])
+@employee_login_required
+def employee_time_off():
     """Get or create time-off requests"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
     db = get_database()
 
     if request.method == "GET":
-        requests_list = db.get_worker_time_off(worker_id)
+        requests_list = db.get_employee_time_off(employee_id)
         return jsonify({"success": True, "requests": requests_list})
 
     # POST - create new request
@@ -2711,7 +2711,7 @@ def worker_time_off():
         return jsonify({"error": "Cannot request time off in the past"}), 400
 
     request_id = db.create_time_off_request(
-        worker_id=worker_id,
+        employee_id=employee_id,
         company_id=company_id,
         start_date=start_date,
         end_date=end_date,
@@ -2723,8 +2723,8 @@ def worker_time_off():
         # Check for existing bookings that conflict with the requested dates
         conflicting_jobs = []
         try:
-            worker_jobs = db.get_worker_jobs(worker_id, include_completed=False, company_id=company_id)
-            for job in worker_jobs:
+            employee_jobs = db.get_employee_jobs(employee_id, include_completed=False, company_id=company_id)
+            for job in employee_jobs:
                 job_date = job.get('appointment_time')
                 if job_date:
                     if isinstance(job_date, str):
@@ -2742,15 +2742,15 @@ def worker_time_off():
 
         # Notify the owner about the time-off request
         try:
-            worker = db.get_worker(worker_id, company_id=company_id)
-            worker_name = worker['name'] if worker else 'A worker'
+            employee = db.get_employee(employee_id, company_id=company_id)
+            employee_name = employee['name'] if employee else 'An employee'
             db.create_notification(
                 company_id=company_id,
                 recipient_type='owner',
                 recipient_id=company_id,
                 notif_type='time_off_request',
-                message=f"{worker_name} requested time off ({start_date} to {end_date})",
-                metadata={'worker_id': worker_id, 'worker_name': worker_name,
+                message=f"{employee_name} requested time off ({start_date} to {end_date})",
+                metadata={'employee_id': employee_id, 'employee_name': employee_name,
                           'request_id': request_id, 'leave_type': leave_type}
             )
         except Exception as e:
@@ -2766,24 +2766,24 @@ def worker_time_off():
     return jsonify({"error": "Failed to create request"}), 500
 
 
-@app.route("/api/worker/time-off/<int:request_id>", methods=["DELETE"])
-@worker_login_required
-def worker_delete_time_off(request_id):
+@app.route("/api/employee/time-off/<int:request_id>", methods=["DELETE"])
+@employee_login_required
+def employee_delete_time_off(request_id):
     """Delete a pending time-off request"""
-    worker_id = session.get('worker_id')
+    employee_id = session.get('employee_id')
     db = get_database()
 
-    success = db.delete_time_off_request(request_id, worker_id)
+    success = db.delete_time_off_request(request_id, employee_id)
     if success:
         return jsonify({"success": True, "message": "Request cancelled"})
     return jsonify({"error": "Cannot cancel this request (may already be reviewed)"}), 400
 
 
-@app.route("/api/worker/change-password", methods=["POST"])
-@worker_login_required
-def worker_change_password():
-    """Allow worker to change their password"""
-    worker_id = session.get('worker_id')
+@app.route("/api/employee/change-password", methods=["POST"])
+@employee_login_required
+def employee_change_password():
+    """Allow employee to change their password"""
+    employee_id = session.get('employee_id')
     data = request.json
 
     current_password = data.get('current_password', '')
@@ -2797,7 +2797,7 @@ def worker_change_password():
         return jsonify({"error": password_error}), 400
 
     db = get_database()
-    account = db.get_worker_account_by_worker_id(worker_id)
+    account = db.get_employee_account_by_employee_id(employee_id)
     if not account:
         return jsonify({"error": "Account not found"}), 404
 
@@ -2805,50 +2805,50 @@ def worker_change_password():
         return jsonify({"error": "Current password is incorrect"}), 401
 
     new_hash = hash_password(new_password)
-    success = db.set_worker_account_password(account['id'], new_hash)
+    success = db.set_employee_account_password(account['id'], new_hash)
 
     if success:
         return jsonify({"success": True, "message": "Password changed successfully"})
     return jsonify({"error": "Failed to change password"}), 500
 
 
-@app.route("/api/worker/hours-summary", methods=["GET"])
-@worker_login_required
-def worker_hours_summary():
-    """Get worker's hours summary"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/hours-summary", methods=["GET"])
+@employee_login_required
+def employee_hours_summary():
+    """Get employee's hours summary"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
     db = get_database()
 
-    worker = db.get_worker(worker_id, company_id=company_id)
-    if not worker:
-        return jsonify({"error": "Worker not found"}), 404
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
 
     # Get hours this week
-    hours_data = db.get_worker_hours_this_week(worker_id)
+    hours_data = db.get_employee_hours_this_week(employee_id)
     hours_this_week = hours_data if isinstance(hours_data, (int, float)) else 0
 
     # Get job counts
-    all_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
+    all_jobs = db.get_employee_jobs(employee_id, include_completed=True, company_id=company_id)
     active_jobs = [j for j in all_jobs if j['status'] not in ('completed', 'cancelled')]
     completed_jobs = [j for j in all_jobs if j['status'] == 'completed']
 
     return jsonify({
         "success": True,
         "hours_this_week": hours_this_week,
-        "weekly_hours_expected": worker.get('weekly_hours_expected', 40.0),
+        "weekly_hours_expected": employee.get('weekly_hours_expected', 40.0),
         "active_jobs": len(active_jobs),
         "completed_jobs": len(completed_jobs),
         "total_jobs": len(all_jobs)
     })
 
 
-@app.route("/api/worker/customers", methods=["GET"])
-@worker_login_required
-def worker_customers():
-    """Get unique customers the worker has dealt with through their assigned jobs"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/customers", methods=["GET"])
+@employee_login_required
+def employee_customers():
+    """Get unique customers the employee has dealt with through their assigned jobs"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
     db = get_database()
 
     conn = db.get_connection()
@@ -2860,13 +2860,13 @@ def worker_customers():
                    COUNT(b.id) as total_jobs,
                    COUNT(CASE WHEN b.status = 'completed' THEN 1 END) as completed_jobs,
                    MAX(b.appointment_time) as last_job_date
-            FROM worker_assignments wa
+            FROM employee_assignments wa
             JOIN bookings b ON wa.booking_id = b.id
             JOIN clients c ON b.client_id = c.id
-            WHERE wa.worker_id = %s AND b.company_id = %s
+            WHERE wa.employee_id = %s AND b.company_id = %s
             GROUP BY c.id, c.name, c.phone, c.email, c.address, c.eircode, c.description
             ORDER BY MAX(b.appointment_time) DESC
-        """, (worker_id, company_id))
+        """, (employee_id, company_id))
         customers = [dict(row) for row in cursor.fetchall()]
     finally:
         db.return_connection(conn)
@@ -2874,34 +2874,34 @@ def worker_customers():
     return jsonify({"success": True, "customers": customers})
 
 
-# --- Worker endpoints for job creation ---
+# --- Employee endpoints for job creation ---
 
-@app.route("/api/worker/services", methods=["GET"])
-@worker_login_required
-def worker_services():
-    """Get services menu for the worker's company"""
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/services", methods=["GET"])
+@employee_login_required
+def employee_services():
+    """Get services menu for the employee's company"""
+    company_id = session.get('employee_company_id')
     from src.services.settings_manager import get_settings_manager
     settings_mgr = get_settings_manager()
     menu = settings_mgr.get_services_menu(company_id=company_id)
     return jsonify(menu)
 
 
-@app.route("/api/worker/clients", methods=["GET"])
-@worker_login_required
-def worker_clients():
-    """Get all clients for the worker's company"""
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/clients", methods=["GET"])
+@employee_login_required
+def employee_clients():
+    """Get all clients for the employee's company"""
+    company_id = session.get('employee_company_id')
     db = get_database()
     clients = db.get_all_clients(company_id=company_id)
     return jsonify(clients)
 
 
-@app.route("/api/worker/clients/<int:client_id>", methods=["GET"])
-@worker_login_required
-def worker_client_detail(client_id):
+@app.route("/api/employee/clients/<int:client_id>", methods=["GET"])
+@employee_login_required
+def employee_client_detail(client_id):
     """Get a single client's details"""
-    company_id = session.get('worker_company_id')
+    company_id = session.get('employee_company_id')
     db = get_database()
     client = db.get_client(client_id, company_id=company_id)
     if not client:
@@ -2909,71 +2909,71 @@ def worker_client_detail(client_id):
     return jsonify(client)
 
 
-@app.route("/api/worker/clients/create", methods=["POST"])
-@worker_login_required
+@app.route("/api/employee/clients/create", methods=["POST"])
+@employee_login_required
 @rate_limit(max_requests=30, window_seconds=60)
-def worker_create_client():
-    """Create a new client as a worker"""
-    company_id = session.get('worker_company_id')
+def employee_create_client():
+    """Create a new client as an employee"""
+    company_id = session.get('employee_company_id')
     session['company_id'] = company_id
     return clients_api()
 
 
-@app.route("/api/worker/workers", methods=["GET"])
-@worker_login_required
-def worker_list_workers():
-    """Get all workers for the worker's company (for assigning to jobs)"""
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/employees", methods=["GET"])
+@employee_login_required
+def employee_list_employees():
+    """Get all employees for the employee's company (for assigning to jobs)"""
+    company_id = session.get('employee_company_id')
     db = get_database()
-    workers = db.get_all_workers(company_id=company_id)
-    return jsonify(workers)
+    employees = db.get_all_employees(company_id=company_id)
+    return jsonify(employees)
 
 
-@app.route("/api/worker/availability", methods=["GET"])
-@worker_login_required
-def worker_check_availability():
-    """Check daily availability — mirrors /api/bookings/availability for worker context"""
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/availability", methods=["GET"])
+@employee_login_required
+def employee_check_availability():
+    """Check daily availability — mirrors /api/bookings/availability for employee context"""
+    company_id = session.get('employee_company_id')
     session['company_id'] = company_id
     return check_availability_api()
 
 
-@app.route("/api/worker/availability/month", methods=["GET"])
-@worker_login_required
-def worker_check_monthly_availability():
-    """Check monthly availability — mirrors /api/bookings/availability/month for worker context"""
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/availability/month", methods=["GET"])
+@employee_login_required
+def employee_check_monthly_availability():
+    """Check monthly availability — mirrors /api/bookings/availability/month for employee context"""
+    company_id = session.get('employee_company_id')
     session['company_id'] = company_id
     return check_monthly_availability_api()
 
 
-@app.route("/api/worker/workers/<int:wid>/availability", methods=["GET"])
-@worker_login_required
-def worker_check_worker_availability(wid):
-    """Check a specific worker's availability — mirrors /api/workers/<id>/availability"""
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/employees/<int:wid>/availability", methods=["GET"])
+@employee_login_required
+def employee_check_employee_availability(wid):
+    """Check a specific employee's availability — mirrors /api/employees/<id>/availability"""
+    company_id = session.get('employee_company_id')
     session['company_id'] = company_id
-    return check_worker_availability_api(wid)
+    return check_employee_availability_api(wid)
 
 
-@app.route("/api/worker/bookings", methods=["POST"])
-@worker_login_required
+@app.route("/api/employee/bookings", methods=["POST"])
+@employee_login_required
 @rate_limit(max_requests=30, window_seconds=60)
-def worker_create_booking():
-    """Create a new booking as a worker — reuses the owner booking creation logic"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+def employee_create_booking():
+    """Create a new booking as an employee — reuses the owner booking creation logic"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
 
     # Inject company_id so the existing bookings_api logic works
     session['company_id'] = company_id
 
-    # Worker always gets assigned to their own job
+    # Employee always gets assigned to their own job
     data = request.json
-    worker_ids = data.get('worker_ids', [])
-    if worker_id not in worker_ids:
-        data['worker_ids'] = [worker_id] + worker_ids
-    # Don't use auto_assign — we've explicitly set the worker(s)
-    data['auto_assign_worker'] = False
+    employee_ids = data.get('employee_ids', [])
+    if employee_id not in employee_ids:
+        data['employee_ids'] = [employee_id] + employee_ids
+    # Don't use auto_assign — we've explicitly set the employee(s)
+    data['auto_assign_employee'] = False
 
     return bookings_api()
 
@@ -3018,8 +3018,8 @@ def review_time_off_request(request_id):
                     from datetime import datetime as _dt, date as _date
                     s = _dt.strptime(str(the_req['start_date']), '%Y-%m-%d').date() if isinstance(the_req['start_date'], str) else the_req['start_date']
                     e = _dt.strptime(str(the_req['end_date']), '%Y-%m-%d').date() if isinstance(the_req['end_date'], str) else the_req['end_date']
-                    worker_jobs = db.get_worker_jobs(the_req['worker_id'], include_completed=False, company_id=company_id)
-                    for job in worker_jobs:
+                    employee_jobs = db.get_employee_jobs(the_req['employee_id'], include_completed=False, company_id=company_id)
+                    for job in employee_jobs:
                         job_date = job.get('appointment_time')
                         if job_date:
                             if isinstance(job_date, str):
@@ -3035,9 +3035,9 @@ def review_time_off_request(request_id):
             except Exception:
                 pass
 
-        # Notify the worker about the decision
+        # Notify the employee about the decision
         try:
-            # Look up the request to get the worker_id
+            # Look up the request to get the employee_id
             all_requests = db.get_company_time_off_requests(company_id)
             the_request = next((r for r in all_requests if r['id'] == request_id), None)
             if the_request:
@@ -3047,8 +3047,8 @@ def review_time_off_request(request_id):
                     msg += f": {note}"
                 db.create_notification(
                     company_id=company_id,
-                    recipient_type='worker',
-                    recipient_id=the_request['worker_id'],
+                    recipient_type='employee',
+                    recipient_id=the_request['employee_id'],
                     notif_type=f'time_off_{status_label}',
                     message=msg,
                     metadata={'request_id': request_id, 'status': status_label}
@@ -3060,11 +3060,11 @@ def review_time_off_request(request_id):
                         from src.services.google_calendar_oauth import get_company_google_calendar
                         gcal = get_company_google_calendar(company_id, db)
                         if gcal and gcal.is_valid():
-                            worker_name = the_request.get('worker_name', 'Worker')
+                            employee_name = the_request.get('employee_name', 'Employee')
                             leave_type = the_request.get('leave_type', 'time off')
                             emoji = '🏖️' if leave_type == 'vacation' else '🤒' if leave_type == 'sick' else '📅'
-                            summary = f"{emoji} {worker_name} - {leave_type.title()}"
-                            description = f"Worker time off ({leave_type})"
+                            summary = f"{emoji} {employee_name} - {leave_type.title()}"
+                            description = f"Employee time off ({leave_type})"
                             if note:
                                 description += f"\nNote: {note}"
                             gcal.create_all_day_event(
@@ -3206,7 +3206,7 @@ def admin_required(f):
 @rate_limit(max_requests=20, window_seconds=60)
 def admin_create_account():
     """Admin endpoint to create a managed account (easy_setup=false).
-    Creates the company, optionally assigns phone, sets context, adds workers, etc.
+    Creates the company, optionally assigns phone, sets context, adds employees, etc.
     Returns an invite link for the owner to set their password.
     """
     data = request.json or {}
@@ -3353,23 +3353,23 @@ def admin_create_account():
             except Exception as e:
                 print(f"[ADMIN] Auto phone assignment failed: {e}")
 
-    # Add workers if provided
-    workers_created = []
-    for worker_data in data.get('workers', []):
-        if not worker_data.get('name'):
+    # Add employees if provided
+    employees_created = []
+    for employee_data in data.get('employees', []):
+        if not employee_data.get('name'):
             continue
         try:
-            worker_id = db.add_worker(
-                name=sanitize_string(worker_data['name'], max_length=200),
-                phone=sanitize_string(worker_data.get('phone', ''), max_length=20),
-                email=worker_data.get('email', '').lower().strip() if worker_data.get('email') else None,
-                trade_specialty=sanitize_string(worker_data.get('trade_specialty', ''), max_length=200),
+            employee_id = db.add_employee(
+                name=sanitize_string(employee_data['name'], max_length=200),
+                phone=sanitize_string(employee_data.get('phone', ''), max_length=20),
+                email=employee_data.get('email', '').lower().strip() if employee_data.get('email') else None,
+                trade_specialty=sanitize_string(employee_data.get('trade_specialty', ''), max_length=200),
                 company_id=company_id
             )
-            if worker_id:
-                workers_created.append({'id': worker_id, 'name': worker_data['name']})
+            if employee_id:
+                employees_created.append({'id': employee_id, 'name': employee_data['name']})
         except Exception as e:
-            print(f"[ADMIN] Worker creation failed: {e}")
+            print(f"[ADMIN] Employee creation failed: {e}")
 
     # Add services if provided
     services_created = []
@@ -3429,7 +3429,7 @@ def admin_create_account():
         "invite_link": invite_link,
         "email_sent": email_sent,
         "phone_number": assigned_phone,
-        "workers_created": workers_created,
+        "employees_created": employees_created,
         "services_created": services_created,
         "message": f"Account created for {company_name}. {'Invite email sent to ' + email if email_sent else 'Share the invite link manually.'}"
     }), 201
@@ -3473,16 +3473,16 @@ def admin_get_account(company_id):
     if not company:
         return jsonify({"error": "Account not found"}), 404
 
-    # Get workers for this company
-    workers = db.get_all_workers(company_id=company_id)
+    # Get employees for this company
+    employees = db.get_all_employees(company_id=company_id)
 
     # Convert datetime fields in company
     for key in list(company.keys()):
         if company.get(key) and hasattr(company[key], 'isoformat'):
             company[key] = company[key].isoformat()
 
-    # Convert datetime fields in workers
-    for w in workers:
+    # Convert datetime fields in employees
+    for w in employees:
         for key in list(w.keys()):
             if w.get(key) and hasattr(w[key], 'isoformat'):
                 w[key] = w[key].isoformat()
@@ -3490,7 +3490,7 @@ def admin_get_account(company_id):
     return jsonify({
         "success": True,
         "account": company,
-        "workers": workers
+        "employees": employees
     })
 
 
@@ -5432,8 +5432,8 @@ def business_settings_api():
             # SMS toggles
             'send_confirmation_sms': company.get('send_confirmation_sms', True) if company.get('send_confirmation_sms') is not None else True,
             'send_reminder_sms': company.get('send_reminder_sms', False) if company.get('send_reminder_sms') is not None else False,
-            # Google Calendar worker invites toggle
-            'gcal_invite_workers': company.get('gcal_invite_workers', False) if company.get('gcal_invite_workers') is not None else False,
+            # Google Calendar employee invites toggle
+            'gcal_invite_employees': company.get('gcal_invite_employees', False) if company.get('gcal_invite_employees') is not None else False,
             # Bypass numbers - always forward to fallback
             'bypass_numbers': company.get('bypass_numbers', '[]'),
             # AI receptionist schedule (auto off times)
@@ -5446,7 +5446,7 @@ def business_settings_api():
             'accounting_provider': company.get('accounting_provider', 'builtin'),
             # Admin-controlled tab visibility
             'admin_tab_visibility': company.get('admin_tab_visibility') or {
-                'jobs': True, 'calls': True, 'calendar': True, 'workers': True,
+                'jobs': True, 'calls': True, 'calendar': True, 'employees': True,
                 'crm': True, 'services': True, 'materials': True, 'finances': True,
                 'insights': True, 'reviews': True,
             },
@@ -5522,7 +5522,7 @@ def business_settings_api():
             'show_invoice_buttons': 'show_invoice_buttons',
             'send_confirmation_sms': 'send_confirmation_sms',
             'send_reminder_sms': 'send_reminder_sms',
-            'gcal_invite_workers': 'gcal_invite_workers',
+            'gcal_invite_employees': 'gcal_invite_employees',
             'bypass_numbers': 'bypass_numbers',
             'ai_schedule': 'ai_schedule',
             'setup_wizard_complete': 'setup_wizard_complete',
@@ -5779,14 +5779,14 @@ def add_service_api():
     if image_url and image_url.startswith('data:image/'):
         image_url = upload_base64_image_to_r2(image_url, company_id, 'services')
     
-    # Validate and sanitize worker_restrictions
-    restrictions = data.get('worker_restrictions')
+    # Validate and sanitize employee_restrictions
+    restrictions = data.get('employee_restrictions')
     if restrictions and isinstance(restrictions, dict):
         valid_types = ['all', 'only', 'except']
         if restrictions.get('type') not in valid_types:
             restrictions = None
-        elif restrictions.get('type') != 'all' and not restrictions.get('worker_ids'):
-            restrictions = None  # 'only' and 'except' require worker_ids
+        elif restrictions.get('type') != 'all' and not restrictions.get('employee_ids'):
+            restrictions = None  # 'only' and 'except' require employee_ids
         elif restrictions.get('type') == 'all':
             restrictions = None  # 'all' doesn't need to be stored
     else:
@@ -5801,8 +5801,8 @@ def add_service_api():
         'image_url': image_url if image_url else None,
         'category': data.get('category', 'General'),
         'description': data.get('description', '').strip() if data.get('description') else None,
-        'workers_required': max(1, int(data.get('workers_required', 1)) if data.get('workers_required') else 1),
-        'worker_restrictions': restrictions,
+        'employees_required': max(1, int(data.get('employees_required', 1)) if data.get('employees_required') else 1),
+        'employee_restrictions': restrictions,
         'requires_callout': bool(data.get('requires_callout', False)),
         'requires_quote': bool(data.get('requires_quote', False)),
         'default_materials': data.get('default_materials', [])
@@ -5860,29 +5860,29 @@ def manage_service_api(service_id):
             except (ValueError, TypeError):
                 data['duration_minutes'] = 1440
         
-        # Sanitize workers_required if provided
-        if 'workers_required' in data:
+        # Sanitize employees_required if provided
+        if 'employees_required' in data:
             try:
-                workers = int(data.get('workers_required', 1)) if data.get('workers_required') else 1
-                data['workers_required'] = max(1, workers)
+                employees = int(data.get('employees_required', 1)) if data.get('employees_required') else 1
+                data['employees_required'] = max(1, employees)
             except (ValueError, TypeError):
-                data['workers_required'] = 1
+                data['employees_required'] = 1
         
-        # Handle worker_restrictions if provided
-        if 'worker_restrictions' in data:
-            # Validate structure: {type: 'all'|'only'|'except', worker_ids: [...]}
-            restrictions = data.get('worker_restrictions')
+        # Handle employee_restrictions if provided
+        if 'employee_restrictions' in data:
+            # Validate structure: {type: 'all'|'only'|'except', employee_ids: [...]}
+            restrictions = data.get('employee_restrictions')
             if restrictions and isinstance(restrictions, dict):
                 valid_types = ['all', 'only', 'except']
                 if restrictions.get('type') not in valid_types:
                     restrictions = None
-                elif restrictions.get('type') != 'all' and not restrictions.get('worker_ids'):
-                    restrictions = None  # 'only' and 'except' require worker_ids
+                elif restrictions.get('type') != 'all' and not restrictions.get('employee_ids'):
+                    restrictions = None  # 'only' and 'except' require employee_ids
                 elif restrictions.get('type') == 'all':
                     restrictions = None  # 'all' doesn't need to be stored
             else:
                 restrictions = None
-            data['worker_restrictions'] = restrictions
+            data['employee_restrictions'] = restrictions
         
         # Handle requires_callout if provided
         if 'requires_callout' in data:
@@ -6006,10 +6006,23 @@ def materials_api():
             )
             materials = [dict(r) for r in cursor.fetchall()]
             # Convert Decimal to float for JSON serialization
+            low_stock_count = 0
             for m in materials:
                 if m.get('unit_price') is not None:
                     m['unit_price'] = float(m['unit_price'])
-            return jsonify({"materials": materials})
+                if m.get('stock_on_hand') is not None:
+                    m['stock_on_hand'] = float(m['stock_on_hand'])
+                if m.get('reorder_level') is not None:
+                    m['reorder_level'] = float(m['reorder_level'])
+                # Flag low stock items (at or below reorder level but still in stock)
+                if (m.get('stock_on_hand') is not None and m.get('reorder_level') is not None
+                        and m['stock_on_hand'] <= m['reorder_level']):
+                    m['low_stock'] = True
+                    if m['stock_on_hand'] > 0:
+                        low_stock_count += 1
+                else:
+                    m['low_stock'] = False
+            return jsonify({"materials": materials, "low_stock_count": low_stock_count})
         finally:
             cursor.close()
             db.return_connection(conn)
@@ -6030,14 +6043,31 @@ def materials_api():
     unit = sanitize_string(data.get('unit', 'each'), max_length=50) or 'each'
     category = sanitize_string(data.get('category', ''), max_length=100) or None
     supplier = sanitize_string(data.get('supplier', ''), max_length=255) or None
+    sku = sanitize_string(data.get('sku', ''), max_length=100) or None
+    notes = sanitize_string(data.get('notes', ''), max_length=2000) or None
+
+    # Stock fields — None means "not tracked"
+    stock_on_hand = None
+    if data.get('stock_on_hand') is not None and data.get('stock_on_hand') != '':
+        try:
+            stock_on_hand = max(0, float(data['stock_on_hand']))
+        except (ValueError, TypeError):
+            stock_on_hand = None
+
+    reorder_level = None
+    if data.get('reorder_level') is not None and data.get('reorder_level') != '':
+        try:
+            reorder_level = max(0, float(data['reorder_level']))
+        except (ValueError, TypeError):
+            reorder_level = None
 
     conn = db.get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            """INSERT INTO materials (company_id, name, unit_price, unit, category, supplier)
-               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
-            (company_id, name, unit_price, unit, category, supplier)
+            """INSERT INTO materials (company_id, name, unit_price, unit, category, supplier, sku, notes, stock_on_hand, reorder_level)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (company_id, name, unit_price, unit, category, supplier, sku, notes, stock_on_hand, reorder_level)
         )
         material_id = cursor.fetchone()[0]
         conn.commit()
@@ -6079,6 +6109,26 @@ def material_detail_api(material_id):
             fields.append("category = %s"); values.append(sanitize_string(data['category'], max_length=100) or None)
         if 'supplier' in data:
             fields.append("supplier = %s"); values.append(sanitize_string(data['supplier'], max_length=255) or None)
+        if 'sku' in data:
+            fields.append("sku = %s"); values.append(sanitize_string(data['sku'], max_length=100) or None)
+        if 'notes' in data:
+            fields.append("notes = %s"); values.append(sanitize_string(data['notes'], max_length=2000) or None)
+        if 'stock_on_hand' in data:
+            if data['stock_on_hand'] is None or data['stock_on_hand'] == '':
+                fields.append("stock_on_hand = %s"); values.append(None)
+            else:
+                try:
+                    fields.append("stock_on_hand = %s"); values.append(max(0, float(data['stock_on_hand'])))
+                except (ValueError, TypeError):
+                    pass
+        if 'reorder_level' in data:
+            if data['reorder_level'] is None or data['reorder_level'] == '':
+                fields.append("reorder_level = %s"); values.append(None)
+            else:
+                try:
+                    fields.append("reorder_level = %s"); values.append(max(0, float(data['reorder_level'])))
+                except (ValueError, TypeError):
+                    pass
 
         if not fields:
             return jsonify({"error": "No fields to update"}), 400
@@ -6115,6 +6165,54 @@ def material_detail_api(material_id):
         finally:
             cursor.close()
             db.return_connection(conn)
+
+
+@app.route("/api/materials/<int:material_id>/adjust-stock", methods=["POST"])
+@login_required
+@subscription_required
+def material_adjust_stock(material_id):
+    """Quick stock adjustment: add or subtract from current stock_on_hand"""
+    company_id = session.get('company_id')
+    db = get_database()
+    data = request.json
+    try:
+        adjustment = float(data.get('adjustment', 0))
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid adjustment value"}), 400
+
+    if adjustment == 0:
+        return jsonify({"error": "Adjustment cannot be zero"}), 400
+
+    conn = db.get_connection()
+    from psycopg2.extras import RealDictCursor
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    try:
+        # Get current stock
+        cursor.execute(
+            "SELECT stock_on_hand FROM materials WHERE id = %s AND company_id = %s",
+            (material_id, company_id)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({"error": "Material not found"}), 404
+
+        current = float(row['stock_on_hand']) if row['stock_on_hand'] is not None else None
+        if current is None:
+            return jsonify({"error": "Stock tracking not enabled for this item"}), 400
+        new_stock = max(0, current + adjustment)
+
+        cursor.execute(
+            "UPDATE materials SET stock_on_hand = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s",
+            (new_stock, material_id, company_id)
+        )
+        conn.commit()
+        return jsonify({"success": True, "stock_on_hand": new_stock})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        db.return_connection(conn)
 
 
 @app.route("/api/bookings/<int:booking_id>/materials", methods=["GET", "POST"])
@@ -6265,18 +6363,18 @@ def job_material_detail_api(booking_id, item_id):
             db.return_connection(conn)
 
 
-# Worker endpoint for adding materials to their jobs
-@app.route("/api/worker/jobs/<int:job_id>/materials", methods=["GET", "POST"])
-@worker_login_required
-def worker_job_materials_api(job_id):
-    """Workers can view and add materials to their assigned jobs"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+# Employee endpoint for adding materials to their jobs
+@app.route("/api/employee/jobs/<int:job_id>/materials", methods=["GET", "POST"])
+@employee_login_required
+def employee_job_materials_api(job_id):
+    """Employees can view and add materials to their assigned jobs"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
     db = get_database()
 
-    # Verify worker is assigned
-    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
-    if job_id not in [j['id'] for j in worker_jobs]:
+    # Verify employee is assigned
+    employee_jobs = db.get_employee_jobs(employee_id, include_completed=True, company_id=company_id)
+    if job_id not in [j['id'] for j in employee_jobs]:
         return jsonify({"error": "Job not found or not assigned to you"}), 404
 
     from psycopg2.extras import RealDictCursor
@@ -6329,23 +6427,23 @@ def worker_job_materials_api(job_id):
     material_id = data.get('material_id')
     total_cost = round(unit_price * quantity, 2)
 
-    # Get worker name for added_by
-    worker_name = 'worker'
+    # Get employee name for added_by
+    employee_name = 'employee'
     conn = db.get_connection()
     cursor = conn.cursor()
     try:
         from psycopg2.extras import RealDictCursor as RDC
         cur2 = conn.cursor(cursor_factory=RDC)
-        cur2.execute("SELECT name FROM workers WHERE id = %s", (worker_id,))
+        cur2.execute("SELECT name FROM employees WHERE id = %s", (employee_id,))
         w = cur2.fetchone()
         cur2.close()
         if w:
-            worker_name = w['name']
+            employee_name = w['name']
 
         cursor.execute(
             """INSERT INTO job_materials (booking_id, company_id, material_id, name, unit_price, unit, quantity, total_cost, added_by)
                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-            (job_id, company_id, material_id, name, unit_price, unit, quantity, total_cost, f"worker:{worker_name}")
+            (job_id, company_id, material_id, name, unit_price, unit, quantity, total_cost, f"employee:{employee_name}")
         )
         item_id = cursor.fetchone()[0]
         conn.commit()
@@ -6358,16 +6456,16 @@ def worker_job_materials_api(job_id):
         db.return_connection(conn)
 
 
-@app.route("/api/worker/jobs/<int:job_id>/materials/<int:item_id>", methods=["DELETE"])
-@worker_login_required
-def worker_delete_job_material(job_id, item_id):
-    """Workers can remove materials they added"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/jobs/<int:job_id>/materials/<int:item_id>", methods=["DELETE"])
+@employee_login_required
+def employee_delete_job_material(job_id, item_id):
+    """Employees can remove materials they added"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
     db = get_database()
 
-    worker_jobs = db.get_worker_jobs(worker_id, include_completed=True, company_id=company_id)
-    if job_id not in [j['id'] for j in worker_jobs]:
+    employee_jobs = db.get_employee_jobs(employee_id, include_completed=True, company_id=company_id)
+    if job_id not in [j['id'] for j in employee_jobs]:
         return jsonify({"error": "Job not found"}), 404
 
     conn = db.get_connection()
@@ -6934,7 +7032,7 @@ def bookings_api():
                     duration_minutes = settings_mgr.get_default_duration_minutes(company_id=company_id)
             
             # Check for time conflicts using actual duration (no buffer)
-            # Worker-aware: if specific workers are assigned, only check THEIR conflicts
+            # Employee-aware: if specific employees are assigned, only check THEIR conflicts
             # 
             # We need to find any existing booking whose time span overlaps with the
             # NEW job's time span.  get_conflicting_bookings already computes each
@@ -6979,12 +7077,12 @@ def bookings_api():
             conflict_range_start = appointment_dt
             conflict_range_end = new_job_end
             
-            # Parse worker_ids early so we can use them for conflict checking
-            requested_worker_ids = [int(w) for w in data.get('worker_ids', []) if w]
-            single_wid = data.get('worker_id')
-            if single_wid and not requested_worker_ids:
+            # Parse employee_ids early so we can use them for conflict checking
+            requested_employee_ids = [int(w) for w in data.get('employee_ids', []) if w]
+            single_wid = data.get('employee_id')
+            if single_wid and not requested_employee_ids:
                 try:
-                    requested_worker_ids = [int(single_wid)]
+                    requested_employee_ids = [int(single_wid)]
                 except (ValueError, TypeError):
                     pass
             
@@ -6994,38 +7092,38 @@ def bookings_api():
                 company_id=company_id
             )
             
-            if conflicting_bookings and requested_worker_ids:
-                # Workers are assigned — only block if one of THOSE workers is on a conflicting booking
-                worker_conflict = None
-                for wid in requested_worker_ids:
+            if conflicting_bookings and requested_employee_ids:
+                # Employees are assigned — only block if one of THOSE employees is on a conflicting booking
+                employee_conflict = None
+                for wid in requested_employee_ids:
                     for cb in conflicting_bookings:
-                        assigned = db.get_job_workers(cb['id'])
+                        assigned = db.get_job_employees(cb['id'])
                         if any(w['id'] == wid for w in assigned):
-                            worker_conflict = (wid, cb)
+                            employee_conflict = (wid, cb)
                             break
-                    if worker_conflict:
+                    if employee_conflict:
                         break
                 
-                if worker_conflict:
-                    wid, conflict = worker_conflict
+                if employee_conflict:
+                    wid, conflict = employee_conflict
                     conflict_time = datetime.fromisoformat(str(conflict['appointment_time']))
                     conflict_client = db.get_client(conflict['client_id'], company_id=company_id)
                     conflict_client_name = conflict_client['name'] if conflict_client else 'Unknown'
-                    conflict_worker = db.get_worker(wid, company_id=company_id)
-                    conflict_worker_name = conflict_worker['name'] if conflict_worker else f'Worker {wid}'
+                    conflict_employee = db.get_employee(wid, company_id=company_id)
+                    conflict_employee_name = conflict_employee['name'] if conflict_employee else f'Employee {wid}'
                     
                     return jsonify({
-                        "error": f"Time conflict: {conflict_worker_name} already has a booking at {conflict_time.strftime('%I:%M %p')} for {conflict_client_name} ({conflict['service_type']}). Please choose a different time or remove this worker.",
+                        "error": f"Time conflict: {conflict_employee_name} already has a booking at {conflict_time.strftime('%I:%M %p')} for {conflict_client_name} ({conflict['service_type']}). Please choose a different time or remove this employee.",
                         "conflict": True,
                         "conflicting_time": conflict_time.isoformat(),
                         "conflicting_client": conflict_client_name,
-                        "conflicting_worker": conflict_worker_name
+                        "conflicting_employee": conflict_employee_name
                     }), 409
-            elif conflicting_bookings and not requested_worker_ids:
-                # No workers assigned — keep the general conflict check as a safety net
-                # BUT skip this if auto_assign_worker is set, because the auto-assign
-                # logic will find a free worker (the calendar already showed availability)
-                if not data.get('auto_assign_worker'):
+            elif conflicting_bookings and not requested_employee_ids:
+                # No employees assigned — keep the general conflict check as a safety net
+                # BUT skip this if auto_assign_employee is set, because the auto-assign
+                # logic will find a free employee (the calendar already showed availability)
+                if not data.get('auto_assign_employee'):
                     conflict = conflicting_bookings[0]
                     conflict_time = datetime.fromisoformat(str(conflict['appointment_time']))
                     conflict_client = db.get_client(conflict['client_id'], company_id=company_id)
@@ -7143,72 +7241,72 @@ def bookings_api():
                     recurrence_pattern=recurrence_pattern,
                     recurrence_end_date=recurrence_end_date)
             
-            # Assign worker(s) — reuse the worker_ids parsed earlier for conflict checking
-            assigned_worker_ids_for_notif = []
-            for wid in requested_worker_ids:
+            # Assign employee(s) — reuse the employee_ids parsed earlier for conflict checking
+            assigned_employee_ids_for_notif = []
+            for wid in requested_employee_ids:
                 try:
-                    worker = db.get_worker(wid, company_id=company_id)
-                    if worker:
-                        db.assign_worker_to_job(booking_id, wid)
-                        assigned_worker_ids_for_notif.append(wid)
-                        print(f"[INFO] Worker {wid} assigned to booking {booking_id}")
+                    employee = db.get_employee(wid, company_id=company_id)
+                    if employee:
+                        db.assign_employee_to_job(booking_id, wid)
+                        assigned_employee_ids_for_notif.append(wid)
+                        print(f"[INFO] Employee {wid} assigned to booking {booking_id}")
                 except Exception as e:
-                    print(f"[WARNING] Could not assign worker {wid}: {e}")
+                    print(f"[WARNING] Could not assign employee {wid}: {e}")
             
-            # Auto-assign an available worker if requested (from "Any available worker" mode)
-            if data.get('auto_assign_worker') and not requested_worker_ids:
+            # Auto-assign an available employee if requested (from "Any available employee" mode)
+            if data.get('auto_assign_employee') and not requested_employee_ids:
                 try:
-                    all_workers = db.get_all_workers(company_id=company_id)
+                    all_employees = db.get_all_employees(company_id=company_id)
                     
-                    # Respect service worker_restrictions
-                    eligible_workers = all_workers
+                    # Respect service employee_restrictions
+                    eligible_employees = all_employees
                     if service_type:
                         service = settings_mgr.get_service_by_name(service_type, company_id=company_id)
-                        if service and service.get('worker_restrictions'):
-                            wr = service['worker_restrictions']
+                        if service and service.get('employee_restrictions'):
+                            wr = service['employee_restrictions']
                             wr_type = wr.get('type', 'all')
-                            wr_ids = wr.get('worker_ids', [])
+                            wr_ids = wr.get('employee_ids', [])
                             if wr_type == 'only' and wr_ids:
-                                eligible_workers = [w for w in all_workers if w['id'] in wr_ids]
+                                eligible_employees = [w for w in all_employees if w['id'] in wr_ids]
                             elif wr_type == 'except' and wr_ids:
-                                eligible_workers = [w for w in all_workers if w['id'] not in wr_ids]
+                                eligible_employees = [w for w in all_employees if w['id'] not in wr_ids]
                     
-                    # Find the first available worker
+                    # Find the first available employee
                     assigned_auto = False
-                    for w in eligible_workers:
-                        avail = db.check_worker_availability(
+                    for w in eligible_employees:
+                        avail = db.check_employee_availability(
                             w['id'], appointment_dt, duration_minutes, company_id=company_id
                         )
                         if avail.get('available'):
-                            db.assign_worker_to_job(booking_id, w['id'])
-                            assigned_worker_ids_for_notif.append(w['id'])
-                            print(f"[INFO] Auto-assigned worker {w['id']} ({w.get('name')}) to booking {booking_id}")
+                            db.assign_employee_to_job(booking_id, w['id'])
+                            assigned_employee_ids_for_notif.append(w['id'])
+                            print(f"[INFO] Auto-assigned employee {w['id']} ({w.get('name')}) to booking {booking_id}")
                             assigned_auto = True
                             break
                     
                     if not assigned_auto:
-                        print(f"[WARNING] No available worker found for auto-assignment on booking {booking_id}")
-                        # All workers are busy — delete the booking and return an error
+                        print(f"[WARNING] No available employee found for auto-assignment on booking {booking_id}")
+                        # All employees are busy — delete the booking and return an error
                         try:
                             db.delete_booking(booking_id, company_id=company_id)
                         except Exception:
                             pass
                         return jsonify({
-                            "error": "No workers are available at this time. All workers are already booked. Please choose a different time slot.",
+                            "error": "No employees are available at this time. All employees are already booked. Please choose a different time slot.",
                             "conflict": True,
-                            "no_workers_available": True
+                            "no_employees_available": True
                         }), 409
                 except Exception as e:
-                    print(f"[WARNING] Auto-assign worker failed: {e}")
+                    print(f"[WARNING] Auto-assign employee failed: {e}")
 
-            # Notify assigned workers about the new job
-            for wid in assigned_worker_ids_for_notif:
+            # Notify assigned employees about the new job
+            for wid in assigned_employee_ids_for_notif:
                 try:
                     appt_str = appointment_dt.strftime('%b %d at %I:%M %p')
                     customer_name = client.get('name', 'a customer') if client else 'a customer'
                     db.create_notification(
                         company_id=company_id,
-                        recipient_type='worker',
+                        recipient_type='employee',
                         recipient_id=wid,
                         notif_type='job_assigned',
                         message=f"You've been booked for {service_type or 'a job'} with {customer_name} on {appt_str}",
@@ -7216,7 +7314,7 @@ def bookings_api():
                                   'appointment_time': appointment_dt.isoformat()}
                     )
                 except Exception as e:
-                    print(f"[WARNING] Could not notify worker {wid}: {e}")
+                    print(f"[WARNING] Could not notify employee {wid}: {e}")
             
             # Update client description
             try:
@@ -7243,13 +7341,13 @@ def bookings_api():
                         except Exception:
                             pass
 
-                    # Gather assigned worker names
-                    _worker_names = []
-                    if assigned_worker_ids_for_notif:
-                        for _wid in assigned_worker_ids_for_notif:
-                            _w = db.get_worker(_wid, company_id=company_id)
+                    # Gather assigned employee names
+                    _employee_names = []
+                    if assigned_employee_ids_for_notif:
+                        for _wid in assigned_employee_ids_for_notif:
+                            _w = db.get_employee(_wid, company_id=company_id)
                             if _w:
-                                _worker_names.append(_w.get('name', ''))
+                                _employee_names.append(_w.get('name', ''))
 
                     notify_customer(
                         'booking_confirmation',
@@ -7260,7 +7358,7 @@ def bookings_api():
                         service_type=service_type or 'appointment',
                         company_name=_company_name,
                         company_email=(_company_info.get('email') or '').strip() if _company_info else None,
-                        worker_names=_worker_names if _worker_names else None,
+                        employee_names=_employee_names if _employee_names else None,
                         address=job_address,
                         portal_link=_portal_link,
                     )
@@ -7338,12 +7436,12 @@ def bookings_api():
                     phone = data.get('phone_number') or client.get('phone') or ''
                     summary = f"{service_type} - {customer_name}"
 
-                    # Build worker info for description
-                    job_workers = db.get_job_workers(booking_id, company_id=company_id)
-                    worker_lines = ''
-                    if job_workers:
-                        worker_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_workers]
-                        worker_lines = f"\nWorkers: {', '.join(worker_names)}"
+                    # Build employee info for description
+                    job_employees = db.get_job_employees(booking_id, company_id=company_id)
+                    employee_lines = ''
+                    if job_employees:
+                        employee_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_employees]
+                        employee_lines = f"\nEmployees: {', '.join(employee_names)}"
 
                     desc = (
                         f"Synced from BookedForYou\n"
@@ -7351,14 +7449,14 @@ def bookings_api():
                         f"Phone: {phone}\n"
                         f"Address: {job_address or ''}\n"
                         f"Duration: {duration_minutes} mins"
-                        f"{worker_lines}"
+                        f"{employee_lines}"
                     )
 
-                    # Check if worker invites are enabled
+                    # Check if employee invites are enabled
                     attendee_emails = None
                     company = db.get_company(company_id)
-                    if company and company.get('gcal_invite_workers'):
-                        attendee_emails = [w['email'] for w in job_workers if w.get('email')]
+                    if company and company.get('gcal_invite_employees'):
+                        attendee_emails = [w['email'] for w in job_employees if w.get('email')]
                         if not attendee_emails:
                             attendee_emails = None
 
@@ -7379,22 +7477,22 @@ def bookings_api():
             except Exception as e:
                 safe_print(f"[GCAL] Auto-sync on manual create failed (non-critical): {e}")
             
-            # EMERGENCY JOB: If is_emergency flag is set, update urgency and dispatch to workers
+            # EMERGENCY JOB: If is_emergency flag is set, update urgency and dispatch to employees
             if data.get('is_emergency') and booking_id:
                 try:
                     from datetime import datetime as _edt
                     db.update_booking(booking_id, urgency='emergency', emergency_status='pending_acceptance')
                     
-                    # Notify all workers
-                    all_workers = db.get_all_workers(company_id=company_id) or []
+                    # Notify all employees
+                    all_employees = db.get_all_employees(company_id=company_id) or []
                     _company_info = db.get_company(company_id)
                     _company_name = _company_info.get('company_name', 'Your employer') if _company_info else 'Your employer'
                     customer_name = client.get('name', 'Customer') if client else 'Customer'
                     
-                    for _ew in all_workers:
+                    for _ew in all_employees:
                         db.create_notification(
                             company_id=company_id,
-                            recipient_type='worker',
+                            recipient_type='employee',
                             recipient_id=_ew['id'],
                             notif_type='emergency_job',
                             message=f"EMERGENCY: {service_type} at {job_address or job_eircode or 'TBD'} for {customer_name}. Accept to dispatch.",
@@ -7406,7 +7504,7 @@ def bookings_api():
                                 'appointment_time': appointment_dt.isoformat(),
                             }
                         )
-                        # Email worker
+                        # Email employee
                         _ew_email = _ew.get('email')
                         if _ew_email:
                             try:
@@ -7435,7 +7533,7 @@ def bookings_api():
             <p style="margin:5px 0;"><strong>Location:</strong> {job_address or job_eircode or 'TBD'}</p>
             <p style="margin:5px 0;"><strong>When:</strong> {_time_str}</p>
         </div>
-        <p>Log in to your worker dashboard to accept this emergency job.</p>
+        <p>Log in to your employee dashboard to accept this emergency job.</p>
         <p style="margin-top:25px;">— {_company_name}</p>
     </div>
 </div></body></html>'''
@@ -7443,7 +7541,7 @@ def bookings_api():
                             except Exception:
                                 pass
                     
-                    print(f"[INFO] Emergency job {booking_id} — notified {len(all_workers)} workers")
+                    print(f"[INFO] Emergency job {booking_id} — notified {len(all_employees)} employees")
                 except Exception as emg_err:
                     print(f"[WARNING] Emergency dispatch failed: {emg_err}")
             
@@ -7494,26 +7592,26 @@ def bookings_api():
 @app.route("/api/bookings/availability", methods=["GET"])
 @login_required
 def check_availability_api():
-    """Check available time slots for a given date, optionally filtered by worker"""
+    """Check available time slots for a given date, optionally filtered by employee"""
     db = get_database()
     company_id = session.get('company_id')
     
     # Get parameters
     date_str = request.args.get('date')
     service_type = request.args.get('service_type')  # Optional: to get service-specific duration
-    worker_id = request.args.get('worker_id')  # Optional: filter by worker availability
-    any_worker = request.args.get('any_worker', 'false').lower() == 'true'  # Show combined availability across all workers
+    employee_id = request.args.get('employee_id')  # Optional: filter by employee availability
+    any_employee = request.args.get('any_employee', 'false').lower() == 'true'  # Show combined availability across all employees
     override_duration = request.args.get('duration_minutes', type=int)  # Optional: override service duration
     
     if not date_str:
         return jsonify({"error": "Date parameter required (YYYY-MM-DD)"}), 400
     
-    # Convert worker_id to int if provided
-    if worker_id:
+    # Convert employee_id to int if provided
+    if employee_id:
         try:
-            worker_id = int(worker_id)
+            employee_id = int(employee_id)
         except (ValueError, TypeError):
-            worker_id = None
+            employee_id = None
     
     try:
         from datetime import datetime, timedelta
@@ -7642,16 +7740,16 @@ def check_availability_api():
             else:
                 return appt_time + timedelta(minutes=booking_duration)
 
-        # Helper: filter bookings that overlap with the target day, optionally for a specific worker
-        def _get_day_bookings(filter_worker_id=None):
+        # Helper: filter bookings that overlap with the target day, optionally for a specific employee
+        def _get_day_bookings(filter_employee_id=None):
             result = []
             for booking in all_bookings:
                 if booking.get('status') in ['cancelled', 'completed']:
                     continue
-                if filter_worker_id:
-                    assigned_ids = booking.get('assigned_worker_ids') or []
-                    # Unassigned bookings block all workers (could be assigned to anyone)
-                    if len(assigned_ids) > 0 and filter_worker_id not in assigned_ids and str(filter_worker_id) not in [str(x) for x in assigned_ids]:
+                if filter_employee_id:
+                    assigned_ids = booking.get('assigned_employee_ids') or []
+                    # Unassigned bookings block all employees (could be assigned to anyone)
+                    if len(assigned_ids) > 0 and filter_employee_id not in assigned_ids and str(filter_employee_id) not in [str(x) for x in assigned_ids]:
                         continue
                 appt_time = booking.get('appointment_time')
                 if isinstance(appt_time, str):
@@ -7676,30 +7774,30 @@ def check_availability_api():
                     return bd
             return None
 
-        # Build per-worker booking lists for "any worker" mode
-        if any_worker:
-            all_workers = db.get_all_workers(company_id=company_id)
-            # Apply service worker_restrictions if applicable
-            eligible_worker_ids = [w['id'] for w in all_workers]
+        # Build per-employee booking lists for "any employee" mode
+        if any_employee:
+            all_employees = db.get_all_employees(company_id=company_id)
+            # Apply service employee_restrictions if applicable
+            eligible_employee_ids = [w['id'] for w in all_employees]
             if service_type:
                 from src.services.settings_manager import get_settings_manager as _gsm
                 _svc = _gsm().get_service_by_name(service_type, company_id=company_id)
-                if _svc and _svc.get('worker_restrictions'):
-                    wr = _svc['worker_restrictions']
-                    if wr.get('type') == 'only' and wr.get('worker_ids'):
-                        eligible_worker_ids = [wid for wid in eligible_worker_ids if wid in wr['worker_ids']]
-                    elif wr.get('type') == 'except' and wr.get('worker_ids'):
-                        eligible_worker_ids = [wid for wid in eligible_worker_ids if wid not in wr['worker_ids']]
-            per_worker_bookings = {wid: _get_day_bookings(filter_worker_id=wid) for wid in eligible_worker_ids}
+                if _svc and _svc.get('employee_restrictions'):
+                    wr = _svc['employee_restrictions']
+                    if wr.get('type') == 'only' and wr.get('employee_ids'):
+                        eligible_employee_ids = [wid for wid in eligible_employee_ids if wid in wr['employee_ids']]
+                    elif wr.get('type') == 'except' and wr.get('employee_ids'):
+                        eligible_employee_ids = [wid for wid in eligible_employee_ids if wid not in wr['employee_ids']]
+            per_employee_bookings = {wid: _get_day_bookings(filter_employee_id=wid) for wid in eligible_employee_ids}
         else:
-            day_bookings = _get_day_bookings(filter_worker_id=worker_id)
+            day_bookings = _get_day_bookings(filter_employee_id=employee_id)
 
-        # Check worker time-off / leave for this day
-        workers_on_leave_today = set()
+        # Check employee time-off / leave for this day
+        employees_on_leave_today = set()
         try:
-            if hasattr(db, 'get_workers_on_leave'):
+            if hasattr(db, 'get_employees_on_leave'):
                 from datetime import date as date_cls
-                leave_records = db.get_workers_on_leave(company_id, day_start, day_end)
+                leave_records = db.get_employees_on_leave(company_id, day_start, day_end)
                 for rec in leave_records:
                     s = rec['start_date']
                     e = rec['end_date']
@@ -7708,17 +7806,17 @@ def check_availability_api():
                     if isinstance(e, str):
                         e = date_cls.fromisoformat(e)
                     if s <= target_date <= e:
-                        workers_on_leave_today.add(rec['worker_id'])
+                        employees_on_leave_today.add(rec['employee_id'])
         except Exception:
             pass
 
-        # If a specific worker is on leave, all slots are unavailable
-        worker_on_leave = worker_id and worker_id in workers_on_leave_today
+        # If a specific employee is on leave, all slots are unavailable
+        employee_on_leave = employee_id and employee_id in employees_on_leave_today
 
-        # For "any worker" mode, remove workers on leave from the pool
-        had_eligible_workers = any_worker and bool(per_worker_bookings)
-        if any_worker and per_worker_bookings and workers_on_leave_today:
-            per_worker_bookings = {wid: bk for wid, bk in per_worker_bookings.items() if wid not in workers_on_leave_today}
+        # For "any employee" mode, remove employees on leave from the pool
+        had_eligible_employees = any_employee and bool(per_employee_bookings)
+        if any_employee and per_employee_bookings and employees_on_leave_today:
+            per_employee_bookings = {wid: bk for wid, bk in per_employee_bookings.items() if wid not in employees_on_leave_today}
 
         # For "today", compute the current time so we can mark past slots
         now = datetime.now()
@@ -7728,14 +7826,14 @@ def check_availability_api():
         current_minute = 0
         end_hour = business_hours['end']
 
-        # If any_worker mode but no workers exist at all (not just on leave),
-        # fall back to general (non-worker) availability so the daily view
+        # If any_employee mode but no employees exist at all (not just on leave),
+        # fall back to general (non-employee) availability so the daily view
         # matches the monthly calendar which also falls back.
-        # But if eligible workers existed and are ALL on leave, keep slots unavailable.
-        all_workers_on_leave = any_worker and not per_worker_bookings and had_eligible_workers
-        no_workers_exist = any_worker and not per_worker_bookings and not had_eligible_workers
-        if no_workers_exist:
-            day_bookings = _get_day_bookings(filter_worker_id=None)
+        # But if eligible employees existed and are ALL on leave, keep slots unavailable.
+        all_employees_on_leave = any_employee and not per_employee_bookings and had_eligible_employees
+        no_employees_exist = any_employee and not per_employee_bookings and not had_eligible_employees
+        if no_employees_exist:
+            day_bookings = _get_day_bookings(filter_employee_id=None)
         
         while current_hour < end_hour or (current_hour == end_hour and current_minute == 0):
             slot_time = datetime.combine(target_date, datetime.min.time().replace(hour=current_hour, minute=current_minute))
@@ -7760,15 +7858,15 @@ def check_availability_api():
             if is_today and slot_time <= now:
                 is_available = False
                 booking_info = {'past': True, 'reason': 'Time has passed'}
-            # If the specific worker is on leave, mark all slots unavailable
-            elif worker_on_leave:
+            # If the specific employee is on leave, mark all slots unavailable
+            elif employee_on_leave:
                 is_available = False
-                booking_info = {'leave': True, 'reason': 'Worker is on leave this day'}
-            elif any_worker and per_worker_bookings:
-                # Slot is available if at least one eligible worker is free
+                booking_info = {'leave': True, 'reason': 'Employee is on leave this day'}
+            elif any_employee and per_employee_bookings:
+                # Slot is available if at least one eligible employee is free
                 any_free = False
                 first_conflict = None
-                for wid, wb_list in per_worker_bookings.items():
+                for wid, wb_list in per_employee_bookings.items():
                     conflict = _slot_has_conflict(slot_time, slot_end, wb_list)
                     if not conflict:
                         any_free = True
@@ -7785,12 +7883,12 @@ def check_availability_api():
                         'time': str(conflict_booking['appointment_time']),
                         'duration_minutes': first_conflict['duration']
                     }
-            elif all_workers_on_leave:
-                # All workers are on leave — no availability
+            elif all_employees_on_leave:
+                # All employees are on leave — no availability
                 is_available = False
-                booking_info = {'leave': True, 'reason': 'All workers on leave'}
-            elif no_workers_exist:
-                # No workers exist — fall back to general conflict check
+                booking_info = {'leave': True, 'reason': 'All employees on leave'}
+            elif no_employees_exist:
+                # No employees exist — fall back to general conflict check
                 for booking_data in day_bookings:
                     if slot_time < booking_data['end'] and slot_end > booking_data['start']:
                         is_available = False
@@ -7856,8 +7954,8 @@ def check_monthly_availability_api():
     year = request.args.get('year', type=int)
     month = request.args.get('month', type=int)
     service_type = request.args.get('service_type')
-    worker_id = request.args.get('worker_id', type=int)
-    any_worker = request.args.get('any_worker', 'false').lower() == 'true'
+    employee_id = request.args.get('employee_id', type=int)
+    any_employee = request.args.get('any_employee', 'false').lower() == 'true'
     override_duration = request.args.get('duration_minutes', type=int)
 
     if not year or not month:
@@ -7868,7 +7966,7 @@ def check_monthly_availability_api():
         import calendar as cal_mod
         from src.services.settings_manager import get_settings_manager
 
-        safe_print(f"[MONTHLY_AVAIL] year={year}, month={month}, service_type={service_type}, worker_id={worker_id}, any_worker={any_worker}, override_duration={override_duration}")
+        safe_print(f"[MONTHLY_AVAIL] year={year}, month={month}, service_type={service_type}, employee_id={employee_id}, any_employee={any_employee}, override_duration={override_duration}")
 
         settings_mgr = get_settings_manager()
         default_duration = settings_mgr.get_default_duration_minutes(company_id=company_id)
@@ -7953,16 +8051,16 @@ def check_monthly_availability_api():
             else:
                 return appt + timedelta(minutes=dur)
 
-        # Helper: filter bookings for a specific worker
-        def _filter_bookings(filter_worker_id=None):
+        # Helper: filter bookings for a specific employee
+        def _filter_bookings(filter_employee_id=None):
             result = []
             for b in all_bookings:
                 if b.get('status') in ['cancelled', 'completed']:
                     continue
-                if filter_worker_id:
-                    assigned_ids = b.get('assigned_worker_ids') or []
-                    # Unassigned bookings block all workers (could be assigned to anyone)
-                    if len(assigned_ids) > 0 and filter_worker_id not in assigned_ids and str(filter_worker_id) not in [str(x) for x in assigned_ids]:
+                if filter_employee_id:
+                    assigned_ids = b.get('assigned_employee_ids') or []
+                    # Unassigned bookings block all employees (could be assigned to anyone)
+                    if len(assigned_ids) > 0 and filter_employee_id not in assigned_ids and str(filter_employee_id) not in [str(x) for x in assigned_ids]:
                         continue
                 appt = b.get('appointment_time')
                 if isinstance(appt, str):
@@ -8016,33 +8114,33 @@ def check_monthly_availability_api():
                             booked += max(1, int(overlap_mins // 30))
             return min(booked, slots_per_day)
 
-        # Prepare per-worker or single booking lists
-        if any_worker:
-            all_workers = db.get_all_workers(company_id=company_id)
-            eligible_worker_ids = [w['id'] for w in all_workers]
-            safe_print(f"[MONTHLY_AVAIL] any_worker mode: {len(all_workers)} total workers, {len(eligible_worker_ids)} eligible")
+        # Prepare per-employee or single booking lists
+        if any_employee:
+            all_employees = db.get_all_employees(company_id=company_id)
+            eligible_employee_ids = [w['id'] for w in all_employees]
+            safe_print(f"[MONTHLY_AVAIL] any_employee mode: {len(all_employees)} total employees, {len(eligible_employee_ids)} eligible")
             if service_type:
                 from src.services.settings_manager import get_settings_manager as _gsm2
                 _svc = _gsm2().get_service_by_name(service_type, company_id=company_id)
-                if _svc and _svc.get('worker_restrictions'):
-                    wr = _svc['worker_restrictions']
-                    if wr.get('type') == 'only' and wr.get('worker_ids'):
-                        eligible_worker_ids = [wid for wid in eligible_worker_ids if wid in wr['worker_ids']]
-                    elif wr.get('type') == 'except' and wr.get('worker_ids'):
-                        eligible_worker_ids = [wid for wid in eligible_worker_ids if wid not in wr['worker_ids']]
-            per_worker_bookings = {wid: _filter_bookings(filter_worker_id=wid) for wid in eligible_worker_ids}
+                if _svc and _svc.get('employee_restrictions'):
+                    wr = _svc['employee_restrictions']
+                    if wr.get('type') == 'only' and wr.get('employee_ids'):
+                        eligible_employee_ids = [wid for wid in eligible_employee_ids if wid in wr['employee_ids']]
+                    elif wr.get('type') == 'except' and wr.get('employee_ids'):
+                        eligible_employee_ids = [wid for wid in eligible_employee_ids if wid not in wr['employee_ids']]
+            per_employee_bookings = {wid: _filter_bookings(filter_employee_id=wid) for wid in eligible_employee_ids}
         else:
-            relevant = _filter_bookings(filter_worker_id=worker_id)
+            relevant = _filter_bookings(filter_employee_id=employee_id)
 
         # Pre-fetch approved time-off for the month
-        leave_by_worker = {}  # worker_id -> set of date strings on leave
+        leave_by_employee = {}  # employee_id -> set of date strings on leave
         try:
-            if hasattr(db, 'get_workers_on_leave'):
-                leave_records = db.get_workers_on_leave(company_id, month_start, month_end)
+            if hasattr(db, 'get_employees_on_leave'):
+                leave_records = db.get_employees_on_leave(company_id, month_start, month_end)
                 for rec in leave_records:
-                    wid = rec['worker_id']
-                    if wid not in leave_by_worker:
-                        leave_by_worker[wid] = set()
+                    wid = rec['employee_id']
+                    if wid not in leave_by_employee:
+                        leave_by_employee[wid] = set()
                     s = rec['start_date']
                     e = rec['end_date']
                     if isinstance(s, str):
@@ -8052,20 +8150,20 @@ def check_monthly_availability_api():
                     cur = s
                     while cur <= e:
                         if date_cls(year, month, 1) <= cur <= date_cls(year, month, last_day):
-                            leave_by_worker[wid].add(cur.isoformat())
+                            leave_by_employee[wid].add(cur.isoformat())
                         cur += timedelta(days=1)
         except Exception:
             pass
 
-        # Helper: check if a specific worker is on leave for a date
-        def _worker_on_leave(wid, day_iso):
-            return day_iso in leave_by_worker.get(wid, set())
+        # Helper: check if a specific employee is on leave for a date
+        def _employee_on_leave(wid, day_iso):
+            return day_iso in leave_by_employee.get(wid, set())
 
-        # Helper: check if ALL eligible workers are on leave for a date
-        def _all_workers_on_leave(day_iso, worker_ids):
-            if not leave_by_worker:
+        # Helper: check if ALL eligible employees are on leave for a date
+        def _all_employees_on_leave(day_iso, employee_ids):
+            if not leave_by_employee:
                 return False
-            return all(day_iso in leave_by_worker.get(wid, set()) for wid in worker_ids)
+            return all(day_iso in leave_by_employee.get(wid, set()) for wid in employee_ids)
 
         # Build per-day info
         days = {}
@@ -8082,49 +8180,49 @@ def check_monthly_availability_api():
                 days[d.isoformat()] = {'date': d.isoformat(), 'status': 'closed', 'booked': 0, 'total': 0}
                 continue
 
-            if any_worker and per_worker_bookings:
-                # For "any worker" mode, check per-worker availability individually.
-                # Workers on leave are excluded for this day.
-                num_workers = len(per_worker_bookings)
-                workers_fully_free = 0
-                workers_with_space = 0
-                workers_available = 0  # not on leave
+            if any_employee and per_employee_bookings:
+                # For "any employee" mode, check per-employee availability individually.
+                # Employees on leave are excluded for this day.
+                num_employees = len(per_employee_bookings)
+                employees_fully_free = 0
+                employees_with_space = 0
+                employees_available = 0  # not on leave
                 total_booked = 0
                 day_iso = d.isoformat()
-                for wid, wb_list in per_worker_bookings.items():
-                    if _worker_on_leave(wid, day_iso):
-                        continue  # Skip workers on leave
-                    workers_available += 1
+                for wid, wb_list in per_employee_bookings.items():
+                    if _employee_on_leave(wid, day_iso):
+                        continue  # Skip employees on leave
+                    employees_available += 1
                     wb = _count_booked_slots(d, wb_list)
                     total_booked += min(wb, slots_per_day)
                     if wb == 0:
-                        workers_fully_free += 1
+                        employees_fully_free += 1
                     if wb < slots_per_day:
-                        workers_with_space += 1
+                        employees_with_space += 1
 
-                if workers_available == 0:
-                    # All workers on leave
+                if employees_available == 0:
+                    # All employees on leave
                     status = 'leave'
                     booked_slots = 0
                     day_total = 0
                     free = 0
-                elif workers_with_space == 0:
+                elif employees_with_space == 0:
                     status = 'full'
                     booked_slots = total_booked
-                    day_total = workers_available * slots_per_day
+                    day_total = employees_available * slots_per_day
                     free = day_total - booked_slots
-                elif workers_fully_free > 0:
+                elif employees_fully_free > 0:
                     status = 'free'
                     booked_slots = total_booked
-                    day_total = workers_available * slots_per_day
+                    day_total = employees_available * slots_per_day
                     free = day_total - booked_slots
                 else:
                     status = 'partial'
                     booked_slots = total_booked
-                    day_total = workers_available * slots_per_day
+                    day_total = employees_available * slots_per_day
                     free = day_total - booked_slots
-            elif any_worker and not per_worker_bookings:
-                # No workers — show general availability
+            elif any_employee and not per_employee_bookings:
+                # No employees — show general availability
                 booked_slots = _count_booked_slots(d, _filter_bookings())
                 day_total = slots_per_day
                 free = day_total - booked_slots
@@ -8136,7 +8234,7 @@ def check_monthly_availability_api():
                     status = 'free'
             else:
                 day_iso = d.isoformat()
-                if worker_id and _worker_on_leave(worker_id, day_iso):
+                if employee_id and _employee_on_leave(employee_id, day_iso):
                     status = 'leave'
                     booked_slots = 0
                     day_total = 0
@@ -8353,7 +8451,7 @@ def booking_detail_api(booking_id):
                                   updated.get('duration_minutes'), updated.get('requires_callout'), updated.get('requires_quote'),
                                   rec_pattern, updated.get('recurrence_end_date'), booking_id))
                             new_b = cur2.fetchone()
-                            cur2.execute("INSERT INTO worker_assignments (booking_id, worker_id) SELECT %s, worker_id FROM worker_assignments WHERE booking_id = %s", (new_b['id'], booking_id))
+                            cur2.execute("INSERT INTO employee_assignments (booking_id, employee_id) SELECT %s, employee_id FROM employee_assignments WHERE booking_id = %s", (new_b['id'], booking_id))
                             conn2.commit(); cur2.close()
                         except Exception as e:
                             conn2.rollback(); print(f"[RECURRING] Main update recurring failed: {e}")
@@ -10298,7 +10396,7 @@ def notifications_api():
                     'id': f"n_{n['id']}",
                     'type': n['type'],
                     'message': n['message'],
-                    'client_name': (n.get('metadata') or {}).get('worker_name', ''),
+                    'client_name': (n.get('metadata') or {}).get('employee_name', ''),
                     'appointment_time': None,
                     'created_at': n['created_at'].isoformat() if n.get('created_at') else None,
                     'metadata': n.get('metadata') or {}
@@ -10322,12 +10420,12 @@ def notifications_api():
             db.return_connection(conn)
 
 
-@app.route("/api/worker/notifications", methods=["GET"])
-@worker_login_required
-def worker_notifications_api():
-    """Get notifications for the logged-in worker"""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/notifications", methods=["GET"])
+@employee_login_required
+def employee_notifications_api():
+    """Get notifications for the logged-in employee"""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
     db = get_database()
 
     try:
@@ -10335,7 +10433,7 @@ def worker_notifications_api():
     except (ValueError, TypeError):
         limit = 20
 
-    notifs = db.get_worker_notifications(worker_id, company_id, limit=limit)
+    notifs = db.get_employee_notifications(employee_id, company_id, limit=limit)
     notifications = []
     for n in notifs:
         notifications.append({
@@ -10349,12 +10447,12 @@ def worker_notifications_api():
     return jsonify({'notifications': notifications, 'count': len(notifications)})
 
 
-@app.route("/api/worker/emergency/<int:booking_id>/accept", methods=["POST"])
-@worker_login_required
-def worker_accept_emergency(booking_id):
-    """Worker accepts an emergency job — assigns them and updates status."""
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+@app.route("/api/employee/emergency/<int:booking_id>/accept", methods=["POST"])
+@employee_login_required
+def employee_accept_emergency(booking_id):
+    """Employee accepts an emergency job — assigns them and updates status."""
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
     db = get_database()
 
     # Direct lookup — don't fetch all bookings just to find one
@@ -10380,13 +10478,13 @@ def worker_accept_emergency(booking_id):
 
     if booking.get('emergency_status') != 'pending_acceptance':
         if booking.get('emergency_status') == 'accepted':
-            return jsonify({'error': 'This emergency job has already been accepted by another worker'}), 409
+            return jsonify({'error': 'This emergency job has already been accepted by another employee'}), 409
         return jsonify({'error': 'This job is not awaiting acceptance'}), 400
 
     from datetime import datetime
     try:
         # Atomic update: only succeeds if status is still pending_acceptance
-        # This prevents race conditions where two workers accept simultaneously
+        # This prevents race conditions where two employees accept simultaneously
         conn = db.get_connection()
         cursor = conn.cursor()
         try:
@@ -10396,29 +10494,29 @@ def worker_accept_emergency(booking_id):
                     emergency_accepted_by = %s, 
                     emergency_accepted_at = %s
                 WHERE id = %s AND emergency_status = 'pending_acceptance'
-            """, (worker_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), booking_id))
+            """, (employee_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), booking_id))
             conn.commit()
             if cursor.rowcount == 0:
-                # Another worker already accepted
+                # Another employee already accepted
                 db.return_connection(conn)
-                return jsonify({'error': 'This emergency job has already been accepted by another worker'}), 409
+                return jsonify({'error': 'This emergency job has already been accepted by another employee'}), 409
         finally:
             db.return_connection(conn)
 
-        # Assign this worker to the job
-        db.assign_worker_to_job(booking_id, worker_id)
+        # Assign this employee to the job
+        db.assign_employee_to_job(booking_id, employee_id)
 
-        worker = db.get_worker(worker_id, company_id=company_id)
-        worker_name = worker['name'] if worker else 'A worker'
+        employee = db.get_employee(employee_id, company_id=company_id)
+        employee_name = employee['name'] if employee else 'An employee'
 
-        # Notify owner that a worker accepted
+        # Notify owner that an employee accepted
         db.create_notification(
             company_id=company_id,
             recipient_type='owner',
             recipient_id=0,
             notif_type='emergency_accepted',
-            message=f"{worker_name} accepted the emergency job: {booking.get('service_type', 'Emergency')} for {booking.get('customer_name', 'customer')}",
-            metadata={'booking_id': booking_id, 'worker_id': worker_id}
+            message=f"{employee_name} accepted the emergency job: {booking.get('service_type', 'Emergency')} for {booking.get('customer_name', 'customer')}",
+            metadata={'booking_id': booking_id, 'employee_id': employee_id}
         )
 
         # Send confirmation SMS/email to customer
@@ -10448,7 +10546,7 @@ def worker_accept_emergency(booking_id):
                 service_type=booking.get('service_type', 'Emergency'),
                 company_name=_company_name,
                 company_email=(_company.get('email') or '').strip() if _company else None,
-                worker_names=[worker_name],
+                employee_names=[employee_name],
                 address=booking.get('address'),
                 portal_link=_emerg_portal_link,
             )
@@ -10467,7 +10565,7 @@ def worker_accept_emergency(booking_id):
         return jsonify({'error': 'Failed to accept job. Please try again.'}), 500
 
 
-# ── Owner-Worker Messaging ─────────────────────────────────────────
+# ── Owner-Employee Messaging ─────────────────────────────────────────
 
 @app.route("/api/messages/conversations", methods=["GET"])
 @login_required
@@ -10490,17 +10588,17 @@ def get_conversations():
     return jsonify({'conversations': summaries})
 
 
-@app.route("/api/messages/<int:worker_id>", methods=["GET"])
+@app.route("/api/messages/<int:employee_id>", methods=["GET"])
 @login_required
-def get_messages(worker_id):
-    """Get conversation between owner and a worker."""
+def get_messages(employee_id):
+    """Get conversation between owner and an employee."""
     db = get_database()
     company_id = session.get('company_id')
 
-    # Verify worker belongs to this company
-    worker = db.get_worker(worker_id, company_id=company_id)
-    if not worker:
-        return jsonify({'error': 'Worker not found'}), 404
+    # Verify employee belongs to this company
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({'error': 'Employee not found'}), 404
 
     try:
         limit = min(int(request.args.get('limit', 50)), 100)
@@ -10508,9 +10606,9 @@ def get_messages(worker_id):
         limit = 50
     before_id = request.args.get('before_id', type=int)
 
-    messages = db.get_conversation(company_id, worker_id, limit=limit, before_id=before_id)
-    # Mark worker messages as read
-    read_count = db.mark_messages_read(company_id, worker_id, 'owner')
+    messages = db.get_conversation(company_id, employee_id, limit=limit, before_id=before_id)
+    # Mark employee messages as read
+    read_count = db.mark_messages_read(company_id, employee_id, 'owner')
     # Invalidate unread cache if any messages were marked read
     if read_count > 0:
         from src.utils.ttl_cache import settings_cache
@@ -10521,19 +10619,19 @@ def get_messages(worker_id):
     return jsonify({'messages': messages})
 
 
-@app.route("/api/messages/<int:worker_id>", methods=["POST"])
+@app.route("/api/messages/<int:employee_id>", methods=["POST"])
 @login_required
 @subscription_required
 @rate_limit(max_requests=60, window_seconds=60)
-def send_message_to_worker(worker_id):
-    """Owner sends a message to a worker."""
+def send_message_to_employee(employee_id):
+    """Owner sends a message to an employee."""
     db = get_database()
     company_id = session.get('company_id')
 
-    # Verify worker belongs to this company
-    worker = db.get_worker(worker_id, company_id=company_id)
-    if not worker:
-        return jsonify({'error': 'Worker not found'}), 404
+    # Verify employee belongs to this company
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({'error': 'Employee not found'}), 404
 
     data = request.json or {}
     content = (data.get('content') or '').strip()
@@ -10542,7 +10640,7 @@ def send_message_to_worker(worker_id):
     if len(content) > 2000:
         return jsonify({'error': 'Message too long (max 2000 chars)'}), 400
 
-    msg = db.send_message(company_id, worker_id, 'owner', content)
+    msg = db.send_message(company_id, employee_id, 'owner', content)
     if not msg:
         return jsonify({'error': 'Failed to send message'}), 500
 
@@ -10550,13 +10648,13 @@ def send_message_to_worker(worker_id):
     from src.utils.ttl_cache import settings_cache
     settings_cache.invalidate(("conversations_summary", company_id))
 
-    # Create notification for the worker
-    worker_name = worker.get('name', 'Worker')
+    # Create notification for the employee
+    employee_name = employee.get('name', 'Employee')
     company = db.get_company(company_id)
     company_name = company.get('business_name', 'Your employer') if company else 'Your employer'
     preview = content[:80] + ('...' if len(content) > 80 else '')
     db.create_notification(
-        company_id, 'worker', worker_id, 'new_message',
+        company_id, 'employee', employee_id, 'new_message',
         f"New message from {company_name}: {preview}",
         {'sender': 'owner'}
     )
@@ -10569,7 +10667,7 @@ def send_message_to_worker(worker_id):
 @app.route("/api/messages/unread-counts", methods=["GET"])
 @login_required
 def get_unread_message_counts():
-    """Get unread message counts per worker for the owner."""
+    """Get unread message counts per employee for the owner."""
     from src.utils.ttl_cache import settings_cache
     company_id = session.get('company_id')
     cache_key = ("unread_msg_counts", company_id)
@@ -10586,36 +10684,36 @@ def get_unread_message_counts():
     return jsonify(result)
 
 
-@app.route("/api/worker/messages", methods=["GET"])
-@worker_login_required
-def worker_get_messages():
-    """Worker gets their conversation with the owner."""
+@app.route("/api/employee/messages", methods=["GET"])
+@employee_login_required
+def employee_get_messages():
+    """Employee gets their conversation with the owner."""
     db = get_database()
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
     try:
         limit = min(int(request.args.get('limit', 50)), 100)
     except (ValueError, TypeError):
         limit = 50
     before_id = request.args.get('before_id', type=int)
 
-    messages = db.get_conversation(company_id, worker_id, limit=limit, before_id=before_id)
+    messages = db.get_conversation(company_id, employee_id, limit=limit, before_id=before_id)
     # Mark owner messages as read
-    db.mark_messages_read(company_id, worker_id, 'worker')
+    db.mark_messages_read(company_id, employee_id, 'employee')
     for m in messages:
         if m.get('created_at'):
             m['created_at'] = m['created_at'].isoformat()
     return jsonify({'messages': messages})
 
 
-@app.route("/api/worker/messages", methods=["POST"])
-@worker_login_required
+@app.route("/api/employee/messages", methods=["POST"])
+@employee_login_required
 @rate_limit(max_requests=60, window_seconds=60)
-def worker_send_message():
-    """Worker sends a message to the owner."""
+def employee_send_message():
+    """Employee sends a message to the owner."""
     db = get_database()
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
     data = request.json or {}
     content = (data.get('content') or '').strip()
     if not content:
@@ -10623,7 +10721,7 @@ def worker_send_message():
     if len(content) > 2000:
         return jsonify({'error': 'Message too long (max 2000 chars)'}), 400
 
-    msg = db.send_message(company_id, worker_id, 'worker', content)
+    msg = db.send_message(company_id, employee_id, 'employee', content)
     if not msg:
         return jsonify({'error': 'Failed to send message'}), 500
 
@@ -10632,13 +10730,13 @@ def worker_send_message():
     settings_cache.invalidate(("conversations_summary", company_id))
 
     # Create notification for the owner
-    worker = db.get_worker(worker_id)
-    worker_name = worker.get('name', 'Worker') if worker else 'Worker'
+    employee = db.get_employee(employee_id)
+    employee_name = employee.get('name', 'Employee') if employee else 'Employee'
     preview = content[:80] + ('...' if len(content) > 80 else '')
     db.create_notification(
         company_id, 'owner', 0, 'new_message',
-        f"New message from {worker_name}: {preview}",
-        {'sender': 'worker', 'worker_id': worker_id, 'worker_name': worker_name}
+        f"New message from {employee_name}: {preview}",
+        {'sender': 'employee', 'employee_id': employee_id, 'employee_name': employee_name}
     )
 
     if msg.get('created_at'):
@@ -10646,37 +10744,37 @@ def worker_send_message():
     return jsonify({'message': msg})
 
 
-@app.route("/api/worker/messages/unread-count", methods=["GET"])
-@worker_login_required
-def worker_unread_count():
-    """Get unread message count for the worker."""
+@app.route("/api/employee/messages/unread-count", methods=["GET"])
+@employee_login_required
+def employee_unread_count():
+    """Get unread message count for the employee."""
     db = get_database()
-    worker_id = session.get('worker_id')
-    company_id = session.get('worker_company_id')
-    count = db.get_worker_unread_count(company_id, worker_id)
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
+    count = db.get_employee_unread_count(company_id, employee_id)
     return jsonify({'unread_count': count})
 
 
-@app.route("/api/workers", methods=["GET", "POST"])
+@app.route("/api/employees", methods=["GET", "POST"])
 @login_required
 @subscription_required
 @rate_limit(max_requests=30, window_seconds=60)
-def workers_api():
-    """Get all workers or create a new worker"""
+def employees_api():
+    """Get all employees or create a new employee"""
     db = get_database()
     company_id = session.get('company_id')
     
     if request.method == "GET":
-        workers = db.get_all_workers(company_id=company_id)
-        return jsonify(workers)
+        employees = db.get_all_employees(company_id=company_id)
+        return jsonify(employees)
     
     elif request.method == "POST":
-        # Check subscription for creating workers
+        # Check subscription for creating employees
         company = db.get_company(company_id)
         subscription_info = get_subscription_info(company)
         if not subscription_info['is_active']:
             return jsonify({
-                "error": "Active subscription required to create workers",
+                "error": "Active subscription required to create employees",
                 "subscription_status": "inactive"
             }), 403
         
@@ -10685,7 +10783,7 @@ def workers_api():
         # Validate required field: name
         name = data.get('name', '').strip() if data.get('name') else ''
         if not name:
-            return jsonify({"error": "Worker name is required"}), 400
+            return jsonify({"error": "Employee name is required"}), 400
         
         # Sanitize optional fields - convert empty strings to None
         phone = data.get('phone', '').strip() if data.get('phone') else None
@@ -10698,7 +10796,7 @@ def workers_api():
         # Upload image to R2 if it's base64
         image_url = data.get('image_url', '')
         if image_url and image_url.startswith('data:image/'):
-            image_url = upload_base64_image_to_r2(image_url, company_id, 'workers')
+            image_url = upload_base64_image_to_r2(image_url, company_id, 'employees')
         
         # Handle weekly_hours_expected - default to 40.0 if not provided or invalid
         try:
@@ -10708,7 +10806,7 @@ def workers_api():
         except (ValueError, TypeError):
             weekly_hours = 40.0
         
-        worker_id = db.add_worker(
+        employee_id = db.add_employee(
             name=name,
             phone=phone if phone else None,
             email=email if email else None,
@@ -10717,43 +10815,43 @@ def workers_api():
             weekly_hours_expected=weekly_hours,
             company_id=company_id
         )
-        return jsonify({"id": worker_id, "message": "Worker added"}), 201
+        return jsonify({"id": employee_id, "message": "Employee added"}), 201
 
 
-@app.route("/api/workers/<int:worker_id>", methods=["GET", "PUT", "DELETE"])
+@app.route("/api/employees/<int:employee_id>", methods=["GET", "PUT", "DELETE"])
 @login_required
 @subscription_required
-def worker_api(worker_id):
-    """Get, update or delete a specific worker"""
+def employee_api(employee_id):
+    """Get, update or delete a specific employee"""
     db = get_database()
     company_id = session.get('company_id')
     
     if request.method == "GET":
-        # Get worker with company_id filter for security
-        worker = db.get_worker(worker_id, company_id=company_id)
-        if worker:
+        # Get employee with company_id filter for security
+        employee = db.get_employee(employee_id, company_id=company_id)
+        if employee:
             # Include portal status
-            account = db.get_worker_account_by_worker_id(worker_id)
+            account = db.get_employee_account_by_employee_id(employee_id)
             if account and account.get('password_set'):
-                worker['portal_status'] = 'active'
+                employee['portal_status'] = 'active'
             elif account:
-                worker['portal_status'] = 'invited'
+                employee['portal_status'] = 'invited'
             else:
-                worker['portal_status'] = None
-            return jsonify(worker)
-        return jsonify({"error": "Worker not found"}), 404
+                employee['portal_status'] = None
+            return jsonify(employee)
+        return jsonify({"error": "Employee not found"}), 404
     
     elif request.method == "PUT":
-        # Verify worker belongs to this company before updating
-        worker = db.get_worker(worker_id, company_id=company_id)
-        if not worker:
-            return jsonify({"error": "Worker not found"}), 404
+        # Verify employee belongs to this company before updating
+        employee = db.get_employee(employee_id, company_id=company_id)
+        if not employee:
+            return jsonify({"error": "Employee not found"}), 404
         
         data = request.json
         
         # Upload image to R2 if it's base64
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
-            data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'workers')
+            data['image_url'] = upload_base64_image_to_r2(data['image_url'], company_id, 'employees')
         
         # Sanitize fields
         sanitized_data = {}
@@ -10763,7 +10861,7 @@ def worker_api(worker_id):
                 # Name is required, don't allow empty
                 if key == 'name':
                     if not value:
-                        return jsonify({"error": "Worker name is required"}), 400
+                        return jsonify({"error": "Employee name is required"}), 400
                     sanitized_data[key] = value
                 # Optional fields - convert empty to None
                 elif key in ['phone', 'email', 'trade_specialty', 'specialty', 'image_url']:
@@ -10782,60 +10880,60 @@ def worker_api(worker_id):
             else:
                 sanitized_data[key] = value
         
-        db.update_worker(worker_id, **sanitized_data)
-        return jsonify({"message": "Worker updated"})
+        db.update_employee(employee_id, **sanitized_data)
+        return jsonify({"message": "Employee updated"})
     
     elif request.method == "DELETE":
-        # Verify worker belongs to this company before deleting
-        worker = db.get_worker(worker_id, company_id=company_id)
-        if not worker:
-            return jsonify({"error": "Worker not found"}), 404
+        # Verify employee belongs to this company before deleting
+        employee = db.get_employee(employee_id, company_id=company_id)
+        if not employee:
+            return jsonify({"error": "Employee not found"}), 404
         
-        result = db.delete_worker(worker_id, company_id=company_id)
+        result = db.delete_employee(employee_id, company_id=company_id)
         if result.get('success'):
             return jsonify({
-                "message": "Worker deleted",
+                "message": "Employee deleted",
                 "assignments_removed": result.get('assignments_removed', 0)
             })
-        return jsonify({"error": result.get('error', 'Failed to delete worker')}), 500
+        return jsonify({"error": result.get('error', 'Failed to delete employee')}), 500
 
 
-@app.route("/api/bookings/<int:booking_id>/assign-worker", methods=["POST"])
+@app.route("/api/bookings/<int:booking_id>/assign-employee", methods=["POST"])
 @login_required
 @subscription_required
-def assign_worker_to_job_api(booking_id):
-    """Assign a worker to a job with availability checking"""
+def assign_employee_to_job_api(booking_id):
+    """Assign an employee to a job with availability checking"""
     db = get_database()
     company_id = session.get('company_id')
     data = request.json
-    worker_id = data.get('worker_id')
+    employee_id = data.get('employee_id')
     force_assign = data.get('force', False)  # Allow forcing assignment even with conflicts
     
-    if not worker_id:
-        return jsonify({"error": "worker_id is required"}), 400
+    if not employee_id:
+        return jsonify({"error": "employee_id is required"}), 400
     
-    # Convert worker_id to int (may come as string from frontend)
+    # Convert employee_id to int (may come as string from frontend)
     try:
-        worker_id = int(worker_id)
+        employee_id = int(employee_id)
     except (ValueError, TypeError):
-        return jsonify({"error": "Invalid worker_id"}), 400
+        return jsonify({"error": "Invalid employee_id"}), 400
     
     # Verify booking belongs to this company
     booking = db.get_booking(booking_id, company_id=company_id)
     if not booking:
         return jsonify({"error": "Booking not found"}), 404
     
-    # Verify worker belongs to this company
-    worker = db.get_worker(worker_id, company_id=company_id)
-    if not worker:
-        return jsonify({"error": "Worker not found"}), 404
+    # Verify employee belongs to this company
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
     
-    # Check worker availability at the booking time
+    # Check employee availability at the booking time
     appointment_time = booking.get('appointment_time')
     duration_minutes = booking.get('duration_minutes') or 60
     
-    availability = db.check_worker_availability(
-        worker_id=worker_id,
+    availability = db.check_employee_availability(
+        employee_id=employee_id,
         appointment_time=appointment_time,
         duration_minutes=duration_minutes,
         company_id=company_id
@@ -10844,20 +10942,20 @@ def assign_worker_to_job_api(booking_id):
     if not availability['available'] and not force_assign:
         return jsonify({
             "success": False,
-            "error": "Worker is not available at this time",
+            "error": "Employee is not available at this time",
             "conflicts": availability['conflicts'],
             "message": availability['message'],
             "can_force": True  # Allow UI to offer force option
         }), 409  # Conflict status code
     
-    result = db.assign_worker_to_job(booking_id, worker_id)
+    result = db.assign_employee_to_job(booking_id, employee_id)
     
     if result['success']:
         # Include warning if forced despite conflicts
         if not availability['available']:
-            result['warning'] = f"Worker assigned despite conflicts: {availability['message']}"
+            result['warning'] = f"Employee assigned despite conflicts: {availability['message']}"
 
-        # Update Google Calendar event with new worker info
+        # Update Google Calendar event with new employee info
         try:
             from src.services.google_calendar_oauth import get_company_google_calendar
             calendar_event_id = booking.get('calendar_event_id', '')
@@ -10865,9 +10963,9 @@ def assign_worker_to_job_api(booking_id):
             if calendar_event_id and not str(calendar_event_id).startswith('db_') and appt_time:
                 gcal = get_company_google_calendar(company_id, db)
                 if gcal:
-                    job_workers = db.get_job_workers(booking_id, company_id=company_id)
-                    worker_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_workers]
-                    worker_line = f"\nWorkers: {', '.join(worker_names)}" if worker_names else ''
+                    job_employees = db.get_job_employees(booking_id, company_id=company_id)
+                    employee_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_employees]
+                    employee_line = f"\nEmployees: {', '.join(employee_names)}" if employee_names else ''
                     customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
                     phone = booking.get('phone_number') or ''
                     address = booking.get('address') or ''
@@ -10878,12 +10976,12 @@ def assign_worker_to_job_api(booking_id):
                         f"Phone: {phone}\n"
                         f"Address: {address}\n"
                         f"Duration: {duration} mins"
-                        f"{worker_line}"
+                        f"{employee_line}"
                     )
                     attendee_emails = None
                     company = db.get_company(company_id)
-                    if company and company.get('gcal_invite_workers'):
-                        attendee_emails = [w['email'] for w in job_workers if w.get('email')]
+                    if company and company.get('gcal_invite_employees'):
+                        attendee_emails = [w['email'] for w in job_employees if w.get('email')]
                         if not attendee_emails:
                             attendee_emails = None
                     gcal.reschedule_appointment(
@@ -10892,9 +10990,9 @@ def assign_worker_to_job_api(booking_id):
                         attendee_emails=attendee_emails
                     )
         except Exception as e:
-            print(f"[GCAL] Worker assign sync failed (non-critical): {e}")
+            print(f"[GCAL] Employee assign sync failed (non-critical): {e}")
 
-        # Notify the worker about the job assignment
+        # Notify the employee about the job assignment
         try:
             from datetime import datetime as _dt
             appt = booking.get('appointment_time')
@@ -10903,49 +11001,49 @@ def assign_worker_to_job_api(booking_id):
             svc = booking.get('service_type') or 'a job'
             db.create_notification(
                 company_id=company_id,
-                recipient_type='worker',
-                recipient_id=worker_id,
+                recipient_type='employee',
+                recipient_id=employee_id,
                 notif_type='job_assigned',
                 message=f"You've been booked for {svc} with {customer_name} on {appt_str}",
                 metadata={'booking_id': booking_id, 'service_type': svc,
                           'appointment_time': appt.isoformat() if hasattr(appt, 'isoformat') else str(appt)}
             )
         except Exception as e:
-            print(f"[WARNING] Could not notify worker of assignment: {e}")
+            print(f"[WARNING] Could not notify employee of assignment: {e}")
 
         return jsonify(result), 201
     else:
         return jsonify(result), 400
 
 
-@app.route("/api/bookings/<int:booking_id>/remove-worker", methods=["POST"])
+@app.route("/api/bookings/<int:booking_id>/remove-employee", methods=["POST"])
 @login_required
 @subscription_required
-def remove_worker_from_job_api(booking_id):
-    """Remove a worker from a job"""
+def remove_employee_from_job_api(booking_id):
+    """Remove an employee from a job"""
     db = get_database()
     company_id = session.get('company_id')
     data = request.json
-    worker_id = data.get('worker_id')
+    employee_id = data.get('employee_id')
     
-    if not worker_id:
-        return jsonify({"error": "worker_id is required"}), 400
+    if not employee_id:
+        return jsonify({"error": "employee_id is required"}), 400
     
-    # Convert worker_id to int (may come as string from frontend)
+    # Convert employee_id to int (may come as string from frontend)
     try:
-        worker_id = int(worker_id)
+        employee_id = int(employee_id)
     except (ValueError, TypeError):
-        return jsonify({"error": "Invalid worker_id"}), 400
+        return jsonify({"error": "Invalid employee_id"}), 400
     
     # Verify booking belongs to this company
     booking = db.get_booking(booking_id, company_id=company_id)
     if not booking:
         return jsonify({"error": "Booking not found"}), 404
     
-    success = db.remove_worker_from_job(booking_id, worker_id)
+    success = db.remove_employee_from_job(booking_id, employee_id)
     
     if success:
-        # Update Google Calendar event with updated worker info
+        # Update Google Calendar event with updated employee info
         try:
             from src.services.google_calendar_oauth import get_company_google_calendar
             calendar_event_id = booking.get('calendar_event_id', '')
@@ -10953,9 +11051,9 @@ def remove_worker_from_job_api(booking_id):
             if calendar_event_id and not str(calendar_event_id).startswith('db_') and appt_time:
                 gcal = get_company_google_calendar(company_id, db)
                 if gcal:
-                    job_workers = db.get_job_workers(booking_id, company_id=company_id)
-                    worker_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_workers]
-                    worker_line = f"\nWorkers: {', '.join(worker_names)}" if worker_names else ''
+                    job_employees = db.get_job_employees(booking_id, company_id=company_id)
+                    employee_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_employees]
+                    employee_line = f"\nEmployees: {', '.join(employee_names)}" if employee_names else ''
                     customer_name = booking.get('client_name') or booking.get('customer_name') or 'Customer'
                     phone = booking.get('phone_number') or ''
                     address = booking.get('address') or ''
@@ -10966,12 +11064,12 @@ def remove_worker_from_job_api(booking_id):
                         f"Phone: {phone}\n"
                         f"Address: {address}\n"
                         f"Duration: {duration} mins"
-                        f"{worker_line}"
+                        f"{employee_line}"
                     )
                     attendee_emails = None
                     company = db.get_company(company_id)
-                    if company and company.get('gcal_invite_workers'):
-                        attendee_emails = [w['email'] for w in job_workers if w.get('email')]
+                    if company and company.get('gcal_invite_employees'):
+                        attendee_emails = [w['email'] for w in job_employees if w.get('email')]
                         if not attendee_emails:
                             attendee_emails = None
                     gcal.reschedule_appointment(
@@ -10980,17 +11078,17 @@ def remove_worker_from_job_api(booking_id):
                         attendee_emails=attendee_emails
                     )
         except Exception as e:
-            print(f"[GCAL] Worker remove sync failed (non-critical): {e}")
+            print(f"[GCAL] Employee remove sync failed (non-critical): {e}")
 
-        return jsonify({"success": True, "message": "Worker removed from job"})
+        return jsonify({"success": True, "message": "Employee removed from job"})
     else:
-        return jsonify({"error": "Worker assignment not found"}), 404
+        return jsonify({"error": "Employee assignment not found"}), 404
 
 
-@app.route("/api/bookings/<int:booking_id>/workers", methods=["GET"])
+@app.route("/api/bookings/<int:booking_id>/employees", methods=["GET"])
 @login_required
-def get_job_workers_api(booking_id):
-    """Get all workers assigned to a job"""
+def get_job_employees_api(booking_id):
+    """Get all employees assigned to a job"""
     db = get_database()
     company_id = session.get('company_id')
     
@@ -10999,24 +11097,24 @@ def get_job_workers_api(booking_id):
     if not booking:
         return jsonify({"error": "Booking not found"}), 404
     
-    workers = db.get_job_workers(booking_id, company_id=company_id)
-    return jsonify(workers)
+    employees = db.get_job_employees(booking_id, company_id=company_id)
+    return jsonify(employees)
 
 
-@app.route("/api/workers/<int:worker_id>/jobs", methods=["GET"])
+@app.route("/api/employees/<int:employee_id>/jobs", methods=["GET"])
 @login_required
-def get_worker_jobs_api(worker_id):
-    """Get all jobs assigned to a worker"""
+def get_employee_jobs_api(employee_id):
+    """Get all jobs assigned to an employee"""
     db = get_database()
     company_id = session.get('company_id')
     
-    # Verify worker belongs to this company
-    worker = db.get_worker(worker_id, company_id=company_id)
-    if not worker:
-        return jsonify({"error": "Worker not found"}), 404
+    # Verify employee belongs to this company
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
     
     include_completed = request.args.get('include_completed', 'false').lower() == 'true'
-    jobs = db.get_worker_jobs(worker_id, include_completed, company_id=company_id)
+    jobs = db.get_employee_jobs(employee_id, include_completed, company_id=company_id)
     
     # Ensure customer_name is set for frontend consistency
     for job in jobs:
@@ -11026,75 +11124,75 @@ def get_worker_jobs_api(worker_id):
     return jsonify(jobs)
 
 
-@app.route("/api/workers/<int:worker_id>/schedule", methods=["GET"])
+@app.route("/api/employees/<int:employee_id>/schedule", methods=["GET"])
 @login_required
-def get_worker_schedule_api(worker_id):
-    """Get worker's schedule"""
+def get_employee_schedule_api(employee_id):
+    """Get employee's schedule"""
     db = get_database()
     company_id = session.get('company_id')
     
-    # Verify worker belongs to this company
-    worker = db.get_worker(worker_id, company_id=company_id)
-    if not worker:
-        return jsonify({"error": "Worker not found"}), 404
+    # Verify employee belongs to this company
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
     
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
-    schedule = db.get_worker_schedule(worker_id, start_date, end_date)
+    schedule = db.get_employee_schedule(employee_id, start_date, end_date)
     return jsonify(schedule)
 
 
-@app.route("/api/workers/hours-this-week", methods=["GET"])
+@app.route("/api/employees/hours-this-week", methods=["GET"])
 @login_required
-def get_workers_hours_this_week_api():
-    """Batch: hours worked this week for every worker in the company.
+def get_employees_hours_this_week_api():
+    """Batch: hours worked this week for every employee in the company.
 
-    Returns {"hours": {worker_id: hours_worked}}. Replaces N per-worker requests.
+    Returns {"hours": {employee_id: hours_worked}}. Replaces N per-employee requests.
     """
     db = get_database()
     company_id = session.get('company_id')
     try:
-        hours_map = db.get_workers_hours_this_week(company_id)
+        hours_map = db.get_employees_hours_this_week(company_id)
     except AttributeError:
         # Older DB wrapper without batch method — fall back gracefully
-        workers = db.get_all_workers(company_id=company_id) or []
+        employees = db.get_all_employees(company_id=company_id) or []
         hours_map = {}
-        for w in workers:
+        for w in employees:
             try:
-                hours_map[w['id']] = db.get_worker_hours_this_week(w['id'])
+                hours_map[w['id']] = db.get_employee_hours_this_week(w['id'])
             except Exception:
                 hours_map[w['id']] = 0
     # Keys must be strings for JSON
     return jsonify({"hours": {str(k): v for k, v in hours_map.items()}})
 
 
-@app.route("/api/workers/<int:worker_id>/hours-this-week", methods=["GET"])
+@app.route("/api/employees/<int:employee_id>/hours-this-week", methods=["GET"])
 @login_required
-def get_worker_hours_this_week_api(worker_id):
-    """Get hours worked by worker this week"""
+def get_employee_hours_this_week_api(employee_id):
+    """Get hours worked by employee this week"""
     db = get_database()
     company_id = session.get('company_id')
     
-    # Verify worker belongs to this company
-    worker = db.get_worker(worker_id, company_id=company_id)
-    if not worker:
-        return jsonify({"error": "Worker not found"}), 404
+    # Verify employee belongs to this company
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
     
-    hours = db.get_worker_hours_this_week(worker_id)
+    hours = db.get_employee_hours_this_week(employee_id)
     return jsonify({"hours_worked": hours})
 
 
-@app.route("/api/workers/<int:worker_id>/availability", methods=["GET"])
+@app.route("/api/employees/<int:employee_id>/availability", methods=["GET"])
 @login_required
-def check_worker_availability_api(worker_id):
-    """Check if a worker is available at a specific time"""
+def check_employee_availability_api(employee_id):
+    """Check if an employee is available at a specific time"""
     db = get_database()
     company_id = session.get('company_id')
     
-    # Verify worker belongs to this company
-    worker = db.get_worker(worker_id, company_id=company_id)
-    if not worker:
-        return jsonify({"error": "Worker not found"}), 404
+    # Verify employee belongs to this company
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
     
     appointment_time = request.args.get('appointment_time')
     duration_minutes = request.args.get('duration_minutes', 60, type=int)
@@ -11103,8 +11201,8 @@ def check_worker_availability_api(worker_id):
     if not appointment_time:
         return jsonify({"error": "appointment_time is required"}), 400
     
-    availability = db.check_worker_availability(
-        worker_id=worker_id,
+    availability = db.check_employee_availability(
+        employee_id=employee_id,
         appointment_time=appointment_time,
         duration_minutes=duration_minutes,
         exclude_booking_id=exclude_booking_id,
@@ -11114,10 +11212,10 @@ def check_worker_availability_api(worker_id):
     return jsonify(availability)
 
 
-@app.route("/api/bookings/<int:booking_id>/available-workers", methods=["GET"])
+@app.route("/api/bookings/<int:booking_id>/available-employees", methods=["GET"])
 @login_required
-def get_available_workers_for_job_api(booking_id):
-    """Get all workers who are available for a specific job"""
+def get_available_employees_for_job_api(booking_id):
+    """Get all employees who are available for a specific job"""
     db = get_database()
     company_id = session.get('company_id')
     
@@ -11129,39 +11227,39 @@ def get_available_workers_for_job_api(booking_id):
     appointment_time = booking.get('appointment_time')
     duration_minutes = booking.get('duration_minutes', 60)
     
-    # Get all workers for this company
-    all_workers = db.get_all_workers(company_id=company_id)
+    # Get all employees for this company
+    all_employees = db.get_all_employees(company_id=company_id)
     
-    # Check availability for each worker
-    available_workers = []
-    busy_workers = []
+    # Check availability for each employee
+    available_employees = []
+    busy_employees = []
     
-    for worker in all_workers:
-        availability = db.check_worker_availability(
-            worker_id=worker['id'],
+    for employee in all_employees:
+        availability = db.check_employee_availability(
+            employee_id=employee['id'],
             appointment_time=appointment_time,
             duration_minutes=duration_minutes,
             exclude_booking_id=booking_id,  # Exclude this booking from conflict check
             company_id=company_id
         )
         
-        worker_info = {
-            'id': worker['id'],
-            'name': worker['name'],
-            'phone': worker.get('phone'),
-            'trade_specialty': worker.get('trade_specialty'),
+        employee_info = {
+            'id': employee['id'],
+            'name': employee['name'],
+            'phone': employee.get('phone'),
+            'trade_specialty': employee.get('trade_specialty'),
             'available': availability['available'],
             'conflicts': availability.get('conflicts', [])
         }
         
         if availability['available']:
-            available_workers.append(worker_info)
+            available_employees.append(employee_info)
         else:
-            busy_workers.append(worker_info)
+            busy_employees.append(employee_info)
     
     return jsonify({
-        'available': available_workers,
-        'busy': busy_workers,
+        'available': available_employees,
+        'busy': busy_employees,
         'booking_time': appointment_time,
         'duration_minutes': duration_minutes
     })
@@ -11961,8 +12059,8 @@ def convert_quote_to_job(quote_id):
             return jsonify({"error": "appointment_time is required"}), 400
         
         duration_minutes = data.get('duration_minutes', 60)
-        worker_ids = data.get('worker_ids', [])
-        auto_assign_worker = data.get('auto_assign_worker', False)
+        employee_ids = data.get('employee_ids', [])
+        auto_assign_employee = data.get('auto_assign_employee', False)
         notes = data.get('notes', '')
 
         # Create booking from quote
@@ -11979,24 +12077,24 @@ def convert_quote_to_job(quote_id):
         booking = cur.fetchone()
         booking_id = booking['id']
 
-        # Assign workers if provided
-        if worker_ids:
-            for wid in worker_ids:
+        # Assign employees if provided
+        if employee_ids:
+            for wid in employee_ids:
                 cur.execute("""
-                    INSERT INTO worker_assignments (booking_id, worker_id)
+                    INSERT INTO employee_assignments (booking_id, employee_id)
                     VALUES (%s, %s) ON CONFLICT DO NOTHING
                 """, (booking_id, wid))
-        elif auto_assign_worker:
-            # Auto-assign: find first available worker
+        elif auto_assign_employee:
+            # Auto-assign: find first available employee
             try:
-                all_workers = db.get_all_workers(company_id=company_id)
-                for w in all_workers:
+                all_employees = db.get_all_employees(company_id=company_id)
+                for w in all_employees:
                     try:
-                        from src.services.calendar_tools import check_worker_availability
-                        avail = check_worker_availability(db, company_id, w['id'], appointment_time, duration_minutes)
+                        from src.services.calendar_tools import check_employee_availability
+                        avail = check_employee_availability(db, company_id, w['id'], appointment_time, duration_minutes)
                         if avail.get('available'):
                             cur.execute("""
-                                INSERT INTO worker_assignments (booking_id, worker_id)
+                                INSERT INTO employee_assignments (booking_id, employee_id)
                                 VALUES (%s, %s) ON CONFLICT DO NOTHING
                             """, (booking_id, w['id']))
                             break
@@ -12596,14 +12694,14 @@ def create_job_task(booking_id):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             INSERT INTO job_tasks (booking_id, company_id, title, description, status,
-                                   estimated_cost, assigned_worker_id, sort_order)
+                                   estimated_cost, assigned_employee_id, sort_order)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
         """, (
             booking_id, company_id, data.get('title', ''),
             data.get('description', ''), data.get('status', 'pending'),
             float(data.get('estimated_cost', 0) or 0),
-            data.get('assigned_worker_id'), data.get('sort_order', 0)
+            data.get('assigned_employee_id'), data.get('sort_order', 0)
         ))
         task = cur.fetchone()
         conn.commit()
@@ -12632,7 +12730,7 @@ def update_job_task(booking_id, task_id):
         cur = conn.cursor(cursor_factory=RealDictCursor)
         fields = []
         values = []
-        for key in ['title', 'description', 'status', 'estimated_cost', 'assigned_worker_id', 'sort_order']:
+        for key in ['title', 'description', 'status', 'estimated_cost', 'assigned_employee_id', 'sort_order']:
             if key in data:
                 fields.append(f"{key} = %s")
                 values.append(data[key])
@@ -13594,9 +13692,9 @@ def google_calendar_sync():
     # Build a set of gcal event IDs already linked to DB bookings
     known_gcal_ids = set()
 
-    # Check if worker invites are enabled (once, outside the loop)
+    # Check if employee invites are enabled (once, outside the loop)
     company = db.get_company(company_id)
-    invite_workers = company.get('gcal_invite_workers', False) if company else False
+    invite_employees = company.get('gcal_invite_employees', False) if company else False
 
     for booking in all_bookings:
         existing_event_id = booking.get('calendar_event_id', '')
@@ -13649,13 +13747,13 @@ def google_calendar_sync():
         address = booking.get('address') or ''
         summary = f"{'✅ ' if is_completed else ''}{service} - {customer_name}"
 
-        # Build worker info for description and attendees
+        # Build employee info for description and attendees
         bid = booking.get('id')
-        job_workers = db.get_job_workers(bid, company_id=company_id) if bid else []
-        worker_lines = ''
-        if job_workers:
-            worker_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_workers]
-            worker_lines = f"\nWorkers: {', '.join(worker_names)}"
+        job_employees = db.get_job_employees(bid, company_id=company_id) if bid else []
+        employee_lines = ''
+        if job_employees:
+            employee_names = [f"{w['name']}{' (' + w['trade_specialty'] + ')' if w.get('trade_specialty') else ''}" for w in job_employees]
+            employee_lines = f"\nEmployees: {', '.join(employee_names)}"
 
         desc = (
             f"Synced from BookedForYou\n"
@@ -13664,13 +13762,13 @@ def google_calendar_sync():
             f"Phone: {phone}\n"
             f"Address: {address}\n"
             f"Duration: {duration} mins"
-            f"{worker_lines}"
+            f"{employee_lines}"
         )
 
-        # Build attendee list if worker invites are enabled
+        # Build attendee list if employee invites are enabled
         attendee_emails = None
-        if invite_workers and job_workers:
-            attendee_emails = [w['email'] for w in job_workers if w.get('email')]
+        if invite_employees and job_employees:
+            attendee_emails = [w['email'] for w in job_employees if w.get('email')]
             if not attendee_emails:
                 attendee_emails = None
 
@@ -13783,16 +13881,16 @@ def google_calendar_sync():
         f"pull(imported={pull_imported}, skipped={pull_skipped}, errors={pull_errors})"
     )
 
-    # Count active jobs without workers assigned (for warning)
-    jobs_without_workers = 0
+    # Count active jobs without employees assigned (for warning)
+    jobs_without_employees = 0
     try:
         all_bookings_check = db.get_all_bookings(company_id=company_id)
         for b in all_bookings_check:
             if b.get('status') in ('completed', 'paid', 'cancelled'):
                 continue
-            workers = db.get_job_workers(b['id'], company_id=company_id)
-            if not workers:
-                jobs_without_workers += 1
+            employees = db.get_job_employees(b['id'], company_id=company_id)
+            if not employees:
+                jobs_without_employees += 1
     except Exception:
         pass
 
@@ -13815,7 +13913,7 @@ def google_calendar_sync():
         'push_updated': push_updated,
         'pull_imported': pull_imported,
         'errors': total_errors,
-        'jobs_without_workers': jobs_without_workers,
+        'jobs_without_employees': jobs_without_employees,
         'message': msg
     })
 
@@ -14195,9 +14293,9 @@ def admin_company_insights(company_id):
         call_stats = dict(cursor.fetchone())
         call_stats['avg_duration'] = round(float(call_stats['avg_duration']), 1)
 
-        # Workers
-        cursor.execute("SELECT COUNT(*) as cnt FROM workers WHERE company_id = %s", (company_id,))
-        worker_count = cursor.fetchone()['cnt']
+        # Employees
+        cursor.execute("SELECT COUNT(*) as cnt FROM employees WHERE company_id = %s", (company_id,))
+        employee_count = cursor.fetchone()['cnt']
 
         # Clients
         cursor.execute("SELECT COUNT(*) as cnt FROM clients WHERE company_id = %s", (company_id,))
@@ -14239,7 +14337,7 @@ def admin_company_insights(company_id):
                 "booking_stats": booking_stats,
                 "monthly_bookings": monthly,
                 "call_stats": call_stats,
-                "worker_count": worker_count,
+                "employee_count": employee_count,
                 "client_count": client_count,
                 "service_count": service_count,
                 "stripe_info": stripe_info,

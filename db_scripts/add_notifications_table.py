@@ -1,5 +1,5 @@
 """
-Create notifications table for owner and worker notifications.
+Create notifications table for owner and employee notifications.
 Supports notifications for time-off requests, job assignments, etc.
 """
 import os

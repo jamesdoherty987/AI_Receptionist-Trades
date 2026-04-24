@@ -4,37 +4,37 @@ import { useAuth } from '../context/AuthContext';
 import { useIndustry } from '../context/IndustryContext';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  getWorkerDashboard,
-  getWorkerJobDetail,
-  workerUploadJobPhoto,
-  workerUploadJobMedia,
-  workerUpdateJobStatus,
-  workerUpdateJobDetails,
-  workerBulkCompleteJobs,
-  getWorkerTimeOff,
+  getEmployeeDashboard,
+  getEmployeeJobDetail,
+  employeeUploadJobPhoto,
+  employeeUploadJobMedia,
+  employeeUpdateJobStatus,
+  employeeUpdateJobDetails,
+  employeeBulkCompleteJobs,
+  getEmployeeTimeOff,
   createTimeOffRequest,
   deleteTimeOffRequest,
-  workerChangePassword,
-  getWorkerHoursSummary,
-  addWorkerJobNote,
-  updateWorkerProfile,
-  getWorkerCustomers,
-  getWorkerJobMaterials,
-  addWorkerJobMaterial,
-  deleteWorkerJobMaterial,
-  getWorkerMessages,
-  workerSendMessage,
-  getWorkerUnreadMessageCount,
-  getWorkerNotifications,
+  employeeChangePassword,
+  getEmployeeHoursSummary,
+  addEmployeeJobNote,
+  updateEmployeeProfile,
+  getEmployeeCustomers,
+  getEmployeeJobMaterials,
+  addEmployeeJobMaterial,
+  deleteEmployeeJobMaterial,
+  getEmployeeMessages,
+  employeeSendMessage,
+  getEmployeeUnreadMessageCount,
+  getEmployeeNotifications,
   acceptEmergencyJob
 } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
-import WorkerNotificationBell from '../components/WorkerNotificationBell';
+import EmployeeNotificationBell from '../components/EmployeeNotificationBell';
 import { formatPhone, getStatusBadgeClass, formatDateTime, getProxiedMediaUrl } from '../utils/helpers';
 import { formatDuration } from '../utils/durationOptions';
 import AddJobModal from '../components/modals/AddJobModal';
-import './WorkerDashboard.css';
+import './EmployeeDashboard.css';
 
 // Live timer component for in-progress jobs
 function JobTimer({ startedAt }) {
@@ -66,7 +66,7 @@ function JobTimer({ startedAt }) {
   );
 }
 
-function WorkerDashboard() {
+function EmployeeDashboard() {
   const { user, logout } = useAuth();
   const { terminology } = useIndustry();
   const navigate = useNavigate();
@@ -96,8 +96,8 @@ function WorkerDashboard() {
 
   // Job materials state
   const [showAddMaterial, setShowAddMaterial] = useState(false);
-  const [workerMaterialSearch, setWorkerMaterialSearch] = useState('');
-  const [workerCustomMat, setWorkerCustomMat] = useState({ name: '', unit_price: '', quantity: '1' });
+  const [employeeMaterialSearch, setEmployeeMaterialSearch] = useState('');
+  const [employeeCustomMat, setEmployeeCustomMat] = useState({ name: '', unit_price: '', quantity: '1' });
 
   // Messages state
   const [msgInput, setMsgInput] = useState('');
@@ -135,14 +135,14 @@ function WorkerDashboard() {
   const [editActualDuration, setEditActualDuration] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['worker-dashboard'],
-    queryFn: async () => { const r = await getWorkerDashboard(); return r.data; },
+    queryKey: ['employee-dashboard'],
+    queryFn: async () => { const r = await getEmployeeDashboard(); return r.data; },
   });
 
   // Emergency job notifications
   const { data: notifData } = useQuery({
-    queryKey: ['worker-notifications'],
-    queryFn: async () => { const r = await getWorkerNotifications(); return r.data; },
+    queryKey: ['employee-notifications'],
+    queryFn: async () => { const r = await getEmployeeNotifications(); return r.data; },
     refetchInterval: 10000,
   });
   const emergencyNotifs = (notifData?.notifications || []).filter(n => n.type === 'emergency_job' && n.metadata?.booking_id);
@@ -156,56 +156,56 @@ function WorkerDashboard() {
     onSuccess: (_, bookingId) => {
       setEmergencyAcceptedIds(prev => new Set([...prev, bookingId]));
       setEmergencyAcceptingId(null);
-      queryClient.invalidateQueries({ queryKey: ['worker-notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
     },
     onError: () => setEmergencyAcceptingId(null),
   });
 
   const { data: hoursSummary } = useQuery({
-    queryKey: ['worker-hours-summary'],
-    queryFn: async () => { const r = await getWorkerHoursSummary(); return r.data; },
+    queryKey: ['employee-hours-summary'],
+    queryFn: async () => { const r = await getEmployeeHoursSummary(); return r.data; },
   });
 
   const { data: selectedJob, isLoading: loadingJob } = useQuery({
-    queryKey: ['worker-job', selectedJobId],
-    queryFn: async () => { const r = await getWorkerJobDetail(selectedJobId); return r.data; },
+    queryKey: ['employee-job', selectedJobId],
+    queryFn: async () => { const r = await getEmployeeJobDetail(selectedJobId); return r.data; },
     enabled: !!selectedJobId,
   });
 
   const { data: timeOffData } = useQuery({
-    queryKey: ['worker-time-off'],
-    queryFn: async () => { const r = await getWorkerTimeOff(); return r.data; },
+    queryKey: ['employee-time-off'],
+    queryFn: async () => { const r = await getEmployeeTimeOff(); return r.data; },
     enabled: true,
   });
 
   const { data: customersData } = useQuery({
-    queryKey: ['worker-customers'],
-    queryFn: async () => { const r = await getWorkerCustomers(); return r.data; },
+    queryKey: ['employee-customers'],
+    queryFn: async () => { const r = await getEmployeeCustomers(); return r.data; },
     enabled: activeTab === 'customers',
   });
 
   // Job materials for selected job
-  const { data: workerJobMaterials } = useQuery({
-    queryKey: ['worker-job-materials', selectedJobId],
-    queryFn: async () => { const r = await getWorkerJobMaterials(selectedJobId); return r.data; },
+  const { data: employeeJobMaterials } = useQuery({
+    queryKey: ['employee-job-materials', selectedJobId],
+    queryFn: async () => { const r = await getEmployeeJobMaterials(selectedJobId); return r.data; },
     enabled: !!selectedJobId,
   });
 
-  const addWorkerMatMut = useMutation({
-    mutationFn: (data) => addWorkerJobMaterial(selectedJobId, data),
+  const addEmployeeMatMut = useMutation({
+    mutationFn: (data) => addEmployeeJobMaterial(selectedJobId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['worker-job-materials', selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ['employee-job-materials', selectedJobId] });
       setShowAddMaterial(false);
-      setWorkerMaterialSearch('');
-      setWorkerCustomMat({ name: '', unit_price: '', quantity: '1' });
+      setEmployeeMaterialSearch('');
+      setEmployeeCustomMat({ name: '', unit_price: '', quantity: '1' });
     },
   });
 
   // Messages queries
   const { data: messagesData } = useQuery({
-    queryKey: ['worker-messages'],
-    queryFn: async () => { const r = await getWorkerMessages(); return r.data; },
+    queryKey: ['employee-messages'],
+    queryFn: async () => { const r = await getEmployeeMessages(); return r.data; },
     enabled: activeTab === 'messages',
     refetchInterval: activeTab === 'messages' ? 8000 : false,
   });
@@ -220,26 +220,26 @@ function WorkerDashboard() {
   }, [activeTab, messagesData]);
 
   const { data: unreadMsgData } = useQuery({
-    queryKey: ['worker-unread-messages'],
-    queryFn: async () => { const r = await getWorkerUnreadMessageCount(); return r.data; },
+    queryKey: ['employee-unread-messages'],
+    queryFn: async () => { const r = await getEmployeeUnreadMessageCount(); return r.data; },
     refetchInterval: 30000,
   });
 
   const sendMsgMutation = useMutation({
-    mutationFn: (content) => workerSendMessage(content),
+    mutationFn: (content) => employeeSendMessage(content),
     // Optimistic update — message appears instantly
     onMutate: async (content) => {
-      await queryClient.cancelQueries({ queryKey: ['worker-messages'] });
-      const previous = queryClient.getQueryData(['worker-messages']);
+      await queryClient.cancelQueries({ queryKey: ['employee-messages'] });
+      const previous = queryClient.getQueryData(['employee-messages']);
       const optimisticMsg = {
         id: `temp-${Date.now()}`,
-        sender_type: 'worker',
+        sender_type: 'employee',
         content,
         created_at: new Date().toISOString(),
         read: false,
         _optimistic: true,
       };
-      queryClient.setQueryData(['worker-messages'], (old) => ({
+      queryClient.setQueryData(['employee-messages'], (old) => ({
         ...old,
         messages: [...(old?.messages || []), optimisticMsg],
       }));
@@ -248,39 +248,39 @@ function WorkerDashboard() {
     },
     onError: (error, _content, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(['worker-messages'], context.previous);
+        queryClient.setQueryData(['employee-messages'], context.previous);
       }
       console.error('Failed to send message:', error);
       alert(error.response?.data?.error || 'Failed to send message. Please try again.');
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['worker-messages'] });
-      queryClient.invalidateQueries({ queryKey: ['worker-unread-messages'] });
-      queryClient.invalidateQueries({ queryKey: ['worker-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-messages'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-unread-messages'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-notifications'] });
     },
   });
 
-  const removeWorkerMatMut = useMutation({
-    mutationFn: (itemId) => deleteWorkerJobMaterial(selectedJobId, itemId),
+  const removeEmployeeMatMut = useMutation({
+    mutationFn: (itemId) => deleteEmployeeJobMaterial(selectedJobId, itemId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['worker-job-materials', selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ['employee-job-materials', selectedJobId] });
     },
   });
 
   const statusMutation = useMutation({
     mutationFn: ({ jobId, status, started_at, completed_at, actual_duration_minutes, status_label }) => 
-      workerUpdateJobStatus(jobId, { status, started_at, completed_at, actual_duration_minutes, status_label }),
+      employeeUpdateJobStatus(jobId, { status, started_at, completed_at, actual_duration_minutes, status_label }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['worker-job', selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-job', selectedJobId] });
     },
   });
 
   const detailsMutation = useMutation({
-    mutationFn: ({ jobId, data }) => workerUpdateJobDetails(jobId, data),
+    mutationFn: ({ jobId, data }) => employeeUpdateJobDetails(jobId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['worker-job', selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-job', selectedJobId] });
       setIsEditingJobDetails(false);
     },
   });
@@ -289,19 +289,19 @@ function WorkerDashboard() {
     mutationFn: (data) => {
       // data is either a base64 string (image) or a File object (video)
       if (typeof data === 'string') {
-        return workerUploadJobPhoto(selectedJobId, data);
+        return employeeUploadJobPhoto(selectedJobId, data);
       }
-      return workerUploadJobMedia(selectedJobId, data);
+      return employeeUploadJobMedia(selectedJobId, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['worker-job', selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ['employee-job', selectedJobId] });
     },
   });
 
   const timeOffMutation = useMutation({
     mutationFn: (data) => createTimeOffRequest(data),
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['worker-time-off'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-time-off'] });
       setShowTimeOffForm(false);
       setTimeOffForm({ start_date: '', end_date: '', reason: '', type: 'vacation' });
       // Warn about conflicting bookings
@@ -315,12 +315,12 @@ function WorkerDashboard() {
 
   const deleteTimeOffMutation = useMutation({
     mutationFn: (id) => deleteTimeOffRequest(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['worker-time-off'] }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['employee-time-off'] }); },
   });
 
   const passwordMutation = useMutation({
     mutationFn: ({ current_password, new_password }) =>
-      workerChangePassword(current_password, new_password),
+      employeeChangePassword(current_password, new_password),
     onSuccess: () => {
       setPasswordSuccess('Password changed successfully');
       setPasswordError('');
@@ -333,31 +333,31 @@ function WorkerDashboard() {
   });
 
   const noteMutation = useMutation({
-    mutationFn: ({ jobId, note }) => addWorkerJobNote(jobId, note),
+    mutationFn: ({ jobId, note }) => addEmployeeJobNote(jobId, note),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['worker-job', selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ['employee-job', selectedJobId] });
       setNoteText('');
     },
   });
 
   const bulkCompleteMutation = useMutation({
-    mutationFn: (filter) => workerBulkCompleteJobs(filter),
+    mutationFn: (filter) => employeeBulkCompleteJobs(filter),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['worker-hours-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-hours-summary'] });
       setBulkCompleteFilter(null);
     },
   });
 
   const profileMutation = useMutation({
-    mutationFn: (data) => updateWorkerProfile(data),
+    mutationFn: (data) => updateEmployeeProfile(data),
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['worker-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
       setIsEditingProfile(false);
     },
   });
 
-  const handleLogout = async () => { await logout(); navigate('/worker/login'); };
+  const handleLogout = async () => { await logout(); navigate('/employee/login'); };
 
   const handlePhotoSelect = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -444,7 +444,7 @@ function WorkerDashboard() {
     );
   }
 
-  const worker = data?.worker || {};
+  const employee = data?.employee || {};
   const jobs = data?.jobs || [];
   const schedule = data?.schedule || [];
   const timeOffRequests = timeOffData?.requests || [];
@@ -537,7 +537,7 @@ function WorkerDashboard() {
     { id: 'profile', label: 'Profile', icon: 'fas fa-user' },
   ];
 
-  const handleWorkerNotifNavigate = (notif) => {
+  const handleEmployeeNotifNavigate = (notif) => {
     const typeToTab = {
       'job_assigned': 'jobs',
       'new_message': 'messages',
@@ -549,7 +549,7 @@ function WorkerDashboard() {
       setActiveTab(tab);
       setSelectedJobId(null); // close any open job detail
       if (tab === 'messages') {
-        queryClient.invalidateQueries({ queryKey: ['worker-unread-messages'] });
+        queryClient.invalidateQueries({ queryKey: ['employee-unread-messages'] });
       }
     }
   };
@@ -557,37 +557,37 @@ function WorkerDashboard() {
   // ---- Job Detail View ----
   if (selectedJobId) {
     const job = selectedJob?.job;
-    const assignedWorkers = selectedJob?.assigned_workers || [];
+    const assignedEmployees = selectedJob?.assigned_employees || [];
     const directionsUrl = job ? getDirectionsUrl(job) : null;
 
     return (
-      <div className="worker-portal">
-        <header className="worker-header">
-          <div className="worker-header-content">
-            <button className="worker-back-btn" onClick={() => { setSelectedJobId(null); setShowAddMaterial(false); }}>
+      <div className="employee-portal">
+        <header className="employee-header">
+          <div className="employee-header-content">
+            <button className="employee-back-btn" onClick={() => { setSelectedJobId(null); setShowAddMaterial(false); }}>
               <i className="fas fa-arrow-left"></i> Back to Jobs
             </button>
-            <div className="worker-header-right">
-              <span className="worker-greeting">Hi, {user?.name || 'Worker'}</span>
-              <WorkerNotificationBell onNavigate={handleWorkerNotifNavigate} />
-              <button className="worker-logout-btn" onClick={handleLogout}>
+            <div className="employee-header-right">
+              <span className="employee-greeting">Hi, {user?.name || 'Employee'}</span>
+              <EmployeeNotificationBell onNavigate={handleEmployeeNotifNavigate} />
+              <button className="employee-logout-btn" onClick={handleLogout}>
                 <i className="fas fa-sign-out-alt"></i> Sign Out
               </button>
             </div>
           </div>
         </header>
-        <main className="worker-main">
-          <div className="worker-container">
+        <main className="employee-main">
+          <div className="employee-container">
             {loadingJob ? <LoadingSpinner /> : !job ? (
-              <div className="worker-empty"><i className="fas fa-exclamation-circle"></i><p>Job not found</p></div>
+              <div className="employee-empty"><i className="fas fa-exclamation-circle"></i><p>Job not found</p></div>
             ) : (
               <div className="wjd">
                 {/* Job Header */}
                 <div className="wjd-header">
                   <div className="wjd-title">
                     <h2>{job.customer_name || job.client_name || 'Job'}</h2>
-                    <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
-                    {job.status_label && <span className="worker-job-label"><i className="fas fa-tag"></i> {job.status_label}</span>}
+                    <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                    {job.status_label && <span className="employee-job-label"><i className="fas fa-tag"></i> {job.status_label}</span>}
                   </div>
                   <div className="wjd-actions">
                     {directionsUrl && (
@@ -763,9 +763,9 @@ function WorkerDashboard() {
                 )}
 
                 {/* Profit Summary - shown when materials are logged */}
-                {workerJobMaterials?.materials?.length > 0 && !!(job.charge || job.estimated_charge) && (() => {
+                {employeeJobMaterials?.materials?.length > 0 && !!(job.charge || job.estimated_charge) && (() => {
                   const charge = parseFloat(job.charge || job.estimated_charge || 0);
-                  const matCost = parseFloat(workerJobMaterials?.total_cost || 0);
+                  const matCost = parseFloat(employeeJobMaterials?.total_cost || 0);
                   const profit = charge - matCost;
                   const margin = charge > 0 ? (profit / charge * 100) : 0;
                   return (
@@ -859,19 +859,19 @@ function WorkerDashboard() {
                   </div>
 
                   <div className="wjd-col">
-                    {/* Assigned Workers */}
+                    {/* Assigned Employees */}
                     <div className="wjd-card">
                       <h3><i className="fas fa-hard-hat"></i> Team on This Job</h3>
-                      {assignedWorkers.length === 0 ? (
-                        <p className="wjd-empty-text">No other workers assigned</p>
+                      {assignedEmployees.length === 0 ? (
+                        <p className="wjd-empty-text">No other employees assigned</p>
                       ) : (
-                        <div className="wjd-workers-list">
-                          {assignedWorkers.map(w => (
-                            <div key={w.id} className="wjd-worker-item">
-                              <div className="wjd-worker-avatar">{w.name?.charAt(0)?.toUpperCase() || 'W'}</div>
+                        <div className="wjd-employees-list">
+                          {assignedEmployees.map(w => (
+                            <div key={w.id} className="wjd-employee-item">
+                              <div className="wjd-employee-avatar">{w.name?.charAt(0)?.toUpperCase() || 'W'}</div>
                               <div>
-                                <span className="wjd-worker-name">{w.name}</span>
-                                {w.trade_specialty && <span className="wjd-worker-spec">{w.trade_specialty}</span>}
+                                <span className="wjd-employee-name">{w.name}</span>
+                                {w.trade_specialty && <span className="wjd-employee-spec">{w.trade_specialty}</span>}
                               </div>
                             </div>
                           ))}
@@ -946,17 +946,17 @@ function WorkerDashboard() {
                         <div className="wjd-mat-add" style={{ background: '#f8fafc', borderRadius: 8, padding: '0.75rem', marginBottom: '0.75rem' }}>
                           <input type="text" className="wjd-note-input" style={{ marginBottom: '0.5rem' }}
                             placeholder="Search catalog or type material name..."
-                            value={workerMaterialSearch}
-                            onChange={e => setWorkerMaterialSearch(e.target.value)} autoFocus />
+                            value={employeeMaterialSearch}
+                            onChange={e => setEmployeeMaterialSearch(e.target.value)} autoFocus />
                           {/* Catalog results */}
-                          {workerMaterialSearch && workerJobMaterials?.catalog?.length > 0 && (
+                          {employeeMaterialSearch && employeeJobMaterials?.catalog?.length > 0 && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: '0.5rem' }}>
-                              {workerJobMaterials.catalog
-                                .filter(m => m.name.toLowerCase().includes(workerMaterialSearch.toLowerCase()))
+                              {employeeJobMaterials.catalog
+                                .filter(m => m.name.toLowerCase().includes(employeeMaterialSearch.toLowerCase()))
                                 .slice(0, 5)
                                 .map(m => (
                                   <button key={m.id} className="wjd-btn wjd-btn-sm" style={{ justifyContent: 'space-between', width: '100%' }}
-                                    onClick={() => addWorkerMatMut.mutate({
+                                    onClick={() => addEmployeeMatMut.mutate({
                                       material_id: m.id, name: m.name, unit_price: m.unit_price,
                                       unit: m.unit || 'each', quantity: 1
                                     })}>
@@ -969,33 +969,33 @@ function WorkerDashboard() {
                           {/* Custom entry */}
                           <div style={{ fontSize: '0.78rem', color: '#64748b', marginBottom: '0.3rem' }}>Or add custom:</div>
                           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                            <input type="text" placeholder="Name" value={workerCustomMat.name}
-                              onChange={e => setWorkerCustomMat({...workerCustomMat, name: e.target.value})}
+                            <input type="text" placeholder="Name" value={employeeCustomMat.name}
+                              onChange={e => setEmployeeCustomMat({...employeeCustomMat, name: e.target.value})}
                               className="wjd-note-input" style={{ flex: 2, minWidth: 100, marginBottom: 0 }} />
-                            <input type="number" placeholder="€" value={workerCustomMat.unit_price} min="0" step="0.01"
-                              onChange={e => setWorkerCustomMat({...workerCustomMat, unit_price: e.target.value})}
+                            <input type="number" placeholder="€" value={employeeCustomMat.unit_price} min="0" step="0.01"
+                              onChange={e => setEmployeeCustomMat({...employeeCustomMat, unit_price: e.target.value})}
                               className="wjd-note-input" style={{ flex: 0.8, minWidth: 60, marginBottom: 0 }} />
-                            <input type="number" placeholder="Qty" value={workerCustomMat.quantity} min="1" step="1"
-                              onChange={e => setWorkerCustomMat({...workerCustomMat, quantity: e.target.value})}
+                            <input type="number" placeholder="Qty" value={employeeCustomMat.quantity} min="1" step="1"
+                              onChange={e => setEmployeeCustomMat({...employeeCustomMat, quantity: e.target.value})}
                               className="wjd-note-input" style={{ flex: 0.6, minWidth: 50, marginBottom: 0 }} />
                           </div>
                           <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
                             <button className="wjd-btn wjd-btn-sm" onClick={() => setShowAddMaterial(false)}>Cancel</button>
                             <button className="wjd-btn wjd-btn-complete wjd-btn-sm"
-                              disabled={!workerCustomMat.name.trim() || addWorkerMatMut.isPending}
-                              onClick={() => addWorkerMatMut.mutate({
-                                name: workerCustomMat.name, unit_price: parseFloat(workerCustomMat.unit_price) || 0,
-                                quantity: parseFloat(workerCustomMat.quantity) || 1, unit: 'each'
+                              disabled={!employeeCustomMat.name.trim() || addEmployeeMatMut.isPending}
+                              onClick={() => addEmployeeMatMut.mutate({
+                                name: employeeCustomMat.name, unit_price: parseFloat(employeeCustomMat.unit_price) || 0,
+                                quantity: parseFloat(employeeCustomMat.quantity) || 1, unit: 'each'
                               })}>
-                              {addWorkerMatMut.isPending ? 'Adding...' : 'Add'}
+                              {addEmployeeMatMut.isPending ? 'Adding...' : 'Add'}
                             </button>
                           </div>
                         </div>
                       )}
 
-                      {workerJobMaterials?.materials?.length > 0 ? (
+                      {employeeJobMaterials?.materials?.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                          {workerJobMaterials.materials.map(item => (
+                          {employeeJobMaterials.materials.map(item => (
                             <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', background: 'white', borderRadius: 6, border: '1px solid var(--border-color, #e2e8f0)' }}>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <span style={{ fontWeight: 600, fontSize: '0.85rem', display: 'block' }}>{item.name}</span>
@@ -1003,14 +1003,14 @@ function WorkerDashboard() {
                               </div>
                               <span style={{ fontWeight: 700, color: '#22c55e', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>€{parseFloat(item.total_cost).toFixed(2)}</span>
                               <button className="wjd-btn wjd-btn-sm" style={{ padding: '0.2rem 0.4rem', color: '#ef4444', borderColor: '#fecaca' }}
-                                onClick={() => removeWorkerMatMut.mutate(item.id)}>
+                                onClick={() => removeEmployeeMatMut.mutate(item.id)}>
                                 <i className="fas fa-times"></i>
                               </button>
                             </div>
                           ))}
                           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.6rem', background: 'linear-gradient(135deg, #f0fdf4, #ecfdf5)', border: '1px solid #bbf7d0', borderRadius: 8, fontWeight: 600, fontSize: '0.88rem', marginTop: '0.25rem' }}>
                             <span>Total</span>
-                            <span style={{ color: '#16a34a', fontWeight: 700 }}>€{parseFloat(workerJobMaterials.total_cost).toFixed(2)}</span>
+                            <span style={{ color: '#16a34a', fontWeight: 700 }}>€{parseFloat(employeeJobMaterials.total_cost).toFixed(2)}</span>
                           </div>
                         </div>
                       ) : (
@@ -1044,7 +1044,7 @@ function WorkerDashboard() {
                               <div className="wjd-note-header">
                                 <span className="wjd-note-author">
                                   <i className="fas fa-user-circle"></i>
-                                  {note.created_by?.replace('worker:', '') || 'System'}
+                                  {note.created_by?.replace('employee:', '') || 'System'}
                                 </span>
                                 <span className="wjd-note-time">
                                   {note.created_at ? new Date(note.created_at).toLocaleString('en-IE', {
@@ -1084,42 +1084,42 @@ function WorkerDashboard() {
 
   // ---- Main Dashboard View ----
   return (
-    <div className="worker-portal">
-      <header className="worker-header">
-        <div className="worker-header-content">
-          <Link to="/worker/dashboard" className="worker-logo">
+    <div className="employee-portal">
+      <header className="employee-header">
+        <div className="employee-header-content">
+          <Link to="/employee/dashboard" className="employee-logo">
             <i className="fas fa-bolt" style={{ color: '#fbbf24' }}></i>
             <span>{user?.company_name || 'BookedForYou'}</span>
           </Link>
-          <div className="worker-header-right">
-            <span className="worker-greeting">Hi, {user?.name || 'Worker'}</span>
-            <WorkerNotificationBell onNavigate={handleWorkerNotifNavigate} />
-            <button className="worker-logout-btn" onClick={handleLogout}>
+          <div className="employee-header-right">
+            <span className="employee-greeting">Hi, {user?.name || 'Employee'}</span>
+            <EmployeeNotificationBell onNavigate={handleEmployeeNotifNavigate} />
+            <button className="employee-logout-btn" onClick={handleLogout}>
               <i className="fas fa-sign-out-alt"></i> Sign Out
             </button>
           </div>
         </div>
       </header>
 
-      <main className="worker-main">
-        <div className="worker-container">
+      <main className="employee-main">
+        <div className="employee-container">
           {/* Stats Bar */}
-          <div className="worker-stats-bar">
-            <div className="worker-stat">
+          <div className="employee-stats-bar">
+            <div className="employee-stat">
               <i className="fas fa-briefcase"></i>
               <div>
                 <span className="stat-number">{hoursSummary?.active_jobs ?? upcomingJobs.length}</span>
                 <span className="stat-label">Active Jobs</span>
               </div>
             </div>
-            <div className="worker-stat">
+            <div className="employee-stat">
               <i className="fas fa-check-circle"></i>
               <div>
                 <span className="stat-number">{hoursSummary?.completed_jobs ?? completedJobs.length}</span>
                 <span className="stat-label">Completed</span>
               </div>
             </div>
-            <div className="worker-stat">
+            <div className="employee-stat">
               <i className="fas fa-clock"></i>
               <div>
                 <span className="stat-number">{hoursSummary?.hours_this_week ?? 0}h</span>
@@ -1163,13 +1163,13 @@ function WorkerDashboard() {
           )}
 
           {/* Tabs */}
-          <div className="worker-tabs">
+          <div className="employee-tabs">
             {tabs.map(tab => (
-              <button key={tab.id} className={`worker-tab ${activeTab === tab.id ? 'active' : ''}`}
+              <button key={tab.id} className={`employee-tab ${activeTab === tab.id ? 'active' : ''}`}
                 onClick={() => {
                   setActiveTab(tab.id);
                   if (tab.id === 'messages') {
-                    queryClient.invalidateQueries({ queryKey: ['worker-unread-messages'] });
+                    queryClient.invalidateQueries({ queryKey: ['employee-unread-messages'] });
                   }
                 }}>
                 <i className={tab.icon}></i> {tab.label}
@@ -1180,10 +1180,10 @@ function WorkerDashboard() {
             ))}
           </div>
 
-          <div className="worker-tab-content">
+          <div className="employee-tab-content">
             {/* ---- JOBS TAB ---- */}
             {activeTab === 'jobs' && (
-              <div className="worker-jobs">
+              <div className="employee-jobs">
                 {/* Add Job button */}
                 <div className="wj-add-job-row">
                   <button className="wjd-btn wjd-btn-progress wj-add-job-btn" onClick={() => setIsAddJobOpen(true)}>
@@ -1194,22 +1194,22 @@ function WorkerDashboard() {
                 {(inProgressJobs.length > 0 || justCompletedFromProgress.length > 0) && (
                   <div className="wj-section wj-in-progress">
                     <h2><i className="fas fa-wrench"></i> In Progress: {inProgressJobs.length}{justCompletedFromProgress.length > 0 ? `, Done: ${justCompletedFromProgress.length}` : ''}</h2>
-                    <div className="worker-job-list">
+                    <div className="employee-job-list">
                       {inProgressJobs.map(job => {
                         const dirUrl = getDirectionsUrl(job);
                         return (
-                          <div key={job.id} className="worker-job-card in-progress" onClick={() => setSelectedJobId(job.id)}>
-                            <div className="worker-job-header">
-                              <span className="worker-job-status badge-in-progress"><i className="fas fa-wrench"></i> in-progress</span>
+                          <div key={job.id} className="employee-job-card in-progress" onClick={() => setSelectedJobId(job.id)}>
+                            <div className="employee-job-header">
+                              <span className="employee-job-status badge-in-progress"><i className="fas fa-wrench"></i> in-progress</span>
                               <JobTimer startedAt={job.job_started_at} />
                             </div>
-                            <div className="worker-job-body">
+                            <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
-                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                            <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
                               {dirUrl && (
                                 <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
                                   <i className="fas fa-directions"></i> Directions
@@ -1234,17 +1234,17 @@ function WorkerDashboard() {
                       {justCompletedFromProgress.map(job => {
                         const dirUrl = getDirectionsUrl(job);
                         return (
-                          <div key={job.id} className="worker-job-card just-completed" onClick={() => setSelectedJobId(job.id)}>
-                            <div className="worker-job-header">
-                              <span className="worker-job-status badge-completed"><i className="fas fa-check-circle"></i> completed</span>
+                          <div key={job.id} className="employee-job-card just-completed" onClick={() => setSelectedJobId(job.id)}>
+                            <div className="employee-job-header">
+                              <span className="employee-job-status badge-completed"><i className="fas fa-check-circle"></i> completed</span>
                             </div>
-                            <div className="worker-job-body">
+                            <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}</p>}
                             </div>
-                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                            <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
                               {dirUrl && (
                                 <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
                                   <i className="fas fa-directions"></i> Directions
@@ -1282,28 +1282,28 @@ function WorkerDashboard() {
                         </div>
                       </div>
                     )}
-                    <div className="worker-job-list">
+                    <div className="employee-job-list">
                       {overdueJobs.map(job => {
                         const dirUrl = getDirectionsUrl(job);
                         return (
-                          <div key={job.id} className={`worker-job-card overdue${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
-                            <div className="worker-job-header">
+                          <div key={job.id} className={`employee-job-card overdue${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
+                            <div className="employee-job-header">
                               {isTodayDone(job) ? (
-                                <span className="worker-job-status badge-completed"><i className="fas fa-check-circle"></i> completed</span>
+                                <span className="employee-job-status badge-completed"><i className="fas fa-check-circle"></i> completed</span>
                               ) : (
-                                <span className="worker-job-status badge-overdue"><i className="fas fa-exclamation-circle"></i> overdue</span>
+                                <span className="employee-job-status badge-overdue"><i className="fas fa-exclamation-circle"></i> overdue</span>
                               )}
-                              <span className="worker-job-date">
+                              <span className="employee-job-date">
                                 {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
                               </span>
                             </div>
-                            <div className="worker-job-body">
+                            <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
-                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                            <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
                               {dirUrl && (
                                 <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
                                   <i className="fas fa-directions"></i> Directions
@@ -1340,26 +1340,26 @@ function WorkerDashboard() {
                 {todayJobs.length > 0 && (
                   <div className="wj-section wj-today">
                     <h2><i className="fas fa-sun"></i> Today ({todayJobs.length})</h2>
-                    <div className="worker-job-list">
+                    <div className="employee-job-list">
                       {todayJobs.map(job => {
                         const dirUrl = getDirectionsUrl(job);
                         return (
-                          <div key={job.id} className={`worker-job-card today${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
-                            <div className="worker-job-header">
+                          <div key={job.id} className={`employee-job-card today${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
+                            <div className="employee-job-header">
                               {isTodayDone(job) ? (
-                                <span className="worker-job-status badge-completed"><i className="fas fa-check-circle"></i> completed</span>
+                                <span className="employee-job-status badge-completed"><i className="fas fa-check-circle"></i> completed</span>
                               ) : (
-                                <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                                <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                               )}
-                              <span className="worker-job-date">Today</span>
+                              <span className="employee-job-date">Today</span>
                             </div>
-                            <div className="worker-job-body">
+                            <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
-                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                            <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
                               {dirUrl && (
                                 <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
                                   <i className="fas fa-directions"></i> Directions
@@ -1394,22 +1394,22 @@ function WorkerDashboard() {
                 {tomorrowJobs.length > 0 && (
                   <div className="wj-section">
                     <h2><i className="fas fa-calendar-day"></i> Tomorrow ({tomorrowJobs.length})</h2>
-                    <div className="worker-job-list">
+                    <div className="employee-job-list">
                       {tomorrowJobs.map(job => {
                         const dirUrl = getDirectionsUrl(job);
                         return (
-                          <div key={job.id} className={`worker-job-card${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
-                            <div className="worker-job-header">
-                              <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
-                              <span className="worker-job-date">Tomorrow</span>
+                          <div key={job.id} className={`employee-job-card${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
+                            <div className="employee-job-header">
+                              <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                              <span className="employee-job-date">Tomorrow</span>
                             </div>
-                            <div className="worker-job-body">
+                            <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
-                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                            <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
                               {dirUrl && (
                                 <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
                                   <i className="fas fa-directions"></i> Directions
@@ -1432,24 +1432,24 @@ function WorkerDashboard() {
                 {thisWeekJobs.length > 0 && (
                   <div className="wj-section">
                     <h2><i className="fas fa-calendar-week"></i> This Week ({thisWeekJobs.length})</h2>
-                    <div className="worker-job-list">
+                    <div className="employee-job-list">
                       {thisWeekJobs.map(job => {
                         const dirUrl = getDirectionsUrl(job);
                         return (
-                          <div key={job.id} className={`worker-job-card${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
-                            <div className="worker-job-header">
-                              <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
-                              <span className="worker-job-date">
+                          <div key={job.id} className={`employee-job-card${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
+                            <div className="employee-job-header">
+                              <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                              <span className="employee-job-date">
                                 {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
                               </span>
                             </div>
-                            <div className="worker-job-body">
+                            <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                               <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
-                            <div className="worker-job-footer" onClick={e => e.stopPropagation()}>
+                            <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
                               {dirUrl && (
                                 <a href={dirUrl} target="_blank" rel="noopener noreferrer" className="wjd-btn wjd-btn-directions wjd-btn-sm">
                                   <i className="fas fa-directions"></i> Directions
@@ -1472,16 +1472,16 @@ function WorkerDashboard() {
                 {laterJobs.length > 0 && (
                   <div className="wj-section">
                     <h2><i className="fas fa-calendar-alt"></i> Later ({laterJobs.length})</h2>
-                    <div className="worker-job-list">
+                    <div className="employee-job-list">
                       {laterJobs.map(job => (
-                        <div key={job.id} className={`worker-job-card${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
-                          <div className="worker-job-header">
-                            <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
-                            <span className="worker-job-date">
+                        <div key={job.id} className={`employee-job-card${isTodayDone(job) ? ' just-completed' : ''}`} onClick={() => setSelectedJobId(job.id)}>
+                          <div className="employee-job-header">
+                            <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                            <span className="employee-job-date">
                               {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
                             </span>
                           </div>
-                          <div className="worker-job-body">
+                          <div className="employee-job-body">
                             <h3>{job.client_name || 'No client'}</h3>
                             <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                             <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
@@ -1495,7 +1495,7 @@ function WorkerDashboard() {
 
                 {/* Empty state */}
                 {upcomingJobs.length === 0 && (
-                  <div className="worker-empty"><i className="fas fa-calendar-check"></i><p>No active jobs</p></div>
+                  <div className="employee-empty"><i className="fas fa-calendar-check"></i><p>No active jobs</p></div>
                 )}
 
                 {/* Completed */}
@@ -1506,16 +1506,16 @@ function WorkerDashboard() {
                       <i className={`fas fa-chevron-${showAllCompleted ? 'up' : 'down'}`} style={{ fontSize: '0.75em', marginLeft: '0.5rem' }}></i>
                     </h2>
                     {showAllCompleted && (
-                      <div className="worker-job-list">
+                      <div className="employee-job-list">
                         {completedJobs.slice(0, 10).map(job => (
-                          <div key={job.id} className="worker-job-card completed" onClick={() => setSelectedJobId(job.id)}>
-                            <div className="worker-job-header">
-                              <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
-                              <span className="worker-job-date">
+                          <div key={job.id} className="employee-job-card completed" onClick={() => setSelectedJobId(job.id)}>
+                            <div className="employee-job-header">
+                              <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                              <span className="employee-job-date">
                                 {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
                               </span>
                             </div>
-                            <div className="worker-job-body">
+                            <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
                             </div>
@@ -1530,11 +1530,11 @@ function WorkerDashboard() {
 
             {/* ---- MESSAGES TAB ---- */}
             {activeTab === 'messages' && (() => {
-              const workerMsgs = messagesData?.messages || [];
+              const employeeMsgs = messagesData?.messages || [];
               // Group messages by date
               const grouped = [];
               let lastD = '';
-              workerMsgs.forEach(m => {
+              employeeMsgs.forEach(m => {
                 const d = new Date(m.created_at).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
                 if (d !== lastD) { grouped.push({ type: 'date', date: d }); lastD = d; }
                 grouped.push({ type: 'msg', ...m });
@@ -1547,14 +1547,14 @@ function WorkerDashboard() {
               };
 
               return (
-                <div className="worker-messages-tab">
+                <div className="employee-messages-tab">
                   <div className="wm-header">
                     <h2><i className="fas fa-comment-dots"></i> Messages</h2>
                     <p className="wm-subtitle">Chat with your manager</p>
                   </div>
                   <div className="wm-chat-container">
                     <div className="wm-messages">
-                      {workerMsgs.length === 0 ? (
+                      {employeeMsgs.length === 0 ? (
                         <div className="wm-empty">
                           <div className="wm-empty-icon"><i className="fas fa-comments"></i></div>
                           <h3>No messages yet</h3>
@@ -1567,7 +1567,7 @@ function WorkerDashboard() {
                               <div key={`d-${i}`} className="wm-date-divider"><span>{item.date}</span></div>
                             );
                           }
-                          const isMine = item.sender_type === 'worker';
+                          const isMine = item.sender_type === 'employee';
                           return (
                             <div key={item.id} className={`wm-bubble ${isMine ? 'sent' : 'received'}`}>
                               <div className="wm-bubble-content">
@@ -1615,7 +1615,7 @@ function WorkerDashboard() {
 
             {/* ---- SCHEDULE TAB ---- */}
             {activeTab === 'schedule' && (
-              <div className="worker-schedule">
+              <div className="employee-schedule">
                 <div className="ws-header">
                   <h2>My Schedule</h2>
                   <div className="ws-view-toggle">
@@ -1637,23 +1637,23 @@ function WorkerDashboard() {
                 {scheduleView === 'list' && (
                   <>
                     {schedule.length === 0 ? (
-                      <div className="worker-empty"><i className="fas fa-calendar"></i><p>No scheduled appointments</p></div>
+                      <div className="employee-empty"><i className="fas fa-calendar"></i><p>No scheduled appointments</p></div>
                     ) : (
-                      <div className="worker-schedule-list">
+                      <div className="employee-schedule-list">
                         {schedule.map((item, idx) => (
-                          <div key={idx} className="worker-schedule-item" onClick={() => setSelectedJobId(item.id)}>
-                            <div className="worker-schedule-date">
+                          <div key={idx} className="employee-schedule-item" onClick={() => setSelectedJobId(item.id)}>
+                            <div className="employee-schedule-date">
                               <span className="schedule-day">{new Date(item.appointment_time).toLocaleDateString('en-IE', { weekday: 'short' })}</span>
                               <span className="schedule-date-num">{new Date(item.appointment_time).getDate()}</span>
                               <span className="schedule-month">{new Date(item.appointment_time).toLocaleDateString('en-IE', { month: 'short' })}</span>
                             </div>
-                            <div className="worker-schedule-details">
+                            <div className="employee-schedule-details">
                               <h3>{item.service_type || 'Job'}</h3>
                               <p><i className="fas fa-clock"></i> {new Date(item.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {item.client_name && <p><i className="fas fa-user"></i> {item.client_name}</p>}
                               {item.address && <p><i className="fas fa-map-marker-alt"></i> {item.address}</p>}
                             </div>
-                            <span className={`worker-job-status ${getStatusBadgeClass(item.status)}`}>{item.status}</span>
+                            <span className={`employee-job-status ${getStatusBadgeClass(item.status)}`}>{item.status}</span>
                           </div>
                         ))}
                       </div>
@@ -1738,7 +1738,7 @@ function WorkerDashboard() {
                                       {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                     <span className="ws-week-job-title">{job.service_type || 'Job'}</span>
-                                    <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                                    <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                                   </div>
                                 ))}
                               </div>
@@ -1891,7 +1891,7 @@ function WorkerDashboard() {
                                     {job.address && <span className="ws-event-sub"><i className="fas fa-map-marker-alt"></i> {job.address}</span>}
                                   </div>
                                   <div className="ws-event-right">
-                                    <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                                    <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                                     <i className="fas fa-chevron-right ws-event-arrow"></i>
                                   </div>
                                 </div>
@@ -2006,7 +2006,7 @@ function WorkerDashboard() {
                 : customers;
 
               return (
-                <div className="worker-customers">
+                <div className="employee-customers">
                   <div className="wc-header">
                     <h2>My Customers ({customers.length})</h2>
                     <div className="wc-search">
@@ -2021,7 +2021,7 @@ function WorkerDashboard() {
                   </div>
 
                   {filtered.length === 0 ? (
-                    <div className="worker-empty">
+                    <div className="employee-empty">
                       <i className="fas fa-users"></i>
                       <p>{customerSearch ? 'No customers match your search' : 'No customers yet — they\'ll appear here as you get assigned jobs'}</p>
                     </div>
@@ -2105,7 +2105,7 @@ function WorkerDashboard() {
 
             {/* ---- HR TAB ---- */}
             {activeTab === 'hr' && (
-              <div className="worker-hr">
+              <div className="employee-hr">
                 <div className="whr-section">
                   <div className="whr-section-header">
                     <h2><i className="fas fa-umbrella-beach"></i> Time Off</h2>
@@ -2154,7 +2154,7 @@ function WorkerDashboard() {
                   )}
 
                   {timeOffRequests.length === 0 ? (
-                    <div className="worker-empty" style={{ padding: '2rem' }}><p>No time-off requests</p></div>
+                    <div className="employee-empty" style={{ padding: '2rem' }}><p>No time-off requests</p></div>
                   ) : (
                     <div className="whr-requests-list">
                       {timeOffRequests.map(req => (
@@ -2206,12 +2206,12 @@ function WorkerDashboard() {
 
             {/* ---- PROFILE TAB ---- */}
             {activeTab === 'profile' && (
-              <div className="worker-profile">
+              <div className="employee-profile">
                 <div className="whr-section-header">
                   <h2>My Profile</h2>
                   {!isEditingProfile ? (
                     <button className="wjd-btn wjd-btn-sm" onClick={() => {
-                      setProfileForm({ phone: worker.phone || '', image_url: worker.image_url || '' });
+                      setProfileForm({ phone: employee.phone || '', image_url: employee.image_url || '' });
                       setIsEditingProfile(true);
                     }}>
                       <i className="fas fa-edit"></i> Edit Profile
@@ -2228,36 +2228,36 @@ function WorkerDashboard() {
                   )}
                 </div>
 
-                <div className="worker-profile-card">
-                  <div className="worker-profile-avatar">
+                <div className="employee-profile-card">
+                  <div className="employee-profile-avatar">
                     {isEditingProfile ? (
                       <ImageUpload
                         value={profileForm.image_url}
                         onChange={(val) => setProfileForm({ ...profileForm, image_url: val })}
                         placeholder="Upload Photo"
                       />
-                    ) : worker.image_url ? (
-                      <img src={worker.image_url} alt={worker.name} />
+                    ) : employee.image_url ? (
+                      <img src={employee.image_url} alt={employee.name} />
                     ) : (
-                      <div className="worker-avatar-placeholder">{worker.name?.charAt(0)?.toUpperCase() || 'W'}</div>
+                      <div className="employee-avatar-placeholder">{employee.name?.charAt(0)?.toUpperCase() || 'E'}</div>
                     )}
                   </div>
-                  <div className="worker-profile-info">
-                    <div className="worker-profile-row"><label>Name</label><span>{worker.name}</span></div>
-                    <div className="worker-profile-row"><label>Email</label><span>{worker.email}</span></div>
-                    <div className="worker-profile-row">
+                  <div className="employee-profile-info">
+                    <div className="employee-profile-row"><label>Name</label><span>{employee.name}</span></div>
+                    <div className="employee-profile-row"><label>Email</label><span>{employee.email}</span></div>
+                    <div className="employee-profile-row">
                       <label>Phone</label>
                       {isEditingProfile ? (
                         <input type="tel" className="whr-inline-input" value={profileForm.phone}
                           onChange={e => setProfileForm({ ...profileForm, phone: e.target.value })}
                           placeholder="Your phone number" />
                       ) : (
-                        <span>{worker.phone ? formatPhone(worker.phone) : 'Not set'}</span>
+                        <span>{employee.phone ? formatPhone(employee.phone) : 'Not set'}</span>
                       )}
                     </div>
-                    <div className="worker-profile-row"><label>Specialty</label><span>{worker.trade_specialty || 'Not set'}</span></div>
-                    <div className="worker-profile-row"><label>Status</label>
-                      <span className={`worker-job-status ${worker.status === 'active' ? 'badge-confirmed' : 'badge-pending'}`}>{worker.status || 'active'}</span>
+                    <div className="employee-profile-row"><label>Specialty</label><span>{employee.trade_specialty || 'Not set'}</span></div>
+                    <div className="employee-profile-row"><label>Status</label>
+                      <span className={`employee-job-status ${employee.status === 'active' ? 'badge-confirmed' : 'badge-pending'}`}>{employee.status || 'active'}</span>
                     </div>
                   </div>
                 </div>
@@ -2279,7 +2279,7 @@ function WorkerDashboard() {
                               <span className="whr-history-service">{job.service_type || 'Job'}</span>
                               <span className="whr-history-client">{job.client_name || ''}</span>
                             </div>
-                            <span className={`worker-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+                            <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                           </div>
                         ))}
                       </div>
@@ -2336,9 +2336,9 @@ function WorkerDashboard() {
           </div>
         </div>
       </main>
-      <AddJobModal isOpen={isAddJobOpen} onClose={() => setIsAddJobOpen(false)} workerMode={true} currentWorkerId={user?.id} />
+      <AddJobModal isOpen={isAddJobOpen} onClose={() => setIsAddJobOpen(false)} employeeMode={true} currentEmployeeId={user?.id} />
     </div>
   );
 }
 
-export default WorkerDashboard;
+export default EmployeeDashboard;

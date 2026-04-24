@@ -95,8 +95,8 @@ FILLER_PHRASES = {
     "didnt_catch_date": "I didn't quite catch the date. Could you tell me the day and month, like March 27th?",
     "no_bookings_found": "I don't see any bookings on that day. Could you double-check the date?",
     "got_that_anything_else": "I've got that. What else can I help with?",
-    "worker_no_availability": "The assigned worker has no availability in that period. Would you like to try different dates?",
-    "couldnt_check_worker": "I couldn't check the worker's availability. What dates would you like to try?",
+    "employee_no_availability": "The assigned employee has no availability in that period. Would you like to try different dates?",
+    "couldnt_check_employee": "I couldn't check the employee's availability. What dates would you like to try?",
     "no_availability_soon": "I don't have any availability soon. Would you like me to check further out?",
     # New customer flow — prerecorded questions to avoid TTS on every call
     "ask_name": "Can I get your name please, and spell it out for me if possible?",
@@ -147,7 +147,7 @@ FILLER_PHRASES = {
     "which_works_for_you": "Which works for you?",
     "does_that_day_work_short": "Does that day work?",
     # Availability error responses (some duplicate old entries kept for backward compat)
-    "worker_no_avail_speak": "The assigned worker has no availability then. Would you like to speak with someone?",
+    "employee_no_avail_speak": "The assigned employee has no availability then. Would you like to speak with someone?",
     # Pre-check safety phrases
     "let_me_check_schedule": "Let me just check the schedule.",
 }
@@ -178,7 +178,7 @@ DIRECT_RESPONSE_PHRASES = [
     "how_can_help_today", "which_time_works_best", "which_day_works_best",
     "which_day_and_time", "which_works_best", "does_that_day_work",
     "which_day_suits", "which_works_for_you", "does_that_day_work_short",
-    "worker_no_avail_speak", "let_me_check_schedule",
+    "employee_no_avail_speak", "let_me_check_schedule",
 ]
 
 # R2 folder for filler audio

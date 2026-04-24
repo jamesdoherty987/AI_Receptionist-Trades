@@ -2,9 +2,9 @@
 Tests for the dedicated search_reschedule_availability tool.
 
 This tool searches for alternative dates during a reschedule flow,
-checking the ASSIGNED worker's availability — not general availability.
+checking the ASSIGNED employee's availability — not general availability.
 This prevents the bug where search_availability would suggest days
-that any worker could do, but the assigned worker couldn't.
+that any employee could do, but the assigned employee couldn't.
 """
 
 import pytest
@@ -28,29 +28,29 @@ def make_services(mock_db, company_id=1):
     }
 
 
-def make_mock_db(bookings, worker_available_days):
+def make_mock_db(bookings, employee_available_days):
     """
     Create a mock DB.
     
     Args:
-        bookings: list of booking dicts (must include 'id', 'assigned_worker_ids', 'duration_minutes')
-        worker_available_days: dict of worker_id -> list of weekday indices (0=Mon, 4=Fri)
+        bookings: list of booking dicts (must include 'id', 'assigned_employee_ids', 'duration_minutes')
+        employee_available_days: dict of employee_id -> list of weekday indices (0=Mon, 4=Fri)
     """
     mock_db = Mock()
     mock_db.get_all_bookings.return_value = bookings
-    mock_db.has_workers.return_value = True
+    mock_db.has_employees.return_value = True
     
-    def check_avail(worker_id, appointment_time, duration_minutes, exclude_booking_id=None, company_id=None):
-        available_weekdays = worker_available_days.get(worker_id, [])
+    def check_avail(employee_id, appointment_time, duration_minutes, exclude_booking_id=None, company_id=None):
+        available_weekdays = employee_available_days.get(employee_id, [])
         weekday = appointment_time.weekday()
         return {'available': weekday in available_weekdays, 'conflicts': [], 'message': ''}
     
-    mock_db.check_worker_availability = Mock(side_effect=check_avail)
-    mock_db.get_worker = Mock(return_value={'id': 1, 'name': 'Test Worker'})
+    mock_db.check_employee_availability = Mock(side_effect=check_avail)
+    mock_db.get_employee = Mock(return_value={'id': 1, 'name': 'Test Employee'})
     
     # Batch optimization: generate fake blocking bookings for unavailable days
-    def get_worker_bookings_in_range(worker_id, range_start, range_end, exclude_booking_id=None, company_id=None):
-        available_weekdays = worker_available_days.get(worker_id, [])
+    def get_employee_bookings_in_range(employee_id, range_start, range_end, exclude_booking_id=None, company_id=None):
+        available_weekdays = employee_available_days.get(employee_id, [])
         # Generate all-day bookings for each unavailable business day in the range
         fake_bookings = []
         if isinstance(range_start, str):
@@ -71,7 +71,7 @@ def make_mock_db(bookings, worker_available_days):
             current += timedelta(days=1)
         return fake_bookings
     
-    mock_db.get_worker_bookings_in_range = Mock(side_effect=get_worker_bookings_in_range)
+    mock_db.get_employee_bookings_in_range = Mock(side_effect=get_employee_bookings_in_range)
     
     # _calculate_job_end_time: simple implementation for tests
     def calc_end_time(start_time, duration_minutes, biz_start_hour=9, biz_end_hour=17, buffer_minutes=15, company_id=None):
@@ -127,9 +127,9 @@ class TestSearchRescheduleAvailability:
         assert 'Booking ID' in result.get('error', '')
     
     def test_booking_not_found_falls_back(self):
-        """If booking has no assigned workers, should fall back to general search."""
+        """If booking has no assigned employees, should fall back to general search."""
         mock_db = make_mock_db([
-            {'id': 99, 'assigned_worker_ids': [], 'duration_minutes': 60, 'status': 'confirmed'}
+            {'id': 99, 'assigned_employee_ids': [], 'duration_minutes': 60, 'status': 'confirmed'}
         ], {})
         services = make_services(mock_db)
         
@@ -144,21 +144,21 @@ class TestSearchRescheduleAvailability:
             assert result is not None
     
     @patch('src.utils.config.config')
-    def test_filters_by_assigned_worker(self, mock_config):
-        """Core test: only returns days the ASSIGNED worker is available."""
+    def test_filters_by_assigned_employee(self, mock_config):
+        """Core test: only returns days the ASSIGNED employee is available."""
         mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]  # Mon-Fri
         mock_config.get_business_hours.return_value = {'start': 8, 'end': 15}
         
-        # Worker 5 only works Mon and Fri (weekday 0 and 4)
+        # Employee 5 only works Mon and Fri (weekday 0 and 4)
         mock_db = make_mock_db(
             bookings=[{
                 'id': 42,
-                'assigned_worker_ids': [5],
+                'assigned_employee_ids': [5],
                 'duration_minutes': 480,
                 'appointment_time': datetime.now() + timedelta(days=1),
                 'status': 'confirmed'
             }],
-            worker_available_days={5: [0, 4]}  # Monday and Friday only
+            employee_available_days={5: [0, 4]}  # Monday and Friday only
         )
         services = make_services(mock_db)
         
@@ -172,11 +172,11 @@ class TestSearchRescheduleAvailability:
         summary = result.get('natural_summary', '') or result.get('message', '')
         assert summary  # Should have some results
         
-        # Verify get_worker_bookings_in_range was called with worker_id=5
-        calls = mock_db.get_worker_bookings_in_range.call_args_list
+        # Verify get_employee_bookings_in_range was called with employee_id=5
+        calls = mock_db.get_employee_bookings_in_range.call_args_list
         assert len(calls) > 0
         for call in calls:
-            assert call.kwargs.get('worker_id') == 5 or call[1].get('worker_id') == 5 or call[0][0] == 5
+            assert call.kwargs.get('employee_id') == 5 or call[1].get('employee_id') == 5 or call[0][0] == 5
     
     @patch('src.utils.config.config')
     def test_excludes_current_booking_date(self, mock_config):
@@ -187,16 +187,16 @@ class TestSearchRescheduleAvailability:
         # Booking is on a specific date
         booking_date = datetime.now().replace(hour=9, minute=0) + timedelta(days=3)
         
-        # Worker available every day
+        # Employee available every day
         mock_db = make_mock_db(
             bookings=[{
                 'id': 10,
-                'assigned_worker_ids': [1],
+                'assigned_employee_ids': [1],
                 'duration_minutes': 480,
                 'appointment_time': booking_date,
                 'status': 'confirmed'
             }],
-            worker_available_days={1: [0, 1, 2, 3, 4]}
+            employee_available_days={1: [0, 1, 2, 3, 4]}
         )
         services = make_services(mock_db)
         
@@ -206,8 +206,8 @@ class TestSearchRescheduleAvailability:
         }, services)
         
         assert result['success'] is True
-        # The exclude_booking_id should be passed to get_worker_bookings_in_range
-        calls = mock_db.get_worker_bookings_in_range.call_args_list
+        # The exclude_booking_id should be passed to get_employee_bookings_in_range
+        calls = mock_db.get_employee_bookings_in_range.call_args_list
         for call in calls:
             kwargs = call.kwargs if call.kwargs else {}
             if 'exclude_booking_id' in kwargs:
@@ -215,20 +215,20 @@ class TestSearchRescheduleAvailability:
     
     @patch('src.utils.config.config')
     def test_no_availability_returns_helpful_message(self, mock_config):
-        """When assigned worker has zero availability, return a clear message."""
+        """When assigned employee has zero availability, return a clear message."""
         mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
         mock_config.get_business_hours.return_value = {'start': 9, 'end': 17}
         
-        # Worker available on NO days
+        # Employee available on NO days
         mock_db = make_mock_db(
             bookings=[{
                 'id': 7,
-                'assigned_worker_ids': [3],
+                'assigned_employee_ids': [3],
                 'duration_minutes': 480,
                 'appointment_time': datetime.now() + timedelta(days=1),
                 'status': 'confirmed'
             }],
-            worker_available_days={3: []}  # Never available
+            employee_available_days={3: []}  # Never available
         )
         services = make_services(mock_db)
         
@@ -242,22 +242,22 @@ class TestSearchRescheduleAvailability:
         assert 'no availability' in result.get('message', '').lower()
     
     @patch('src.utils.config.config')
-    def test_multiple_assigned_workers_all_must_be_free(self, mock_config):
-        """When multiple workers are assigned, ALL must be available on the day."""
+    def test_multiple_assigned_employees_all_must_be_free(self, mock_config):
+        """When multiple employees are assigned, ALL must be available on the day."""
         mock_config.get_business_days_indices.return_value = [0, 1, 2, 3, 4]
         mock_config.get_business_hours.return_value = {'start': 9, 'end': 17}
         
-        # Worker 1: Mon/Tue/Wed, Worker 2: Wed/Thu/Fri
+        # Employee 1: Mon/Tue/Wed, Employee 2: Wed/Thu/Fri
         # Only Wednesday overlaps
         mock_db = make_mock_db(
             bookings=[{
                 'id': 20,
-                'assigned_worker_ids': [1, 2],
+                'assigned_employee_ids': [1, 2],
                 'duration_minutes': 480,
                 'appointment_time': datetime.now() + timedelta(days=1),
                 'status': 'confirmed'
             }],
-            worker_available_days={
+            employee_available_days={
                 1: [0, 1, 2],  # Mon, Tue, Wed
                 2: [2, 3, 4],  # Wed, Thu, Fri
             }
@@ -298,10 +298,10 @@ class TestFastPathQueries:
         
         mock_db = make_mock_db(
             bookings=[{
-                'id': 1, 'assigned_worker_ids': [1], 'duration_minutes': 480,
+                'id': 1, 'assigned_employee_ids': [1], 'duration_minutes': 480,
                 'appointment_time': datetime.now() + timedelta(days=1), 'status': 'confirmed'
             }],
-            worker_available_days={1: [0, 1, 2, 3, 4]}
+            employee_available_days={1: [0, 1, 2, 3, 4]}
         )
         services = make_services(mock_db)
         
@@ -320,10 +320,10 @@ class TestFastPathQueries:
         
         mock_db = make_mock_db(
             bookings=[{
-                'id': 1, 'assigned_worker_ids': [1], 'duration_minutes': 480,
+                'id': 1, 'assigned_employee_ids': [1], 'duration_minutes': 480,
                 'appointment_time': datetime.now() + timedelta(days=1), 'status': 'confirmed'
             }],
-            worker_available_days={1: [0, 1, 2, 3, 4]}
+            employee_available_days={1: [0, 1, 2, 3, 4]}
         )
         services = make_services(mock_db)
         
@@ -343,10 +343,10 @@ class TestFastPathQueries:
         
         mock_db = make_mock_db(
             bookings=[{
-                'id': 1, 'assigned_worker_ids': [1], 'duration_minutes': 480,
+                'id': 1, 'assigned_employee_ids': [1], 'duration_minutes': 480,
                 'appointment_time': datetime.now() + timedelta(days=1), 'status': 'confirmed'
             }],
-            worker_available_days={1: [0, 1, 2, 3, 4]}
+            employee_available_days={1: [0, 1, 2, 3, 4]}
         )
         services = make_services(mock_db)
         

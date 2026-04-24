@@ -557,8 +557,8 @@
 }
 
 
-/* Worker Portal Button */
-.worker-portal-btn {
+/* Employee Portal Button */
+.employee-portal-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -575,13 +575,13 @@
   text-decoration: none;
   transition: all 0.15s;
 }
-.worker-portal-btn:hover {
+.employee-portal-btn:hover {
   border-color: #f97316;
   color: #ea580c;
   background: rgba(249, 115, 22, 0.04);
 }
-.worker-portal-btn i:first-child { font-size: 0.9rem; color: #f97316; }
-.worker-portal-btn i:last-child { font-size: 0.7rem; margin-left: auto; opacity: 0.4; }
+.employee-portal-btn i:first-child { font-size: 0.9rem; color: #f97316; }
+.employee-portal-btn i:last-child { font-size: 0.7rem; margin-left: auto; opacity: 0.4; }
 
 /* Install App Link */
 .install-app-link {

@@ -1,7 +1,7 @@
 """
-Test Worker Availability Checking
+Test Employee Availability Checking
 
-Tests the worker availability checking logic:
+Tests the employee availability checking logic:
 1. Basic availability checking
 2. Buffer time handling
 3. Conflict detection
@@ -16,17 +16,17 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 
-class TestWorkerAvailabilityBasics:
-    """Test basic worker availability functionality"""
+class TestEmployeeAvailabilityBasics:
+    """Test basic employee availability functionality"""
     
-    def test_check_worker_availability_exists(self):
-        """check_worker_availability function should exist"""
+    def test_check_employee_availability_exists(self):
+        """check_employee_availability function should exist"""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
         
-        assert hasattr(PostgreSQLDatabaseWrapper, 'check_worker_availability')
+        assert hasattr(PostgreSQLDatabaseWrapper, 'check_employee_availability')
     
     def test_availability_returns_dict(self):
-        """check_worker_availability should return a dict"""
+        """check_employee_availability should return a dict"""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
         
         mock_conn = MagicMock()
@@ -39,8 +39,8 @@ class TestWorkerAvailabilityBasics:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
             
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2025-03-01T10:00:00',
                 duration_minutes=60,
                 company_id=1
@@ -53,8 +53,8 @@ class TestWorkerAvailabilityBasics:
 class TestAvailabilityLogic:
     """Test availability checking logic"""
     
-    def test_worker_available_when_no_conflicts(self):
-        """Worker should be available when no conflicting jobs"""
+    def test_employee_available_when_no_conflicts(self):
+        """Employee should be available when no conflicting jobs"""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
         
         mock_conn = MagicMock()
@@ -67,8 +67,8 @@ class TestAvailabilityLogic:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
             
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2025-03-01T10:00:00',
                 duration_minutes=60,
                 company_id=1
@@ -76,8 +76,8 @@ class TestAvailabilityLogic:
             
             assert result['available'] is True
     
-    def test_worker_unavailable_when_conflict_exists(self):
-        """Worker should be unavailable when conflicting job exists"""
+    def test_employee_unavailable_when_conflict_exists(self):
+        """Employee should be unavailable when conflicting job exists"""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
         
         mock_conn = MagicMock()
@@ -97,8 +97,8 @@ class TestAvailabilityLogic:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
             
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2025-03-01T10:00:00',
                 duration_minutes=60,
                 company_id=1
@@ -125,8 +125,8 @@ class TestBufferTimeHandling:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
             
-            db.check_worker_availability(
-                worker_id=1,
+            db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2025-03-01T10:00:00',
                 duration_minutes=60,
                 company_id=1
@@ -158,8 +158,8 @@ class TestErrorHandling:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
             
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2025-03-01T10:00:00',
                 duration_minutes=60,
                 company_id=1
@@ -181,8 +181,8 @@ class TestErrorHandling:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
             
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='invalid-datetime',
                 duration_minutes=60,
                 company_id=1
@@ -218,8 +218,8 @@ class TestConflictDetails:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
             
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2025-03-01T10:00:00',
                 duration_minutes=60,
                 company_id=1
@@ -247,8 +247,8 @@ class TestEdgeCases:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
             
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2025-03-01T10:00:00',
                 duration_minutes=0,  # Edge case
                 company_id=1
@@ -271,8 +271,8 @@ class TestEdgeCases:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
             
-            result = db.check_worker_availability(
-                worker_id=1,
+            result = db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2025-03-01T10:00:00',
                 duration_minutes=-60,  # Invalid
                 company_id=1
@@ -281,8 +281,8 @@ class TestEdgeCases:
             # Should not crash
             assert isinstance(result, dict)
     
-    def test_none_worker_id_handled(self):
-        """Should handle None worker_id gracefully"""
+    def test_none_employee_id_handled(self):
+        """Should handle None employee_id gracefully"""
         from src.services.db_postgres_wrapper import PostgreSQLDatabaseWrapper
         
         mock_conn = MagicMock()
@@ -295,8 +295,8 @@ class TestEdgeCases:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
             
-            result = db.check_worker_availability(
-                worker_id=None,
+            result = db.check_employee_availability(
+                employee_id=None,
                 appointment_time='2025-03-01T10:00:00',
                 duration_minutes=60,
                 company_id=1
@@ -324,8 +324,8 @@ class TestCompanyIsolation:
             db.get_connection = MagicMock(return_value=mock_conn)
             db.return_connection = MagicMock()
             
-            db.check_worker_availability(
-                worker_id=1,
+            db.check_employee_availability(
+                employee_id=1,
                 appointment_time='2025-03-01T10:00:00',
                 duration_minutes=60,
                 company_id=1
