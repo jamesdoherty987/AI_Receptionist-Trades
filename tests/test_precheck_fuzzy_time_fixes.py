@@ -619,12 +619,6 @@ class TestLookupCustomerFuzzyThresholds:
             content = f.read()
         assert ">= 0.75" in content or ">=0.75" in content or ">= 0.80" in content or ">=0.80" in content
 
-    def test_code_has_088_threshold(self):
-        """calendar_tools.py should have 0.91 full name threshold."""
-        with open('src/services/calendar_tools.py', 'r') as f:
-            content = f.read()
-        assert ">= 0.91" in content or ">=0.91" in content
-
 
 # ═══════════════════════════════════════════════════════════════════════
 # INTEGRATION: End-to-end search_availability with before_X filter

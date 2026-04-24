@@ -100,7 +100,7 @@ FILLER_PHRASES = {
     "no_availability_soon": "I don't have any availability soon. Would you like me to check further out?",
     # New customer flow — prerecorded questions to avoid TTS on every call
     "ask_name": "Can I get your name please, and spell it out for me if possible?",
-    "ask_email": "And can I get an email address for the account? Spell it out for me if possible.",
+    "ask_email": "And can I get an email address for the account? Please spell it out for me letter by letter.",
     "ask_eircode": "Do you know your eircode?",
     "ask_address": "No problem. Can I get the full address instead?",
     "ask_phone_confirm": "Is that a good number to reach you on?",

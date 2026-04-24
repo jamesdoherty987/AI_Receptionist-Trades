@@ -96,26 +96,58 @@ def format_for_tts_spelling(text: str) -> str:
 
 def humanize_times_for_tts(text: str) -> str:
     """
-    Convert clock-format times into TTS-friendly spoken forms.
+    Convert clock-format times into TTS-friendly spoken word forms.
     
-    TTS engines read "9:00" as "nine oh oh" instead of "nine".
-    This converts times so they sound natural when spoken aloud.
+    TTS engines read "1:30" as "one three zero" instead of "one thirty".
+    This converts times to written-out words so they sound natural when spoken aloud.
     
     Examples:
-        "9:00 AM"  -> "9 AM"
-        "10:00am"  -> "10 am"
-        "2:30 PM"  -> "2 30 PM"
-        "12:15pm"  -> "12 15 pm"
+        "9:00 AM"  -> "nine AM"
+        "10:00am"  -> "ten am"
+        "2:30 PM"  -> "two thirty PM"
+        "12:15pm"  -> "twelve fifteen pm"
+        "1:30 pm"  -> "one thirty pm"
+        "01:00 PM" -> "one PM"
     """
     if not text:
         return text
     
-    # Remove :00 from on-the-hour times (e.g., "9:00 AM" -> "9 AM", "9:00am" -> "9 am")
-    result = re.sub(r'(\d{1,2}):00\s*((?:a|p)\.?m\.?)', r'\1 \2', text, flags=re.IGNORECASE)
+    # Number-to-word mapping for hours
+    hour_words = {
+        '1': 'one', '2': 'two', '3': 'three', '4': 'four', '5': 'five',
+        '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine', '10': 'ten',
+        '11': 'eleven', '12': 'twelve'
+    }
     
-    # Replace colon with space for non-zero minutes (e.g., "10:30 AM" -> "10 30 AM")
-    # TTS reads "10 30" as "ten thirty" naturally
-    result = re.sub(r'(\d{1,2}):(\d{2})\s*((?:a|p)\.?m\.?)', r'\1 \2 \3', result, flags=re.IGNORECASE)
+    # Minute-to-word mapping for common minutes
+    minute_words = {
+        '00': '', '05': 'oh five', '10': 'ten', '15': 'fifteen',
+        '20': 'twenty', '25': 'twenty five', '30': 'thirty',
+        '35': 'thirty five', '40': 'forty', '45': 'forty five',
+        '50': 'fifty', '55': 'fifty five'
+    }
+    
+    def replace_time(match):
+        hour = match.group(1)
+        minutes = match.group(2)
+        period = match.group(3)
+        
+        # Strip leading zero (e.g., "01" -> "1") before lookup
+        hour_stripped = hour.lstrip('0') or '0'
+        hour_word = hour_words.get(hour_stripped, hour)
+        
+        if minutes == '00':
+            return f"{hour_word} {period}"
+        
+        min_word = minute_words.get(minutes)
+        if min_word:
+            return f"{hour_word} {min_word} {period}"
+        
+        # Fallback for uncommon minutes
+        return f"{hour_word} {minutes} {period}"
+    
+    # Remove :00 from on-the-hour times and convert non-zero minutes to words
+    result = re.sub(r'(\d{1,2}):(\d{2})\s*((?:a|p)\.?m\.?)', replace_time, text, flags=re.IGNORECASE)
     
     return result
 
@@ -2196,29 +2228,28 @@ TOOL RULES:
                             # Callout booking: tell the caller it's a call-out visit
                             if is_full_day and time_str:
                                 day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
-                                direct_response = f"Grand, I've booked a call-out visit for {day_part}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a call-out visit on {day_part}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
                             elif time_str:
-                                direct_response = f"Grand, I've booked a call-out visit for {time_str}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a call-out visit on {time_str}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
                             else:
-                                direct_response = f"Grand, I've booked a call-out visit for you. We'll come out and have a look, and then schedule the full job after that. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a call-out visit. We'll come out and have a look, and then schedule the full job after that. Is there anything else?"
                         elif is_quote_booking:
                             # Quote booking: tell the caller it's a free quote visit
                             if is_full_day and time_str:
                                 day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
-                                direct_response = f"Grand, I've booked a free quote visit for {day_part}. We'll come out, have a look, and give you a quote for the {original_service} job. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a free quote visit on {day_part}. We'll come out, have a look, and give you a quote for the {original_service} job. Is there anything else?"
                             elif time_str:
-                                direct_response = f"Grand, I've booked a free quote visit for {time_str}. We'll come out, have a look, and give you a quote for the {original_service} job. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a free quote visit on {time_str}. We'll come out, have a look, and give you a quote for the {original_service} job. Is there anything else?"
                             else:
-                                direct_response = f"Grand, I've booked a free quote visit for you. We'll come out, have a look, and give you a quote. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a free quote visit. We'll come out, have a look, and give you a quote. Is there anything else?"
                         elif is_full_day and time_str:
                             # For full-day jobs, extract just the day (not the time)
-                            # Extract day name from time_str like "Thursday, March 12 at 08:00 AM"
                             day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
-                            direct_response = f"Grand, you're booked in for {day_part}. We'll give you a call when we're on the way. Is there anything else?"
+                            direct_response = f"Grand, you're all booked in for {day_part}. We'll give you a call when we're on the way. Is there anything else?"
                         elif time_str:
-                            direct_response = f"Grand, you're booked in for {time_str}. Is there anything else?"
+                            direct_response = f"Grand, you're all booked in for {time_str}. Is there anything else?"
                         else:
-                            direct_response = "You're all booked! Is there anything else I can help with?"
+                            direct_response = "Grand, you're all booked in. Is there anything else I can help with?"
                     else:
                         error = result_content.get("error", result_content.get("message", ""))
                         if "not available" in error.lower() or "already booked" in error.lower():

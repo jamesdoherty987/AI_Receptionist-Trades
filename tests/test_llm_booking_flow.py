@@ -307,9 +307,9 @@ class TestLLMAddressHandling:
         
         # LLM should NOT ask to spell the address
         asks_to_spell = any([
-            "spell" in reply and "address" in reply,
-            "spell that" in reply,
-            "spell it" in reply,
+            "spell" in reply and "address" in reply and "email" not in reply,
+            "spell that" in reply and "email" not in reply,
+            "spell it" in reply and "email" not in reply,
         ])
         
         # LLM should NOT repeat the address back for confirmation

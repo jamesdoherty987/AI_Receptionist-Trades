@@ -1881,18 +1881,42 @@ def lookup_service_by_name(service_name: str, company_id: int = None) -> dict:
         return result
     
     # Also check General Callout/Service explicitly
+    # Prefer General Callout over General Quote when query mentions "callout"
+    general_services = []
     for svc in all_services:
         svc_name = (svc.get('name') or '').strip().lower()
         if 'general' in svc_name:
             if query in svc_name or svc_name in query or 'general' in query:
-                print(f"[LOOKUP_SERVICE] ✅ General service match: '{service_name}' -> '{svc.get('name')}'")
-                return {
-                    'service': svc,
-                    'score': 90,
-                    'matched_name': svc.get('name', 'General Callout'),
-                    'match_details': {'type': 'general_lookup'},
-                    'is_general': True,
-                }
+                general_services.append(svc)
+    
+    if general_services:
+        # If query mentions "callout", prefer General Callout; otherwise take first match
+        best_general = general_services[0]
+        if 'callout' in query:
+            for svc in general_services:
+                if 'callout' in (svc.get('name') or '').lower():
+                    best_general = svc
+                    break
+        elif 'quote' in query:
+            for svc in general_services:
+                if 'quote' in (svc.get('name') or '').lower():
+                    best_general = svc
+                    break
+        else:
+            # Default: prefer General Callout over General Quote for generic "general" queries
+            for svc in general_services:
+                if 'callout' in (svc.get('name') or '').lower():
+                    best_general = svc
+                    break
+        
+        print(f"[LOOKUP_SERVICE] ✅ General service match: '{service_name}' -> '{best_general.get('name')}'")
+        return {
+            'service': best_general,
+            'score': 90,
+            'matched_name': best_general.get('name', 'General Callout'),
+            'match_details': {'type': 'general_lookup'},
+            'is_general': True,
+        }
     
     # Nothing matched well — fall back to full match_service
     print(f"[LOOKUP_SERVICE] ⚠️ No good match for '{service_name}' (best={best_score:.0f}) — falling back to match_service")

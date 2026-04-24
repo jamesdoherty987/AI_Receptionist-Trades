@@ -1,7 +1,11 @@
 import { Link } from 'react-router-dom';
 import { useEffect } from 'react';
 import blogPosts from '../data/blogPosts';
+import blogContentMap from '../data/blogContent';
 import './Blog.css';
+
+// Only show posts that have actual content
+const publishedPosts = blogPosts.filter(p => blogContentMap[p.slug]);
 
 const categoryColors = {
   'Business Growth': '#ef4444',
@@ -37,7 +41,7 @@ function Blog() {
 
       <div className="blog-list-container">
         <div className="blog-grid">
-          {blogPosts.map((post) => (
+          {publishedPosts.map((post) => (
             <Link to={`/blog/${post.slug}`} key={post.slug} className="blog-card">
               <div className="blog-card-icon">
                 <i className={getCategoryIcon(post.category)}></i>

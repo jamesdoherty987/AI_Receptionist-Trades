@@ -29,7 +29,6 @@ try:
     from src.services.prerecorded_audio import (
         get_filler_audio, get_random_filler_id, send_prerecorded_audio, 
         has_prerecorded_fillers, preload_fillers, get_filler_id_from_message,
-        get_typing_audio, send_typing_audio_loop
     )
     preload_fillers()
     print(f"[AUDIO] Pre-recorded fillers available: {has_prerecorded_fillers()}")
@@ -41,8 +40,6 @@ except Exception as e:
     async def send_prerecorded_audio(ws, sid, data): pass
     def preload_fillers(): pass
     def get_filler_id_from_message(message): return None
-    def get_typing_audio(): return None
-    async def send_typing_audio_loop(ws, sid, stop, max_duration_s=30.0): pass
 
 # Import TTS
 TTS_PROVIDER = config.TTS_PROVIDER if hasattr(config, 'TTS_PROVIDER') else 'deepgram'
@@ -223,10 +220,6 @@ async def media_handler(ws):
             full_text = ""
             transfer_number = None
             
-            # Typing audio state (used in SPLIT_TTS path, cleaned up in finally)
-            typing_stop_event = None
-            typing_task = None
-            
             print(f"\n🗣️ [TTS] Starting response stream: {label}")
             print(f"[PIPELINE] ⏱️ TTS run() started at {run_start:.3f}")
 
@@ -316,24 +309,6 @@ async def media_handler(ws):
                     filler_done_time = time_module.time() - parallel_start
                     print(f"   🔊 Filler done in {filler_done_time:.3f}s, streaming LLM response...")
                     
-                    # --- TYPING AUDIO: Fill the gap between filler and TTS ---
-                    # If LLM tokens aren't ready yet, play typing sounds so the
-                    # caller hears activity instead of dead air.
-                    typing_stop_event = asyncio.Event()
-                    typing_task = None
-                    if not llm_done.is_set() or not token_queue.empty():
-                        # LLM is still working — start typing audio
-                        # But only if tokens aren't already flowing (no gap to fill)
-                        if token_queue.empty():
-                            typing_task = asyncio.create_task(
-                                send_typing_audio_loop(ws, stream_sid, typing_stop_event)
-                            )
-                            print(f"   ⌨️ Typing audio started (filling gap while LLM works)")
-                        else:
-                            print(f"   ⌨️ Typing skipped — tokens already queued")
-                    else:
-                        print(f"   ⌨️ Typing skipped — LLM already done")
-                    
                     # Now stream tokens from queue to TTS
                     # CRITICAL: Add overall timeout to prevent infinite hang
                     MAX_WAIT_SECONDS = 30.0  # Max time to wait for LLM response (tools can take 10-15s)
@@ -383,31 +358,6 @@ async def media_handler(ws):
                                 continue
                     
                     tts_stream_start = time_module.time()
-                    
-                    # --- STOP TYPING: Cut typing audio right before TTS starts ---
-                    # Signal the typing loop to stop, then clear Telnyx's audio
-                    # buffer so any queued typing chunks are flushed. This ensures
-                    # the TTS response starts cleanly with no overlap or gap.
-                    if typing_task and not typing_task.done():
-                        typing_stop_event.set()
-                        # Give the typing task a moment to exit cleanly
-                        try:
-                            await asyncio.wait_for(typing_task, timeout=0.5)
-                        except asyncio.TimeoutError:
-                            typing_task.cancel()
-                            try:
-                                await typing_task
-                            except asyncio.CancelledError:
-                                pass
-                        # Clear Telnyx buffer to flush any remaining typing chunks
-                        # so TTS starts immediately with no overlap
-                        await clear_twilio_audio()
-                        print(f"   ⌨️ Typing audio stopped + buffer cleared for TTS")
-                    elif typing_task:
-                        # Typing task finished on its own (hit max duration)
-                        # Still clear in case there are buffered chunks
-                        await clear_twilio_audio()
-                        print(f"   ⌨️ Typing task already finished, buffer cleared")
                     
                     _queued_audio_done_fired = False
                     def _on_queued_audio_done():
@@ -642,17 +592,6 @@ async def media_handler(ws):
                 import traceback
                 traceback.print_exc()
             finally:
-                # Safety cleanup: stop any typing audio that might still be running
-                # (e.g., if run() was cancelled by barge-in or error during SPLIT_TTS)
-                if typing_stop_event is not None and not typing_stop_event.is_set():
-                    typing_stop_event.set()
-                if typing_task is not None and not typing_task.done():
-                    typing_task.cancel()
-                    try:
-                        await typing_task
-                    except (asyncio.CancelledError, Exception):
-                        pass
-                
                 tts_ended_at = asyncio.get_event_loop().time()
                 speaking = False
                 llm_processing = False
@@ -1524,33 +1463,40 @@ async def media_handler(ws):
                 audio_duration = len(raw_audio) / MULAW_SAMPLE_RATE
                 print(f"🎙️ [RECORDING] Converting {len(raw_audio)} bytes ({audio_duration:.1f}s) to WAV...")
                 
-                wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
-                
-                from src.services.storage_r2 import upload_company_file
-                import io
-                company_id_int = int(company_id)
-                rec_filename = f"{call_sid or 'call'}_{int(call_start_time)}.wav"
-                
-                recording_url = await asyncio.to_thread(
-                    upload_company_file,
-                    company_id_int,
-                    io.BytesIO(wav_data),
-                    rec_filename,
-                    'call_recordings',
-                    'audio/wav'
-                )
-                
-                if recording_url and call_log_id:
-                    from src.services.database import get_database
-                    db = get_database()
-                    db.update_call_log(call_log_id, recording_url=recording_url)
-                    print(f"🎙️ [RECORDING] ✅ Saved ({audio_duration:.1f}s): {recording_url}")
-                elif recording_url:
-                    print(f"🎙️ [RECORDING] ✅ Uploaded but no call_log_id to attach to")
+                if audio_duration < 1.0:
+                    print(f"🎙️ [RECORDING] ⚠️ Recording too short ({audio_duration:.1f}s) — skipping upload")
                 else:
-                    print(f"🎙️ [RECORDING] ⚠️ Upload returned None (R2 not configured?)")
+                    wav_data = await asyncio.to_thread(mulaw_to_wav, raw_audio)
+                    
+                    from src.services.storage_r2 import upload_company_file
+                    import io
+                    company_id_int = int(company_id)
+                    rec_filename = f"{call_sid or 'call'}_{int(call_start_time)}.wav"
+                    
+                    recording_url = await asyncio.to_thread(
+                        upload_company_file,
+                        company_id_int,
+                        io.BytesIO(wav_data),
+                        rec_filename,
+                        'call_recordings',
+                        'audio/wav'
+                    )
+                    
+                    if recording_url and call_log_id:
+                        from src.services.database import get_database
+                        db = get_database()
+                        db.update_call_log(call_log_id, recording_url=recording_url)
+                        print(f"🎙️ [RECORDING] ✅ Saved ({audio_duration:.1f}s): {recording_url}")
+                    elif recording_url:
+                        print(f"🎙️ [RECORDING] ✅ Uploaded but no call_log_id to attach to")
+                    else:
+                        print(f"🎙️ [RECORDING] ⚠️ Upload returned None (R2 not configured?)")
             except Exception as e:
                 print(f"⚠️ Recording upload error: {e}")
+                import traceback
+                traceback.print_exc()
+        elif company_id:
+            print(f"🎙️ [RECORDING] ⚠️ No audio captured (full_call_audio has {len(full_call_audio)} packets)")
         
         # Free memory
         full_call_audio.clear()

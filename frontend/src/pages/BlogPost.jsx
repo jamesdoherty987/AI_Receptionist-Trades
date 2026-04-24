@@ -15,8 +15,9 @@ function BlogPost() {
     return <Navigate to="/blog" replace />;
   }
 
-  const currentIndex = blogPosts.findIndex(p => p.slug === slug);
-  const relatedPosts = blogPosts.filter((_, i) => i !== currentIndex).slice(0, 3);
+  const relatedPosts = blogPosts
+    .filter(p => p.slug !== slug && blogContentMap[p.slug])
+    .slice(0, 3);
 
   return (
     <div className="blog-page">

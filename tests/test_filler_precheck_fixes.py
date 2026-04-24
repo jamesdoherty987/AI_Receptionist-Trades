@@ -107,30 +107,7 @@ class TestDeepgramEndpointing:
 
 
 class TestBookingFlowOrder:
-    """Test that the booking flow has correct order: lookup_customer BEFORE eircode"""
-    
-    def test_prompt_has_lookup_before_eircode(self):
-        """
-        The prompt should instruct to call lookup_customer BEFORE asking for eircode.
-        This is because returning customers already have their address on file.
-        """
-        with open('prompts/trades_prompt.txt', 'r') as f:
-            prompt = f.read()
-        
-        # Find the booking flow section
-        assert "BOOKING FLOW" in prompt, "Prompt should have BOOKING FLOW section"
-        
-        # Check that lookup_customer comes before eircode in the flow
-        # The prompt should mention lookup_customer before asking for eircode
-        lookup_pos = prompt.find("lookup_customer")
-        eircode_ask_pos = prompt.find("Ask for eircode") if "Ask for eircode" in prompt else prompt.find("Do you know your eircode")
-        
-        # lookup_customer should be mentioned in the flow
-        assert lookup_pos > 0, "Prompt should mention lookup_customer"
-        
-        # Check for the explicit instruction
-        assert "BEFORE asking for eircode" in prompt or "before asking for eircode" in prompt.lower(), \
-            "Prompt should explicitly say to lookup customer BEFORE asking for eircode"
+    """Test that the booking flow has correct customer identification (phone-first)"""
     
     def test_prompt_has_returning_customer_flow(self):
         """
@@ -146,22 +123,6 @@ class TestBookingFlowOrder:
         # Should mention using stored address
         assert "stored" in prompt.lower() or "on file" in prompt.lower(), \
             "Prompt should mention using stored/on-file address for returning customers"
-    
-    def test_media_handler_system_context(self):
-        """
-        The system context in media_handler should say to lookup customer before eircode.
-        """
-        with open('src/handlers/media_handler.py', 'r') as f:
-            content = f.read()
-        
-        # Should mention lookup_customer before eircode
-        assert "lookup_customer BEFORE" in content or "lookup_customer before" in content.lower(), \
-            "Media handler system context should say to lookup customer before eircode"
-        
-        # Should NOT say "ask for eircode" right after name
-        # The old version said "After name confirmed, ask for eircode"
-        assert "After name confirmed, ask for eircode" not in content, \
-            "Media handler should NOT say to ask for eircode right after name"
 
 
 class TestIntegration:
@@ -192,39 +153,6 @@ class TestIntegration:
         # 2. The LLM will just confirm the booking, not call check_availability again
         assert not triggers_availability, \
             "Day selection should not trigger availability check filler"
-    
-    def test_new_customer_flow_order(self):
-        """
-        For a new customer, the flow should be:
-        1. Get name
-        2. Spell back name
-        3. Call lookup_customer (finds they're new)
-        4. Ask for eircode/address
-        5. Check availability
-        6. Book
-        
-        NOT:
-        1. Get name
-        2. Spell back name  
-        3. Ask for eircode (WRONG - should lookup first!)
-        4. Call lookup_customer
-        """
-        with open('prompts/trades_prompt.txt', 'r') as f:
-            prompt = f.read()
-        
-        # Extract the booking flow steps
-        flow_section = prompt[prompt.find("BOOKING FLOW"):prompt.find("SPELLING OUT")]
-        
-        # lookup_customer should come before "Ask for eircode" or "Do you know your eircode"
-        # In the numbered steps, lookup should be step 4, eircode should be step 7+
-        
-        # Check that the flow mentions lookup before eircode
-        assert "lookup_customer" in flow_section, "Flow should mention lookup_customer"
-        
-        # The instruction should be clear
-        assert "ALWAYS do this BEFORE asking for eircode" in flow_section or \
-               "BEFORE asking for eircode" in flow_section, \
-            "Flow should explicitly say lookup BEFORE eircode"
     
     def test_eircode_confirmation_not_mistaken_for_name(self):
         """
