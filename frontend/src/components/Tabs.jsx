@@ -19,9 +19,12 @@ function Tabs({ tabs, defaultTab = 0, activeTab: controlledTab, onTabChange, men
   });
 
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    const checkMobile = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(prev => prev === mobile ? prev : mobile);
+    };
     checkMobile();
-    window.addEventListener('resize', checkMobile);
+    window.addEventListener('resize', checkMobile, { passive: true });
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 

@@ -14,8 +14,7 @@ function AddEmployeeModal({ isOpen, onClose }) {
     phone: '',
     email: '',
     specialty: '',
-    image_url: '',
-    weekly_hours_expected: 40.0
+    image_url: ''
   });
 
   const mutation = useMutation({
@@ -24,7 +23,7 @@ function AddEmployeeModal({ isOpen, onClose }) {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['employees'] });
       onClose();
-      setFormData({ name: '', phone: '', email: '', specialty: '', image_url: '', weekly_hours_expected: 40.0 });
+      setFormData({ name: '', phone: '', email: '', specialty: '', image_url: '' });
       addToast('Employee added successfully!', 'success');
     },
     onError: (error) => {
@@ -104,21 +103,6 @@ function AddEmployeeModal({ isOpen, onClose }) {
             value={formData.image_url}
             onChange={(value) => setFormData({ ...formData, image_url: value })}
             placeholder="Upload Profile Picture"
-          />
-        </div>
-
-        <div className="form-group">
-          <label className="form-label">Expected Weekly Hours <HelpTooltip text="How many hours per week this employee is expected to work. Used for scheduling and workload tracking." /></label>
-          <input
-            type="number"
-            name="weekly_hours_expected"
-            className="form-input"
-            value={formData.weekly_hours_expected}
-            onChange={(e) => setFormData({ ...formData, weekly_hours_expected: parseFloat(e.target.value) || 40.0 })}
-            placeholder="40"
-            min="0"
-            max="168"
-            step="0.5"
           />
         </div>
 

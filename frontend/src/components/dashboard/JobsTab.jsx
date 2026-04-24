@@ -380,7 +380,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                           <h4>{job.customer_name || 'Unknown'}</h4>
                           {(!job.assigned_employee_ids || job.assigned_employee_ids.length === 0) && !['completed', 'cancelled', 'rejected'].includes(job.status) && (
                             <span className="jt-no-employee-badge" title="No employee assigned to this job">
-                              <i className="fas fa-exclamation-triangle"></i> No Employee
+                              <i className="fas fa-exclamation-triangle"></i> No Employee Assigned
                             </span>
                           )}
                           <span className={`jt-status-badge jt-status-${job.status === 'paid' ? 'completed' : job.status}`}>{
@@ -621,16 +621,16 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
         </div>
       )}
 
-      <AddJobModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />
-      <JobDetailModal isOpen={!!selectedJobId} onClose={() => setSelectedJobId(null)} jobId={selectedJobId} showInvoiceButtons={showInvoiceButtons} />
-      <InvoiceConfirmModal
+      {showAddModal && <AddJobModal isOpen={showAddModal} onClose={() => setShowAddModal(false)} />}
+      {!!selectedJobId && <JobDetailModal isOpen={!!selectedJobId} onClose={() => setSelectedJobId(null)} jobId={selectedJobId} showInvoiceButtons={showInvoiceButtons} />}
+      {!!invoiceJob && <InvoiceConfirmModal
         isOpen={!!invoiceJob}
         onClose={() => setInvoiceJob(null)}
         onConfirm={(editedData) => invoiceMutation.mutate({ jobId: invoiceJob?.id, invoiceData: editedData })}
         job={invoiceJob}
         invoiceConfig={invoiceConfig}
         isPending={invoiceMutation.isPending}
-      />
+      />}
     </div>
   );
 }

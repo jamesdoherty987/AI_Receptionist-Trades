@@ -120,15 +120,15 @@ function CustomersTab({ clients, bookings = [] }) {
       </div>
 
       {/* Modals */}
-      <AddClientModal 
+      {showAddModal && <AddClientModal 
         isOpen={showAddModal} 
         onClose={() => setShowAddModal(false)} 
-      />
-      <CustomerDetailModal
+      />}
+      {!!selectedClientId && <CustomerDetailModal
         isOpen={!!selectedClientId}
         onClose={() => setSelectedClientId(null)}
         clientId={selectedClientId}
-      />
+      />}
     </div>
   );
 }

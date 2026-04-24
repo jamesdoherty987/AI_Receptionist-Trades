@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
-import Tilt from 'react-parallax-tilt';
-import DarkVeil from '../components/DarkVeil';
 import './Landing.css';
 
 const FloatingCube = lazy(() => import('../components/FloatingCube'));
@@ -32,7 +30,11 @@ function SectionReveal({ children, className = '', id, ...props }) {
   );
 }
 
-// ---- Spotlight Card (mouse-tracking glow + border beam) ----
+// ---- Lazy Bento Demo — only mounts the mini-demo when the card is visible ----
+function LazyBentoDemo({ children }) {
+  const [ref, isVisible] = useScrollReveal(0.1);
+  return <div ref={ref} className="bento-mini-demo">{isVisible ? children : null}</div>;
+}
 function SpotlightCard({ children, className = '', ...props }) {
   const cardRef = useRef(null);
   const handleMouseMove = useCallback((e) => {
@@ -626,6 +628,7 @@ function MeshGradient() {
   const canvasRef = useRef(null);
   const mouseRef = useRef({ x: 0.5, y: 0.5 });
   const animRef = useRef(null);
+  const visibleRef = useRef(true);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -635,6 +638,11 @@ function MeshGradient() {
     const resize = () => { w = canvas.width = canvas.offsetWidth; h = canvas.height = canvas.offsetHeight; };
     resize();
     window.addEventListener('resize', resize);
+
+    // Pause when not visible (scrolled away or tab hidden)
+    const obs = new IntersectionObserver(([e]) => { visibleRef.current = e.isIntersecting; }, { threshold: 0 });
+    obs.observe(canvas);
+
     const blobs = [
       { x: 0.3, y: 0.3, r: 0.35, color: [14, 165, 233], speed: 0.0003 },
       { x: 0.7, y: 0.6, r: 0.3, color: [236, 72, 153], speed: 0.0004 },
@@ -642,7 +650,14 @@ function MeshGradient() {
       { x: 0.2, y: 0.7, r: 0.2, color: [16, 185, 129], speed: 0.00025 },
     ];
     let t = 0;
-    const draw = () => {
+    let lastFrame = 0;
+    const FPS_INTERVAL = 1000 / 30; // Cap at 30fps — plenty for a subtle background
+    const draw = (timestamp) => {
+      animRef.current = requestAnimationFrame(draw);
+      if (!visibleRef.current) return;
+      const elapsed = timestamp - lastFrame;
+      if (elapsed < FPS_INTERVAL) return;
+      lastFrame = timestamp - (elapsed % FPS_INTERVAL);
       t++;
       ctx.clearRect(0, 0, w, h);
       blobs.forEach((b, i) => {
@@ -657,17 +672,17 @@ function MeshGradient() {
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, w, h);
       });
-      animRef.current = requestAnimationFrame(draw);
     };
-    draw();
+    animRef.current = requestAnimationFrame(draw);
     const handleMouse = (e) => {
       mouseRef.current = { x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight };
     };
-    window.addEventListener('mousemove', handleMouse);
+    window.addEventListener('mousemove', handleMouse, { passive: true });
     return () => {
       cancelAnimationFrame(animRef.current);
       window.removeEventListener('resize', resize);
       window.removeEventListener('mousemove', handleMouse);
+      obs.disconnect();
     };
   }, []);
 
@@ -975,20 +990,29 @@ function Landing() {
   const [isMobile, setIsMobile] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [showContactModal, setShowContactModal] = useState(false);
-  const [navScrolled, setNavScrolled] = useState(false);
+  const navRef = useRef(null);
   const videoRef = useRef(null);
 
-  // Glassmorphism nav — track scroll position for enhanced blur
+  // Glassmorphism nav — toggle class directly to avoid re-rendering the whole page on scroll
   useEffect(() => {
-    const handleScroll = () => setNavScrolled(window.scrollY > 40);
+    let scrolled = false;
+    const handleScroll = () => {
+      const shouldBe = window.scrollY > 40;
+      if (shouldBe === scrolled) return;
+      scrolled = shouldBe;
+      if (navRef.current) navRef.current.classList.toggle('nav-scrolled', shouldBe);
+    };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    const checkMobile = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(prev => prev === mobile ? prev : mobile);
+    };
     checkMobile();
-    window.addEventListener('resize', checkMobile);
+    window.addEventListener('resize', checkMobile, { passive: true });
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
@@ -1079,7 +1103,7 @@ function Landing() {
       <MeshGradient />
 
       {/* Glassmorphism Navigation */}
-      <nav className={`landing-nav ${navScrolled ? 'nav-scrolled' : ''}`}>
+      <nav ref={navRef} className="landing-nav">
         <div className="nav-container">
           <div className="nav-logo"><i className="fas fa-bolt"></i><span>BookedForYou</span></div>
           <button className="mobile-menu-btn" onClick={() => setIsMenuOpen(!isMenuOpen)}>
@@ -1099,9 +1123,6 @@ function Landing() {
 
       {/* Hero Section */}
       <section className="hero">
-        <div className="hero-veil">
-          <DarkVeil hueShift={0} noiseIntensity={0} scanlineIntensity={0} speed={0.5} scanlineFrequency={0} warpAmount={0} />
-        </div>
         <div className="hero-content">
           <h1>The Receptionist That<br/><span className="gradient-text"><WordRotator /></span></h1>
           <p className="hero-subtitle">
@@ -1140,14 +1161,12 @@ function Landing() {
           </div>
           <div className="bento-grid">
             {features.map((f, i) => (
-              <Tilt key={i} tiltMaxAngleX={8} tiltMaxAngleY={8} perspective={1200} scale={1.02} transitionSpeed={1500} gyroscope={false} className="bento-tilt-wrapper">
-                <SpotlightCard className={`bento-card bento-${f.size} ${BENTO_TINTS[i]}`}>
+              <SpotlightCard key={i} className={`bento-card bento-${f.size} ${BENTO_TINTS[i]}`}>
                   <div className="bento-icon icon-morph"><i className={f.icon}></i></div>
                   <h3>{f.title}</h3>
                   <p>{f.description}</p>
-                  <div className="bento-mini-demo">{bentoMiniDemos[i]}</div>
+                  <LazyBentoDemo>{bentoMiniDemos[i]}</LazyBentoDemo>
                 </SpotlightCard>
-              </Tilt>
             ))}
           </div>
         </div>
@@ -1187,9 +1206,9 @@ function Landing() {
               </button>
             </div>
             <div className="phone-demo-visual">
-              <Tilt tiltMaxAngleX={isMobile ? 8 : 15} tiltMaxAngleY={isMobile ? 8 : 15} perspective={1000} scale={1.02} transitionSpeed={2000} gyroscope={false} className="phone-tilt-wrapper">
+              <div className="phone-tilt-wrapper">
                 <PhoneWithReels isCallPlaying={isCallPlaying} toggleDemoCall={toggleDemoCall} isMobile={isMobile} />
-              </Tilt>
+              </div>
             </div>
           </div>
         </div>

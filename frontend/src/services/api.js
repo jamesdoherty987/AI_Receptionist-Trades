@@ -207,6 +207,10 @@ export const updateEmployee = (id, data) => api.put(`/api/employees/${id}`, data
 export const deleteEmployee = (id) => api.delete(`/api/employees/${id}`);
 export const getEmployeeJobs = (id) => api.get(`/api/employees/${id}/jobs`);
 export const getEmployeeSchedule = (id) => api.get(`/api/employees/${id}/schedule`);
+export const getEmployeeWorkSchedule = (id) => api.get(`/api/employees/${id}/work-schedule`);
+export const updateEmployeeWorkSchedule = (id, workSchedule) => api.put(`/api/employees/${id}/work-schedule`, { work_schedule: workSchedule });
+export const getAllEmployeeWorkSchedules = () => api.get('/api/employees/work-schedules');
+export const getMyWorkSchedule = () => api.get('/api/employee/my-work-schedule');
 export const getEmployeeHoursThisWeek = (id) => api.get(`/api/employees/${id}/hours-this-week`);
 // Batch: fetches hours-this-week for all employees in the company in one request
 export const getEmployeesHoursThisWeek = () => api.get('/api/employees/hours-this-week');

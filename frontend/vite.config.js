@@ -55,7 +55,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           // Split heavy deps into separate cacheable chunks
-          'vendor-three': ['three', '@react-three/fiber', '@react-three/drei'],
           'vendor-charts': ['recharts'],
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
         },

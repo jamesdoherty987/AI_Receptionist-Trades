@@ -26,7 +26,8 @@ import {
   employeeSendMessage,
   getEmployeeUnreadMessageCount,
   getEmployeeNotifications,
-  acceptEmergencyJob
+  acceptEmergencyJob,
+  getMyWorkSchedule
 } from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
@@ -166,6 +167,13 @@ function EmployeeDashboard() {
     queryKey: ['employee-hours-summary'],
     queryFn: async () => { const r = await getEmployeeHoursSummary(); return r.data; },
   });
+
+  const { data: myWorkScheduleData } = useQuery({
+    queryKey: ['my-work-schedule'],
+    queryFn: async () => { const r = await getMyWorkSchedule(); return r.data; },
+    staleTime: 5 * 60 * 1000,
+  });
+  const myWorkSchedule = myWorkScheduleData?.work_schedule || null;
 
   const { data: selectedJob, isLoading: loadingJob } = useQuery({
     queryKey: ['employee-job', selectedJobId],
@@ -2192,7 +2200,20 @@ function EmployeeDashboard() {
                       <span className="whr-hours-label">This Week</span>
                     </div>
                     <div className="whr-hours-card">
-                      <span className="whr-hours-num">{hoursSummary?.weekly_hours_expected ?? 40}h</span>
+                      <span className="whr-hours-num">{(() => {
+                        if (!myWorkSchedule) return (hoursSummary?.weekly_hours_expected ?? 40);
+                        let t = 0;
+                        ['mon','tue','wed','thu','fri','sat','sun'].forEach(d => {
+                          const day = myWorkSchedule[d];
+                          if (day?.enabled && day.start && day.end) {
+                            const [sh,sm] = day.start.split(':').map(Number);
+                            const [eh,em] = day.end.split(':').map(Number);
+                            const h = (eh+em/60)-(sh+sm/60);
+                            if (h > 0) t += h;
+                          }
+                        });
+                        return Math.round(t * 10) / 10;
+                      })()}h</span>
                       <span className="whr-hours-label">Expected</span>
                     </div>
                     <div className="whr-hours-card">
@@ -2200,6 +2221,31 @@ function EmployeeDashboard() {
                       <span className="whr-hours-label">Total Jobs</span>
                     </div>
                   </div>
+                </div>
+
+                {/* My Work Schedule */}
+                <div className="whr-section">
+                  <h2><i className="fas fa-calendar-alt"></i> My Work Schedule</h2>
+                  {myWorkSchedule ? (
+                    <div className="whr-schedule-grid">
+                      {['mon','tue','wed','thu','fri','sat','sun'].map((d, i) => {
+                        const dayData = myWorkSchedule[d];
+                        const labels = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+                        return (
+                          <div key={d} className={`whr-schedule-row ${dayData?.enabled ? 'active' : 'off'}`}>
+                            <span className="whr-sched-day">{labels[i]}</span>
+                            {dayData?.enabled ? (
+                              <span className="whr-sched-time">{dayData.start || '09:00'} – {dayData.end || '17:00'}</span>
+                            ) : (
+                              <span className="whr-sched-off">Day off</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p style={{ color: '#94a3b8', fontSize: '0.85rem' }}>No schedule set — contact your manager.</p>
+                  )}
                 </div>
               </div>
             )}

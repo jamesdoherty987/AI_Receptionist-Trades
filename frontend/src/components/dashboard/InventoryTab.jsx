@@ -115,8 +115,6 @@ function InventoryTab() {
     });
   };
 
-  if (isLoading) return <LoadingSpinner message="Loading inventory..." />;
-
   const materials = data?.materials || [];
   const lowStockCount = data?.low_stock_count || 0;
   const existingCategories = [...new Set(materials.map(m => m.category).filter(Boolean))];
@@ -170,6 +168,8 @@ function InventoryTab() {
     });
     return g;
   }, [filtered]);
+
+  if (isLoading) return <LoadingSpinner message="Loading inventory..." />;
 
   const toggleSort = (field) => {
     if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');

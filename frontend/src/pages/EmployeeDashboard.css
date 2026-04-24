@@ -376,6 +376,19 @@
 .whr-hours-num { display: block; font-size: 1.75rem; font-weight: 700; color: var(--text-primary, #1e293b); }
 .whr-hours-label { font-size: 0.8rem; color: var(--text-tertiary, #94a3b8); }
 
+/* Work Schedule Display */
+.whr-schedule-grid { display: flex; flex-direction: column; gap: 0.3rem; }
+.whr-schedule-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.6rem 0.85rem; border-radius: 8px; background: var(--bg-secondary, #f8fafc);
+  border: 1px solid var(--border-color, #e2e8f0);
+}
+.whr-schedule-row.active { border-left: 3px solid #6366f1; }
+.whr-schedule-row.off { opacity: 0.6; }
+.whr-sched-day { font-size: 0.88rem; font-weight: 600; color: var(--text-primary, #1e293b); min-width: 90px; }
+.whr-sched-time { font-size: 0.85rem; font-weight: 500; color: #6366f1; }
+.whr-sched-off { font-size: 0.82rem; color: #cbd5e1; font-style: italic; }
+
 /* Responsive */
 @media (max-width: 768px) {
   .wjd-grid { grid-template-columns: 1fr; }

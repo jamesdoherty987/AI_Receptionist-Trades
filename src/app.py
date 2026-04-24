@@ -10818,6 +10818,73 @@ def employees_api():
         return jsonify({"id": employee_id, "message": "Employee added"}), 201
 
 
+def _build_default_work_schedule(company_id):
+    """Build a default weekly work schedule from the company's business hours.
+    Returns: { 'mon': {'enabled': True, 'start': '08:00', 'end': '18:00'}, ... }
+    """
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    biz = settings_mgr.get_business_hours(company_id=company_id)
+    start_hour = biz.get('start_hour', 9)
+    end_hour = biz.get('end_hour', 17)
+    days_open = biz.get('days_open', ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])
+    # Normalise to title-case set for lookup
+    days_open_set = {d.strip().title() for d in days_open}
+    start_str = f'{int(start_hour):02d}:00'
+    end_str = f'{int(end_hour):02d}:00'
+    day_keys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+    day_full = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    schedule = {}
+    for i, d in enumerate(day_keys):
+        is_open = day_full[i] in days_open_set
+        schedule[d] = {
+            'enabled': is_open,
+            'start': start_str if is_open else '09:00',
+            'end': end_str if is_open else '17:00',
+        }
+    return schedule
+
+
+@app.route("/api/employees/work-schedules", methods=["GET"])
+@login_required
+@subscription_required
+def all_employee_work_schedules_api():
+    """Get work schedules for all employees (for timetable export)."""
+    db = get_database()
+    company_id = session.get('company_id')
+    employees = db.get_all_employees(company_id=company_id)
+
+    default_schedule = _build_default_work_schedule(company_id)
+
+    result = []
+    for emp in employees:
+        ws = emp.get('work_schedule') or default_schedule
+        result.append({
+            'id': emp['id'],
+            'name': emp['name'],
+            'specialty': emp.get('specialty') or emp.get('trade_specialty') or '',
+            'work_schedule': ws,
+        })
+    return jsonify({"employees": result, "default_schedule": default_schedule})
+
+
+@app.route("/api/employee/my-work-schedule", methods=["GET"])
+@employee_login_required
+def employee_my_work_schedule():
+    """Employee portal: get own work schedule."""
+    db = get_database()
+    employee_id = session.get('employee_id')
+    company_id = session.get('employee_company_id')
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
+
+    work_schedule = employee.get('work_schedule')
+    if not work_schedule:
+        work_schedule = _build_default_work_schedule(company_id)
+    return jsonify({"work_schedule": work_schedule, "weekly_hours_expected": employee.get('weekly_hours_expected', 40.0)})
+
+
 @app.route("/api/employees/<int:employee_id>", methods=["GET", "PUT", "DELETE"])
 @login_required
 @subscription_required
@@ -11140,6 +11207,65 @@ def get_employee_schedule_api(employee_id):
     end_date = request.args.get('end_date')
     schedule = db.get_employee_schedule(employee_id, start_date, end_date)
     return jsonify(schedule)
+
+
+@app.route("/api/employees/<int:employee_id>/work-schedule", methods=["GET", "PUT"])
+@login_required
+@subscription_required
+def employee_work_schedule_api(employee_id):
+    """Get or update an employee's default weekly work schedule.
+    Format: { "mon": {"enabled": true, "start": "09:00", "end": "17:00"}, ... }
+    """
+    db = get_database()
+    company_id = session.get('company_id')
+    employee = db.get_employee(employee_id, company_id=company_id)
+    if not employee:
+        return jsonify({"error": "Employee not found"}), 404
+
+    if request.method == "GET":
+        work_schedule = employee.get('work_schedule')
+        if not work_schedule:
+            work_schedule = _build_default_work_schedule(company_id)
+        return jsonify({"work_schedule": work_schedule})
+
+    elif request.method == "PUT":
+        data = request.json
+        work_schedule = data.get('work_schedule')
+        if not work_schedule or not isinstance(work_schedule, dict):
+            return jsonify({"error": "work_schedule object required"}), 400
+        # Validate structure
+        valid_days = {'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'}
+        for day, val in work_schedule.items():
+            if day not in valid_days:
+                return jsonify({"error": f"Invalid day: {day}"}), 400
+            if not isinstance(val, dict) or 'enabled' not in val:
+                return jsonify({"error": f"Invalid schedule for {day}"}), 400
+        # Auto-calculate weekly hours from the schedule
+        total_hours = 0.0
+        for day_key in valid_days:
+            day_data = work_schedule.get(day_key, {})
+            if day_data.get('enabled') and day_data.get('start') and day_data.get('end'):
+                try:
+                    sh, sm = map(int, day_data['start'].split(':'))
+                    eh, em = map(int, day_data['end'].split(':'))
+                    h = (eh + em / 60) - (sh + sm / 60)
+                    if h > 0:
+                        total_hours += h
+                except (ValueError, TypeError):
+                    pass
+        total_hours = round(total_hours, 1)
+        from psycopg2.extras import Json
+        conn = db.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE employees SET work_schedule = %s, weekly_hours_expected = %s, updated_at = NOW() WHERE id = %s AND company_id = %s",
+                (Json(work_schedule), total_hours, employee_id, company_id)
+            )
+            conn.commit()
+        finally:
+            db.return_connection(conn)
+        return jsonify({"success": True, "work_schedule": work_schedule, "weekly_hours_expected": total_hours})
 
 
 @app.route("/api/employees/hours-this-week", methods=["GET"])

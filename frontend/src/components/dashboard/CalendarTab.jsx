@@ -824,12 +824,12 @@ function CalendarTab() {
       )}
       
       {/* Job Detail Modal */}
-      <JobDetailModal
+      {!!selectedJobId && <JobDetailModal
         isOpen={!!selectedJobId}
         onClose={() => setSelectedJobId(null)}
         jobId={selectedJobId}
         showInvoiceButtons={settings?.show_invoice_buttons !== false}
-      />
+      />}
     </div>
   );
 }

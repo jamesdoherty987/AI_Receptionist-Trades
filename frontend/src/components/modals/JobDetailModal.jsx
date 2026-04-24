@@ -84,6 +84,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: isOpen && !!jobId,
+    staleTime: 30_000,
   });
 
   const { data: invoiceConfig } = useQuery({
@@ -93,6 +94,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: isOpen,
+    staleTime: 5 * 60_000,
   });
 
   const { data: businessSettings } = useQuery({
@@ -102,6 +104,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: isOpen,
+    staleTime: 5 * 60_000,
   });
 
   const { data: assignedEmployees } = useQuery({
@@ -111,6 +114,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       return response.data;
     },
     enabled: isOpen && !!jobId,
+    staleTime: 30_000,
   });
 
   const { data: employeesAvailability } = useQuery({
@@ -135,6 +139,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     queryKey: ['job-materials', jobId],
     queryFn: async () => { const r = await getJobMaterials(jobId); return r.data; },
     enabled: isOpen && !!jobId,
+    staleTime: 30_000,
   });
 
   const { data: materialsCatalog } = useQuery({
@@ -148,6 +153,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     queryKey: ['job-tasks', jobId],
     queryFn: async () => (await getJobTasks(jobId)).data,
     enabled: isOpen && !!jobId,
+    staleTime: 30_000,
   });
 
   // Review
@@ -155,6 +161,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     queryKey: ['booking-review', jobId],
     queryFn: async () => (await getBookingReview(jobId)).data,
     enabled: isOpen && !!jobId,
+    staleTime: 60_000,
   });
 
   // Linked quotes
@@ -162,6 +169,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     queryKey: ['quotes'],
     queryFn: async () => (await getQuotes()).data,
     enabled: isOpen && !!jobId,
+    staleTime: 60_000,
   });
 
   const linkedQuotes = useMemo(() => {
@@ -243,12 +251,14 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     queryKey: ['services-menu'],
     queryFn: async () => { const r = await getServicesMenu(); return r.data; },
     enabled: isOpen && !!job,
+    staleTime: 5 * 60_000,
   });
 
   const { data: packagesRaw } = useQuery({
     queryKey: ['packages'],
     queryFn: async () => { const r = await getPackages(); return r.data; },
     enabled: isOpen && !!job,
+    staleTime: 5 * 60_000,
   });
 
   const matchedServiceOrPackage = useMemo(() => {

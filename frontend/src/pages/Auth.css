@@ -562,26 +562,29 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.65rem;
   width: 100%;
-  padding: 0.7rem 1rem;
-  margin-top: 0.75rem;
-  background: none;
-  color: #64748b;
-  border: 1.5px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 500;
+  padding: 0.85rem 1.25rem;
+  margin-top: 1rem;
+  background: linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%);
+  color: #92400e;
+  border: 1.5px solid #fed7aa;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
   text-decoration: none;
-  transition: all 0.15s;
+  transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(251, 146, 60, 0.1);
 }
 .employee-portal-btn:hover {
-  border-color: #f97316;
-  color: #ea580c;
-  background: rgba(249, 115, 22, 0.04);
+  border-color: #fb923c;
+  color: #9a3412;
+  background: linear-gradient(135deg, #ffedd5 0%, #fef3c7 100%);
+  box-shadow: 0 4px 12px rgba(251, 146, 60, 0.2);
+  transform: translateY(-1px);
 }
-.employee-portal-btn i:first-child { font-size: 0.9rem; color: #f97316; }
-.employee-portal-btn i:last-child { font-size: 0.7rem; margin-left: auto; opacity: 0.4; }
+.employee-portal-btn i:first-child { font-size: 1rem; color: #f97316; }
+.employee-portal-btn i:last-child { font-size: 0.75rem; margin-left: auto; opacity: 0.5; color: #f97316; }
 
 /* Install App Link */
 .install-app-link {

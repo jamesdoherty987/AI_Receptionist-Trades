@@ -1842,7 +1842,8 @@ class PostgreSQLDatabaseWrapper:
                 'created_at': row['created_at'],
                 'updated_at': row['updated_at'],
                 'image_url': row.get('image_url'),
-                'weekly_hours_expected': row.get('weekly_hours_expected', 40.0)
+                'weekly_hours_expected': row.get('weekly_hours_expected', 40.0),
+                'work_schedule': row.get('work_schedule')
             } for row in rows]
         finally:
             self.return_connection(conn)

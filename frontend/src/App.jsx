@@ -12,7 +12,9 @@ import LoadingSpinner from './components/LoadingSpinner'
 // Critical-path pages (eager — needed immediately)
 import Login from './pages/Login'
 import Signup from './pages/Signup'
-import Landing from './pages/Landing'
+
+// Landing is heavy (canvas animations, videos, parallax) — lazy-load it
+const Landing = lazy(() => import('./pages/Landing'))
 
 // Lazy-loaded pages (code-split into separate chunks)
 const Dashboard = lazy(() => import('./pages/Dashboard'))

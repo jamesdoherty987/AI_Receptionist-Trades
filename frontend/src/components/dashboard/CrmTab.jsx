@@ -397,15 +397,15 @@ function CrmTab({ clients, bookings = [] }) {
           isPending={updateMutation.isPending}
         />
       )}
-      <AddClientModal isOpen={showAddClient} onClose={() => setShowAddClient(false)} />
-      <CustomerDetailModal isOpen={!!selectedClientId} onClose={() => setSelectedClientId(null)} clientId={selectedClientId} />
-      <EmailComposerModal
+      {showAddClient && <AddClientModal isOpen={showAddClient} onClose={() => setShowAddClient(false)} />}
+      {!!selectedClientId && <CustomerDetailModal isOpen={!!selectedClientId} onClose={() => setSelectedClientId(null)} clientId={selectedClientId} />}
+      {emailModal.open && <EmailComposerModal
         isOpen={emailModal.open}
         onClose={() => setEmailModal({ open: false, mode: 'individual', recipient: null })}
         mode={emailModal.mode}
         recipient={emailModal.recipient}
         customers={customerHealth}
-      />
+      />}
 
       {/* Delete Confirmation */}
       {deleteConfirm && (

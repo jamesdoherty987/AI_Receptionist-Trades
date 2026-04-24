@@ -12,6 +12,12 @@
   padding: 4rem 1rem 1rem 1rem;
   overflow-y: auto;
   overscroll-behavior: contain;
+  animation: modalOverlayIn 0.15s ease-out;
+}
+
+@keyframes modalOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal-container {
@@ -24,6 +30,12 @@
   width: 100%;
   position: relative;
   margin-top: 0;
+  animation: modalSlideIn 0.2s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .modal-small {

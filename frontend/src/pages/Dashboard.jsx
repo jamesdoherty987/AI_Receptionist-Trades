@@ -98,7 +98,15 @@ function Dashboard() {
   const employees = dashboardData?.employees || [];
 
   // Controlled tab state for notification navigation
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(() => {
+    // Restore tab from URL hash on load
+    const hash = window.location.hash.replace('#', '');
+    if (hash) {
+      // Will be resolved after tabs are built
+      return hash;
+    }
+    return 0;
+  });
   
   // Mobile nav menu state — shared between Header (hamburger) and Tabs (slide-out)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -110,7 +118,6 @@ function Dashboard() {
   const [callsLastSeen, setCallsLastSeen] = useState(
     () => localStorage.getItem(`calls_last_seen_${userKey}`) || new Date(0).toISOString()
   );
-  const [unseenCalls, setUnseenCalls] = useState(0);
 
   // Re-sync callsLastSeen when userKey changes (e.g. from 'default' to actual email)
   useEffect(() => {
@@ -125,10 +132,7 @@ function Dashboard() {
     },
     refetchInterval: 60000,
   });
-
-  useEffect(() => {
-    if (unseenData) setUnseenCalls(unseenData.count || 0);
-  }, [unseenData]);
+  const unseenCalls = unseenData?.count || 0;
 
   // Fetch reviews for InsightsTab widget
   const { data: reviewsData } = useQuery({
@@ -261,13 +265,26 @@ function Dashboard() {
   // Clear unseen call badge when user views the Calls tab
   const handleTabChange = useCallback((idx) => {
     setActiveTab(idx);
-    if (tabs[idx]?.label === 'Calls') {
+    // Persist tab in URL hash for reload persistence
+    const label = tabs[idx]?.label;
+    if (label) {
+      window.history.replaceState(null, '', `#${label.toLowerCase().replace(/\s+/g, '-')}`);
+    }
+    if (label === 'Calls') {
       const now = new Date().toISOString();
       setCallsLastSeen(now);
       localStorage.setItem(`calls_last_seen_${userKey}`, now);
-      setUnseenCalls(0);
     }
   }, [tabs, userKey]);
+
+  // Resolve hash to tab index once tabs are built
+  useEffect(() => {
+    if (typeof activeTab === 'string' && tabs.length > 0) {
+      const hash = activeTab.toLowerCase();
+      const idx = tabs.findIndex(t => t.label.toLowerCase().replace(/\s+/g, '-') === hash);
+      setActiveTab(idx >= 0 ? idx : 0);
+    }
+  }, [tabs.length]);
 
   // Mark onboarding steps as visited when user navigates to the corresponding tab
   useEffect(() => {
