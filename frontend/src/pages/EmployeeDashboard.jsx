@@ -577,7 +577,7 @@ function EmployeeDashboard() {
             </button>
             <div className="employee-header-right">
               <span className="employee-greeting">Hi, {user?.name || 'Employee'}</span>
-              <EmployeeNotificationBell onNavigate={handleEmployeeNotifNavigate} />
+              <EmployeeNotificationBell onNavigate={handleEmployeeNotifNavigate} userKey={user?.email} />
               <button className="employee-logout-btn" onClick={handleLogout}>
                 <i className="fas fa-sign-out-alt"></i> Sign Out
               </button>
@@ -1101,7 +1101,7 @@ function EmployeeDashboard() {
           </Link>
           <div className="employee-header-right">
             <span className="employee-greeting">Hi, {user?.name || 'Employee'}</span>
-            <EmployeeNotificationBell onNavigate={handleEmployeeNotifNavigate} />
+            <EmployeeNotificationBell onNavigate={handleEmployeeNotifNavigate} userKey={user?.email} />
             <button className="employee-logout-btn" onClick={handleLogout}>
               <i className="fas fa-sign-out-alt"></i> Sign Out
             </button>

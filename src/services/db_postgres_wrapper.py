@@ -3585,7 +3585,12 @@ class PostgreSQLDatabaseWrapper:
                    employees_required: int = 1, employee_restrictions: dict = None,
                    requires_callout: bool = False, package_only: bool = False,
                    requires_quote: bool = False,
-                   company_id: int = None, default_materials: list = None) -> bool:
+                   company_id: int = None, default_materials: list = None,
+                   tags=None, capacity_min: int = None, capacity_max: int = None,
+                   area: str = None, requires_deposit: bool = False,
+                   deposit_amount: float = None, warranty: str = None,
+                   seasonal: bool = False, seasonal_months=None,
+                   ai_notes: str = None, follow_up_service_id: str = None) -> bool:
         """Add a new service for a specific company (default 1 day duration for trades)"""
         import json
         conn = self.get_connection()
@@ -3598,13 +3603,28 @@ class PostgreSQLDatabaseWrapper:
         restrictions_json = json.dumps(employee_restrictions) if employee_restrictions else None
         materials_json = json.dumps(default_materials) if default_materials else '[]'
         
+        # tags and seasonal_months may already be JSON strings from the API layer
+        tags_val = tags if isinstance(tags, str) else (json.dumps(tags) if tags else None)
+        seasonal_months_val = seasonal_months if isinstance(seasonal_months, str) else (json.dumps(seasonal_months) if seasonal_months else None)
+        
         try:
             cursor.execute("""
                 INSERT INTO services (id, category, name, description, duration_minutes,
-                                    price, price_max, emergency_price, currency, active, image_url, sort_order, employees_required, employee_restrictions, requires_callout, package_only, requires_quote, company_id, default_materials)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                    price, price_max, emergency_price, currency, active, image_url, sort_order,
+                                    employees_required, employee_restrictions, requires_callout, package_only,
+                                    requires_quote, company_id, default_materials,
+                                    tags, capacity_min, capacity_max, area,
+                                    requires_deposit, deposit_amount, warranty,
+                                    seasonal, seasonal_months, ai_notes, follow_up_service_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (service_id, category, name, description, duration_minutes,
-                  price, price_max, emergency_price, currency, 1 if active else 0, image_url, sort_order, employees_required, restrictions_json, requires_callout, package_only, requires_quote, company_id, materials_json))
+                  price, price_max, emergency_price, currency, 1 if active else 0, image_url, sort_order,
+                  employees_required, restrictions_json, requires_callout, package_only,
+                  requires_quote, company_id, materials_json,
+                  tags_val, capacity_min, capacity_max, area,
+                  requires_deposit, deposit_amount, warranty,
+                  seasonal, seasonal_months_val, ai_notes, follow_up_service_id))
             
             conn.commit()
             return True
@@ -3666,7 +3686,10 @@ class PostgreSQLDatabaseWrapper:
             allowed_fields = ['category', 'name', 'description', 'duration_minutes',
                              'price', 'price_max', 'emergency_price', 'currency', 'active',
                              'image_url', 'sort_order', 'employees_required', 'employee_restrictions',
-                             'requires_callout', 'package_only', 'requires_quote', 'default_materials']
+                             'requires_callout', 'package_only', 'requires_quote', 'default_materials',
+                             'tags', 'capacity_min', 'capacity_max', 'area',
+                             'requires_deposit', 'deposit_amount', 'warranty',
+                             'seasonal', 'seasonal_months', 'ai_notes', 'follow_up_service_id']
             
             fields = []
             values = []
@@ -3679,6 +3702,9 @@ class PostgreSQLDatabaseWrapper:
                         value = json.dumps(value)
                     # Convert default_materials list to JSON
                     if key == 'default_materials' and isinstance(value, list):
+                        value = json.dumps(value)
+                    # Convert tags and seasonal_months lists to JSON
+                    if key in ('tags', 'seasonal_months') and isinstance(value, list):
                         value = json.dumps(value)
                     fields.append(f"{key} = %s")
                     values.append(value)

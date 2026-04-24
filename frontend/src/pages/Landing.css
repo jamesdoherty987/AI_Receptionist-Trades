@@ -1412,7 +1412,11 @@
 
   .prism-stage {
     width: 180px;
-    height: 230px;
+    height: 180px;
+  }
+
+  .prism-reflection {
+    display: none;
   }
 
   .prism-scene,
@@ -1445,12 +1449,21 @@
   .prism-face-label {
     font-size: 0.7rem;
   }
+
+  .prism-section .section-container {
+    padding-top: 3rem;
+    padding-bottom: 2rem;
+  }
+
+  .prism-section .section-header {
+    margin-bottom: 1rem;
+  }
 }
 
 @media (max-width: 480px) {
   .prism-stage {
     width: 150px;
-    height: 200px;
+    height: 150px;
   }
 
   .prism-scene,
@@ -1477,6 +1490,11 @@
 
   .prism-face-stat {
     font-size: 1.3rem;
+  }
+
+  .prism-section .section-container {
+    padding-top: 2rem;
+    padding-bottom: 1.5rem;
   }
 }
 
@@ -2185,6 +2203,104 @@
   }
 }
 
+/* ========================================
+   MOBILE PRICING CARDS
+   ======================================== */
+@media (max-width: 768px) {
+  .pricing-grid {
+    grid-template-columns: 1fr;
+    max-width: 400px;
+    gap: 0.75rem;
+  }
+
+  .pricing-card {
+    border-radius: 14px;
+    padding: 1.25rem 1rem;
+  }
+
+  .pricing-card h3 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .plan-price-display {
+    margin: 0 0 0.35rem;
+  }
+
+  .plan-price-amount {
+    font-size: 1.5rem;
+  }
+
+  .plan-price-period {
+    font-size: 0.8rem;
+  }
+
+  .plan-description {
+    font-size: 0.78rem;
+    min-height: auto;
+    margin-bottom: 0.5rem;
+  }
+
+  .trial-badge {
+    margin-bottom: 0.75rem;
+    font-size: 0.7rem;
+    padding: 0.25rem 0.65rem;
+  }
+
+  .plan-features {
+    margin-bottom: 0.75rem;
+  }
+
+  .plan-features li {
+    font-size: 0.78rem;
+    padding: 0.4rem 0;
+    gap: 0.5rem;
+  }
+
+  .plan-btn {
+    padding: 0.75rem;
+    font-size: 0.85rem;
+    border-radius: 10px;
+  }
+
+  .popular-badge {
+    top: -10px;
+    font-size: 0.65rem;
+    padding: 0.25rem 0.75rem;
+  }
+
+  .pricing-card:hover {
+    transform: none;
+  }
+
+  .pricing-card.highlighted {
+    transform: none;
+  }
+
+  .pricing-card.highlighted:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .pricing-grid {
+    max-width: 100%;
+  }
+
+  .pricing-card {
+    padding: 1rem 0.85rem;
+  }
+
+  .plan-price-amount {
+    font-size: 1.35rem;
+  }
+
+  .plan-features li {
+    font-size: 0.72rem;
+    padding: 0.35rem 0;
+  }
+}
+
 @media (max-width: 768px) {
   .nav-container {
     padding: 0 1rem;
@@ -2241,6 +2357,17 @@
   .hero {
     padding: 6rem 1rem 3rem;
     min-height: auto;
+    gap: 1.5rem;
+  }
+
+  .hero-visual {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .hero-video-container {
+    max-width: 100%;
+    border-radius: 12px;
   }
 
   .hero-veil {
@@ -3087,9 +3214,11 @@
 
 /* Bento cards are always visible (no scroll-reveal needed due to Tilt wrapper) */
 
-/* Keep highlighted pricing card scale */
-.scroll-reveal.revealed .pricing-card.highlighted {
-  transform: scale(1.05);
+/* Keep highlighted pricing card scale — desktop only */
+@media (min-width: 769px) {
+  .scroll-reveal.revealed .pricing-card.highlighted {
+    transform: scale(1.05);
+  }
 }
 
 /* Reduce motion for accessibility */

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
+import { useIndustry } from '../../context/IndustryContext';
 import { getMaterials, createMaterial, updateMaterial, deleteMaterial, adjustMaterialStock } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
 import { useToast } from '../Toast';
@@ -8,43 +9,56 @@ import { formatCurrency } from '../../utils/helpers';
 import './InventoryTab.css';
 import './SharedDashboard.css';
 
-const COMMON_CATEGORIES = [
+/* ── Fallback defaults (used if industry profile has no inventory config) ── */
+const FALLBACK_CATEGORIES = [
   'Pipe & Fittings', 'Valves', 'Sealants & Adhesives', 'Fixtures',
-  'Electrical', 'Tools & Consumables', 'Heating', 'Drainage',
-  'Cleaning Supplies', 'Food & Beverage', 'Retail Products', 'Other'
+  'Electrical', 'Tools & Consumables', 'Cleaning Supplies', 'Other'
+];
+const FALLBACK_UNITS = [
+  { value: 'each', label: 'Each' }, { value: 'm', label: 'Metre (m)' },
+  { value: 'ft', label: 'Foot (ft)' }, { value: 'kg', label: 'Kilogram (kg)' },
+  { value: 'litre', label: 'Litre' }, { value: 'roll', label: 'Roll' },
+  { value: 'box', label: 'Box' }, { value: 'pack', label: 'Pack' },
+  { value: 'pair', label: 'Pair' }, { value: 'set', label: 'Set' },
+  { value: 'bag', label: 'Bag' }, { value: 'tube', label: 'Tube' },
+  { value: 'tin', label: 'Tin' }, { value: 'sheet', label: 'Sheet' },
 ];
 
-const UNIT_OPTIONS = [
-  { value: 'each', label: 'Each' },
-  { value: 'm', label: 'Metre (m)' },
-  { value: 'ft', label: 'Foot (ft)' },
-  { value: 'kg', label: 'Kilogram (kg)' },
-  { value: 'litre', label: 'Litre' },
-  { value: 'roll', label: 'Roll' },
-  { value: 'box', label: 'Box' },
-  { value: 'pack', label: 'Pack' },
-  { value: 'pair', label: 'Pair' },
-  { value: 'set', label: 'Set' },
-  { value: 'length', label: 'Length' },
-  { value: 'bag', label: 'Bag' },
-  { value: 'tube', label: 'Tube' },
-  { value: 'tin', label: 'Tin' },
-  { value: 'sheet', label: 'Sheet' },
-  { value: 'hour', label: 'Hour' },
-];
-
-const EMPTY_FORM = { name: '', unit_price: '', unit: 'each', category: '', supplier: '', sku: '', notes: '', stock_on_hand: '', reorder_level: '' };
+const EMPTY_FORM = {
+  name: '', unit_price: '', cost_price: '', unit: 'each', category: '',
+  supplier: '', sku: '', notes: '', stock_on_hand: '', reorder_level: '',
+  ideal_stock: '', location: '', expiry_date: '', batch_number: '',
+};
 
 function InventoryTab() {
   const { hasActiveSubscription } = useAuth();
   const isSubscriptionActive = hasActiveSubscription();
   const queryClient = useQueryClient();
   const { addToast } = useToast();
+  const industry = useIndustry();
+  const invConfig = industry?.inventory || {};
+
+  /* ── Industry-aware config ── */
+  const CATEGORIES = invConfig.categories || FALLBACK_CATEGORIES;
+  const UNIT_OPTIONS = invConfig.units || FALLBACK_UNITS;
+  const showCostPrice = invConfig.showCostPrice ?? true;
+  const showExpiry = invConfig.showExpiry ?? false;
+  const showBatchNumber = invConfig.showBatchNumber ?? false;
+  const showLocation = invConfig.showLocation ?? true;
+  const locationLabel = invConfig.locationLabel || 'Location';
+  const locationPlaceholder = invConfig.locationPlaceholder || 'e.g., Warehouse, Van';
+  const namePlaceholder = invConfig.namePlaceholder || 'e.g., Item name';
+  const supplierPlaceholder = invConfig.supplierPlaceholder || 'e.g., Supplier name';
+  const emptyIcon = invConfig.emptyIcon || '📦';
+  const emptyTitle = invConfig.emptyTitle || 'No inventory items yet';
+  const emptyDescription = invConfig.emptyDescription || 'Add items to track stock levels and pricing.';
+
+  /* ── State ── */
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
-  const [filterStock, setFilterStock] = useState('all'); // all | low | out | tracked
+  const [filterStock, setFilterStock] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [sortDir, setSortDir] = useState('asc');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -52,6 +66,7 @@ function InventoryTab() {
   const [adjustVal, setAdjustVal] = useState('');
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
 
+  /* ── Queries & Mutations ── */
   const { data, isLoading } = useQuery({
     queryKey: ['materials'],
     queryFn: async () => { const r = await getMaterials(); return r.data; },
@@ -105,6 +120,7 @@ function InventoryTab() {
     createMut.mutate({
       name: formData.name.trim(),
       unit_price: parseFloat(formData.unit_price) || 0,
+      cost_price: formData.cost_price !== '' ? parseFloat(formData.cost_price) : null,
       unit: formData.unit || 'each',
       category: formData.category || null,
       supplier: formData.supplier || null,
@@ -112,13 +128,19 @@ function InventoryTab() {
       notes: formData.notes || null,
       stock_on_hand: formData.stock_on_hand !== '' ? parseFloat(formData.stock_on_hand) : null,
       reorder_level: formData.reorder_level !== '' ? parseFloat(formData.reorder_level) : null,
+      ideal_stock: formData.ideal_stock !== '' ? parseFloat(formData.ideal_stock) : null,
+      location: formData.location || null,
+      expiry_date: formData.expiry_date || null,
+      batch_number: formData.batch_number || null,
     });
   };
 
+  /* ── Derived data ── */
   const materials = data?.materials || [];
   const lowStockCount = data?.low_stock_count || 0;
+  const expiringCount = data?.expiring_soon_count || 0;
   const existingCategories = [...new Set(materials.map(m => m.category).filter(Boolean))];
-  const allCategories = [...new Set([...COMMON_CATEGORIES, ...existingCategories])].sort();
+  const allCategories = [...new Set([...CATEGORIES, ...existingCategories])].sort();
   const totalItems = materials.length;
   const trackedItems = materials.filter(m => m.stock_on_hand !== null).length;
   const totalValue = materials.reduce((sum, m) => {
@@ -127,7 +149,7 @@ function InventoryTab() {
   }, 0);
   const outOfStock = materials.filter(m => m.stock_on_hand !== null && m.stock_on_hand <= 0).length;
 
-  // Filter & sort
+  /* ── Filter & sort ── */
   const filtered = useMemo(() => {
     let result = [...materials];
     if (searchTerm.trim()) {
@@ -136,13 +158,17 @@ function InventoryTab() {
         m.name.toLowerCase().includes(term) ||
         m.supplier?.toLowerCase().includes(term) ||
         m.category?.toLowerCase().includes(term) ||
-        m.sku?.toLowerCase().includes(term)
+        m.sku?.toLowerCase().includes(term) ||
+        m.location?.toLowerCase().includes(term) ||
+        m.batch_number?.toLowerCase().includes(term)
       );
     }
     if (filterCategory !== 'all') result = result.filter(m => m.category === filterCategory);
     if (filterStock === 'low') result = result.filter(m => m.low_stock);
     else if (filterStock === 'out') result = result.filter(m => m.stock_on_hand !== null && m.stock_on_hand <= 0);
     else if (filterStock === 'tracked') result = result.filter(m => m.stock_on_hand !== null);
+    else if (filterStock === 'expiring') result = result.filter(m => m.expiring_soon);
+    else if (filterStock === 'expired') result = result.filter(m => m.expired);
 
     result.sort((a, b) => {
       let cmp = 0;
@@ -151,6 +177,11 @@ function InventoryTab() {
         case 'price': cmp = (parseFloat(a.unit_price) || 0) - (parseFloat(b.unit_price) || 0); break;
         case 'stock': cmp = (a.stock_on_hand ?? -1) - (b.stock_on_hand ?? -1); break;
         case 'category': cmp = (a.category || 'zzz').localeCompare(b.category || 'zzz'); break;
+        case 'expiry': {
+          const ea = a.expiry_date || '9999-12-31';
+          const eb = b.expiry_date || '9999-12-31';
+          cmp = ea.localeCompare(eb); break;
+        }
         default: cmp = 0;
       }
       return sortDir === 'asc' ? cmp : -cmp;
@@ -158,7 +189,7 @@ function InventoryTab() {
     return result;
   }, [materials, searchTerm, filterCategory, filterStock, sortBy, sortDir]);
 
-  // Group by category
+  /* ── Group by category ── */
   const grouped = useMemo(() => {
     const g = {};
     filtered.forEach(m => {
@@ -169,7 +200,7 @@ function InventoryTab() {
     return g;
   }, [filtered]);
 
-  if (isLoading) return <LoadingSpinner message="Loading inventory..." />;
+  if (isLoading) return <LoadingSpinner message={`Loading ${(industry?.terminology?.inventoryTab || 'inventory').toLowerCase()}...`} />;
 
   const toggleSort = (field) => {
     if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -181,7 +212,7 @@ function InventoryTab() {
       {/* Header */}
       <div className="inv-header">
         <div>
-          <h2 className="tab-page-title">Inventory</h2>
+          <h2 className="tab-page-title">{industry?.terminology?.inventoryTab || 'Inventory'}</h2>
           <p className="tab-page-subtitle">Track your items, stock levels, and pricing</p>
         </div>
         <button className="btn-add" onClick={() => {
@@ -217,6 +248,12 @@ function InventoryTab() {
               <span className="inv-stat-label">Out of Stock</span>
             </div>
           )}
+          {showExpiry && expiringCount > 0 && (
+            <div className="inv-stat inv-stat-warn" onClick={() => setFilterStock('expiring')} role="button" tabIndex={0} title="Expiring within 7 days">
+              <span className="inv-stat-value">{expiringCount}</span>
+              <span className="inv-stat-label">Expiring Soon</span>
+            </div>
+          )}
           <div className="inv-stat">
             <span className="inv-stat-value">{formatCurrency(totalValue)}</span>
             <span className="inv-stat-label">Total Value</span>
@@ -233,14 +270,22 @@ function InventoryTab() {
               <label>Name *</label>
               <input type="text" className="inv-input" value={formData.name}
                 onChange={e => setFormData({...formData, name: e.target.value})}
-                placeholder="e.g., 15mm Copper Pipe" required autoFocus />
+                placeholder={namePlaceholder} required autoFocus />
             </div>
             <div className="inv-form-group">
-              <label>Price (€)</label>
+              <label>Sell Price (€)</label>
               <input type="number" className="inv-input" value={formData.unit_price}
                 onChange={e => setFormData({...formData, unit_price: e.target.value})}
                 placeholder="0.00" step="0.01" min="0" />
             </div>
+            {showCostPrice && (
+              <div className="inv-form-group">
+                <label>Cost Price (€)</label>
+                <input type="number" className="inv-input" value={formData.cost_price}
+                  onChange={e => setFormData({...formData, cost_price: e.target.value})}
+                  placeholder="0.00" step="0.01" min="0" />
+              </div>
+            )}
             <div className="inv-form-group">
               <label>Unit</label>
               <select className="inv-input" value={formData.unit}
@@ -260,7 +305,7 @@ function InventoryTab() {
               <label>Supplier</label>
               <input type="text" className="inv-input" value={formData.supplier}
                 onChange={e => setFormData({...formData, supplier: e.target.value})}
-                placeholder="e.g., Heatmerchants" />
+                placeholder={supplierPlaceholder} />
             </div>
             <div className="inv-form-group">
               <label>SKU / Code</label>
@@ -268,6 +313,14 @@ function InventoryTab() {
                 onChange={e => setFormData({...formData, sku: e.target.value})}
                 placeholder="Optional" />
             </div>
+            {showLocation && (
+              <div className="inv-form-group">
+                <label>{locationLabel}</label>
+                <input type="text" className="inv-input" value={formData.location}
+                  onChange={e => setFormData({...formData, location: e.target.value})}
+                  placeholder={locationPlaceholder} />
+              </div>
+            )}
             <div className="inv-form-group">
               <label>Stock on Hand</label>
               <input type="number" className="inv-input" value={formData.stock_on_hand}
@@ -280,6 +333,27 @@ function InventoryTab() {
                 onChange={e => setFormData({...formData, reorder_level: e.target.value})}
                 placeholder="Alert when stock drops below" step="0.01" min="0" />
             </div>
+            <div className="inv-form-group">
+              <label>Ideal Stock</label>
+              <input type="number" className="inv-input" value={formData.ideal_stock}
+                onChange={e => setFormData({...formData, ideal_stock: e.target.value})}
+                placeholder="Ideal amount to have" step="0.01" min="0" />
+            </div>
+            {showExpiry && (
+              <div className="inv-form-group">
+                <label>Expiry Date</label>
+                <input type="date" className="inv-input" value={formData.expiry_date}
+                  onChange={e => setFormData({...formData, expiry_date: e.target.value})} />
+              </div>
+            )}
+            {showBatchNumber && (
+              <div className="inv-form-group">
+                <label>Batch / Lot #</label>
+                <input type="text" className="inv-input" value={formData.batch_number}
+                  onChange={e => setFormData({...formData, batch_number: e.target.value})}
+                  placeholder="Optional" />
+              </div>
+            )}
             <div className="inv-form-group inv-wide">
               <label>Notes</label>
               <input type="text" className="inv-input" value={formData.notes}
@@ -302,7 +376,7 @@ function InventoryTab() {
           <div className="inv-toolbar-top">
             <div className="inv-search">
               <i className="fas fa-search"></i>
-              <input type="text" placeholder="Search inventory..." value={searchTerm}
+              <input type="text" placeholder={`Search ${(industry?.terminology?.inventoryTab || 'inventory').toLowerCase()}...`} value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)} />
               {searchTerm && (
                 <button className="inv-search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search">
@@ -318,13 +392,15 @@ function InventoryTab() {
                 </select>
               </div>
             )}
-            {trackedItems > 0 && (
+            {(trackedItems > 0 || showExpiry) && (
               <div className="inv-filter">
                 <select value={filterStock} onChange={e => setFilterStock(e.target.value)}>
                   <option value="all">All Stock</option>
                   <option value="tracked">Tracked Only</option>
                   <option value="low">Low Stock</option>
                   <option value="out">Out of Stock</option>
+                  {showExpiry && <option value="expiring">Expiring Soon</option>}
+                  {showExpiry && <option value="expired">Expired</option>}
                 </select>
               </div>
             )}
@@ -336,6 +412,7 @@ function InventoryTab() {
                 { key: 'price', label: 'Price', icon: 'fa-euro-sign' },
                 { key: 'stock', label: 'Stock', icon: 'fa-boxes-stacked' },
                 { key: 'category', label: 'Category', icon: 'fa-tag' },
+                ...(showExpiry ? [{ key: 'expiry', label: 'Expiry', icon: 'fa-clock' }] : []),
               ].map(s => (
                 <button key={s.key} className={`inv-sort-chip ${sortBy === s.key ? 'active' : ''}`}
                   onClick={() => toggleSort(s.key)} title={`Sort by ${s.label}`}>
@@ -352,9 +429,9 @@ function InventoryTab() {
       {/* Empty state */}
       {materials.length === 0 && (
         <div className="inv-empty">
-          <div className="inv-empty-icon">📦</div>
-          <h3>No inventory items yet</h3>
-          <p>Add items you use or sell. Track stock levels, set reorder alerts, and keep your pricing in one place.</p>
+          <div className="inv-empty-icon">{emptyIcon}</div>
+          <h3>{emptyTitle}</h3>
+          <p>{emptyDescription}</p>
           <button className="btn btn-primary" onClick={() => setShowAddForm(true)}>Add Your First Item</button>
         </div>
       )}
@@ -393,7 +470,8 @@ function InventoryTab() {
                     onAdjustSubmit={(adj) => adjustMut.mutate({ id: item.id, adjustment: adj })}
                     isPending={updateMut.isPending}
                     isAdjustPending={adjustMut.isPending}
-                    allCategories={allCategories} />
+                    allCategories={allCategories}
+                    invConfig={{ showCostPrice, showExpiry, showBatchNumber, showLocation, locationLabel, locationPlaceholder, namePlaceholder, supplierPlaceholder, UNIT_OPTIONS }} />
                 ))}
               </div>
             </div>
@@ -407,7 +485,7 @@ function InventoryTab() {
           <div className="delete-confirm-dialog">
             <div className="delete-confirm-icon"><i className="fas fa-exclamation-triangle"></i></div>
             <h3>Delete Item?</h3>
-            <p className="delete-warning">Remove <strong>{deleteConfirm.name}</strong> from your inventory?</p>
+            <p className="delete-warning">Remove <strong>{deleteConfirm.name}</strong> from your {(industry?.terminology?.inventoryTab || 'inventory').toLowerCase()}?</p>
             <p className="delete-cascade-warning">
               <i className="fas fa-info-circle"></i>
               Items already logged on jobs won't be affected.
@@ -426,15 +504,59 @@ function InventoryTab() {
   );
 }
 
-function InventoryCard({ item, isEditing, isAdjusting, adjustVal, onAdjustValChange, onEdit, onSave, onCancel, onDelete, onAdjustStart, onAdjustCancel, onAdjustSubmit, isPending, isAdjustPending, allCategories }) {
+/* ── Helper: margin percentage ── */
+function calcMargin(sell, cost) {
+  const s = parseFloat(sell);
+  const c = parseFloat(cost);
+  if (!s || !c || s <= 0) return null;
+  return Math.round(((s - c) / s) * 100);
+}
+
+/* ── Helper: stock level bar ── */
+function StockBar({ current, reorder, ideal }) {
+  const cur = parseFloat(current);
+  const max = parseFloat(ideal) || parseFloat(reorder) * 2 || cur * 1.5 || 100;
+  if (isNaN(cur) || max <= 0) return null;
+  const pct = Math.min(100, Math.max(0, (cur / max) * 100));
+  const reorderPct = reorder ? Math.min(100, (parseFloat(reorder) / max) * 100) : null;
+  let color = '#22c55e';
+  if (reorder && cur <= parseFloat(reorder)) color = cur <= 0 ? '#ef4444' : '#f59e0b';
+  return (
+    <div className="inv-stock-bar-wrap" title={`${cur} / ${ideal ? `ideal ${ideal}` : `max ~${Math.round(max)}`}`}>
+      <div className="inv-stock-bar">
+        <div className="inv-stock-bar-fill" style={{ width: `${pct}%`, background: color }} />
+        {reorderPct !== null && <div className="inv-stock-bar-marker" style={{ left: `${reorderPct}%` }} />}
+      </div>
+    </div>
+  );
+}
+
+/* ── Helper: days until expiry ── */
+function ExpiryBadge({ expiryDate, expired, expiringSoon }) {
+  if (!expiryDate) return null;
+  const exp = new Date(expiryDate + 'T00:00:00');
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const days = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+  if (expired) return <span className="inv-badge inv-badge-danger" title={`Expired ${expiryDate}`}>Expired</span>;
+  if (expiringSoon) return <span className="inv-badge inv-badge-warn" title={`Expires ${expiryDate}`}>{days}d left</span>;
+  return <span className="inv-badge inv-badge-expiry" title={`Expires ${expiryDate}`}><i className="fas fa-clock"></i> {expiryDate}</span>;
+}
+
+function InventoryCard({ item, isEditing, isAdjusting, adjustVal, onAdjustValChange, onEdit, onSave, onCancel, onDelete, onAdjustStart, onAdjustCancel, onAdjustSubmit, isPending, isAdjustPending, allCategories, invConfig }) {
+  const { showCostPrice, showExpiry, showBatchNumber, showLocation, locationLabel, locationPlaceholder, namePlaceholder, supplierPlaceholder, UNIT_OPTIONS } = invConfig;
   const [editData, setEditData] = useState(item);
 
-  // Reset edit data when entering edit mode
   const handleEdit = () => {
     setEditData({
       ...item,
       stock_on_hand: item.stock_on_hand ?? '',
       reorder_level: item.reorder_level ?? '',
+      ideal_stock: item.ideal_stock ?? '',
+      cost_price: item.cost_price ?? '',
+      location: item.location ?? '',
+      expiry_date: item.expiry_date ?? '',
+      batch_number: item.batch_number ?? '',
     });
     onEdit();
   };
@@ -447,14 +569,22 @@ function InventoryCard({ item, isEditing, isAdjusting, adjustVal, onAdjustValCha
             <div className="inv-form-group inv-wide">
               <label>Name</label>
               <input type="text" className="inv-input" value={editData.name || ''}
-                onChange={e => setEditData({...editData, name: e.target.value})} />
+                onChange={e => setEditData({...editData, name: e.target.value})} placeholder={namePlaceholder} />
             </div>
             <div className="inv-form-group">
-              <label>Price (€)</label>
+              <label>Sell Price (€)</label>
               <input type="number" className="inv-input" value={editData.unit_price || ''}
                 onChange={e => setEditData({...editData, unit_price: e.target.value})}
                 step="0.01" min="0" />
             </div>
+            {showCostPrice && (
+              <div className="inv-form-group">
+                <label>Cost Price (€)</label>
+                <input type="number" className="inv-input" value={editData.cost_price ?? ''}
+                  onChange={e => setEditData({...editData, cost_price: e.target.value})}
+                  step="0.01" min="0" />
+              </div>
+            )}
             <div className="inv-form-group">
               <label>Unit</label>
               <select className="inv-input" value={editData.unit || 'each'}
@@ -473,13 +603,20 @@ function InventoryCard({ item, isEditing, isAdjusting, adjustVal, onAdjustValCha
             <div className="inv-form-group">
               <label>Supplier</label>
               <input type="text" className="inv-input" value={editData.supplier || ''}
-                onChange={e => setEditData({...editData, supplier: e.target.value})} />
+                onChange={e => setEditData({...editData, supplier: e.target.value})} placeholder={supplierPlaceholder} />
             </div>
             <div className="inv-form-group">
               <label>SKU / Code</label>
               <input type="text" className="inv-input" value={editData.sku || ''}
                 onChange={e => setEditData({...editData, sku: e.target.value})} />
             </div>
+            {showLocation && (
+              <div className="inv-form-group">
+                <label>{locationLabel}</label>
+                <input type="text" className="inv-input" value={editData.location || ''}
+                  onChange={e => setEditData({...editData, location: e.target.value})} placeholder={locationPlaceholder} />
+              </div>
+            )}
             <div className="inv-form-group">
               <label>Stock on Hand</label>
               <input type="number" className="inv-input" value={editData.stock_on_hand ?? ''}
@@ -492,6 +629,26 @@ function InventoryCard({ item, isEditing, isAdjusting, adjustVal, onAdjustValCha
                 onChange={e => setEditData({...editData, reorder_level: e.target.value})}
                 placeholder="Low stock alert" step="0.01" min="0" />
             </div>
+            <div className="inv-form-group">
+              <label>Ideal Stock</label>
+              <input type="number" className="inv-input" value={editData.ideal_stock ?? ''}
+                onChange={e => setEditData({...editData, ideal_stock: e.target.value})}
+                placeholder="Ideal amount to have" step="0.01" min="0" />
+            </div>
+            {showExpiry && (
+              <div className="inv-form-group">
+                <label>Expiry Date</label>
+                <input type="date" className="inv-input" value={editData.expiry_date || ''}
+                  onChange={e => setEditData({...editData, expiry_date: e.target.value})} />
+              </div>
+            )}
+            {showBatchNumber && (
+              <div className="inv-form-group">
+                <label>Batch / Lot #</label>
+                <input type="text" className="inv-input" value={editData.batch_number || ''}
+                  onChange={e => setEditData({...editData, batch_number: e.target.value})} />
+              </div>
+            )}
             <div className="inv-form-group inv-wide">
               <label>Notes</label>
               <input type="text" className="inv-input" value={editData.notes || ''}
@@ -513,11 +670,12 @@ function InventoryCard({ item, isEditing, isAdjusting, adjustVal, onAdjustValCha
   const hasStock = item.stock_on_hand !== null;
   const isLow = item.low_stock && item.stock_on_hand > 0;
   const isOut = hasStock && item.stock_on_hand <= 0;
+  const margin = showCostPrice ? calcMargin(item.unit_price, item.cost_price) : null;
 
   return (
-    <div className={`inv-card ${isLow ? 'inv-card-low' : ''} ${isOut ? 'inv-card-out' : ''}`}>
+    <div className={`inv-card ${isLow ? 'inv-card-low' : ''} ${isOut ? 'inv-card-out' : ''} ${item.expired ? 'inv-card-expired' : ''}`}>
       <div className="inv-card-icon">
-        <i className={`fas ${isOut ? 'fa-box-open' : 'fa-cube'}`}></i>
+        <i className={`fas ${isOut ? 'fa-box-open' : item.expired ? 'fa-exclamation-circle' : 'fa-cube'}`}></i>
       </div>
       <div className="inv-card-content">
         <div className="inv-card-top">
@@ -525,16 +683,32 @@ function InventoryCard({ item, isEditing, isAdjusting, adjustVal, onAdjustValCha
           {item.sku && <span className="inv-card-sku">{item.sku}</span>}
           {isLow && <span className="inv-badge inv-badge-warn" title="Below reorder level">Low</span>}
           {isOut && <span className="inv-badge inv-badge-danger">Out</span>}
+          {showExpiry && <ExpiryBadge expiryDate={item.expiry_date} expired={item.expired} expiringSoon={item.expiring_soon} />}
         </div>
         <div className="inv-card-meta">
           <span className="inv-price">{formatCurrency(item.unit_price)}<span className="inv-unit">/{item.unit || 'each'}</span></span>
+          {showCostPrice && item.cost_price != null && (
+            <span className="inv-cost">
+              <i className="fas fa-tag"></i> Cost {formatCurrency(item.cost_price)}
+              {margin !== null && <span className={`inv-margin ${margin >= 30 ? 'good' : margin >= 10 ? 'ok' : 'low'}`}>{margin}%</span>}
+            </span>
+          )}
           {hasStock && (
             <span className={`inv-stock ${isLow ? 'inv-stock-low' : ''} ${isOut ? 'inv-stock-out' : ''}`}>
               <i className="fas fa-boxes-stacked"></i> {item.stock_on_hand} {item.unit || 'each'}
-              {item.reorder_level !== null && <span className="inv-reorder-hint"> (reorder at {item.reorder_level})</span>}
+              {item.ideal_stock != null && <span className="inv-ideal-hint"> / {item.ideal_stock} ideal</span>}
+              {item.ideal_stock == null && item.reorder_level !== null && <span className="inv-reorder-hint"> (reorder at {item.reorder_level})</span>}
             </span>
           )}
-          {item.supplier && <span className="inv-supplier"><i className="fas fa-store"></i> {item.supplier}</span>}
+        </div>
+        {/* Stock level bar */}
+        {hasStock && (
+          <StockBar current={item.stock_on_hand} reorder={item.reorder_level} ideal={item.ideal_stock} />
+        )}
+        <div className="inv-card-details">
+          {item.supplier && <span className="inv-detail"><i className="fas fa-store"></i> {item.supplier}</span>}
+          {showLocation && item.location && <span className="inv-detail"><i className="fas fa-map-marker-alt"></i> {item.location}</span>}
+          {showBatchNumber && item.batch_number && <span className="inv-detail"><i className="fas fa-barcode"></i> {item.batch_number}</span>}
         </div>
         {item.notes && <div className="inv-card-notes"><i className="fas fa-sticky-note"></i> {item.notes}</div>}
       </div>

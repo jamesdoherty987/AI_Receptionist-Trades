@@ -299,7 +299,7 @@ function CrmTab({ clients, bookings = [] }) {
         <div className="crm-controls-right">
           <div className="dash-search crm-search">
             <i className="fas fa-search"></i>
-            <input type="text" placeholder={activeView === 'pipeline' ? 'Search leads...' : activeView === 'customers' ? 'Search customers...' : 'Search reviews...'}
+            <input type="text" placeholder={activeView === 'pipeline' ? 'Search leads...' : activeView === 'customers' ? `Search ${(terminology.clients || 'customers').toLowerCase()}...` : 'Search reviews...'}
               value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             {searchTerm && <button className="dash-search-clear" onClick={() => setSearchTerm('')}><i className="fas fa-times"></i></button>}
           </div>
@@ -308,14 +308,14 @@ function CrmTab({ clients, bookings = [] }) {
               <button className="btn-add" style={{ background: '#6366f1' }} onClick={() => {
                 if (!isSubscriptionActive) { addToast('Please upgrade your plan', 'warning'); return; }
                 setEmailModal({ open: true, mode: 'bulk', recipient: null });
-              }} title="Send an email to multiple customers at once">
+              }} title={`Send an email to multiple ${(terminology.clients || 'customers').toLowerCase()} at once`}>
                 <i className={`fas ${isSubscriptionActive ? 'fa-paper-plane' : 'fa-lock'}`}></i> Bulk Email
               </button>
               <button className="btn-add" onClick={() => {
-                if (!isSubscriptionActive) { addToast('Please upgrade your plan to add customers', 'warning'); return; }
+                if (!isSubscriptionActive) { addToast(`Please upgrade your plan to add ${(terminology.clients || 'customers').toLowerCase()}`, 'warning'); return; }
                 setShowAddClient(true);
-              }} title="Add a new customer manually">
-                <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add Customer
+              }} title={`Add a new ${(terminology.client || 'customer').toLowerCase()} manually`}>
+                <i className={`fas ${isSubscriptionActive ? 'fa-plus' : 'fa-lock'}`}></i> Add {terminology.client || 'Customer'}
               </button>
             </>
           )}

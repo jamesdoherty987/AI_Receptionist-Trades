@@ -5447,7 +5447,7 @@ def business_settings_api():
             # Admin-controlled tab visibility
             'admin_tab_visibility': company.get('admin_tab_visibility') or {
                 'jobs': True, 'calls': True, 'calendar': True, 'employees': True,
-                'crm': True, 'services': True, 'materials': True, 'finances': True,
+                'crm': True, 'services': True, 'inventory': True, 'finances': True,
                 'insights': True, 'reviews': True,
             },
             # Custom per-account pricing
@@ -5808,6 +5808,56 @@ def add_service_api():
         'default_materials': data.get('default_materials', [])
     }
     
+    # ─── New industry-specific fields ─────────────────────────────────
+    import json as _json
+    
+    # Tags (array of strings)
+    tags = data.get('tags')
+    if tags and isinstance(tags, list):
+        sanitized_data['tags'] = _json.dumps([str(t).strip() for t in tags if str(t).strip()])
+    else:
+        sanitized_data['tags'] = None
+    
+    # Capacity (restaurant party size)
+    try:
+        cap_min = int(data['capacity_min']) if data.get('capacity_min') else None
+        sanitized_data['capacity_min'] = cap_min if cap_min and cap_min > 0 else None
+    except (ValueError, TypeError):
+        sanitized_data['capacity_min'] = None
+    try:
+        cap_max = int(data['capacity_max']) if data.get('capacity_max') else None
+        sanitized_data['capacity_max'] = cap_max if cap_max and cap_max > 0 else None
+    except (ValueError, TypeError):
+        sanitized_data['capacity_max'] = None
+    
+    # Area (restaurant dining section)
+    sanitized_data['area'] = data.get('area', '').strip() if data.get('area') else None
+    
+    # Deposit
+    sanitized_data['requires_deposit'] = bool(data.get('requires_deposit', False))
+    try:
+        dep = float(data['deposit_amount']) if data.get('deposit_amount') else None
+        sanitized_data['deposit_amount'] = dep if dep and dep > 0 else None
+    except (ValueError, TypeError):
+        sanitized_data['deposit_amount'] = None
+    
+    # Warranty
+    sanitized_data['warranty'] = data.get('warranty', '').strip() if data.get('warranty') else None
+    
+    # Seasonal
+    sanitized_data['seasonal'] = bool(data.get('seasonal', False))
+    seasonal_months = data.get('seasonal_months')
+    if seasonal_months and isinstance(seasonal_months, list):
+        sanitized_data['seasonal_months'] = _json.dumps([int(m) for m in seasonal_months if isinstance(m, (int, float)) and 0 <= int(m) <= 11])
+    else:
+        sanitized_data['seasonal_months'] = None
+    
+    # AI Notes
+    sanitized_data['ai_notes'] = data.get('ai_notes', '').strip() if data.get('ai_notes') else None
+    
+    # Follow-up service
+    sanitized_data['follow_up_service_id'] = data.get('follow_up_service_id') if data.get('follow_up_service_id') else None
+    
     success = settings_mgr.add_service(sanitized_data, company_id=company_id)
     if success:
         return jsonify({"message": "Service added successfully"})
@@ -5895,6 +5945,62 @@ def manage_service_api(service_id):
         # Handle package_only if provided
         if 'package_only' in data:
             data['package_only'] = bool(data.get('package_only', False))
+        
+        # ─── New industry-specific fields ─────────────────────────────
+        import json as _json
+        
+        if 'tags' in data:
+            tags = data.get('tags')
+            if tags and isinstance(tags, list):
+                data['tags'] = _json.dumps([str(t).strip() for t in tags if str(t).strip()])
+            else:
+                data['tags'] = None
+        
+        if 'capacity_min' in data:
+            try:
+                v = int(data['capacity_min']) if data.get('capacity_min') else None
+                data['capacity_min'] = v if v and v > 0 else None
+            except (ValueError, TypeError):
+                data['capacity_min'] = None
+        
+        if 'capacity_max' in data:
+            try:
+                v = int(data['capacity_max']) if data.get('capacity_max') else None
+                data['capacity_max'] = v if v and v > 0 else None
+            except (ValueError, TypeError):
+                data['capacity_max'] = None
+        
+        if 'area' in data:
+            data['area'] = data.get('area', '').strip() if data.get('area') else None
+        
+        if 'requires_deposit' in data:
+            data['requires_deposit'] = bool(data.get('requires_deposit', False))
+        
+        if 'deposit_amount' in data:
+            try:
+                v = float(data['deposit_amount']) if data.get('deposit_amount') else None
+                data['deposit_amount'] = v if v and v > 0 else None
+            except (ValueError, TypeError):
+                data['deposit_amount'] = None
+        
+        if 'warranty' in data:
+            data['warranty'] = data.get('warranty', '').strip() if data.get('warranty') else None
+        
+        if 'seasonal' in data:
+            data['seasonal'] = bool(data.get('seasonal', False))
+        
+        if 'seasonal_months' in data:
+            sm = data.get('seasonal_months')
+            if sm and isinstance(sm, list):
+                data['seasonal_months'] = _json.dumps([int(m) for m in sm if isinstance(m, (int, float)) and 0 <= int(m) <= 11])
+            else:
+                data['seasonal_months'] = None
+        
+        if 'ai_notes' in data:
+            data['ai_notes'] = data.get('ai_notes', '').strip() if data.get('ai_notes') else None
+        
+        if 'follow_up_service_id' in data:
+            data['follow_up_service_id'] = data.get('follow_up_service_id') if data.get('follow_up_service_id') else None
         
         # Upload image to R2 if it's base64
         if 'image_url' in data and data['image_url'] and data['image_url'].startswith('data:image/'):
@@ -5987,6 +6093,44 @@ def delete_package_api(package_id):
 # Materials Catalog & Job Materials API
 # ============================================================
 
+def _adjust_inventory_stock(db, company_id, material_id, quantity_delta):
+    """Auto-adjust inventory stock when materials are added/removed from jobs.
+    quantity_delta: negative = used on job (decrement), positive = returned to stock (increment).
+    Only adjusts if the material has stock tracking enabled (stock_on_hand IS NOT NULL).
+    """
+    if not material_id:
+        return  # Custom items (no catalog link) can't be tracked
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT stock_on_hand FROM materials WHERE id = %s AND company_id = %s",
+            (material_id, company_id)
+        )
+        row = cursor.fetchone()
+        if not row or row[0] is None:
+            return  # Stock tracking not enabled for this item
+        current = float(row[0])
+        new_stock = max(0, current + quantity_delta)
+        cursor.execute(
+            "UPDATE materials SET stock_on_hand = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s",
+            (new_stock, material_id, company_id)
+        )
+        conn.commit()
+    except Exception as e:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        print(f"[WARNING] Stock auto-adjust failed for material {material_id}: {e}")
+    finally:
+        try:
+            cursor.close()
+        except Exception:
+            pass
+        db.return_connection(conn)
+
+
 @app.route("/api/materials", methods=["GET", "POST"])
 @login_required
 @subscription_required
@@ -6007,13 +6151,34 @@ def materials_api():
             materials = [dict(r) for r in cursor.fetchall()]
             # Convert Decimal to float for JSON serialization
             low_stock_count = 0
+            expiring_soon_count = 0
+            from datetime import date, timedelta
+            soon = date.today() + timedelta(days=7)
             for m in materials:
                 if m.get('unit_price') is not None:
                     m['unit_price'] = float(m['unit_price'])
+                if m.get('cost_price') is not None:
+                    m['cost_price'] = float(m['cost_price'])
                 if m.get('stock_on_hand') is not None:
                     m['stock_on_hand'] = float(m['stock_on_hand'])
                 if m.get('reorder_level') is not None:
                     m['reorder_level'] = float(m['reorder_level'])
+                if m.get('ideal_stock') is not None:
+                    m['ideal_stock'] = float(m['ideal_stock'])
+                # Convert expiry_date to ISO string for JSON
+                if m.get('expiry_date') is not None:
+                    exp = m['expiry_date']
+                    # Compare before converting to string
+                    is_expiring = exp <= soon if isinstance(exp, date) else False
+                    is_expired = exp < date.today() if isinstance(exp, date) else False
+                    m['expiry_date'] = exp.isoformat() if hasattr(exp, 'isoformat') else str(exp)
+                    m['expiring_soon'] = is_expiring
+                    m['expired'] = is_expired
+                    if is_expiring and not is_expired:
+                        expiring_soon_count += 1
+                else:
+                    m['expiring_soon'] = False
+                    m['expired'] = False
                 # Flag low stock items (at or below reorder level but still in stock)
                 if (m.get('stock_on_hand') is not None and m.get('reorder_level') is not None
                         and m['stock_on_hand'] <= m['reorder_level']):
@@ -6022,7 +6187,7 @@ def materials_api():
                         low_stock_count += 1
                 else:
                     m['low_stock'] = False
-            return jsonify({"materials": materials, "low_stock_count": low_stock_count})
+            return jsonify({"materials": materials, "low_stock_count": low_stock_count, "expiring_soon_count": expiring_soon_count})
         finally:
             cursor.close()
             db.return_connection(conn)
@@ -6045,6 +6210,16 @@ def materials_api():
     supplier = sanitize_string(data.get('supplier', ''), max_length=255) or None
     sku = sanitize_string(data.get('sku', ''), max_length=100) or None
     notes = sanitize_string(data.get('notes', ''), max_length=2000) or None
+    location = sanitize_string(data.get('location', ''), max_length=255) or None
+    batch_number = sanitize_string(data.get('batch_number', ''), max_length=100) or None
+
+    # Cost price (purchase price)
+    cost_price = None
+    if data.get('cost_price') is not None and data.get('cost_price') != '':
+        try:
+            cost_price = max(0, float(data['cost_price']))
+        except (ValueError, TypeError):
+            cost_price = None
 
     # Stock fields — None means "not tracked"
     stock_on_hand = None
@@ -6061,13 +6236,30 @@ def materials_api():
         except (ValueError, TypeError):
             reorder_level = None
 
+    ideal_stock = None
+    if data.get('ideal_stock') is not None and data.get('ideal_stock') != '':
+        try:
+            ideal_stock = max(0, float(data['ideal_stock']))
+        except (ValueError, TypeError):
+            ideal_stock = None
+
+    expiry_date = None
+    if data.get('expiry_date'):
+        try:
+            from datetime import date as _date
+            expiry_date = _date.fromisoformat(data['expiry_date'])
+        except (ValueError, TypeError):
+            expiry_date = None
+
     conn = db.get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            """INSERT INTO materials (company_id, name, unit_price, unit, category, supplier, sku, notes, stock_on_hand, reorder_level)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-            (company_id, name, unit_price, unit, category, supplier, sku, notes, stock_on_hand, reorder_level)
+            """INSERT INTO materials (company_id, name, unit_price, cost_price, unit, category, supplier, sku, notes,
+               stock_on_hand, reorder_level, ideal_stock, location, expiry_date, batch_number)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (company_id, name, unit_price, cost_price, unit, category, supplier, sku, notes,
+             stock_on_hand, reorder_level, ideal_stock, location, expiry_date, batch_number)
         )
         material_id = cursor.fetchone()[0]
         conn.commit()
@@ -6103,6 +6295,14 @@ def material_detail_api(material_id):
             except (ValueError, TypeError):
                 p = 0
             fields.append("unit_price = %s"); values.append(p)
+        if 'cost_price' in data:
+            if data['cost_price'] is None or data['cost_price'] == '':
+                fields.append("cost_price = %s"); values.append(None)
+            else:
+                try:
+                    fields.append("cost_price = %s"); values.append(max(0, float(data['cost_price'])))
+                except (ValueError, TypeError):
+                    pass
         if 'unit' in data:
             fields.append("unit = %s"); values.append(sanitize_string(data['unit'], max_length=50) or 'each')
         if 'category' in data:
@@ -6113,6 +6313,10 @@ def material_detail_api(material_id):
             fields.append("sku = %s"); values.append(sanitize_string(data['sku'], max_length=100) or None)
         if 'notes' in data:
             fields.append("notes = %s"); values.append(sanitize_string(data['notes'], max_length=2000) or None)
+        if 'location' in data:
+            fields.append("location = %s"); values.append(sanitize_string(data['location'], max_length=255) or None)
+        if 'batch_number' in data:
+            fields.append("batch_number = %s"); values.append(sanitize_string(data['batch_number'], max_length=100) or None)
         if 'stock_on_hand' in data:
             if data['stock_on_hand'] is None or data['stock_on_hand'] == '':
                 fields.append("stock_on_hand = %s"); values.append(None)
@@ -6127,6 +6331,23 @@ def material_detail_api(material_id):
             else:
                 try:
                     fields.append("reorder_level = %s"); values.append(max(0, float(data['reorder_level'])))
+                except (ValueError, TypeError):
+                    pass
+        if 'ideal_stock' in data:
+            if data['ideal_stock'] is None or data['ideal_stock'] == '':
+                fields.append("ideal_stock = %s"); values.append(None)
+            else:
+                try:
+                    fields.append("ideal_stock = %s"); values.append(max(0, float(data['ideal_stock'])))
+                except (ValueError, TypeError):
+                    pass
+        if 'expiry_date' in data:
+            if data['expiry_date'] is None or data['expiry_date'] == '':
+                fields.append("expiry_date = %s"); values.append(None)
+            else:
+                try:
+                    from datetime import date as _date
+                    fields.append("expiry_date = %s"); values.append(_date.fromisoformat(data['expiry_date']))
                 except (ValueError, TypeError):
                     pass
 
@@ -6275,6 +6496,8 @@ def job_materials_api(booking_id):
         )
         item_id = cursor.fetchone()[0]
         conn.commit()
+        # Auto-decrement inventory stock
+        _adjust_inventory_stock(db, company_id, material_id, -quantity)
         return jsonify({"success": True, "id": item_id, "total_cost": total_cost})
     except Exception as e:
         conn.rollback()
@@ -6294,13 +6517,23 @@ def job_material_detail_api(booking_id, item_id):
 
     if request.method == "DELETE":
         conn = db.get_connection()
-        cursor = conn.cursor()
+        from psycopg2.extras import RealDictCursor as _RDC
+        cursor = conn.cursor(cursor_factory=_RDC)
         try:
+            # Get the item before deleting so we can restore stock
+            cursor.execute(
+                "SELECT material_id, quantity FROM job_materials WHERE id = %s AND booking_id = %s AND company_id = %s",
+                (item_id, booking_id, company_id)
+            )
+            item = cursor.fetchone()
             cursor.execute(
                 "DELETE FROM job_materials WHERE id = %s AND booking_id = %s AND company_id = %s",
                 (item_id, booking_id, company_id)
             )
             conn.commit()
+            # Restore stock for the removed quantity
+            if item and item.get('material_id'):
+                _adjust_inventory_stock(db, company_id, item['material_id'], float(item.get('quantity', 0)))
             return jsonify({"success": cursor.rowcount > 0})
         except Exception as e:
             conn.rollback()
@@ -6354,6 +6587,12 @@ def job_material_detail_api(booking_id, item_id):
                 values
             )
             conn.commit()
+            # Adjust stock for quantity change (negative delta = more used, positive = less used)
+            if 'quantity' in data and existing.get('material_id'):
+                old_qty = float(existing['quantity'])
+                qty_delta = old_qty - new_qty  # positive if reduced, negative if increased
+                if qty_delta != 0:
+                    _adjust_inventory_stock(db, company_id, existing['material_id'], qty_delta)
             return jsonify({"success": True, "total_cost": total})
         except Exception as e:
             conn.rollback()
@@ -6447,6 +6686,8 @@ def employee_job_materials_api(job_id):
         )
         item_id = cursor.fetchone()[0]
         conn.commit()
+        # Auto-decrement inventory stock
+        _adjust_inventory_stock(db, company_id, material_id, -quantity)
         return jsonify({"success": True, "id": item_id, "total_cost": total_cost})
     except Exception as e:
         conn.rollback()
@@ -6471,11 +6712,23 @@ def employee_delete_job_material(job_id, item_id):
     conn = db.get_connection()
     cursor = conn.cursor()
     try:
+        # Get the item before deleting so we can restore stock
+        from psycopg2.extras import RealDictCursor as _RDC2
+        cur2 = conn.cursor(cursor_factory=_RDC2)
+        cur2.execute(
+            "SELECT material_id, quantity FROM job_materials WHERE id = %s AND booking_id = %s AND company_id = %s",
+            (item_id, job_id, company_id)
+        )
+        item = cur2.fetchone()
+        cur2.close()
         cursor.execute(
             "DELETE FROM job_materials WHERE id = %s AND booking_id = %s AND company_id = %s",
             (item_id, job_id, company_id)
         )
         conn.commit()
+        # Restore stock for the removed quantity
+        if item and item.get('material_id'):
+            _adjust_inventory_stock(db, company_id, item['material_id'], float(item.get('quantity', 0)))
         return jsonify({"success": cursor.rowcount > 0})
     except Exception as e:
         conn.rollback()
@@ -7418,6 +7671,14 @@ def bookings_api():
                         conn.commit()
                         if attached_count > 0:
                             print(f"[INFO] Auto-attached {attached_count} default materials to booking {booking_id}")
+                        # Auto-decrement inventory stock for attached materials
+                        for mat in default_materials:
+                            if isinstance(mat, dict) and mat.get('material_id'):
+                                try:
+                                    _qty = float(mat.get('quantity', 1) or 1)
+                                    _adjust_inventory_stock(db, company_id, mat['material_id'], -_qty)
+                                except Exception:
+                                    pass
                     except Exception as mat_err:
                         conn.rollback()
                         print(f"[WARNING] Could not auto-attach materials: {mat_err}")

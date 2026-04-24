@@ -1546,3 +1546,205 @@
   font-style: italic;
   margin: 0.25rem 0 0;
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   NEW: Tags input, tag presets, month grid, category filter, card tags
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Tags Input ──────────────────────────────────────────────────────────── */
+.svc-tags-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: white;
+  min-height: 38px;
+  align-items: center;
+  transition: border-color 0.2s;
+  cursor: text;
+}
+
+.svc-tags-wrap:focus-within {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+}
+
+.svc-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--accent-blue);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.svc-tag-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.65rem;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  line-height: 1;
+}
+
+.svc-tag-remove:hover {
+  opacity: 1;
+}
+
+.svc-tag-input {
+  border: none;
+  outline: none;
+  font-size: 0.85rem;
+  font-family: inherit;
+  background: transparent;
+  color: var(--text-primary);
+  min-width: 80px;
+  flex: 1;
+}
+
+.svc-tag-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+}
+
+.svc-tag-preset {
+  background: none;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.svc-tag-preset:hover {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.04);
+}
+
+/* ─── Months Grid (seasonal) ──────────────────────────────────────────────── */
+.svc-months-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+
+.svc-month-chip {
+  padding: 0.35rem 0.25rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: center;
+  transition: all 0.15s;
+}
+
+.svc-month-chip:hover {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.svc-month-chip.active {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: white;
+}
+
+/* ─── Category Filter (toolbar) ───────────────────────────────────────────── */
+.svc-category-filter {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  background: white;
+  color: var(--text-primary);
+  cursor: pointer;
+  max-width: 160px;
+}
+
+.svc-category-filter:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+/* ─── Category Badge on Card ──────────────────────────────────────────────── */
+.meta-item.svc-category-badge {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+/* ─── Tags on Service Card ────────────────────────────────────────────────── */
+.svc-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+
+.svc-card-tag {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  background: var(--bg-gray, #f1f5f9);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 500;
+}
+
+.svc-card-tag-more {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--accent-blue);
+}
+
+/* ─── Mobile adjustments for new elements ─────────────────────────────────── */
+@media (max-width: 768px) {
+  .svc-months-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .svc-tag-presets {
+    gap: 0.25rem;
+  }
+
+  .svc-tag-preset {
+    font-size: 0.68rem;
+    padding: 0.15rem 0.4rem;
+  }
+
+  .svc-category-filter {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .svc-card-tags {
+    gap: 0.2rem;
+  }
+
+  .svc-card-tag {
+    font-size: 0.62rem;
+    padding: 0.08rem 0.3rem;
+  }
+}

@@ -35,6 +35,7 @@ import {
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
 import { useAuth } from '../../context/AuthContext';
+import { useIndustry } from '../../context/IndustryContext';
 import { useToast } from '../Toast';
 import { formatDateTime, getStatusBadgeClass, formatCurrency, formatPhone, getProxiedMediaUrl } from '../../utils/helpers';
 import { DURATION_OPTIONS_GROUPED, formatDuration } from '../../utils/durationOptions';
@@ -46,6 +47,7 @@ import './JobDetailModal.css';
 function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const queryClient = useQueryClient();
   const { hasActiveSubscription } = useAuth();
+  const { terminology, features } = useIndustry();
   const isSubscriptionActive = hasActiveSubscription();
   const { addToast } = useToast();
   const [showAssignEmployee, setShowAssignEmployee] = useState(false);
@@ -360,10 +362,10 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
       setIsEditing(false);
-      addToast('Job updated successfully!', 'success');
+      addToast(`${terminology.job || 'Job'} updated successfully!`, 'success');
     },
     onError: (error) => {
-      addToast('Failed to update job: ' + (error.response?.data?.error || error.message), 'error');
+      addToast(`Failed to update ${(terminology.job || 'job').toLowerCase()}: ` + (error.response?.data?.error || error.message), 'error');
     }
   });
 
@@ -513,9 +515,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['finances'] });
       setShowRejectModal(false);
       setRejectReason('');
-      addToast('Job rejected and customer notified', 'success');
+      addToast(`${terminology.job || 'Job'} rejected and ${(terminology.client || 'customer').toLowerCase()} notified`, 'success');
     },
-    onError: (error) => addToast(error.response?.data?.error || 'Failed to reject job', 'error'),
+    onError: (error) => addToast(error.response?.data?.error || `Failed to reject ${(terminology.job || 'job').toLowerCase()}`, 'error'),
   });
 
   const refundMutation = useMutation({
@@ -672,7 +674,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
 
   if (isLoading) {
     return (
-      <Modal isOpen={isOpen} onClose={onClose} title="Job Details" size="xlarge">
+      <Modal isOpen={isOpen} onClose={onClose} title={`${terminology.job || 'Job'} Details`} size="xlarge">
         <div className="modal-loading">
           <div className="loading-spinner"></div>
           <p>Loading job details...</p>
@@ -706,7 +708,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={job.service_type || job.service || 'Job Details'} size="xlarge">
+    <Modal isOpen={isOpen} onClose={onClose} title={job.service_type || job.service || `${terminology.job || 'Job'} Details`} size="xlarge">
       <div className="job-detail-modal">
         {/* Header: Name + Status + Actions */}
         <div className="job-modal-header">
@@ -861,8 +863,8 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   </div>
                   <div className="edit-row">
                     <div className="edit-field full-width">
-                      <label className="edit-label">Job Address</label>
-                      <input type="text" name="job_address" className="edit-input" value={editFormData.job_address} onChange={handleEditChange} placeholder="Job location address" />
+                      <label className="edit-label">{terminology.job || 'Job'} Address</label>
+                      <input type="text" name="job_address" className="edit-input" value={editFormData.job_address} onChange={handleEditChange} placeholder={`${terminology.job || 'Job'} location address`} />
                     </div>
                   </div>
                 </div>
@@ -1568,13 +1570,13 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
           onClose={() => setPreviewQuote(null)}
         />
       )}
-      {/* Reject Job Modal */}
+      {/* Reject Modal */}
       {showRejectModal && (
         <div className="reject-modal-overlay" onClick={() => setShowRejectModal(false)}>
           <div className="reject-modal" onClick={e => e.stopPropagation()}>
-            <h3><i className="fas fa-ban" style={{ color: '#ef4444' }}></i> Reject Job</h3>
+            <h3><i className="fas fa-ban" style={{ color: '#ef4444' }}></i> Reject {terminology.job || 'Job'}</h3>
             <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 12px' }}>
-              This will reject the job and notify the customer via email. The job will be removed from the calendar.
+              This will reject the {(terminology.job || 'job').toLowerCase()} and notify the {(terminology.client || 'customer').toLowerCase()} via email. The {(terminology.job || 'job').toLowerCase()} will be removed from the calendar.
             </p>
             <div style={{ marginBottom: '12px' }}>
               <label style={{ fontSize: '0.78rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>Reason (optional — will be included in the email)</label>
@@ -1590,7 +1592,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
               <button className="btn btn-secondary" onClick={() => { setShowRejectModal(false); setRejectReason(''); }}>Cancel</button>
               <button className="btn btn-danger" onClick={() => rejectMutation.mutate(rejectReason)} disabled={rejectMutation.isPending}>
                 <i className={`fas ${rejectMutation.isPending ? 'fa-spinner fa-spin' : 'fa-ban'}`}></i>
-                {rejectMutation.isPending ? ' Rejecting...' : ' Reject Job'}
+                {rejectMutation.isPending ? ' Rejecting...' : ` Reject ${terminology.job || 'Job'}`}
               </button>
             </div>
           </div>

@@ -200,14 +200,14 @@ function Dashboard() {
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><JobsTab bookings={bookings} showInvoiceButtons={settings?.show_invoice_buttons !== false} /></Suspense>
     }] : []),
     ...(hasAIFeatures && adminVis.calls !== false ? [{
-      label: 'Calls',
+      label: terminology.callsTab || 'Calls',
       icon: 'fas fa-phone-alt',
       group: 'Day-to-Day',
       badge: unseenCalls,
       content: <Suspense fallback={tabFallback}><CallLogsTab /></Suspense>
     }] : []),
     ...(adminVis.calendar !== false ? [{
-      label: 'Calendar',
+      label: terminology.calendarTab || 'Calendar',
       icon: 'fas fa-calendar',
       group: 'Day-to-Day',
       content: <Suspense fallback={tabFallback}><CalendarTab /></Suspense>
@@ -221,7 +221,7 @@ function Dashboard() {
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><EmployeesTab employees={employees} bookings={bookings} /></Suspense>
     }] : []),
     ...(adminVis.crm !== false ? [{
-      label: 'CRM',
+      label: terminology.crmTab || 'CRM',
       icon: 'fas fa-address-book',
       group: 'Team & Clients',
       badge: overdueLeads,
@@ -229,26 +229,26 @@ function Dashboard() {
     }] : []),
     // Setup
     ...(adminVis.services !== false ? [{
-      label: 'Services',
+      label: terminology.servicesTab || 'Services',
       icon: 'fas fa-concierge-bell',
       group: 'Setup',
       content: <Suspense fallback={tabFallback}><ServicesTab /></Suspense>
     }] : []),
     ...(adminVis.inventory !== false && industryTabs.inventory !== false ? [{
-      label: 'Inventory',
+      label: terminology.inventoryTab || 'Inventory',
       icon: 'fas fa-boxes-stacked',
       group: 'Setup',
       content: <Suspense fallback={tabFallback}><InventoryTab /></Suspense>
     }] : []),
     // Reports
     ...(adminVis.finances !== false && settings?.show_finances_tab !== false && settings?.accounting_provider !== 'disabled' ? [{
-      label: 'Finances',
+      label: terminology.financesTab || 'Finances',
       icon: 'fas fa-dollar-sign',
       group: 'Reports',
       content: <Suspense fallback={tabFallback}><FinancesTab showInvoiceButtons={settings?.show_invoice_buttons !== false} /></Suspense>
     }] : []),
     ...(adminVis.insights !== false && settings?.show_insights_tab !== false ? [{
-      label: 'Insights',
+      label: terminology.insightsTab || 'Insights',
       icon: 'fas fa-chart-pie',
       group: 'Reports',
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><InsightsTab bookings={bookings} clients={clients} employees={employees} reviews={reviewsData} /></Suspense>
@@ -290,9 +290,9 @@ function Dashboard() {
   useEffect(() => {
     if (tabs.length === 0) return;
     const label = tabs[activeTab]?.label;
-    if (label === 'Services') localStorage.setItem(`services_setup_visited_${userKey}`, 'true');
+    if (label === (terminology.servicesTab || 'Services')) localStorage.setItem(`services_setup_visited_${userKey}`, 'true');
     if (label === terminology.employees) localStorage.setItem(`employees_setup_visited_${userKey}`, 'true');
-    if (label === 'Inventory') localStorage.setItem(`inventory_setup_visited_${userKey}`, 'true');
+    if (label === (terminology.inventoryTab || 'Inventory')) localStorage.setItem(`inventory_setup_visited_${userKey}`, 'true');
   }, [activeTab, tabs, userKey, terminology]);
 
   // Map notification types to tab labels for navigation

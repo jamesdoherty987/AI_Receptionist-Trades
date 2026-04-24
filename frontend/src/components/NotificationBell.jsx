@@ -4,13 +4,14 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { getNotifications } from '../services/api';
 import './NotificationBell.css';
 
-function NotificationBell({ onNavigate }) {
+function NotificationBell({ onNavigate, userKey }) {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const storageKey = `seenNotifications_${userKey || 'default'}`;
   const [seenIds, setSeenIds] = useState(() => {
     try {
-      const stored = localStorage.getItem('seenNotifications');
+      const stored = localStorage.getItem(storageKey);
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];
@@ -18,6 +19,16 @@ function NotificationBell({ onNavigate }) {
   });
   const dropdownRef = useRef(null);
   const queryClient = useQueryClient();
+
+  // Re-sync seenIds when userKey changes (e.g. after login)
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      setSeenIds(stored ? JSON.parse(stored) : []);
+    } catch {
+      setSeenIds([]);
+    }
+  }, [storageKey]);
 
   const { data } = useQuery({
     queryKey: ['notifications'],
@@ -53,7 +64,7 @@ function NotificationBell({ onNavigate }) {
       const allIds = notifications.map(n => n.id);
       const newSeenIds = [...new Set([...seenIds, ...allIds])].slice(-100); // Keep last 100
       setSeenIds(newSeenIds);
-      localStorage.setItem('seenNotifications', JSON.stringify(newSeenIds));
+      localStorage.setItem(storageKey, JSON.stringify(newSeenIds));
     }
   };
 

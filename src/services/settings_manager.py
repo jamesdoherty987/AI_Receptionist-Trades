@@ -392,7 +392,18 @@ class SettingsManager:
                 requires_quote=service.get('requires_quote', False),
                 package_only=service.get('package_only', False),
                 company_id=company_id,
-                default_materials=service.get('default_materials', [])
+                default_materials=service.get('default_materials', []),
+                tags=service.get('tags'),
+                capacity_min=service.get('capacity_min'),
+                capacity_max=service.get('capacity_max'),
+                area=service.get('area'),
+                requires_deposit=service.get('requires_deposit', False),
+                deposit_amount=service.get('deposit_amount'),
+                warranty=service.get('warranty'),
+                seasonal=service.get('seasonal', False),
+                seasonal_months=service.get('seasonal_months'),
+                ai_notes=service.get('ai_notes'),
+                follow_up_service_id=service.get('follow_up_service_id'),
             )
             if result:
                 self._invalidate_company_cache(company_id)

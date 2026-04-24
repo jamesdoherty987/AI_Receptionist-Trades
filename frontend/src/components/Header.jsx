@@ -101,7 +101,7 @@ function Header({ onNotificationNavigate, mobileMenuOpen, onMenuToggle }) {
             </Link>
             
             {/* Notification Bell */}
-            <NotificationBell onNavigate={onNotificationNavigate} />
+            <NotificationBell onNavigate={onNotificationNavigate} userKey={user?.email} />
             
             {/* Hamburger for mobile nav — only visible on mobile */}
             {onMenuToggle && (

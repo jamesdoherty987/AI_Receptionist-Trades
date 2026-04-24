@@ -31,7 +31,10 @@ function normaliseBackendProfile(backendProfile, localProfile, availableIndustri
   const features = backendProfile.features || {};
   return {
     label: backendProfile.label || localProfile.label,
-    terminology: backendProfile.terminology || localProfile.terminology,
+    terminology: {
+      ...(localProfile.terminology || {}),
+      ...(backendProfile.terminology || {}),
+    },
     features: {
       materials: features.materials ?? localProfile.features.materials,
       callouts: features.callouts ?? localProfile.features.callouts,
@@ -41,9 +44,13 @@ function normaliseBackendProfile(backendProfile, localProfile, availableIndustri
       jobAddress: features.job_address ?? localProfile.features.jobAddress,
       jobPhotos: features.job_photos ?? localProfile.features.jobPhotos,
       multiDayJobs: features.multi_day_jobs ?? localProfile.features.multiDayJobs,
+      menuDesigner: features.menu_designer ?? localProfile.features.menuDesigner ?? false,
+      tableManagement: features.table_management ?? localProfile.features.tableManagement ?? false,
     },
     tabs: localProfile.tabs,   // Tab visibility is frontend-only config (uses 'inventory' key)
     icons: localProfile.icons,
+    inventory: localProfile.inventory,  // Industry-specific inventory config (categories, field visibility)
+    serviceConfig: localProfile.serviceConfig,  // Industry-specific service form config
     onboarding: {
       employeeIcon: backendProfile.onboarding?.employee_icon || localProfile.onboarding.employeeIcon,
       employeeLabel: backendProfile.onboarding?.employee_label || localProfile.onboarding.employeeLabel,

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getBookings, getEmployees, getBusinessHours, getCompanyTimeOffRequests, getBusinessSettings } from '../../services/api';
 import { getStatusBadgeClass, parseServerDate } from '../../utils/helpers';
+import { useIndustry } from '../../context/IndustryContext';
 import LoadingSpinner from '../LoadingSpinner';
 import JobDetailModal from '../modals/JobDetailModal';
 import './CalendarTab.css';
@@ -108,6 +109,7 @@ const formatTimeRange = (appointmentTime, durationMinutes) => {
 };
 
 function CalendarTab() {
+  const { terminology } = useIndustry();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedJobId, setSelectedJobId] = useState(null);
@@ -402,7 +404,7 @@ function CalendarTab() {
     <div className="calendar-tab">
       {/* Page Header */}
       <div className="tab-page-header">
-        <h2 className="tab-page-title">Calendar</h2>
+        <h2 className="tab-page-title">{terminology.calendarTab || 'Calendar'}</h2>
       </div>
 
       {/* Calendar Header */}

@@ -48,10 +48,10 @@ function buildSteps(industryProfile) {
     },
     {
       id: 'services',
-      title: 'Add Services',
+      title: `Add ${terminology.services || 'Services'}`,
       icon: 'fa-concierge-bell',
       iconClass: 'services-icon',
-      description: 'What services do you offer?'
+      description: `What ${(terminology.services || 'services').toLowerCase()} do you offer?`
     },
   ];
 
@@ -82,6 +82,7 @@ function OnboardingWizard({ onComplete }) {
   const queryClient = useQueryClient();
   const { user, subscription, hasActiveSubscription, getSubscriptionTier, checkAuth } = useAuth();
   const industryProfile = useIndustry();
+  const { terminology } = industryProfile;
   
   // Build steps dynamically based on industry
   const ALL_STEPS = buildSteps(industryProfile);
@@ -792,15 +793,15 @@ function OnboardingWizard({ onComplete }) {
                 )}
                 <p className="subscription-cta-text">
                   {(servicesData?.services || []).length > 0
-                    ? 'Review or add more services for your AI receptionist.'
-                    : 'Add the services you offer so your AI receptionist can book them.'}
+                    ? `Review or add more ${(terminology.services || 'services').toLowerCase()} for your AI receptionist.`
+                    : `Add the ${(terminology.services || 'services').toLowerCase()} you offer so your AI receptionist can book them.`}
                 </p>
                 <div className="step-actions">
                   <button className="btn btn-secondary" onClick={handleSkipStep}>
                     Skip for now
                   </button>
-                  <button className="btn btn-primary" onClick={() => { localStorage.setItem(`services_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('services')) { setCompletedSteps(prev => [...prev, 'services']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Services')) btn.click(); }); }, 100); }}>
-                    <i className="fas fa-concierge-bell"></i> Go to Services
+                  <button className="btn btn-primary" onClick={() => { localStorage.setItem(`services_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('services')) { setCompletedSteps(prev => [...prev, 'services']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.tab-button, .sidebar-item, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes(terminology.servicesTab || 'Services')) btn.click(); }); }, 100); }}>
+                    <i className="fas fa-concierge-bell"></i> Go to {terminology.servicesTab || 'Services'}
                   </button>
                 </div>
               </div>
@@ -840,15 +841,15 @@ function OnboardingWizard({ onComplete }) {
                 )}
                 <p className="subscription-cta-text">
                   {(materialsData?.materials || []).length > 0
-                    ? 'Review or add more items to your inventory.'
+                    ? `Review or add more items to your ${(terminology.inventoryTab || 'inventory').toLowerCase()}.`
                     : 'Add items you use or sell. Track stock levels and pricing in one place.'}
                 </p>
                 <div className="step-actions">
                   <button className="btn btn-secondary" onClick={handleSkipStep}>
                     Skip for now
                   </button>
-                  <button className="btn btn-primary" onClick={() => { localStorage.setItem(`inventory_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('materials')) { setCompletedSteps(prev => [...prev, 'materials']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.sidebar-item, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes('Inventory')) btn.click(); }); }, 100); }}>
-                    <i className="fas fa-boxes-stacked"></i> Go to Inventory
+                  <button className="btn btn-primary" onClick={() => { localStorage.setItem(`inventory_setup_visited_${userKey}`, 'true'); if (!completedSteps.includes('materials')) { setCompletedSteps(prev => [...prev, 'materials']); } setCurrentStepIndex(null); setTimeout(() => { document.querySelectorAll('.sidebar-item, .mobile-menu-item').forEach(btn => { if (btn.textContent.trim().includes(terminology.inventoryTab || 'Inventory')) btn.click(); }); }, 100); }}>
+                    <i className="fas fa-boxes-stacked"></i> Go to {terminology.inventoryTab || 'Inventory'}
                   </button>
                 </div>
               </div>

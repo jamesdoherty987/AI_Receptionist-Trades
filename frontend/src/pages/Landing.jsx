@@ -695,7 +695,7 @@ function RotatingPrism() {
 
   return (
     <div ref={ref} className="prism-section-layout">
-      <div className="prism-stage" style={{ width: 320, height: 320 }}>
+      <div className="prism-stage">
         <Suspense fallback={<div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>Loading 3D...</div>}>
           {isVisible && <FloatingCube />}
         </Suspense>

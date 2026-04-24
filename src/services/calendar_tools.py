@@ -4287,6 +4287,30 @@ Return ONLY valid JSON, no explanation."""
                                 _conn.commit()
                                 if _attached > 0:
                                     logger.info(f"[BOOK_APPT] ✅ Auto-attached {_attached} default materials to booking {booking_id}")
+                                # Auto-decrement inventory stock
+                                for _mat in _default_materials:
+                                    if isinstance(_mat, dict) and _mat.get('material_id'):
+                                        _conn2 = None
+                                        try:
+                                            _qty = float(_mat.get('quantity', 1) or 1)
+                                            _conn2 = db.get_connection()
+                                            _cur2 = _conn2.cursor()
+                                            _cur2.execute("SELECT stock_on_hand FROM materials WHERE id = %s AND company_id = %s", (_mat['material_id'], company_id))
+                                            _row = _cur2.fetchone()
+                                            if _row and _row[0] is not None:
+                                                _new = max(0, float(_row[0]) - _qty)
+                                                _cur2.execute("UPDATE materials SET stock_on_hand = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s", (_new, _mat['material_id'], company_id))
+                                                _conn2.commit()
+                                            _cur2.close()
+                                        except Exception:
+                                            if _conn2:
+                                                try:
+                                                    _conn2.rollback()
+                                                except Exception:
+                                                    pass
+                                        finally:
+                                            if _conn2:
+                                                db.return_connection(_conn2)
                             except Exception as _mat_err:
                                 _conn.rollback()
                                 logger.warning(f"[BOOK_APPT] ⚠️ Could not auto-attach materials: {_mat_err}")
@@ -5559,6 +5583,30 @@ Return ONLY valid JSON, no explanation."""
                                 _conn.commit()
                                 if _attached > 0:
                                     logger.info(f"[BOOK_JOB] ✅ Auto-attached {_attached} default materials to booking {booking_id}")
+                                # Auto-decrement inventory stock
+                                for _mat in _default_materials:
+                                    if isinstance(_mat, dict) and _mat.get('material_id'):
+                                        _conn2 = None
+                                        try:
+                                            _qty = float(_mat.get('quantity', 1) or 1)
+                                            _conn2 = db.get_connection()
+                                            _cur2 = _conn2.cursor()
+                                            _cur2.execute("SELECT stock_on_hand FROM materials WHERE id = %s AND company_id = %s", (_mat['material_id'], company_id))
+                                            _row = _cur2.fetchone()
+                                            if _row and _row[0] is not None:
+                                                _new = max(0, float(_row[0]) - _qty)
+                                                _cur2.execute("UPDATE materials SET stock_on_hand = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s AND company_id = %s", (_new, _mat['material_id'], company_id))
+                                                _conn2.commit()
+                                            _cur2.close()
+                                        except Exception:
+                                            if _conn2:
+                                                try:
+                                                    _conn2.rollback()
+                                                except Exception:
+                                                    pass
+                                        finally:
+                                            if _conn2:
+                                                db.return_connection(_conn2)
                             except Exception as _mat_err:
                                 _conn.rollback()
                                 logger.warning(f"[BOOK_JOB] ⚠️ Could not auto-attach materials: {_mat_err}")

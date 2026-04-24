@@ -3,11 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getEmployeeNotifications, acceptEmergencyJob } from '../services/api';
 import './NotificationBell.css';
 
-function EmployeeNotificationBell({ onNavigate }) {
+function EmployeeNotificationBell({ onNavigate, userKey }) {
   const [isOpen, setIsOpen] = useState(false);
+  const storageKey = `employeeSeenNotifications_${userKey || 'default'}`;
   const [seenIds, setSeenIds] = useState(() => {
     try {
-      const stored = localStorage.getItem('employeeSeenNotifications');
+      const stored = localStorage.getItem(storageKey);
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];
@@ -15,6 +16,16 @@ function EmployeeNotificationBell({ onNavigate }) {
   });
   const dropdownRef = useRef(null);
   const queryClient = useQueryClient();
+
+  // Re-sync seenIds when userKey changes (e.g. after login)
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      setSeenIds(stored ? JSON.parse(stored) : []);
+    } catch {
+      setSeenIds([]);
+    }
+  }, [storageKey]);
 
   const { data } = useQuery({
     queryKey: ['employee-notifications'],
@@ -70,7 +81,7 @@ function EmployeeNotificationBell({ onNavigate }) {
       const nonEmergencyIds = notifications.filter(n => n.type !== 'emergency_job').map(n => n.id);
       const newSeenIds = [...new Set([...seenIds, ...nonEmergencyIds])].slice(-100);
       setSeenIds(newSeenIds);
-      localStorage.setItem('employeeSeenNotifications', JSON.stringify(newSeenIds));
+      localStorage.setItem(storageKey, JSON.stringify(newSeenIds));
     }
   };
 
