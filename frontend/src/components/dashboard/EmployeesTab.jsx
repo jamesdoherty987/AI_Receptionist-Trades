@@ -837,46 +837,47 @@ function EmployeesTab({ employees, bookings }) {
                 )}
 
                 {/* Timeline hours */}
-                <div className="sg-tl-grid">
-                  {(() => {
-                    const startH = dayPopover.shift ? parseInt(dayPopover.shift.start) : 8;
-                    const endH = dayPopover.shift ? Math.min(parseInt(dayPopover.shift.end) + 1, 24) : 18;
-                    const hours = [];
-                    for (let h = startH; h <= endH; h++) hours.push(h);
-                    return hours.map(h => (
-                      <div key={h} className="sg-tl-hour">
-                        <span className="sg-tl-hour-label">{h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`}</span>
-                        <div className="sg-tl-hour-line"></div>
-                      </div>
-                    ));
-                  })()}
+                {(() => {
+                  const startH = dayPopover.shift ? parseInt(dayPopover.shift.start) : 8;
+                  const endH = dayPopover.shift ? Math.min(parseInt(dayPopover.shift.end) + 1, 24) : 18;
+                  const HOUR_HEIGHT = 60; // pixels per hour
+                  const totalHeight = (endH - startH) * HOUR_HEIGHT;
+                  const hours = [];
+                  for (let h = startH; h < endH; h++) hours.push(h);
+                  return (
+                    <div className="sg-tl-grid" style={{ height: `${totalHeight}px` }}>
+                      {hours.map(h => (
+                        <div key={h} className="sg-tl-hour" style={{ height: `${HOUR_HEIGHT}px` }}>
+                          <span className="sg-tl-hour-label">{h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h - 12} PM`}</span>
+                          <div className="sg-tl-hour-line"></div>
+                        </div>
+                      ))}
 
-                  {/* Job blocks positioned on timeline */}
-                  {dayPopover.jobs.map(job => {
-                    const jobTime = new Date(job.appointment_time);
-                    const jobH = jobTime.getHours() + jobTime.getMinutes() / 60;
-                    const startH = dayPopover.shift ? parseInt(dayPopover.shift.start) : 8;
-                    const endH = dayPopover.shift ? Math.min(parseInt(dayPopover.shift.end) + 1, 24) : 18;
-                    const range = endH - startH;
-                    const top = Math.max(0, ((jobH - startH) / range) * 100);
-                    const duration = job.duration_minutes || 60;
-                    const height = Math.max(8, (duration / 60 / range) * 100);
-                    return (
-                      <div
-                        key={job.id}
-                        className="sg-tl-job"
-                        style={{ top: `${top}%`, height: `${height}%`, borderLeftColor: dayPopover.color }}
-                        onClick={() => { setDayPopover(null); setSelectedJobId(job.id); }}
-                      >
-                        <span className="sg-tl-job-time">
-                          {jobTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                        </span>
-                        <span className="sg-tl-job-name">{job.service_type || 'Job'}</span>
-                        {job.client_name && <span className="sg-tl-job-client">{job.client_name}</span>}
-                      </div>
-                    );
-                  })}
-                </div>
+                      {/* Job blocks positioned on timeline */}
+                      {dayPopover.jobs.map(job => {
+                        const jobTime = new Date(job.appointment_time);
+                        const jobH = jobTime.getHours() + jobTime.getMinutes() / 60;
+                        const top = Math.max(0, (jobH - startH) * HOUR_HEIGHT);
+                        const duration = job.duration_minutes || 60;
+                        const height = Math.max(30, (duration / 60) * HOUR_HEIGHT - 4);
+                        return (
+                          <div
+                            key={job.id}
+                            className="sg-tl-job"
+                            style={{ top: `${top}px`, height: `${height}px`, borderLeftColor: dayPopover.color }}
+                            onClick={() => { setDayPopover(null); setSelectedJobId(job.id); }}
+                          >
+                            <span className="sg-tl-job-time">
+                              {jobTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                            </span>
+                            <span className="sg-tl-job-name">{job.service_type || 'Job'}</span>
+                            {job.client_name && <span className="sg-tl-job-client">{job.client_name}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
 
                 {dayPopover.jobs.length === 0 && dayPopover.shift && (
                   <p className="sg-tl-empty">No jobs scheduled — available for assignments</p>
