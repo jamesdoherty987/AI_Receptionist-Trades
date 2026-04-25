@@ -2450,10 +2450,10 @@ def employee_update_job_status(job_id):
     # Build update kwargs
     update_kwargs = {'status': new_status}
 
-    # Custom status label (e.g. "Waiting for Parts", "Customer No-Show")
-    status_label = data.get('status_label', '').strip()
-    if status_label:
-        update_kwargs['status_label'] = status_label
+    # Custom status label — free-text, per-job
+    if 'status_label' in data:
+        status_label = (data.get('status_label') or '').strip()
+        update_kwargs['status_label'] = status_label if status_label else None
     elif new_status in ('completed', 'cancelled'):
         # Clear label when job reaches a terminal status
         update_kwargs['status_label'] = None
@@ -8633,7 +8633,7 @@ def booking_detail_api(booking_id):
             elif isinstance(value, str):
                 value = value.strip()
                 # For optional text fields, convert empty to None
-                if key in ['address', 'eircode', 'property_type', 'phone_number', 'email', 'phone']:
+                if key in ['address', 'eircode', 'property_type', 'phone_number', 'email', 'phone', 'status_label']:
                     sanitized_data[key] = value if value else None
                 else:
                     sanitized_data[key] = value

@@ -1263,6 +1263,89 @@
 
 .employee-job-label i { font-size: 0.6rem; }
 
+/* Custom status input in employee dropdown */
+.wjd-custom-status-current {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #334155;
+  border-radius: 6px;
+  background: #f5f3ff;
+}
+.wjd-custom-status-current span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.wjd-custom-status-actions {
+  display: flex;
+  gap: 2px;
+}
+.wjd-custom-status-actions button {
+  width: auto !important;
+  padding: 0.15rem 0.35rem !important;
+  font-size: 0.65rem !important;
+  color: #94a3b8 !important;
+  background: none !important;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.wjd-custom-status-actions button:hover {
+  color: #334155 !important;
+  background: #e2e8f0 !important;
+}
+.wjd-custom-status-input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0.3rem 0.5rem;
+}
+.wjd-custom-status-input {
+  flex: 1;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.wjd-custom-status-input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.1);
+}
+.wjd-custom-status-save,
+.wjd-custom-status-cancel {
+  width: auto !important;
+  padding: 0.25rem 0.45rem !important;
+  font-size: 0.7rem !important;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.wjd-custom-status-save {
+  background: #8b5cf6 !important;
+  color: #fff !important;
+}
+.wjd-custom-status-save:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.wjd-custom-status-save:not(:disabled):hover {
+  background: #7c3aed !important;
+}
+.wjd-custom-status-cancel {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+}
+.wjd-custom-status-cancel:hover {
+  background: #e2e8f0 !important;
+}
+
 /* ── Emergency Job Banner ────────────────────────────────── */
 
 .emergency-banner {

@@ -129,6 +129,8 @@ function EmployeeDashboard() {
   const [jobTimerStart, setJobTimerStart] = useState(null); // ISO string when timer started
   const [jobTimerElapsed, setJobTimerElapsed] = useState(0); // seconds
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [empCustomStatusInput, setEmpCustomStatusInput] = useState('');
+  const [empEditingCustomStatus, setEmpEditingCustomStatus] = useState(false);
   
   // Job detail editing state
   const [isEditingJobDetails, setIsEditingJobDetails] = useState(false);
@@ -675,18 +677,64 @@ function EmployeeDashboard() {
                               </button>
                             ))}
                             <div className="wjd-dropdown-divider"></div>
-                            <div className="wjd-dropdown-section-label">Custom Labels</div>
-                            {['Waiting for Parts', 'Customer No-Show', 'Needs Follow-Up', 'On Hold', 'Rescheduling'].map(label => (
-                              <button key={label}
-                                className={job.status_label === label ? 'active' : ''}
-                                onClick={() => {
-                                  statusMutation.mutate({ jobId: selectedJobId, status: job.status, status_label: job.status_label === label ? '' : label });
-                                  setShowStatusDropdown(false);
-                                }}>
-                                <i className="fas fa-tag" style={{ color: '#94a3b8' }}></i> {label}
-                                {job.status_label === label && <i className="fas fa-check" style={{ marginLeft: 'auto', color: '#10b981', fontSize: '0.7em' }}></i>}
-                              </button>
-                            ))}
+                            <div className="wjd-dropdown-section-label">Custom Status</div>
+                            {job.status_label && !empEditingCustomStatus && (
+                              <div className="wjd-custom-status-current">
+                                <span><i className="fas fa-tag" style={{ color: '#8b5cf6' }}></i> {job.status_label}</span>
+                                <div className="wjd-custom-status-actions">
+                                  <button onClick={(e) => { e.stopPropagation(); setEmpCustomStatusInput(job.status_label); setEmpEditingCustomStatus(true); }} title="Edit">
+                                    <i className="fas fa-pen"></i>
+                                  </button>
+                                  <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    statusMutation.mutate({ jobId: selectedJobId, status: job.status, status_label: '' });
+                                    setShowStatusDropdown(false);
+                                  }} title="Remove">
+                                    <i className="fas fa-times"></i>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            {(empEditingCustomStatus || !job.status_label) && (
+                              <div className="wjd-custom-status-input-row" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="text"
+                                  className="wjd-custom-status-input"
+                                  placeholder="e.g. Waiting for Parts"
+                                  value={empCustomStatusInput}
+                                  onChange={(e) => setEmpCustomStatusInput(e.target.value)}
+                                  maxLength={100}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && empCustomStatusInput.trim()) {
+                                      statusMutation.mutate({ jobId: selectedJobId, status: job.status, status_label: empCustomStatusInput.trim() });
+                                      setEmpCustomStatusInput('');
+                                      setEmpEditingCustomStatus(false);
+                                      setShowStatusDropdown(false);
+                                    }
+                                  }}
+                                  autoFocus={empEditingCustomStatus}
+                                />
+                                <button
+                                  className="wjd-custom-status-save"
+                                  disabled={!empCustomStatusInput.trim()}
+                                  onClick={() => {
+                                    if (empCustomStatusInput.trim()) {
+                                      statusMutation.mutate({ jobId: selectedJobId, status: job.status, status_label: empCustomStatusInput.trim() });
+                                      setEmpCustomStatusInput('');
+                                      setEmpEditingCustomStatus(false);
+                                      setShowStatusDropdown(false);
+                                    }
+                                  }}
+                                >
+                                  <i className="fas fa-check"></i>
+                                </button>
+                                {empEditingCustomStatus && (
+                                  <button className="wjd-custom-status-cancel" onClick={() => { setEmpEditingCustomStatus(false); setEmpCustomStatusInput(''); }}>
+                                    <i className="fas fa-times"></i>
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </>
                       )}

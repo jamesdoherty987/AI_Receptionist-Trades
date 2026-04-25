@@ -369,15 +369,21 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     }
   });
 
+  const [customStatusInput, setCustomStatusInput] = useState('');
+  const [isEditingCustomStatus, setIsEditingCustomStatus] = useState(false);
+
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }) => {
+    mutationFn: ({ id, status, status_label }) => {
       const data = { status };
+      if (status_label !== undefined) data.status_label = status_label;
       return updateBooking(id, data);
     },
-    onMutate: async ({ status }) => {
+    onMutate: async ({ status, status_label }) => {
       await queryClient.cancelQueries({ queryKey: ['booking', jobId] });
       const previousJob = queryClient.getQueryData(['booking', jobId]);
-      queryClient.setQueryData(['booking', jobId], (old) => ({ ...old, status }));
+      const updates = { ...previousJob, status };
+      if (status_label !== undefined) updates.status_label = status_label;
+      queryClient.setQueryData(['booking', jobId], (old) => ({ ...old, ...updates }));
       return { previousJob };
     },
     onSuccess: () => {
@@ -715,6 +721,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
           <div className="job-modal-title">
             <h2>{job.customer_name}</h2>
             <span className={`badge badge-lg ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
+            {job.status_label && <span className="badge badge-custom-status"><i className="fas fa-tag"></i> {job.status_label}</span>}
           </div>
           <div className="job-modal-actions">
             {!isEditing ? (
@@ -775,6 +782,65 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                         <i className={`fas ${s.icon}`} style={{ color: s.color }}></i> {s.label}
                       </button>
                     ))}
+                    <div className="status-dropdown-divider"></div>
+                    <div className="status-dropdown-section-label">Custom Status</div>
+                    {job.status_label && !isEditingCustomStatus && (
+                      <div className="custom-status-current">
+                        <span><i className="fas fa-tag" style={{ color: '#8b5cf6' }}></i> {job.status_label}</span>
+                        <div className="custom-status-actions">
+                          <button onClick={(e) => { e.stopPropagation(); setCustomStatusInput(job.status_label); setIsEditingCustomStatus(true); }} title="Edit">
+                            <i className="fas fa-pen"></i>
+                          </button>
+                          <button onClick={(e) => {
+                            e.stopPropagation();
+                            statusMutation.mutate({ id: jobId, status: job.status, status_label: '' });
+                            document.querySelectorAll('.status-dropdown-menu.show, .status-dropdown-backdrop.show').forEach(el => el.classList.remove('show'));
+                          }} title="Remove">
+                            <i className="fas fa-times"></i>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {(isEditingCustomStatus || !job.status_label) && (
+                      <div className="custom-status-input-row" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          className="custom-status-input"
+                          placeholder="e.g. Waiting for Parts"
+                          value={customStatusInput}
+                          onChange={(e) => setCustomStatusInput(e.target.value)}
+                          maxLength={100}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && customStatusInput.trim()) {
+                              statusMutation.mutate({ id: jobId, status: job.status, status_label: customStatusInput.trim() });
+                              setCustomStatusInput('');
+                              setIsEditingCustomStatus(false);
+                              document.querySelectorAll('.status-dropdown-menu.show, .status-dropdown-backdrop.show').forEach(el => el.classList.remove('show'));
+                            }
+                          }}
+                          autoFocus={isEditingCustomStatus}
+                        />
+                        <button
+                          className="custom-status-save"
+                          disabled={!customStatusInput.trim()}
+                          onClick={() => {
+                            if (customStatusInput.trim()) {
+                              statusMutation.mutate({ id: jobId, status: job.status, status_label: customStatusInput.trim() });
+                              setCustomStatusInput('');
+                              setIsEditingCustomStatus(false);
+                              document.querySelectorAll('.status-dropdown-menu.show, .status-dropdown-backdrop.show').forEach(el => el.classList.remove('show'));
+                            }
+                          }}
+                        >
+                          <i className="fas fa-check"></i>
+                        </button>
+                        {isEditingCustomStatus && (
+                          <button className="custom-status-cancel" onClick={() => { setIsEditingCustomStatus(false); setCustomStatusInput(''); }}>
+                            <i className="fas fa-times"></i>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="status-dropdown-backdrop" onClick={(e) => {
                     e.stopPropagation();
