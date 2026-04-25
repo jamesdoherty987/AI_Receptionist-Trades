@@ -74,6 +74,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
       queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
       addToast(`${terminology.job} marked as paid`, 'success');
       setMarkingPaidJobId(null);
     },
@@ -89,6 +90,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
       queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
       addToast(`${terminology.job} marked as unpaid`, 'success');
       setMarkingPaidJobId(null);
     },

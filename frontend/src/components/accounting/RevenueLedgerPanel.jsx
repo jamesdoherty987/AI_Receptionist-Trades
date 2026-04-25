@@ -84,6 +84,7 @@ function RevenueLedgerPanel() {
       queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
       queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast('Revenue entry added', 'success');
       resetForm();
     },
@@ -96,6 +97,7 @@ function RevenueLedgerPanel() {
       queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
       queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast('Entry updated', 'success');
       resetForm();
     },
@@ -108,6 +110,7 @@ function RevenueLedgerPanel() {
       queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
       queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast('Entry deleted', 'success');
       setDeleteConfirm(null);
     },

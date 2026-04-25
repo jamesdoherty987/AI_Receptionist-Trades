@@ -86,6 +86,8 @@ function CreditNotesPanel() {
       queryClient.invalidateQueries({ queryKey: ['finances'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
       if (res.data?.stripe_refund_status === 'success') {
         addToast(`Stripe refund processed (${res.data.stripe_refund_id})`, 'success');
       } else {

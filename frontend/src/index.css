@@ -303,8 +303,6 @@ body {
   }
 
   /* Stats grids can show more columns */
-  .insights-overview,
-  .revenue-grid,
   .reviews-stats {
     grid-template-columns: repeat(4, 1fr);
   }

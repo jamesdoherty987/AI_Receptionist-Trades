@@ -545,6 +545,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
       setShowRefundModal(false);
       if (d.stripe_refund_status === 'success') {
         addToast(`Refund of €${d.amount} processed via Stripe`, 'success');
@@ -566,6 +567,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
       queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
       addToast('Job marked as paid', 'success');
     },
     onError: () => addToast('Failed to mark job as paid', 'error'),
@@ -580,6 +582,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
       queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
       addToast('Payment status reverted to unpaid', 'success');
     },
     onError: () => addToast('Failed to update payment status', 'error'),

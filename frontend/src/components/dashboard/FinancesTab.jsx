@@ -490,6 +490,7 @@ function TransactionLog({ bookings, revenueEntries, expenses, creditNotes, termi
       queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
       queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast('Income added', 'success');
       resetForm();
     },
@@ -502,6 +503,7 @@ function TransactionLog({ bookings, revenueEntries, expenses, creditNotes, termi
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
       queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast('Expense added', 'success');
       resetForm();
     },
@@ -516,6 +518,7 @@ function TransactionLog({ bookings, revenueEntries, expenses, creditNotes, termi
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
       queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
       addToast(`${terminology.job || 'Job'} marked as paid`, 'success');
     },
     onError: () => addToast('Failed to update', 'error'),
@@ -529,6 +532,7 @@ function TransactionLog({ bookings, revenueEntries, expenses, creditNotes, termi
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
       queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
       addToast(`${terminology.job || 'Job'} marked as unpaid`, 'success');
     },
     onError: () => addToast('Failed to update', 'error'),
