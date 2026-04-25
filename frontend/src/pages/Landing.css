@@ -218,7 +218,7 @@
   padding: 1px;
   background: linear-gradient(135deg, #0ea5e9, #ec4899, #8b5cf6, #0ea5e9);
   background-size: 300% 300%;
-  animation: gradientShift 4s ease infinite;
+  animation: gradientShift 8s ease infinite;
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -252,7 +252,7 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  animation: gradientShift 6s ease infinite;
+  animation: gradientShift 12s ease infinite;
 }
 
 @keyframes gradientShift {
@@ -1108,8 +1108,6 @@
   max-width: 1200px;
   margin: 0 auto;
   padding: 6rem 2rem;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 800px;
 }
 
 .section-header {
