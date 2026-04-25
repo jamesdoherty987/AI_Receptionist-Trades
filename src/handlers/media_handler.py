@@ -13,6 +13,7 @@ NO BUFFERING - tokens flow directly from LLM to TTS for minimum latency.
 import asyncio
 import json
 import base64
+import os
 import re
 import time as time_module
 import websockets
@@ -170,6 +171,9 @@ async def media_handler(ws):
     # LLM processing state
     llm_processing = False
     llm_started_at = 0.0
+    
+    # Background ambient audio
+    bg_audio_stop = asyncio.Event()
     
     # Tracking
     last_committed = ""
@@ -823,6 +827,73 @@ async def media_handler(ws):
                 
                 asyncio.create_task(greet())
                 
+                # Start background ambient audio loop via WebSocket
+                # Sends low-volume office noise during silence periods.
+                # Pauses automatically when AI is speaking (TTS/fillers).
+                
+                async def background_audio_loop():
+                    """Send ambient office noise during silence (when AI isn't speaking)."""
+                    try:
+                        from src.services.prerecorded_audio import get_ambient_audio
+                        ambient = get_ambient_audio()
+                        if not ambient:
+                            print(f"[BG_AUDIO] ⚠️ No ambient audio loaded — skipping")
+                            return
+                        
+                        # Wait for greeting to start playing before we begin
+                        await asyncio.sleep(0.3)
+                        
+                        chunk_size = 160  # 20ms at 8kHz mulaw
+                        total_chunks = len(ambient) // chunk_size
+                        if total_chunks == 0:
+                            return
+                        chunk_idx = 0
+                        BATCH_CHUNKS = 5   # 100ms of audio per batch
+                        BATCH_INTERVAL = 0.1
+                        
+                        print(f"[BG_AUDIO] 🔊 Starting ambient audio loop ({len(ambient)} bytes, {total_chunks} chunks)")
+                        
+                        while not bg_audio_stop.is_set():
+                            # Only send when AI is NOT speaking — TTS handles its own audio
+                            if speaking:
+                                try:
+                                    await asyncio.wait_for(bg_audio_stop.wait(), timeout=0.2)
+                                    break
+                                except asyncio.TimeoutError:
+                                    continue
+                            
+                            for _ in range(BATCH_CHUNKS):
+                                if bg_audio_stop.is_set() or speaking:
+                                    break
+                                offset = (chunk_idx % total_chunks) * chunk_size
+                                chunk = ambient[offset:offset + chunk_size]
+                                if len(chunk) < chunk_size:
+                                    chunk_idx = 0
+                                    chunk = ambient[0:chunk_size]
+                                
+                                payload = base64.b64encode(chunk).decode('utf-8')
+                                try:
+                                    await ws.send(json.dumps({
+                                        "event": "media",
+                                        "streamSid": stream_sid,
+                                        "media": {"payload": payload},
+                                    }))
+                                except Exception:
+                                    return
+                                chunk_idx += 1
+                            
+                            try:
+                                await asyncio.wait_for(bg_audio_stop.wait(), timeout=BATCH_INTERVAL)
+                                break
+                            except asyncio.TimeoutError:
+                                pass
+                        
+                        print(f"[BG_AUDIO] 🔇 Ambient audio stopped")
+                    except Exception as e:
+                        print(f"[BG_AUDIO] ⚠️ Error: {e}")
+                
+                bg_audio_task = asyncio.create_task(background_audio_loop())
+                
                 # Warmup OpenAI with real system prompt to prime prompt cache
                 # (skip for outbound — shorter calls, not worth the extra API call)
                 if not is_outbound:
@@ -1302,7 +1373,7 @@ async def media_handler(ws):
 
             elif event == "stop":
                 print("🛑 Call ended")
-                
+                bg_audio_stop.set()
                 break
 
     except websockets.ConnectionClosed as e:
@@ -1312,6 +1383,7 @@ async def media_handler(ws):
         import traceback
         traceback.print_exc()
     finally:
+        bg_audio_stop.set()
         # Call summary
         total_duration = time_module.time() - call_start_time
         print(f"\n{'#'*60}")

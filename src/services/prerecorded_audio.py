@@ -193,6 +193,10 @@ _loading_in_progress = False
 _typing_audio: Optional[bytes] = None
 TYPING_AUDIO_ID = "typing_loop"  # R2 key: audio/fillers/typing_loop.raw
 
+# Ambient background audio cache (loaded from R2 at startup)
+_ambient_audio: Optional[bytes] = None
+AMBIENT_AUDIO_R2_KEY = "audio/ambient/office-noise-quiet.raw"
+
 
 def _get_r2_key(phrase_id: str) -> str:
     """Get R2 key for a filler phrase"""
@@ -280,6 +284,10 @@ async def preload_fillers_async():
         # Load typing audio from R2 (separate from filler phrases)
         global _typing_audio
         _typing_audio = await _load_typing_audio_async()
+        
+        # Load ambient background audio from R2
+        global _ambient_audio
+        _ambient_audio = await _load_ambient_audio_async()
     
     except Exception as e:
         print(f"[AUDIO] Error in preload_fillers_async: {type(e).__name__}: {e}")
@@ -607,6 +615,35 @@ async def _load_typing_audio_async() -> Optional[bytes]:
 def get_typing_audio() -> Optional[bytes]:
     """Get the typing loop audio (mulaw 8kHz). Returns None if not loaded."""
     return _typing_audio
+
+
+async def _load_ambient_audio_async() -> Optional[bytes]:
+    """Download pre-processed ambient mulaw audio from R2."""
+    try:
+        from src.services.storage_r2 import get_r2_storage
+        r2 = get_r2_storage()
+        if not r2:
+            print(f"[BG_AUDIO] ⚠️ R2 not configured — ambient audio disabled")
+            return None
+        
+        response = r2.s3_client.get_object(Bucket=r2.bucket_name, Key=AMBIENT_AUDIO_R2_KEY)
+        mulaw_data = response['Body'].read()
+        if not mulaw_data or len(mulaw_data) < 1000:
+            print(f"[BG_AUDIO] ⚠️ Ambient audio not found or too small in R2")
+            return None
+        
+        duration_s = len(mulaw_data) / 8000
+        print(f"[BG_AUDIO] ✅ Ambient audio ready: {len(mulaw_data)} bytes ({duration_s:.1f}s)")
+        return mulaw_data
+    
+    except Exception as e:
+        print(f"[BG_AUDIO] ⚠️ Failed to load ambient audio: {e}")
+        return None
+
+
+def get_ambient_audio() -> Optional[bytes]:
+    """Get the ambient background audio (mulaw 8kHz, low volume). Returns None if not loaded."""
+    return _ambient_audio
 
 
 async def send_typing_audio_loop(websocket, stream_sid: str, stop_event: asyncio.Event,
