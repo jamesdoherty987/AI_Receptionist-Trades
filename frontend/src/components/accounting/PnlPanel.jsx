@@ -192,8 +192,14 @@ function PnlPanel() {
           <div className="pnl-line pnl-line-header">Revenue</div>
           <div className="pnl-line">
             <span>Job Revenue</span>
-            <span>{formatCurrency(pnl.total_revenue)}</span>
+            <span>{formatCurrency(pnl.booking_revenue ?? pnl.total_revenue)}</span>
           </div>
+          {(pnl.manual_revenue || 0) > 0 && (
+            <div className="pnl-line">
+              <span>Manual Income</span>
+              <span>{formatCurrency(pnl.manual_revenue)}</span>
+            </div>
+          )}
           {(pnl.total_credits || 0) > 0 && (
             <div className="pnl-line pnl-line-deduct">
               <span>Less: Credit Notes / Refunds</span>

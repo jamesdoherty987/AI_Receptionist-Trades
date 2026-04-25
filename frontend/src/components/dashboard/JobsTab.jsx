@@ -71,6 +71,9 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
+      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
       addToast(`${terminology.job} marked as paid`, 'success');
       setMarkingPaidJobId(null);
     },
@@ -83,6 +86,9 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
+      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
       addToast(`${terminology.job} marked as unpaid`, 'success');
       setMarkingPaidJobId(null);
     },
@@ -127,6 +133,9 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       addToast(msg, 'success');
       setInvoiceJob(null);
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
     },
     onError: (error) => addToast(error.response?.data?.error || 'Failed to send invoice', 'error'),
   });

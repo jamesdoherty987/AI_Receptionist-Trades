@@ -61,6 +61,10 @@ function CreditNotesPanel() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       if (res.data?.stripe_refund_status === 'success') {
         addToast(`Credit note created and €${parseFloat(formData.amount).toFixed(2)} refunded to card (${res.data.stripe_refund_id})`, 'success');
       } else if (res.data?.stripe_refund_error) {
@@ -79,6 +83,9 @@ function CreditNotesPanel() {
     mutationFn: (creditNoteId) => processStripeRefund(creditNoteId),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
       if (res.data?.stripe_refund_status === 'success') {
         addToast(`Stripe refund processed (${res.data.stripe_refund_id})`, 'success');
       } else {

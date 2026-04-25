@@ -13066,6 +13066,33 @@ def get_pnl_report():
             credits_by_month = {}
             for row in cur.fetchall():
                 credits_by_month[row['month']] = float(row['total'] or 0)
+
+            # Manual revenue entries (income ledger)
+            manual_revenue_total = 0
+            try:
+                cur.execute("""
+                    SELECT SUM(amount) as total
+                    FROM revenue_entries
+                    WHERE company_id = %s AND date >= %s
+                """, (company_id, start_date.date()))
+                mr_row = cur.fetchone()
+                manual_revenue_total = float(mr_row['total'] or 0) if mr_row and mr_row['total'] else 0
+            except Exception:
+                pass
+
+            manual_revenue_by_month = {}
+            try:
+                cur.execute("""
+                    SELECT TO_CHAR(date, 'YYYY-MM') as month, SUM(amount) as total
+                    FROM revenue_entries
+                    WHERE company_id = %s AND date >= %s
+                    GROUP BY TO_CHAR(date, 'YYYY-MM')
+                    ORDER BY month
+                """, (company_id, start_date.date()))
+                for row in cur.fetchall():
+                    manual_revenue_by_month[row['month']] = float(row['total'] or 0)
+            except Exception:
+                pass
             
             # Monthly materials breakdown (from bookings appointment_time)
             materials_by_month = defaultdict(float)
@@ -13092,11 +13119,11 @@ def get_pnl_report():
         finally:
             db.return_connection(conn)
         
-        # Build monthly P&L (expenses + materials + mileage combined, credits reduce revenue)
-        all_months = sorted(set(list(revenue_by_month.keys()) + list(expenses_by_month.keys()) + list(materials_by_month.keys()) + list(mileage_by_month.keys()) + list(credits_by_month.keys())))
+        # Build monthly P&L (expenses + materials + mileage combined, credits reduce revenue, manual revenue adds to it)
+        all_months = sorted(set(list(revenue_by_month.keys()) + list(expenses_by_month.keys()) + list(materials_by_month.keys()) + list(mileage_by_month.keys()) + list(credits_by_month.keys()) + list(manual_revenue_by_month.keys())))
         monthly_pnl = []
         for month in all_months:
-            rev = revenue_by_month.get(month, 0) - credits_by_month.get(month, 0)
+            rev = revenue_by_month.get(month, 0) + manual_revenue_by_month.get(month, 0) - credits_by_month.get(month, 0)
             mat = materials_by_month.get(month, 0)
             exp = expenses_by_month.get(month, 0)
             mil = mileage_by_month.get(month, 0)
@@ -13114,14 +13141,17 @@ def get_pnl_report():
             })
         
         total_all_costs = total_materials + total_expenses + total_mileage
-        net_revenue = total_revenue - total_credits
+        total_revenue_combined = total_revenue + manual_revenue_total
+        net_revenue = total_revenue_combined - total_credits
         gross_profit = net_revenue - total_materials
         net_profit = net_revenue - total_all_costs
         
         return jsonify({
             "period": period,
             "start_date": start_date.strftime('%Y-%m-%d'),
-            "total_revenue": round(total_revenue, 2),
+            "total_revenue": round(total_revenue_combined, 2),
+            "booking_revenue": round(total_revenue, 2),
+            "manual_revenue": round(manual_revenue_total, 2),
             "total_credits": round(total_credits, 2),
             "net_revenue": round(net_revenue, 2),
             "total_materials": round(total_materials, 2),

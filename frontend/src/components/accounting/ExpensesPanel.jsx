@@ -46,6 +46,7 @@ function ExpensesPanel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
       addToast('Expense added', 'success');
       resetForm();
     },
@@ -57,6 +58,7 @@ function ExpensesPanel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
       addToast('Expense updated', 'success');
       resetForm();
     },
@@ -68,6 +70,7 @@ function ExpensesPanel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['pnl-report'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
       addToast('Expense deleted', 'success');
       setDeleteConfirm(null);
     },

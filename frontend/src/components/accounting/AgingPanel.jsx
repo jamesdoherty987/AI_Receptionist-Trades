@@ -35,6 +35,8 @@ function AgingPanel() {
     onSuccess: (res) => {
       addToast(`Reminder sent to ${res.data?.sent_to || 'customer'}`, 'success');
       queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
     },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to send reminder', 'error'),
   });

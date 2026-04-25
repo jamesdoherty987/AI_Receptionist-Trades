@@ -485,6 +485,11 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       addToast(msg, 'success');
       setShowInvoiceConfirm(false);
       setInvoiceData(null);
+      queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
     },
     onError: (error) => {
       addToast(error.response?.data?.error || 'Failed to send invoice', 'error');
@@ -538,6 +543,8 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
       queryClient.invalidateQueries({ queryKey: ['credit-notes'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
       setShowRefundModal(false);
       if (d.stripe_refund_status === 'success') {
         addToast(`Refund of €${d.amount} processed via Stripe`, 'success');
@@ -556,6 +563,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
+      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
       addToast('Job marked as paid', 'success');
     },
     onError: () => addToast('Failed to mark job as paid', 'error'),
@@ -567,6 +577,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-aging'] });
+      queryClient.invalidateQueries({ queryKey: ['revenue-entries'] });
       addToast('Payment status reverted to unpaid', 'success');
     },
     onError: () => addToast('Failed to update payment status', 'error'),
