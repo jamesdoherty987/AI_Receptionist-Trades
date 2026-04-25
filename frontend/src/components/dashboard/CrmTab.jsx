@@ -283,7 +283,7 @@ function CrmTab({ clients, bookings = [] }) {
     <div className="crm-tab">
       {/* Page Title */}
       <div className="tab-page-header">
-        <h2 className="tab-page-title">CRM</h2>
+        <h2 className="tab-page-title">{terminology.crmTab || 'CRM'}</h2>
       </div>
 
       {/* Controls Row */}

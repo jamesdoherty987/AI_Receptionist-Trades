@@ -270,7 +270,7 @@ function Dashboard() {
     if (label) {
       window.history.replaceState(null, '', `#${label.toLowerCase().replace(/\s+/g, '-')}`);
     }
-    if (label === 'Calls') {
+    if (label === (terminology.callsTab || 'Calls')) {
       const now = new Date().toISOString();
       setCallsLastSeen(now);
       localStorage.setItem(`calls_last_seen_${userKey}`, now);

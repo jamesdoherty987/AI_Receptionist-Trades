@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { formatCurrency } from '../../utils/helpers';
+import { useIndustry } from '../../context/IndustryContext';
 import { getFinances, getExpenses } from '../../services/api';
 import LoadingSpinner from '../LoadingSpinner';
 import ExpensesPanel from '../accounting/ExpensesPanel';
@@ -22,6 +23,7 @@ const ACCT_TABS = [
 ];
 
 function FinancesTab() {
+  const { terminology } = useIndustry();
   const [acctTab, setAcctTab] = useState('overview');
 
   const [chartRange, setChartRange] = useState('year');
@@ -291,7 +293,7 @@ function FinancesTab() {
     <div className="finances-tab">
       {/* Page Header */}
       <div className="tab-page-header">
-        <h2 className="tab-page-title">Finances</h2>
+        <h2 className="tab-page-title">{terminology.financesTab || 'Finances'}</h2>
       </div>
 
       {/* Accounting Sub-Navigation */}

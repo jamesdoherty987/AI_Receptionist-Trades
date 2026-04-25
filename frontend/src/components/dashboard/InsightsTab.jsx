@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { formatCurrency } from '../../utils/helpers';
+import { useIndustry } from '../../context/IndustryContext';
 import { getCallLogs, getLeads } from '../../services/api';
 import './InsightsTab.css';
 import './SharedDashboard.css';
@@ -14,6 +15,7 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => {
 });
 
 function InsightsTab({ bookings = [], clients = [], employees = [], reviews: reviewsData }) {
+  const { terminology } = useIndustry();
   // Graph visibility toggles (persisted in localStorage)
   const [showSections, setShowSections] = useState(() => {
     try {
@@ -403,7 +405,7 @@ function InsightsTab({ bookings = [], clients = [], employees = [], reviews: rev
       {/* Page Header */}
       <div className="tab-page-header">
         <div>
-          <h2 className="tab-page-title">Insights</h2>
+          <h2 className="tab-page-title">{terminology.insightsTab || 'Insights'}</h2>
           <p className="tab-page-subtitle">Business analytics and performance metrics</p>
         </div>
         <div className="tab-page-actions">
