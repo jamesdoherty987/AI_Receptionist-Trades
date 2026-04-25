@@ -258,10 +258,20 @@ function InsightsTab({ bookings = [], clients = [], employees = [], reviews: rev
     const leadTimes = nonCancelled.filter(b => b.created_at && b.appointment_time).map(b => (new Date(b.appointment_time) - new Date(b.created_at)) / 86400000).filter(d => d >= 0 && d < 365);
     const avgLeadDays = leadTimes.length > 0 ? leadTimes.reduce((s, d) => s + d, 0) / leadTimes.length : 0;
 
-    // Service popularity
+    // Service popularity + menu engineering
     const serviceCount = {};
-    nonCancelled.forEach(b => { const svc = b.service_type || b.service || 'Other'; serviceCount[svc] = (serviceCount[svc] || 0) + 1; });
-    const servicePopularity = Object.entries(serviceCount).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+    const serviceRevenue = {};
+    nonCancelled.forEach(b => {
+      const svc = b.service_type || b.service || 'Other';
+      serviceCount[svc] = (serviceCount[svc] || 0) + 1;
+      serviceRevenue[svc] = (serviceRevenue[svc] || 0) + parseFloat(b.charge || b.estimated_charge || 0);
+    });
+    const servicePopularity = Object.entries(serviceCount).map(([name, count]) => ({
+      name,
+      count,
+      revenue: serviceRevenue[name] || 0,
+      avgRevenue: count > 0 ? (serviceRevenue[name] || 0) / count : 0,
+    })).sort((a, b) => b.count - a.count);
 
     // Duration distribution
     const durationBuckets = { '< 1h': 0, '1-2h': 0, '2-4h': 0, '4-8h': 0, 'Full day': 0 };
@@ -413,21 +423,34 @@ function InsightsTab({ bookings = [], clients = [], employees = [], reviews: rev
             </div>
           );
           case 'servicePopularity': return (
-            <div key={w.key} className="ins-card">
-              <h3><i className="fas fa-concierge-bell"></i> Service Popularity</h3>
+            <div key={w.key} className="ins-card ins-card-wide">
+              <h3><i className="fas fa-concierge-bell"></i> {terminology.service || 'Service'} Performance</h3>
               {stats.servicePopularity.length === 0 ? <EmptyState icon="fa-list" text="No services booked yet" /> : (
-                <div className="ins-h-bars">
-                  {stats.servicePopularity.slice(0, 6).map((svc, i) => {
-                    const max = stats.servicePopularity[0]?.count || 1;
-                    return (
-                      <div key={i} className="ins-h-bar-row">
-                        <div className="ins-h-bar-label">{svc.name}</div>
-                        <div className="ins-h-bar-track"><div className="ins-h-bar-fill" style={{ width: `${Math.max((svc.count / max) * 100, 4)}%`, background: 'linear-gradient(90deg, #c084fc, #8b5cf6)' }} /></div>
-                        <div className="ins-h-bar-val" style={{ color: '#8b5cf6' }}>{svc.count}</div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <>
+                  <div className="ins-svc-table">
+                    <div className="ins-svc-header">
+                      <span className="ins-svc-col-name">{terminology.service || 'Service'}</span>
+                      <span className="ins-svc-col">Orders</span>
+                      <span className="ins-svc-col">Revenue</span>
+                      <span className="ins-svc-col">Avg/Order</span>
+                      <span className="ins-svc-col-bar">Popularity</span>
+                    </div>
+                    {stats.servicePopularity.slice(0, 8).map((svc, i) => {
+                      const max = stats.servicePopularity[0]?.count || 1;
+                      return (
+                        <div key={i} className="ins-svc-row">
+                          <span className="ins-svc-col-name">{svc.name}</span>
+                          <span className="ins-svc-col">{svc.count}</span>
+                          <span className="ins-svc-col ins-svc-revenue">{formatCurrency(svc.revenue)}</span>
+                          <span className="ins-svc-col">{formatCurrency(svc.avgRevenue)}</span>
+                          <span className="ins-svc-col-bar">
+                            <div className="ins-h-bar-track"><div className="ins-h-bar-fill" style={{ width: `${Math.max((svc.count / max) * 100, 4)}%`, background: 'linear-gradient(90deg, #c084fc, #8b5cf6)' }} /></div>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
           );

@@ -261,6 +261,7 @@ INDUSTRY_PROFILES = {
             'multi_day_jobs': False,
             'menu_designer': True,
             'table_management': True,
+            'online_ordering': True,
         },
         'booking': {
             'collect_address': False,

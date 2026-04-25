@@ -714,11 +714,17 @@
 
   .services-controls {
     width: 100%;
+    display: flex;
   }
 
-  .services-controls .btn {
+  .services-controls .btn,
+  .services-controls .btn-add,
+  .services-controls .btn-secondary {
     flex: 1;
     justify-content: center;
+    text-align: center;
+    font-size: 0.82rem;
+    padding: 0.5rem 0.75rem;
   }
 
   .svc-toolbar {
@@ -733,7 +739,11 @@
 
   .svc-toolbar-right {
     width: 100%;
-    justify-content: space-between;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .svc-sort-chip-label {
@@ -742,11 +752,23 @@
 
   .svc-sort-chip {
     padding: 0.4rem 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .svc-view-toggle {
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .svc-category-filter {
+    max-width: 120px;
+    flex-shrink: 0;
+    font-size: 0.78rem;
   }
 
   .services-list.services-grid {
-    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-    gap: 0.4rem;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.5rem;
   }
 
   .service-form-card {
@@ -813,46 +835,46 @@
     padding: 0.35rem;
   }
 
-  /* Grid card variant — much smaller on mobile */
+  /* Grid card variant — better sizing on mobile */
   .service-card.service-card-grid .service-image,
   .service-card.service-card-grid .service-image.service-image-grid {
-    height: 60px;
-    font-size: 1.2rem;
+    height: 80px;
+    font-size: 1.4rem;
   }
 
   .service-card.service-card-grid .service-content {
-    padding: 0.35rem 0.5rem 0.25rem;
+    padding: 0.4rem 0.6rem 0.3rem;
   }
 
   .service-card.service-card-grid .service-title {
-    font-size: 0.72rem;
-    margin-bottom: 0.1rem;
+    font-size: 0.78rem;
+    margin-bottom: 0.15rem;
   }
 
   .service-card.service-card-grid .service-grid-price,
   .service-grid-price {
-    font-size: 0.75rem;
-    margin-bottom: 0.15rem;
+    font-size: 0.8rem;
+    margin-bottom: 0.2rem;
   }
 
   .service-card.service-card-grid .service-meta {
-    gap: 0.25rem;
+    gap: 0.3rem;
   }
 
   .service-card.service-card-grid .service-meta .meta-item {
-    font-size: 0.65rem;
+    font-size: 0.68rem;
   }
 
   .service-card.service-card-grid .service-actions-grid {
-    padding: 0 0.5rem 0.4rem;
-    padding-top: 0.3rem;
-    gap: 0.2rem;
+    padding: 0 0.6rem 0.5rem;
+    padding-top: 0.35rem;
+    gap: 0.25rem;
   }
 
   .service-card.service-card-grid .service-actions-grid .btn-icon {
-    width: 24px;
-    height: 24px;
-    font-size: 0.65rem;
+    width: 26px;
+    height: 26px;
+    font-size: 0.7rem;
   }
 
   .edit-row {

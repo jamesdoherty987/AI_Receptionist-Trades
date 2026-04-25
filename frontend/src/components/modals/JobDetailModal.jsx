@@ -341,17 +341,19 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const editMutation = useMutation({
     mutationFn: async (data) => {
       const res = await updateBooking(jobId, data);
-      // Sync charge to linked quotes if price changed
-      const newCharge = parseFloat(data.estimated_charge || 0);
-      const oldCharge = parseFloat(job?.estimated_charge || job?.charge || 0);
-      if (newCharge > 0 && Math.abs(newCharge - oldCharge) > 0.01 && linkedQuotes.length > 0) {
-        for (const q of linkedQuotes) {
-          if (q.status !== 'converted' && q.status !== 'declined') {
-            const items = typeof q.line_items === 'string' ? JSON.parse(q.line_items) : (q.line_items || []);
-            // Update the first line item amount to match new charge
-            if (items.length > 0) {
-              items[0] = { ...items[0], amount: newCharge };
-              await updateQuote(q.id, { line_items: items });
+      // Sync charge to linked quotes if price changed (skip for non-price updates like photo_titles)
+      if (data.estimated_charge !== undefined) {
+        const newCharge = parseFloat(data.estimated_charge || 0);
+        const oldCharge = parseFloat(job?.estimated_charge || job?.charge || 0);
+        if (newCharge > 0 && Math.abs(newCharge - oldCharge) > 0.01 && linkedQuotes.length > 0) {
+          for (const q of linkedQuotes) {
+            if (q.status !== 'converted' && q.status !== 'declined') {
+              const items = typeof q.line_items === 'string' ? JSON.parse(q.line_items) : (q.line_items || []);
+              // Update the first line item amount to match new charge
+              if (items.length > 0) {
+                items[0] = { ...items[0], amount: newCharge };
+                await updateQuote(q.id, { line_items: items });
+              }
             }
           }
         }
@@ -1648,6 +1650,18 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                       ) : (
                         <img src={getProxiedMediaUrl(url)} alt={`Job photo ${idx + 1}`} onClick={() => setLightboxPhoto(url)} />
                       )}
+                      <input
+                        type="text"
+                        className="job-photo-caption"
+                        placeholder="Add title..."
+                        defaultValue={job.photo_titles?.[idx] || ''}
+                        onBlur={(e) => {
+                          const titles = [...(job.photo_titles || [])];
+                          while (titles.length <= idx) titles.push('');
+                          titles[idx] = e.target.value;
+                          editMutation.mutate({ photo_titles: titles });
+                        }}
+                      />
                       <button className="job-photo-delete" onClick={() => handleDeletePhoto(url)} disabled={photoDeleteMutation.isPending} title="Remove"><i className="fas fa-trash"></i></button>
                     </div>
                   ))}

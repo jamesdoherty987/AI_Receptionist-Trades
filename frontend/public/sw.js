@@ -70,33 +70,31 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Hashed static assets (JS, CSS, images) — cache-first (they have unique filenames)
+  // Hashed static assets (JS, CSS, images) — network-first to avoid stale builds
   if (url.pathname.match(/\.(js|css|png|jpg|jpeg|svg|gif|ico|woff2?|ttf|eot)(\?|$)/)) {
     event.respondWith(
-      caches.match(request).then((cached) => {
-        const fetchPromise = fetch(request).then((response) => {
-          // If the server returned HTML for a JS/CSS request, the asset is gone
-          // (stale build). Don't cache it — let the page reload pick up new assets.
-          const contentType = response.headers.get('content-type') || '';
-          const isWrongType = (url.pathname.endsWith('.js') || url.pathname.endsWith('.css'))
-            && contentType.includes('text/html');
-          if (isWrongType) {
-            // Trigger a reload on the client so it picks up the new index.html
-            self.clients.matchAll({ type: 'window' }).then((clients) => {
-              clients.forEach((client) => client.navigate(client.url));
-            });
-            return response;
-          }
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, clone));
-          }
+      fetch(request).then((response) => {
+        // If the server returned HTML for a JS/CSS request, the asset is gone
+        // (stale build). Trigger a reload so the client picks up new index.html.
+        const contentType = response.headers.get('content-type') || '';
+        const isWrongType = (url.pathname.endsWith('.js') || url.pathname.endsWith('.css'))
+          && contentType.includes('text/html');
+        if (isWrongType) {
+          self.clients.matchAll({ type: 'window' }).then((clients) => {
+            clients.forEach((client) => client.navigate(client.url));
+          });
           return response;
-        }).catch(() => null);
-
-        // Return cached immediately, update in background
-        if (cached) return cached;
-        return fetchPromise.then((response) => response || new Response('', { status: 408 }));
+        }
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      }).catch(() => {
+        // Offline — fall back to cache
+        return caches.match(request).then((cached) => {
+          return cached || new Response('', { status: 408, statusText: 'Offline' });
+        });
       })
     );
     return;

@@ -491,4 +491,29 @@ export const portalUploadJobMedia = (token, jobId, file) => {
 export const getReviewAutomationSettings = () => api.get('/api/settings/review-automation');
 export const updateReviewAutomationSettings = (data) => api.post('/api/settings/review-automation', data);
 
+// ─── Floor Plan (Restaurant) ─────────────────────────────────────────────────
+export const getFloorPlan = () => api.get('/api/floor-plan');
+export const saveFloorPlan = (data) => api.post('/api/floor-plan', data);
+export const getTableStatuses = () => api.get('/api/floor-plan/statuses');
+export const updateTableStatus = (tableId, status, guestName, partySize) =>
+  api.post(`/api/floor-plan/tables/${tableId}/status`, { status, guest_name: guestName, party_size: partySize });
+
+// ─── Waitlist (Restaurant) ───────────────────────────────────────────────────
+export const getWaitlist = () => api.get('/api/waitlist');
+export const addToWaitlist = (data) => api.post('/api/waitlist', data);
+export const updateWaitlistEntry = (id, status) => api.put(`/api/waitlist/${id}`, { status });
+export const removeFromWaitlist = (id) => api.delete(`/api/waitlist/${id}`);
+export const notifyWaitlistGuest = (id) => api.post(`/api/waitlist/${id}/notify`);
+
+// ─── Online Orders (Restaurant) ──────────────────────────────────────────────
+export const getOnlineOrders = () => api.get('/api/orders');
+export const updateOrderStatus = (id, status) => api.put(`/api/orders/${id}/status`, { status });
+export const toggleOnlineOrdering = (enabled) => api.post('/api/orders/toggle', { enabled });
+export const getOnlineOrderingSettings = () => api.get('/api/orders/settings');
+export const updateOnlineOrderingSettings = (data) => api.post('/api/orders/settings', data);
+
+// ─── QR Menu (Restaurant) ───────────────────────────────────────────────────
+export const getQRMenuLink = () => api.get('/api/menu/qr-link');
+export const generateQRMenuLink = () => api.post('/api/menu/qr-link');
+
 export default api;

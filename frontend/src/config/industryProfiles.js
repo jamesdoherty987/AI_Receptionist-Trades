@@ -439,6 +439,7 @@ const industryProfiles = {
       multiDayJobs: false,
       menuDesigner: true,       // Restaurant-only: visual menu builder + PDF export
       tableManagement: true,    // Restaurant-only: table/seating management
+      onlineOrdering: true,     // Restaurant-only: takeaway/delivery orders
     },
     tabs: {
       jobs: true,

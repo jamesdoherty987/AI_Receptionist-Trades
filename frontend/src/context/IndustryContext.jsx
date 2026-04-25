@@ -46,6 +46,7 @@ function normaliseBackendProfile(backendProfile, localProfile, availableIndustri
       multiDayJobs: features.multi_day_jobs ?? localProfile.features.multiDayJobs,
       menuDesigner: features.menu_designer ?? localProfile.features.menuDesigner ?? false,
       tableManagement: features.table_management ?? localProfile.features.tableManagement ?? false,
+      onlineOrdering: features.online_ordering ?? localProfile.features.onlineOrdering ?? false,
     },
     tabs: localProfile.tabs,   // Tab visibility is frontend-only config (uses 'inventory' key)
     icons: localProfile.icons,

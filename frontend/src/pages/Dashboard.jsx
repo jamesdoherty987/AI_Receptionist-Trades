@@ -23,6 +23,9 @@ const ServicesTab = lazy(() => import('../components/dashboard/ServicesTab'));
 const InventoryTab = lazy(() => import('../components/dashboard/InventoryTab'));
 const InsightsTab = lazy(() => import('../components/dashboard/InsightsTab'));
 const CallLogsTab = lazy(() => import('../components/dashboard/CallLogsTab'));
+const FloorPlanTab = lazy(() => import('../components/dashboard/FloorPlanTab'));
+const WaitlistTab = lazy(() => import('../components/dashboard/WaitlistTab'));
+const OrdersTab = lazy(() => import('../components/dashboard/OrdersTab'));
 
 function Dashboard() {
   const { user, subscription } = useAuth();
@@ -212,6 +215,25 @@ function Dashboard() {
       icon: 'fas fa-calendar',
       group: 'Day-to-Day',
       content: <Suspense fallback={tabFallback}><CalendarTab /></Suspense>
+    }] : []),
+    // Restaurant-only: Floor Plan, Waitlist, Orders
+    ...(features.tableManagement ? [{
+      label: 'Floor Plan',
+      icon: 'fas fa-map',
+      group: 'Day-to-Day',
+      content: <Suspense fallback={tabFallback}><FloorPlanTab /></Suspense>
+    }] : []),
+    ...(features.tableManagement ? [{
+      label: 'Waitlist',
+      icon: 'fas fa-users',
+      group: 'Day-to-Day',
+      content: <Suspense fallback={tabFallback}><WaitlistTab /></Suspense>
+    }] : []),
+    ...(features.onlineOrdering ? [{
+      label: 'Orders',
+      icon: 'fas fa-shopping-bag',
+      group: 'Day-to-Day',
+      content: <Suspense fallback={tabFallback}><OrdersTab /></Suspense>
     }] : []),
     // Team & Clients
     ...(adminVis.employees !== false ? [{

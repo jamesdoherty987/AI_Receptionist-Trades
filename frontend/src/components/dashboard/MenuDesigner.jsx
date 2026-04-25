@@ -11,7 +11,10 @@
  * Entirely config-driven via serviceConfig.menuDesigner in industryProfiles.
  */
 import { useState, useMemo, useRef, useCallback } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useIndustry } from '../../context/IndustryContext';
+import { useToast } from '../Toast';
+import { getQRMenuLink, generateQRMenuLink } from '../../services/api';
 import './MenuDesigner.css';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -44,6 +47,7 @@ const DIETARY_ICONS = {
 
 function MenuDesigner({ services, svc, onClose }) {
   const { terminology } = useIndustry();
+  const { addToast } = useToast();
   const menuRef = useRef(null);
   const designerCfg = svc?.menuDesigner || {};
   const themes = designerCfg.themes || [];
@@ -208,6 +212,9 @@ function MenuDesigner({ services, svc, onClose }) {
             <button className="btn btn-primary md-download-btn" onClick={handleDownloadPDF}>
               <i className="fas fa-file-pdf"></i> Download PDF
             </button>
+
+            {/* QR Code Digital Menu */}
+            <QRMenuSection addToast={addToast} />
           </div>
 
           {/* ─── Right: Live Preview ────────────────────────────────── */}
@@ -280,6 +287,65 @@ function MenuDesigner({ services, svc, onClose }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function QRMenuSection({ addToast }) {
+  const [qrLink, setQrLink] = useState(null);
+
+  const { data: linkData } = useQuery({
+    queryKey: ['qr-menu-link'],
+    queryFn: async () => {
+      try { const r = await getQRMenuLink(); return r.data; }
+      catch { return null; }
+    },
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: () => generateQRMenuLink(),
+    onSuccess: (res) => {
+      setQrLink(res.data?.link);
+      addToast('QR menu link generated!', 'success');
+    },
+    onError: () => addToast('Failed to generate link', 'error'),
+  });
+
+  const link = qrLink || linkData?.link;
+  const qrImageUrl = link ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(link)}` : null;
+
+  const copyLink = () => {
+    if (link) {
+      navigator.clipboard?.writeText(link);
+      addToast('Link copied to clipboard', 'success');
+    }
+  };
+
+  return (
+    <div className="md-section md-qr-section">
+      <h3><i className="fas fa-qrcode"></i> QR Code Menu</h3>
+      <p className="md-qr-desc">Generate a QR code guests can scan to view your menu on their phone.</p>
+      {link ? (
+        <div className="md-qr-result">
+          <img src={qrImageUrl} alt="QR Code" className="md-qr-image" />
+          <div className="md-qr-link-row">
+            <input type="text" value={link} readOnly className="md-input md-qr-link" />
+            <button className="btn-secondary btn-sm" onClick={copyLink}><i className="fas fa-copy"></i></button>
+          </div>
+          <button className="btn-secondary btn-sm md-qr-download" onClick={() => {
+            const a = document.createElement('a');
+            a.href = qrImageUrl;
+            a.download = 'menu-qr-code.png';
+            a.click();
+          }}>
+            <i className="fas fa-download"></i> Download QR
+          </button>
+        </div>
+      ) : (
+        <button className="btn btn-secondary md-qr-generate" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
+          <i className="fas fa-qrcode"></i> {generateMutation.isPending ? 'Generating...' : 'Generate QR Link'}
+        </button>
+      )}
     </div>
   );
 }

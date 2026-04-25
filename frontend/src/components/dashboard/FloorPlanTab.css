@@ -1,0 +1,77 @@
+.floor-plan-tab { padding: 0; }
+
+.fp-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; gap: 1rem; }
+.fp-header h2 { font-size: 1.1rem; font-weight: 700; margin: 0 0 0.15rem 0; }
+.fp-header h2 i { margin-right: 0.4rem; color: var(--accent-blue); }
+.fp-subtitle { color: var(--text-secondary); margin: 0; font-size: 0.85rem; }
+.fp-header-right { display: flex; gap: 0.5rem; }
+
+.fp-loading { display: flex; justify-content: center; padding: 3rem; }
+.fp-spinner { width: 28px; height: 28px; border: 3px solid var(--border-color); border-top-color: var(--accent-blue); border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Stats */
+.fp-stats { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.fp-stat { display: flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; color: var(--text-secondary); font-weight: 500; }
+.fp-stat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Palette */
+.fp-palette { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; padding: 0.6rem 0.75rem; background: var(--bg-gray, #f8fafc); border-radius: 10px; border: 1px solid var(--border-color); overflow-x: auto; }
+.fp-palette-label { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+.fp-palette-items { display: flex; gap: 0.35rem; }
+.fp-palette-btn { display: flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.6rem; border: 1px solid var(--border-color); border-radius: 8px; background: white; cursor: pointer; font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); transition: all 0.15s; white-space: nowrap; }
+.fp-palette-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+.fp-shape-icon { width: 14px; height: 14px; border: 2px solid currentColor; display: inline-block; }
+.fp-shape-round { border-radius: 50%; }
+.fp-shape-rect { border-radius: 2px; }
+.fp-shape-bar { border-radius: 2px; width: 20px; height: 8px; }
+
+/* Canvas */
+.fp-canvas { position: relative; min-height: 400px; background: white; border: 2px solid var(--border-color); border-radius: 12px; overflow: visible; }
+.fp-canvas.edit-mode { border-style: dashed; border-color: var(--accent-blue); background: repeating-linear-gradient(0deg, transparent, transparent 19px, #f1f5f920 19px, #f1f5f920 20px), repeating-linear-gradient(90deg, transparent, transparent 19px, #f1f5f920 19px, #f1f5f920 20px); }
+
+.fp-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-secondary); }
+.fp-empty i { font-size: 2.5rem; opacity: 0.3; margin-bottom: 0.75rem; }
+.fp-empty h4 { margin: 0 0 0.25rem; font-size: 1rem; }
+.fp-empty p { margin: 0; font-size: 0.85rem; }
+
+/* Table */
+.fp-table { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 2px solid; border-radius: 8px; transition: box-shadow 0.15s; user-select: none; z-index: 1; }
+.fp-table-round { border-radius: 50%; }
+.fp-table-bar { border-radius: 4px; }
+.fp-table.selected { box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3); z-index: 2; }
+.fp-table.dragging { opacity: 0.8; z-index: 10; cursor: grabbing !important; }
+.fp-table-name { font-size: 0.75rem; font-weight: 700; color: var(--text-primary); line-height: 1; }
+.fp-table-seats { font-size: 0.65rem; color: var(--text-secondary); }
+.fp-table-guest { font-size: 0.6rem; color: var(--text-secondary); max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-table-remove { position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; border-radius: 50%; background: var(--danger, #ef4444); color: white; border: none; cursor: pointer; font-size: 0.6rem; display: flex; align-items: center; justify-content: center; z-index: 5; }
+
+/* Popover */
+.fp-popover { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: white; border: 1px solid var(--border-color); border-radius: 10px; padding: 0.75rem; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 100; min-width: 180px; }
+.fp-popover-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.85rem; }
+.fp-popover-close { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 2px; }
+.fp-popover-statuses { display: flex; flex-direction: column; gap: 0.25rem; }
+.fp-status-btn { display: flex; align-items: center; gap: 0.4rem; padding: 0.4rem 0.6rem; border: 1px solid var(--border-color); border-radius: 6px; background: white; cursor: pointer; font-size: 0.8rem; transition: all 0.15s; width: 100%; text-align: left; }
+.fp-status-btn:hover { border-color: var(--status-color); }
+.fp-status-btn.active { background: var(--status-color); color: white; border-color: var(--status-color); }
+.fp-status-btn.active .fp-status-dot { background: white !important; }
+.fp-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.fp-popover-fields { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
+.fp-popover-fields input { padding: 0.35rem 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8rem; font-family: inherit; }
+
+/* Properties panel */
+.fp-props { background: var(--bg-gray, #f8fafc); border: 1px solid var(--border-color); border-radius: 10px; padding: 1rem; margin-top: 1rem; }
+.fp-props h4 { margin: 0 0 0.75rem; font-size: 0.9rem; font-weight: 600; }
+.fp-props-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; }
+.fp-prop { display: flex; flex-direction: column; gap: 0.25rem; }
+.fp-prop label { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
+.fp-prop input, .fp-prop select { padding: 0.4rem 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; font-family: inherit; }
+
+@media (max-width: 768px) {
+  .fp-canvas { min-height: 300px; }
+  .fp-palette { flex-direction: column; align-items: flex-start; }
+  .fp-palette-items { flex-wrap: wrap; }
+  .fp-props-grid { grid-template-columns: 1fr 1fr; }
+  .fp-popover { left: 0; transform: none; min-width: 160px; }
+  .fp-header { flex-direction: column; gap: 0.5rem; }
+}

@@ -376,3 +376,20 @@
   .ins-reviews { flex-direction: column; align-items: center; gap: 0.75rem; }
   .ins-reviews-bars { min-width: 0; width: 100%; }
 }
+
+/* ─── Service Performance Table (Menu Engineering) ────────────────────────── */
+.ins-svc-table { width: 100%; }
+.ins-svc-header, .ins-svc-row { display: grid; grid-template-columns: 1.5fr 0.6fr 0.8fr 0.8fr 1fr; gap: 0.5rem; align-items: center; padding: 0.4rem 0; }
+.ins-svc-header { font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 0.25rem; }
+.ins-svc-row { font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; }
+.ins-svc-row:last-child { border-bottom: none; }
+.ins-svc-col-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ins-svc-col { text-align: right; white-space: nowrap; }
+.ins-svc-revenue { font-weight: 600; color: #10b981; }
+.ins-svc-col-bar { min-width: 0; }
+
+@media (max-width: 768px) {
+  .ins-svc-header, .ins-svc-row { grid-template-columns: 1.2fr 0.5fr 0.7fr; }
+  .ins-svc-header .ins-svc-col:nth-child(4), .ins-svc-row .ins-svc-col:nth-child(4),
+  .ins-svc-header .ins-svc-col-bar, .ins-svc-row .ins-svc-col-bar { display: none; }
+}
