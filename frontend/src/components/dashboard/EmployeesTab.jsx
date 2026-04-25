@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useIndustry } from '../../context/IndustryContext';
 import { useToast } from '../Toast';
 import { getEmployeeHoursThisWeek, getEmployeesHoursThisWeek, getCompanyTimeOffRequests, reviewTimeOffRequest, getUnreadMessageCounts, getEmployeeSchedule, getBusinessHours, getAllEmployeeWorkSchedules } from '../../services/api';
+import { parseServerDate } from '../../utils/helpers';
 import MessageEmployeeModal from '../modals/MessageEmployeeModal';
 import AddEmployeeModal from '../modals/AddEmployeeModal';
 import EmployeeDetailModal from '../modals/EmployeeDetailModal';
@@ -210,7 +211,7 @@ function EmployeesTab({ employees, bookings }) {
     return employees.map(employee => {
       const employeeJobsToday = (bookings || []).filter(job => {
         if (!job || !job.appointment_time) return false;
-        const jobDate = new Date(job.appointment_time);
+        const jobDate = parseServerDate(job.appointment_time);
         const isToday = jobDate.toDateString() === today;
         const assignedIds = job.assigned_employee_ids || [];
         const isAssigned = assignedIds.includes(employee.id) || assignedIds.includes(String(employee.id));
@@ -219,7 +220,7 @@ function EmployeesTab({ employees, bookings }) {
       });
 
       const currentJob = employeeJobsToday.find(job => {
-        const jobTime = new Date(job.appointment_time);
+        const jobTime = parseServerDate(job.appointment_time);
         const diffMinutes = (now - jobTime) / (1000 * 60);
         const jobDuration = job.duration_minutes || 120;
         return diffMinutes >= -30 && diffMinutes <= jobDuration;
@@ -227,8 +228,8 @@ function EmployeesTab({ employees, bookings }) {
 
       const jobsToday = employeeJobsToday.length;
       const nextJob = employeeJobsToday
-        .filter(job => new Date(job.appointment_time) > now)
-        .sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time))[0];
+        .filter(job => parseServerDate(job.appointment_time) > now)
+        .sort((a, b) => parseServerDate(a.appointment_time) - parseServerDate(b.appointment_time))[0];
 
       return {
         ...employee,
@@ -293,7 +294,7 @@ function EmployeesTab({ employees, bookings }) {
       weekDates.forEach(d => { grid[id][formatDateKey(d)] = []; });
       jobs.forEach(job => {
         if (!job.appointment_time) return;
-        const jobDate = new Date(job.appointment_time);
+        const jobDate = parseServerDate(job.appointment_time);
         const key = formatDateKey(jobDate);
         if (grid[id][key]) {
           grid[id][key].push(job);
@@ -668,7 +669,7 @@ function EmployeesTab({ employees, bookings }) {
                                     <div key={ji} className="sg-job-chip" style={{ borderLeftColor: color }}
                                       onClick={(e) => { e.stopPropagation(); setSelectedJobId(job.id); }}>
                                       <span className="sg-job-time">
-                                        {new Date(job.appointment_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                        {parseServerDate(job.appointment_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                                       </span>
                                       <span className="sg-job-name">{job.service_type || job.client_name || 'Job'}</span>
                                     </div>
@@ -765,7 +766,7 @@ function EmployeesTab({ employees, bookings }) {
                       {employee.nextJob && !employee.isBusy && (
                         <span className="meta-chip next">
                           <i className="fas fa-arrow-right"></i>
-                          {new Date(employee.nextJob.appointment_time).toLocaleTimeString('en-US', { 
+                          {parseServerDate(employee.nextJob.appointment_time).toLocaleTimeString('en-US', { 
                             hour: 'numeric', 
                             minute: '2-digit' 
                           })}
@@ -855,7 +856,7 @@ function EmployeesTab({ employees, bookings }) {
 
                       {/* Job blocks positioned on timeline */}
                       {dayPopover.jobs.map(job => {
-                        const jobTime = new Date(job.appointment_time);
+                        const jobTime = parseServerDate(job.appointment_time);
                         const jobH = jobTime.getHours() + jobTime.getMinutes() / 60;
                         const top = Math.max(0, (jobH - startH) * HOUR_HEIGHT);
                         const duration = job.duration_minutes || 60;

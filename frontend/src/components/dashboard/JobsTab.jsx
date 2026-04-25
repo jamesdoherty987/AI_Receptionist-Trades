@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { useIndustry } from '../../context/IndustryContext';
-import { formatCurrency, getProxiedMediaUrl } from '../../utils/helpers';
+import { formatCurrency, getProxiedMediaUrl, parseServerDate } from '../../utils/helpers';
 import { formatDuration } from '../../utils/durationOptions';
 import { updateBooking, getJobSetupData, sendInvoice } from '../../services/api';
 import { useToast } from '../Toast';
@@ -71,7 +71,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
-      addToast('Job marked as paid', 'success');
+      addToast(`${terminology.job} marked as paid`, 'success');
       setMarkingPaidJobId(null);
     },
     onError: () => { addToast('Failed to mark job as paid', 'error'); setMarkingPaidJobId(null); }
@@ -134,8 +134,8 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     // Normalize legacy 'paid' status to 'completed' for counting
     const norm = (s) => s === 'paid' ? 'completed' : s;
     const activeAll = bookings.filter(j => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status));
-    const overdue = activeAll.filter(j => j.status !== 'in-progress' && new Date(j.appointment_time) < now);
-    const active = activeAll.filter(j => j.status === 'in-progress' || new Date(j.appointment_time) >= now);
+    const overdue = activeAll.filter(j => j.status !== 'in-progress' && parseServerDate(j.appointment_time) < now);
+    const active = activeAll.filter(j => j.status === 'in-progress' || parseServerDate(j.appointment_time) >= now);
     const inProg = bookings.filter(j => j.status === 'in-progress');
     const needsInv = bookings.filter(j => (norm(j.status) === 'completed') && j.payment_status !== 'paid');
     const done = bookings.filter(j => norm(j.status) === 'completed');
@@ -166,13 +166,16 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
         j.job_address?.toLowerCase().includes(term) ||
         j.address?.toLowerCase().includes(term) ||
         j.eircode?.toLowerCase().includes(term) ||
+        j.table_number?.toLowerCase().includes(term) ||
+        j.dining_area?.toLowerCase().includes(term) ||
+        j.special_requests?.toLowerCase().includes(term) ||
         j.status?.toLowerCase().includes(term)
       );
     }
 
     // Status filter
     if (statusFilter === 'active') {
-      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status) && (j.status === 'in-progress' || new Date(j.appointment_time) >= now));
+      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'rejected'].includes(j.status) && (j.status === 'in-progress' || parseServerDate(j.appointment_time) >= now));
     } else if (statusFilter === 'recent') {
       const recentCutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000);
       jobs = jobs.filter(j => {
@@ -180,7 +183,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
         return created >= recentCutoff && !['cancelled', 'rejected'].includes(j.status);
       });
     } else if (statusFilter === 'overdue') {
-      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'rejected', 'in-progress'].includes(j.status) && new Date(j.appointment_time) < now);
+      jobs = jobs.filter(j => !['completed', 'paid', 'cancelled', 'rejected', 'in-progress'].includes(j.status) && parseServerDate(j.appointment_time) < now);
     } else if (statusFilter === 'in-progress') {
       jobs = jobs.filter(j => j.status === 'in-progress');
     } else if (statusFilter === 'needs-invoice') {
@@ -197,7 +200,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       // In-progress always first
       if (a.status === 'in-progress' && b.status !== 'in-progress') return -1;
       if (b.status === 'in-progress' && a.status !== 'in-progress') return 1;
-      return new Date(a.appointment_time) - new Date(b.appointment_time);
+      return parseServerDate(a.appointment_time) - parseServerDate(b.appointment_time);
     });
 
     // Group into sections
@@ -218,23 +221,23 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     if (inProg.length > 0) sections.push({ key: 'in-progress', label: 'In Progress', icon: 'fa-wrench', color: '#8b5cf6', jobs: inProg });
 
     // Overdue
-    const overdue = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && new Date(j.appointment_time) < now);
+    const overdue = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && parseServerDate(j.appointment_time) < now);
     if (overdue.length > 0) sections.push({ key: 'overdue', label: 'Late — Past Appointment Time', icon: 'fa-exclamation-circle', color: '#ef4444', jobs: overdue });
 
     // Today
-    const today = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && (() => { const t = new Date(j.appointment_time); return t >= now && t < tomorrowStart; })());
+    const today = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && (() => { const t = parseServerDate(j.appointment_time); return t >= now && t < tomorrowStart; })());
     if (today.length > 0) sections.push({ key: 'today', label: 'Today', icon: 'fa-sun', color: '#f59e0b', jobs: today });
 
     // Tomorrow
-    const tomorrow = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && (() => { const t = new Date(j.appointment_time); return t >= tomorrowStart && t < dayAfterTomorrow; })());
+    const tomorrow = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && (() => { const t = parseServerDate(j.appointment_time); return t >= tomorrowStart && t < dayAfterTomorrow; })());
     if (tomorrow.length > 0) sections.push({ key: 'tomorrow', label: 'Tomorrow', icon: 'fa-calendar-day', color: '#3b82f6', jobs: tomorrow });
 
     // This Week
-    const thisWeek = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && (() => { const t = new Date(j.appointment_time); return t >= dayAfterTomorrow && t < weekEnd; })());
+    const thisWeek = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && (() => { const t = parseServerDate(j.appointment_time); return t >= dayAfterTomorrow && t < weekEnd; })());
     if (thisWeek.length > 0) sections.push({ key: 'this-week', label: 'This Week', icon: 'fa-calendar-week', color: '#6366f1', jobs: thisWeek });
 
     // Later
-    const later = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && new Date(j.appointment_time) >= weekEnd);
+    const later = jobs.filter(j => isActive(j) && j.status !== 'in-progress' && parseServerDate(j.appointment_time) >= weekEnd);
     if (later.length > 0) sections.push({ key: 'later', label: 'Upcoming', icon: 'fa-calendar-alt', color: '#0ea5e9', jobs: later });
 
     // Needs Invoice
@@ -301,7 +304,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       if (cols[effectiveStatus]) cols[effectiveStatus].push(j);
       else if (cols.pending) cols.pending.push(j);
     });
-    Object.values(cols).forEach(arr => arr.sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time)));
+    Object.values(cols).forEach(arr => arr.sort((a, b) => parseServerDate(a.appointment_time) - parseServerDate(b.appointment_time)));
     return cols;
   }, [bookings, searchTerm, localStatusOverrides]);
 
@@ -316,7 +319,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       <div className="jt-header">
         <div className="jt-search">
           <i className="fas fa-search"></i>
-          <input type="text" placeholder="Search by name, service, address, phone..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          <input type="text" placeholder={features.tableManagement ? "Search by name, table, area, requests..." : "Search by name, service, address, phone..."} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           {searchTerm && <button className="jt-search-clear" onClick={() => setSearchTerm('')}><i className="fas fa-times"></i></button>}
         </div>
         <div className="jt-header-actions">
@@ -364,15 +367,15 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
               </div>
               <div className="jt-cards">
                 {section.jobs.map(job => {
-                  const isPast = new Date(job.appointment_time) < now && job.status !== 'in-progress' && job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled';
-                  const isNow = Math.abs(new Date(job.appointment_time) - now) < 30 * 60 * 1000 && job.status !== 'completed' && job.status !== 'cancelled';
+                  const isPast = parseServerDate(job.appointment_time) < now && job.status !== 'in-progress' && job.status !== 'completed' && job.status !== 'paid' && job.status !== 'cancelled';
+                  const isNow = Math.abs(parseServerDate(job.appointment_time) - now) < 30 * 60 * 1000 && job.status !== 'completed' && job.status !== 'cancelled';
                   return (
                     <div key={job.id} className={`jt-card ${isPast ? 'jt-card-overdue' : ''} ${isNow ? 'jt-card-now' : ''} ${job.status === 'in-progress' ? 'jt-card-active' : ''}`}
                       onClick={() => setSelectedJobId(job.id)}>
                       <div className="jt-card-left">
                         <div className="jt-card-time">
-                          <span className="jt-time">{new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</span>
-                          <span className="jt-date">{new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                          <span className="jt-time">{parseServerDate(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="jt-date">{parseServerDate(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                         </div>
                       </div>
                       <div className="jt-card-body">
@@ -418,7 +421,21 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                             }
                             return <span className="jt-info-item"><i className="fas fa-wrench"></i> {job.service_type || job.service || 'Service'}</span>;
                           })()}
-                          <span className="jt-info-item"><i className="fas fa-map-marker-alt"></i> {getAddress(job)}</span>
+                          {features.tableManagement ? (
+                            <>
+                              {job.table_number && (
+                                <span className="jt-info-item"><i className="fas fa-chair"></i> Table {job.table_number}</span>
+                              )}
+                              {job.party_size && (
+                                <span className="jt-info-item"><i className="fas fa-users"></i> {job.party_size} guest{Number(job.party_size) !== 1 ? 's' : ''}</span>
+                              )}
+                              {job.dining_area && (
+                                <span className="jt-info-item"><i className="fas fa-utensils"></i> {job.dining_area}</span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="jt-info-item"><i className="fas fa-map-marker-alt"></i> {getAddress(job)}</span>
+                          )}
                           {job.address_audio_url && (
                             <button className="jt-audio-btn" onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }} title="Listen to address audio">
                               <i className="fas fa-volume-up"></i> Listen
@@ -430,6 +447,11 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                           {(job.customer_photo_urls?.length > 0 || job.photo_urls?.length > 0) && (
                             <span className="jt-media-badge" title={`${(job.customer_photo_urls?.length || 0) + (job.photo_urls?.length || 0)} media files`}>
                               <i className="fas fa-images"></i> {(job.customer_photo_urls?.length || 0) + (job.photo_urls?.length || 0)}
+                            </span>
+                          )}
+                          {features.tableManagement && job.special_requests && (
+                            <span className="jt-special-requests" title={job.special_requests}>
+                              <i className="fas fa-comment-dots"></i> {job.special_requests.length > 40 ? job.special_requests.slice(0, 40) + '...' : job.special_requests}
                             </span>
                           )}
                           {(job.phone || job.phone_number) && (
@@ -506,7 +528,9 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                     </div>
                     <div className="jt-board-card-service">{job.service_type || job.service || 'Service'}</div>
                     <div className="jt-board-card-meta">
-                      <span><i className="fas fa-calendar"></i> {new Date(job.appointment_time).toLocaleDateString('en-IE', { day: 'numeric', month: 'short' })}</span>
+                      <span><i className="fas fa-calendar"></i> {parseServerDate(job.appointment_time).toLocaleDateString('en-IE', { day: 'numeric', month: 'short' })}</span>
+                      {features.tableManagement && job.table_number && <span><i className="fas fa-chair"></i> T{job.table_number}</span>}
+                      {features.tableManagement && job.party_size && <span><i className="fas fa-users"></i> {job.party_size}</span>}
                       {!!(job.charge || job.estimated_charge) && <span className="jt-board-card-charge">{formatCurrency(job.charge || job.estimated_charge)}</span>}
                     </div>
                     {job.status_label && <span className="jt-label-badge" style={{ fontSize: '0.62rem', marginTop: '0.25rem' }}><i className="fas fa-tag"></i> {job.status_label}</span>}

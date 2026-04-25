@@ -131,6 +131,13 @@
 .jt-info-item { font-size: 0.78rem; color: #64748b; display: flex; align-items: center; gap: 0.3rem; }
 .jt-info-item i { font-size: 0.62rem; color: #94a3b8; }
 
+.jt-special-requests {
+  font-size: 0.72rem; color: #64748b; font-style: italic;
+  display: flex; align-items: center; gap: 0.25rem;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jt-special-requests i { font-size: 0.6rem; color: #f59e0b; }
+
 .jt-card-bottom { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .jt-phone {
   font-size: 0.75rem; color: #3b82f6; text-decoration: none;

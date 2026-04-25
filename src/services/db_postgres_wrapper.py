@@ -1541,9 +1541,10 @@ class PostgreSQLDatabaseWrapper:
             if row:
                 result = dict(row)
                 result['company_id'] = row.get('company_id')
-                # Convert datetime to ISO string to prevent Flask's "GMT" serialization
-                if hasattr(result.get('appointment_time'), 'isoformat'):
-                    result['appointment_time'] = result['appointment_time'].isoformat()
+                # Convert all datetime fields to ISO strings to prevent Flask's "GMT" serialization
+                for key in ('appointment_time', 'created_at', 'updated_at', 'job_started_at', 'job_completed_at', 'gcal_synced_at', 'emergency_accepted_at', 'invoice_sent_at'):
+                    if result.get(key) and hasattr(result[key], 'isoformat'):
+                        result[key] = result[key].isoformat()
                 return result
             return None
         finally:
@@ -1763,6 +1764,7 @@ class PostgreSQLDatabaseWrapper:
                     b.updated_at, b.gcal_synced_at, b.stripe_checkout_session_id,
                     b.status_label, b.recurrence_pattern,
                     b.emergency_status, b.emergency_accepted_by, b.emergency_accepted_at,
+                    b.table_number, b.party_size, b.dining_area, b.special_requests, b.course_status,
                     c.name AS client_name, c.phone AS client_phone, c.email AS client_email,
                     COALESCE(
                         (SELECT ARRAY_AGG(wa.employee_id)
@@ -1817,6 +1819,11 @@ class PostgreSQLDatabaseWrapper:
                 'status_label': row.get('status_label'),
                 'recurrence_pattern': row.get('recurrence_pattern'),
                 'stripe_checkout_session_id': row.get('stripe_checkout_session_id'),
+                'table_number': row.get('table_number'),
+                'party_size': row.get('party_size'),
+                'dining_area': row.get('dining_area'),
+                'special_requests': row.get('special_requests'),
+                'course_status': row.get('course_status'),
             } for row in rows]
         finally:
             self.return_connection(conn)
@@ -2374,7 +2381,9 @@ class PostgreSQLDatabaseWrapper:
                     urgency: str = None, address: str = None, eircode: str = None,
                     property_type: str = None, charge: float = None, charge_max: float = None,
                     company_id: int = None,
-                    duration_minutes: int = 1440, requires_callout: bool = False, requires_quote: bool = False) -> Optional[int]:
+                    duration_minutes: int = 1440, requires_callout: bool = False, requires_quote: bool = False,
+                    table_number: str = None, party_size: int = None, dining_area: str = None,
+                    special_requests: str = None) -> Optional[int]:
         """Add a new booking (default 1 day duration for trades)"""
         print(f"[DB_BOOKING] ========== ADDING BOOKING ==========")
         print(f"[DB_BOOKING] client_id={client_id}, calendar_event_id={calendar_event_id}")
@@ -2403,21 +2412,25 @@ class PostgreSQLDatabaseWrapper:
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
-                                        eircode, property_type, charge, charge_max, company_id, duration_minutes, requires_callout, requires_quote)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        eircode, property_type, charge, charge_max, company_id, duration_minutes, requires_callout, requires_quote,
+                                        table_number, party_size, dining_area, special_requests)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
-                      phone_number, email, urgency, address, eircode, property_type, charge, charge_max, company_id, duration_minutes, requires_callout, requires_quote))
+                      phone_number, email, urgency, address, eircode, property_type, charge, charge_max, company_id, duration_minutes, requires_callout, requires_quote,
+                      table_number, party_size, dining_area, special_requests))
             else:
                 print(f"[DB_BOOKING] Inserting booking without charge...")
                 cursor.execute("""
                     INSERT INTO bookings (client_id, calendar_event_id, appointment_time, 
                                         service_type, phone_number, email, urgency, address,
-                                        eircode, property_type, company_id, duration_minutes, requires_callout, requires_quote)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                        eircode, property_type, company_id, duration_minutes, requires_callout, requires_quote,
+                                        table_number, party_size, dining_area, special_requests)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (client_id, calendar_event_id, appointment_time, service_type, 
-                      phone_number, email, urgency, address, eircode, property_type, company_id, duration_minutes, requires_callout, requires_quote))
+                      phone_number, email, urgency, address, eircode, property_type, company_id, duration_minutes, requires_callout, requires_quote,
+                      table_number, party_size, dining_area, special_requests))
             
             result = cursor.fetchone()
             booking_id = result['id'] if result else None
@@ -3076,7 +3089,15 @@ class PostgreSQLDatabaseWrapper:
             
             cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            result = []
+            for row in rows:
+                d = dict(row)
+                # Serialize datetimes as ISO strings to prevent Flask GMT format shift
+                for key in ('appointment_time', 'job_started_at', 'job_completed_at', 'assigned_at', 'emergency_accepted_at'):
+                    if d.get(key) and hasattr(d[key], 'isoformat'):
+                        d[key] = d[key].isoformat()
+                result.append(d)
+            return result
         finally:
             self.return_connection(conn)
     
@@ -3087,7 +3108,8 @@ class PostgreSQLDatabaseWrapper:
         try:
             query = """
                 SELECT b.id, b.appointment_time, c.name as client_name, b.service_type, 
-                       b.status, b.address
+                       b.status, b.address, b.duration_minutes, b.charge, b.eircode,
+                       b.phone_number
                 FROM employee_assignments wa
                 JOIN bookings b ON wa.booking_id = b.id
                 LEFT JOIN clients c ON b.client_id = c.id
@@ -3109,7 +3131,15 @@ class PostgreSQLDatabaseWrapper:
             
             cursor.execute(query, params)
             rows = cursor.fetchall()
-            return [dict(row) for row in rows]
+            result = []
+            for row in rows:
+                d = dict(row)
+                # Serialize datetime as ISO string (no timezone) to prevent Flask
+                # from converting to "Fri, 25 Apr 2025 08:00:00 GMT" format
+                if d.get('appointment_time') and hasattr(d['appointment_time'], 'isoformat'):
+                    d['appointment_time'] = d['appointment_time'].isoformat()
+                result.append(d)
+            return result
         finally:
             self.return_connection(conn)
     
@@ -3366,6 +3396,60 @@ class PostgreSQLDatabaseWrapper:
             except Exception:
                 # Table may not exist yet — skip time-off check
                 conn.rollback()
+            
+            # --- Check employee work schedule ---
+            try:
+                cursor.execute("SELECT work_schedule FROM employees WHERE id = %s", (employee_id,))
+                emp_row = cursor.fetchone()
+                work_schedule = emp_row.get('work_schedule') if emp_row else None
+                if work_schedule and isinstance(work_schedule, dict):
+                    day_abbrevs = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+                    day_key = day_abbrevs[appointment_time.weekday()]
+                    day_sched = work_schedule.get(day_key)
+                    if day_sched and not day_sched.get('enabled', True):
+                        day_name = appointment_time.strftime('%A')
+                        return {
+                            'available': False,
+                            'conflicts': [],
+                            'message': f"Employee does not work on {day_name}s",
+                            'outside_schedule': True
+                        }
+                    if day_sched and day_sched.get('enabled', True) and day_sched.get('start') and day_sched.get('end'):
+                        sched_start_parts = day_sched['start'].split(':')
+                        sched_end_parts = day_sched['end'].split(':')
+                        sched_start_hour = int(sched_start_parts[0])
+                        sched_start_min = int(sched_start_parts[1]) if len(sched_start_parts) > 1 else 0
+                        sched_end_hour = int(sched_end_parts[0])
+                        sched_end_min = int(sched_end_parts[1]) if len(sched_end_parts) > 1 else 0
+                        appt_hour = appointment_time.hour
+                        appt_min = appointment_time.minute
+                        appt_total = appt_hour * 60 + appt_min
+                        sched_start_total = sched_start_hour * 60 + sched_start_min
+                        sched_end_total = sched_end_hour * 60 + sched_end_min
+                        if appt_total < sched_start_total or appt_total >= sched_end_total:
+                            return {
+                                'available': False,
+                                'conflicts': [],
+                                'message': f"Outside employee's shift ({day_sched['start']} - {day_sched['end']})",
+                                'outside_schedule': True
+                            }
+                        # Also check if the job would end after the shift ends
+                        if duration_minutes < 480:  # Only for non-full-day jobs
+                            appt_end_total = appt_total + duration_minutes
+                            if appt_end_total > sched_end_total:
+                                return {
+                                    'available': False,
+                                    'conflicts': [],
+                                    'message': f"Job would end after employee's shift ends at {day_sched['end']}",
+                                    'outside_schedule': True
+                                }
+            except Exception as ws_err:
+                # work_schedule column may not exist yet — skip
+                print(f"[EMPLOYEE_AVAIL] Work schedule check skipped: {ws_err}")
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             
             # Get business hours for full-day job handling
             try:

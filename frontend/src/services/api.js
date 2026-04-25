@@ -304,6 +304,12 @@ export const createExpense = (data) => api.post('/api/expenses', data);
 export const updateExpense = (id, data) => api.put(`/api/expenses/${id}`, data);
 export const deleteExpense = (id) => api.delete(`/api/expenses/${id}`);
 
+// Revenue Entries (Income Ledger)
+export const getRevenueEntries = () => api.get('/api/revenue-entries');
+export const createRevenueEntry = (data) => api.post('/api/revenue-entries', data);
+export const updateRevenueEntry = (id, data) => api.put(`/api/revenue-entries/${id}`, data);
+export const deleteRevenueEntry = (id) => api.delete(`/api/revenue-entries/${id}`);
+
 // Quotes / Estimates
 export const getQuotes = () => api.get('/api/quotes');
 export const createQuote = (data) => api.post('/api/quotes', data);

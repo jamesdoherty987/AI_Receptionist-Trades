@@ -11,12 +11,14 @@ import TaxSettings from '../accounting/TaxSettings';
 import PurchaseOrdersPanel from '../accounting/PurchaseOrdersPanel';
 import MileagePanel from '../accounting/MileagePanel';
 import CreditNotesPanel from '../accounting/CreditNotesPanel';
+import RevenueLedgerPanel from '../accounting/RevenueLedgerPanel';
 import '../accounting/Accounting.css';
 import './FinancesTab.css';
 import './SharedDashboard.css';
 
 const ACCT_TABS = [
   { key: 'overview', label: 'Dashboard', icon: 'fa-chart-line' },
+  { key: 'income', label: 'Income', icon: 'fa-book' },
   { key: 'invoicing', label: 'Invoicing', icon: 'fa-file-invoice' },
   { key: 'expenses', label: 'Expenses', icon: 'fa-receipt' },
   { key: 'reports', label: 'Reports', icon: 'fa-file-invoice-dollar' },
@@ -60,6 +62,7 @@ function FinancesTab() {
     total_revenue = 0,
     paid_revenue = 0,
     unpaid_revenue = 0,
+    manual_revenue = 0,
     total_materials_cost = 0,
     total_refunds = 0,
     gross_profit = 0,
@@ -309,8 +312,17 @@ function FinancesTab() {
       </div>
 
       {/* Render active sub-panel */}
+
+      {/* Income Ledger */}
+      {acctTab === 'income' && (
+        <RevenueLedgerPanel />
+      )}
+
       {acctTab === 'overview' && (
         <div className="fin-quick-actions">
+          <button className="fin-quick-btn" onClick={() => setAcctTab('income')}>
+            <i className="fas fa-plus"></i> Add Income
+          </button>
           <button className="fin-quick-btn" onClick={() => setAcctTab('expenses')}>
             <i className="fas fa-plus"></i> New Expense
           </button>
@@ -398,6 +410,17 @@ function FinancesTab() {
             <div className="revenue-content">
               <div className="revenue-value" style={{ color: '#ef4444' }}>-{formatCurrency(total_refunds)}</div>
               <div className="revenue-label">Refunds</div>
+            </div>
+          </div>
+        )}
+        {manual_revenue > 0 && (
+          <div className="revenue-card">
+            <div className="revenue-icon" style={{ background: 'rgba(245, 158, 11, 0.1)' }}>
+              <i className="fas fa-pen-to-square" style={{ color: '#f59e0b' }}></i>
+            </div>
+            <div className="revenue-content">
+              <div className="revenue-value" style={{ color: '#f59e0b' }}>{formatCurrency(manual_revenue)}</div>
+              <div className="revenue-label">Manual Income</div>
             </div>
           </div>
         )}

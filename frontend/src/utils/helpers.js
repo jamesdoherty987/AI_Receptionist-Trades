@@ -10,22 +10,34 @@ export const parseServerDate = (dateStr) => {
   if (!dateStr) return new Date(NaN);
   if (dateStr instanceof Date) return dateStr;
   
-  // Remove trailing Z or timezone offset — treat as local time
-  const cleaned = String(dateStr).replace(/[Z]$/i, '').replace(/[+-]\d{2}:\d{2}$/, '');
+  const str = String(dateStr);
   
-  // Parse "YYYY-MM-DDTHH:MM:SS" or "YYYY-MM-DD HH:MM:SS"
+  // Handle Flask's HTTP date format: "Fri, 25 Apr 2025 08:00:00 GMT"
+  // Strip the GMT/timezone suffix and parse components directly as local time
+  const httpMatch = str.match(/\w+,\s+(\d{1,2})\s+(\w+)\s+(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+  if (httpMatch) {
+    const months = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+    const day = parseInt(httpMatch[1]);
+    const month = months[httpMatch[2]];
+    const year = parseInt(httpMatch[3]);
+    const hour = parseInt(httpMatch[4]);
+    const min = parseInt(httpMatch[5]);
+    const sec = parseInt(httpMatch[6]);
+    if (month !== undefined) {
+      return new Date(year, month, day, hour, min, sec);
+    }
+  }
+  
+  // Remove trailing Z or timezone offset — treat as local time
+  const cleaned = str.replace(/[Z]$/i, '').replace(/[+-]\d{2}:\d{2}$/, '');
+  
+  // Parse "YYYY-MM-DDTHH:MM:SS" or "YYYY-MM-DD HH:MM:SS" (with optional fractional seconds)
   const match = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):?(\d{2})?/);
   if (match) {
-    const result = new Date(
+    return new Date(
       parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]),
       parseInt(match[4]), parseInt(match[5]), parseInt(match[6] || 0)
     );
-    // DEBUG: detect timezone mismatch
-    const rawDate = new Date(dateStr);
-    if (rawDate.getHours() !== result.getHours()) {
-      console.warn(`[parseServerDate] TZ FIX APPLIED: "${dateStr}" raw=${rawDate.getHours()}:00 -> fixed=${result.getHours()}:00 (offset=${rawDate.getTimezoneOffset()}min)`);
-    }
-    return result;
   }
   
   // Fallback for date-only "YYYY-MM-DD"
@@ -34,8 +46,9 @@ export const parseServerDate = (dateStr) => {
     return new Date(parseInt(dateOnly[1]), parseInt(dateOnly[2]) - 1, parseInt(dateOnly[3]));
   }
   
-  // Last resort fallback
-  return new Date(dateStr);
+  // Last resort — parse but warn
+  console.warn(`[parseServerDate] Unrecognized format, using native Date(): "${str}"`);
+  return new Date(str);
 };
 
 export const formatDate = (date) => {

@@ -315,7 +315,11 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
         estimated_charge: (job.estimated_charge || job.charge) ? Math.round(parseFloat(job.estimated_charge || job.charge) * 100) / 100 : '',
         estimated_charge_max: job.estimated_charge_max ? Math.round(parseFloat(job.estimated_charge_max) * 100) / 100 : '',
         duration_minutes: job.duration_minutes || 60,
-        notes: job.notes || ''
+        notes: job.notes || '',
+        table_number: job.table_number || '',
+        party_size: job.party_size || '',
+        dining_area: job.dining_area || '',
+        special_requests: job.special_requests || '',
       });
     }
   }, [job]);
@@ -672,7 +676,9 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
         job_address: job.job_address || job.address || '', eircode: job.eircode || '',
         estimated_charge: (job.estimated_charge || job.charge) ? Math.round(parseFloat(job.estimated_charge || job.charge) * 100) / 100 : '',
         estimated_charge_max: job.estimated_charge_max ? Math.round(parseFloat(job.estimated_charge_max) * 100) / 100 : '',
-        duration_minutes: job.duration_minutes || 60, notes: job.notes || ''
+        duration_minutes: job.duration_minutes || 60, notes: job.notes || '',
+        table_number: job.table_number || '', party_size: job.party_size || '',
+        dining_area: job.dining_area || '', special_requests: job.special_requests || '',
       });
     }
     setIsEditing(false);
@@ -903,7 +909,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                       <input type="text" name="property_type" className="edit-input" value={editFormData.property_type} onChange={handleEditChange} placeholder="e.g., House" />
                     </div>
                     <div className="edit-field">
-                      <label className="edit-label">Charge (€) <HelpTooltip text="The price for this job. Use both fields for a price range." /></label>
+                      <label className="edit-label">{features.tableManagement ? 'Final Bill (€)' : 'Charge (€)'} <HelpTooltip text={features.tableManagement ? "Add the final bill amount after the reservation is complete." : "The price for this job. Use both fields for a price range."} /></label>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                         <input type="number" name="estimated_charge" className="edit-input" value={editFormData.estimated_charge} onChange={handleEditChange} step="0.01" min="0" placeholder="Min" style={{ flex: 1 }} />
                         <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>to</span>
@@ -933,6 +939,40 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                       <input type="text" name="job_address" className="edit-input" value={editFormData.job_address} onChange={handleEditChange} placeholder={`${terminology.job || 'Job'} location address`} />
                     </div>
                   </div>
+                  {/* Restaurant-specific edit fields */}
+                  {features.tableManagement && (
+                    <>
+                      <div className="edit-row">
+                        <div className="edit-field">
+                          <label className="edit-label">Table Number</label>
+                          <input type="text" name="table_number" className="edit-input" value={editFormData.table_number} onChange={handleEditChange} placeholder="e.g., 5, A3" />
+                        </div>
+                        <div className="edit-field">
+                          <label className="edit-label">Party Size</label>
+                          <input type="number" name="party_size" className="edit-input" value={editFormData.party_size} onChange={handleEditChange} min="1" placeholder="Guests" />
+                        </div>
+                        <div className="edit-field">
+                          <label className="edit-label">Dining Area</label>
+                          <select name="dining_area" className="edit-input" value={editFormData.dining_area} onChange={handleEditChange}>
+                            <option value="">Any area</option>
+                            <option value="Indoor">Indoor</option>
+                            <option value="Outdoor">Outdoor</option>
+                            <option value="Private Room">Private Room</option>
+                            <option value="Bar">Bar</option>
+                            <option value="Terrace">Terrace</option>
+                            <option value="Rooftop">Rooftop</option>
+                            <option value="Garden">Garden</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="edit-row">
+                        <div className="edit-field full-width">
+                          <label className="edit-label">Special Requests</label>
+                          <input type="text" name="special_requests" className="edit-input" value={editFormData.special_requests} onChange={handleEditChange} placeholder="e.g., High chair, birthday cake, allergies..." />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (
                 <>
@@ -1069,6 +1109,37 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                             <audio controls preload="metadata" src={getProxiedMediaUrl(job.address_audio_url)} style={{ height: 28, width: '100%', maxWidth: 280 }} />
                           </div>
                         )}
+                      </div>
+                    </div>
+                  )}
+                  {/* Restaurant-specific info */}
+                  {(job.table_number || job.party_size || job.dining_area) && (
+                    <div className="info-row">
+                      {job.table_number && (
+                        <div className="info-cell">
+                          <span className="info-label">Table</span>
+                          <span className="info-value"><i className="fas fa-chair" style={{ marginRight: 4, color: '#6366f1' }}></i>{job.table_number}</span>
+                        </div>
+                      )}
+                      {job.party_size && (
+                        <div className="info-cell">
+                          <span className="info-label">Party Size</span>
+                          <span className="info-value"><i className="fas fa-users" style={{ marginRight: 4, color: '#0ea5e9' }}></i>{job.party_size} guest{Number(job.party_size) !== 1 ? 's' : ''}</span>
+                        </div>
+                      )}
+                      {job.dining_area && (
+                        <div className="info-cell">
+                          <span className="info-label">Area</span>
+                          <span className="info-value">{job.dining_area}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {job.special_requests && (
+                    <div className="info-row full">
+                      <div className="info-cell">
+                        <span className="info-label">Special Requests</span>
+                        <span className="info-value" style={{ fontStyle: 'italic', color: '#64748b' }}><i className="fas fa-comment-dots" style={{ marginRight: 4 }}></i>{job.special_requests}</span>
                       </div>
                     </div>
                   )}

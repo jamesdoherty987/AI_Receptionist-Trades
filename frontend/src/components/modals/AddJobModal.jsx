@@ -108,7 +108,8 @@ function AddJobModal({ isOpen, onClose, employeeMode = false, currentEmployeeId 
   
   const [formData, setFormData] = useState({
     client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '',
-    property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', employee_id: '', requires_callout: false, requires_quote: false, is_emergency: false, recurrence_pattern: '', recurrence_end_date: ''
+    property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', employee_id: '', requires_callout: false, requires_quote: false, is_emergency: false, recurrence_pattern: '', recurrence_end_date: '',
+    table_number: '', party_size: '', dining_area: '', special_requests: ''
   });
   
   const [selectedDate, setSelectedDate] = useState('');
@@ -263,13 +264,13 @@ function AddJobModal({ isOpen, onClose, employeeMode = false, currentEmployeeId 
         queryClient.invalidateQueries({ queryKey: ['employee-dashboard'] });
       }
       onClose();
-      addToast('Job created successfully!', 'success');
+      addToast(`${terminology.job} created successfully!`, 'success');
     },
     onError: (error) => { addToast('Error creating job: ' + (error.response?.data?.error || error.message), 'error'); }
   });
 
   const resetForm = () => {
-    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', employee_id: '', requires_callout: false, requires_quote: false, is_emergency: false, recurrence_pattern: '', recurrence_end_date: '' });
+    setFormData({ client_id: '', appointment_time: '', service_type: '', job_address: '', eircode: '', property_type: '', estimated_charge: '', estimated_charge_max: '', duration_minutes: 1440, notes: '', employee_id: '', requires_callout: false, requires_quote: false, is_emergency: false, recurrence_pattern: '', recurrence_end_date: '', table_number: '', party_size: '', dining_area: '', special_requests: '' });
     setSelectedDate(''); setSelectedService(null); setAnyEmployeeMode(true); setAssignedEmployees([]);
     setCustomerPickerOpen(false); setCustomerSearch(''); setSelectedCustomer(null);
     const n = new Date(); setCalMonth(n.getMonth()); setCalYear(n.getFullYear());
@@ -695,9 +696,47 @@ function AddJobModal({ isOpen, onClose, employeeMode = false, currentEmployeeId 
             <textarea name="job_address" className="form-textarea" value={formData.job_address} onChange={handleChange} rows="2" placeholder={`If different from ${terminology.client.toLowerCase()}'s address`} />
           </div>
           )}
+
+          {/* Restaurant-specific fields */}
+          {features.tableManagement && (
+            <div className="form-grid">
+              <div className="form-group">
+                <label className="form-label">Table Number</label>
+                <input type="text" name="table_number" className="form-input" value={formData.table_number} onChange={handleChange} placeholder="e.g., 5, A3, Bar 2" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Party Size</label>
+                <input type="number" name="party_size" className="form-input" value={formData.party_size} onChange={handleChange} min="1" placeholder="Number of guests" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Dining Area</label>
+                <select name="dining_area" className="form-input" value={formData.dining_area} onChange={handleChange}>
+                  <option value="">Any area</option>
+                  <option value="Indoor">Indoor</option>
+                  <option value="Outdoor">Outdoor</option>
+                  <option value="Private Room">Private Room</option>
+                  <option value="Bar">Bar</option>
+                  <option value="Terrace">Terrace</option>
+                  <option value="Rooftop">Rooftop</option>
+                  <option value="Garden">Garden</option>
+                </select>
+              </div>
+            </div>
+          )}
+          {features.tableManagement && (
+            <div className="form-group">
+              <label className="form-label">Special Requests</label>
+              <textarea name="special_requests" className="form-textarea" value={formData.special_requests} onChange={handleChange} rows="2" placeholder="e.g., High chair needed, birthday celebration, allergies..." />
+            </div>
+          )}
           
           <div className="form-group">
-            <label className="form-label">Estimated Charge (€) <HelpTooltip text="The price you'll charge the customer. Pre-filled from the service — adjust if needed for this specific job." /></label>
+            <label className="form-label">
+              {features.tableManagement ? 'Deposit / Pre-set Price (€)' : 'Estimated Charge (€)'}
+              {' '}<HelpTooltip text={features.tableManagement
+                ? "Optional — leave blank if the final bill will be added after the reservation. Use for deposits or set-menu pricing."
+                : "The price you'll charge the customer. Pre-filled from the service — adjust if needed for this specific job."} />
+            </label>
             {formData.estimated_charge_max ? (
               <div className="price-range-display">
                 <div className="price-range-inputs">
@@ -794,7 +833,7 @@ function AddJobModal({ isOpen, onClose, employeeMode = false, currentEmployeeId 
 
           <div className="form-actions">
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={mutation.isPending}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={mutation.isPending}>{mutation.isPending ? 'Creating...' : employeeMode ? 'Create & Assign to Me' : 'Create Job'}</button>
+            <button type="submit" className="btn btn-primary" disabled={mutation.isPending}>{mutation.isPending ? 'Creating...' : employeeMode ? 'Create & Assign to Me' : `Create ${terminology.job}`}</button>
           </div>
         </form>
       </Modal>

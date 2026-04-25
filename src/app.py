@@ -7467,7 +7467,11 @@ def bookings_api():
                 company_id=company_id,
                 duration_minutes=duration_minutes,
                 requires_callout=bool(data.get('requires_callout', False)),
-                requires_quote=bool(data.get('requires_quote', False))
+                requires_quote=bool(data.get('requires_quote', False)),
+                table_number=(data.get('table_number') or '').strip() or None,
+                party_size=int(data['party_size']) if data.get('party_size') else None,
+                dining_area=(data.get('dining_area') or '').strip() or None,
+                special_requests=(data.get('special_requests') or '').strip() or None,
             )
             
             # Add initial note if provided
@@ -8050,8 +8054,44 @@ def check_availability_api():
                     elif wr.get('type') == 'except' and wr.get('employee_ids'):
                         eligible_employee_ids = [wid for wid in eligible_employee_ids if wid not in wr['employee_ids']]
             per_employee_bookings = {wid: _get_day_bookings(filter_employee_id=wid) for wid in eligible_employee_ids}
+            # Load work schedules for eligible employees
+            employee_work_schedules = {}
+            for emp in all_employees:
+                if emp['id'] in eligible_employee_ids and emp.get('work_schedule'):
+                    employee_work_schedules[emp['id']] = emp['work_schedule']
         else:
             day_bookings = _get_day_bookings(filter_employee_id=employee_id)
+            # Load work schedule for the specific employee
+            employee_work_schedules = {}
+            if employee_id:
+                emp = db.get_employee(employee_id, company_id=company_id)
+                if emp and emp.get('work_schedule'):
+                    employee_work_schedules[employee_id] = emp['work_schedule']
+
+        # Helper: check if a slot time is within an employee's work schedule
+        day_abbrevs = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+        target_day_key = day_abbrevs[target_date.weekday()]
+
+        def _is_within_work_schedule(emp_id, slot_time, slot_end_time):
+            ws = employee_work_schedules.get(emp_id)
+            if not ws:
+                return True  # No schedule set = available during business hours
+            day_sched = ws.get(target_day_key)
+            if not day_sched:
+                return True  # Day not in schedule = use business hours
+            if not day_sched.get('enabled', True):
+                return False  # Employee doesn't work this day
+            sched_start = day_sched.get('start')
+            sched_end = day_sched.get('end')
+            if not sched_start or not sched_end:
+                return True
+            sp = sched_start.split(':')
+            ep = sched_end.split(':')
+            sched_start_mins = int(sp[0]) * 60 + (int(sp[1]) if len(sp) > 1 else 0)
+            sched_end_mins = int(ep[0]) * 60 + (int(ep[1]) if len(ep) > 1 else 0)
+            slot_mins = slot_time.hour * 60 + slot_time.minute
+            slot_end_mins = slot_end_time.hour * 60 + slot_end_time.minute
+            return slot_mins >= sched_start_mins and slot_end_mins <= sched_end_mins
 
         # Check employee time-off / leave for this day
         employees_on_leave_today = set()
@@ -8123,11 +8163,19 @@ def check_availability_api():
             elif employee_on_leave:
                 is_available = False
                 booking_info = {'leave': True, 'reason': 'Employee is on leave this day'}
+            # If a specific employee is selected, check their work schedule
+            elif employee_id and not any_employee and not _is_within_work_schedule(employee_id, slot_time, slot_end):
+                is_available = False
+                ws = employee_work_schedules.get(employee_id, {}).get(target_day_key, {})
+                booking_info = {'outside_schedule': True, 'reason': f"Outside shift ({ws.get('start', '?')} - {ws.get('end', '?')})"}
             elif any_employee and per_employee_bookings:
-                # Slot is available if at least one eligible employee is free
+                # Slot is available if at least one eligible employee is free AND within their shift
                 any_free = False
                 first_conflict = None
                 for wid, wb_list in per_employee_bookings.items():
+                    # Skip employees not working at this time
+                    if not _is_within_work_schedule(wid, slot_time, slot_end):
+                        continue
                     conflict = _slot_has_conflict(slot_time, slot_end, wb_list)
                     if not conflict:
                         any_free = True
@@ -8596,6 +8644,11 @@ def booking_detail_api(booking_id):
             'recurrence_end_date': booking.get('recurrence_end_date'),
             'status_label': booking.get('status_label'),
             'stripe_checkout_session_id': booking.get('stripe_checkout_session_id'),
+            'table_number': booking.get('table_number'),
+            'party_size': booking.get('party_size'),
+            'dining_area': booking.get('dining_area'),
+            'special_requests': booking.get('special_requests'),
+            'course_status': booking.get('course_status'),
         }
         
         return jsonify(response_booking)
@@ -8630,10 +8683,18 @@ def booking_detail_api(booking_id):
                         sanitized_data[db_key] = None
                 else:
                     sanitized_data[db_key] = None
+            elif key == 'party_size':
+                if value is not None and value != '':
+                    try:
+                        sanitized_data[key] = int(value)
+                    except (ValueError, TypeError):
+                        sanitized_data[key] = None
+                else:
+                    sanitized_data[key] = None
             elif isinstance(value, str):
                 value = value.strip()
                 # For optional text fields, convert empty to None
-                if key in ['address', 'eircode', 'property_type', 'phone_number', 'email', 'phone', 'status_label']:
+                if key in ['address', 'eircode', 'property_type', 'phone_number', 'email', 'phone', 'status_label', 'table_number', 'dining_area', 'special_requests', 'course_status']:
                     sanitized_data[key] = value if value else None
                 else:
                     sanitized_data[key] = value
@@ -12011,6 +12072,23 @@ def get_finances():
 
         # Adjust revenue figures for refunds
         paid_revenue = paid_revenue - total_refunds
+
+        # Include manual revenue entries
+        manual_revenue = 0
+        try:
+            conn_re = db.get_connection()
+            try:
+                cur_re = conn_re.cursor(cursor_factory=_RDC)
+                cur_re.execute("SELECT COALESCE(SUM(amount), 0) as total FROM revenue_entries WHERE company_id = %s", (company_id,))
+                row_re = cur_re.fetchone()
+                manual_revenue = float(row_re['total'] or 0) if row_re else 0
+                cur_re.close()
+            finally:
+                db.return_connection(conn_re)
+        except Exception:
+            pass  # Table might not exist yet
+
+        paid_revenue = paid_revenue + manual_revenue
         total_revenue = paid_revenue + unpaid_revenue
         gross_profit = total_revenue - total_materials_cost
         profit_margin = (gross_profit / total_revenue * 100) if total_revenue > 0 else 0
@@ -12026,6 +12104,7 @@ def get_finances():
             "unpaid_revenue": unpaid_revenue,
             "pending_revenue": unpaid_revenue,
             "completed_revenue": paid_revenue,
+            "manual_revenue": round(manual_revenue, 2),
             "total_materials_cost": round(total_materials_cost, 2),
             "total_refunds": round(total_refunds, 2),
             "gross_profit": round(gross_profit, 2),
@@ -12247,6 +12326,136 @@ def delete_expense(expense_id):
     try:
         cur = conn.cursor()
         cur.execute("DELETE FROM expenses WHERE id = %s AND company_id = %s", (expense_id, company_id))
+        conn.commit()
+        cur.close()
+        return jsonify({"success": True})
+    except Exception as ex:
+        conn.rollback()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+# ============================================
+# REVENUE ENTRIES (INCOME LEDGER) API
+# ============================================
+
+@app.route("/api/revenue-entries", methods=["GET"])
+@login_required
+def get_revenue_entries():
+    """Get all manual revenue entries for the company"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            "SELECT * FROM revenue_entries WHERE company_id = %s ORDER BY date DESC, created_at DESC",
+            (company_id,)
+        )
+        entries = cur.fetchall()
+        cur.close()
+        for e in entries:
+            e['amount'] = float(e.get('amount', 0) or 0)
+        return jsonify(entries)
+    except Exception as ex:
+        import traceback; traceback.print_exc()
+        return jsonify([])
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/revenue-entries", methods=["POST"])
+@login_required
+@subscription_required
+def create_revenue_entry():
+    """Create a new manual revenue entry"""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    amount = data.get('amount')
+    if not amount or float(amount) <= 0:
+        return jsonify({"error": "Amount is required and must be positive"}), 400
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            INSERT INTO revenue_entries (company_id, amount, category, description,
+                                         payment_method, date, notes, booking_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+        """, (
+            company_id, float(amount), data.get('category', 'other'),
+            data.get('description', ''), data.get('payment_method', 'cash'),
+            data.get('date', None), data.get('notes', ''),
+            data.get('booking_id') or None
+        ))
+        entry = cur.fetchone()
+        conn.commit()
+        cur.close()
+        entry['amount'] = float(entry.get('amount', 0) or 0)
+        return jsonify(entry), 201
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/revenue-entries/<int:entry_id>", methods=["PUT"])
+@login_required
+@subscription_required
+def update_revenue_entry(entry_id):
+    """Update a revenue entry"""
+    db = get_database()
+    company_id = session.get('company_id')
+    data = request.get_json() or {}
+    conn = db.get_connection()
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id FROM revenue_entries WHERE id = %s AND company_id = %s", (entry_id, company_id))
+        if not cur.fetchone():
+            cur.close()
+            return jsonify({"error": "Entry not found"}), 404
+        fields = []
+        values = []
+        for key in ['amount', 'category', 'description', 'payment_method', 'date', 'notes', 'booking_id']:
+            if key in data:
+                fields.append(f"{key} = %s")
+                values.append(data[key] if data[key] != '' else None)
+        if not fields:
+            return jsonify({"error": "No fields to update"}), 400
+        fields.append("updated_at = CURRENT_TIMESTAMP")
+        values.extend([entry_id, company_id])
+        cur.execute(f"UPDATE revenue_entries SET {', '.join(fields)} WHERE id = %s AND company_id = %s RETURNING *", values)
+        entry = cur.fetchone()
+        conn.commit()
+        cur.close()
+        entry['amount'] = float(entry.get('amount', 0) or 0)
+        return jsonify(entry)
+    except Exception as ex:
+        conn.rollback()
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(ex)}), 500
+    finally:
+        db.return_connection(conn)
+
+
+@app.route("/api/revenue-entries/<int:entry_id>", methods=["DELETE"])
+@login_required
+@subscription_required
+def delete_revenue_entry(entry_id):
+    """Delete a revenue entry"""
+    db = get_database()
+    company_id = session.get('company_id')
+    conn = db.get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM revenue_entries WHERE id = %s AND company_id = %s", (entry_id, company_id))
         conn.commit()
         cur.close()
         return jsonify({"success": True})

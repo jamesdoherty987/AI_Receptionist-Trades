@@ -1,9 +1,10 @@
 /* Employee Portal */
-.employee-portal { min-height: 100vh; background: #f8fafc; font-family: 'Outfit', sans-serif; }
+.employee-portal { min-height: 100vh; background: #f8fafc; font-family: 'Outfit', sans-serif; padding-bottom: env(safe-area-inset-bottom, 0px); }
 
 .employee-header {
   background: #ffffff; border-bottom: 1px solid var(--border-color, #e2e8f0);
-  padding: 0 1.5rem; height: 64px; display: flex; align-items: center;
+  padding: 0 1.5rem; padding-top: env(safe-area-inset-top, 0px);
+  height: calc(64px + env(safe-area-inset-top, 0px)); display: flex; align-items: center;
   position: sticky; top: 0; z-index: 100;
 }
 
@@ -401,7 +402,7 @@
 }
 @media (max-width: 640px) {
   .employee-greeting { display: none; }
-  .employee-header { padding: 0 0.75rem; height: 56px; }
+  .employee-header { padding: 0 0.75rem; padding-top: env(safe-area-inset-top, 0px); height: calc(56px + env(safe-area-inset-top, 0px)); }
   .employee-logo { font-size: 1.1rem; overflow: hidden; }
   .employee-logo span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
   .employee-logout-btn { padding: 0.4rem 0.6rem; font-size: 0.8rem; }

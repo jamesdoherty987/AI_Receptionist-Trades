@@ -32,7 +32,7 @@ import {
 import LoadingSpinner from '../components/LoadingSpinner';
 import ImageUpload from '../components/ImageUpload';
 import EmployeeNotificationBell from '../components/EmployeeNotificationBell';
-import { formatPhone, getStatusBadgeClass, formatDateTime, getProxiedMediaUrl } from '../utils/helpers';
+import { formatPhone, getStatusBadgeClass, formatDateTime, getProxiedMediaUrl, parseServerDate } from '../utils/helpers';
 import { formatDuration } from '../utils/durationOptions';
 import AddJobModal from '../components/modals/AddJobModal';
 import './EmployeeDashboard.css';
@@ -468,17 +468,17 @@ function EmployeeDashboard() {
   // Helper: is this a completed/paid job whose appointment was today?
   const isCompletedToday = (j) => {
     if (j.status !== 'completed') return false;
-    const t = new Date(j.appointment_time);
+    const t = parseServerDate(j.appointment_time);
     return t >= todayStart && t < tomorrowStart;
   };
 
   // Also treat overdue jobs completed today (appointment before today but completed_at is today)
   const isCompletedTodayOverdue = (j) => {
     if (j.status !== 'completed') return false;
-    const t = new Date(j.appointment_time);
+    const t = parseServerDate(j.appointment_time);
     if (t >= todayStart) return false; // not overdue
     // Check if it was completed today
-    const completedAt = j.job_completed_at ? new Date(j.job_completed_at) : null;
+    const completedAt = j.job_completed_at ? parseServerDate(j.job_completed_at) : null;
     return completedAt && completedAt >= todayStart && completedAt < tomorrowStart;
   };
 
@@ -498,7 +498,7 @@ function EmployeeDashboard() {
     if (j.status === 'in-progress') return false;
     if (isTodayDone(j) && j.job_started_at) return false; // shown in justCompletedFromProgress
     if (isCompletedToday(j)) return false; // today's completed jobs show in Today section
-    return new Date(j.appointment_time) < now;
+    return parseServerDate(j.appointment_time) < now;
   });
 
   // Today's jobs (includes today's completed jobs)
@@ -506,7 +506,7 @@ function EmployeeDashboard() {
     if (j.status === 'in-progress') return false;
     if (isTodayDone(j) && j.job_started_at) return false; // shown in justCompletedFromProgress
     if (isCompletedTodayOverdue(j)) return false; // overdue completed jobs stay in overdue
-    const t = new Date(j.appointment_time);
+    const t = parseServerDate(j.appointment_time);
     if (isCompletedToday(j)) return true; // all completed today jobs with today appointment
     return t >= now && t < tomorrowStart; // upcoming active jobs
   });
@@ -515,7 +515,7 @@ function EmployeeDashboard() {
   const tomorrowJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
     if (isTodayDone(j)) return false;
-    const t = new Date(j.appointment_time);
+    const t = parseServerDate(j.appointment_time);
     const dayAfterTomorrow = new Date(tomorrowStart); dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
     return t >= tomorrowStart && t < dayAfterTomorrow;
   });
@@ -524,7 +524,7 @@ function EmployeeDashboard() {
   const thisWeekJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
     if (isTodayDone(j)) return false;
-    const t = new Date(j.appointment_time);
+    const t = parseServerDate(j.appointment_time);
     const dayAfterTomorrow = new Date(tomorrowStart); dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
     return t >= dayAfterTomorrow && t < weekEnd;
   });
@@ -533,7 +533,7 @@ function EmployeeDashboard() {
   const laterJobs = activeJobs.filter(j => {
     if (j.status === 'in-progress') return false;
     if (isTodayDone(j)) return false;
-    return new Date(j.appointment_time) >= weekEnd;
+    return parseServerDate(j.appointment_time) >= weekEnd;
   });
 
   const upcomingJobs = activeJobs;
@@ -788,13 +788,13 @@ function EmployeeDashboard() {
                         {job.job_started_at && (
                           <div className="wjd-info-cell">
                             <span className="wjd-label">Started</span>
-                            <span className="wjd-value">{new Date(job.job_started_at).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span className="wjd-value">{parseServerDate(job.job_started_at).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</span>
                           </div>
                         )}
                         {job.job_completed_at && (
                           <div className="wjd-info-cell">
                             <span className="wjd-label">Finished</span>
-                            <span className="wjd-value">{new Date(job.job_completed_at).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span className="wjd-value">{parseServerDate(job.job_completed_at).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</span>
                           </div>
                         )}
                         {job.actual_duration_minutes && (
@@ -1262,7 +1262,7 @@ function EmployeeDashboard() {
                             <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
-                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              <p><i className="fas fa-clock"></i> {parseServerDate(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
                             <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
@@ -1297,7 +1297,7 @@ function EmployeeDashboard() {
                             <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
-                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              <p><i className="fas fa-clock"></i> {parseServerDate(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}</p>}
                             </div>
                             <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
@@ -1350,13 +1350,13 @@ function EmployeeDashboard() {
                                 <span className="employee-job-status badge-overdue"><i className="fas fa-exclamation-circle"></i> overdue</span>
                               )}
                               <span className="employee-job-date">
-                                {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                {parseServerDate(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
                               </span>
                             </div>
                             <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
-                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              <p><i className="fas fa-clock"></i> {parseServerDate(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
                             <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
@@ -1412,7 +1412,7 @@ function EmployeeDashboard() {
                             <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
-                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              <p><i className="fas fa-clock"></i> {parseServerDate(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
                             <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
@@ -1462,7 +1462,7 @@ function EmployeeDashboard() {
                             <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
-                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              <p><i className="fas fa-clock"></i> {parseServerDate(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
                             <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
@@ -1496,13 +1496,13 @@ function EmployeeDashboard() {
                             <div className="employee-job-header">
                               <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                               <span className="employee-job-date">
-                                {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                {parseServerDate(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
                               </span>
                             </div>
                             <div className="employee-job-body">
                               <h3>{job.client_name || 'No client'}</h3>
                               <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
-                              <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              <p><i className="fas fa-clock"></i> {parseServerDate(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                             </div>
                             <div className="employee-job-footer" onClick={e => e.stopPropagation()}>
@@ -1534,13 +1534,13 @@ function EmployeeDashboard() {
                           <div className="employee-job-header">
                             <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                             <span className="employee-job-date">
-                              {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
+                              {parseServerDate(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
                             </span>
                           </div>
                           <div className="employee-job-body">
                             <h3>{job.client_name || 'No client'}</h3>
                             <p><i className="fas fa-briefcase"></i> {job.service_type || 'Job'}</p>
-                            <p><i className="fas fa-clock"></i> {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                            <p><i className="fas fa-clock"></i> {parseServerDate(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                             {(job.address || job.job_address) && <p><i className="fas fa-map-marker-alt"></i> {job.job_address || job.address}{job.address_audio_url && <button className="wjd-btn wjd-btn-sm" style={{marginLeft: 6, padding: "0.15rem 0.4rem", fontSize: "0.7rem"}} onClick={e => { e.stopPropagation(); new Audio(getProxiedMediaUrl(job.address_audio_url)).play(); }}><i className="fas fa-volume-up"></i></button>}</p>}
                           </div>
                         </div>
@@ -1568,7 +1568,7 @@ function EmployeeDashboard() {
                             <div className="employee-job-header">
                               <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
                               <span className="employee-job-date">
-                                {new Date(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                {parseServerDate(job.appointment_time).toLocaleDateString('en-IE', { weekday: 'short', month: 'short', day: 'numeric' })}
                               </span>
                             </div>
                             <div className="employee-job-body">
@@ -1699,13 +1699,13 @@ function EmployeeDashboard() {
                         {schedule.map((item, idx) => (
                           <div key={idx} className="employee-schedule-item" onClick={() => setSelectedJobId(item.id)}>
                             <div className="employee-schedule-date">
-                              <span className="schedule-day">{new Date(item.appointment_time).toLocaleDateString('en-IE', { weekday: 'short' })}</span>
-                              <span className="schedule-date-num">{new Date(item.appointment_time).getDate()}</span>
-                              <span className="schedule-month">{new Date(item.appointment_time).toLocaleDateString('en-IE', { month: 'short' })}</span>
+                              <span className="schedule-day">{parseServerDate(item.appointment_time).toLocaleDateString('en-IE', { weekday: 'short' })}</span>
+                              <span className="schedule-date-num">{parseServerDate(item.appointment_time).getDate()}</span>
+                              <span className="schedule-month">{parseServerDate(item.appointment_time).toLocaleDateString('en-IE', { month: 'short' })}</span>
                             </div>
                             <div className="employee-schedule-details">
                               <h3>{item.service_type || 'Job'}</h3>
-                              <p><i className="fas fa-clock"></i> {new Date(item.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
+                              <p><i className="fas fa-clock"></i> {parseServerDate(item.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}</p>
                               {item.client_name && <p><i className="fas fa-user"></i> {item.client_name}</p>}
                               {item.address && <p><i className="fas fa-map-marker-alt"></i> {item.address}</p>}
                             </div>
@@ -1766,9 +1766,9 @@ function EmployeeDashboard() {
                         {weekDays.map((date, idx) => {
                           const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
                           const dayJobs = allJobs.filter(j => {
-                            const jd = new Date(j.appointment_time);
+                            const jd = parseServerDate(j.appointment_time);
                             return jd.toDateString() === date.toDateString();
-                          }).sort((a, b) => new Date(a.appointment_time) - new Date(b.appointment_time));
+                          }).sort((a, b) => parseServerDate(a.appointment_time) - parseServerDate(b.appointment_time));
                           const onLeave = approvedLeave.some(l => dateStr >= l.start_date && dateStr <= l.end_date);
                           const isToday = date.toDateString() === today.toDateString();
 
@@ -1791,7 +1791,7 @@ function EmployeeDashboard() {
                                 {dayJobs.map(job => (
                                   <div key={job.id} className="ws-week-job" onClick={() => setSelectedJobId(job.id)}>
                                     <span className="ws-week-job-time">
-                                      {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}
+                                      {parseServerDate(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                     <span className="ws-week-job-title">{job.service_type || 'Job'}</span>
                                     <span className={`employee-job-status ${getStatusBadgeClass(job.status)}`}>{job.status}</span>
@@ -1818,7 +1818,7 @@ function EmployeeDashboard() {
                   // Build job map for this month: day -> jobs[]
                   const jobsByDay = {};
                   allJobs.forEach(j => {
-                    const d = new Date(j.appointment_time);
+                    const d = parseServerDate(j.appointment_time);
                     if (d.getMonth() === calMonth && d.getFullYear() === calYear) {
                       const day = d.getDate();
                       if (!jobsByDay[day]) jobsByDay[day] = [];
@@ -1840,7 +1840,7 @@ function EmployeeDashboard() {
 
                   // Jobs for selected day
                   const selectedDayJobs = selectedCalDay ? (jobsByDay[selectedCalDay] || []).sort((a, b) =>
-                    new Date(a.appointment_time) - new Date(b.appointment_time)
+                    parseServerDate(a.appointment_time) - parseServerDate(b.appointment_time)
                   ) : [];
 
                   return (
@@ -1939,7 +1939,7 @@ function EmployeeDashboard() {
                               {selectedDayJobs.map(job => (
                                 <div key={job.id} className="ws-event-card" onClick={() => setSelectedJobId(job.id)}>
                                   <div className="ws-event-time">
-                                    {new Date(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}
+                                    {parseServerDate(job.appointment_time).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })}
                                   </div>
                                   <div className="ws-event-info">
                                     <span className="ws-event-title">{job.service_type || 'Job'}</span>
@@ -1969,7 +1969,7 @@ function EmployeeDashboard() {
                   // Build job count per month
                   const jobsByMonth = {};
                   allJobs.forEach(j => {
-                    const d = new Date(j.appointment_time);
+                    const d = parseServerDate(j.appointment_time);
                     if (d.getFullYear() === calYear) {
                       const m = d.getMonth();
                       jobsByMonth[m] = (jobsByMonth[m] || 0) + 1;
@@ -1998,7 +1998,7 @@ function EmployeeDashboard() {
                           // Mini job map for this month
                           const miniJobDays = new Set();
                           allJobs.forEach(j => {
-                            const d = new Date(j.appointment_time);
+                            const d = parseServerDate(j.appointment_time);
                             if (d.getMonth() === m && d.getFullYear() === calYear) miniJobDays.add(d.getDate());
                           });
 
@@ -2367,7 +2367,7 @@ function EmployeeDashboard() {
                         {jobs.slice(0, showAllHistory ? undefined : 10).map(job => (
                           <div key={job.id} className="whr-history-item" onClick={() => setSelectedJobId(job.id)}>
                             <div className="whr-history-date">
-                              {new Date(job.appointment_time).toLocaleDateString('en-IE', { month: 'short', day: 'numeric' })}
+                              {parseServerDate(job.appointment_time).toLocaleDateString('en-IE', { month: 'short', day: 'numeric' })}
                             </div>
                             <div className="whr-history-details">
                               <span className="whr-history-service">{job.service_type || 'Job'}</span>

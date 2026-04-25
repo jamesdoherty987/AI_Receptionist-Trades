@@ -9,6 +9,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import OnboardingWizard from '../components/dashboard/OnboardingWizard';
 import { isStandalone } from '../components/PWAInstallPrompt';
 import { getDashboardData, getBusinessSettings, getUnseenCallCount, getCompanyReviews, getLeads, getUnreadMessageCounts } from '../services/api';
+import { parseServerDate } from '../utils/helpers';
 import './Dashboard.css';
 
 // Lazy-load tab components — only loaded when the tab is actually rendered
@@ -158,7 +159,7 @@ function Dashboard() {
     // Overdue = scheduled jobs with appointment_time in the past
     const overdue = bookings.filter(b => {
       if (b.status === 'completed' || b.status === 'cancelled') return false;
-      const appt = new Date(b.appointment_time);
+      const appt = parseServerDate(b.appointment_time);
       return appt < now && b.status !== 'in-progress';
     }).length;
     return overdue;
@@ -199,7 +200,7 @@ function Dashboard() {
       badge: jobBadges,
       content: isLoading ? <LoadingSpinner /> : <Suspense fallback={tabFallback}><JobsTab bookings={bookings} showInvoiceButtons={settings?.show_invoice_buttons !== false} /></Suspense>
     }] : []),
-    ...(hasAIFeatures && adminVis.calls !== false ? [{
+    ...(hasAIFeatures && currentPlan !== 'dashboard' && adminVis.calls !== false ? [{
       label: terminology.callsTab || 'Calls',
       icon: 'fas fa-phone-alt',
       group: 'Day-to-Day',
