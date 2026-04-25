@@ -77,6 +77,18 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
     onError: () => { addToast('Failed to mark job as paid', 'error'); setMarkingPaidJobId(null); }
   });
 
+  const unmarkPaidMutation = useMutation({
+    mutationFn: (jobId) => updateBooking(jobId, { payment_status: 'unpaid', payment_method: null }),
+    onMutate: (jobId) => setMarkingPaidJobId(jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      addToast(`${terminology.job} marked as unpaid`, 'success');
+      setMarkingPaidJobId(null);
+    },
+    onError: () => { addToast('Failed to update payment status', 'error'); setMarkingPaidJobId(null); }
+  });
+
   const dragStatusMutation = useMutation({
     mutationFn: ({ jobId, status }) => updateBooking(jobId, { status }),
     onSuccess: (_, { jobId }) => {
@@ -242,12 +254,8 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
     // Needs Invoice
     const needsInv = jobs.filter(j => (j.status === 'completed' || j.status === 'paid') && j.payment_status !== 'paid');
-    if (needsInv.length > 0 && statusFilter !== 'needs-invoice') {
-      // Only show as separate section if not already filtered to it
-    }
-    if (statusFilter === 'needs-invoice' && needsInv.length > 0) {
-      // Already filtered, show as flat list
-      if (sections.length === 0) sections.push({ key: 'needs-invoice', label: 'Needs Invoice', icon: 'fa-file-invoice', color: '#f59e0b', jobs: needsInv });
+    if (needsInv.length > 0 && (statusFilter === 'needs-invoice' || statusFilter === 'all' || statusFilter === 'completed')) {
+      sections.push({ key: 'needs-invoice', label: 'Done — Unpaid', icon: 'fa-file-invoice', color: '#f59e0b', jobs: needsInv.slice(0, 20) });
     }
 
     // Completed/Paid
@@ -481,10 +489,16 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
                               <i className="fas fa-file-invoice-dollar"></i> Invoice
                             </button>
                           )}
-                          {job.status === 'completed' && job.payment_status !== 'paid' && (job.charge || job.estimated_charge) && (
+                          {job.status === 'completed' && job.payment_status !== 'paid' && (
                             <button className="jt-mark-paid" onClick={e => { e.stopPropagation(); markPaidMutation.mutate(job.id); }}
                               disabled={markingPaidJobId === job.id}>
                               <i className={`fas ${markingPaidJobId === job.id ? 'fa-spinner fa-spin' : 'fa-check'}`}></i> Paid
+                            </button>
+                          )}
+                          {job.payment_status === 'paid' && job.payment_method === 'manual' && (
+                            <button className="jt-unmark-paid" onClick={e => { e.stopPropagation(); unmarkPaidMutation.mutate(job.id); }}
+                              disabled={markingPaidJobId === job.id} title="Undo manual payment">
+                              <i className={`fas ${markingPaidJobId === job.id ? 'fa-spinner fa-spin' : 'fa-undo'}`}></i> Undo Paid
                             </button>
                           )}
                         </div>

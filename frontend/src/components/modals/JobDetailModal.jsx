@@ -550,6 +550,28 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
     onError: (error) => addToast(error.response?.data?.error || 'Failed to process refund', 'error'),
   });
 
+  const markPaidMutation = useMutation({
+    mutationFn: () => updateBooking(jobId, { payment_status: 'paid', payment_method: 'manual' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      addToast('Job marked as paid', 'success');
+    },
+    onError: () => addToast('Failed to mark job as paid', 'error'),
+  });
+
+  const unmarkPaidMutation = useMutation({
+    mutationFn: () => updateBooking(jobId, { payment_status: 'unpaid', payment_method: null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['finances'] });
+      addToast('Payment status reverted to unpaid', 'success');
+    },
+    onError: () => addToast('Failed to update payment status', 'error'),
+  });
+
   const openRefundModal = () => {
     setRefundData({
       amount: job?.charge || job?.estimated_charge || '',
@@ -754,9 +776,23 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                   <i className="fas fa-file-invoice"></i>
                   Quote
                 </button>
+                {job.payment_status !== 'paid' && (
+                  <button className="btn btn-success" onClick={() => markPaidMutation.mutate()} disabled={markPaidMutation.isPending}
+                    title="Manually mark this job as paid">
+                    <i className={`fas ${markPaidMutation.isPending ? 'fa-spinner fa-spin' : 'fa-check-circle'}`}></i>
+                    {markPaidMutation.isPending ? 'Marking...' : 'Mark Paid'}
+                  </button>
+                )}
                 {job.payment_status === 'paid' && (
                   <button className="btn btn-danger-outline" onClick={openRefundModal} title="Issue a refund for this job">
                     <i className="fas fa-undo"></i> Refund
+                  </button>
+                )}
+                {job.payment_status === 'paid' && job.payment_method === 'manual' && (
+                  <button className="btn btn-warning-outline" onClick={() => unmarkPaidMutation.mutate()} disabled={unmarkPaidMutation.isPending}
+                    title="Revert this manual payment back to unpaid">
+                    <i className={`fas ${unmarkPaidMutation.isPending ? 'fa-spinner fa-spin' : 'fa-times-circle'}`}></i>
+                    {unmarkPaidMutation.isPending ? 'Reverting...' : 'Undo Paid'}
                   </button>
                 )}
                 {getDirectionsUrl() && (

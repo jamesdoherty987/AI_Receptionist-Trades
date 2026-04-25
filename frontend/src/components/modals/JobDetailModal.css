@@ -1295,3 +1295,5 @@
 .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-danger-outline { background: transparent; color: #ef4444; border: 1px solid #fecaca; padding: 8px 16px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; min-height: 38px; transition: all 0.15s; }
 .btn-danger-outline:hover { background: #fef2f2; border-color: #ef4444; }
+.btn-warning-outline { background: transparent; color: #a16207; border: 1px solid #fde68a; padding: 8px 16px; border-radius: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; min-height: 38px; transition: all 0.15s; }
+.btn-warning-outline:hover { background: #fefce8; border-color: #f59e0b; }
