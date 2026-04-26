@@ -28,6 +28,33 @@
   gap: 0.5rem;
 }
 
+.btn-export-csv {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  background: white;
+  color: #64748b;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.btn-export-csv:hover {
+  border-color: #10b981;
+  color: #059669;
+  background: rgba(16, 185, 129, 0.04);
+}
+
+.btn-export-csv i {
+  font-size: 0.7rem;
+}
+
 /* ===== Toolbar: Search + Sort + View Toggle ===== */
 .svc-toolbar {
   display: flex;
@@ -38,12 +65,13 @@
 }
 
 .svc-search {
-  flex: 1;
-  min-width: 180px;
+  flex: 1 1 0%;
+  min-width: 120px;
+  max-width: 380px;
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.32rem 0.65rem;
+  padding: 0.22rem 0.55rem;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: white;
@@ -91,18 +119,20 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .svc-sort-chips {
   display: flex;
   gap: 0.3rem;
+  flex-shrink: 0;
 }
 
 .svc-sort-chip {
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.4rem 0.65rem;
+  padding: 0.25rem 0.55rem;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: white;
@@ -139,12 +169,13 @@
   border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .svc-view-btn {
   background: white;
   border: none;
-  padding: 0.4rem 0.55rem;
+  padding: 0.25rem 0.5rem;
   cursor: pointer;
   color: var(--text-secondary);
   font-size: 0.85rem;
@@ -734,7 +765,9 @@
 
   .svc-search {
     min-width: 0;
+    max-width: 100%;
     width: 100%;
+    flex: 1 1 100%;
   }
 
   .svc-toolbar-right {
@@ -1702,6 +1735,7 @@
   color: var(--text-primary);
   cursor: pointer;
   max-width: 160px;
+  flex-shrink: 0;
 }
 
 .svc-category-filter:focus {
@@ -1711,8 +1745,6 @@
 
 /* ─── Category Badge on Card ──────────────────────────────────────────────── */
 .meta-item.svc-category-badge {
-  background: rgba(99, 102, 241, 0.1);
-  color: #6366f1;
   padding: 0.15rem 0.5rem;
   border-radius: 12px;
   font-weight: 500;
@@ -1769,4 +1801,331 @@
     font-size: 0.62rem;
     padding: 0.08rem 0.3rem;
   }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Inactive Service Card
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.service-card.service-card-inactive {
+  opacity: 0.55;
+  border-style: dashed;
+  background: #fafafa;
+}
+
+.service-card.service-card-inactive:hover {
+  opacity: 0.75;
+}
+
+.service-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.service-title-row .service-title {
+  margin-bottom: 0;
+}
+
+.svc-inactive-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Active toggle button color */
+.btn-icon.active-toggle-on {
+  color: #10b981;
+}
+
+.btn-icon.active-toggle-on:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Collapsible Category Groups
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.svc-category-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.svc-category-group {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  background: white;
+}
+
+.svc-category-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg-gray, #f8fafc);
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  transition: background 0.15s;
+  text-align: left;
+}
+
+.svc-category-group-header:hover {
+  background: #f1f5f9;
+}
+
+.svc-category-group-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.svc-category-group-name {
+  flex: 1;
+}
+
+.svc-category-group-count {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.1rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.svc-category-group-arrow {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  transition: transform 0.2s;
+}
+
+.svc-category-group > .services-list {
+  padding: 0.75rem;
+}
+
+.svc-category-group > .services-list.services-grid {
+  padding: 0.75rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Grid card inactive variant
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.service-card.service-card-grid.service-card-inactive .service-image {
+  filter: grayscale(0.6);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Mobile adjustments for new features
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  .svc-category-group-header {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.82rem;
+  }
+
+  .svc-category-group > .services-list {
+    padding: 0.5rem;
+  }
+
+  .svc-inactive-badge {
+    font-size: 0.6rem;
+    padding: 0.08rem 0.35rem;
+  }
+
+  .service-title-row {
+    gap: 0.35rem;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Category Manager
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.svc-cat-manage-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: white;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.72rem;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.svc-cat-manage-btn:hover {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+.svc-cat-manager {
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.svc-cat-manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.svc-cat-manager-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 0.8rem;
+  border-radius: 4px;
+}
+
+.svc-cat-manager-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-gray);
+}
+
+.svc-cat-manager-add {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.svc-cat-manager-add .form-input {
+  flex: 1;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.svc-cat-empty {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  text-align: center;
+  padding: 0.5rem 0;
+  margin: 0;
+}
+
+.svc-cat-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.svc-cat-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  background: var(--bg-gray, #f8fafc);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.svc-cat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.svc-cat-name {
+  font-weight: 500;
+}
+
+.svc-cat-delete {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0 0.15rem;
+  font-size: 0.65rem;
+  border-radius: 3px;
+  transition: all 0.15s;
+  line-height: 1;
+}
+
+.svc-cat-delete:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+
+/* ─── Inline Category Add (inside ServiceForm) ────────────────────────────── */
+.svc-cat-inline {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.svc-cat-inline .form-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.svc-cat-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: white;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.72rem;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.svc-cat-add-btn:hover {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.04);
+}
+
+.svc-cat-add-btn.confirm {
+  color: #10b981;
+  border-color: #10b981;
+}
+
+.svc-cat-add-btn.confirm:hover {
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.svc-cat-add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }

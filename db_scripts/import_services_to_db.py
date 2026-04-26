@@ -68,7 +68,7 @@ def import_services_from_json():
         try:
             # Add service to database
             success = db.add_service(
-                service_id=service_id or f"service_{datetime.now().timestamp()}_{idx}",
+                service_id=service_id or f"service_{int(datetime.now().timestamp() * 1000)}_{idx}",
                 category=service.get('category', 'General'),
                 name=service_name,
                 description=service.get('description', ''),

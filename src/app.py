@@ -5714,7 +5714,10 @@ def services_menu_api():
     company_id = session.get('company_id')
     
     if request.method == "GET":
-        menu = settings_mgr.get_services_menu(company_id=company_id)
+        # ?include_inactive=true returns all services (for ServicesTab management)
+        # Default returns active-only (for AddJobModal, employee views, etc.)
+        include_inactive = request.args.get('include_inactive', 'false').lower() == 'true'
+        menu = settings_mgr.get_services_menu(company_id=company_id, active_only=not include_inactive)
         return jsonify(menu)
     
     elif request.method == "POST":
@@ -6011,6 +6014,14 @@ def manage_service_api(service_id):
         success = settings_mgr.update_service(service_id, data, company_id=company_id)
         if success:
             return jsonify({"message": "Service updated successfully"})
+        # Debug: check if service exists at all (without company_id filter)
+        db = get_database()
+        svc_any = db.get_service(service_id)
+        svc_co = db.get_service(service_id, company_id=company_id) if company_id else None
+        print(f"[DEBUG] update_service FAILED for id={service_id}, company_id={company_id}")
+        print(f"[DEBUG]   exists_any={svc_any is not None}, exists_for_company={svc_co is not None}")
+        if svc_any:
+            print(f"[DEBUG]   service company_id={svc_any.get('company_id')}, active={svc_any.get('active')}")
         return jsonify({"error": "Service not found"}), 404
     
     elif request.method == "DELETE":
@@ -6021,6 +6032,67 @@ def manage_service_api(service_id):
                 "jobs_affected": result.get('jobs_affected', 0)
             })
         return jsonify({"error": result.get('error', 'Service not found')}), 404
+
+
+@app.route("/api/services/menu/service/<service_id>/toggle-active", methods=["POST"])
+@login_required
+@subscription_required
+def toggle_service_active_api(service_id):
+    """Toggle a service's active/inactive status"""
+    from src.services.settings_manager import get_settings_manager
+    settings_mgr = get_settings_manager()
+    company_id = session.get('company_id')
+    
+    data = request.json or {}
+    active = bool(data.get('active', True))
+    
+    success = settings_mgr.update_service(service_id, {'active': active}, company_id=company_id)
+    if success:
+        status = 'activated' if active else 'deactivated'
+        return jsonify({"message": f"Service {status} successfully", "active": active})
+    return jsonify({"error": "Service not found"}), 404
+
+
+@app.route("/api/services/categories", methods=["GET", "POST"])
+@login_required
+def service_categories_api():
+    """Get or create service categories for the company"""
+    db = get_database()
+    company_id = session.get('company_id')
+
+    if request.method == "GET":
+        cats = db.get_service_categories(company_id)
+        return jsonify(cats)
+
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return jsonify({"error": "Category name is required"}), 400
+    color = data.get('color')
+    success = db.add_service_category(company_id, name, color)
+    if success:
+        return jsonify({"message": "Category added"})
+    return jsonify({"error": "Category already exists or failed to add"}), 409
+
+
+@app.route("/api/services/categories/<int:cat_id>", methods=["PUT", "DELETE"])
+@login_required
+def manage_service_category_api(cat_id):
+    """Update or delete a service category"""
+    db = get_database()
+    company_id = session.get('company_id')
+
+    if request.method == "DELETE":
+        success = db.delete_service_category(company_id, cat_id)
+        if success:
+            return jsonify({"message": "Category deleted"})
+        return jsonify({"error": "Category not found"}), 404
+
+    data = request.json or {}
+    success = db.update_service_category(company_id, cat_id, **{k: v for k, v in data.items() if k in ('name', 'color', 'sort_order')})
+    if success:
+        return jsonify({"message": "Category updated"})
+    return jsonify({"error": "Category not found"}), 404
 
 
 # ============================================================

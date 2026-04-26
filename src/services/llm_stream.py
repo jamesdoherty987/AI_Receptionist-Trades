@@ -441,8 +441,21 @@ def load_system_prompt(company_id=None):
         
         # Build services list from menu (exclude package_only services)
         services_list = []
+        now_month = datetime.now().month - 1  # 0-indexed to match frontend
         for service in services_menu.get('services', []):
             if service.get('active', True) and not service.get('package_only', False):
+                # Skip seasonal services outside their active months
+                if service.get('seasonal'):
+                    months = service.get('seasonal_months')
+                    if isinstance(months, str):
+                        try:
+                            import json as _j
+                            months = _j.loads(months)
+                        except Exception:
+                            months = None
+                    if months and isinstance(months, list) and now_month not in months:
+                        continue
+
                 price = service['price']
                 price_max = service.get('price_max')
                 if price_max and float(price_max) > float(price):
@@ -456,6 +469,13 @@ def load_system_prompt(company_id=None):
                     service_line += " [CALLOUT REQUIRED]"
                 if service.get('requires_quote'):
                     service_line += " [QUOTE REQUIRED]"
+                if service.get('requires_deposit'):
+                    dep = service.get('deposit_amount')
+                    service_line += f" [DEPOSIT: €{dep}]" if dep else " [DEPOSIT REQUIRED]"
+                if service.get('warranty'):
+                    service_line += f" [WARRANTY: {service['warranty']}]"
+                if service.get('ai_notes'):
+                    service_line += f" — NOTE: {service['ai_notes']}"
                 services_list.append(service_line)
         
         # Build business hours string

@@ -4,7 +4,7 @@
 .jt-header { display: flex; gap: 0.75rem; align-items: center; }
 .jt-search {
   flex: 1; display: flex; align-items: center; gap: 0.35rem;
-  padding: 0.32rem 0.65rem; background: white; border: 1px solid #e2e8f0;
+  padding: 0.22rem 0.55rem; background: white; border: 1px solid #e2e8f0;
   border-radius: 8px; transition: border-color 0.2s;
 }
 .jt-search:focus-within { border-color: #94a3b8; box-shadow: 0 0 0 2px rgba(148,163,184,0.08); }

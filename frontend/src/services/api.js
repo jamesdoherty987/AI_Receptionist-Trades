@@ -166,11 +166,16 @@ export const updateAISchedule = (enabled, ai_schedule) => api.post('/api/ai-rece
 export const getSettingsHistory = () => api.get('/api/settings/history');
 
 // Services Menu
-export const getServicesMenu = () => api.get('/api/services/menu');
+export const getServicesMenu = (includeInactive = false) => api.get(`/api/services/menu${includeInactive ? '?include_inactive=true' : ''}`);
 export const updateServicesMenu = (data) => api.post('/api/services/menu', data);
 export const createService = (data) => api.post('/api/services/menu/service', data);
 export const updateService = (id, data) => api.put(`/api/services/menu/service/${id}`, data);
 export const deleteService = (id) => api.delete(`/api/services/menu/service/${id}`);
+export const toggleServiceActive = (id, active) => api.post(`/api/services/menu/service/${id}/toggle-active`, { active });
+export const getServiceCategories = () => api.get('/api/services/categories');
+export const addServiceCategory = (name, color) => api.post('/api/services/categories', { name, color });
+export const deleteServiceCategory = (id) => api.delete(`/api/services/categories/${id}`);
+export const updateServiceCategory = (id, data) => api.put(`/api/services/categories/${id}`, data);
 
 // Packages
 export const getPackages = () => api.get('/api/packages');

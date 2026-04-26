@@ -7,6 +7,10 @@ import {
   createService,
   updateService,
   deleteService,
+  toggleServiceActive,
+  getServiceCategories,
+  addServiceCategory,
+  deleteServiceCategory,
   getEmployees,
   getPackages,
   createPackage,
@@ -31,6 +35,50 @@ const MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
+
+// ─── Category color palette ─────────────────────────────────────────────────
+const CATEGORY_COLORS = [
+  { bg: 'rgba(99, 102, 241, 0.1)', text: '#6366f1' },   // indigo
+  { bg: 'rgba(16, 185, 129, 0.1)', text: '#10b981' },   // emerald
+  { bg: 'rgba(245, 158, 11, 0.1)', text: '#f59e0b' },   // amber
+  { bg: 'rgba(239, 68, 68, 0.1)', text: '#ef4444' },     // red
+  { bg: 'rgba(59, 130, 246, 0.1)', text: '#3b82f6' },   // blue
+  { bg: 'rgba(168, 85, 247, 0.1)', text: '#a855f7' },   // purple
+  { bg: 'rgba(236, 72, 153, 0.1)', text: '#ec4899' },   // pink
+  { bg: 'rgba(20, 184, 166, 0.1)', text: '#14b8a6' },   // teal
+  { bg: 'rgba(249, 115, 22, 0.1)', text: '#f97316' },   // orange
+  { bg: 'rgba(34, 197, 94, 0.1)', text: '#22c55e' },     // green
+];
+
+function getCategoryColor(category, allCategories) {
+  if (!category) return { bg: 'rgba(99, 102, 241, 0.1)', text: '#6366f1' };
+  const idx = allCategories.indexOf(category);
+  return CATEGORY_COLORS[idx >= 0 ? idx % CATEGORY_COLORS.length : 0];
+}
+
+// ─── CSV Export ──────────────────────────────────────────────────────────────
+function exportServicesCSV(services, terminology) {
+  const esc = (v) => String(v ?? '').replace(/"/g, '""');
+  const headers = ['Name', 'Category', 'Price', 'Price Max', 'Duration (min)', 'Employees Required', 'Active', 'Description'];
+  const rows = services.map(s => [
+    esc(s.name),
+    esc(s.category),
+    s.price || 0,
+    s.price_max || '',
+    s.duration_minutes || '',
+    s.employees_required || 1,
+    s.active === 0 ? 'No' : 'Yes',
+    esc(s.description),
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v}"`).join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(terminology.services || 'services').toLowerCase()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 // ─── Filter duration groups based on industry config ─────────────────────────
 function getFilteredDurationGroups(allowedGroups) {
@@ -92,6 +140,8 @@ function ServicesTab() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, service: null });
+  const [collapsedCategories, setCollapsedCategories] = useState({});
+  const [showInactive, setShowInactive] = useState(true);
 
   const durationGroups = useMemo(() => getFilteredDurationGroups(svc.durationGroups), [svc.durationGroups]);
 
@@ -107,6 +157,35 @@ function ServicesTab() {
   });
   const materialsCatalog = materialsData?.materials || [];
 
+  const { data: dbCategories } = useQuery({
+    queryKey: ['service-categories'],
+    queryFn: async () => { const r = await getServiceCategories(); return r.data; },
+  });
+  const companyCategories = (dbCategories || []).map(c => c.name);
+  const [showCatManager, setShowCatManager] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+
+  const handleAddCategory = async () => {
+    const name = newCatName.trim();
+    if (!name) return;
+    try {
+      await addServiceCategory(name);
+      queryClient.invalidateQueries({ queryKey: ['service-categories'] });
+      setNewCatName('');
+      addToast('Category added', 'success');
+    } catch { addToast('Category already exists', 'warning'); }
+  };
+
+  const handleDeleteCategory = async (cat) => {
+    const entry = (dbCategories || []).find(c => c.name === cat.name);
+    if (!entry) return;
+    try {
+      await deleteServiceCategory(entry.id);
+      queryClient.invalidateQueries({ queryKey: ['service-categories'] });
+      addToast('Category removed', 'success');
+    } catch { addToast('Failed to remove category', 'error'); }
+  };
+
   useEffect(() => {
     const handleEscape = (e) => {
       if (e.key === 'Escape' && deleteConfirm.show) setDeleteConfirm({ show: false, service: null });
@@ -121,8 +200,8 @@ function ServicesTab() {
   };
 
   const { data: menu, isLoading } = useQuery({
-    queryKey: ['services-menu'],
-    queryFn: async () => { const r = await getServicesMenu(); return r.data; },
+    queryKey: ['services-menu', 'all'],
+    queryFn: async () => { const r = await getServicesMenu(true); return r.data; },
   });
 
   const createMutation = useMutation({
@@ -156,6 +235,15 @@ function ServicesTab() {
       setDeleteConfirm({ show: false, service: null });
     },
     onError: () => { setDeleteConfirm({ show: false, service: null }); addToast(`Failed to delete ${(terminology.service || 'service').toLowerCase()}`, 'error'); },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ id, active }) => toggleServiceActive(id, active),
+    onSuccess: (response, { active }) => {
+      queryClient.invalidateQueries({ queryKey: ['services-menu'] });
+      addToast(`${terminology.service || 'Service'} ${active ? 'activated' : 'deactivated'}`, 'success');
+    },
+    onError: () => addToast(`Failed to update ${(terminology.service || 'service').toLowerCase()} status`, 'error'),
   });
 
   // ─── Build payload from form data ──────────────────────────────────────────
@@ -220,6 +308,8 @@ function ServicesTab() {
   // ─── Filter & sort ─────────────────────────────────────────────────────────
   const filteredServices = useMemo(() => {
     let result = [...services];
+    // Hide inactive unless showInactive is on
+    if (!showInactive) result = result.filter(s => s.active !== 0);
     if (categoryFilter) result = result.filter(s => s.category === categoryFilter);
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
@@ -235,6 +325,10 @@ function ServicesTab() {
       });
     }
     result.sort((a, b) => {
+      // Always sort active before inactive (active=1 or null before active=0)
+      const aActive = a.active === 0 ? 0 : 1;
+      const bActive = b.active === 0 ? 0 : 1;
+      if (aActive !== bActive) return bActive - aActive;
       let cmp = 0;
       switch (sortBy) {
         case 'name': cmp = (a.name || '').localeCompare(b.name || ''); break;
@@ -246,13 +340,36 @@ function ServicesTab() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return result;
-  }, [services, searchTerm, sortBy, sortDir, categoryFilter]);
+  }, [services, searchTerm, sortBy, sortDir, categoryFilter, showInactive]);
 
-  // Unique categories from existing services
+  // Unique categories: merge DB-managed categories with any already used on services
   const usedCategories = useMemo(() => {
-    const cats = new Set(services.map(s => s.category).filter(Boolean));
-    return [...cats].sort();
-  }, [services]);
+    const fromServices = new Set(services.map(s => s.category).filter(Boolean));
+    const fromDb = new Set(companyCategories);
+    return [...new Set([...fromDb, ...fromServices])].sort();
+  }, [services, companyCategories]);
+
+  // Group services by category for collapsible view
+  const groupedServices = useMemo(() => {
+    const groups = {};
+    for (const s of filteredServices) {
+      const cat = s.category || 'Uncategorized';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(s);
+    }
+    return groups;
+  }, [filteredServices]);
+
+  const hasMultipleCategories = Object.keys(groupedServices).length > 1;
+
+  const toggleCategoryCollapse = (cat) => {
+    setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  const handleToggleActive = (service) => {
+    const newActive = service.active === 0 ? true : false;
+    toggleActiveMutation.mutate({ id: service.id, active: newActive });
+  };
 
   const toggleSort = (field) => {
     if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -271,6 +388,11 @@ function ServicesTab() {
           </p>
         </div>
         <div className="services-controls">
+          {services.length > 0 && (
+            <button className="btn-secondary btn-export-csv" onClick={() => exportServicesCSV(services, terminology)} title="Export CSV">
+              <i className="fas fa-download"></i> Export
+            </button>
+          )}
           {features.menuDesigner && (
             <button className="btn-secondary" onClick={() => setShowMenuDesigner(true)} style={{ marginRight: '0.5rem' }}>
               <i className="fas fa-file-pdf"></i> Design Menu
@@ -296,6 +418,7 @@ function ServicesTab() {
           features={features}
           terminology={terminology}
           durationGroups={durationGroups}
+          companyCategories={companyCategories}
           isNew
         />
       )}
@@ -310,16 +433,18 @@ function ServicesTab() {
             )}
           </div>
           <div className="svc-toolbar-right">
-            {svc.showCategory && usedCategories.length > 0 && (
-              <select className="svc-category-filter" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="Filter by category">
-                <option value="">All categories</option>
-                {(svc.categories || []).filter(c => usedCategories.includes(c)).map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-                {usedCategories.filter(c => !(svc.categories || []).includes(c)).map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+            {svc.showCategory && (
+              <>
+                <select className="svc-category-filter" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} aria-label="Filter by category">
+                  <option value="">All categories</option>
+                  {usedCategories.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <button className="svc-cat-manage-btn" onClick={() => setShowCatManager(v => !v)} title="Manage categories" aria-label="Manage categories">
+                  <i className="fas fa-cog"></i>
+                </button>
+              </>
             )}
             <div className="svc-sort-chips">
               {[
@@ -334,10 +459,52 @@ function ServicesTab() {
                 </button>
               ))}
             </div>
+            <button
+              className={`svc-sort-chip ${showInactive ? 'active' : ''}`}
+              onClick={() => setShowInactive(v => !v)}
+              title={showInactive ? 'Showing all services' : 'Hiding inactive services'}
+            >
+              <i className={`fas ${showInactive ? 'fa-eye' : 'fa-eye-slash'}`}></i>
+              <span className="svc-sort-chip-label">{showInactive ? 'All' : 'Active'}</span>
+            </button>
             <div className="svc-view-toggle">
               <button className={`svc-view-btn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')} title="Grid view" aria-label="Grid view"><i className="fas fa-th-large"></i></button>
               <button className={`svc-view-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')} title="List view" aria-label="List view"><i className="fas fa-list"></i></button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Category Manager Panel ─── */}
+      {showCatManager && (
+        <div className="svc-cat-manager">
+          <div className="svc-cat-manager-header">
+            <span>Manage Categories</span>
+            <button className="svc-cat-manager-close" onClick={() => setShowCatManager(false)} aria-label="Close"><i className="fas fa-times"></i></button>
+          </div>
+          <div className="svc-cat-manager-add">
+            <input
+              type="text"
+              className="form-input"
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddCategory(); } }}
+              placeholder="New category name..."
+            />
+            <button className="btn btn-primary btn-sm" onClick={handleAddCategory} disabled={!newCatName.trim()}>Add</button>
+          </div>
+          {(dbCategories || []).length === 0 && <p className="svc-cat-empty">No categories yet. Add one above.</p>}
+          <div className="svc-cat-list">
+            {(dbCategories || []).map(cat => {
+              const catColor = getCategoryColor(cat.name, usedCategories);
+              return (
+                <div key={cat.id} className="svc-cat-item">
+                  <span className="svc-cat-dot" style={{ background: catColor.text }}></span>
+                  <span className="svc-cat-name">{cat.name}</span>
+                  <button className="svc-cat-delete" onClick={() => handleDeleteCategory(cat)} title="Remove" aria-label={`Remove ${cat.name}`}><i className="fas fa-times"></i></button>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -355,6 +522,51 @@ function ServicesTab() {
           <p>No services match "{searchTerm || categoryFilter}"</p>
           <button className="btn btn-secondary btn-sm" onClick={() => { setSearchTerm(''); setCategoryFilter(''); }}>Clear filters</button>
         </div>
+      ) : hasMultipleCategories && !categoryFilter ? (
+        /* ─── Collapsible category groups ─── */
+        <div className="svc-category-groups">
+          {Object.entries(groupedServices).map(([cat, catServices]) => {
+            const isCollapsed = collapsedCategories[cat];
+            const catColor = getCategoryColor(cat, usedCategories);
+            return (
+              <div key={cat} className="svc-category-group">
+                <button className="svc-category-group-header" onClick={() => toggleCategoryCollapse(cat)}>
+                  <span className="svc-category-group-dot" style={{ background: catColor.text }}></span>
+                  <span className="svc-category-group-name">{cat}</span>
+                  <span className="svc-category-group-count">{catServices.length}</span>
+                  <i className={`fas fa-chevron-${isCollapsed ? 'right' : 'down'} svc-category-group-arrow`}></i>
+                </button>
+                {!isCollapsed && (
+                  <div className={`services-list ${viewMode === 'grid' ? 'services-grid' : ''}`}>
+                    {catServices.map((service) => (
+                      <ServiceCard
+                        key={service.id}
+                        service={service}
+                        isEditing={editingId === service.id}
+                        onEdit={() => startEdit(service)}
+                        onSave={handleUpdate}
+                        onCancel={() => setEditingId(null)}
+                        onDelete={() => handleDelete(service)}
+                        onToggleActive={() => handleToggleActive(service)}
+                        isPending={updateMutation.isPending || deleteMutation.isPending}
+                        employees={employees}
+                        services={services}
+                        viewMode={viewMode}
+                        materialsCatalog={materialsCatalog}
+                        svc={svc}
+                        features={features}
+                        terminology={terminology}
+                        durationGroups={durationGroups}
+                        usedCategories={usedCategories}
+                        companyCategories={companyCategories}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       ) : (
         <div className={`services-list ${viewMode === 'grid' ? 'services-grid' : ''}`}>
           {filteredServices.map((service) => (
@@ -366,6 +578,7 @@ function ServicesTab() {
               onSave={handleUpdate}
               onCancel={() => setEditingId(null)}
               onDelete={() => handleDelete(service)}
+              onToggleActive={() => handleToggleActive(service)}
               isPending={updateMutation.isPending || deleteMutation.isPending}
               employees={employees}
               services={services}
@@ -375,6 +588,8 @@ function ServicesTab() {
               features={features}
               terminology={terminology}
               durationGroups={durationGroups}
+              usedCategories={usedCategories}
+              companyCategories={companyCategories}
             />
           ))}
         </div>
@@ -419,8 +634,24 @@ function ServicesTab() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ServiceForm — Industry-aware add/edit form
 // ═══════════════════════════════════════════════════════════════════════════════
-function ServiceForm({ formData, setFormData, onSubmit, onCancel, isPending, employees, services, materialsCatalog, svc, features, terminology, durationGroups, isNew }) {
+function ServiceForm({ formData, setFormData, onSubmit, onCancel, isPending, employees, services, materialsCatalog, svc, features, terminology, durationGroups, companyCategories, isNew }) {
   const [tagInput, setTagInput] = useState('');
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCatInput, setNewCatInput] = useState('');
+  const queryClient = useQueryClient();
+  const { addToast } = useToast();
+
+  const handleQuickAddCategory = async () => {
+    const name = newCatInput.trim();
+    if (!name) return;
+    try {
+      await addServiceCategory(name);
+      queryClient.invalidateQueries({ queryKey: ['service-categories'] });
+      setFormData({ ...formData, category: name });
+      setNewCatInput('');
+      setShowNewCat(false);
+    } catch { addToast('Category already exists', 'warning'); }
+  };
 
   const addTag = (tag) => {
     const trimmed = tag.trim();
@@ -457,10 +688,35 @@ function ServiceForm({ formData, setFormData, onSubmit, onCancel, isPending, emp
         {svc.showCategory && (
           <div className="form-group">
             <label>Category</label>
-            <select className="form-input" value={formData.category || ''} onChange={(e) => setFormData({ ...formData, category: e.target.value })}>
-              <option value="">No category</option>
-              {(svc.categories || []).map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            {!showNewCat ? (
+              <div className="svc-cat-inline">
+                <select className="form-input" value={formData.category || ''} onChange={(e) => setFormData({ ...formData, category: e.target.value })}>
+                  <option value="">No category</option>
+                  {(companyCategories || svc.categories || []).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <button type="button" className="svc-cat-add-btn" onClick={() => setShowNewCat(true)} title="Add new category">
+                  <i className="fas fa-plus"></i>
+                </button>
+              </div>
+            ) : (
+              <div className="svc-cat-inline">
+                <input
+                  type="text"
+                  className="form-input"
+                  value={newCatInput}
+                  onChange={(e) => setNewCatInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleQuickAddCategory(); } if (e.key === 'Escape') setShowNewCat(false); }}
+                  placeholder="New category name..."
+                  autoFocus
+                />
+                <button type="button" className="svc-cat-add-btn confirm" onClick={handleQuickAddCategory} disabled={!newCatInput.trim()} title="Save">
+                  <i className="fas fa-check"></i>
+                </button>
+                <button type="button" className="svc-cat-add-btn" onClick={() => { setShowNewCat(false); setNewCatInput(''); }} title="Cancel">
+                  <i className="fas fa-times"></i>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -468,7 +724,7 @@ function ServiceForm({ formData, setFormData, onSubmit, onCancel, isPending, emp
       <div className="form-grid">
         <div className="form-group form-group-wide">
           <label>Description (optional)</label>
-          <textarea className="form-input" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Brief description of this service" rows={2} />
+          <textarea className="form-input" value={formData.description || ''} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Brief description of this service" rows={2} />
         </div>
       </div>
 
@@ -493,13 +749,6 @@ function ServiceForm({ formData, setFormData, onSubmit, onCancel, isPending, emp
               placeholder={formData.tags?.length ? '' : (svc.tagPlaceholder || 'Add tags...')}
             />
           </div>
-          {(svc.tagPresets || []).length > 0 && (
-            <div className="svc-tag-presets">
-              {svc.tagPresets.filter(t => !(formData.tags || []).includes(t)).slice(0, 8).map(t => (
-                <button key={t} type="button" className="svc-tag-preset" onClick={() => addTag(t)}>+ {t}</button>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
@@ -820,7 +1069,7 @@ function EmployeeRestrictions({ restrictions, onChange, employees, terminology }
 // ═══════════════════════════════════════════════════════════════════════════════
 // ServiceCard — Display + inline edit
 // ═══════════════════════════════════════════════════════════════════════════════
-function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, isPending, employees, services, viewMode, materialsCatalog, svc, features, terminology, durationGroups }) {
+function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, onToggleActive, isPending, employees, services, viewMode, materialsCatalog, svc, features, terminology, durationGroups, usedCategories, companyCategories }) {
   const [editData, setEditData] = useState(service);
   const [imageError, setImageError] = useState(false);
 
@@ -873,6 +1122,7 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           features={features}
           terminology={terminology}
           durationGroups={durationGroups}
+          companyCategories={companyCategories}
           isNew={false}
         />
       </div>
@@ -888,13 +1138,15 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
 
   const restrictionSummary = getRestrictionSummary();
   const isGrid = viewMode === 'grid';
+  const isInactive = service.active === 0;
   let tags = service.tags;
   if (typeof tags === 'string') { try { tags = JSON.parse(tags); } catch { tags = []; } }
   if (!Array.isArray(tags)) tags = [];
   const defaultIcon = svc.defaultServiceIcon || 'fa-wrench';
+  const catColor = getCategoryColor(service.category, usedCategories || []);
 
   return (
-    <div className={`service-card ${isGrid ? 'service-card-grid' : ''}`}>
+    <div className={`service-card ${isGrid ? 'service-card-grid' : ''} ${isInactive ? 'service-card-inactive' : ''}`}>
       <div className={`service-image ${isGrid ? 'service-image-grid' : ''}`}>
         {service.image_url && !imageError ? (
           <img src={service.image_url} alt={service.name} onError={() => setImageError(true)} loading="lazy" />
@@ -903,7 +1155,10 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
         )}
       </div>
       <div className="service-content">
-        <h3 className="service-title">{service.name || `Unnamed ${terminology?.service || 'Service'}`}</h3>
+        <div className="service-title-row">
+          <h3 className="service-title">{service.name || `Unnamed ${terminology?.service || 'Service'}`}</h3>
+          {isInactive && <span className="svc-inactive-badge">Inactive</span>}
+        </div>
         {service.description && <p className="service-description">{service.description}</p>}
         {isGrid && service.price > 0 && <div className="service-grid-price">{formatPriceRange(service.price, service.price_max)}</div>}
         <div className="service-meta">
@@ -914,7 +1169,11 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
           <span className="meta-item employees" title={`${terminology?.employees || 'Employees'} required`}>
             <i className="fas fa-user"></i> {service.employees_required || 1}
           </span>
-          {service.category && <span className="meta-item svc-category-badge"><i className="fas fa-folder"></i> {service.category}</span>}
+          {service.category && (
+            <span className="meta-item svc-category-badge" style={{ background: catColor.bg, color: catColor.text }}>
+              <i className="fas fa-folder"></i> {service.category}
+            </span>
+          )}
           {service.capacity_min && <span className="meta-item" title="Party size"><i className="fas fa-users"></i> {service.capacity_min}{service.capacity_max ? `–${service.capacity_max}` : '+'}</span>}
           {service.area && <span className="meta-item" title="Area"><i className="fas fa-map-marker-alt"></i> {service.area}</span>}
           {restrictionSummary && <span className="meta-item restriction" title="Employee restrictions"><i className="fas fa-user-lock"></i> {restrictionSummary}</span>}
@@ -936,6 +1195,9 @@ function ServiceCard({ service, isEditing, onEdit, onSave, onCancel, onDelete, i
         )}
       </div>
       <div className={`service-actions ${isGrid ? 'service-actions-grid' : ''}`}>
+        <button type="button" className={`btn-icon ${isInactive ? '' : 'active-toggle-on'}`} onClick={onToggleActive} title={isInactive ? 'Activate' : 'Deactivate'} aria-label={isInactive ? 'Activate service' : 'Deactivate service'}>
+          <i className={`fas ${isInactive ? 'fa-toggle-off' : 'fa-toggle-on'}`}></i>
+        </button>
         <button type="button" className="btn-icon" onClick={onEdit} title="Edit" aria-label="Edit service"><i className="fas fa-edit"></i></button>
         <button type="button" className="btn-icon danger" onClick={onDelete} title="Delete" aria-label="Delete service" disabled={isPending}><i className="fas fa-trash"></i></button>
       </div>
@@ -1093,7 +1355,7 @@ function PackageForm({ formData, setFormData, services, onSubmit, onCancel, isPe
         </div>
         <div className="form-group form-group-wide">
           <label>Description (optional)</label>
-          <textarea className="form-input" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Describe what this package covers" rows={2} />
+          <textarea className="form-input" value={formData.description || ''} onChange={(e) => setFormData({ ...formData, description: e.target.value })} placeholder="Describe what this package covers" rows={2} />
         </div>
       </div>
 

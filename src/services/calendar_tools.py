@@ -1288,6 +1288,16 @@ class ServiceMatcher:
         service_desc = (service.get('description') or '').strip()
         service_category = (service.get('category') or '').strip()
         
+        # Build tags string for matching
+        tags = service.get('tags')
+        if isinstance(tags, str):
+            try:
+                import json as _jt
+                tags = _jt.loads(tags)
+            except Exception:
+                tags = []
+        tags_str = ' '.join(tags) if isinstance(tags, list) else ''
+        
         job_lower = job_description.lower().strip()
         name_lower = service_name.lower()
         desc_lower = service_desc.lower()
@@ -1301,8 +1311,8 @@ class ServiceMatcher:
         # Tokenize description separately
         desc_tokens = cls.tokenize(service_desc)
         
-        # Tokenize full service text (name + description + category)
-        service_text = f"{service_name} {service_desc} {service_category}"
+        # Tokenize full service text (name + description + category + tags)
+        service_text = f"{service_name} {service_desc} {service_category} {tags_str}"
         service_tokens = cls.tokenize(service_text)
         
         score = 0
@@ -2249,9 +2259,23 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             # Filter out package_only services from standalone matching
             standalone_services = [s for s in all_services if not s.get('package_only', False)]
             
+            # Filter out seasonal services outside their active months
+            import json as _json_mi
+            now_month = datetime.now().month - 1  # 0-indexed
+            filtered_services = []
+            for s in standalone_services:
+                if s.get('seasonal'):
+                    months = s.get('seasonal_months')
+                    if isinstance(months, str):
+                        try: months = _json_mi.loads(months)
+                        except Exception: months = None
+                    if months and isinstance(months, list) and now_month not in months:
+                        continue
+                filtered_services.append(s)
+
             # Score every service
             matches = []
-            for svc in standalone_services:
+            for svc in filtered_services:
                 svc_name = (svc.get('name') or '').lower()
                 if 'general' in svc_name:
                     continue  # Skip General Service
@@ -2265,6 +2289,9 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                         'requires_investigation': False,
                         'requires_callout': svc.get('requires_callout', False),
                         'requires_quote': svc.get('requires_quote', False),
+                        'requires_deposit': svc.get('requires_deposit', False),
+                        'deposit_amount': svc.get('deposit_amount'),
+                        'warranty': svc.get('warranty'),
                         'duration_minutes': svc.get('duration_minutes', 0),
                         'price': svc.get('price', 0),
                     })

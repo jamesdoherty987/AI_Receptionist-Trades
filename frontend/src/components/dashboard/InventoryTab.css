@@ -34,7 +34,7 @@
 /* Search */
 .inv-search {
   flex: 1; display: flex; align-items: center; gap: 0.35rem;
-  padding: 0.32rem 0.65rem; border: 1px solid var(--border-color);
+  padding: 0.22rem 0.55rem; border: 1px solid var(--border-color);
   border-radius: 8px; background: white; transition: border-color 0.2s;
 }
 .inv-search:focus-within { border-color: var(--accent-blue); box-shadow: 0 0 0 3px rgba(59,130,246,0.08); }

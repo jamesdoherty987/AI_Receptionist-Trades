@@ -312,10 +312,10 @@ class SettingsManager:
     
     # ======= Services/Menu Management =======
     
-    def get_services_menu(self, company_id: int = None) -> Dict[str, Any]:
+    def get_services_menu(self, company_id: int = None, active_only: bool = True) -> Dict[str, Any]:
         """Get services menu from database for a specific company"""
         from src.utils.ttl_cache import settings_cache
-        cache_key = ("services_menu", company_id)
+        cache_key = ("services_menu", company_id, active_only)
         cached = settings_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -324,7 +324,7 @@ class SettingsManager:
         db = get_database()
         
         try:
-            services = db.get_all_services(active_only=True, company_id=company_id)
+            services = db.get_all_services(active_only=active_only, company_id=company_id)
             business_settings = self.get_business_settings(company_id=company_id)
             
             # Return format compatible with old JSON structure
@@ -363,7 +363,8 @@ class SettingsManager:
         """Drop cached settings/services/packages for a company on any write."""
         from src.utils.ttl_cache import settings_cache
         settings_cache.invalidate(("business_settings", company_id))
-        settings_cache.invalidate(("services_menu", company_id))
+        settings_cache.invalidate(("services_menu", company_id, True))
+        settings_cache.invalidate(("services_menu", company_id, False))
         settings_cache.invalidate(("packages", company_id, True))
         settings_cache.invalidate(("packages", company_id, False))
 
@@ -374,7 +375,7 @@ class SettingsManager:
         
         try:
             result = db.add_service(
-                service_id=service.get('id', f"service_{datetime.now().timestamp()}"),
+                service_id=service.get('id', f"service_{int(datetime.now().timestamp() * 1000)}"),
                 category=service.get('category', 'General'),
                 name=service['name'],
                 description=service.get('description'),

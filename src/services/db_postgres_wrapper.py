@@ -379,6 +379,40 @@ class PostgreSQLDatabaseWrapper:
                 END $$;
             """)
             
+            # Add extended service columns (tags, capacity, deposits, etc.)
+            for _col, _def in [
+                ("default_materials", "JSONB DEFAULT '[]'"),
+                ("tags", "JSONB DEFAULT NULL"),
+                ("capacity_min", "INTEGER DEFAULT NULL"),
+                ("capacity_max", "INTEGER DEFAULT NULL"),
+                ("area", "TEXT DEFAULT NULL"),
+                ("requires_deposit", "BOOLEAN DEFAULT FALSE"),
+                ("deposit_amount", "REAL DEFAULT NULL"),
+                ("warranty", "TEXT DEFAULT NULL"),
+                ("seasonal", "BOOLEAN DEFAULT FALSE"),
+                ("seasonal_months", "JSONB DEFAULT NULL"),
+                ("ai_notes", "TEXT DEFAULT NULL"),
+                ("follow_up_service_id", "TEXT DEFAULT NULL"),
+            ]:
+                try:
+                    cursor.execute(f"ALTER TABLE services ADD COLUMN IF NOT EXISTS {_col} {_def}")
+                except Exception:
+                    pass
+
+            # Service categories table (per-company custom categories)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS service_categories (
+                    id BIGSERIAL PRIMARY KEY,
+                    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    color TEXT DEFAULT NULL,
+                    sort_order INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(company_id, name)
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_svc_cat_company ON service_categories(company_id)")
+
             # Packages table (bundles of multiple services)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS packages (
@@ -3727,9 +3761,9 @@ class PostgreSQLDatabaseWrapper:
         try:
             if company_id:
                 if active_only:
-                    cursor.execute("SELECT * FROM services WHERE company_id = %s AND active = 1 ORDER BY sort_order, category, name", (company_id,))
+                    cursor.execute("SELECT * FROM services WHERE (company_id = %s OR company_id IS NULL) AND active = 1 ORDER BY sort_order, category, name", (company_id,))
                 else:
-                    cursor.execute("SELECT * FROM services WHERE company_id = %s ORDER BY sort_order, category, name", (company_id,))
+                    cursor.execute("SELECT * FROM services WHERE (company_id = %s OR company_id IS NULL) ORDER BY active DESC, sort_order, category, name", (company_id,))
             else:
                 if active_only:
                     cursor.execute("SELECT * FROM services WHERE active = 1 ORDER BY sort_order, category, name")
@@ -3748,7 +3782,7 @@ class PostgreSQLDatabaseWrapper:
         
         try:
             if company_id:
-                cursor.execute("SELECT * FROM services WHERE id = %s AND company_id = %s", (service_id, company_id))
+                cursor.execute("SELECT * FROM services WHERE id = %s AND (company_id = %s OR company_id IS NULL)", (service_id, company_id))
             else:
                 cursor.execute("SELECT * FROM services WHERE id = %s", (service_id,))
             row = cursor.fetchone()
@@ -3798,7 +3832,8 @@ class PostgreSQLDatabaseWrapper:
                 values.append(service_id)
                 if company_id:
                     values.append(company_id)
-                    query = f"UPDATE services SET {', '.join(fields)}, updated_at = %s WHERE id = %s AND company_id = %s"
+                    # Match services owned by this company OR orphaned (NULL company_id) services
+                    query = f"UPDATE services SET {', '.join(fields)}, updated_at = %s WHERE id = %s AND (company_id = %s OR company_id IS NULL)"
                 else:
                     query = f"UPDATE services SET {', '.join(fields)}, updated_at = %s WHERE id = %s"
                 cursor.execute(query, values)
@@ -3827,7 +3862,7 @@ class PostgreSQLDatabaseWrapper:
         try:
             # First get the service name to find affected jobs
             if company_id:
-                cursor.execute("SELECT name FROM services WHERE id = %s AND company_id = %s", (service_id, company_id))
+                cursor.execute("SELECT name FROM services WHERE id = %s AND (company_id = %s OR company_id IS NULL)", (service_id, company_id))
             else:
                 cursor.execute("SELECT name FROM services WHERE id = %s", (service_id,))
             
@@ -3846,7 +3881,7 @@ class PostgreSQLDatabaseWrapper:
             
             # Delete the service
             if company_id:
-                cursor.execute("DELETE FROM services WHERE id = %s AND company_id = %s", (service_id, company_id))
+                cursor.execute("DELETE FROM services WHERE id = %s AND (company_id = %s OR company_id IS NULL)", (service_id, company_id))
             else:
                 cursor.execute("DELETE FROM services WHERE id = %s", (service_id,))
             
@@ -3868,6 +3903,78 @@ class PostgreSQLDatabaseWrapper:
         finally:
             self.return_connection(conn)
     
+    # ==========================================
+    # Service Categories (per-company)
+    # ==========================================
+
+    def get_service_categories(self, company_id: int) -> List[Dict]:
+        conn = self.get_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor.execute(
+                "SELECT * FROM service_categories WHERE company_id = %s ORDER BY sort_order, name",
+                (company_id,)
+            )
+            return [dict(r) for r in cursor.fetchall()]
+        finally:
+            self.return_connection(conn)
+
+    def add_service_category(self, company_id: int, name: str, color: str = None) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO service_categories (company_id, name, color) VALUES (%s, %s, %s) ON CONFLICT (company_id, name) DO NOTHING",
+                (company_id, name.strip(), color)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] add_service_category: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
+    def delete_service_category(self, company_id: int, category_id: int) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "DELETE FROM service_categories WHERE id = %s AND company_id = %s",
+                (category_id, company_id)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] delete_service_category: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
+    def update_service_category(self, company_id: int, category_id: int, **kwargs) -> bool:
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        try:
+            fields, values = [], []
+            for k, v in kwargs.items():
+                if k in ('name', 'color', 'sort_order'):
+                    fields.append(f"{k} = %s")
+                    values.append(v)
+            if not fields:
+                return False
+            values.extend([category_id, company_id])
+            cursor.execute(f"UPDATE service_categories SET {', '.join(fields)} WHERE id = %s AND company_id = %s", values)
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            conn.rollback()
+            print(f"[ERROR] update_service_category: {e}")
+            return False
+        finally:
+            self.return_connection(conn)
+
     # ==========================================
     # Package Methods (Service Bundles)
     # ==========================================
