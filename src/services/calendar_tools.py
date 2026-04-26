@@ -2504,6 +2504,28 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 biz_start_hour = 9
                 biz_end_hour = 17
             
+            # BATCH OPTIMIZATION: Fetch ALL employee bookings for the entire search range
+            # in a single query per employee, then check conflicts in-memory.
+            employee_bookings_by_id = {}
+            all_employee_ids = []
+            leave_records = []
+            if has_employees and db:
+                all_employees = db.get_all_employees(company_id=company_id)
+                all_employee_ids = [w['id'] for w in all_employees if w.get('status') != 'inactive']
+                for wid in all_employee_ids:
+                    employee_bookings_by_id[wid] = db.get_employee_bookings_in_range(
+                        employee_id=wid,
+                        range_start=current_date,
+                        range_end=end_search + timedelta(days=1),
+                        company_id=company_id
+                    )
+                if hasattr(db, 'get_employees_on_leave'):
+                    leave_records = db.get_employees_on_leave(company_id, current_date, end_search)
+                logger.info(f"[CHECK_AVAIL] Batch-fetched bookings for {len(all_employee_ids)} employees")
+            
+            # Determine slot step: 60 min for short jobs
+            slot_step = 60
+            
             # Check all days in range (no early exit - we want full picture)
             while current_date <= end_search:
                 # Only check business days (configured in config.BUSINESS_DAYS)
@@ -2511,63 +2533,48 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     logger.info(f"[CHECK_AVAIL] Checking {current_date.strftime('%A, %B %d')} (weekday {current_date.weekday()})")
                     
                     if has_employees and db:
-                        # EMPLOYEE-BASED AVAILABILITY
+                        # EMPLOYEE-BASED AVAILABILITY (batch — no per-slot DB calls)
                         day_slots = []
                         now = datetime.now()
                         
-                        # PERFORMANCE: For full-day/multi-day jobs (>= 480 min), only check ONE slot
-                        # per day (start of business) instead of every 30-min slot.
-                        # This reduces DB calls from ~18/day to 1/day — critical for multi-day jobs.
                         if service_duration >= 480:
                             biz_open = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                             if biz_open > now:
-                                available_employees = db.find_available_employees_for_slot(
-                                    appointment_time=biz_open,
-                                    duration_minutes=service_duration,
-                                    company_id=company_id
+                                avail = _find_available_employees_batch(
+                                    biz_open, service_duration, employee_bookings_by_id,
+                                    all_employee_ids, db, company_id=company_id,
+                                    employee_restrictions=employee_restrictions,
+                                    leave_records=leave_records
                                 )
-                                if available_employees and employee_restrictions:
-                                    restriction_type = employee_restrictions.get('type', 'all')
-                                    restricted_ids = employee_restrictions.get('employee_ids', [])
-                                    if restriction_type == 'only' and restricted_ids:
-                                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
-                                    elif restriction_type == 'except' and restricted_ids:
-                                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
-                                if available_employees is not None and len(available_employees) >= employees_required:
+                                if len(avail) >= employees_required:
                                     day_slots = [biz_open]
                             logger.info(f"[CHECK_AVAIL] Full-day fast path: {'1 slot' if day_slots else 'no slots'}")
                         else:
-                            # Short jobs: check every 30-min slot
+                            # Short jobs: check hourly slots
                             slot_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                             day_end = current_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
                             
                             while slot_time < day_end:
                                 if slot_time <= now:
-                                    slot_time += timedelta(minutes=30)
+                                    slot_time += timedelta(minutes=slot_step)
                                     continue
                                 
                                 slot_end = slot_time + timedelta(minutes=service_duration)
                                 if slot_end > day_end:
-                                    slot_time += timedelta(minutes=30)
+                                    slot_time += timedelta(minutes=slot_step)
                                     continue
                                 
-                                available_employees = db.find_available_employees_for_slot(
-                                    appointment_time=slot_time,
-                                    duration_minutes=service_duration,
-                                    company_id=company_id
+                                avail = _find_available_employees_batch(
+                                    slot_time, service_duration, employee_bookings_by_id,
+                                    all_employee_ids, db, company_id=company_id,
+                                    employee_restrictions=employee_restrictions,
+                                    leave_records=leave_records
                                 )
-                                if available_employees and employee_restrictions:
-                                    restriction_type = employee_restrictions.get('type', 'all')
-                                    restricted_ids = employee_restrictions.get('employee_ids', [])
-                                    if restriction_type == 'only' and restricted_ids:
-                                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
-                                    elif restriction_type == 'except' and restricted_ids:
-                                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
                                 
-                                if available_employees is not None and len(available_employees) >= employees_required:
+                                if len(avail) >= employees_required:
                                     day_slots.append(slot_time)
                                 
-                                slot_time += timedelta(minutes=30)
+                                slot_time += timedelta(minutes=slot_step)
                             logger.info(f"[CHECK_AVAIL] Employee-based check found {len(day_slots)} slots")
                     else:
                         # NO EMPLOYEES: Use calendar-based availability (any booking blocks the slot)
@@ -2753,6 +2760,30 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             has_employees = db.has_employees(company_id) if db else False
             available_days = []  # List of (date, slots) tuples
             
+            # BATCH OPTIMIZATION: Fetch ALL employee bookings for the entire search range
+            # in a single query per employee, then check conflicts in-memory.
+            # This replaces ~100+ individual DB queries with ~N queries (one per employee).
+            employee_bookings_by_id = {}
+            all_employee_ids = []
+            leave_records = []
+            if has_employees and db:
+                all_employees = db.get_all_employees(company_id=company_id)
+                all_employee_ids = [w['id'] for w in all_employees if w.get('status') != 'inactive']
+                for wid in all_employee_ids:
+                    employee_bookings_by_id[wid] = db.get_employee_bookings_in_range(
+                        employee_id=wid,
+                        range_start=current_date,
+                        range_end=end_search + timedelta(days=1),
+                        company_id=company_id
+                    )
+                # Fetch leave records for the range
+                if hasattr(db, 'get_employees_on_leave'):
+                    leave_records = db.get_employees_on_leave(company_id, current_date, end_search)
+                logger.info(f"[GET_NEXT_AVAIL] Batch-fetched bookings for {len(all_employee_ids)} employees")
+            
+            # Determine slot step: 60 min for jobs under 8 hours, single check for full-day
+            slot_step = 60  # Check hourly instead of every 30 min
+            
             # Search until we find at least 2-4 days or exhaust search range
             while current_date <= end_search and len(available_days) < 4:
                 if current_date.weekday() in business_days:
@@ -2760,61 +2791,43 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                     now = datetime.now()
                     
                     if has_employees and db:
-                        # PERFORMANCE: For full-day/multi-day jobs (>= 480 min), only check ONE slot
-                        # per day (start of business) instead of every 30-min slot.
-                        # This reduces DB calls from ~18/day to 1/day — critical for multi-day jobs
-                        # that were timing out at 15s.
                         if is_full_day:
                             biz_open = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                             if biz_open > now:
-                                available_employees = db.find_available_employees_for_slot(
-                                    appointment_time=biz_open,
-                                    duration_minutes=service_duration,
-                                    company_id=company_id
+                                avail = _find_available_employees_batch(
+                                    biz_open, service_duration, employee_bookings_by_id,
+                                    all_employee_ids, db, company_id=company_id,
+                                    employee_restrictions=employee_restrictions,
+                                    leave_records=leave_records
                                 )
-                                if available_employees and employee_restrictions:
-                                    restriction_type = employee_restrictions.get('type', 'all')
-                                    restricted_ids = employee_restrictions.get('employee_ids', [])
-                                    if restriction_type == 'only' and restricted_ids:
-                                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
-                                    elif restriction_type == 'except' and restricted_ids:
-                                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
-                                if available_employees is not None and len(available_employees) >= employees_required:
+                                if len(avail) >= employees_required:
                                     day_slots = [biz_open]
                         else:
-                            # Short jobs: check every 30-min slot
+                            # Short jobs: check hourly slots (Option 3)
                             slot_time = current_date.replace(hour=biz_start_hour, minute=0, second=0, microsecond=0)
                             day_end = current_date.replace(hour=biz_end_hour, minute=0, second=0, microsecond=0)
                             
                             while slot_time < day_end:
                                 if slot_time <= now:
-                                    slot_time += timedelta(minutes=30)
+                                    slot_time += timedelta(minutes=slot_step)
                                     continue
                                 
                                 slot_end = slot_time + timedelta(minutes=service_duration)
-                                
                                 if slot_end > day_end:
-                                    slot_time += timedelta(minutes=30)
+                                    slot_time += timedelta(minutes=slot_step)
                                     continue
                                 
-                                available_employees = db.find_available_employees_for_slot(
-                                    appointment_time=slot_time,
-                                    duration_minutes=service_duration,
-                                    company_id=company_id
+                                avail = _find_available_employees_batch(
+                                    slot_time, service_duration, employee_bookings_by_id,
+                                    all_employee_ids, db, company_id=company_id,
+                                    employee_restrictions=employee_restrictions,
+                                    leave_records=leave_records
                                 )
                                 
-                                if available_employees and employee_restrictions:
-                                    restriction_type = employee_restrictions.get('type', 'all')
-                                    restricted_ids = employee_restrictions.get('employee_ids', [])
-                                    if restriction_type == 'only' and restricted_ids:
-                                        available_employees = [w for w in available_employees if w['id'] in restricted_ids]
-                                    elif restriction_type == 'except' and restricted_ids:
-                                        available_employees = [w for w in available_employees if w['id'] not in restricted_ids]
-                                
-                                if available_employees is not None and len(available_employees) >= employees_required:
+                                if len(avail) >= employees_required:
                                     day_slots.append(slot_time)
                                 
-                                slot_time += timedelta(minutes=30)
+                                slot_time += timedelta(minutes=slot_step)
                     else:
                         # Calendar-based availability
                         try:
