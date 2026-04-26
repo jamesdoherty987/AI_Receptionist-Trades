@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { validateEmail, rateLimiter } from '../utils/security';
 import { isStandalone } from '../components/PWAInstallPrompt';
+import PasswordInput from '../components/PasswordInput';
 import './Auth.css';
 
 function Login() {
@@ -138,8 +139,7 @@ function Login() {
 
             <div className="form-group">
               <label htmlFor="password">Password</label>
-              <input
-                type="password"
+              <PasswordInput
                 id="password"
                 name="password"
                 placeholder="Enter your password"
@@ -182,7 +182,7 @@ function Login() {
           </div>
 
           <Link to="/employee/login" className="employee-portal-btn">
-            <i className="fas fa-hard-hat"></i>
+            <i className="fas fa-id-badge"></i>
             Employee Portal Login
             <i className="fas fa-arrow-right"></i>
           </Link>

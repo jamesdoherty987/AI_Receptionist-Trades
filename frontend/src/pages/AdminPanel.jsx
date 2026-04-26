@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../services/api';
+import PasswordInput from '../components/PasswordInput';
 import './AdminPanel.css';
 
 const ADMIN_SECRET_KEY = 'bfy_admin_secret';
@@ -326,7 +327,7 @@ function AdminPanel() {
             <p>Enter your admin secret to continue.</p>
             {authError && <div className="ap-error">{authError}</div>}
             <form onSubmit={(e) => { e.preventDefault(); handleAuth(); }}>
-              <input type="password" value={secretInput} onChange={(e) => setSecretInput(e.target.value)} placeholder="Admin secret" autoFocus />
+              <PasswordInput value={secretInput} onChange={(e) => setSecretInput(e.target.value)} placeholder="Admin secret" autoFocus />
               <button type="submit">Authenticate</button>
             </form>
           </div>

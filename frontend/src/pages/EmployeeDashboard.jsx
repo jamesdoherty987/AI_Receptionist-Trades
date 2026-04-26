@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { useIndustry } from '../context/IndustryContext';
 import { Link, useNavigate } from 'react-router-dom';
+import PasswordInput from '../components/PasswordInput';
 import {
   getEmployeeDashboard,
   getEmployeeJobDetail,
@@ -2401,18 +2402,18 @@ function EmployeeDashboard() {
                       {passwordSuccess && <div className="whr-success"><i className="fas fa-check-circle"></i> {passwordSuccess}</div>}
                       <div className="whr-field">
                         <label>Current Password</label>
-                        <input type="password" required value={passwordForm.current_password}
+                        <PasswordInput required value={passwordForm.current_password}
                           onChange={e => setPasswordForm({ ...passwordForm, current_password: e.target.value })} />
                       </div>
                       <div className="whr-form-row">
                         <div className="whr-field">
                           <label>New Password</label>
-                          <input type="password" required minLength={8} value={passwordForm.new_password}
+                          <PasswordInput required minLength={8} value={passwordForm.new_password}
                             onChange={e => setPasswordForm({ ...passwordForm, new_password: e.target.value })} />
                         </div>
                         <div className="whr-field">
                           <label>Confirm New Password</label>
-                          <input type="password" required minLength={8} value={passwordForm.confirm_password}
+                          <PasswordInput required minLength={8} value={passwordForm.confirm_password}
                             onChange={e => setPasswordForm({ ...passwordForm, confirm_password: e.target.value })} />
                         </div>
                       </div>

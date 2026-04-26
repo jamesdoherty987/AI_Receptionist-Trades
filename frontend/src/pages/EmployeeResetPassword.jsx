@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { employeeResetPassword } from '../services/api';
+import PasswordInput from '../components/PasswordInput';
 import './Auth.css';
 
 function EmployeeResetPassword() {
@@ -131,8 +132,7 @@ function EmployeeResetPassword() {
             <form onSubmit={handleSubmit} className="auth-form">
               <div className="form-group">
                 <label htmlFor="password">New password</label>
-                <input
-                  type="password"
+                <PasswordInput
                   id="password"
                   name="password"
                   placeholder="At least 8 characters"
@@ -146,8 +146,7 @@ function EmployeeResetPassword() {
 
               <div className="form-group">
                 <label htmlFor="confirmPassword">Confirm new password</label>
-                <input
-                  type="password"
+                <PasswordInput
                   id="confirmPassword"
                   name="confirmPassword"
                   placeholder="Re-enter your password"

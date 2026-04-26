@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { validateEmail, validatePassword, sanitizeString } from '../utils/security';
 import { isStandalone } from '../components/PWAInstallPrompt';
+import PasswordInput from '../components/PasswordInput';
 import './Auth.css';
 
 function Signup() {
@@ -277,8 +278,7 @@ function Signup() {
 
                 <div className="form-group">
                   <label htmlFor="password">Password</label>
-                  <input
-                    type="password"
+                  <PasswordInput
                     id="password"
                     name="password"
                     placeholder="Create a strong password"
@@ -314,8 +314,7 @@ function Signup() {
 
                 <div className="form-group">
                   <label htmlFor="confirm_password">Confirm Password</label>
-                  <input
-                    type="password"
+                  <PasswordInput
                     id="confirm_password"
                     name="confirm_password"
                     placeholder="Re-enter your password"
