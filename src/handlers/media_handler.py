@@ -723,7 +723,7 @@ async def media_handler(ws):
             greeting = f"Hi{name_part}, this is {biz_name} calling. You rang us earlier about {issue_brief} — I just wanted to follow up and see if you still need help with that?"
         elif caller_is_returning and caller_customer_name and caller_customer_name.strip():
             first_name = caller_customer_name.split()[0]
-            greeting = f"Hi, I have the name under this number as {first_name}, welcome back! How can I help you today?"
+            greeting = f"Hi, thank you for calling. How can I help you today?"
         else:
             greeting = "Hi, thank you for calling. How can I help you today?"
         
@@ -863,8 +863,14 @@ async def media_handler(ws):
                     )
                     
                     if first_name:
-                        greeting_note = f"Greeting already sent — you already said 'I have the name under this number as {first_name}, welcome back!'."
-                        name_note = "Do NOT ask for their name — you already know it."
+                        greeting_note = "Greeting already sent — generic greeting, you did NOT mention the caller's name yet."
+                        name_note = (
+                            f"This is a RETURNING CUSTOMER. Their name on file is {caller_customer_name}. "
+                            f"Do NOT reveal their name in the greeting — wait until AFTER they describe their issue and you call match_issue. "
+                            f"Then say something like: 'I have the name under this number as {first_name}, is that right?' "
+                            f"If they confirm, skip asking for name and continue with the booking flow. "
+                            f"Do NOT call lookup_customer — already done."
+                        )
                     else:
                         greeting_note = "Greeting already sent. This is a returning customer but their name is not on file yet."
                         name_note = "Ask for their name: 'Can I get your name please, and spell it out for me if possible?'"
