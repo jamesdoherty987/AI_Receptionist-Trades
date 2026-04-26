@@ -216,6 +216,7 @@ async def media_handler(ws):
 
         async def run():
             nonlocal speaking, tts_started_at, tts_ended_at, llm_processing, conversation_log, response_times, last_tts_audio_done, last_tts_success
+            run._prerecorded_playing = False  # Track if prerecorded audio is still playing
             speaking = True
             interrupt = False
             tts_started_at = asyncio.get_event_loop().time()
@@ -397,17 +398,17 @@ async def media_handler(ws):
                                 if prerecorded_data:
                                     print(f"   🔊 [PARALLEL] Playing prerecorded: {phrase_id}")
                                     await send_prerecorded_audio(ws, stream_sid, prerecorded_data)
-                                    # Schedule speaking=False after playback finishes
-                                    # (non-blocking — doesn't hold up the run() coroutine)
                                     playback_seconds = len(prerecorded_data) / 8000.0
                                     tts_ended_at = asyncio.get_event_loop().time() + playback_seconds
                                     last_tts_audio_done = tts_ended_at
                                     last_tts_success = True
+                                    run._prerecorded_playing = True
                                     async def _clear_after_prerecorded(delay):
                                         nonlocal speaking
                                         await asyncio.sleep(delay)
                                         asr.clear()
                                         speaking = False
+                                        run._prerecorded_playing = False
                                     asyncio.create_task(_clear_after_prerecorded(playback_seconds))
                                     try:
                                         from src.services.prerecorded_audio import FILLER_PHRASES
@@ -487,11 +488,13 @@ async def media_handler(ws):
                             tts_ended_at = asyncio.get_event_loop().time() + playback_seconds
                             last_tts_audio_done = tts_ended_at
                             last_tts_success = True
+                            run._prerecorded_playing = True
                             async def _clear_after_direct_prerecorded(delay):
                                 nonlocal speaking
                                 await asyncio.sleep(delay)
                                 asr.clear()
                                 speaking = False
+                                run._prerecorded_playing = False
                             asyncio.create_task(_clear_after_direct_prerecorded(playback_seconds))
                             # Get the text for full_text tracking
                             from src.services.prerecorded_audio import FILLER_PHRASES
@@ -673,18 +676,12 @@ async def media_handler(ws):
                 import traceback
                 traceback.print_exc()
             finally:
-                tts_ended_at = asyncio.get_event_loop().time()
-                speaking = False
+                # Safety net: only set speaking=False if no prerecorded playback task
+                # is still running (those tasks handle their own speaking=False timing)
+                if not hasattr(run, '_prerecorded_playing') or not run._prerecorded_playing:
+                    tts_ended_at = asyncio.get_event_loop().time()
+                    speaking = False
                 llm_processing = False
-                # NOTE: speaking and tts_ended_at are now ALSO set in the
-                # on_audio_done callbacks above (the primary path). This finally
-                # block is a safety net — if on_audio_done already fired, these
-                # are no-ops. If it didn't fire (error path), this ensures we
-                # don't get stuck in speaking=True forever.
-                #
-                # We do NOT call asr.clear() here — that's handled by on_audio_done.
-                # run() can take 5+ seconds after audio finishes (websocket close, etc).
-                # Clearing here would wipe the caller's real response.
                 print(f"👂 Ready to listen")
 
         if respond_task and not respond_task.done():
