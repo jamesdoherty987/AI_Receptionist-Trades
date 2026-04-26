@@ -2358,7 +2358,7 @@ TOOL RULES:
                             # Already asked once for more details — fall back to General Service
                             customer_name = call_state.get("customer_name", "") if call_state else ""
                             if customer_name:
-                                direct_response = f"No problem {customer_name.split()[0]}, I'll book you in for a general callout and we can take a look."
+                                direct_response = f"No problem {customer_name.split()[0]}, I'll book you in for a general callout and we can take a look. Is it still the same address on file?"
                             else:
                                 direct_response = "No problem, I'll book you in for a general callout and we can take a look. Can I get your name please?"
                             # Set service type so the booking flow uses General Callout

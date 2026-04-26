@@ -395,21 +395,20 @@ async def media_handler(ws):
                                 phrase_id = peek_token.replace("<<<PLAY_PRERECORDED:", "").replace(">>>", "").strip()
                                 prerecorded_data = get_filler_audio(phrase_id)
                                 if prerecorded_data:
-                                    print(f"   🔊 [PARALLEL] Playing prerecorded response: {phrase_id}")
+                                    print(f"   🔊 [PARALLEL] Playing prerecorded: {phrase_id}")
                                     await send_prerecorded_audio(ws, stream_sid, prerecorded_data)
-                                    # Wait for the audio to actually finish playing on the caller's end.
-                                    # send_prerecorded_audio sends chunks instantly but the audio takes
-                                    # time to play. If we set speaking=False immediately, the system
-                                    # starts listening while the AI is still talking, and Deepgram
-                                    # transcribes the AI's own voice as garbage input.
-                                    playback_seconds = len(prerecorded_data) / 8000.0  # 8kHz mulaw
-                                    print(f"   ⏳ [PARALLEL] Waiting {playback_seconds:.1f}s for prerecorded playback")
-                                    await asyncio.sleep(playback_seconds)
-                                    last_tts_audio_done = asyncio.get_event_loop().time()
+                                    # Schedule speaking=False after playback finishes
+                                    # (non-blocking — doesn't hold up the run() coroutine)
+                                    playback_seconds = len(prerecorded_data) / 8000.0
+                                    tts_ended_at = asyncio.get_event_loop().time() + playback_seconds
+                                    last_tts_audio_done = tts_ended_at
                                     last_tts_success = True
-                                    asr.clear()
-                                    speaking = False
-                                    tts_ended_at = last_tts_audio_done
+                                    async def _clear_after_prerecorded(delay):
+                                        nonlocal speaking
+                                        await asyncio.sleep(delay)
+                                        asr.clear()
+                                        speaking = False
+                                    asyncio.create_task(_clear_after_prerecorded(playback_seconds))
                                     try:
                                         from src.services.prerecorded_audio import FILLER_PHRASES
                                         full_text += FILLER_PHRASES.get(phrase_id, phrase_id)
@@ -483,14 +482,17 @@ async def media_handler(ws):
                             speaking = True
                             tts_started_at = time_module.time()
                             await send_prerecorded_audio(ws, stream_sid, prerecorded_audio)
-                            # Wait for playback to finish before listening again
+                            # Schedule speaking=False after playback (non-blocking)
                             playback_seconds = len(prerecorded_audio) / 8000.0
-                            await asyncio.sleep(playback_seconds)
-                            last_tts_audio_done = asyncio.get_event_loop().time()
+                            tts_ended_at = asyncio.get_event_loop().time() + playback_seconds
+                            last_tts_audio_done = tts_ended_at
                             last_tts_success = True
-                            asr.clear()
-                            speaking = False
-                            tts_ended_at = last_tts_audio_done
+                            async def _clear_after_direct_prerecorded(delay):
+                                nonlocal speaking
+                                await asyncio.sleep(delay)
+                                asr.clear()
+                                speaking = False
+                            asyncio.create_task(_clear_after_direct_prerecorded(playback_seconds))
                             # Get the text for full_text tracking
                             from src.services.prerecorded_audio import FILLER_PHRASES
                             full_text = FILLER_PHRASES.get(phrase_id, phrase_id)
@@ -735,10 +737,16 @@ async def media_handler(ws):
             audio = get_filler_audio("greeting")
             if audio:
                 await send_prerecorded_audio(ws, stream_sid, audio)
-                # Wait for playback before listening
+                # Schedule speaking=False after playback (non-blocking)
                 playback_seconds = len(audio) / 8000.0
-                await asyncio.sleep(playback_seconds)
-                speaking = False
+                tts_ended_at = asyncio.get_event_loop().time() + playback_seconds
+                last_tts_audio_done = tts_ended_at
+                async def _clear_after_greeting(delay):
+                    nonlocal speaking
+                    await asyncio.sleep(delay)
+                    asr.clear()
+                    speaking = False
+                asyncio.create_task(_clear_after_greeting(playback_seconds))
                 return
         
         # Fallback to TTS (always used for returning customers to say their name)

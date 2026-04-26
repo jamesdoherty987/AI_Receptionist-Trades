@@ -918,10 +918,10 @@ def format_duration_label(duration_minutes: int) -> str:
 
 def _format_slot_ranges(day_slots: list) -> str:
     """
-    Format a list of 30-min slot datetimes into a human-readable range string,
-    correctly handling gaps (e.g., "from 8 am to 10 am and 3 pm").
+    Format a list of slot datetimes into a human-readable range string,
+    correctly handling gaps (e.g., "from 8 am to 2 pm" or "from 8 am to 10 am and 3 pm").
     
-    Consecutive slots (30 min apart) are grouped into ranges.
+    Consecutive slots (up to 60 min apart) are grouped into ranges.
     Non-consecutive slots start a new range.
     """
     from datetime import timedelta
@@ -929,13 +929,20 @@ def _format_slot_ranges(day_slots: list) -> str:
     if not day_slots:
         return ""
     
+    # Auto-detect slot interval from the data (handles both 30-min and 60-min slots)
+    if len(day_slots) >= 2:
+        gap = (day_slots[1] - day_slots[0]).total_seconds() / 60
+        max_gap = max(gap + 5, 65)  # Allow small tolerance above detected interval
+    else:
+        max_gap = 65  # Default: allow up to 65 min gap (covers 60-min slots)
+    
     # Group consecutive slots into ranges
     ranges = []
     range_start = day_slots[0]
     range_end = day_slots[0]
     
     for i in range(1, len(day_slots)):
-        if day_slots[i] - range_end <= timedelta(minutes=30):
+        if (day_slots[i] - range_end).total_seconds() / 60 <= max_gap:
             range_end = day_slots[i]
         else:
             ranges.append((range_start, range_end))
