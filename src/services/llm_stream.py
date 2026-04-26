@@ -2356,10 +2356,9 @@ TOOL RULES:
                         
                         if fail_count >= 2:
                             # Already asked once for more details — fall back to General Service
-                            # Check if this is a returning customer (name already known)
                             customer_name = call_state.get("customer_name", "") if call_state else ""
                             if customer_name:
-                                direct_response = f"No problem {customer_name.split()[0]}, I'll book you in for a general callout and we can take a look. What's your eircode?"
+                                direct_response = f"No problem {customer_name.split()[0]}, I'll book you in for a general callout and we can take a look."
                             else:
                                 direct_response = "No problem, I'll book you in for a general callout and we can take a look. Can I get your name please?"
                             # Set service type so the booking flow uses General Callout
@@ -2369,7 +2368,7 @@ TOOL RULES:
                                 call_state.gathering_started = True
                             print(f"   ⚡ [DIRECT] match_issue FALLBACK to General Callout (fail_count={fail_count})")
                         else:
-                            direct_response = "I'm not sure I have a service that matches. Could you describe the issue in a bit more detail?"
+                            direct_response = "Could you give me a bit more detail on the issue so I can narrow it down?"
                     else:
                         # Reset fail count — we found matches
                         if call_state:
