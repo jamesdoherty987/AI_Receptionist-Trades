@@ -315,18 +315,30 @@ function PrivacyPolicy() {
 
         <section className="privacy-section">
           <h2>10. Your Rights Under GDPR</h2>
-          <p>Depending on your location, you may have the following rights:</p>
+          <p>
+            Under the GDPR, you have the following rights in relation to your personal data:
+          </p>
           <ul>
-            <li>Access: request a copy of the personal data we hold about you</li>
-            <li>Correction: request correction of inaccurate or incomplete data</li>
-            <li>Deletion: request deletion of your personal data</li>
-            <li>Portability: request a copy of your data in a portable format</li>
-            <li>Objection: object to processing of your data in certain circumstances</li>
-            <li>Restriction: request restriction of processing in certain circumstances</li>
-            <li>Withdraw consent: where processing is based on consent, you may withdraw it at any time</li>
+            <li><strong>Right of Access</strong> (Article 15): request a copy of the personal data we hold about you</li>
+            <li><strong>Right to Rectification</strong> (Article 16): request correction of inaccurate or incomplete data</li>
+            <li><strong>Right to Erasure</strong> (Article 17): request deletion of your personal data where there is no compelling reason for continued processing</li>
+            <li><strong>Right to Data Portability</strong> (Article 20): request a copy of your data in a structured, commonly used, machine-readable format. You can do this directly from your Settings page using the "Download My Data" feature.</li>
+            <li><strong>Right to Object</strong> (Article 21): object to processing based on legitimate interests, including profiling</li>
+            <li><strong>Right to Restrict Processing</strong> (Article 18): request restriction of processing in certain circumstances</li>
+            <li><strong>Right to Withdraw Consent</strong>: where processing is based on consent, you may withdraw it at any time without affecting the lawfulness of processing carried out before withdrawal</li>
           </ul>
           <p>
-            To exercise any of these rights, please contact us at the email address provided below.
+            To exercise any of these rights, please contact us at the email address provided 
+            below. We will respond to your request within one month, as required by the GDPR.
+          </p>
+          <p>
+            You also have the right to lodge a complaint with the Irish Data Protection 
+            Commission (DPC) if you believe your data protection rights have been violated:
+          </p>
+          <p className="contact-info">
+            Data Protection Commission<br />
+            21 Fitzwilliam Square South, Dublin 2, D02 RD28, Ireland<br />
+            Website: <a href="https://www.dataprotection.ie" target="_blank" rel="noopener noreferrer">www.dataprotection.ie</a>
           </p>
         </section>
 
