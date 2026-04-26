@@ -730,8 +730,8 @@ async def media_handler(ws):
         print(f"\n🤖 GREETING: {greeting}")
         conversation_log.append({"role": "assistant", "content": greeting, "timestamp": asyncio.get_event_loop().time()})
         
-        # Try pre-recorded greeting (only for new inbound customers — returning customers and outbound get personalized TTS)
-        if not caller_is_returning and not is_outbound and has_prerecorded_fillers():
+        # Try pre-recorded greeting (generic greeting is the same for all callers now)
+        if has_prerecorded_fillers():
             audio = get_filler_audio("greeting")
             if audio:
                 await send_prerecorded_audio(ws, stream_sid, audio)
@@ -850,6 +850,9 @@ async def media_handler(ws):
                 elif caller_is_returning:
                     # RETURNING CUSTOMER — inject their info so AI can greet them by name
                     first_name = caller_customer_name.split()[0] if caller_customer_name and caller_customer_name.strip() else ''
+                    # Store on call_state so direct responses (match_issue fallback etc) can use it
+                    if caller_customer_name:
+                        call_state['customer_name'] = caller_customer_name
                     info_parts = [f"RETURNING CUSTOMER identified by phone: {caller_customer_name or 'name unknown'}"]
                     if caller_customer_info.get('email'):
                         info_parts.append(f"email: {caller_customer_info['email']}")

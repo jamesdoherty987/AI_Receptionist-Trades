@@ -3651,7 +3651,6 @@ class PostgreSQLDatabaseWrapper:
                     counts = {row['employee_id']: row['upcoming_count'] for row in cursor.fetchall()}
                     # Employees with no upcoming bookings get count 0
                     available_employees.sort(key=lambda w: counts.get(w['id'], 0))
-                    print(f"[EMPLOYEE_AVAIL] Sorted by least busy: {[(w['name'], counts.get(w['id'], 0)) for w in available_employees]}")
                 except Exception as sort_err:
                     print(f"[EMPLOYEE_AVAIL] ⚠️ Could not sort by workload (falling back to default order): {sort_err}")
                 finally:
