@@ -741,8 +741,9 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
     current_turn = call_state.current_turn
     last_booking_turn = call_state.last_booking_turn
     
-    # Post-booking cooldown: only the immediate turn after booking, be extra careful about reschedule detection
-    in_post_booking_cooldown = (last_booking_turn > 0 and current_turn - last_booking_turn <= 1)
+    # Post-booking cooldown: for a few turns after booking, be extra careful about reschedule detection
+    # and don't trigger availability/booking pre-check fillers (prevents confirmation loops)
+    in_post_booking_cooldown = (last_booking_turn > 0 and current_turn - last_booking_turn <= 3)
     if in_post_booking_cooldown:
         print(f"[COOLDOWN] In post-booking cooldown (turn {current_turn}, booking was turn {last_booking_turn})")
     
@@ -848,7 +849,8 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         # Kept as comment for reference — names are extracted from transcript post-call
         
         # 4. EXPLICIT AVAILABILITY CHECK - triggers check_availability
-        if not likely_needs_tool:
+        # GUARD: Skip if a booking was just completed — caller may be confirming, not asking for new availability
+        if not likely_needs_tool and not in_post_booking_cooldown:
             availability_phrases = ["what times are available", "when are you available", "any slots", "check availability",
                                    "what times", "when can", "any openings", "free on", "available on", "next available",
                                    "earliest", "soonest", "closest day", "this week", "next week", "tomorrow",
@@ -933,7 +935,8 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
                     print(f"   ❌ [PRE-CHECK] ADDRESS PROVIDED but email not yet asked — skipping filler (LLM will ask for email first)")
         
         # 5. BOOKING CONFIRMATION - user confirms booking after AI asked "ready to book?" or confirmed details
-        if not likely_needs_tool:
+        # GUARD: Skip if a booking was already completed — no need to re-confirm
+        if not likely_needs_tool and not in_post_booking_cooldown:
             # Check if AI just asked about booking confirmation
             booking_confirmation_phrases = ["ready to book", "shall i book", "want me to book", "confirm the booking", "go ahead and book", "all correct",
                                            "is that correct?", "correct?"]
@@ -1947,7 +1950,9 @@ TOOL RULES:
                     # so the next availability search starts fresh
                     if tool_name in ('book_job', 'reschedule_job', 'book_appointment', 'reschedule_appointment') and call_state and result.get('success'):
                         call_state.suggested_dates = []
+                        call_state.last_booking_turn = call_state.current_turn
                         print(f"   🔧 [TOOL_RESULT] Cleared suggested dates after successful {tool_name}")
+                        print(f"   🔧 [TOOL_RESULT] Set last_booking_turn={call_state.current_turn}")
                     
                     # Check if this is a transfer request
                     if result.get("transfer") and result.get("success"):
@@ -2244,32 +2249,44 @@ TOOL RULES:
                         # Check if this is a full-day job (8+ hours)
                         is_full_day = duration_mins >= 480
                         
+                        # Check if customer provided an email (for portal message)
+                        customer_has_email = bool(details.get("email"))
+                        if not customer_has_email and call_state:
+                            # Also check if email was mentioned in conversation
+                            customer_has_email = bool(call_state.get("customer_email"))
+                        
+                        # Portal suffix: mention confirmation email + customer portal if email was provided
+                        if customer_has_email:
+                            portal_suffix = " You'll get a confirmation email shortly with a link to your customer portal — if you could upload any photos or videos of the issue there, that'd be a great help for us to prepare. Is there anything else?"
+                        else:
+                            portal_suffix = " Is there anything else?"
+                        
                         if is_callout_booking:
                             # Callout booking: tell the caller it's a call-out visit
                             if is_full_day and time_str:
                                 day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
-                                direct_response = f"Grand, you're all booked in for a call-out visit on {day_part}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a call-out visit on {day_part}. We'll come out and have a look, and then schedule the full {original_service} job after that.{portal_suffix}"
                             elif time_str:
-                                direct_response = f"Grand, you're all booked in for a call-out visit on {time_str}. We'll come out and have a look, and then schedule the full {original_service} job after that. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a call-out visit on {time_str}. We'll come out and have a look, and then schedule the full {original_service} job after that.{portal_suffix}"
                             else:
-                                direct_response = f"Grand, you're all booked in for a call-out visit. We'll come out and have a look, and then schedule the full job after that. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a call-out visit. We'll come out and have a look, and then schedule the full job after that.{portal_suffix}"
                         elif is_quote_booking:
                             # Quote booking: tell the caller it's a free quote visit
                             if is_full_day and time_str:
                                 day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
-                                direct_response = f"Grand, you're all booked in for a free quote visit on {day_part}. We'll come out, have a look, and give you a quote for the {original_service} job. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a free quote visit on {day_part}. We'll come out, have a look, and give you a quote for the {original_service} job.{portal_suffix}"
                             elif time_str:
-                                direct_response = f"Grand, you're all booked in for a free quote visit on {time_str}. We'll come out, have a look, and give you a quote for the {original_service} job. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a free quote visit on {time_str}. We'll come out, have a look, and give you a quote for the {original_service} job.{portal_suffix}"
                             else:
-                                direct_response = f"Grand, you're all booked in for a free quote visit. We'll come out, have a look, and give you a quote. Is there anything else?"
+                                direct_response = f"Grand, you're all booked in for a free quote visit. We'll come out, have a look, and give you a quote.{portal_suffix}"
                         elif is_full_day and time_str:
                             # For full-day jobs, extract just the day (not the time)
                             day_part = time_str.split(" at ")[0] if " at " in time_str else time_str
-                            direct_response = f"Grand, you're all booked in for {day_part}. We'll give you a call when we're on the way. Is there anything else?"
+                            direct_response = f"Grand, you're all booked in for {day_part}. We'll give you a call when we're on the way.{portal_suffix}"
                         elif time_str:
-                            direct_response = f"Grand, you're all booked in for {time_str}. Is there anything else?"
+                            direct_response = f"Grand, you're all booked in for {time_str}.{portal_suffix}"
                         else:
-                            direct_response = "Grand, you're all booked in. Is there anything else I can help with?"
+                            direct_response = f"Grand, you're all booked in.{portal_suffix}"
                     else:
                         error = result_content.get("error", result_content.get("message", ""))
                         if "not available" in error.lower() or "already booked" in error.lower():
@@ -2378,7 +2395,12 @@ TOOL RULES:
                         
                         if fail_count >= 2:
                             # Already asked once for more details — fall back to General Service
-                            direct_response = "No problem, I'll book you in for a general callout and we can take a look. Can I get your name please?"
+                            # Check if this is a returning customer (name already known)
+                            customer_name = call_state.get("customer_name", "") if call_state else ""
+                            if customer_name:
+                                direct_response = f"No problem {customer_name.split()[0]}, I'll book you in for a general callout and we can take a look. What's your eircode?"
+                            else:
+                                direct_response = "No problem, I'll book you in for a general callout and we can take a look. Can I get your name please?"
                             # Set service type so the booking flow uses General Callout
                             if call_state:
                                 call_state.service_type = "General Callout"
@@ -2458,6 +2480,23 @@ TOOL RULES:
             
             # Add to conversation history
             messages.append({"role": "assistant", "content": direct_response})
+            
+            # After a successful booking, inject a system message to prevent
+            # the LLM from re-asking confirmation questions in a loop.
+            # The booking is DONE — no need to confirm again.
+            if tool_name in ("book_job", "book_appointment") and any(
+                json.loads(tr["content"]).get("success") for tr in tool_results
+                if tr.get("content")
+            ):
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "[SYSTEM: The booking is CONFIRMED and COMPLETE. Do NOT ask for confirmation again. "
+                        "Do NOT re-confirm the booking details. Do NOT ask 'is that correct?' about the booking. "
+                        "The job is booked. If the caller says anything, just ask if there's anything else you can help with, "
+                        "or say goodbye warmly. If they want a SECOND booking, start fresh with match_issue.]"
+                    )
+                })
             
             # Check for transfer
             if tool_name == "transfer_to_human" and tool_results:

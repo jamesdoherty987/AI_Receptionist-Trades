@@ -854,13 +854,17 @@ async def media_handler(ws):
                         print(f"[BG_AUDIO] 🔊 Starting ambient audio loop ({len(ambient)} bytes, {total_chunks} chunks)")
                         
                         while not bg_audio_stop.is_set():
-                            # Only send when AI is NOT speaking — TTS handles its own audio
+                            # Pause when AI is speaking — TTS handles its own audio
+                            # IMPORTANT: Do NOT break out of the loop! Just pause and
+                            # resume when speaking finishes. The ambient audio should
+                            # play for the entire duration of the call.
                             if speaking:
                                 try:
                                     await asyncio.wait_for(bg_audio_stop.wait(), timeout=0.2)
-                                    break
+                                    if bg_audio_stop.is_set():
+                                        break  # Only break if call is ending
                                 except asyncio.TimeoutError:
-                                    continue
+                                    continue  # Keep pausing while speaking
                             
                             for _ in range(BATCH_CHUNKS):
                                 if bg_audio_stop.is_set() or speaking:
@@ -884,9 +888,9 @@ async def media_handler(ws):
                             
                             try:
                                 await asyncio.wait_for(bg_audio_stop.wait(), timeout=BATCH_INTERVAL)
-                                break
+                                break  # bg_audio_stop was set — call is ending
                             except asyncio.TimeoutError:
-                                pass
+                                pass  # Normal — keep looping
                         
                         print(f"[BG_AUDIO] 🔇 Ambient audio stopped")
                     except Exception as e:
@@ -914,7 +918,7 @@ async def media_handler(ws):
                                     ],
                                     stream=True, temperature=0.1,
                                     tools=CALENDAR_TOOLS, tool_choice="none",
-                                    **config.max_tokens_param(value=1)
+                                    **config.max_tokens_param(value=5)
                                 )
                                 for _ in stream: pass
                             await asyncio.to_thread(do_warmup)
