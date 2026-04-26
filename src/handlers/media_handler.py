@@ -1,5 +1,5 @@
 """
-Telnyx TeXML Media Stream WebSocket Handler
+Media Stream WebSocket Handler (Twilio + Telnyx compatible)
 Manages real-time voice conversations with ASR, LLM, and TTS
 
 SIMPLIFIED ARCHITECTURE:
@@ -117,7 +117,7 @@ def ai_asked_for_email(text: str) -> bool:
 
 
 async def media_handler(ws):
-    """Handle Telnyx TeXML media stream WebSocket connection"""
+    """Handle media stream WebSocket connection (Twilio or Telnyx)"""
     call_start_time = time_module.time()
     print(f"\n{'='*70}")
     print(f"📞 [CALL_START] New call at {call_start_time:.3f}")
@@ -193,8 +193,8 @@ async def media_handler(ws):
     FILLER_PHRASES = {"hello", "hi", "hey", "are you there", "you there", "hello?", "um", "uh"}
     bargein_since = 0.0
 
-    async def clear_twilio_audio():
-        """Clear Telnyx audio buffer"""
+    async def clear_audio_buffer():
+        """Clear the provider's audio playback buffer (works for both Twilio and Telnyx)"""
         if stream_sid:
             try:
                 await ws.send(json.dumps({"event": "clear", "streamSid": stream_sid}))
@@ -224,8 +224,7 @@ async def media_handler(ws):
             full_text = ""
             transfer_number = None
             
-            print(f"\n🗣️ [TTS] Starting response stream: {label}")
-            print(f"[PIPELINE] ⏱️ TTS run() started at {run_start:.3f}")
+            print(f"\n🗣️ [TTS] Starting response: {label}")
 
             try:
                 # Get first token to check for SPLIT_TTS marker
@@ -272,6 +271,27 @@ async def media_handler(ws):
                                 if token.startswith("<<<TRANSFER:"):
                                     transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
                                     continue
+                                # Handle prerecorded audio: resolve to text so TTS can speak it
+                                # (prerecorded optimization only works in the direct stream path)
+                                if token.startswith("<<<PRERECORDED:"):
+                                    phrase_id = token.replace("<<<PRERECORDED:", "").replace(">>>", "").strip()
+                                    # Try to play prerecorded audio directly
+                                    prerecorded_data = get_filler_audio(phrase_id) if has_prerecorded_fillers() else None
+                                    if prerecorded_data:
+                                        # Signal the queued_stream to play prerecorded audio instead of TTS
+                                        await token_queue.put(f"<<<PLAY_PRERECORDED:{phrase_id}>>>")
+                                        token_count += 1
+                                    else:
+                                        # Fallback: resolve to text for TTS
+                                        try:
+                                            from src.services.prerecorded_audio import FILLER_PHRASES
+                                            resolved_text = FILLER_PHRASES.get(phrase_id, "")
+                                        except Exception:
+                                            resolved_text = ""
+                                        if resolved_text:
+                                            token_count += 1
+                                            await token_queue.put(resolved_text)
+                                    continue
                                 if token.startswith("<<<"):
                                     continue
                                 token_count += 1
@@ -301,17 +321,14 @@ async def media_handler(ws):
                         print(f"[PIPELINE] ⏱️ TTS filler done in {time_module.time() - filler_start:.3f}s")
                         return True
                     
-                    # START BOTH IN PARALLEL - this is the key fix!
+                    # START BOTH IN PARALLEL
                     # LLM work (OpenAI call, tool execution) happens while filler plays
                     parallel_start = time_module.time()
-                    print(f"   ⚡ Starting filler + LLM in parallel...")
                     llm_task = asyncio.create_task(consume_llm())
                     filler_task = asyncio.create_task(play_filler())
                     
                     # Wait for filler to finish (LLM continues in background)
                     await filler_task
-                    filler_done_time = time_module.time() - parallel_start
-                    print(f"   🔊 Filler done in {filler_done_time:.3f}s, streaming LLM response...")
                     
                     # Now stream tokens from queue to TTS
                     # CRITICAL: Add overall timeout to prevent infinite hang
@@ -356,36 +373,71 @@ async def media_handler(ws):
                                 # No token yet, check if LLM is done
                                 if llm_done.is_set() and token_queue.empty():
                                     break
-                                # Log if waiting too long
-                                if elapsed > 5.0 and int(elapsed) % 2 == 0:
-                                    print(f"   ⏳ [QUEUE] ⚠️ TIMEOUT: Still waiting for LLM tokens... ({elapsed:.1f}s)")
+                                # Log if waiting too long (only once at 6s)
+                                if elapsed > 6.0 and int(elapsed * 10) % 100 == 0:
+                                    print(f"   ⏳ Still waiting for LLM tokens... ({elapsed:.0f}s)")
                                 continue
                     
                     tts_stream_start = time_module.time()
                     
-                    _queued_audio_done_fired = False
-                    def _on_queued_audio_done():
-                        nonlocal last_tts_audio_done, _queued_audio_done_fired, speaking, tts_ended_at, last_tts_success
-                        last_tts_audio_done = asyncio.get_event_loop().time()
-                        _queued_audio_done_fired = True
-                        last_tts_success = True
-                        # Clear stale ASR state NOW — the audio just finished sending.
-                        asr.clear()
-                        # CRITICAL: Mark speaking as done NOW, not when run() returns.
-                        # run() takes 4-5s after audio finishes (websocket close, etc).
-                        # If we wait, the caller's response gets stuck in barge-in mode
-                        # and the fallback check never runs — causing a freeze.
-                        speaking = False
-                        tts_ended_at = last_tts_audio_done
-                        print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False at audio finish")
-                    await stream_tts(queued_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_queued_audio_done)
-                    if not _queued_audio_done_fired:
-                        last_tts_audio_done = asyncio.get_event_loop().time()
-                        asr.clear()  # Fallback clear if callback didn't fire
-                        speaking = False
-                        tts_ended_at = last_tts_audio_done
-                        last_tts_success = False  # TTS didn't deliver audio — allow caller to repeat
-                        print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False (fallback — callback didn't fire)")
+                    # Check if the response is a prerecorded audio (skip TTS entirely)
+                    _prerecorded_played = False
+                    # Wait briefly for the first token if queue is empty but LLM is still working
+                    if token_queue.empty() and not llm_done.is_set():
+                        try:
+                            await asyncio.wait_for(llm_done.wait(), timeout=2.0)
+                        except asyncio.TimeoutError:
+                            pass
+                    if not token_queue.empty():
+                        try:
+                            peek_token = token_queue.get_nowait()
+                            if isinstance(peek_token, str) and peek_token.startswith("<<<PLAY_PRERECORDED:"):
+                                phrase_id = peek_token.replace("<<<PLAY_PRERECORDED:", "").replace(">>>", "").strip()
+                                prerecorded_data = get_filler_audio(phrase_id)
+                                if prerecorded_data:
+                                    print(f"   🔊 [PARALLEL] Playing prerecorded response: {phrase_id}")
+                                    await send_prerecorded_audio(ws, stream_sid, prerecorded_data)
+                                    last_tts_audio_done = asyncio.get_event_loop().time()
+                                    last_tts_success = True
+                                    asr.clear()
+                                    speaking = False
+                                    tts_ended_at = last_tts_audio_done
+                                    try:
+                                        from src.services.prerecorded_audio import FILLER_PHRASES
+                                        full_text += FILLER_PHRASES.get(phrase_id, phrase_id)
+                                    except Exception:
+                                        full_text += phrase_id
+                                    _prerecorded_played = True
+                            else:
+                                # Not a prerecorded token — put it back
+                                await token_queue.put(peek_token)
+                        except asyncio.QueueEmpty:
+                            pass
+                    
+                    if not _prerecorded_played:
+                        _queued_audio_done_fired = False
+                        def _on_queued_audio_done():
+                            nonlocal last_tts_audio_done, _queued_audio_done_fired, speaking, tts_ended_at, last_tts_success
+                            last_tts_audio_done = asyncio.get_event_loop().time()
+                            _queued_audio_done_fired = True
+                            last_tts_success = True
+                            # Clear stale ASR state NOW — the audio just finished sending.
+                            asr.clear()
+                            # CRITICAL: Mark speaking as done NOW, not when run() returns.
+                            # run() takes 4-5s after audio finishes (websocket close, etc).
+                            # If we wait, the caller's response gets stuck in barge-in mode
+                            # and the fallback check never runs — causing a freeze.
+                            speaking = False
+                            tts_ended_at = last_tts_audio_done
+                            print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False at audio finish")
+                        await stream_tts(queued_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_queued_audio_done)
+                        if not _queued_audio_done_fired:
+                            last_tts_audio_done = asyncio.get_event_loop().time()
+                            asr.clear()  # Fallback clear if callback didn't fire
+                            speaking = False
+                            tts_ended_at = last_tts_audio_done
+                            last_tts_success = False  # TTS didn't deliver audio — allow caller to repeat
+                            print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False (fallback — callback didn't fire)")
                     tts_stream_time = time_module.time() - tts_stream_start
                     print(f"[PIPELINE] ⏱️ TTS streaming took {tts_stream_time:.3f}s")
                     
@@ -502,17 +554,11 @@ async def media_handler(ws):
                         tts_only_time = tts_call_end - tts_call_start
                         print(f"[PIPELINE] ⏱️ Direct TTS flow took {direct_time:.3f}s (TTS call: {tts_only_time:.3f}s)")
                 
-                # Log response
+                # Log response timing (only warn on slow responses)
                 total_time = time_module.time() - run_start
                 response_times.append(total_time)
-                
-                # Detailed timing breakdown
-                print(f"\n   {'─'*50}")
-                print(f"   📊 RESPONSE TIMING BREAKDOWN:")
-                print(f"   ⏱️ Total response time: {total_time:.3f}s")
                 if total_time > 5.0:
-                    print(f"   ⚠️ SLOW RESPONSE - check [PIPELINE], [LLM_TIMING], [TOOL_TIMING] logs above")
-                print(f"   {'─'*50}\n")
+                    print(f"   ⚠️ SLOW RESPONSE: {total_time:.1f}s")
                 
                 if full_text.strip():
                     conversation_log.append({
@@ -564,11 +610,15 @@ async def media_handler(ws):
                     try:
                         import os
                         import httpx
+                        
+                        # Try Telnyx first, then Twilio
                         telnyx_api_key = os.getenv('TELNYX_API_KEY')
+                        twilio_account_sid = os.getenv('TWILIO_ACCOUNT_SID')
+                        twilio_auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+                        
                         if telnyx_api_key and call_sid:
-                            # Telnyx Call Control: transfer via updating the call
+                            # Telnyx Call Control: transfer via TeXML update
                             from urllib.parse import quote
-                            transfer_url = f"{config.PUBLIC_URL}/telnyx/transfer?number={quote(transfer_number)}"
                             resp = httpx.post(
                                 f"https://api.telnyx.com/v2/texml/calls/{call_sid}/update",
                                 headers={
@@ -581,9 +631,23 @@ async def media_handler(ws):
                             if resp.status_code < 300:
                                 print(f"✅ Transfer initiated via Telnyx")
                             else:
-                                print(f"⚠️ Telnyx transfer response: {resp.status_code} {resp.text[:200]}")
+                                print(f"⚠️ Telnyx transfer: {resp.status_code}")
+                        elif twilio_account_sid and twilio_auth_token and call_sid:
+                            # Twilio: update call with TwiML redirect
+                            from urllib.parse import quote
+                            transfer_twiml_url = f"{config.PUBLIC_URL}/twilio/transfer?number={quote(transfer_number)}"
+                            resp = httpx.post(
+                                f"https://api.twilio.com/2010-04-01/Accounts/{twilio_account_sid}/Calls/{call_sid}.json",
+                                auth=(twilio_account_sid, twilio_auth_token),
+                                data={"Url": transfer_twiml_url, "Method": "POST"},
+                                timeout=10.0,
+                            )
+                            if resp.status_code < 300:
+                                print(f"✅ Transfer initiated via Twilio")
+                            else:
+                                print(f"⚠️ Twilio transfer: {resp.status_code}")
                         else:
-                            print(f"⚠️ Transfer skipped — missing TELNYX_API_KEY or call_sid")
+                            print(f"⚠️ Transfer skipped — no Telnyx or Twilio credentials")
                     except Exception as e:
                         print(f"❌ Transfer error: {e}")
                 
@@ -1002,7 +1066,7 @@ async def media_handler(ws):
                             if len(interim.strip().split()) >= 1:
                                 interrupt = True
                                 print(f"✋ Interrupt: '{interim}'")
-                                await clear_twilio_audio()
+                                await clear_audio_buffer()
                                 if respond_task and not respond_task.done():
                                     respond_task.cancel()
                                 speaking = False
@@ -1020,13 +1084,12 @@ async def media_handler(ws):
                 if (now - tts_ended_at) < POST_TTS_IGNORE:
                     continue
                 
-                # DEBUG: Log ASR state periodically when there's a pending segment
-                # This helps diagnose freezes where segments aren't being promoted
+                # DEBUG: Log ASR state when there's a pending segment stuck for too long
                 if asr.last_segment_text and not asr.speech_final:
                     seg_age = time_module.time() - asr.last_segment_time if asr.last_segment_time > 0 else -1
-                    # Log every ~2 seconds to avoid spam
-                    if seg_age > 0 and int(seg_age * 10) % 20 == 0:
-                        print(f"[DEBUG] Pending segment: '{asr.last_segment_text[:50]}' age={seg_age:.1f}s speaking={speaking} llm_processing={llm_processing}")
+                    # Only log after 3s to reduce noise
+                    if seg_age > 3.0 and int(seg_age * 10) % 50 == 0:
+                        print(f"[ASR] ⚠️ Pending segment stuck: '{asr.last_segment_text[:50]}' age={seg_age:.1f}s")
                 
                 # Fallback: If Deepgram sent an is_final segment but never sent
                 # speech_final or UtteranceEnd, promote it after 5 seconds of silence.

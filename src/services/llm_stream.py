@@ -720,10 +720,7 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
     import time as time_module
     llm_start_time = time_module.time()
     
-    print(f"\n{'='*70}")
-    print(f"[LLM_TIMING] stream_llm started at {llm_start_time:.3f}")
-    print(f"[LLM_TIMING] Messages count: {len(messages)}")
-    print(f"{'='*70}")
+    print(f"\n[LLM] stream_llm started | {len(messages)} msgs")
 
     # Use provided call_state or create a new one (for backwards compatibility)
     # WARNING: Creating a new CallState here means state won't persist across turns
@@ -1094,11 +1091,10 @@ TOOL RULES:
     prompt_load_db_start = time_module.time()
     active_system_prompt = get_cached_system_prompt(company_id=company_id)
     prompt_load_time = time_module.time() - prompt_load_db_start
-    print(f"[LLM_TIMING] System prompt retrieved in {prompt_load_time*1000:.1f}ms (company_id={company_id})")
+    if prompt_load_time > 0.05:  # Only log if slow (>50ms)
+        print(f"[LLM] System prompt loaded in {prompt_load_time*1000:.0f}ms")
     
     system_prompt_with_time = active_system_prompt + time_context + tool_usage_guidance
-    prompt_total_time = time_module.time() - prompt_load_start
-    print(f"[LLM_TIMING] Total prompt preparation: {prompt_total_time:.3f}s")
     
     # Sanitize messages to ensure tool messages have their preceding assistant message with tool_calls
     # This prevents the "messages with role 'tool' must be a response to a preceding message with 'tool_calls'" error
@@ -1180,13 +1176,10 @@ TOOL RULES:
         print(f"⚠️ [SANITIZE] Original message roles: {[m.get('role') for m in messages]}")
         print(f"⚠️ [SANITIZE] Sanitized message roles: {[m.get('role') for m in sanitized_messages]}")
     
-    # Debug: Print message structure before API call
-    print(f"[LLM_DEBUG] Message roles being sent: {[m.get('role') for m in sanitized_messages]}")
+    # Debug: Print message structure before API call (only log tool_calls for debugging)
     for idx, msg in enumerate(sanitized_messages):
-        if msg.get('role') == 'tool':
-            print(f"[LLM_DEBUG] Message[{idx}] is tool: {msg.get('name', 'unknown')}")
-        elif msg.get('role') == 'assistant' and msg.get('tool_calls'):
-            print(f"[LLM_DEBUG] Message[{idx}] is assistant with tool_calls: {[tc.get('function', {}).get('name') for tc in msg.get('tool_calls', [])]}")
+        if msg.get('role') == 'assistant' and msg.get('tool_calls'):
+            print(f"[LLM] Message[{idx}] assistant with tool_calls: {[tc.get('function', {}).get('name') for tc in msg.get('tool_calls', [])]}")
     
     # FINAL SAFETY CHECK: Verify no orphaned tool messages exist
     # This is a last-resort check before sending to OpenAI
@@ -1212,19 +1205,7 @@ TOOL RULES:
     
     try:
         openai_call_start = time_module.time()
-        time_since_llm_start = openai_call_start - llm_start_time
-        print(f"[LLM_TIMING] Creating OpenAI stream with model={config.CHAT_MODEL}")
-        print(f"[LLM_TIMING] Time since stream_llm start: {time_since_llm_start:.3f}s")
-        print(f"[LLM_TIMING] Messages count: {len(final_messages)}, company_id={company_id}")
-        print(f"[LLM_TIMING] Last user message: {final_messages[-1].get('content', '')[:100] if final_messages else 'N/A'}...")
-        
-        # DEBUG: Log prompt and message sizes
-        system_prompt_chars = len(system_prompt_with_time)
-        total_message_chars = sum(len(m.get('content', '')) for m in final_messages)
-        tools_count = len(CALENDAR_TOOLS)
-        print(f"[LLM_DEBUG] 📊 System prompt: {system_prompt_chars} chars (~{system_prompt_chars//4} tokens)")
-        print(f"[LLM_DEBUG] 📊 Messages total: {total_message_chars} chars (~{total_message_chars//4} tokens)")
-        print(f"[LLM_DEBUG] 📊 Tools count: {tools_count}")
+        print(f"[LLM] Calling {config.CHAT_MODEL} | {len(final_messages)} msgs | company={company_id}")
         
         # Use ThreadPoolExecutor with timeout to prevent infinite hangs
         import concurrent.futures
@@ -1232,17 +1213,10 @@ TOOL RULES:
         
         # Determine if tools should be used
         use_tools = not config.DISABLE_LLM_TOOLS
-        if not use_tools:
-            print(f"[LLM_DEBUG] ⚠️ TOOLS DISABLED (DISABLE_LLM_TOOLS=true)")
         
         def create_stream():
             import time as inner_time
             api_start = inner_time.time()
-            print(f"[LLM_DEBUG] 🚀 Calling OpenAI API at {api_start:.3f}...")
-            print(f"[LLM_DEBUG] 🔧 Model: {config.CHAT_MODEL}")
-            print(f"[LLM_DEBUG] 🔧 API Key present: {bool(config.OPENAI_API_KEY)}")
-            print(f"[LLM_DEBUG] 🔧 API Key prefix: {config.OPENAI_API_KEY[:8] if config.OPENAI_API_KEY else 'None'}...")
-            print(f"[LLM_DEBUG] 🔧 Tools enabled: {use_tools}")
             
             try:
                 # Build API call params
@@ -1266,11 +1240,11 @@ TOOL RULES:
                 
                 result = client.chat.completions.create(**api_params)
                 api_done = inner_time.time()
-                print(f"[LLM_DEBUG] ✅ OpenAI API returned stream object in {(api_done - api_start)*1000:.0f}ms")
+                print(f"[LLM] ✅ Stream created in {(api_done - api_start)*1000:.0f}ms")
                 return result
             except Exception as e:
                 api_done = inner_time.time()
-                print(f"[LLM_DEBUG] ❌ OpenAI API failed after {(api_done - api_start)*1000:.0f}ms: {e}")
+                print(f"[LLM] ❌ API failed after {(api_done - api_start)*1000:.0f}ms: {e}")
                 raise
         
         # CRITICAL FIX: Use asyncio.to_thread to avoid blocking the event loop
@@ -1293,7 +1267,7 @@ TOOL RULES:
             return
         
         openai_create_time = time_module.time() - openai_call_start
-        print(f"[LLM_TIMING] ✅ OpenAI stream created in {openai_create_time:.3f}s")
+        print(f"[LLM] OpenAI stream ready in {openai_create_time:.3f}s")
     except Exception as e:
         print(f"❌ [LLM_ERROR] Error creating LLM stream: {e}")
         print(f"[LLM_ERROR] Exception type: {type(e).__name__}")
@@ -1310,7 +1284,7 @@ TOOL RULES:
     first_token_time = None  # Track time to first token
     
     try:
-        print(f"[LLM_TIMING] Starting to iterate over stream...")
+        print(f"[LLM] Iterating stream...")
         stream_iter_start = time_module.time()
         STREAM_TIMEOUT = 15.0  # Max seconds to wait for stream to complete
         
@@ -1366,10 +1340,7 @@ TOOL RULES:
             if first_token_time is None:
                 first_token_time = time_module.time()
                 ttft = first_token_time - openai_call_start
-                total_ttft = first_token_time - llm_start_time
-                print(f"[LLM_TIMING] ⚡ FIRST TOKEN received!")
-                print(f"[LLM_TIMING]    Time from API call: {ttft:.3f}s")
-                print(f"[LLM_TIMING]    Time from stream_llm start: {total_ttft:.3f}s")
+                print(f"[LLM] ⚡ First token in {ttft:.3f}s")
                 # Yield timing marker for media handler
                 yield f"<<<TIMING:openai_first_token_ms={ttft*1000:.1f}>>>"
             
@@ -1448,19 +1419,9 @@ TOOL RULES:
                 if not tool_calls:
                     # Strip markdown formatting to prevent TTS reading "**" as "star star"
                     cleaned_token = delta.content.replace('**', '').replace('__', '').replace('~~', '')
-                    # Add pauses for spelled-out content (letters/numbers separated by dashes)
                     cleaned_token = format_for_tts_spelling(cleaned_token)
-                    # Fix time pronunciation (e.g., "9:00 AM" -> "9 AM")
                     cleaned_token = humanize_times_for_tts(cleaned_token)
-                    
-                    # Debug: Log token yielding
-                    if token_count <= 3:
-                        print(f"   📤 [YIELD] Token #{token_count}: '{cleaned_token[:30]}...'")
                     yield cleaned_token  # Send cleaned version to TTS
-                else:
-                    # Debug: Log suppressed tokens
-                    if token_count <= 3:
-                        print(f"   🚫 [SUPPRESSED] Token #{token_count} suppressed (tool_calls={len(tool_calls)})")
                 
     except Exception as e:
         print(f"❌ [LLM_ERROR] Error during LLM streaming: {e}")
@@ -1535,7 +1496,7 @@ TOOL RULES:
         if full_response:
             cleaned = remove_repetition(full_response.strip())
             messages.append({"role": "assistant", "content": cleaned})
-        print(f"[LLM_TIMING] ✅ No tool calls - returning immediately (fast path)")
+        print(f"[LLM] ✅ No tool calls — fast path")
         return
     
     # SAFETY CHECK: If we yielded a split marker in pre-check but OpenAI didn't actually call tools
