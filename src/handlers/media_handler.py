@@ -723,7 +723,7 @@ async def media_handler(ws):
             greeting = f"Hi{name_part}, this is {biz_name} calling. You rang us earlier about {issue_brief} — I just wanted to follow up and see if you still need help with that?"
         elif caller_is_returning and caller_customer_name and caller_customer_name.strip():
             first_name = caller_customer_name.split()[0]
-            greeting = f"Hi {first_name}, welcome back! How can I help you today?"
+            greeting = f"Hi, I have the name under this number as {first_name}, welcome back! How can I help you today?"
         else:
             greeting = "Hi, thank you for calling. How can I help you today?"
         
@@ -863,7 +863,7 @@ async def media_handler(ws):
                     )
                     
                     if first_name:
-                        greeting_note = f"Greeting already sent — you already said 'Hi {first_name}, welcome back!'."
+                        greeting_note = f"Greeting already sent — you already said 'I have the name under this number as {first_name}, welcome back!'."
                         name_note = "Do NOT ask for their name — you already know it."
                     else:
                         greeting_note = "Greeting already sent. This is a returning customer but their name is not on file yet."
