@@ -1092,7 +1092,10 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
             # Service description - LLM WILL call match_issue tool, so play a filler
             elif any(phrase in user_message for phrase in ["leak", "broken", "fix", "repair", "build",
                      "burst", "blocked", "crack", "damage", "flood", "drip", "issue", "problem",
-                     "need help", "need to get", "need someone", "something wrong"]):
+                     "need help", "need to get", "need someone", "something wrong",
+                     "plumber", "plumbing", "electrician", "carpenter", "painter", "roofer",
+                     "heating", "boiler", "radiator", "toilet", "shower", "tap", "pipe",
+                     "come out", "call out", "callout"]):
                 likely_needs_tool = True
                 detected_intent = "SERVICE_DESCRIPTION"
                 # Use short acknowledgments — "Let me check" sounds odd when they just described an issue
@@ -1884,10 +1887,58 @@ TOOL RULES:
                 # doesn't pass it in the book_job arguments, causing the booking to fail.
                 if tool_name in ('book_job', 'book_appointment') and not arguments.get('job_address'):
                     stored_addr = call_state.get("customer_address", "") if call_state else ""
+                    if not stored_addr:
+                        # Scan conversation for address — look for user messages after AI asked for address
+                        _ai_asked_addr = False
+                        for _msg in messages:
+                            if _msg.get("role") == "assistant":
+                                _content = (_msg.get("content") or "").lower()
+                                if any(p in _content for p in ["full address", "your address", "eircode", "address for the job"]):
+                                    _ai_asked_addr = True
+                            elif _msg.get("role") == "user" and _ai_asked_addr:
+                                _user_text = (_msg.get("content") or "").strip()
+                                # Check if this looks like an address (has numbers or multiple words)
+                                _words = _user_text.split()
+                                _has_number = any(c.isdigit() for c in _user_text)
+                                if len(_words) >= 3 and _has_number:
+                                    # Clean up common ASR prefixes
+                                    for _prefix in ["yeah. ", "yes. ", "sure. ", "it's ", "my address is "]:
+                                        if _user_text.lower().startswith(_prefix):
+                                            _user_text = _user_text[len(_prefix):]
+                                    stored_addr = _user_text.strip().rstrip('.')
+                                    break
+                                _ai_asked_addr = False  # Reset if user didn't give address
                     if stored_addr:
                         arguments['job_address'] = stored_addr
                         tool_call["function"]["arguments"] = json.dumps(arguments)
-                        print(f"   📍 [AUTO-INJECT] Added stored address to book_job: {stored_addr}")
+                        print(f"   📍 [AUTO-INJECT] Added address to book_job: {stored_addr}")
+                
+                # SANITIZE email for book_job: ASR transcribes "at" literally
+                # e.g., "jkdoherty123atgmail.com" → "jkdoherty123@gmail.com"
+                if tool_name in ('book_job', 'book_appointment') and arguments.get('email'):
+                    _raw_email = arguments['email']
+                    _email = _raw_email
+                    # Fix "atgmail" → "@gmail", "atyahoo" → "@yahoo", etc.
+                    _email = re.sub(r'(?i)\bat(gmail|yahoo|hotmail|outlook|icloud|live|aol|protonmail|mail)', r'@\1', _email)
+                    # Fix "at " or " at " in the middle
+                    _email = re.sub(r'\s*at\s+', '@', _email)
+                    # Fix "dot com" → ".com", etc.
+                    _email = re.sub(r'\s*dot\s*(com|ie|co\.uk|org|net|io|dev)\b', r'.\1', _email, flags=re.IGNORECASE)
+                    _email = _email.replace(' ', '')
+                    # Ensure @ symbol exists
+                    if '@' not in _email and '.' in _email:
+                        for _domain in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com']:
+                            _domain_no_dot = _domain.replace('.', '')
+                            if _domain_no_dot in _email.lower():
+                                _email = _email.lower().replace(_domain_no_dot, _domain)
+                                _idx = _email.index(_domain)
+                                if _idx > 0 and _email[_idx-1] != '@':
+                                    _email = _email[:_idx] + '@' + _email[_idx:]
+                                break
+                    if _email != _raw_email:
+                        arguments['email'] = _email
+                        tool_call["function"]["arguments"] = json.dumps(arguments)
+                        print(f"   📧 [AUTO-FIX] Email sanitized: '{_raw_email}' → '{_email}'")
                 
                 print(f"   🔧 [TOOL_EXEC] Arguments: {json.dumps(arguments)}")
                 
@@ -2491,7 +2542,39 @@ TOOL RULES:
                         direct_response = None
                     
                     if _match_already_confirmed:
-                        pass  # direct_response already set to None above
+                        # Service was already confirmed earlier — don't re-ask.
+                        # Generate a contextual response based on what info we still need.
+                        _has_name = bool(call_state.get("customer_name", "")) if call_state else False
+                        if not _has_name:
+                            # Check conversation for name
+                            for _msg in messages:
+                                if _msg.get("role") == "user":
+                                    _msg_text = (_msg.get("content") or "").lower()
+                                    if "my name is" in _msg_text or "name's" in _msg_text:
+                                        _has_name = True
+                                        break
+                        
+                        _has_address = bool(call_state.get("customer_address", "")) if call_state else False
+                        _email_asked = any(
+                            "email" in (msg.get("content") or "").lower()
+                            for msg in messages
+                            if msg.get("role") == "assistant"
+                        )
+                        
+                        if not _has_name:
+                            direct_response = "Can I get your name please, and spell it out for me if possible?"
+                        elif not _has_address:
+                            direct_response = "Do you know your eircode?"
+                        elif not _email_asked:
+                            direct_response = "And can I get an email address for the account? Please spell it out for me letter by letter."
+                        else:
+                            # All info gathered — this shouldn't happen, let LLM handle
+                            direct_response = None
+                        
+                        if direct_response:
+                            print(f"   ⚡ [DIRECT] match_issue (repeat) -> '{direct_response[:50]}...' (skipped re-confirmation, advancing flow)")
+                        else:
+                            print(f"   ⚡ [DIRECT] match_issue (repeat) -> None (all info gathered, falling through to LLM)")
                     elif not matches:
                         # Track consecutive match failures to avoid infinite loop
                         if call_state:
@@ -2560,7 +2643,10 @@ TOOL RULES:
                         else:
                             direct_response = f"One of the services we offer is a {matches[0]['name'].lower()}. Does that sound like the issue your experiencing?"
                     
-                    print(f"   ⚡ [DIRECT] match_issue -> '{direct_response[:50]}...' ({len(matches)} matches, top={top_score}, top_investigation={top_is_investigation})")
+                    if direct_response:
+                        print(f"   ⚡ [DIRECT] match_issue -> '{direct_response[:50]}...' ({len(matches)} matches, top={top_score}, top_investigation={top_is_investigation})")
+                    else:
+                        print(f"   ⚡ [DIRECT] match_issue -> None ({len(matches)} matches, top={top_score}, top_investigation={top_is_investigation})")
                 
                 # ========== FALLBACK FOR ANY OTHER TOOL ==========
                 else:
@@ -2584,8 +2670,8 @@ TOOL RULES:
             print(f"   ⚠️ [DIRECT_RESPONSE] Error generating direct response: {e}")
             import traceback
             traceback.print_exc()
-            # Even on error, generate a safe fallback
-            direct_response = "I've got that. What else can I help with?"
+            # On error, set to None so we fall through to second LLM call
+            direct_response = None
         
         # ============================================================
         # HYBRID: Use direct response OR second LLM call
@@ -2683,13 +2769,71 @@ TOOL RULES:
                 yield direct_response
             return
         
-        # This should NEVER happen now - but just in case, use a safe fallback
-        print(f"   ⚠️ [DIRECT] No direct response generated - using fallback")
-        fallback = "I've got that. What else can I help with?"
-        yield f"<<<TIMING:fallback_response=1>>>"
-        messages.append({"role": "assistant", "content": fallback})
-        yield fallback
-        return
+        # This should rarely happen - but if no direct response, use second LLM call
+        if not direct_response:
+            print(f"   ⚠️ [DIRECT] No direct response generated - falling through to second LLM call")
+            
+            # Add tool results to messages for the second LLM call
+            # First add the assistant message with tool_calls
+            assistant_msg = {"role": "assistant", "content": None, "tool_calls": []}
+            for tc in tool_calls:
+                assistant_msg["tool_calls"].append({
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tc["function"]["name"],
+                        "arguments": tc["function"]["arguments"]
+                    }
+                })
+            messages.append(assistant_msg)
+            
+            # Then add tool results
+            for tr in tool_results:
+                messages.append(tr)
+            
+            # Make second LLM call with tool results in context
+            try:
+                import time as time_module_2
+                second_llm_start = time_module_2.time()
+                system_prompt_with_time = get_cached_system_prompt(company_id=company_id)
+                current_time = datetime.now()
+                current_time_str = current_time.strftime('%I:%M %p on %A, %B %d, %Y')
+                system_prompt_with_time += f"\n\n[CURRENT TIME: {current_time_str}]"
+                
+                full_messages = [{"role": "system", "content": system_prompt_with_time}] + messages
+                
+                # Create stream synchronously (same pattern as main LLM call)
+                stream = client.chat.completions.create(
+                    model=config.CHAT_MODEL,
+                    messages=full_messages,
+                    stream=True,
+                    temperature=0.3,
+                    **config.max_tokens_param(value=200)
+                )
+                
+                second_response = ""
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        token = chunk.choices[0].delta.content
+                        second_response += token
+                        cleaned_token = token.replace('**', '').replace('__', '').replace('~~', '')
+                        cleaned_token = format_for_tts_spelling(cleaned_token)
+                        cleaned_token = humanize_times_for_tts(cleaned_token)
+                        yield cleaned_token
+                
+                if second_response:
+                    messages.append({"role": "assistant", "content": second_response.strip()})
+                    print(f"   ✅ [SECOND_LLM] Response: '{second_response[:80]}...' ({time_module_2.time() - second_llm_start:.1f}s)")
+                else:
+                    fallback = "Could you give me a bit more detail on the issue so I can help you?"
+                    yield fallback
+                    messages.append({"role": "assistant", "content": fallback})
+            except Exception as e:
+                print(f"   ❌ [SECOND_LLM] Error: {e}")
+                fallback = "Could you give me a bit more detail on the issue so I can help you?"
+                yield fallback
+                messages.append({"role": "assistant", "content": fallback})
+            return
         
     # Store cleaned response for context (if no tool calls were made)
     elif full_response:

@@ -1410,7 +1410,7 @@ class ServiceMatcher:
                                     match_type = f"name_word_match:{job_word}~{name_word}"
         
         # Strategy 10: Stem matching - check if job word is prefix of name word or vice versa
-        # This catches paint->painting, electric->electrical, etc.
+        # This catches paint->painting, electric->electrical, plumber->plumbing, etc.
         if score < cls.MATCH_THRESHOLD:
             for job_word in job_tokens:
                 if len(job_word) >= 4:
@@ -1422,6 +1422,20 @@ class ServiceMatcher:
                                 if stem_score > score:
                                     score = stem_score
                                     match_type = f"stem_match:{job_word}~{name_word}"
+                            # Check if they share a common stem (4+ chars)
+                            # This catches plumber/plumbing, painter/painting, etc.
+                            elif len(job_word) >= 5 and len(name_word) >= 5:
+                                common_len = 0
+                                for k in range(min(len(job_word), len(name_word))):
+                                    if job_word[k] == name_word[k]:
+                                        common_len += 1
+                                    else:
+                                        break
+                                if common_len >= 4:
+                                    stem_score = 45  # Slightly lower than direct prefix
+                                    if stem_score > score:
+                                        score = stem_score
+                                        match_type = f"common_stem:{job_word[:common_len]}~{job_word}/{name_word}"
         
         # Strategy 11: Description keyword bonus when name matches are tied
         # If we have a name match, check description for differentiating keywords
@@ -4994,6 +5008,32 @@ Return ONLY valid JSON, no explanation."""
             appointment_datetime = arguments.get('appointment_datetime')
             urgency_level = arguments.get('urgency_level', 'scheduled')
             property_type = arguments.get('property_type', 'residential')
+            
+            # Sanitize email: ASR often transcribes "at" literally instead of "@"
+            # e.g., "jkdoherty123atgmail.com" should become "jkdoherty123@gmail.com"
+            if email:
+                import re as _re
+                # Fix "atgmail" → "@gmail", "atyahoo" → "@yahoo", etc.
+                email = _re.sub(r'(?i)\bat(gmail|yahoo|hotmail|outlook|icloud|live|aol|protonmail|mail)', r'@\1', email)
+                # Fix "at " or " at " in the middle of an email
+                email = _re.sub(r'\s*at\s+', '@', email)
+                # Fix "dot com" → ".com", "dot ie" → ".ie", etc.
+                email = _re.sub(r'\s*dot\s*(com|ie|co\.uk|org|net|io|dev)\b', r'.\1', email, flags=_re.IGNORECASE)
+                # Remove any spaces
+                email = email.replace(' ', '')
+                # Ensure there's an @ symbol
+                if '@' not in email and '.' in email:
+                    # Try to find common domain patterns
+                    for domain in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com']:
+                        domain_no_dot = domain.replace('.', '')
+                        if domain_no_dot in email.lower():
+                            email = email.lower().replace(domain_no_dot, domain)
+                            # Insert @ before the domain
+                            idx = email.index(domain)
+                            if idx > 0 and email[idx-1] != '@':
+                                email = email[:idx] + '@' + email[idx:]
+                            break
+                logger.info(f"[BOOK_JOB] Sanitized email: {email}")
             
             logger.info(f"[BOOK_JOB] Customer: {customer_name}, Phone: {phone}, Email: {email}")
             logger.info(f"[BOOK_JOB] Address: {job_address}, Description: {job_description}")
