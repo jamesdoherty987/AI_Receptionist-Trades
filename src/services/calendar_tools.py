@@ -4380,10 +4380,11 @@ Return ONLY valid JSON, no explanation."""
                             except Exception as employee_err:
                                 logger.warning(f"[BOOK_APPT] ⚠️ Could not assign employee {employee['name']}: {employee_err}")
                     
-                    # Update client description
+                    # Update client description — run in background to avoid blocking the response
                     try:
                         from src.services.client_description_generator import update_client_description
-                        update_client_description(client_id, company_id=company_id)
+                        import threading
+                        threading.Thread(target=update_client_description, args=(client_id,), kwargs={'company_id': company_id}, daemon=True).start()
                     except Exception:
                         pass
                     
@@ -4395,7 +4396,7 @@ Return ONLY valid JSON, no explanation."""
             else:
                 logger.warning(f"[BOOK_APPT] No database available - booking not saved to DB")
             
-            # Send booking confirmation (email-first, SMS fallback)
+            # Send booking confirmation (email-first, SMS fallback) — run in background
             try:
                 _send_confirmation = True
                 _company_name = None
@@ -4426,18 +4427,25 @@ Return ONLY valid JSON, no explanation."""
                             _portal_link = get_or_create_portal_link(company_id, client_id)
                         except Exception:
                             pass
-                    from src.services.sms_reminder import notify_customer
-                    notify_customer(
-                        'booking_confirmation',
-                        customer_email=_customer_email,
-                        customer_phone=phone,
-                        appointment_time=parsed_time,
-                        customer_name=customer_name,
-                        service_type=matched_service_name,
-                        company_name=_company_name,
-                        employee_names=_employee_name_list,
-                        portal_link=_portal_link,
-                    )
+                    # Send notification in background thread to avoid blocking the AI response
+                    def _send_notification_bg():
+                        try:
+                            from src.services.sms_reminder import notify_customer
+                            notify_customer(
+                                'booking_confirmation',
+                                customer_email=_customer_email,
+                                customer_phone=phone,
+                                appointment_time=parsed_time,
+                                customer_name=customer_name,
+                                service_type=matched_service_name,
+                                company_name=_company_name,
+                                employee_names=_employee_name_list,
+                                portal_link=_portal_link,
+                            )
+                        except Exception as e:
+                            logger.warning(f"[BOOK_APPT] ⚠️ Background notification failed: {e}")
+                    import threading
+                    threading.Thread(target=_send_notification_bg, daemon=True).start()
                 else:
                     logger.info(f"[BOOK_APPT] Confirmation notifications disabled for company {company_id}, skipping")
             except Exception as sms_err:
@@ -5676,10 +5684,11 @@ Return ONLY valid JSON, no explanation."""
                             except Exception as employee_err:
                                 logger.warning(f"[BOOK_JOB] ⚠️ Could not assign employee {employee['name']}: {employee_err}")
                     
-                    # Update client description
+                    # Update client description — run in background to avoid blocking the response
                     try:
                         from src.services.client_description_generator import update_client_description
-                        update_client_description(client_id, company_id=company_id)
+                        import threading
+                        threading.Thread(target=update_client_description, args=(client_id,), kwargs={'company_id': company_id}, daemon=True).start()
                     except Exception:
                         pass
                     
@@ -5897,13 +5906,20 @@ Return ONLY valid JSON, no explanation."""
                         _cs._deferred_customer_email = _customer_email
                         logger.info(f"[BOOK_JOB] 📨 Notification deferred — address audio captured, retranscriber will send after call")
                     else:
-                        from src.services.sms_reminder import notify_customer
-                        notify_customer(
-                            'booking_confirmation',
-                            customer_email=_customer_email,
-                            customer_phone=phone,
-                            **_notify_kwargs,
-                        )
+                        # Send notification in background thread to avoid blocking the AI response
+                        def _send_notification_bg_job():
+                            try:
+                                from src.services.sms_reminder import notify_customer
+                                notify_customer(
+                                    'booking_confirmation',
+                                    customer_email=_customer_email,
+                                    customer_phone=phone,
+                                    **_notify_kwargs,
+                                )
+                            except Exception as e:
+                                logger.warning(f"[BOOK_JOB] ⚠️ Background notification failed: {e}")
+                        import threading
+                        threading.Thread(target=_send_notification_bg_job, daemon=True).start()
                 else:
                     logger.info(f"[BOOK_JOB] Confirmation notifications disabled for company {company_id}, skipping")
             except Exception as notify_err:
