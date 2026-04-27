@@ -947,12 +947,12 @@ async def media_handler(ws):
                             print(f"[BG_AUDIO] ⚠️ No ambient audio loaded — skipping")
                             return
                         
-                        # Attenuate ambient audio volume (mulaw 8kHz)
-                        # Mulaw decoding: each byte encodes a signed 16-bit sample.
-                        # We scale down by converting mulaw→linear, reducing amplitude, then linear→mulaw.
+                        # Reduce volume: convert mulaw→PCM16, scale down, convert back to mulaw
                         import audioop
-                        AMBIENT_VOLUME = 0.35  # 35% of original volume (was 100%)
-                        ambient = audioop.mul(ambient, 1, AMBIENT_VOLUME)
+                        AMBIENT_VOLUME = 0.35  # 35% of original volume
+                        pcm = audioop.ulaw2lin(ambient, 2)       # mulaw → 16-bit PCM
+                        pcm = audioop.mul(pcm, 2, AMBIENT_VOLUME) # scale amplitude
+                        ambient = audioop.lin2ulaw(pcm, 2)        # PCM → mulaw
                         
                         # Wait for greeting to start playing before we begin
                         await asyncio.sleep(0.3)
