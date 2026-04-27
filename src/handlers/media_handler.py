@@ -932,6 +932,17 @@ async def media_handler(ws):
                     else:
                         address_note = "No address on file — ask for their eircode or full address."
                     
+                    # Email instruction — tell AI to ask for email if missing
+                    has_email = bool(caller_customer_info.get('email'))
+                    if has_email:
+                        email_note = f"EMAIL ON FILE: {caller_customer_info['email']}. Skip asking for email."
+                    else:
+                        email_note = (
+                            "NO EMAIL ON FILE. After confirming the address, ask: "
+                            "'I don't seem to have an email on your account — could I get one please? Spell it out for me letter by letter.' "
+                            "Do NOT skip this step."
+                        )
+                    
                     conversation.append({
                         "role": "system",
                         "content": (
@@ -941,6 +952,7 @@ async def media_handler(ws):
                             f"{customer_context}. "
                             f"{name_note} Do NOT call lookup_customer — already done. "
                             f"{address_note} "
+                            f"{email_note} "
                             f"{phone_instruction} "
                             f"The system will extract name, address, eircode, and email from the transcript after the call. "
                             f"Say things ONCE only.]"

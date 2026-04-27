@@ -99,25 +99,23 @@ def _generate_ai_description(client: Dict, bookings: List[Dict]) -> str:
         booking_summaries.append(f"- {date_str}: {service}{notes_text}")
     
     # Create prompt for AI
-    prompt = f"""Create a brief, natural-sounding summary of this client's visit history. 
+    prompt = f"""Create a brief, natural-sounding summary of this client's history with our trades business.
 
 Client name: {first_name}
-Total visits: {len(bookings)}
+Total jobs: {len(bookings)}
 
-Visit history (oldest to newest):
+Job history (oldest to newest):
 {chr(10).join(booking_summaries)}
 
-Write a 2-3 sentence summary in this style:
-"When [Name] first came in on [date], they had [initial issue], [resolution status]. Since then they have been in [X] times with [list of issues]. Their last visit on [date], their [body part] was hurting."
-
-Keep it concise and natural. Use "they/their" pronouns. Focus on the medical/injury progression."""
+Write a 2-3 sentence summary. Mention the APPOINTMENT DATE (not today's date) for each job.
+Keep it concise and natural. Use "they/their" pronouns. Focus on what work was done and when."""
 
     response = client_openai.chat.completions.create(
         model=config.CHAT_MODEL,
         messages=[
             {
                 "role": "system", 
-                "content": "You are a medical receptionist writing brief client history summaries. Write naturally and conversationally."
+                "content": "You are a receptionist writing brief client history summaries for a trades business. Write naturally and conversationally. Use the appointment dates from the job history, NOT today's date."
             },
             {
                 "role": "user",
