@@ -780,6 +780,44 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
     # SIMPLIFIED: Only trigger for HIGH-CONFIDENCE tool call scenarios
     # Misfires (filler plays but no tool) are worse than no filler at all
     
+    # === GOODBYE FAST-PATH ===
+    # When the caller says "nothing else" / "no thanks" / "that's it" after we asked
+    # "anything else?", bypass the LLM entirely and respond with a warm goodbye.
+    # This prevents the 2-3s LLM delay that can cause the caller to hang up before hearing goodbye.
+    _user_msg_lower = user_text.lower().strip() if user_text else ""
+    _prev_assistant = ""
+    for _msg in reversed(messages[:-1]):
+        if _msg.get("role") == "assistant":
+            _prev_assistant = (_msg.get("content") or "").lower()
+            break
+    
+    _goodbye_triggers = [
+        "no", "nope", "no thanks", "no thank you", "that's it", "that's all",
+        "nothing else", "i'm good", "all good", "that's everything", "i'm all set",
+        "no that's it", "no that's all", "no i'm good", "no i'm fine",
+        "not at the moment", "not right now", "that'll do", "that will do",
+    ]
+    _ai_asked_anything_else = any(phrase in _prev_assistant for phrase in [
+        "anything else", "anything else i can help", "what else can i help",
+        "is there anything", "can i help with anything"
+    ])
+    # Also trigger if we're in post-booking cooldown (just booked, caller is wrapping up)
+    _is_post_booking = (last_booking_turn > 0 and current_turn - last_booking_turn <= 3)
+    
+    if (_ai_asked_anything_else or _is_post_booking) and any(t == _user_msg_lower or _user_msg_lower.startswith(t + " ") or _user_msg_lower.startswith(t + ".") or _user_msg_lower.startswith(t + ",") for t in _goodbye_triggers):
+        goodbye_responses = [
+            "Grand, thanks for calling. Have a great day!",
+            "Lovely, thanks for calling. Take care!",
+            "No problem, thanks for calling. Have a great day!",
+            "Grand, thanks for calling. Bye!",
+        ]
+        goodbye_msg = random.choice(goodbye_responses)
+        print(f"\n👋 [GOODBYE] Fast-path goodbye triggered (user: '{_user_msg_lower}', post_booking={_is_post_booking})")
+        print(f"👋 [GOODBYE] Response: '{goodbye_msg}'")
+        messages.append({"role": "assistant", "content": goodbye_msg})
+        yield goodbye_msg
+        return
+    
     # Check if pre-check is disabled for debugging
     likely_needs_tool = False
     detected_intent = None
@@ -2357,8 +2395,13 @@ TOOL RULES:
                         if fail_count >= 2:
                             # Already asked once for more details — fall back to General Service
                             customer_name = call_state.get("customer_name", "") if call_state else ""
+                            stored_address = call_state.get("customer_address", "") if call_state else ""
                             if customer_name:
-                                direct_response = f"No problem {customer_name.split()[0]}, I'll book you in for a general callout and we can take a look. Is it still the same address on file?"
+                                first_name = customer_name.split()[0]
+                                if stored_address:
+                                    direct_response = f"No problem {first_name}, I'll book you in for a general callout and we can take a look. Is it still the same address, {stored_address}?"
+                                else:
+                                    direct_response = f"No problem {first_name}, I'll book you in for a general callout and we can take a look. Can I get your eircode or address?"
                             else:
                                 direct_response = "No problem, I'll book you in for a general callout and we can take a look. Can I get your name please?"
                             # Set service type so the booking flow uses General Callout

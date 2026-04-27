@@ -858,12 +858,15 @@ async def media_handler(ws):
                     # Store on call_state so direct responses (match_issue fallback etc) can use it
                     if caller_customer_name:
                         call_state['customer_name'] = caller_customer_name
+                    # Store address on call_state for direct response templates
+                    stored_address = caller_customer_info.get('address') or caller_customer_info.get('eircode') or ''
+                    if stored_address:
+                        call_state['customer_address'] = stored_address
                     info_parts = [f"RETURNING CUSTOMER identified by phone: {caller_customer_name or 'name unknown'}"]
                     if caller_customer_info.get('email'):
                         info_parts.append(f"email: {caller_customer_info['email']}")
-                    if caller_customer_info.get('address') or caller_customer_info.get('eircode'):
-                        addr = caller_customer_info.get('address') or caller_customer_info.get('eircode')
-                        info_parts.append(f"address on file: {addr}")
+                    if stored_address:
+                        info_parts.append(f"address on file: {stored_address}")
                     customer_context = ". ".join(info_parts)
                     
                     phone_instruction = (
@@ -873,7 +876,7 @@ async def media_handler(ws):
                     if first_name:
                         greeting_note = "Greeting already sent — generic greeting, you did NOT mention the caller's name yet."
                         name_note = (
-                            f"This is a RETURNING CUSTOMER. Their name on file is {caller_customer_name}. "
+                            f"This is a RETURNING CUSTOMER. Their name on file is {caller_customer_name} (identified from the phone number in our system). "
                             f"Do NOT reveal their name in the greeting — wait until AFTER they describe their issue and you call match_issue. "
                             f"Then say something like: 'I have the name under this number as {first_name}, is that right?' "
                             f"If they confirm, skip asking for name and continue with the booking flow. "
@@ -883,6 +886,17 @@ async def media_handler(ws):
                         greeting_note = "Greeting already sent. This is a returning customer but their name is not on file yet."
                         name_note = "Ask for their name: 'Can I get your name please, and spell it out for me if possible?'"
                     
+                    # Address instruction — tell AI to read the stored address when confirming
+                    if stored_address:
+                        address_note = (
+                            f"ADDRESS ON FILE: {stored_address}. "
+                            f"When confirming the address, ALWAYS read it out: 'Is it still the same address, {stored_address}?' "
+                            f"If the caller asks what address is on file, tell them: 'The address I have on file is {stored_address}.' "
+                            f"Do NOT refuse to read the address — it is safe to share with the caller since they are the account holder."
+                        )
+                    else:
+                        address_note = "No address on file — ask for their eircode or full address."
+                    
                     conversation.append({
                         "role": "system",
                         "content": (
@@ -891,6 +905,7 @@ async def media_handler(ws):
                             f"Keep replies SHORT. "
                             f"{customer_context}. "
                             f"{name_note} Do NOT call lookup_customer — already done. "
+                            f"{address_note} "
                             f"{phone_instruction} "
                             f"The system will extract name, address, eircode, and email from the transcript after the call. "
                             f"Say things ONCE only.]"
@@ -932,6 +947,13 @@ async def media_handler(ws):
                             print(f"[BG_AUDIO] ⚠️ No ambient audio loaded — skipping")
                             return
                         
+                        # Attenuate ambient audio volume (mulaw 8kHz)
+                        # Mulaw decoding: each byte encodes a signed 16-bit sample.
+                        # We scale down by converting mulaw→linear, reducing amplitude, then linear→mulaw.
+                        import audioop
+                        AMBIENT_VOLUME = 0.35  # 35% of original volume (was 100%)
+                        ambient = audioop.mul(ambient, 1, AMBIENT_VOLUME)
+                        
                         # Wait for greeting to start playing before we begin
                         await asyncio.sleep(0.3)
                         
@@ -943,7 +965,7 @@ async def media_handler(ws):
                         BATCH_CHUNKS = 5   # 100ms of audio per batch
                         BATCH_INTERVAL = 0.1
                         
-                        print(f"[BG_AUDIO] 🔊 Starting ambient audio loop ({len(ambient)} bytes, {total_chunks} chunks)")
+                        print(f"[BG_AUDIO] 🔊 Starting ambient audio loop ({len(ambient)} bytes, {total_chunks} chunks, volume={AMBIENT_VOLUME})")
                         
                         while not bg_audio_stop.is_set():
                             # Pause when AI is speaking — TTS handles its own audio
