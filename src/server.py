@@ -279,11 +279,12 @@ async def shutdown_event():
     print("\n" + "="*70)
     print("[SHUTDOWN] ⚠️ Server shutting down - cleaning up...")
     print("[SHUTDOWN] Active WebSocket connections will be terminated")
+    print("[SHUTDOWN] ⚠️ If a call is active, it will be interrupted!")
     print("="*70 + "\n")
     
-    # Give active calls a moment to wrap up (Render sends SIGTERM then waits)
-    print("[SHUTDOWN] Waiting 2s for active calls to finish...")
-    await asyncio.sleep(2)
+    # Give active calls more time to wrap up (Render sends SIGTERM then waits up to 30s)
+    print("[SHUTDOWN] Waiting 5s for active calls to finish...")
+    await asyncio.sleep(5)
     
     print("[SHUTDOWN] ✅ Cleanup complete")
 

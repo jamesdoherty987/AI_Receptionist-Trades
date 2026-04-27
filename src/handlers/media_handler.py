@@ -222,6 +222,11 @@ async def media_handler(ws):
             tts_started_at = asyncio.get_event_loop().time()
             run_start = time_module.time()
             
+            # CRITICAL: Clear any buffered audio from the previous response.
+            # Without this, the telephony provider accumulates audio in its buffer
+            # and each response takes longer to start playing on the phone.
+            await clear_audio_buffer()
+            
             full_text = ""
             transfer_number = None
             
@@ -706,7 +711,15 @@ async def media_handler(ws):
                     speaking = False
                 llm_processing = False
                 ready_time = time_module.time()
-                print(f"👂 Ready to listen (total response cycle: {ready_time - run_start:.3f}s)")
+                # Calculate how long the audio will actually play on the phone
+                # (server sends instantly but phone plays in real-time)
+                if full_text.strip():
+                    # Rough estimate: ~150ms per word for TTS audio
+                    word_count = len(full_text.strip().split())
+                    estimated_playback = word_count * 0.15
+                    print(f"👂 Ready to listen (cycle: {ready_time - run_start:.1f}s, ~{estimated_playback:.1f}s audio still playing on phone)")
+                else:
+                    print(f"👂 Ready to listen (cycle: {ready_time - run_start:.1f}s)")
 
         if respond_task and not respond_task.done():
             respond_task.cancel()

@@ -447,12 +447,12 @@ def get_filler_id_from_message(message: str) -> Optional[str]:
 
 async def send_prerecorded_audio(websocket, stream_sid: str, audio_data: bytes):
     """
-    Send pre-recorded mulaw audio directly to Twilio - INSTANT playback
-    This bypasses TTS entirely for zero latency
+    Send pre-recorded mulaw audio directly to Twilio/Telnyx.
+    Sends in batches with small yields to prevent telephony buffer overflow.
     
     Args:
-        websocket: Twilio websocket connection
-        stream_sid: Twilio stream ID
+        websocket: Twilio/Telnyx websocket connection
+        stream_sid: Stream ID
         audio_data: Raw mulaw 8kHz audio bytes
     
     Never raises - errors are logged and ignored (TTS fallback will handle it)
@@ -461,13 +461,17 @@ async def send_prerecorded_audio(websocket, stream_sid: str, audio_data: bytes):
     send_start = time.time()
     try:
         # Split into 20ms chunks (160 bytes for mulaw 8kHz)
-        # Send all chunks as fast as possible - Twilio buffers them
         chunk_size = 160
         chunk_count = 0
         
         # Calculate expected audio duration
         audio_duration_ms = len(audio_data) / 8  # 8 bytes per ms at 8kHz mulaw
         print(f"[AUDIO] 🔊 Sending {len(audio_data)} bytes ({audio_duration_ms:.0f}ms) of pre-recorded audio")
+        
+        # Send in batches with small yields to prevent telephony buffer overflow.
+        # Without pacing, all chunks arrive in <5ms but the phone plays them over
+        # seconds — the buffer grows and subsequent responses get delayed.
+        BATCH_SIZE = 20  # 20 chunks = 400ms of audio per batch
         
         for i in range(0, len(audio_data), chunk_size):
             chunk = audio_data[i:i+chunk_size]
@@ -479,6 +483,10 @@ async def send_prerecorded_audio(websocket, stream_sid: str, audio_data: bytes):
                 "media": {"payload": payload},
             }))
             chunk_count += 1
+            
+            # Yield to event loop every batch to let telephony provider process
+            if chunk_count % BATCH_SIZE == 0:
+                await asyncio.sleep(0)
         
         send_duration = time.time() - send_start
         print(f"[AUDIO] ✅ Sent {chunk_count} chunks in {send_duration:.3f}s (audio will play for {audio_duration_ms:.0f}ms)")

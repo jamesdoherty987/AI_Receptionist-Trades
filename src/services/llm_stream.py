@@ -2425,8 +2425,9 @@ TOOL RULES:
                                 if name_already_confirmed:
                                     name_prefix = f"No problem {first_name}"
                                 else:
-                                    # First time using the name — attribute it to the system
-                                    name_prefix = f"I have the name under this number as {first_name}. No problem {first_name}"
+                                    # First time using the name — attribute it to the system and use FULL name
+                                    # so the LLM knows the full name for booking
+                                    name_prefix = f"I have the name under this number as {customer_name}. No problem {first_name}"
                                     if call_state:
                                         call_state["caller_identified"] = True
                                 
