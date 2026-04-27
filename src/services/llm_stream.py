@@ -1550,6 +1550,28 @@ TOOL RULES:
         
         # Store response in conversation history
         if full_response:
+            # SAFETY: Detect if LLM claimed a booking was made without calling book_job
+            response_lower = full_response.lower() if full_response else ""
+            booking_claim_phrases = [
+                "you're all booked", "you are all booked", "booked in for",
+                "booked you in", "booking is confirmed", "all booked",
+                "i've booked", "i have booked", "booking confirmed"
+            ]
+            fabricated_booking = any(phrase in response_lower for phrase in booking_claim_phrases)
+            book_tool_called = any(
+                msg.get("role") == "tool" and msg.get("name") in ("book_job", "book_appointment")
+                for msg in messages
+            )
+            
+            if fabricated_booking and not book_tool_called:
+                print(f"\n🚨 [SAFETY] LLM claimed booking was made but book_job was never called!")
+                print(f"🚨 [SAFETY] Response: '{full_response[:150]}...'")
+                print(f"🚨 [SAFETY] Appending correction to prevent false booking claim")
+                # The fabricated response was already streamed, append a correction
+                correction = " Actually, I still need a couple of details before I can book that. Can I get your full address please?"
+                yield correction
+                full_response += correction
+            
             cleaned = remove_repetition(full_response.strip())
             messages.append({"role": "assistant", "content": cleaned})
         print(f"[LLM] ✅ No tool calls — fast path")
@@ -1883,40 +1905,46 @@ TOOL RULES:
                 arguments = json.loads(tool_call["function"]["arguments"])
                 
                 # GUARD: Block book_job if the LLM hasn't confirmed with the caller first
-                # The prompt requires step 7 (FINAL CONFIRM) before step 8 (book_job).
-                # If the last user message was picking a time (not confirming), block the booking
-                # and return a message asking the LLM to confirm first.
+                # Only block on the FIRST book_job attempt when the user just picked a time
+                # (i.e., the previous assistant message was presenting availability options).
+                # If book_job was already attempted (even if it failed), the confirmation
+                # flow has already happened — don't block again.
                 if tool_name in ('book_job', 'book_appointment') and not in_post_booking_cooldown:
-                    # Check if the previous assistant message was a confirmation question
-                    _prev_ai = ""
-                    for _msg in reversed(messages):
-                        if _msg.get("role") == "assistant" and _msg.get("content"):
-                            _prev_ai = (_msg.get("content") or "").lower()
-                            break
-                    _ai_asked_confirm = any(p in _prev_ai for p in [
-                        "is that correct", "is that all correct", "correct?",
-                        "shall i book", "want me to book", "ready to book",
-                        "go ahead and book", "confirm"
-                    ])
-                    # Also check if the user explicitly confirmed
-                    _user_confirmed = any(p in user_text.lower() for p in [
-                        "yes", "yeah", "yep", "correct", "that's right", "that's correct",
-                        "go ahead", "book it", "please", "do it"
-                    ])
-                    if not _ai_asked_confirm and not _user_confirmed:
-                        print(f"   🚫 [CONFIRM_GUARD] BLOCKED book_job — LLM skipped confirmation step")
-                        print(f"   🚫 [CONFIRM_GUARD] Previous AI: '{_prev_ai[:80]}...'")
-                        print(f"   🚫 [CONFIRM_GUARD] User: '{user_text[:80]}'")
-                        tool_results.append({
-                            "tool_call_id": tool_call["id"],
-                            "role": "tool",
-                            "name": tool_name,
-                            "content": json.dumps({
-                                "success": False,
-                                "error": "STOP. You must confirm with the caller BEFORE booking. Say: 'So that's [day] at [time] for the [issue]. Is that all correct?' and WAIT for their YES before calling book_job."
+                    # Check if book_job was already called earlier in this conversation
+                    _book_already_attempted = any(
+                        _msg.get("role") == "assistant" and _msg.get("tool_calls") and
+                        any(_tc.get("function", {}).get("name") in ("book_job", "book_appointment") for _tc in _msg.get("tool_calls", []))
+                        for _msg in messages
+                    )
+                    
+                    if not _book_already_attempted:
+                        # First book_job attempt — check if the AI confirmed with the caller
+                        _prev_ai = ""
+                        for _msg in reversed(messages):
+                            if _msg.get("role") == "assistant" and _msg.get("content"):
+                                _prev_ai = (_msg.get("content") or "").lower()
+                                break
+                        _ai_asked_confirm = any(p in _prev_ai for p in [
+                            "is that correct", "is that all correct", "correct?",
+                            "shall i book", "want me to book", "ready to book",
+                            "go ahead and book", "confirm"
+                        ])
+                        _user_confirmed = any(p in user_text.lower() for p in [
+                            "yes", "yeah", "yep", "correct", "that's right", "that's correct",
+                            "go ahead", "book it", "do it"
+                        ])
+                        if not _ai_asked_confirm and not _user_confirmed:
+                            print(f"   🚫 [CONFIRM_GUARD] BLOCKED book_job — LLM skipped confirmation step")
+                            tool_results.append({
+                                "tool_call_id": tool_call["id"],
+                                "role": "tool",
+                                "name": tool_name,
+                                "content": json.dumps({
+                                    "success": False,
+                                    "error": "STOP. You must confirm with the caller BEFORE booking. Say: 'So that's [day] at [time] for the [issue]. Is that all correct?' and WAIT for their YES before calling book_job."
+                                })
                             })
-                        })
-                        continue
+                            continue
                 
                 # AUTO-INJECT stored address for book_job if LLM forgot to include it
                 # This is a common issue: the caller confirms their address but the LLM
@@ -2586,11 +2614,18 @@ TOOL RULES:
                     # None so the second LLM call handles it with full context.
                     _match_already_confirmed = False
                     _prev_match_issue_count = 0
-                    for _msg in messages:
+                    # Count match_issue calls in history EXCLUDING the current one
+                    # The current call's tool_calls were just appended to messages,
+                    # so skip the last assistant message with match_issue tool_calls
+                    _found_current = False
+                    for _msg in reversed(messages):
                         if _msg.get("role") == "assistant" and _msg.get("tool_calls"):
                             for _tc in _msg["tool_calls"]:
                                 if _tc.get("function", {}).get("name") == "match_issue":
-                                    _prev_match_issue_count += 1
+                                    if not _found_current:
+                                        _found_current = True  # Skip the current call
+                                    else:
+                                        _prev_match_issue_count += 1
                     # If match_issue was called before (this is the 2nd+ time), the service
                     # was likely already confirmed. Let the LLM handle it with full context
                     # instead of re-asking "A plumbing, is that correct?"
@@ -2810,6 +2845,7 @@ TOOL RULES:
                             "[SYSTEM: This is a NEW CUSTOMER. You just asked for their name. "
                             "After they give their name, ask for eircode: 'Do you know your eircode?' "
                             "If they don't know it, ask for full address. "
+                            "NEVER mention, confirm, or read back the phone number — it is captured automatically. "
                             "After getting address, ask for email: 'And can I get an email address for the account? Please spell it out for me letter by letter.' "
                             "After email, call get_next_available. "
                             "Do NOT skip name, address, or email. Do NOT call book_job until ALL details are collected AND the customer confirms.]"
