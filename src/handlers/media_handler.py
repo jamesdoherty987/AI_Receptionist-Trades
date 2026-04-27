@@ -222,11 +222,6 @@ async def media_handler(ws):
             tts_started_at = asyncio.get_event_loop().time()
             run_start = time_module.time()
             
-            # CRITICAL: Clear any buffered audio from the previous response.
-            # Without this, the telephony provider accumulates audio in its buffer
-            # and each response takes longer to start playing on the phone.
-            await clear_audio_buffer()
-            
             full_text = ""
             transfer_number = None
             
@@ -723,6 +718,9 @@ async def media_handler(ws):
 
         if respond_task and not respond_task.done():
             respond_task.cancel()
+        # Clear any buffered audio from the previous response BEFORE starting the new one.
+        # This must happen here (not inside run()) so the filler audio isn't cleared.
+        await clear_audio_buffer()
         respond_task = asyncio.create_task(run())
 
     async def greet():

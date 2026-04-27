@@ -853,8 +853,13 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
             for msg in messages
         )
         
-        # Generic fillers - safe for any tool call
-        generic_fillers = ["One moment.", "Let me check that for you.", "Bear with me one second."]
+        # Generic fillers - safe for any tool call (varied to avoid repetition)
+        # Text MUST match pre-recorded phrases exactly for instant playback
+        generic_fillers = [
+            "One moment.", "Let me check that for you.", "Bear with me one second.",
+            "Just a moment.", "Let me have a look.", "Sure, one second.",
+            "Okay, let me see.", "Give me a second.", "Let me pull that up.",
+        ]
         
         # === HIGH-CONFIDENCE TRIGGERS (tool call is almost certain) ===
         
@@ -925,7 +930,9 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
             if ai_asked_address and user_confirms and not ai_asking_about_booking:
                 likely_needs_tool = True
                 detected_intent = "ADDRESS_CONFIRMED"
-                checking_msg = random.choice(generic_fillers)
+                # Relevant filler — we're about to check the schedule
+                address_fillers = ["Let me just check the schedule.", "One moment.", "Bear with me one second.", "Let me have a look."]
+                checking_msg = random.choice(address_fillers)
                 print(f"   ✅ [PRE-CHECK] Detected: ADDRESS CONFIRMED (will check availability)")
         
         # 4c. ADDRESS PROVIDED - caller gives their address/eircode, next step is get_next_available
@@ -1082,12 +1089,18 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
                 detected_intent = "BOOKING_INTENT"
                 print(f"   ℹ️ [PRE-CHECK] Detected: BOOKING INTENT (no filler - LLM will gather details)")
             
-            # Service description - LLM will ask for name, no immediate tool call
-            elif any(phrase in user_message for phrase in ["leak", "broken", "fix", "repair", "build"]):
+            # Service description - LLM WILL call match_issue tool, so play a filler
+            elif any(phrase in user_message for phrase in ["leak", "broken", "fix", "repair", "build",
+                     "burst", "blocked", "crack", "damage", "flood", "drip", "issue", "problem",
+                     "need help", "need to get", "need someone", "something wrong"]):
+                likely_needs_tool = True
                 detected_intent = "SERVICE_DESCRIPTION"
-                print(f"   ℹ️ [PRE-CHECK] Detected: SERVICE DESCRIPTION (no filler - LLM will ask for name)")
+                # Use short acknowledgments — "Let me check" sounds odd when they just described an issue
+                service_ack_fillers = ["No problem.", "Sure.", "Right.", "Okay.", "Got it."]
+                checking_msg = random.choice(service_ack_fillers)
+                print(f"   ✅ [PRE-CHECK] Detected: SERVICE DESCRIPTION (filler - LLM will call match_issue)")
             
-            # Name introduction - LLM will acknowledge name, no immediate tool call
+            # Name introduction - LLM may call lookup_customer, play a short acknowledgment
             elif "my name is" in user_message or "name's" in user_message:
                 detected_intent = "NAME_INTRODUCTION"
                 print(f"   ℹ️ [PRE-CHECK] Detected: NAME INTRODUCTION (no filler - LLM will acknowledge)")
@@ -2068,10 +2081,11 @@ TOOL RULES:
                             else:
                                 direct_response = f"Do you know your eircode?"
                         else:
-                            # New customer — phone not in system
-                            direct_response = None  # Let LLM handle the new customer flow naturally
+                            # New customer — ask for eircode to continue the booking flow
+                            direct_response = "Grand. Do you know your eircode?"
                     else:
-                        direct_response = None  # Let LLM handle errors
+                        # Error — ask for eircode anyway to keep the flow moving
+                        direct_response = "Grand. Do you know your eircode?"
                     
                     if direct_response:
                         print(f"   ⚡ [DIRECT] lookup_customer -> '{direct_response[:50]}...'")
@@ -2548,6 +2562,18 @@ TOOL RULES:
                         "Do NOT call book_job until the customer explicitly confirms YES. "
                         "If they say 'correct' or 'yes' right now, they may be confirming the ADDRESS, not choosing a booking time — "
                         "ask which day and time they'd like.]"
+                    )
+                })
+            
+            # After lookup_customer for a new customer, remind LLM of the booking flow
+            if tool_name == "lookup_customer":
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "[SYSTEM: You just asked for the eircode. After the caller gives their eircode or address, "
+                        "ask for their email: 'And can I get an email address for the account? Please spell it out for me letter by letter.' "
+                        "After email, call get_next_available to check availability. "
+                        "Do NOT skip the email step. Do NOT call book_job until you have eircode/address AND email AND the customer confirms the booking.]"
                     )
                 })
             

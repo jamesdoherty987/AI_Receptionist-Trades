@@ -122,10 +122,13 @@ FILLER_PHRASES = {
     "unable_to_transfer": "I'm sorry, I'm unable to transfer you right now. Is there anything else I can help you with?",
     # Match issue responses
     "no_service_match": "I'm not sure I have a service that matches. Could you describe the issue in a bit more detail?",
+    "more_detail_issue": "Could you give me a bit more detail on the issue so I can narrow it down?",
     "general_callout_fallback": "No problem, I'll book you in for a general callout and we can take a look. Can I get your name please?",
     "investigation_question": "Do you know what's causing the issue, or would you like us to investigate it first?",
     "more_detail_service": "Can you tell me a bit more about the issue so I can match you with the right service?",
     "investigation_cause_question": "Do you know what's causing the issue, or do you think it will need investigation first?",
+    # Lookup customer responses
+    "grand_eircode": "Grand. Do you know your eircode?",
     # Generic tool fallbacks
     "done_what_else": "I've done that for you. What else can I help with?",
     "couldnt_complete_retry": "I couldn't complete that. Could you try again?",
@@ -170,8 +173,9 @@ DIRECT_RESPONSE_PHRASES = [
     "cancelled_anything_else", "couldnt_find_booking_what_day",
     "rescheduled_anything_else", "what_day_move_to", "updated_anything_else",
     "what_change_appointment", "couldnt_find_appointment", "transferring_please_hold",
-    "unable_to_transfer", "no_service_match", "general_callout_fallback",
+    "unable_to_transfer", "no_service_match", "more_detail_issue", "general_callout_fallback",
     "investigation_question", "more_detail_service", "investigation_cause_question",
+    "grand_eircode",
     "done_what_else", "couldnt_complete_retry",
     "sorry_say_again", "technical_difficulties", "trouble_processing",
     "how_can_help", "what_day_works_best", "let_me_check_available",
