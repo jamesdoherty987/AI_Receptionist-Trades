@@ -2407,6 +2407,23 @@ TOOL RULES:
                     
                     print(f"   ⚡ [DIRECT] transfer -> '{direct_response}'")
                 
+                # ========== SEARCH_BOOKINGS ==========
+                elif tool_name == "search_bookings":
+                    if result_content.get("success"):
+                        message = result_content.get("message", "")
+                        bookings = result_content.get("bookings", [])
+                        if bookings:
+                            # Format naturally for the caller
+                            direct_response = message if message else "I found your booking."
+                        elif message:
+                            direct_response = message
+                        else:
+                            direct_response = "I don't see any bookings matching that. Could you double-check the details?"
+                    else:
+                        direct_response = "I couldn't find any bookings. What name or date should I search for?"
+                    
+                    print(f"   ⚡ [DIRECT] search_bookings -> '{direct_response[:50]}...'")
+                
                 # ========== MATCH_ISSUE — smart response based on results ==========
                 elif tool_name == "match_issue":
                     matches = result_content.get("matches", [])
