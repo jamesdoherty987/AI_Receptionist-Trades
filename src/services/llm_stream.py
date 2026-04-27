@@ -2081,11 +2081,13 @@ TOOL RULES:
                             else:
                                 direct_response = f"Do you know your eircode?"
                         else:
-                            # New customer — ask for eircode to continue the booking flow
-                            direct_response = "Grand. Do you know your eircode?"
+                            # New customer — the LLM should NOT have called lookup_customer
+                            # (the system context already told it this is a new customer).
+                            # Ask for name since the LLM skipped it.
+                            direct_response = "Can I get your name please, and spell it out for me if possible?"
                     else:
-                        # Error — ask for eircode anyway to keep the flow moving
-                        direct_response = "Grand. Do you know your eircode?"
+                        # Error — ask for name to keep the flow moving
+                        direct_response = "Can I get your name please, and spell it out for me if possible?"
                     
                     if direct_response:
                         print(f"   ⚡ [DIRECT] lookup_customer -> '{direct_response[:50]}...'")
@@ -2582,17 +2584,31 @@ TOOL RULES:
                     )
                 })
             
-            # After lookup_customer for a new customer, remind LLM of the booking flow
+            # After lookup_customer, remind LLM of the full booking flow
             if tool_name == "lookup_customer":
-                messages.append({
-                    "role": "system",
-                    "content": (
-                        "[SYSTEM: You just asked for the eircode. After the caller gives their eircode or address, "
-                        "ask for their email: 'And can I get an email address for the account? Please spell it out for me letter by letter.' "
-                        "After email, call get_next_available to check availability. "
-                        "Do NOT skip the email step. Do NOT call book_job until you have eircode/address AND email AND the customer confirms the booking.]"
-                    )
-                })
+                # Check if this was a new or returning customer
+                _lookup_result = json.loads(tool_results[0]["content"]) if tool_results and tool_results[0].get("content") else {}
+                _is_new = not _lookup_result.get("customer_exists", False)
+                if _is_new:
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            "[SYSTEM: This is a NEW CUSTOMER. You just asked for their name. "
+                            "After they give their name, ask for eircode: 'Do you know your eircode?' "
+                            "If they don't know it, ask for full address. "
+                            "After getting address, ask for email: 'And can I get an email address for the account? Please spell it out for me letter by letter.' "
+                            "After email, call get_next_available. "
+                            "Do NOT skip name, address, or email. Do NOT call book_job until ALL details are collected AND the customer confirms.]"
+                        )
+                    })
+                else:
+                    messages.append({
+                        "role": "system",
+                        "content": (
+                            "[SYSTEM: Returning customer confirmed. After address is confirmed, "
+                            "check if email is on file. If not, ask for it. Then call get_next_available.]"
+                        )
+                    })
             
             # Check for transfer
             if tool_name == "transfer_to_human" and tool_results:
