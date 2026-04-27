@@ -105,6 +105,7 @@ function CrmTab({ clients, bookings = [] }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setShowAddLead(false);
       addToast('Lead created', 'success');
     },
@@ -128,6 +129,7 @@ function CrmTab({ clients, bookings = [] }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setEditingLead(null);
     },
     onError: (e, variables, context) => {
@@ -142,6 +144,7 @@ function CrmTab({ clients, bookings = [] }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast('Lead removed', 'success');
     },
   });

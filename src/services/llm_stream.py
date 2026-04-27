@@ -810,7 +810,7 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
         goodbye_responses = [
             "Grand, thanks for calling. Have a great day!",
             "Lovely, thanks for calling. Take care!",
-            "No problem, thanks for calling. Have a great day!",
+            "Sure, thanks for calling. Have a great day!",
             "Grand, thanks for calling. Bye!",
         ]
         goodbye_msg = random.choice(goodbye_responses)
@@ -1096,7 +1096,7 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
                 likely_needs_tool = True
                 detected_intent = "SERVICE_DESCRIPTION"
                 # Use short acknowledgments — "Let me check" sounds odd when they just described an issue
-                service_ack_fillers = ["No problem.", "Sure.", "Right.", "Okay.", "Got it."]
+                service_ack_fillers = ["Sure.", "Right.", "Okay.", "Got it."]
                 checking_msg = random.choice(service_ack_fillers)
                 print(f"   ✅ [PRE-CHECK] Detected: SERVICE DESCRIPTION (filler - LLM will call match_issue)")
             
@@ -2083,11 +2083,42 @@ TOOL RULES:
                         else:
                             # New customer — the LLM should NOT have called lookup_customer
                             # (the system context already told it this is a new customer).
-                            # Ask for name since the LLM skipped it.
-                            direct_response = "Can I get your name please, and spell it out for me if possible?"
+                            # Check if the caller already gave their name in conversation
+                            _caller_already_gave_name = False
+                            _stored_name = call_state.get("customer_name", "") if call_state else ""
+                            if not _stored_name:
+                                # Check conversation history for name introduction
+                                for _msg in messages:
+                                    if _msg.get("role") == "user":
+                                        _msg_text = (_msg.get("content") or "").lower()
+                                        if "my name is" in _msg_text or "name's" in _msg_text or "i'm " in _msg_text:
+                                            _caller_already_gave_name = True
+                                            break
+                                # Also check if the AI already asked for name and got a response
+                                for _idx, _msg in enumerate(messages):
+                                    if _msg.get("role") == "assistant":
+                                        _content = (_msg.get("content") or "").lower()
+                                        if "your name" in _content or "get your name" in _content:
+                                            # Check if there's a user response after this
+                                            if _idx + 1 < len(messages) and messages[_idx + 1].get("role") == "user":
+                                                _caller_already_gave_name = True
+                                                break
+                            else:
+                                _caller_already_gave_name = True
+                            
+                            if _caller_already_gave_name:
+                                # Name already provided — skip to eircode/address
+                                direct_response = "Do you know your eircode?"
+                            else:
+                                # Ask for name since the LLM skipped it.
+                                direct_response = "Can I get your name please, and spell it out for me if possible?"
                     else:
-                        # Error — ask for name to keep the flow moving
-                        direct_response = "Can I get your name please, and spell it out for me if possible?"
+                        # Error — check if name was already given before asking again
+                        _stored_name = call_state.get("customer_name", "") if call_state else ""
+                        if _stored_name:
+                            direct_response = "Do you know your eircode?"
+                        else:
+                            direct_response = "Can I get your name please, and spell it out for me if possible?"
                     
                     if direct_response:
                         print(f"   ⚡ [DIRECT] lookup_customer -> '{direct_response[:50]}...'")
@@ -2441,7 +2472,27 @@ TOOL RULES:
                     close_matches = [m for m in matches if m['score'] >= top_score - 25] if matches else []
                     multiple_close = len(close_matches) > 1
                     
-                    if not matches:
+                    # GUARD: Check if match_issue was already called AND confirmed earlier
+                    # in this conversation. If so, don't re-confirm the service — skip to
+                    # None so the second LLM call handles it with full context.
+                    _match_already_confirmed = False
+                    _prev_match_issue_count = 0
+                    for _msg in messages:
+                        if _msg.get("role") == "assistant" and _msg.get("tool_calls"):
+                            for _tc in _msg["tool_calls"]:
+                                if _tc.get("function", {}).get("name") == "match_issue":
+                                    _prev_match_issue_count += 1
+                    # If match_issue was called before (this is the 2nd+ time), the service
+                    # was likely already confirmed. Let the LLM handle it with full context
+                    # instead of re-asking "A plumbing, is that correct?"
+                    if _prev_match_issue_count > 0:
+                        _match_already_confirmed = True
+                        print(f"   ⚡ [DIRECT] match_issue already called {_prev_match_issue_count} time(s) before — skipping direct response, letting LLM handle with context")
+                        direct_response = None
+                    
+                    if _match_already_confirmed:
+                        pass  # direct_response already set to None above
+                    elif not matches:
                         # Track consecutive match failures to avoid infinite loop
                         if call_state:
                             call_state.match_issue_fail_count += 1
@@ -2456,11 +2507,11 @@ TOOL RULES:
                                 # Check if we've already confirmed the name with the caller
                                 name_already_confirmed = call_state.get("caller_identified", False) if call_state else False
                                 if name_already_confirmed:
-                                    name_prefix = f"No problem {first_name}"
+                                    name_prefix = f"Grand {first_name}"
                                 else:
                                     # First time using the name — attribute it to the system and use FULL name
                                     # so the LLM knows the full name for booking
-                                    name_prefix = f"I have the name under this number as {customer_name}. No problem {first_name}"
+                                    name_prefix = f"I have the name under this number as {customer_name}. Grand {first_name}"
                                     if call_state:
                                         call_state["caller_identified"] = True
                                 
@@ -2469,7 +2520,7 @@ TOOL RULES:
                                 else:
                                     direct_response = f"{name_prefix}, I'll book you in for a general callout and we can take a look. Can I get your eircode or address?"
                             else:
-                                direct_response = "No problem, I'll book you in for a general callout and we can take a look. Can I get your name please?"
+                                direct_response = "Grand, I'll book you in for a general callout and we can take a look. Can I get your name please?"
                             # Set service type so the booking flow uses General Callout
                             if call_state:
                                 call_state.service_type = "General Callout"

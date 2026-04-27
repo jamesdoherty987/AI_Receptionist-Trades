@@ -208,6 +208,7 @@ function ServicesTab() {
     mutationFn: createService,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['services-menu'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast(`${terminology.service || 'Service'} added!`, 'success');
       setShowAddForm(false);
       setFormData({ ...EMPTY_FORM });
@@ -219,6 +220,7 @@ function ServicesTab() {
     mutationFn: ({ id, data }) => updateService(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['services-menu'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast(`${terminology.service || 'Service'} updated!`, 'success');
       setEditingId(null);
     },
@@ -241,6 +243,7 @@ function ServicesTab() {
     mutationFn: ({ id, active }) => toggleServiceActive(id, active),
     onSuccess: (response, { active }) => {
       queryClient.invalidateQueries({ queryKey: ['services-menu'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast(`${terminology.service || 'Service'} ${active ? 'activated' : 'deactivated'}`, 'success');
     },
     onError: () => addToast(`Failed to update ${(terminology.service || 'service').toLowerCase()} status`, 'error'),

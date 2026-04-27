@@ -102,7 +102,7 @@ FILLER_PHRASES = {
     "ask_name": "Can I get your name please, and spell it out for me if possible?",
     "ask_email": "And can I get an email address for the account? Please spell it out for me letter by letter.",
     "ask_eircode": "Do you know your eircode?",
-    "ask_address": "No problem. Can I get the full address instead?",
+    "ask_address": "Can I get the full address instead?",
     "ask_phone_confirm": "Is that a good number to reach you on?",
     "ask_what_day_booking": "What day is your booking for?",
     "anything_else": "Is there anything else I can help with?",
@@ -123,7 +123,7 @@ FILLER_PHRASES = {
     # Match issue responses
     "no_service_match": "I'm not sure I have a service that matches. Could you describe the issue in a bit more detail?",
     "more_detail_issue": "Could you give me a bit more detail on the issue so I can narrow it down?",
-    "general_callout_fallback": "No problem, I'll book you in for a general callout and we can take a look. Can I get your name please?",
+    "general_callout_fallback": "Grand, I'll book you in for a general callout and we can take a look. Can I get your name please?",
     "investigation_question": "Do you know what's causing the issue, or would you like us to investigate it first?",
     "more_detail_service": "Can you tell me a bit more about the issue so I can match you with the right service?",
     "investigation_cause_question": "Do you know what's causing the issue, or do you think it will need investigation first?",
