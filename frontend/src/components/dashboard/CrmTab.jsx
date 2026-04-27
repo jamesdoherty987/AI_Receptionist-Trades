@@ -141,11 +141,26 @@ function CrmTab({ clients, bookings = [] }) {
 
   const deleteMutation = useMutation({
     mutationFn: deleteLead,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['leads'] });
+      const previous = queryClient.getQueryData(['leads']);
+      if (previous?.leads) {
+        queryClient.setQueryData(['leads'], {
+          ...previous,
+          leads: previous.leads.filter(l => l.id !== id),
+        });
+      }
+      return { previous };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       queryClient.invalidateQueries({ queryKey: ['crm-stats'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       addToast('Lead removed', 'success');
+    },
+    onError: (e, _, context) => {
+      if (context?.previous) queryClient.setQueryData(['leads'], context.previous);
+      addToast(e.response?.data?.error || 'Failed to delete lead', 'error');
     },
   });
 

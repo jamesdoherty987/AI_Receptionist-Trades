@@ -120,6 +120,20 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteClient(clientId),
+    onMutate: async () => {
+      // Cancel any in-flight dashboard refetches so they don't overwrite our optimistic update
+      await queryClient.cancelQueries({ queryKey: ['dashboard'] });
+      const previousDashboard = queryClient.getQueryData(['dashboard']);
+      // Immediately remove the client from the dashboard cache
+      if (previousDashboard) {
+        queryClient.setQueryData(['dashboard'], {
+          ...previousDashboard,
+          clients: (previousDashboard.clients || []).filter(c => c.id !== clientId),
+          bookings: (previousDashboard.bookings || []).filter(b => b.client_id !== clientId),
+        });
+      }
+      return { previousDashboard };
+    },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['clients'] });
@@ -128,7 +142,11 @@ function CustomerDetailModal({ isOpen, onClose, clientId }) {
       const bookingsDeleted = response.data?.bookings_deleted || 0;
       addToast(`Customer deleted${bookingsDeleted > 0 ? ` (${bookingsDeleted} job${bookingsDeleted !== 1 ? 's' : ''} also removed)` : ''}`, 'success');
     },
-    onError: (error) => {
+    onError: (error, _, context) => {
+      // Rollback on error
+      if (context?.previousDashboard) {
+        queryClient.setQueryData(['dashboard'], context.previousDashboard);
+      }
       setShowDeleteConfirm(false);
       addToast('Error deleting customer: ' + (error.response?.data?.error || error.message), 'error');
     }

@@ -67,7 +67,20 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
 
   const markPaidMutation = useMutation({
     mutationFn: (jobId) => updateBooking(jobId, { payment_status: 'paid', payment_method: 'manual' }),
-    onMutate: (jobId) => setMarkingPaidJobId(jobId),
+    onMutate: async (jobId) => {
+      setMarkingPaidJobId(jobId);
+      await queryClient.cancelQueries({ queryKey: ['dashboard'] });
+      const previousDashboard = queryClient.getQueryData(['dashboard']);
+      if (previousDashboard) {
+        queryClient.setQueryData(['dashboard'], {
+          ...previousDashboard,
+          bookings: (previousDashboard.bookings || []).map(b =>
+            b.id === jobId ? { ...b, payment_status: 'paid', payment_method: 'manual' } : b
+          ),
+        });
+      }
+      return { previousDashboard };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
@@ -78,12 +91,29 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       addToast(`${terminology.job} marked as paid`, 'success');
       setMarkingPaidJobId(null);
     },
-    onError: () => { addToast('Failed to mark job as paid', 'error'); setMarkingPaidJobId(null); }
+    onError: (_, __, context) => {
+      if (context?.previousDashboard) queryClient.setQueryData(['dashboard'], context.previousDashboard);
+      addToast('Failed to mark job as paid', 'error');
+      setMarkingPaidJobId(null);
+    }
   });
 
   const unmarkPaidMutation = useMutation({
     mutationFn: (jobId) => updateBooking(jobId, { payment_status: 'unpaid', payment_method: null }),
-    onMutate: (jobId) => setMarkingPaidJobId(jobId),
+    onMutate: async (jobId) => {
+      setMarkingPaidJobId(jobId);
+      await queryClient.cancelQueries({ queryKey: ['dashboard'] });
+      const previousDashboard = queryClient.getQueryData(['dashboard']);
+      if (previousDashboard) {
+        queryClient.setQueryData(['dashboard'], {
+          ...previousDashboard,
+          bookings: (previousDashboard.bookings || []).map(b =>
+            b.id === jobId ? { ...b, payment_status: 'unpaid', payment_method: null } : b
+          ),
+        });
+      }
+      return { previousDashboard };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['finances'] });
@@ -94,18 +124,34 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
       addToast(`${terminology.job} marked as unpaid`, 'success');
       setMarkingPaidJobId(null);
     },
-    onError: () => { addToast('Failed to update payment status', 'error'); setMarkingPaidJobId(null); }
+    onError: (_, __, context) => {
+      if (context?.previousDashboard) queryClient.setQueryData(['dashboard'], context.previousDashboard);
+      addToast('Failed to update payment status', 'error');
+      setMarkingPaidJobId(null);
+    }
   });
 
   const dragStatusMutation = useMutation({
     mutationFn: ({ jobId, status }) => updateBooking(jobId, { status }),
+    onMutate: async ({ jobId, status }) => {
+      await queryClient.cancelQueries({ queryKey: ['dashboard'] });
+      const previousDashboard = queryClient.getQueryData(['dashboard']);
+      if (previousDashboard) {
+        queryClient.setQueryData(['dashboard'], {
+          ...previousDashboard,
+          bookings: (previousDashboard.bookings || []).map(b =>
+            b.id === jobId ? { ...b, status } : b
+          ),
+        });
+      }
+      return { previousDashboard };
+    },
     onSuccess: (_, { jobId }) => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      // Clear override once server confirms
       setLocalStatusOverrides(prev => { const n = { ...prev }; delete n[jobId]; return n; });
     },
-    onError: (_, { jobId }) => {
-      // Roll back the local override
+    onError: (_, { jobId }, context) => {
+      if (context?.previousDashboard) queryClient.setQueryData(['dashboard'], context.previousDashboard);
       setLocalStatusOverrides(prev => { const n = { ...prev }; delete n[jobId]; return n; });
       addToast('Failed to update status', 'error');
     },

@@ -102,6 +102,17 @@ function EmployeeDetailModal({ isOpen, onClose, employeeId }) {
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteEmployee(employeeId),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['dashboard'] });
+      const previousDashboard = queryClient.getQueryData(['dashboard']);
+      if (previousDashboard) {
+        queryClient.setQueryData(['dashboard'], {
+          ...previousDashboard,
+          employees: (previousDashboard.employees || []).filter(e => e.id !== employeeId),
+        });
+      }
+      return { previousDashboard };
+    },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['employees'] });
@@ -109,7 +120,10 @@ function EmployeeDetailModal({ isOpen, onClose, employeeId }) {
       const n = response.data?.assignments_removed || 0;
       addToast(`Employee deleted${n > 0 ? ` (removed from ${n} job${n !== 1 ? 's' : ''})` : ''}`, 'success');
     },
-    onError: (error) => { setShowDeleteConfirm(false); addToast('Error: ' + (error.response?.data?.error || error.message), 'error'); }
+    onError: (error, _, context) => {
+      if (context?.previousDashboard) queryClient.setQueryData(['dashboard'], context.previousDashboard);
+      setShowDeleteConfirm(false); addToast('Error: ' + (error.response?.data?.error || error.message), 'error');
+    }
   });
 
   const inviteMutation = useMutation({

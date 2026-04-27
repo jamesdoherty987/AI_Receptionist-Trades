@@ -1882,6 +1882,42 @@ TOOL RULES:
             try:
                 arguments = json.loads(tool_call["function"]["arguments"])
                 
+                # GUARD: Block book_job if the LLM hasn't confirmed with the caller first
+                # The prompt requires step 7 (FINAL CONFIRM) before step 8 (book_job).
+                # If the last user message was picking a time (not confirming), block the booking
+                # and return a message asking the LLM to confirm first.
+                if tool_name in ('book_job', 'book_appointment') and not in_post_booking_cooldown:
+                    # Check if the previous assistant message was a confirmation question
+                    _prev_ai = ""
+                    for _msg in reversed(messages):
+                        if _msg.get("role") == "assistant" and _msg.get("content"):
+                            _prev_ai = (_msg.get("content") or "").lower()
+                            break
+                    _ai_asked_confirm = any(p in _prev_ai for p in [
+                        "is that correct", "is that all correct", "correct?",
+                        "shall i book", "want me to book", "ready to book",
+                        "go ahead and book", "confirm"
+                    ])
+                    # Also check if the user explicitly confirmed
+                    _user_confirmed = any(p in user_text.lower() for p in [
+                        "yes", "yeah", "yep", "correct", "that's right", "that's correct",
+                        "go ahead", "book it", "please", "do it"
+                    ])
+                    if not _ai_asked_confirm and not _user_confirmed:
+                        print(f"   🚫 [CONFIRM_GUARD] BLOCKED book_job — LLM skipped confirmation step")
+                        print(f"   🚫 [CONFIRM_GUARD] Previous AI: '{_prev_ai[:80]}...'")
+                        print(f"   🚫 [CONFIRM_GUARD] User: '{user_text[:80]}'")
+                        tool_results.append({
+                            "tool_call_id": tool_call["id"],
+                            "role": "tool",
+                            "name": tool_name,
+                            "content": json.dumps({
+                                "success": False,
+                                "error": "STOP. You must confirm with the caller BEFORE booking. Say: 'So that's [day] at [time] for the [issue]. Is that all correct?' and WAIT for their YES before calling book_job."
+                            })
+                        })
+                        continue
+                
                 # AUTO-INJECT stored address for book_job if LLM forgot to include it
                 # This is a common issue: the caller confirms their address but the LLM
                 # doesn't pass it in the book_job arguments, causing the booking to fail.
@@ -1939,6 +1975,28 @@ TOOL RULES:
                         arguments['email'] = _email
                         tool_call["function"]["arguments"] = json.dumps(arguments)
                         print(f"   📧 [AUTO-FIX] Email sanitized: '{_raw_email}' → '{_email}'")
+                
+                # AUTO-INJECT email for book_job if LLM forgot to include it
+                # Scan conversation for email the caller provided
+                if tool_name in ('book_job', 'book_appointment') and not arguments.get('email'):
+                    _found_email = None
+                    for _msg in messages:
+                        if _msg.get("role") == "user":
+                            _ut = (_msg.get("content") or "")
+                            # Look for email patterns in user messages
+                            _email_match = re.search(r'[\w.+-]+@[\w.-]+\.\w+', _ut)
+                            if _email_match:
+                                _found_email = _email_match.group(0)
+                            # Also check for "atgmail" style
+                            elif re.search(r'[\w.+-]+at(?:gmail|yahoo|hotmail|outlook|icloud)\.\w+', _ut, re.IGNORECASE):
+                                _fixed = re.sub(r'(?i)at(gmail|yahoo|hotmail|outlook|icloud)', r'@\1', _ut)
+                                _email_match = re.search(r'[\w.+-]+@[\w.-]+\.\w+', _fixed)
+                                if _email_match:
+                                    _found_email = _email_match.group(0)
+                    if _found_email:
+                        arguments['email'] = _found_email
+                        tool_call["function"]["arguments"] = json.dumps(arguments)
+                        print(f"   📧 [AUTO-INJECT] Added email to book_job: {_found_email}")
                 
                 print(f"   🔧 [TOOL_EXEC] Arguments: {json.dumps(arguments)}")
                 
@@ -2555,6 +2613,25 @@ TOOL RULES:
                                         break
                         
                         _has_address = bool(call_state.get("customer_address", "")) if call_state else False
+                        if not _has_address:
+                            # Check conversation for address — look for user giving address after AI asked
+                            _ai_asked_addr = False
+                            for _msg in messages:
+                                if _msg.get("role") == "assistant":
+                                    _c = (_msg.get("content") or "").lower()
+                                    if any(p in _c for p in ["full address", "your address", "eircode"]):
+                                        _ai_asked_addr = True
+                                elif _msg.get("role") == "user" and _ai_asked_addr:
+                                    _ut = (_msg.get("content") or "").strip()
+                                    # Check if user gave an address (has numbers + multiple words)
+                                    # and didn't decline
+                                    _decline = any(d in _ut.lower() for d in ["no", "i don't", "don't know"])
+                                    if len(_ut.split()) >= 3 and any(c.isdigit() for c in _ut) and not _decline:
+                                        _has_address = True
+                                        break
+                                    elif _decline:
+                                        _ai_asked_addr = False  # They declined, AI may ask again
+                        
                         _email_asked = any(
                             "email" in (msg.get("content") or "").lower()
                             for msg in messages

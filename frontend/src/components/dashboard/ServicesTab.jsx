@@ -229,6 +229,17 @@ function ServicesTab() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteService,
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['services-menu'] });
+      const previousServices = queryClient.getQueryData(['services-menu']);
+      if (previousServices?.services) {
+        queryClient.setQueryData(['services-menu'], {
+          ...previousServices,
+          services: previousServices.services.filter(s => s.id !== id),
+        });
+      }
+      return { previousServices };
+    },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['services-menu'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -236,7 +247,10 @@ function ServicesTab() {
       addToast(`${terminology.service || 'Service'} deleted${jobsAffected > 0 ? ` (${jobsAffected} ${terminology.job?.toLowerCase() || 'job'}${jobsAffected !== 1 ? 's' : ''} used this ${(terminology.service || 'service').toLowerCase()})` : ''}`, 'success');
       setDeleteConfirm({ show: false, service: null });
     },
-    onError: () => { setDeleteConfirm({ show: false, service: null }); addToast(`Failed to delete ${(terminology.service || 'service').toLowerCase()}`, 'error'); },
+    onError: (_, __, context) => {
+      if (context?.previousServices) queryClient.setQueryData(['services-menu'], context.previousServices);
+      setDeleteConfirm({ show: false, service: null }); addToast(`Failed to delete ${(terminology.service || 'service').toLowerCase()}`, 'error');
+    },
   });
 
   const toggleActiveMutation = useMutation({

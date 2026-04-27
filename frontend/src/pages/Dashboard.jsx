@@ -93,8 +93,8 @@ function Dashboard() {
       const response = await getDashboardData();
       return response.data.data;
     },
-    staleTime: 60000,
-    gcTime: 10 * 60 * 1000,
+    staleTime: 15000, // 15s — mutations use optimistic updates + invalidation for instant UI
+    gcTime: 5 * 60 * 1000,
   });
 
   const bookings = dashboardData?.bookings || [];
