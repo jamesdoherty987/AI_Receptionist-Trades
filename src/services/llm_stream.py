@@ -799,7 +799,9 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
     ]
     _ai_asked_anything_else = any(phrase in _prev_assistant for phrase in [
         "anything else", "anything else i can help", "what else can i help",
-        "is there anything", "can i help with anything"
+        "is there anything", "can i help with anything", "how can i assist",
+        "how can i help", "assist you further", "help you further",
+        "help with anything", "need anything else"
     ])
     # Also trigger if we're in post-booking cooldown (just booked, caller is wrapping up)
     _is_post_booking = (last_booking_turn > 0 and current_turn - last_booking_turn <= 3)
@@ -1863,6 +1865,17 @@ TOOL RULES:
             
             try:
                 arguments = json.loads(tool_call["function"]["arguments"])
+                
+                # AUTO-INJECT stored address for book_job if LLM forgot to include it
+                # This is a common issue: the caller confirms their address but the LLM
+                # doesn't pass it in the book_job arguments, causing the booking to fail.
+                if tool_name in ('book_job', 'book_appointment') and not arguments.get('job_address'):
+                    stored_addr = call_state.get("customer_address", "") if call_state else ""
+                    if stored_addr:
+                        arguments['job_address'] = stored_addr
+                        tool_call["function"]["arguments"] = json.dumps(arguments)
+                        print(f"   📍 [AUTO-INJECT] Added stored address to book_job: {stored_addr}")
+                
                 print(f"   🔧 [TOOL_EXEC] Arguments: {json.dumps(arguments)}")
                 
                 # AUTO-INJECT previously suggested dates from call state
@@ -2290,8 +2303,17 @@ TOOL RULES:
                         error = result_content.get("error", result_content.get("message", ""))
                         if "not available" in error.lower() or "already booked" in error.lower():
                             direct_response = "That time slot just got taken. Would you like to try a different time?"
-                        elif "missing" in error.lower():
-                            direct_response = "I'm missing some details. Could you confirm the time you'd like?"
+                        elif "missing" in error.lower() or "address" in error.lower():
+                            # Specific error about missing address — tell the caller what's needed
+                            if "address" in error.lower():
+                                # Try to get stored address from call_state
+                                stored_addr = call_state.get("customer_address", "") if call_state else ""
+                                if stored_addr:
+                                    direct_response = f"I just need to confirm the address. Is it still {stored_addr}?"
+                                else:
+                                    direct_response = "I just need the address for the job. Can I get your eircode or full address?"
+                            else:
+                                direct_response = "I'm missing some details. Could you confirm the time you'd like?"
                         else:
                             direct_response = "I couldn't complete that booking. Could you try again?"
                     
@@ -2398,10 +2420,20 @@ TOOL RULES:
                             stored_address = call_state.get("customer_address", "") if call_state else ""
                             if customer_name:
                                 first_name = customer_name.split()[0]
-                                if stored_address:
-                                    direct_response = f"No problem {first_name}, I'll book you in for a general callout and we can take a look. Is it still the same address, {stored_address}?"
+                                # Check if we've already confirmed the name with the caller
+                                name_already_confirmed = call_state.get("caller_identified", False) if call_state else False
+                                if name_already_confirmed:
+                                    name_prefix = f"No problem {first_name}"
                                 else:
-                                    direct_response = f"No problem {first_name}, I'll book you in for a general callout and we can take a look. Can I get your eircode or address?"
+                                    # First time using the name — attribute it to the system
+                                    name_prefix = f"I have the name under this number as {first_name}. No problem {first_name}"
+                                    if call_state:
+                                        call_state["caller_identified"] = True
+                                
+                                if stored_address:
+                                    direct_response = f"{name_prefix}, I'll book you in for a general callout and we can take a look. Is it still the same address, {stored_address}?"
+                                else:
+                                    direct_response = f"{name_prefix}, I'll book you in for a general callout and we can take a look. Can I get your eircode or address?"
                             else:
                                 direct_response = "No problem, I'll book you in for a general callout and we can take a look. Can I get your name please?"
                             # Set service type so the booking flow uses General Callout
@@ -2498,6 +2530,23 @@ TOOL RULES:
                         "Do NOT re-confirm the booking details. Do NOT ask 'is that correct?' about the booking. "
                         "The job is booked. If the caller says anything, just ask if there's anything else you can help with, "
                         "or say goodbye warmly. If they want a SECOND booking, start fresh with match_issue.]"
+                    )
+                })
+            
+            # After presenting availability, remind LLM to wait for customer to pick
+            # and confirm before booking. Prevents premature book_job calls.
+            if tool_name in ("get_next_available", "search_availability") and any(
+                json.loads(tr["content"]).get("success") for tr in tool_results
+                if tr.get("content")
+            ):
+                messages.append({
+                    "role": "system",
+                    "content": (
+                        "[SYSTEM: You just presented availability options. WAIT for the customer to pick a SPECIFIC day and time. "
+                        "After they pick, CONFIRM with them: 'So that's [day] at [time] for the [issue]. Is that all correct?' "
+                        "Do NOT call book_job until the customer explicitly confirms YES. "
+                        "If they say 'correct' or 'yes' right now, they may be confirming the ADDRESS, not choosing a booking time — "
+                        "ask which day and time they'd like.]"
                     )
                 })
             
