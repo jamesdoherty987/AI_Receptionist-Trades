@@ -340,6 +340,10 @@ async def media_handler(ws):
                         nonlocal full_text
                         stream_start_time = time_module.time()
                         MAX_STREAM_WAIT = 35.0  # Absolute max time for entire stream
+                        token_count_qs = 0
+                        first_token_time_qs = None
+                        last_token_time_qs = None
+                        wait_start = None
                         while True:
                             # SAFETY: Overall timeout check
                             elapsed = time_module.time() - queue_start_time
@@ -367,7 +371,16 @@ async def media_handler(ws):
                             
                             try:
                                 # Wait for token with timeout
+                                if wait_start is None:
+                                    wait_start = time_module.time()
                                 token = await asyncio.wait_for(token_queue.get(), timeout=0.5)
+                                if first_token_time_qs is None:
+                                    first_token_time_qs = time_module.time()
+                                    wait_duration = first_token_time_qs - (wait_start or first_token_time_qs)
+                                    print(f"   📦 [QUEUE] First token after {wait_duration:.3f}s wait (since filler done)")
+                                last_token_time_qs = time_module.time()
+                                token_count_qs += 1
+                                wait_start = None
                                 full_text += token
                                 yield token
                             except asyncio.TimeoutError:
@@ -438,7 +451,11 @@ async def media_handler(ws):
                             speaking = False
                             tts_ended_at = last_tts_audio_done
                             print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False at audio finish")
+                        tts_pre_call = time_module.time()
+                        print(f"   📡 [QUEUE→TTS] Starting TTS stream at {tts_pre_call - parallel_start:.3f}s into parallel flow")
                         await stream_tts(queued_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_queued_audio_done)
+                        tts_post_call = time_module.time()
+                        print(f"   📡 [QUEUE→TTS] stream_tts returned after {tts_post_call - tts_pre_call:.3f}s")
                         if not _queued_audio_done_fired:
                             last_tts_audio_done = asyncio.get_event_loop().time()
                             asr.clear()  # Fallback clear if callback didn't fire
@@ -450,6 +467,7 @@ async def media_handler(ws):
                     print(f"[PIPELINE] ⏱️ TTS streaming took {tts_stream_time:.3f}s")
                     
                     # Make sure LLM task is done (with timeout to prevent hang)
+                    llm_wait_start = time_module.time()
                     try:
                         await asyncio.wait_for(llm_task, timeout=5.0)
                     except asyncio.TimeoutError:
@@ -459,6 +477,9 @@ async def media_handler(ws):
                             await llm_task
                         except asyncio.CancelledError:
                             pass
+                    llm_wait_time = time_module.time() - llm_wait_start
+                    if llm_wait_time > 0.1:
+                        print(f"   ⏳ [LLM] Waited {llm_wait_time:.3f}s for LLM task to finish after TTS")
                     
                     total_parallel_time = time_module.time() - parallel_start
                     print(f"[PIPELINE] ⏱️ Total parallel flow: {total_parallel_time:.3f}s")
@@ -519,6 +540,7 @@ async def media_handler(ws):
                     else:
                         # Normal direct stream — send through TTS
                         direct_start = time_module.time()
+                        print(f"   📡 [DIRECT] Starting direct TTS at {direct_start - run_start:.3f}s into response")
                     
                         async def direct_stream():
                             nonlocal transfer_number, full_text
@@ -573,6 +595,7 @@ async def media_handler(ws):
                 # Log response timing (only warn on slow responses)
                 total_time = time_module.time() - run_start
                 response_times.append(total_time)
+                print(f"   ⏱️ RESPONSE TIME: {total_time:.1f}s (speaking={speaking}, interrupt={interrupt})")
                 if total_time > 5.0:
                     print(f"   ⚠️ SLOW RESPONSE: {total_time:.1f}s")
                 
@@ -682,7 +705,8 @@ async def media_handler(ws):
                     tts_ended_at = asyncio.get_event_loop().time()
                     speaking = False
                 llm_processing = False
-                print(f"👂 Ready to listen")
+                ready_time = time_module.time()
+                print(f"👂 Ready to listen (total response cycle: {ready_time - run_start:.3f}s)")
 
         if respond_task and not respond_task.done():
             respond_task.cancel()
@@ -1477,6 +1501,7 @@ async def media_handler(ws):
                         asyncio.create_task(_capture_email_audio(captured_email_audio))
                     
                     print(f"[PIPELINE] 🚀 Starting LLM response...")
+                    print(f"[PIPELINE] ⏱️ Time since speech detected: {time_module.time() - speech_detected_at:.3f}s")
                     
                     try:
                         await start_tts(

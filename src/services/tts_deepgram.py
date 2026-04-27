@@ -70,6 +70,7 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn, on_audio_
                     """Send text tokens to Deepgram"""
                     tokens_sent = 0
                     full_text = ""
+                    sender_start = time.time()
                     try:
                         async for token in _aiter(text_stream):
                             if interrupt_fn():
@@ -78,9 +79,11 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn, on_audio_
                             tokens_sent += 1
                             full_text += token
                             if tokens_sent == 1:
-                                print(f"[TTS] 📤 First token: '{token[:50]}'")
+                                first_token_delay = time.time() - sender_start
+                                print(f"[TTS] 📤 First token: '{token[:50]}' (waited {first_token_delay:.3f}s for first token)")
                             await tts.send(json.dumps({"type": "Speak", "text": token}))
-                        print(f"[TTS] 📤 Sent {tokens_sent} tokens: '{full_text[:80]}...'")
+                        sender_total = time.time() - sender_start
+                        print(f"[TTS] 📤 Sent {tokens_sent} tokens in {sender_total:.3f}s: '{full_text[:80]}...'")
                     finally:
                         try:
                             await tts.send(json.dumps({"type": "Flush"}))
@@ -125,13 +128,13 @@ async def stream_tts(text_stream, websocket, stream_sid, interrupt_fn, on_audio_
                             if sender_done.is_set():
                                 quiet_timeouts += 1
                                 # Wait for Flushed signal — only exit on quiet timeout if enough silence
-                                # (2 timeouts = 0.6s of no data after all text sent)
-                                if got_any_audio and quiet_timeouts >= 2:
+                                # (1 timeout = 0.3s of no data after all text sent)
+                                if got_any_audio and quiet_timeouts >= 1:
                                     print(f"[TTS] ✅ Done. Sent {chunks_sent} chunks")
                                     _notify_audio_done()
                                     return
-                                if quiet_timeouts >= 4:
-                                    print(f"[TTS] ⚠️ TIMEOUT: No audio after 4 quiet timeouts (1.2s total). Sent {chunks_sent} chunks")
+                                if quiet_timeouts >= 2:
+                                    print(f"[TTS] ⚠️ TIMEOUT: No audio after 2 quiet timeouts (0.6s total). Sent {chunks_sent} chunks")
                                     _notify_audio_done()
                                     return
                             continue
