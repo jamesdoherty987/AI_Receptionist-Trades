@@ -238,7 +238,7 @@ CALENDAR_TOOLS = [
         "type": "function",
         "function": {
             "name": "modify_job",
-            "description": "Modify details of an existing job/appointment. Use when customer wants to change the address, job description, or other details of a booking WITHOUT changing the time. WORKFLOW: 1) Get the appointment date/time from the user. 2) Call this function with ONLY appointment_datetime to look up the booking. 3) System returns customer name and current details. 4) Confirm with user: 'That appointment is for [name]. What would you like to change?' 5) When they tell you what to change, call this function again with the datetime, customer_name, and the fields to update.",
+            "description": "Modify details of an existing job/appointment. Use when customer wants to change the address, job description, or other details of a booking WITHOUT changing the time. IMPORTANT: You MUST have the ACTUAL new value from the customer before calling this. Do NOT pass placeholder text like 'Please provide the new address' — ask the customer first, get their answer, THEN call this function. WORKFLOW: 1) Ask the customer what date/time their booking is for. 2) Ask what they want to change. 3) Get the NEW value from them (e.g. 'What's the new address?'). 4) Call this function with appointment_datetime, customer_name, and the actual new value.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -6128,7 +6128,17 @@ Return ONLY valid JSON, no explanation."""
                 try:
                     bookings = db.get_all_bookings(company_id=company_id)
                     for booking in bookings:
-                        # Handle both string and int event_id comparison
+                        # For database calendar: event_id IS the booking ID
+                        if str(booking.get('id')) == str(event_id):
+                            current_details = {
+                                'address': booking.get('address'),
+                                'service_type': booking.get('service_type'),
+                                'phone': booking.get('phone_number'),
+                                'email': booking.get('email'),
+                                'urgency': booking.get('urgency')
+                            }
+                            break
+                        # For Google Calendar: match calendar_event_id
                         booking_event_id = booking.get('calendar_event_id')
                         if booking_event_id and str(booking_event_id) == str(event_id):
                             current_details = {
@@ -6153,6 +6163,13 @@ Return ONLY valid JSON, no explanation."""
                 }
             
             # Customer name confirmed - check if any updates were provided
+            # Filter out placeholder values the LLM sometimes passes instead of actual data
+            _placeholder_phrases = ["please provide", "new address", "ask the customer", "not provided", "n/a", "tbd"]
+            if new_address and any(p in new_address.lower() for p in _placeholder_phrases):
+                return {
+                    "success": False,
+                    "error": "You passed a placeholder instead of an actual address. Ask the customer: 'What's the new address?' and wait for their response before calling modify_job again."
+                }
             has_updates = any([new_address, new_job_description, new_phone, new_email, new_urgency])
             if not has_updates:
                 return {
@@ -6180,7 +6197,12 @@ Return ONLY valid JSON, no explanation."""
             try:
                 bookings = db.get_all_bookings(company_id=company_id)
                 for booking in bookings:
-                    # Handle both string and int event_id comparison
+                    # For database calendar: event_id IS the booking ID
+                    if str(booking.get('id')) == str(event_id):
+                        booking_id = booking['id']
+                        current_booking = booking
+                        break
+                    # For Google Calendar: match calendar_event_id
                     booking_event_id = booking.get('calendar_event_id')
                     if booking_event_id and str(booking_event_id) == str(event_id):
                         booking_id = booking['id']
@@ -6282,6 +6304,19 @@ Return ONLY valid JSON, no explanation."""
                         "success": False,
                         "error": "Failed to update the booking in the database"
                     }
+                
+                # If address changed, also update the client's address on file
+                if new_address and current_booking:
+                    try:
+                        client_id = current_booking.get('client_id')
+                        if client_id:
+                            client_update = {'address': update_fields.get('address', new_address)}
+                            if update_fields.get('eircode'):
+                                client_update['eircode'] = update_fields['eircode']
+                            db.update_client(client_id, **client_update)
+                            logger.info(f"[MODIFY_JOB] ✅ Also updated client {client_id} address on file")
+                    except Exception as client_err:
+                        logger.warning(f"[MODIFY_JOB] Could not update client address: {client_err}")
                 
                 # Add a note about the modification
                 changes_summary = ", ".join(changes_made)
@@ -6443,7 +6478,7 @@ Return ONLY valid JSON, no explanation."""
             display = upcoming[:5]
             msg_parts = []
             for b in display:
-                msg_parts.append(f"{b['customer_name']} — {b['service']} on {b['date']} (status: {b['status']})")
+                msg_parts.append(f"{b['customer_name']} — {b['service']} on {b['date']}")
             
             return {
                 "success": True,

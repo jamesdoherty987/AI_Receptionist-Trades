@@ -2747,10 +2747,21 @@ TOOL RULES:
                                 direct_response = f"I found the appointment for {customer_name}. What would you like to change?"
                             else:
                                 direct_response = "What would you like to change about the appointment?"
+                    elif result_content.get("requires_confirmation"):
+                        # Tool found the booking but needs confirmation — let LLM handle
+                        customer_name = result_content.get("customer_name", "")
+                        direct_response = f"I found the appointment for {customer_name}. What would you like to change?"
                     else:
-                        direct_response = "I couldn't find that appointment. What date and time was it for?"
+                        # Check if this is a placeholder/instruction error — let LLM see it
+                        _error_msg = result_content.get("error", "")
+                        if "placeholder" in _error_msg or "ask the customer" in _error_msg.lower() or "no changes specified" in _error_msg.lower():
+                            direct_response = None  # Let LLM see the error and ask the customer
+                            print(f"   🚫 [DIRECT] modify_job needs more info — passing error to LLM")
+                        else:
+                            direct_response = "I couldn't find that appointment. What date and time was it for?"
                     
-                    print(f"   ⚡ [DIRECT] modify -> '{direct_response[:50]}...'")
+                    if direct_response:
+                        print(f"   ⚡ [DIRECT] modify -> '{direct_response[:50]}...'")
                 
                 # ========== TRANSFER_TO_HUMAN ==========
                 elif tool_name == "transfer_to_human":
@@ -2769,8 +2780,17 @@ TOOL RULES:
                         message = result_content.get("message", "")
                         bookings = result_content.get("bookings", [])
                         if bookings:
-                            # Format naturally for the caller
-                            direct_response = message if message else "I found your booking."
+                            # Format naturally for TTS — strip "Found N upcoming booking(s):" prefix
+                            # and present as a simple list
+                            booking_parts = []
+                            for b in bookings:
+                                service = b.get('service', 'appointment')
+                                date = b.get('date', '')
+                                booking_parts.append(f"{service} on {date}")
+                            if len(booking_parts) == 1:
+                                direct_response = f"I have one booking: {booking_parts[0]}. Which one did you need?"
+                            else:
+                                direct_response = f"I have {len(booking_parts)} bookings: " + ", ".join(booking_parts) + ". Which one did you need?"
                         elif message:
                             direct_response = message
                         else:
