@@ -88,6 +88,7 @@ class CallState:
     
     # --- Availability suggestion tracking (server-side, not LLM-dependent) ---
     suggested_dates: List[str] = field(default_factory=list)  # ISO dates already shown to caller
+    duration_announced: bool = False  # True after AI first mentions job duration — suppresses repeats
     
     # --- LLM response control ---
     skip_llm_response: bool = False
@@ -137,6 +138,7 @@ class CallState:
         self.skip_llm_response = False
         self.suggested_dates = []
         self.match_issue_fail_count = 0
+        self.duration_announced = False
         self.address_audio_url = None
         self.address_audio_captured = False
         self.awaiting_address_audio = False

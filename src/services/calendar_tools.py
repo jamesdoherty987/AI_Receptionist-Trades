@@ -2251,6 +2251,7 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
     db = services.get('db') or services.get('database')  # Support both keys
     # CRITICAL: Extract company_id for proper multi-tenant data isolation
     company_id = services.get('company_id')
+    call_state = services.get('call_state')
     
     logger.info(f"[TOOL_EXEC] Services: calendar={google_calendar is not None}, db={db is not None}, company_id={company_id}")
     
@@ -2723,7 +2724,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             else:
                 voice_instruction = "Say the natural_summary naturally and conversationally. Then ask which day/time works for them."
             
-            return {
+            _duration_lbl = format_duration_label(service_duration)
+            _show_duration = not (call_state and getattr(call_state, 'duration_announced', False))
+            if call_state and _show_duration:
+                call_state.duration_announced = True
+
+            result = {
                 "success": True,
                 "available_slots": formatted_slots,
                 "total_count": len(all_slots),
@@ -2734,8 +2740,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 "is_callout_service": matched_service.get('requires_callout', False),
                 "is_quote_service": matched_service.get('requires_quote', False),
                 "duration_minutes": service_duration,
-                "duration_label": format_duration_label(service_duration)
             }
+            if _show_duration:
+                result["duration_label"] = _duration_lbl
+            return result
         
         elif tool_name == "get_next_available":
             # ========== GET_NEXT_AVAILABLE ==========
@@ -2929,7 +2937,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             elif matched_service.get('requires_quote'):
                 voice_instruction += " This service requires a free quote visit first. Let the customer know you're booking a free quote visit to have a look and give them a quote, and the full job will be scheduled after."
             
-            return {
+            _duration_lbl2 = format_duration_label(service_duration)
+            _show_duration2 = not (call_state and getattr(call_state, 'duration_announced', False))
+            if call_state and _show_duration2:
+                call_state.duration_announced = True
+
+            result = {
                 "success": True,
                 "available_days": formatted_days,
                 "natural_summary": natural_summary,
@@ -2941,8 +2954,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 "days_found": len(available_days),
                 "suggested_dates": [d.strftime('%Y-%m-%d') for d, _ in available_days[:4]],
                 "duration_minutes": service_duration,
-                "duration_label": format_duration_label(service_duration)
             }
+            if _show_duration2:
+                result["duration_label"] = _duration_lbl2
+            return result
         
         elif tool_name == "search_reschedule_availability":
             # ========== SEARCH_RESCHEDULE_AVAILABILITY ==========
@@ -3307,7 +3322,12 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
             
             print(f"[TOOL_TIMING] ✅ search_reschedule_availability completed in {tool_duration:.3f}s ({len(available_day_summaries)} days found)")
             
-            return {
+            _duration_lbl3 = format_duration_label(booking_duration)
+            _show_duration3 = not (call_state and getattr(call_state, 'duration_announced', False))
+            if call_state and _show_duration3:
+                call_state.duration_announced = True
+
+            result = {
                 "success": True,
                 "natural_summary": natural_summary,
                 "message": natural_summary,
@@ -3316,8 +3336,10 @@ def execute_tool_call(tool_name: str, arguments: dict, services: dict) -> dict:
                 "all_available_dates": found_dates_iso,
                 "is_full_day_service": is_full_day,
                 "duration_minutes": booking_duration,
-                "duration_label": format_duration_label(booking_duration)
             }
+            if _show_duration3:
+                result["duration_label"] = _duration_lbl3
+            return result
         
         elif tool_name == "search_availability":
             # ========== SEARCH_AVAILABILITY ==========
@@ -3942,7 +3964,12 @@ Return ONLY valid JSON, no explanation."""
             # Collect found dates for suggested_dates return
             found_dates_iso = sorted(slots_by_day.keys())
             
-            return {
+            _duration_lbl4 = format_duration_label(service_duration)
+            _show_duration4 = not (call_state and getattr(call_state, 'duration_announced', False))
+            if call_state and _show_duration4:
+                call_state.duration_announced = True
+
+            result = {
                 "success": True,
                 "available_slots": formatted_slots,
                 "total_count": len(all_slots),
@@ -3956,8 +3983,10 @@ Return ONLY valid JSON, no explanation."""
                 "suggested_dates": found_dates_iso[:5],
                 "all_available_dates": found_dates_iso,
                 "duration_minutes": service_duration,
-                "duration_label": format_duration_label(service_duration)
             }
+            if _show_duration4:
+                result["duration_label"] = _duration_lbl4
+            return result
         
         elif tool_name == "lookup_customer":
             phone = arguments.get('phone')
