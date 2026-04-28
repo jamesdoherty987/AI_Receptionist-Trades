@@ -13000,9 +13000,18 @@ def send_quote_sms(quote_id):
         accept_token = quote.get('accept_token')
         if not accept_token:
             accept_token = _secrets_q.token_urlsafe(32)
-            cur.execute("UPDATE quotes SET accept_token = %s WHERE id = %s AND company_id = %s",
-                        (accept_token, quote_id, company_id))
-            conn.commit()
+            try:
+                cur.execute("UPDATE quotes SET accept_token = %s WHERE id = %s AND company_id = %s",
+                            (accept_token, quote_id, company_id))
+                conn.commit()
+            except Exception:
+                # Column may not exist yet — add it
+                conn.rollback()
+                cur.execute("ALTER TABLE quotes ADD COLUMN IF NOT EXISTS accept_token TEXT")
+                conn.commit()
+                cur.execute("UPDATE quotes SET accept_token = %s WHERE id = %s AND company_id = %s",
+                            (accept_token, quote_id, company_id))
+                conn.commit()
         public_url = os.getenv('PUBLIC_URL', request.host_url.rstrip('/'))
         accept_link = f"{public_url}/quote/accept/{accept_token}"
 
@@ -15404,6 +15413,12 @@ def generate_quote_accept_link(quote_id):
     try:
         from psycopg2.extras import RealDictCursor
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Ensure accept_token column exists
+        try:
+            cur.execute("ALTER TABLE quotes ADD COLUMN IF NOT EXISTS accept_token TEXT")
+            conn.commit()
+        except Exception:
+            conn.rollback()
         # Reuse existing token if present
         cur.execute("SELECT accept_token FROM quotes WHERE id = %s AND company_id = %s", (quote_id, company_id))
         row = cur.fetchone()
@@ -15420,6 +15435,7 @@ def generate_quote_accept_link(quote_id):
     finally:
         cur.close()
         db.return_connection(conn)
+        db.return_connection(conn)
 
 
 @app.route("/api/quote/accept/<token>", methods=["GET"])
@@ -15427,9 +15443,17 @@ def get_quote_by_accept_token(token):
     """Public: get quote details for acceptance page."""
     db = get_database()
     conn = db.get_connection()
+    cur = None
     try:
         from psycopg2.extras import RealDictCursor
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        # Ensure accept_token column exists (migration may not have run)
+        try:
+            cur.execute("ALTER TABLE quotes ADD COLUMN IF NOT EXISTS accept_token TEXT")
+            cur.execute("ALTER TABLE quotes ADD COLUMN IF NOT EXISTS pipeline_stage TEXT DEFAULT 'draft'")
+            conn.commit()
+        except Exception:
+            conn.rollback()
         cur.execute("""
             SELECT q.*, c.name as client_name, co.company_name, co.business_phone
             FROM quotes q
@@ -15448,8 +15472,11 @@ def get_quote_by_accept_token(token):
             try: quote['line_items'] = json.loads(quote['line_items'])
             except: pass
         return jsonify({"quote": quote})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     finally:
-        cur.close()
+        if cur:
+            cur.close()
         db.return_connection(conn)
 
 
@@ -15458,26 +15485,43 @@ def accept_quote_by_token(token):
     """Public: customer accepts a quote."""
     db = get_database()
     conn = db.get_connection()
+    cur = None
     try:
         from psycopg2.extras import RealDictCursor
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT id, company_id, status, pipeline_stage FROM quotes WHERE accept_token = %s", (token,))
+        # Ensure accept_token column exists (migration may not have run)
+        try:
+            cur.execute("ALTER TABLE quotes ADD COLUMN IF NOT EXISTS accept_token TEXT")
+            cur.execute("ALTER TABLE quotes ADD COLUMN IF NOT EXISTS pipeline_stage TEXT DEFAULT 'draft'")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        cur.execute("SELECT id, company_id, status FROM quotes WHERE accept_token = %s", (token,))
         quote = cur.fetchone()
         if not quote:
             return jsonify({"error": "Quote not found"}), 404
         if quote.get('status') in ('accepted', 'converted'):
             return jsonify({"already_accepted": True})
-        cur.execute("""
-            UPDATE quotes SET status = 'accepted', pipeline_stage = 'accepted',
-            updated_at = CURRENT_TIMESTAMP WHERE id = %s
-        """, (quote['id'],))
+        # Update status; pipeline_stage may not exist if migration wasn't run
+        try:
+            cur.execute("""
+                UPDATE quotes SET status = 'accepted', pipeline_stage = 'accepted',
+                updated_at = CURRENT_TIMESTAMP WHERE id = %s
+            """, (quote['id'],))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                UPDATE quotes SET status = 'accepted',
+                updated_at = CURRENT_TIMESTAMP WHERE id = %s
+            """, (quote['id'],))
         conn.commit()
         return jsonify({"success": True, "message": "Quote accepted! We'll be in touch to schedule your job."})
     except Exception as e:
         conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
-        cur.close()
+        if cur:
+            cur.close()
         db.return_connection(conn)
 
 

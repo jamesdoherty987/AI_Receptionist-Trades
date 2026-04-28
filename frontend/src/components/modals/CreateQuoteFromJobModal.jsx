@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Modal from './Modal';
 import { formatCurrency } from '../../utils/helpers';
-import { createQuote, updateBooking } from '../../services/api';
+import { createQuote, updateBooking, sendQuote } from '../../services/api';
 import { useToast } from '../Toast';
 import DocumentPreview from '../accounting/DocumentPreview';
 
@@ -46,16 +46,46 @@ function CreateQuoteFromJobModal({ isOpen, onClose, job }) {
     onError: (e) => addToast(e.response?.data?.error || 'Failed to create quote', 'error'),
   });
 
+  const createAndSendMut = useMutation({
+    mutationFn: async (data) => {
+      const res = await createQuote(data);
+      const originalCharge = parseFloat(job.estimated_charge || job.charge || 0);
+      if (Math.abs(subtotal - originalCharge) > 0.01 && subtotal > 0) {
+        await updateBooking(job.id, { estimated_charge: subtotal });
+      }
+      const quoteId = res.data?.id || res.data?.quote?.id;
+      const sendRes = await sendQuote(quoteId);
+      return sendRes;
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['booking', job.id] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      addToast(`Quote created & sent via ${res.data?.sent_via || 'email'} to ${res.data?.sent_to || 'customer'}`, 'success');
+      onClose();
+    },
+    onError: (e) => addToast(e.response?.data?.error || 'Failed to create & send quote', 'error'),
+  });
+
+  const isBusy = createMut.isPending || createAndSendMut.isPending;
+
+  const buildPayload = () => ({
+    client_id: job.client_id || null,
+    title,
+    description: '',
+    line_items: lineItems,
+    valid_days: 30,
+    notes,
+    booking_id: job.id,
+  });
+
   const handleSubmit = () => {
-    createMut.mutate({
-      client_id: job.client_id || null,
-      title,
-      description: '',
-      line_items: lineItems,
-      valid_days: 30,
-      notes,
-      booking_id: job.id,
-    });
+    createMut.mutate(buildPayload());
+  };
+
+  const handleCreateAndSend = () => {
+    createAndSendMut.mutate(buildPayload());
   };
 
   const updateItem = (idx, field, value) => {
@@ -83,9 +113,13 @@ function CreateQuoteFromJobModal({ isOpen, onClose, job }) {
           <button className="cqj-btn cqj-btn-ghost" onClick={() => setShowPreview(false)}>
             <i className="fas fa-arrow-left"></i> Back
           </button>
-          <button className="cqj-btn cqj-btn-primary" onClick={handleSubmit} disabled={createMut.isPending}>
-            <i className={`fas ${createMut.isPending ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
-            {createMut.isPending ? 'Creating...' : 'Create Quote'}
+          <button className="cqj-btn cqj-btn-outline" onClick={handleSubmit} disabled={isBusy}>
+            <i className={`fas ${createMut.isPending ? 'fa-spinner fa-spin' : 'fa-save'}`}></i>
+            {createMut.isPending ? 'Creating...' : 'Save as Draft'}
+          </button>
+          <button className="cqj-btn cqj-btn-primary" onClick={handleCreateAndSend} disabled={isBusy}>
+            <i className={`fas ${createAndSendMut.isPending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`}></i>
+            {createAndSendMut.isPending ? 'Sending...' : 'Create & Send'}
           </button>
         </div>
       </Modal>
@@ -173,9 +207,13 @@ function CreateQuoteFromJobModal({ isOpen, onClose, job }) {
           <button className="cqj-btn cqj-btn-outline" onClick={() => setShowPreview(true)} disabled={subtotal <= 0}>
             <i className="fas fa-eye"></i> Preview
           </button>
-          <button className="cqj-btn cqj-btn-primary" onClick={handleSubmit} disabled={createMut.isPending || !title.trim()}>
-            <i className={`fas ${createMut.isPending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`}></i>
-            {createMut.isPending ? 'Creating...' : 'Create Quote'}
+          <button className="cqj-btn cqj-btn-outline" onClick={handleSubmit} disabled={isBusy || !title.trim()}>
+            <i className={`fas ${createMut.isPending ? 'fa-spinner fa-spin' : 'fa-save'}`}></i>
+            {createMut.isPending ? 'Creating...' : 'Save as Draft'}
+          </button>
+          <button className="cqj-btn cqj-btn-primary" onClick={handleCreateAndSend} disabled={isBusy || !title.trim()}>
+            <i className={`fas ${createAndSendMut.isPending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`}></i>
+            {createAndSendMut.isPending ? 'Sending...' : 'Create & Send'}
           </button>
         </div>
       </div>

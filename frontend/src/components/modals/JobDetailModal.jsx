@@ -30,7 +30,8 @@ import {
   updateQuote,
   sendQuote,
   rejectBooking,
-  createCreditNote
+  createCreditNote,
+  deleteQuote
 } from '../../services/api';
 import Modal from './Modal';
 import InvoiceConfirmModal from './InvoiceConfirmModal';
@@ -247,6 +248,17 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
       addToast(`Quote sent via ${res.data?.sent_via || 'email'} to ${res.data?.sent_to || 'customer'}`, 'success');
     },
     onError: (e) => addToast(e.response?.data?.error || 'Failed to send quote', 'error'),
+  });
+
+  const deleteQuoteMut = useMutation({
+    mutationFn: (quoteId) => deleteQuote(quoteId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['quote-pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['booking', jobId] });
+      addToast('Quote deleted', 'success');
+    },
+    onError: (e) => addToast(e.response?.data?.error || 'Failed to delete quote', 'error'),
   });
 
   const { data: servicesMenu } = useQuery({
@@ -1458,6 +1470,13 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                             <button className="quote-action-btn quote-action-accept" title="Mark accepted"
                               onClick={() => updateQuoteMut.mutate({ id: q.id, data: { status: 'accepted' } })}>
                               <i className="fas fa-check"></i>
+                            </button>
+                          )}
+                          {q.status !== 'converted' && (
+                            <button className="quote-action-btn quote-action-delete" title="Delete quote"
+                              onClick={() => { if (window.confirm('Delete this quote?')) deleteQuoteMut.mutate(q.id); }}
+                              disabled={deleteQuoteMut.isPending}>
+                              <i className={`fas ${deleteQuoteMut.isPending ? 'fa-spinner fa-spin' : 'fa-trash-alt'}`}></i>
                             </button>
                           )}
                         </div>

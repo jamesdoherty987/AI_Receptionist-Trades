@@ -974,6 +974,10 @@
 .quote-action-decline { border-color: #fca5a5; color: #dc2626; background: #fef2f2; }
 .quote-action-decline:hover { background: #fee2e2; border-color: #f87171; }
 
+/* Delete */
+.quote-action-delete { border-color: #fca5a5; color: #dc2626; background: #fef2f2; }
+.quote-action-delete:hover { background: #fee2e2; border-color: #f87171; }
+
 /* Convert / Schedule Job */
 .quote-action-convert {
   border-color: #c4b5fd;
