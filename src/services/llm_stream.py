@@ -1919,6 +1919,64 @@ TOOL RULES:
             try:
                 arguments = json.loads(tool_call["function"]["arguments"])
                 
+                # GUARD: Block get_next_available/search_availability if returning customer's address hasn't been confirmed
+                # The prompt requires the AI to read out the stored address and get confirmation before checking availability.
+                # The LLM often skips this step for returning customers.
+                if tool_name in ('get_next_available', 'search_availability') and not user_wants_reschedule:
+                    _stored_address = call_state.get("customer_address", "") if call_state else ""
+                    if _stored_address:
+                        # This is a returning customer with an address on file — check if it was confirmed
+                        _address_confirmed_in_convo = False
+                        _ai_read_address = False
+                        for _msg in messages:
+                            if _msg.get("role") == "assistant" and _msg.get("content"):
+                                _ai_content = (_msg.get("content") or "").lower()
+                                # Check if AI read out the address (confirming it with the caller)
+                                if any(p in _ai_content for p in [
+                                    "same address", "is it still", "address on file",
+                                    "address i have", _stored_address.lower()[:20]
+                                ]):
+                                    _ai_read_address = True
+                            elif _msg.get("role") == "user" and _ai_read_address:
+                                # The caller responded after the AI read the address — address topic handled
+                                # Whether they said "yes" (confirmed) or "no" (will give new one),
+                                # the AI has done its job of asking. The new address will be captured
+                                # by the auto-inject logic or passed directly by the LLM.
+                                _address_confirmed_in_convo = True
+                                break
+                        
+                        if not _address_confirmed_in_convo:
+                            # Also check if the caller_identified flag is False — name not confirmed yet either
+                            _name_confirmed = call_state.get("caller_identified", False) if call_state else False
+                            _customer_name = call_state.get("customer_name", "") if call_state else ""
+                            
+                            if not _name_confirmed and _customer_name:
+                                _first_name = _customer_name.split()[0] if _customer_name else ""
+                                _error_msg = (
+                                    f"STOP. This is a returning customer. You must first confirm their name: "
+                                    f"'I have the name under this number as {_customer_name}, is that right?' "
+                                    f"Then confirm their address: 'Is it still the same address, {_stored_address}?' "
+                                    f"Wait for their YES/NO before checking availability."
+                                )
+                            else:
+                                _error_msg = (
+                                    f"STOP. This is a returning customer. You must confirm their address before checking availability. "
+                                    f"Say: 'Is it still the same address, {_stored_address}?' and wait for their YES/NO. "
+                                    f"If they want to change it, ask for the new address."
+                                )
+                            
+                            print(f"   🚫 [ADDRESS_GUARD] BLOCKED {tool_name} — returning customer address not confirmed yet")
+                            tool_results.append({
+                                "tool_call_id": tool_call["id"],
+                                "role": "tool",
+                                "name": tool_name,
+                                "content": json.dumps({
+                                    "success": False,
+                                    "error": _error_msg
+                                })
+                            })
+                            continue
+                
                 # GUARD: Block get_next_available/search_availability if email hasn't been asked yet (new customers)
                 # The prompt requires email BEFORE checking availability. The LLM sometimes skips this step.
                 if tool_name in ('get_next_available', 'search_availability') and not user_wants_reschedule:
@@ -1994,6 +2052,55 @@ TOOL RULES:
                 # doesn't pass it in the book_job arguments, causing the booking to fail.
                 if tool_name in ('book_job', 'book_appointment') and not arguments.get('job_address'):
                     stored_addr = call_state.get("customer_address", "") if call_state else ""
+                    
+                    # For returning customers: check if they gave a NEW address after the AI
+                    # read out the stored one. If so, use the new address instead.
+                    _new_addr_from_convo = ""
+                    if stored_addr:
+                        _ai_read_stored_addr = False
+                        for _msg in messages:
+                            if _msg.get("role") == "assistant" and _msg.get("content"):
+                                _ai_content = (_msg.get("content") or "").lower()
+                                if any(p in _ai_content for p in [
+                                    "same address", "is it still", "address on file",
+                                    "address i have", stored_addr.lower()[:20]
+                                ]):
+                                    _ai_read_stored_addr = True
+                            elif _msg.get("role") == "user" and _ai_read_stored_addr:
+                                _user_resp = (_msg.get("content") or "").strip()
+                                _user_lower = _user_resp.lower()
+                                # Check if they said NO and gave a new address
+                                _said_no = any(p in _user_lower for p in ["no", "different", "changed", "moved", "new address", "actually"])
+                                _words = _user_resp.split()
+                                _has_number = any(c.isdigit() for c in _user_resp)
+                                if _said_no and len(_words) >= 3 and _has_number:
+                                    # They gave a new address in the same message as saying no
+                                    for _prefix in ["no. ", "no, ", "actually ", "i've moved to ", "it's now ", "the new address is "]:
+                                        if _user_lower.startswith(_prefix):
+                                            _user_resp = _user_resp[len(_prefix):]
+                                    _new_addr_from_convo = _user_resp.strip().rstrip('.')
+                                    break
+                                elif _said_no:
+                                    # They said no but didn't give address yet — check next user message
+                                    continue
+                                elif not _said_no and len(_words) >= 3 and _has_number:
+                                    # They gave a new address without explicitly saying no (just provided it)
+                                    for _prefix in ["yeah. ", "yes. ", "sure. ", "it's ", "my address is ", "the address is "]:
+                                        if _user_lower.startswith(_prefix):
+                                            _user_resp = _user_resp[len(_prefix):]
+                                    _new_addr_from_convo = _user_resp.strip().rstrip('.')
+                                    break
+                                else:
+                                    _ai_read_stored_addr = False  # Reset
+                    
+                    # Use new address from conversation if found, otherwise fall back to stored
+                    if _new_addr_from_convo:
+                        stored_addr = _new_addr_from_convo
+                        # Update call_state so the new address is used everywhere
+                        if call_state:
+                            call_state['customer_address'] = _new_addr_from_convo
+                            print(f"   📍 [AUTO-INJECT] Customer gave NEW address: {_new_addr_from_convo}")
+                    
                     if not stored_addr:
                         # Scan conversation for address — look for user messages after AI asked for address
                         _ai_asked_addr = False
