@@ -346,6 +346,7 @@ function JobsTab({ bookings, showInvoiceButtons = true }) {
   const BOARD_COLUMNS = [
     { key: 'pending', label: 'New', color: '#f59e0b', icon: 'fa-clock' },
     { key: 'quote_sent', label: 'Quote Sent', color: '#3b82f6', icon: 'fa-paper-plane' },
+    { key: 'quote_accepted', label: 'Quote Accepted', color: '#10b981', icon: 'fa-handshake' },
     { key: 'scheduled', label: 'Scheduled', color: '#6366f1', icon: 'fa-calendar-check' },
     { key: 'in-progress', label: 'In Progress', color: '#8b5cf6', icon: 'fa-wrench' },
     { key: 'completed', label: 'Completed', color: '#22c55e', icon: 'fa-check-circle' },

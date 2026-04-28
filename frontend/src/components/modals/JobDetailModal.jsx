@@ -861,6 +861,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                     {[
                       { key: 'pending', icon: 'fa-clock', color: '#f59e0b', label: 'New' },
                       { key: 'quote_sent', icon: 'fa-paper-plane', color: '#3b82f6', label: 'Quote Sent' },
+                      { key: 'quote_accepted', icon: 'fa-handshake', color: '#10b981', label: 'Quote Accepted' },
                       { key: 'scheduled', icon: 'fa-calendar-check', color: '#6366f1', label: 'Scheduled' },
                       { key: 'in-progress', icon: 'fa-wrench', color: '#8b5cf6', label: 'In Progress' },
                       { key: 'completed', icon: 'fa-check-circle', color: '#22c55e', label: 'Completed' },

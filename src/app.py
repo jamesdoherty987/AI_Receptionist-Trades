@@ -15410,6 +15410,7 @@ def generate_quote_accept_link(quote_id):
     db = get_database()
     company_id = session.get('company_id')
     conn = db.get_connection()
+    cur = None
     try:
         from psycopg2.extras import RealDictCursor
         cur = conn.cursor(cursor_factory=RealDictCursor)
@@ -15433,8 +15434,8 @@ def generate_quote_accept_link(quote_id):
         link = f"{public_url}/quote/accept/{token}"
         return jsonify({"link": link, "token": token})
     finally:
-        cur.close()
-        db.return_connection(conn)
+        if cur:
+            cur.close()
         db.return_connection(conn)
 
 
@@ -15496,7 +15497,7 @@ def accept_quote_by_token(token):
             conn.commit()
         except Exception:
             conn.rollback()
-        cur.execute("SELECT id, company_id, status FROM quotes WHERE accept_token = %s", (token,))
+        cur.execute("SELECT id, company_id, status, converted_booking_id, source_booking_id FROM quotes WHERE accept_token = %s", (token,))
         quote = cur.fetchone()
         if not quote:
             return jsonify({"error": "Quote not found"}), 404
@@ -15514,8 +15515,75 @@ def accept_quote_by_token(token):
                 UPDATE quotes SET status = 'accepted',
                 updated_at = CURRENT_TIMESTAMP WHERE id = %s
             """, (quote['id'],))
+        # Also update the linked job/booking status to quote_accepted
+        booking_id = quote.get('source_booking_id') or quote.get('converted_booking_id')
+        if booking_id:
+            try:
+                cur.execute("""
+                    UPDATE bookings SET status = 'quote_accepted',
+                    updated_at = CURRENT_TIMESTAMP WHERE id = %s
+                """, (booking_id,))
+            except Exception:
+                pass
         conn.commit()
         return jsonify({"success": True, "message": "Quote accepted! We'll be in touch to schedule your job."})
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if cur:
+            cur.close()
+        db.return_connection(conn)
+
+
+@app.route("/api/quote/decline/<token>", methods=["POST"])
+def decline_quote_by_token(token):
+    """Public: customer declines a quote."""
+    db = get_database()
+    conn = db.get_connection()
+    cur = None
+    try:
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        data = request.get_json() or {}
+        reason = (data.get('reason') or '').strip()[:500]
+
+        cur.execute("SELECT id, company_id, status, source_booking_id, converted_booking_id FROM quotes WHERE accept_token = %s", (token,))
+        quote = cur.fetchone()
+        if not quote:
+            return jsonify({"error": "Quote not found"}), 404
+        if quote.get('status') == 'declined':
+            return jsonify({"already_declined": True})
+        if quote.get('status') in ('accepted', 'converted'):
+            return jsonify({"error": "This quote has already been accepted"}), 400
+
+        # Update quote status
+        try:
+            cur.execute("""
+                UPDATE quotes SET status = 'declined', pipeline_stage = 'lost',
+                lost_reason = %s, lost_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP WHERE id = %s
+            """, (reason or 'Customer declined', quote['id']))
+        except Exception:
+            conn.rollback()
+            cur.execute("""
+                UPDATE quotes SET status = 'declined',
+                updated_at = CURRENT_TIMESTAMP WHERE id = %s
+            """, (quote['id'],))
+
+        # Update linked booking — mark as cancelled since customer declined
+        booking_id = quote.get('source_booking_id') or quote.get('converted_booking_id')
+        if booking_id:
+            try:
+                cur.execute("""
+                    UPDATE bookings SET status = 'cancelled',
+                    updated_at = CURRENT_TIMESTAMP WHERE id = %s
+                """, (booking_id,))
+            except Exception:
+                pass
+
+        conn.commit()
+        return jsonify({"success": True, "message": "Quote declined."})
     except Exception as e:
         conn.rollback()
         return jsonify({"error": str(e)}), 500

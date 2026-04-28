@@ -465,6 +465,7 @@ export const generateQuoteAcceptLink = (id) => api.post(`/api/quotes/${id}/accep
 export const sendQuoteFollowUp = (id, message) => api.post(`/api/quotes/${id}/follow-up`, { message });
 export const getQuoteByAcceptToken = (token) => api.get(`/api/quote/accept/${token}`);
 export const acceptQuoteByToken = (token) => api.post(`/api/quote/accept/${token}`);
+export const declineQuoteByToken = (token, reason) => api.post(`/api/quote/decline/${token}`, { reason });
 
 // Follow-up Sequences
 export const getSequences = () => api.get('/api/sequences');

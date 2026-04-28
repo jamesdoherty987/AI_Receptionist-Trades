@@ -122,6 +122,19 @@
 .qa-accept-btn { width: 100%; padding: 16px; background: #10b981; color: white; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 16px; transition: background 0.15s; min-height: 52px; -webkit-appearance: none; appearance: none; }
 .qa-accept-btn:hover { background: #059669; }
 .qa-accept-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.qa-decline-btn { width: 100%; padding: 12px; background: transparent; color: #94a3b8; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 0.85rem; font-weight: 500; cursor: pointer; margin-top: 8px; transition: all 0.15s; }
+.qa-decline-btn:hover { color: #ef4444; border-color: #fca5a5; background: #fef2f2; }
+.qa-decline-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.qa-decline-form { margin-top: 16px; }
+.qa-decline-prompt { font-size: 0.85rem; color: #64748b; margin-bottom: 8px; }
+.qa-decline-textarea { width: 100%; padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 0.85rem; resize: vertical; font-family: inherit; box-sizing: border-box; }
+.qa-decline-textarea:focus { outline: none; border-color: #94a3b8; }
+.qa-decline-actions { display: flex; gap: 8px; margin-top: 12px; }
+.qa-decline-cancel { flex: 1; padding: 12px; background: #f1f5f9; color: #475569; border: none; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.qa-decline-cancel:hover { background: #e2e8f0; }
+.qa-decline-confirm { flex: 1; padding: 12px; background: #ef4444; color: white; border: none; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.qa-decline-confirm:hover { background: #dc2626; }
+.qa-decline-confirm:disabled { opacity: 0.6; cursor: not-allowed; }
 .qa-disclaimer { font-size: 0.72rem; color: #94a3b8; text-align: center; margin: 10px 0 0; }
 
 /* Duration badge in portal */
