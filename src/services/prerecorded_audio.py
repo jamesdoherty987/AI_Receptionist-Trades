@@ -103,7 +103,6 @@ FILLER_PHRASES = {
     "ask_email": "And can I get an email address for the account? Please spell it out for me letter by letter.",
     "ask_eircode": "Do you know your eircode?",
     "ask_address": "Can I get the full address instead?",
-    "ask_phone_confirm": "Is that a good number to reach you on?",
     "ask_what_day_booking": "What day is your booking for?",
     "anything_else": "Is there anything else I can help with?",
     # === Direct response phrases (bypass ElevenLabs for tool result responses) ===
@@ -165,7 +164,7 @@ SHORT_ACKNOWLEDGMENT_FILLERS = ["grand", "perfect", "great", "got_it", "okay", "
 ACKNOWLEDGMENT_ONE_MOMENT_FILLERS = ["got_it_one_moment", "okay_one_moment", "right_one_moment", "sure_one_moment", "no_problem_one_moment"]
 TRANSFER_FILLERS = ["transferring", "connecting", "let_me_connect"]
 # Prerecorded questions — used by direct response path to skip TTS
-QUESTION_PHRASES = ["ask_name", "ask_email", "ask_eircode", "ask_address", "ask_phone_confirm", 
+QUESTION_PHRASES = ["ask_name", "ask_email", "ask_eircode", "ask_address", 
                     "ask_what_day_booking", "anything_else"]
 
 # Direct response phrases — used by get_filler_id_from_message to match tool result responses

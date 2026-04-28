@@ -162,6 +162,7 @@ async def media_handler(ws):
     
     # TTS state
     speaking = False
+    audio_sending = False  # True only when audio chunks are actually being sent to caller
     interrupt = False
     respond_task = None
     tts_started_at = 0.0
@@ -212,12 +213,13 @@ async def media_handler(ws):
         
         Key insight: Don't wait for filler to finish before starting LLM work!
         """
-        nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at, llm_processing, last_tts_audio_done, last_tts_success
+        nonlocal speaking, interrupt, respond_task, tts_started_at, tts_ended_at, llm_processing, last_tts_audio_done, last_tts_success, audio_sending
 
         async def run():
-            nonlocal speaking, tts_started_at, tts_ended_at, llm_processing, conversation_log, response_times, last_tts_audio_done, last_tts_success
+            nonlocal speaking, tts_started_at, tts_ended_at, llm_processing, conversation_log, response_times, last_tts_audio_done, last_tts_success, audio_sending
             run._prerecorded_playing = False  # Track if prerecorded audio is still playing
             speaking = True
+            audio_sending = False  # Will be set True when audio actually starts sending
             interrupt = False
             tts_started_at = asyncio.get_event_loop().time()
             run_start = time_module.time()
@@ -311,6 +313,7 @@ async def media_handler(ws):
                             filler_audio = get_filler_audio(filler_id)
                             if filler_audio:
                                 print(f"   🔊 Playing filler: {filler_id}")
+                                audio_sending = True
                                 await send_prerecorded_audio(ws, stream_sid, filler_audio)
                                 print(f"[PIPELINE] ⏱️ Filler audio sent in {time_module.time() - filler_start:.3f}s")
                                 return True
@@ -318,6 +321,7 @@ async def media_handler(ws):
                         print(f"   📢 TTS filler: '{filler_msg}'")
                         async def filler_tokens():
                             yield filler_msg
+                        audio_sending = True
                         await stream_tts(filler_tokens(), ws, stream_sid, lambda: interrupt)
                         print(f"[PIPELINE] ⏱️ TTS filler done in {time_module.time() - filler_start:.3f}s")
                         return True
@@ -410,6 +414,7 @@ async def media_handler(ws):
                                 prerecorded_data = get_filler_audio(phrase_id)
                                 if prerecorded_data:
                                     print(f"   🔊 [PARALLEL] Playing prerecorded: {phrase_id}")
+                                    audio_sending = True
                                     await send_prerecorded_audio(ws, stream_sid, prerecorded_data)
                                     playback_seconds = len(prerecorded_data) / 8000.0
                                     tts_ended_at = asyncio.get_event_loop().time() + playback_seconds
@@ -417,10 +422,11 @@ async def media_handler(ws):
                                     last_tts_success = True
                                     run._prerecorded_playing = True
                                     async def _clear_after_prerecorded(delay):
-                                        nonlocal speaking
+                                        nonlocal speaking, audio_sending
                                         await asyncio.sleep(delay)
                                         asr.clear()
                                         speaking = False
+                                        audio_sending = False
                                         run._prerecorded_playing = False
                                     asyncio.create_task(_clear_after_prerecorded(playback_seconds))
                                     try:
@@ -438,7 +444,7 @@ async def media_handler(ws):
                     if not _prerecorded_played:
                         _queued_audio_done_fired = False
                         def _on_queued_audio_done():
-                            nonlocal last_tts_audio_done, _queued_audio_done_fired, speaking, tts_ended_at, last_tts_success
+                            nonlocal last_tts_audio_done, _queued_audio_done_fired, speaking, tts_ended_at, last_tts_success, audio_sending
                             last_tts_audio_done = asyncio.get_event_loop().time()
                             _queued_audio_done_fired = True
                             last_tts_success = True
@@ -449,10 +455,12 @@ async def media_handler(ws):
                             # If we wait, the caller's response gets stuck in barge-in mode
                             # and the fallback check never runs — causing a freeze.
                             speaking = False
+                            audio_sending = False
                             tts_ended_at = last_tts_audio_done
                             print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False at audio finish")
                         tts_pre_call = time_module.time()
                         print(f"   📡 [QUEUE→TTS] Starting TTS stream at {tts_pre_call - parallel_start:.3f}s into parallel flow")
+                        audio_sending = True
                         await stream_tts(queued_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_queued_audio_done)
                         tts_post_call = time_module.time()
                         print(f"   📡 [QUEUE→TTS] stream_tts returned after {tts_post_call - tts_pre_call:.3f}s")
@@ -460,6 +468,7 @@ async def media_handler(ws):
                             last_tts_audio_done = asyncio.get_event_loop().time()
                             asr.clear()  # Fallback clear if callback didn't fire
                             speaking = False
+                            audio_sending = False
                             tts_ended_at = last_tts_audio_done
                             last_tts_success = False  # TTS didn't deliver audio — allow caller to repeat
                             print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False (fallback — callback didn't fire)")
@@ -502,6 +511,7 @@ async def media_handler(ws):
                                     transfer_number = token.replace("<<<TRANSFER:", "").replace(">>>", "").strip()
                             # Play prerecorded audio directly
                             speaking = True
+                            audio_sending = True
                             tts_started_at = time_module.time()
                             await send_prerecorded_audio(ws, stream_sid, prerecorded_audio)
                             # Schedule speaking=False after playback (non-blocking)
@@ -511,10 +521,11 @@ async def media_handler(ws):
                             last_tts_success = True
                             run._prerecorded_playing = True
                             async def _clear_after_direct_prerecorded(delay):
-                                nonlocal speaking
+                                nonlocal speaking, audio_sending
                                 await asyncio.sleep(delay)
                                 asr.clear()
                                 speaking = False
+                                audio_sending = False
                                 run._prerecorded_playing = False
                             asyncio.create_task(_clear_after_direct_prerecorded(playback_seconds))
                             # Get the text for full_text tracking
@@ -530,11 +541,13 @@ async def media_handler(ws):
                                 async def fallback_stream():
                                     yield fallback_text
                                 speaking = True
+                                audio_sending = True
                                 tts_started_at = time_module.time()
                                 await stream_tts(fallback_stream(), ws, stream_sid, lambda: interrupt)
                                 last_tts_audio_done = asyncio.get_event_loop().time()
                                 asr.clear()
                                 speaking = False
+                                audio_sending = False
                                 tts_ended_at = last_tts_audio_done
                                 full_text = fallback_text
                     else:
@@ -571,19 +584,22 @@ async def media_handler(ws):
                         tts_call_start = time_module.time()
                         _direct_audio_done_fired = False
                         def _on_direct_audio_done():
-                            nonlocal last_tts_audio_done, _direct_audio_done_fired, speaking, tts_ended_at, last_tts_success
+                            nonlocal last_tts_audio_done, _direct_audio_done_fired, speaking, tts_ended_at, last_tts_success, audio_sending
                             last_tts_audio_done = asyncio.get_event_loop().time()
                             _direct_audio_done_fired = True
                             last_tts_success = True
                             asr.clear()
                             speaking = False
+                            audio_sending = False
                             tts_ended_at = last_tts_audio_done
                             print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False at audio finish")
+                        audio_sending = True
                         await stream_tts(direct_stream(), ws, stream_sid, lambda: interrupt, on_audio_done=_on_direct_audio_done)
                         if not _direct_audio_done_fired:
                             last_tts_audio_done = asyncio.get_event_loop().time()
                             asr.clear()
                             speaking = False
+                            audio_sending = False
                             tts_ended_at = last_tts_audio_done
                             last_tts_success = False
                             print(f"[AUDIO_DONE] 🧹 ASR cleared + speaking=False (fallback — callback didn't fire)")
@@ -704,6 +720,7 @@ async def media_handler(ws):
                 if not hasattr(run, '_prerecorded_playing') or not run._prerecorded_playing:
                     tts_ended_at = asyncio.get_event_loop().time()
                     speaking = False
+                    audio_sending = False
                 llm_processing = False
                 ready_time = time_module.time()
                 # Calculate how long the audio will actually play on the phone
@@ -725,7 +742,7 @@ async def media_handler(ws):
 
     async def greet():
         """Send initial greeting — personalized for returning customers or outbound calls"""
-        nonlocal speaking, stream_sid
+        nonlocal speaking, stream_sid, audio_sending
         
         if is_outbound and outbound_call_type == "lost_job_callback":
             # Outbound: lost job follow-up greeting
@@ -773,11 +790,13 @@ async def media_handler(ws):
                 playback_seconds = len(audio) / 8000.0
                 tts_ended_at = asyncio.get_event_loop().time() + playback_seconds
                 last_tts_audio_done = tts_ended_at
+                audio_sending = True
                 async def _clear_after_greeting(delay):
-                    nonlocal speaking
+                    nonlocal speaking, audio_sending
                     await asyncio.sleep(delay)
                     asr.clear()
                     speaking = False
+                    audio_sending = False
                 asyncio.create_task(_clear_after_greeting(playback_seconds))
                 return
         
@@ -961,8 +980,9 @@ async def media_handler(ws):
                 else:
                     # NEW CUSTOMER — phone not found
                     phone_instruction = (
-                        f"PHONE NUMBER: Caller's number is {formatted_phone} (from caller ID). "
-                        f"Confirm this number with them: 'Is {formatted_phone} a good number to reach you?'"
+                        f"PHONE NUMBER: Caller's number is {formatted_phone} (captured automatically from caller ID). "
+                        f"Do NOT mention, confirm, or read back the phone number. Do NOT ask 'Is {formatted_phone} a good number?' or anything about the phone. "
+                        f"The phone is already saved — skip straight to location after getting their name."
                     ) if caller_phone else "PHONE NUMBER: Not detected. Ask for their number."
                     
                     conversation.append({
@@ -974,6 +994,11 @@ async def media_handler(ws):
                             "Do NOT spell the name back or ask them to confirm spelling — the system will extract the correct name from the transcript after the call. "
                             "Just acknowledge the name and move on. "
                             f"{phone_instruction} "
+                            "IMPORTANT: After getting eircode/address, you MUST ask for email: "
+                            "'And can I get an email address for the account? Please spell it out for me letter by letter.' "
+                            "Do NOT skip the email step — always ask for email BEFORE checking availability. "
+                            "IMPORTANT: Before booking, you MUST confirm the day, time, and service with the caller. "
+                            "Example: 'So that's Monday at 9 AM for the burst pipe. Is that all correct?' — wait for YES before calling book_job. "
                             "The system will extract and verify name, address, eircode, and email from the transcript after the call. "
                             "Say things ONCE only.]"
                         )
@@ -1015,20 +1040,24 @@ async def media_handler(ws):
                         print(f"[BG_AUDIO] 🔊 Starting ambient audio loop ({len(ambient)} bytes, {total_chunks} chunks, volume={AMBIENT_VOLUME})")
                         
                         while not bg_audio_stop.is_set():
-                            # Pause when AI is speaking — TTS handles its own audio
+                            # Pause when AI audio is actually being sent to the caller
                             # IMPORTANT: Do NOT break out of the loop! Just pause and
-                            # resume when speaking finishes. The ambient audio should
+                            # resume when audio finishes. The ambient audio should
                             # play for the entire duration of the call.
-                            if speaking:
+                            # NOTE: We check audio_sending (not speaking) so ambient
+                            # continues during LLM processing before audio starts.
+                            # audio_sending is set True right before send_prerecorded_audio
+                            # or stream_tts calls, and False when audio finishes.
+                            if speaking and audio_sending:
                                 try:
                                     await asyncio.wait_for(bg_audio_stop.wait(), timeout=0.2)
                                     if bg_audio_stop.is_set():
                                         break  # Only break if call is ending
                                 except asyncio.TimeoutError:
-                                    continue  # Keep pausing while speaking
+                                    continue  # Keep pausing while audio is sending
                             
                             for _ in range(BATCH_CHUNKS):
-                                if bg_audio_stop.is_set() or speaking:
+                                if bg_audio_stop.is_set() or (speaking and audio_sending):
                                     break
                                 offset = (chunk_idx % total_chunks) * chunk_size
                                 chunk = ambient[offset:offset + chunk_size]
@@ -1167,6 +1196,7 @@ async def media_handler(ws):
                                 if respond_task and not respond_task.done():
                                     respond_task.cancel()
                                 speaking = False
+                                audio_sending = False
                                 tts_ended_at = now
                                 bargein_since = 0.0
                                 # Clear stale ASR state from during TTS playback.

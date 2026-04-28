@@ -65,6 +65,7 @@ function InventoryTab() {
   const [adjustingId, setAdjustingId] = useState(null);
   const [adjustVal, setAdjustVal] = useState('');
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
   /* ── Queries & Mutations ── */
   const { data, isLoading } = useQuery({
@@ -206,6 +207,12 @@ function InventoryTab() {
     if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortBy(field); setSortDir('asc'); }
   };
+
+  const toggleCategoryCollapse = (cat) => {
+    setCollapsedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  const hasMultipleCategories = Object.keys(grouped).length > 1;
 
   return (
     <div className="inv-tab">
@@ -373,39 +380,33 @@ function InventoryTab() {
       {/* Toolbar */}
       {materials.length > 0 && (
         <div className="inv-toolbar">
-          <div className="inv-toolbar-top">
-            <div className="inv-search">
-              <i className="fas fa-search"></i>
-              <input type="text" placeholder={`Search ${(industry?.terminology?.inventoryTab || 'inventory').toLowerCase()}...`} value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)} />
-              {searchTerm && (
-                <button className="inv-search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search">
-                  <i className="fas fa-times"></i>
-                </button>
-              )}
-            </div>
-            {existingCategories.length > 0 && (
-              <div className="inv-filter">
-                <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
-                  <option value="all">All Categories</option>
-                  {existingCategories.sort().map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            )}
-            {(trackedItems > 0 || showExpiry) && (
-              <div className="inv-filter">
-                <select value={filterStock} onChange={e => setFilterStock(e.target.value)}>
-                  <option value="all">All Stock</option>
-                  <option value="tracked">Tracked Only</option>
-                  <option value="low">Low Stock</option>
-                  <option value="out">Out of Stock</option>
-                  {showExpiry && <option value="expiring">Expiring Soon</option>}
-                  {showExpiry && <option value="expired">Expired</option>}
-                </select>
-              </div>
+          <div className="inv-search">
+            <i className="fas fa-search"></i>
+            <input type="text" placeholder={`Search ${(industry?.terminology?.inventoryTab || 'inventory').toLowerCase()}...`} value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)} />
+            {searchTerm && (
+              <button className="inv-search-clear" onClick={() => setSearchTerm('')} aria-label="Clear search">
+                <i className="fas fa-times"></i>
+              </button>
             )}
           </div>
-          <div className="inv-toolbar-bottom">
+          <div className="inv-toolbar-right">
+            {existingCategories.length > 0 && (
+              <select className="inv-category-filter" value={filterCategory} onChange={e => setFilterCategory(e.target.value)} aria-label="Filter by category">
+                <option value="all">All Categories</option>
+                {existingCategories.sort().map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+            {(trackedItems > 0 || showExpiry) && (
+              <select className="inv-stock-filter" value={filterStock} onChange={e => setFilterStock(e.target.value)} aria-label="Filter by stock">
+                <option value="all">All Stock</option>
+                <option value="tracked">Tracked Only</option>
+                <option value="low">Low Stock</option>
+                <option value="out">Out of Stock</option>
+                {showExpiry && <option value="expiring">Expiring Soon</option>}
+                {showExpiry && <option value="expired">Expired</option>}
+              </select>
+            )}
             <div className="inv-sort-chips">
               {[
                 { key: 'name', label: 'Name', icon: 'fa-font' },
@@ -446,11 +447,49 @@ function InventoryTab() {
       )}
 
       {/* Item list grouped by category */}
-      {filtered.length > 0 && (
+      {filtered.length > 0 && hasMultipleCategories && filterCategory === 'all' ? (
+        <div className="inv-groups">
+          {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([category, items]) => {
+            const isCollapsed = collapsedCategories[category];
+            return (
+              <div key={category} className="inv-group">
+                <button className="inv-group-header" onClick={() => toggleCategoryCollapse(category)}>
+                  <span className="inv-group-dot"></span>
+                  <span className="inv-group-name">{category}</span>
+                  <span className="inv-group-count">{items.length}</span>
+                  <i className={`fas fa-chevron-${isCollapsed ? 'right' : 'down'} inv-group-arrow`}></i>
+                </button>
+                {!isCollapsed && (
+                  <div className="inv-list">
+                    {items.map(item => (
+                      <InventoryCard key={item.id} item={item}
+                        isEditing={editingId === item.id}
+                        isAdjusting={adjustingId === item.id}
+                        adjustVal={adjustingId === item.id ? adjustVal : ''}
+                        onAdjustValChange={setAdjustVal}
+                        onEdit={() => setEditingId(item.id)}
+                        onSave={(d) => updateMut.mutate({ id: item.id, data: d })}
+                        onCancel={() => setEditingId(null)}
+                        onDelete={() => setDeleteConfirm(item)}
+                        onAdjustStart={() => { setAdjustingId(item.id); setAdjustVal(''); }}
+                        onAdjustCancel={() => { setAdjustingId(null); setAdjustVal(''); }}
+                        onAdjustSubmit={(adj) => adjustMut.mutate({ id: item.id, adjustment: adj })}
+                        isPending={updateMut.isPending}
+                        isAdjustPending={adjustMut.isPending}
+                        allCategories={allCategories}
+                        invConfig={{ showCostPrice, showExpiry, showBatchNumber, showLocation, locationLabel, locationPlaceholder, namePlaceholder, supplierPlaceholder, UNIT_OPTIONS }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : filtered.length > 0 ? (
         <div className="inv-groups">
           {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([category, items]) => (
             <div key={category} className="inv-group">
-              <div className="inv-group-header">
+              <div className="inv-group-header-flat">
                 <span className="inv-group-name">{category}</span>
                 <span className="inv-group-count">{items.length}</span>
               </div>
@@ -477,7 +516,7 @@ function InventoryTab() {
             </div>
           ))}
         </div>
-      )}
+      ) : null}
 
       {/* Delete Confirmation */}
       {deleteConfirm && (
@@ -488,7 +527,7 @@ function InventoryTab() {
             <p className="delete-warning">Remove <strong>{deleteConfirm.name}</strong> from your {(industry?.terminology?.inventoryTab || 'inventory').toLowerCase()}?</p>
             <p className="delete-cascade-warning">
               <i className="fas fa-info-circle"></i>
-              Items already logged on jobs won't be affected.
+              Items already logged on jobs won&apos;t be affected.
             </p>
             <div className="delete-confirm-actions">
               <button className="btn btn-secondary" onClick={() => setDeleteConfirm(null)}>Cancel</button>

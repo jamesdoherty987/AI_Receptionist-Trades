@@ -903,7 +903,22 @@ async def stream_llm(messages, caller_phone=None, company_id=None, call_state: C
             # NOTE: Day names (monday, tuesday, etc.) intentionally excluded!
             # Users say day names when PICKING a slot ("I'll take Wednesday") not just checking availability.
             # Including them caused filler misfires where the LLM just confirms details instead of calling a tool.
-            if any(phrase in user_message for phrase in availability_phrases):
+            
+            # GUARD: If the AI just offered availability options (day+time in prev message),
+            # and the user responds with a day/time (picking a slot), this is a TIME SELECTION
+            # not an availability check. Don't trigger filler — the LLM will just confirm.
+            _day_names_lower = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            _time_indicators = ["am", "pm", "o'clock"]
+            _prev_has_day = any(d in prev_assistant_msg for d in _day_names_lower)
+            _prev_has_time = any(t in prev_assistant_msg for t in _time_indicators)
+            _ai_offered_options = _prev_has_day and _prev_has_time and any(
+                p in prev_assistant_msg for p in ["which day", "which time", "works for you", "suits you", "what time"]
+            )
+            _user_picking_slot = _ai_offered_options and any(
+                t in user_message for t in ["tomorrow", "today", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            ) and any(t in user_message for t in ["am", "pm", "o'clock", "8", "9", "10", "11", "12", "1", "2", "3", "4", "5"])
+            
+            if any(phrase in user_message for phrase in availability_phrases) and not _user_picking_slot:
                 likely_needs_tool = True
                 detected_intent = "AVAILABILITY_CHECK"
                 checking_msg = random.choice(generic_fillers)
@@ -1903,6 +1918,34 @@ TOOL RULES:
             
             try:
                 arguments = json.loads(tool_call["function"]["arguments"])
+                
+                # GUARD: Block get_next_available/search_availability if email hasn't been asked yet (new customers)
+                # The prompt requires email BEFORE checking availability. The LLM sometimes skips this step.
+                if tool_name in ('get_next_available', 'search_availability') and not user_wants_reschedule:
+                    _email_already_asked = any(
+                        "email" in (msg.get("content") or "").lower()
+                        for msg in messages
+                        if msg.get("role") == "assistant" and msg.get("content")
+                    )
+                    # Check if email is already on file (system context says "Skip asking for email" or "EMAIL ON FILE")
+                    _email_on_file = any(
+                        ("skip asking for email" in (msg.get("content") or "").lower() or
+                         "email on file" in (msg.get("content") or "").lower())
+                        for msg in messages
+                        if msg.get("role") == "system"
+                    )
+                    if not _email_already_asked and not _email_on_file:
+                        print(f"   🚫 [EMAIL_GUARD] BLOCKED {tool_name} — email not yet asked for new customer")
+                        tool_results.append({
+                            "tool_call_id": tool_call["id"],
+                            "role": "tool",
+                            "name": tool_name,
+                            "content": json.dumps({
+                                "success": False,
+                                "error": "STOP. You must ask for the customer's email address BEFORE checking availability. Say: 'And can I get an email address for the account? Please spell it out for me letter by letter.' Then wait for their response before calling get_next_available."
+                            })
+                        })
+                        continue
                 
                 # GUARD: Block book_job if the LLM hasn't confirmed with the caller first
                 # Only block on the FIRST book_job attempt when the user just picked a time
