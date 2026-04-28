@@ -1925,6 +1925,26 @@ TOOL RULES:
                 if tool_name in ('get_next_available', 'search_availability') and not user_wants_reschedule:
                     _stored_address = call_state.get("customer_address", "") if call_state else ""
                     if _stored_address:
+                        # First, detect if the LLM already confirmed the name naturally
+                        # (e.g. "I have the name under this number as James, is that right?" + user confirmed)
+                        if call_state and not call_state.get("caller_identified", False):
+                            _customer_name = call_state.get("customer_name", "") if call_state else ""
+                            if _customer_name:
+                                _name_mentioned = False
+                                for _msg in messages:
+                                    if _msg.get("role") == "assistant" and _msg.get("content"):
+                                        _ai_content = (_msg.get("content") or "").lower()
+                                        if _customer_name.lower() in _ai_content or _customer_name.split()[0].lower() in _ai_content:
+                                            if any(p in _ai_content for p in ["is that right", "is that correct", "name under this number"]):
+                                                _name_mentioned = True
+                                    elif _msg.get("role") == "user" and _name_mentioned:
+                                        _user_content = (_msg.get("content") or "").lower()
+                                        if any(w in _user_content for w in ["yeah", "yes", "that's right", "correct", "yep", "yea"]):
+                                            call_state["caller_identified"] = True
+                                            print(f"   ✅ [ADDRESS_GUARD] Name confirmed naturally in conversation")
+                                            break
+                                        _name_mentioned = False  # User said something else, reset
+                        
                         # This is a returning customer with an address on file — check if it was confirmed
                         _address_confirmed_in_convo = False
                         _ai_read_address = False
@@ -2510,9 +2530,17 @@ TOOL RULES:
                         else:
                             direct_response = result_content.get("message", "I don't have any availability soon. Would you like me to check further out?")
                     else:
-                        direct_response = "I couldn't check availability. What day would you like to try?"
+                        # Check if this was blocked by ADDRESS_GUARD — if so, let the error
+                        # flow back to the LLM so it can ask about the address
+                        _error_msg = result_content.get("error", "")
+                        if "must confirm" in _error_msg or "STOP" in _error_msg:
+                            direct_response = None  # Let LLM see the guard error and act on it
+                            print(f"   🚫 [DIRECT] get_next_available BLOCKED by guard — passing error to LLM")
+                        else:
+                            direct_response = "I couldn't check availability. What day would you like to try?"
                     
-                    print(f"   ⚡ [DIRECT] get_next_available -> '{direct_response[:50]}...'")
+                    if direct_response:
+                        print(f"   ⚡ [DIRECT] get_next_available -> '{direct_response[:50]}...'")
                 
                 # ========== SEARCH_RESCHEDULE_AVAILABILITY ==========
                 elif tool_name == "search_reschedule_availability":
@@ -2577,9 +2605,17 @@ TOOL RULES:
                         else:
                             direct_response = "I don't have anything available then. Would you like to try different dates?"
                     else:
-                        direct_response = "I couldn't search that time period. What dates would you like to check?"
+                        # Check if this was blocked by ADDRESS_GUARD — if so, let the error
+                        # flow back to the LLM so it can ask about the address
+                        _error_msg = result_content.get("error", "")
+                        if "must confirm" in _error_msg or "STOP" in _error_msg:
+                            direct_response = None  # Let LLM see the guard error and act on it
+                            print(f"   🚫 [DIRECT] search_availability BLOCKED by guard — passing error to LLM")
+                        else:
+                            direct_response = "I couldn't search that time period. What dates would you like to check?"
                     
-                    print(f"   ⚡ [DIRECT] search_availability -> '{direct_response[:50]}...')")
+                    if direct_response:
+                        print(f"   ⚡ [DIRECT] search_availability -> '{direct_response[:50]}...')")
                 
                 # ========== BOOK_JOB / BOOK_APPOINTMENT ==========
                 elif tool_name in ["book_appointment", "book_job"]:
