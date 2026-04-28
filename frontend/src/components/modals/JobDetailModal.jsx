@@ -74,6 +74,7 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
   const [showCreateQuote, setShowCreateQuote] = useState(false);
   const [previewQuote, setPreviewQuote] = useState(null);
   const [editingQuoteId, setEditingQuoteId] = useState(null);
+  const [confirmDeleteQuoteId, setConfirmDeleteQuoteId] = useState(null);
   const [editQuoteData, setEditQuoteData] = useState({ lineItems: [], notes: '' });
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
@@ -1473,11 +1474,25 @@ function JobDetailModal({ isOpen, onClose, jobId, showInvoiceButtons = true }) {
                             </button>
                           )}
                           {q.status !== 'converted' && (
-                            <button className="quote-action-btn quote-action-delete" title="Delete quote"
-                              onClick={() => { if (window.confirm('Delete this quote?')) deleteQuoteMut.mutate(q.id); }}
-                              disabled={deleteQuoteMut.isPending}>
-                              <i className={`fas ${deleteQuoteMut.isPending ? 'fa-spinner fa-spin' : 'fa-trash-alt'}`}></i>
-                            </button>
+                            confirmDeleteQuoteId === q.id ? (
+                              <span className="quote-delete-confirm">
+                                <button className="quote-action-btn quote-action-delete" title="Confirm delete"
+                                  onClick={() => { deleteQuoteMut.mutate(q.id); setConfirmDeleteQuoteId(null); }}
+                                  disabled={deleteQuoteMut.isPending}>
+                                  <i className={`fas ${deleteQuoteMut.isPending ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
+                                </button>
+                                <button className="quote-action-btn quote-action-preview" title="Cancel"
+                                  onClick={() => setConfirmDeleteQuoteId(null)}>
+                                  <i className="fas fa-times"></i>
+                                </button>
+                              </span>
+                            ) : (
+                              <button className="quote-action-btn quote-action-delete" title="Delete quote"
+                                onClick={() => setConfirmDeleteQuoteId(q.id)}
+                                disabled={deleteQuoteMut.isPending}>
+                                <i className={`fas ${deleteQuoteMut.isPending ? 'fa-spinner fa-spin' : 'fa-trash-alt'}`}></i>
+                              </button>
+                            )
                           )}
                         </div>
                       </div>

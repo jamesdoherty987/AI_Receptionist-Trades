@@ -15455,7 +15455,7 @@ def get_quote_by_accept_token(token):
         except Exception:
             conn.rollback()
         cur.execute("""
-            SELECT q.*, c.name as client_name, co.company_name, co.business_phone
+            SELECT q.*, c.name as client_name, co.company_name, co.phone as business_phone
             FROM quotes q
             LEFT JOIN clients c ON q.client_id = c.id
             LEFT JOIN companies co ON q.company_id = co.id
